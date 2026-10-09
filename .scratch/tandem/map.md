@@ -27,7 +27,7 @@ A sharp, implementable spec for Tandem: a native macOS todo app (regular app: ma
 
 <!-- one line per closed ticket: name (wrapping its link) + one-line gist -->
 
-(none yet)
+- [Verify the official Swift MCP SDK for a stdio tools server](issues/01-verify-swift-mcp-sdk.md): Official SDK 0.12.1 confirmed (Swift 6.0+/macOS 13.0 floor, so macOS 26+ is fine); tools-only server = `Server` + `StdioTransport` + `withMethodHandler` for `ListTools`/`CallTool`; package as a SwiftPM executable target sharing the core module, installed as a copy at stable `~/bin/tandem-mcp`.
 
 ## Not yet specified
 
