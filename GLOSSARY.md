@@ -32,6 +32,10 @@ _Avoid_: pending, active
 A todo that has been completed.
 _Avoid_: closed, finished, complete (as a noun)
 
+**Filter**:
+Which todos are in view: `open` (the default), `done`, or `all`. One term for two surfaces: the main window's segmented control and the MCP `list` tool's argument.
+_Avoid_: view, tab, scope, state
+
 **Store**:
 The single source of truth for todos, shared by the app and agents. All reads and writes go through the store; no other copy is authoritative.
 _Avoid_: database, backend, sync, cache

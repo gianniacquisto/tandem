@@ -30,11 +30,7 @@ A sharp, implementable spec for Tandem: a native macOS todo app (regular app: ma
 - [Verify the official Swift MCP SDK for a stdio tools server](issues/01-verify-swift-mcp-sdk.md): Official SDK 0.12.1 confirmed (Swift 6.0+/macOS 13.0 floor, so macOS 26+ is fine); tools-only server = `Server` + `StdioTransport` + `withMethodHandler` for `ListTools`/`CallTool`; package as a SwiftPM executable target sharing the core module, installed as a copy at stable `~/bin/tandem-mcp`.
 - [Store protocol: locking, schema v1, retention, editability](issues/02-store-protocol.md): Sidecar lockfile + writers-only `flock` (readers lock-free via atomic rename), ~2 s bounded retry, versioned JSON envelope with UUID / ISO-8601 todos in creation order, done todos kept until explicitly cleared, corrupt files backed up and the store restarted under the lock — see [ADR 0001](../../docs/adr/0001-store-protocol.md).
 - [MCP tool contracts: list / add / complete](issues/03-mcp-tool-contracts.md): Server `tandem`, bare tools `list`/`add`/`complete` (surfaced as `tandem_*` in OpenCode, `mcp__tandem__*` in Claude Code); results are JSON matching schema v1 verbatim; `list` filters open (default)/done/all in creation order, no limit; `add` takes title only (trimmed, duplicates allowed) and returns the created todo; `complete` is idempotent on id, unknown-id errors carry the full open list, no reopen in v1; domain errors are `isError` results with actionable text, an optional `note` field reports corrupt-store recovery; per-tool descriptions accepted verbatim.
-
-## Not yet specified
-
-- Menu bar icon: glyph choice, and count badge vs plain icon. The UI prototype should surface it as a decision.
-- Main window list treatment: filter (open/done/all) vs sections, sort order, search. The UI prototype should make these concrete.
+- [UI: main window + menu bar item](issues/04-ui-prototype.md): main window = filter tabs (segmented Open/Done/All with counts, creation order, no search in v1, clear-done in the header); menu bar icon = `checklist` glyph, plain — no count badge; prototype kept on branch `prototype/tandem-ui`.
 
 ## Out of scope
 
