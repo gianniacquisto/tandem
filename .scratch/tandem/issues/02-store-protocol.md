@@ -1,7 +1,7 @@
 # 02 - Store protocol: locking, schema v1, retention, editability
 
 Type: grilling
-Status: open
+Status: claimed
 
 ## Question
 
