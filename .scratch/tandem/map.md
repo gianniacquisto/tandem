@@ -10,6 +10,7 @@ A sharp, implementable spec for Tandem: a native macOS todo app (regular app: ma
 
 - Domain: Swift/SwiftUI macOS app + MCP server (Model Context Protocol, stdio transport) + shared local JSON store.
 - Tracker: local markdown — map at `.scratch/tandem/map.md`, tickets at `.scratch/tandem/issues/NN-<slug>.md`.
+- Spec (the destination): `.scratch/tandem/spec.md` — written 2026-10-09 from the resolved decisions below; labelled ready-for-agent.
 - Skills to consult: `grilling` + `domain-modeling` for grilling/prototype tickets; `research` for research tickets. `GLOSSARY.md` at repo root is the vocabulary authority.
 - Settled during charting (conversationally, not as tickets):
   - Plan, don't do: the map produces decisions, not the app.
