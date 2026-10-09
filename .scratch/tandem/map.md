@@ -33,7 +33,6 @@ A sharp, implementable spec for Tandem: a native macOS todo app (regular app: ma
 
 - Menu bar icon: glyph choice, and count badge vs plain icon. The UI prototype should surface it as a decision.
 - Main window list treatment: filter (open/done/all) vs sections, sort order, search. The UI prototype should make these concrete.
-- Agent-setup docs for the spec (exact `opencode.json` / `.mcp.json` snippets): waits on the executable's final install path from the SDK verification ticket.
 
 ## Out of scope
 
