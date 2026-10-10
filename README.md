@@ -15,9 +15,11 @@ All todos live in one **Store** at `~/.tandem/todos.json` — a human-legible, h
 ## Install
 
 ```sh
-brew install gianniacquisto/tap/tandem
+brew install --cask gianniacquisto/tap/tandem
 ```
-Puts both `tandem` (the app) and `tandem-mcp` (the MCP server) on your `PATH` (`/opt/homebrew/bin` on Apple Silicon). Builds from source, so it needs the Xcode Command Line Tools. First-time users are asked to confirm trust in the tap — standard for third-party taps.
+Installs the formula — `tandem` and `tandem-mcp` on your `PATH` (`/opt/homebrew/bin` on Apple Silicon) — and places `Tandem.app` in `/Applications`, launchable from **Launchpad** and Spotlight. The cask only links the app bundle the formula builds ([ADR 0002](docs/adr/0002-app-distribution.md)), so `brew upgrade tandem` keeps everything current. Builds from source, so it needs the Xcode Command Line Tools. First-time users are asked to confirm trust in the tap — standard for third-party taps.
+
+The app bundle is assembled by `Scripts/make-app-bundle.sh` from the built binary, `Resources/Tandem-Info.plist` (identity: `com.gianniacquisto.tandem`), and `Resources/AppIcon.icns` (regenerate with `Scripts/make-app-icon.sh`).
 
 ## Layout
 
@@ -47,7 +49,9 @@ swift run Tandem
 
 (A Homebrew install exposes the same binary as `tandem` on your `PATH`.)
 
-Tandem is a regular macOS app: Dock icon, standard window, plus the menu bar item.
+Or click **Tandem** in Launchpad / Spotlight (the Homebrew install puts `Tandem.app` in `/Applications`).
+
+Tandem is a regular macOS app: Dock icon, standard window, plus the menu bar item. It is **single-instance**: launching it while it is already running — from any path, bundle or binary — activates the running instance instead of opening a second one (a pidfile in `~/.tandem` links the two launch identities; a stale file after a crash is reclaimed on the next launch).
 
 - **Main window**: header with **Clear done** (disabled when nothing is done); quick-add field (Return commits); segmented **Filter** — Open · Done · All — with live counts; todos in creation order; tap a row to complete it (strikethrough + dimmed when done); hover a row to delete it (GUI-only — agents have no delete).
 - **Menu bar item** (plain `checklist` glyph, no count badge): quick-add field; up to 5 open todos (tap to complete); "… n more — open Tandem" when truncated; "All clear" when nothing is open; **Open Tandem**.
@@ -163,6 +167,6 @@ Two repos: this one holds the source; [`gianniacquisto/homebrew-tap`](https://gi
 To cut a release:
 
 1. Tag this repo: `git tag v0.2.0 && git push origin v0.2.0`.
-2. Bump the formula — `version`, the tag in `url`, and `sha256` (`curl -L <url> | shasum -a 256`). The tap's `autobump` workflow watches for new tags and opens the bump PR for you; merging it is the whole release.
+2. Bump the formula **and the cask** — `version`, the tag in `url`, and `sha256` (`curl -L <url> | shasum -a 256`; the cask mirrors the formula's). The tap's `autobump` workflow watches for new tags and opens the bump PR for you; merging it is the whole release.
 3. If bumping by hand, verify before pushing: `brew style Formula/tandem.rb && brew audit --strict gianniacquisto/tap/tandem && brew install --build-from-source gianniacquisto/tap/tandem`.
 4. Users get it with `brew update && brew upgrade tandem`.

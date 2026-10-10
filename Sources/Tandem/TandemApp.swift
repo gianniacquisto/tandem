@@ -23,14 +23,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBar: MenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // One visible Tandem per machine, regardless of launch identity (terminal
+        // binary vs. bundled app — see SingleInstance).
+        if SingleInstance.claimOrActivate() {
+            NSApp.terminate(nil)
+            return
+        }
         // A bare SwiftPM executable has no bundle/Info.plist, so AppKit defaults the
         // activation policy to `.prohibited`: the app can never activate and its
         // windows can never become key — the main window silently ignores all
         // keyboard input (the menu-bar item is unaffected; NSMenu tracking is
         // system-driven). Opt in to a regular app so the window can become key.
+        // (A bundled launch is already `.regular`; this is what `tandem` needs.)
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
         menuBar = MenuBarController(model: TandemModel.shared)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        SingleInstance.release()
     }
 
     // Stay alive in the menu bar when the main window is closed.
