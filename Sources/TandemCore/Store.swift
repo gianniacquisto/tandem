@@ -24,8 +24,9 @@ import Darwin
 /// The public surface is the todo operations (see the `Operations` extension); the
 /// locking/file mechanics are private.
 public struct Store: Sendable {
-    /// The store's directory (created on first write).
-    let directory: URL
+    /// The store's directory (created on first write). Public so the GUI can watch it
+    /// for external changes (FSEvents); the GUI never writes it directly.
+    public let directory: URL
     /// The data file.
     let fileURL: URL
     /// The sidecar lockfile (created if missing, never renamed).
