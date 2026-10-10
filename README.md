@@ -1,0 +1,141 @@
+# Tandem
+
+A native macOS todo app shared by **humans** and **agents** on the same Mac. One list, two kinds of actor, no divergence:
+
+- The **human** works through the app — a **main window** (filter tabs, quick-add, one-tap complete) and a **menu bar item** (quick glance, quick add).
+- **Agents** (local AI coding agents, same OS user, same Mac — no auth, no network) read and write the same todos through Tandem's **MCP server**, a Model Context Protocol server over stdio exposing three tools: `list`, `add`, `complete`.
+
+All todos live in one **Store** at `~/.tandem/todos.json` — a human-legible, hand-editable JSON file. The app watches it and refreshes live; agents re-read it on every call, so both faces are always current.
+
+## Requirements
+
+- macOS 26+
+- Swift 6.0+ (Xcode Command Line Tools are enough)
+
+## Layout
+
+One SwiftPM package, three product targets plus one test target:
+
+| Target | What it is |
+|---|---|
+| `TandemCore` (library) | The only module with real logic: the domain model (Todo), the Store (locking, atomic writes, corrupt-file recovery — see [ADR 0001](docs/adr/0001-store-protocol.md)), and the todo operations with their contract semantics. |
+| `Tandem` (executable) | The GUI app (SwiftUI, thin adapter over `TandemCore`): main window + menu bar item. |
+| `tandem-mcp` (executable) | The MCP stdio server (thin adapter over the official [Swift MCP SDK](https://github.com/modelcontextprotocol/swift-sdk) + `TandemCore`). |
+| `TandemCoreTests` | The single test seam — the core module only. |
+
+The GUI and the MCP server share exactly one module: `TandemCore`.
+
+## Build
+
+```sh
+swift build            # debug
+swift build -c release # release
+```
+
+## Run the app
+
+```sh
+swift run Tandem
+```
+
+Tandem is a regular macOS app: Dock icon, standard window, plus the menu bar item.
+
+- **Main window**: header with **Clear done** (disabled when nothing is done); quick-add field (Return commits); segmented **Filter** — Open · Done · All — with live counts; todos in creation order; tap a row to complete it (strikethrough + dimmed when done); hover a row to delete it (GUI-only — agents have no delete).
+- **Menu bar item** (plain `checklist` glyph, no count badge): quick-add field; up to 5 open todos (tap to complete); "… n more — open Tandem" when truncated; "All clear" when nothing is open; **Open Tandem**.
+- The list updates live when the store changes elsewhere (e.g. an agent adds or completes a todo).
+- If a corrupt store file is recovered, the app shows a banner naming the backup path (the old file is kept at `~/.tandem/todos.json.corrupt-<timestamp>`, never deleted).
+
+## Install the MCP server
+
+Build in release and install the binary at a **stable path** — client configs point at this path, so it must survive app rebuilds:
+
+```sh
+swift build -c release
+mkdir -p ~/bin
+cp .build/release/tandem-mcp ~/bin/tandem-mcp
+```
+
+The binary is ad-hoc-signed by `swift build`, which is all Apple Silicon requires for the agent clients to `exec` it directly. No code signing or notarization (distribution is out of scope).
+
+### Wire it into an agent client
+
+The server is named `tandem` and exposes the bare tool names `list`, `add`, `complete`; the client prefixes them.
+
+**OpenCode** — `mcp` key in `opencode.json` (`type` local, `command` an array holding the absolute path):
+
+```json
+{
+  "mcp": {
+    "tandem": {
+      "type": "local",
+      "command": ["/Users/you/bin/tandem-mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Surfaced as `tandem_list`, `tandem_add`, `tandem_complete`.
+
+**Claude Code** — either:
+
+```sh
+claude mcp add tandem -- /Users/you/bin/tandem-mcp
+```
+
+or `mcpServers` in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "tandem": {
+      "command": "/Users/you/bin/tandem-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+Surfaced as `mcp__tandem__list`, `mcp__tandem__add`, `mcp__tandem__complete`.
+
+### The tools
+
+| Tool | Arguments | Result |
+|---|---|---|
+| `list` | optional `filter` (`open` default / `done` / `all`) | `{"todos": [...]}` in creation order; empty is a successful empty list |
+| `add` | `title` (required; trimmed, empty rejected; duplicates allowed) | the created todo, including its `id` |
+| `complete` | `id` (required) | the completed todo. Idempotent — an already-done todo comes back unchanged. An unknown `id` errors and carries the full current open list so the agent recovers in one turn. No reopen in v1. |
+
+Every successful result is JSON matching the store schema verbatim. Domain failures come back as `isError` tool results with short, actionable plain text (not protocol errors). When a call triggers corrupt-store recovery, the result carries a top-level `note` naming the backup path.
+
+## The store
+
+`~/.tandem/todos.json` — schema v1, a versioned envelope, todos in creation order:
+
+```json
+{
+  "version": 1,
+  "todos": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "Water the plants",
+      "done": false,
+      "createdAt": "2026-10-09T14:03:22Z",
+      "completedAt": null
+    }
+  ]
+}
+```
+
+- **Hand-editable by design.** Unknown extra fields are ignored (forward-compat); a missing or mistyped required field invalidates the whole file — it is then backed up to `todos.json.corrupt-<timestamp>` and the store restarts empty, with the backup path surfaced to the app and to MCP results.
+- **Safe under concurrency.** Writers take an exclusive `flock` on the sidecar lockfile `~/.tandem/tandem.lock` across the whole read → modify → write-temp → `rename` cycle; readers take no lock — the atomic rename guarantees a reader sees a complete old or new file. The app plus several agent-spawned server processes can write at once without corruption.
+
+Protocol details: [ADR 0001](docs/adr/0001-store-protocol.md).
+
+## Test
+
+```sh
+swift test
+```
+
+The single test seam is `TandemCore` (real files in temp directories, real processes for contention): store round-trip and atomicity, lock contention and bounded retry, orphan temp-file cleanup, corrupt-file recovery (including no double-recovery), lenient read, and the operation contracts (`list` / `add` / `complete` / `clearDone` / `delete`). The GUI and the MCP server are thin adapters and get manual testing only (the MCP smoke test is a stdio handshake plus one call per tool).
