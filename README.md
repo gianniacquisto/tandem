@@ -12,6 +12,13 @@ All todos live in one **Store** at `~/.tandem/todos.json` — a human-legible, h
 - macOS 26+
 - Swift 6.0+ (Xcode Command Line Tools are enough)
 
+## Install
+
+```sh
+brew install gianniacquisto/tap/tandem
+```
+Puts both `tandem` (the app) and `tandem-mcp` (the MCP server) on your `PATH` (`/opt/homebrew/bin` on Apple Silicon). Builds from source, so it needs the Xcode Command Line Tools. First-time users are asked to confirm trust in the tap — standard for third-party taps.
+
 ## Layout
 
 One SwiftPM package, three product targets plus one test target:
@@ -38,6 +45,8 @@ swift build -c release # release
 swift run Tandem
 ```
 
+(A Homebrew install exposes the same binary as `tandem` on your `PATH`.)
+
 Tandem is a regular macOS app: Dock icon, standard window, plus the menu bar item.
 
 - **Main window**: header with **Clear done** (disabled when nothing is done); quick-add field (Return commits); segmented **Filter** — Open · Done · All — with live counts; todos in creation order; tap a row to complete it (strikethrough + dimmed when done); hover a row to delete it (GUI-only — agents have no delete).
@@ -47,7 +56,14 @@ Tandem is a regular macOS app: Dock icon, standard window, plus the menu bar ite
 
 ## Install the MCP server
 
-Build in release and install the binary at a **stable path** — client configs point at this path, so it must survive app rebuilds:
+Client configs point at the server's path, so it must live somewhere **stable** that survives rebuilds. The Homebrew install gives you that for free:
+
+```sh
+brew install gianniacquisto/tap/tandem
+# server path: /opt/homebrew/bin/tandem-mcp
+```
+
+**From source** instead:
 
 ```sh
 swift build -c release
@@ -55,7 +71,7 @@ mkdir -p ~/bin
 cp .build/release/tandem-mcp ~/bin/tandem-mcp
 ```
 
-The binary is ad-hoc-signed by `swift build`, which is all Apple Silicon requires for the agent clients to `exec` it directly. No code signing or notarization (distribution is out of scope).
+The binary is ad-hoc-signed by `swift build`, which is all Apple Silicon requires for the agent clients to `exec` it directly. No code signing or notarization.
 
 ### Wire it into an agent client
 
@@ -68,7 +84,7 @@ The server is named `tandem` and exposes the bare tool names `list`, `add`, `com
   "mcp": {
     "tandem": {
       "type": "local",
-      "command": ["/Users/you/bin/tandem-mcp"],
+      "command": ["/opt/homebrew/bin/tandem-mcp"],
       "enabled": true
     }
   }
@@ -80,7 +96,7 @@ Surfaced as `tandem_list`, `tandem_add`, `tandem_complete`.
 **Claude Code** — either:
 
 ```sh
-claude mcp add tandem -- /Users/you/bin/tandem-mcp
+claude mcp add tandem -- /opt/homebrew/bin/tandem-mcp
 ```
 
 or `mcpServers` in `.mcp.json`:
@@ -89,7 +105,7 @@ or `mcpServers` in `.mcp.json`:
 {
   "mcpServers": {
     "tandem": {
-      "command": "/Users/you/bin/tandem-mcp",
+      "command": "/opt/homebrew/bin/tandem-mcp",
       "args": []
     }
   }
@@ -139,3 +155,14 @@ swift test
 ```
 
 The single test seam is `TandemCore` (real files in temp directories, real processes for contention): store round-trip and atomicity, lock contention and bounded retry, orphan temp-file cleanup, corrupt-file recovery (including no double-recovery), lenient read, and the operation contracts (`list` / `add` / `complete` / `clearDone` / `delete`). The GUI and the MCP server are thin adapters and get manual testing only (the MCP smoke test is a stdio handshake plus one call per tool).
+
+## Releasing
+
+Two repos: this one holds the source; [`gianniacquisto/homebrew-tap`](https://github.com/gianniacquisto/homebrew-tap) holds the [Homebrew formula](https://github.com/gianniacquisto/homebrew-tap/blob/main/Formula/tandem.rb) that builds and installs it. brew only reads taps from its fixed tap directory, so on any dev machine the working copy is wherever brew keeps the clone — `brew tap gianniacquisto/tap` creates it at `$(brew --prefix)/Library/Taps/gianniacquisto/homebrew-tap`. That directory is an ordinary git clone of the tap repo: branch, commit, and push from there (`brew update` keeps it current).
+
+To cut a release:
+
+1. Tag this repo: `git tag v0.2.0 && git push origin v0.2.0`.
+2. Bump the formula — `version`, the tag in `url`, and `sha256` (`curl -L <url> | shasum -a 256`). The tap's `autobump` workflow watches for new tags and opens the bump PR for you; merging it is the whole release.
+3. If bumping by hand, verify before pushing: `brew style Formula/tandem.rb && brew audit --strict gianniacquisto/tap/tandem && brew install --build-from-source gianniacquisto/tap/tandem`.
+4. Users get it with `brew update && brew upgrade tandem`.
