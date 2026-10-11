@@ -34,6 +34,7 @@ A ready-for-agent spec for the v2 UI/UX of the Tandem app: a modern native macOS
 
 <!-- one line per closed ticket: name (wrapping its link) + one-line gist -->
 - **01 — theme reach**: [subtle Ligne Claire (reach B)](issues/01-theme-variants-prototype.md) — theme lives in the chrome: flat paper surfaces, uniform hairlines, line-drawn controls, illustration only in the empty state; no illustrated header band; the themed menu bar popover is kept. Prototype (B default, A/C toggleable) + implementation handoff on branch `prototype/tandem-ui-v2`.
+- **02 — v2 window + popover**: [ported into the app](issues/02-v2-window-and-popover-prototype.md) — B face (paper chrome, line-drawn one-way checkbox + filter, hero empty state, restyled banners, ⌘1/⌘2/⌘3 + ⌘N) replaces v1's MainView; the v1 `NSMenu` is a themed transient `NSPopover` (bike + wordmark header, quick-add, top-5 open, "… n more", Open Tandem) behind a template bare-bike glyph. Motion: insert 0.20 / toggle 0.18 / remove 0.15. Assets stay draft → 03.
 
 ## Not yet specified
 
