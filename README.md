@@ -167,6 +167,6 @@ Two repos: this one holds the source; [`gianniacquisto/homebrew-tap`](https://gi
 To cut a release:
 
 1. Tag this repo: `git tag v0.2.0 && git push origin v0.2.0`.
-2. Bump the formula **and the cask** — `version`, the tag in `url`, and `sha256` (`curl -L <url> | shasum -a 256`; the cask mirrors the formula's). The tap's `autobump` workflow watches for new tags and opens the bump PR for you; merging it is the whole release.
-3. If bumping by hand, verify before pushing: `brew style Formula/tandem.rb && brew audit --strict gianniacquisto/tap/tandem && brew install --build-from-source gianniacquisto/tap/tandem`.
+2. Bump the formula **and the cask** — `version`, the tag in `url`, and `sha256` (`curl -L <url> | shasum -a 256`; the cask mirrors the formula's). The tap's `autobump` workflow watches for new tags and opens the bump PR for you; merging it is the whole release. The workflow needs the tap's `HOMEBREW_GITHUB_API_TOKEN` secret (a token with `repo` scope) — without a working token the run fails after pushing the bump branch, so the PR has to be opened by hand.
+3. If bumping by hand, verify before pushing: `brew style Formula/tandem.rb Casks/tandem.rb && brew audit --strict --formula gianniacquisto/tap/tandem && brew audit --cask --strict gianniacquisto/tap/tandem && brew test gianniacquisto/tap/tandem && brew install --build-from-source gianniacquisto/tap/tandem`.
 4. Users get it with `brew update && brew upgrade tandem`.
