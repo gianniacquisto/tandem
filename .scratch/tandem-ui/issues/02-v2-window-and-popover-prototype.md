@@ -1,7 +1,7 @@
 # 02 - Prototype: the v2 Main window and menu bar popover, in full
 
 Type: prototype
-Status: open
+Status: claimed
 Blocked by: 01
 
 ## Question
