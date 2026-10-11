@@ -13,7 +13,9 @@ import AppKit
 @main
 struct TandemPrototypeApp: App {
     @State private var model = TandemModel()
-    @State private var reach: Reach = .brandOnly
+    // B (subtle) is the chosen reach — the human's verdict on the v2 redo
+    // (2026-10-11). A and C stay one tap away in the switcher as references.
+    @State private var reach: Reach = .subtle
     @State private var face: Face = .main
     @State private var mode: AppearanceMode = .system
     @State private var showBanner = false

@@ -1,8 +1,9 @@
 # 01 - Prototype: how far does the Ligne Claire theme reach?
 
 Type: prototype
-Status: claimed
+Status: done
 Claimed: 2026-10-11 (agent)
+Resolved: 2026-10-11 (human verdict on the v2 redo)
 
 ## Question
 
@@ -21,3 +22,29 @@ The prototype must also produce **draft assets** to react to, since they gate ev
 3. A **candidate palette** — named, with concrete light + dark values.
 
 **Verdict (record on resolution):** the chosen reach (A/B/C or a hybrid), which treatments/assets land, and what dies. Losing variants stay on the branch; main keeps only the verdict.
+
+## Verdict (2026-10-11)
+
+**Chosen reach: B — subtle Ligne Claire.** Human, after the v2 clean redo:
+"ok i like option b of the prototype".
+
+- **Lands:** paper/parchment/ink chrome — flat parchment quick-add with
+  hairline border + ember focus, line-drawn one-way checkbox, flat segmented
+  filter with live counts, sand hairline dividers; hero two-rider art only in
+  the "All clear" empty state; bare bike (double saddle) as the brand mark;
+  Avenir Next Demi Bold wordmark in the UI; shared scale (`Scale.swift`):
+  one 1pt hairline, one radius/spacing/motion set; gentle motion;
+  ⌘1/⌘2/⌘3 filters + ⌘N quick-add focus; themed `NSPopover` (paper card,
+  soft shadow, mark + wordmark header, quick-add, top 5 open + "… n more",
+  Open Tandem).
+- **Dies (as the direction):** reach C's illustrated header band (C stays on
+  the branch as a toggleable reference), reach A as default (stays as the
+  stock reference), v0's cel drop-shadows and comic card outlines, line-
+  lettered wordmark in the UI (draft stays in the assets face), two-rider
+  bike as the brand mark.
+- **Prototype state:** `prototype/tandem-ui-v2` — v0 `b487805`, v2 redo
+  `86fe45a`, B as default face. Runs: `cd prototype && swift run
+  TandemPrototype` (real menu bar popover) / `--export-previews` →
+  `prototype/preview/`.
+- Full handoff for the implementation session: `.scratch/tandem-ui/HANDOFF.md`
+  on this branch.
