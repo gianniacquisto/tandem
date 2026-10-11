@@ -4,6 +4,8 @@ Type: prototype
 Status: claimed
 Claimed: 2026-10-11 (agent)
 
+Feedback (2026-10-11): popover + deeper reach kept; execution rejected as unclean (main window worst) — see `../HANDOFF.md` for the redo brief.
+
 ## Question
 
 How far should the Ligne Claire + minimalist flat illustration theme (full brief in the map's Notes) reach into the interface, and which style treatments actually land? Build a cheap, rough, concrete artifact to react to — a throwaway SwiftUI prototype (small package, `prototype/<name>` branch, not the real app) covering **both faces** — Main window and a mock of the themed menu bar popover — rendered in **2–3 variants of theme reach**:
