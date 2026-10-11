@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Assembles Tandem.app from a built binary: Contents/MacOS/Tandem +
-# Contents/Info.plist (versioned) + Contents/Resources/AppIcon.icns, ad-hoc
-# signed. The Homebrew formula runs this and installs the bundle into the
+# Contents/Info.plist (versioned) + Contents/Resources/AppIcon.icns +
+# Contents/Resources/TandemBike.jpg (brand photo, ticket 03), ad-hoc signed. The Homebrew formula runs this and installs the bundle into the
 # Cellar; the cask then links it into /Applications (ADR 0002).
 #
 # Usage: Scripts/make-app-bundle.sh <built-Tandem-binary> <version> <output-dir>
@@ -23,6 +23,7 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/Tandem"
 sed "s/@@VERSION@@/$version/g" "$root/Resources/Tandem-Info.plist" > "$app/Contents/Info.plist"
 cp "$root/Resources/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
+cp "$root/Resources/TandemBike.jpg" "$app/Contents/Resources/TandemBike.jpg"
 
 # Ad-hoc signature: all Apple Silicon requires for a locally built binary.
 codesign --force --sign - "$app"

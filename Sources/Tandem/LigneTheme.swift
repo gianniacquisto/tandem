@@ -10,7 +10,7 @@ import SwiftUI
 // One shared scale: every control takes its metrics from here — no literals
 // in control code.
 
-// MARK: - Palette (draft values; final lock is ticket 03)
+// MARK: - Palette (final values — locked in ticket 03, 2026-10-11)
 
 // "Ligne Claire, muted earth" — dusty blues, washed-out reds, sandy beiges.
 // Light = the "day panel" (paper-like, the natural Ligne Claire register);

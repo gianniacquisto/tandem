@@ -3,10 +3,11 @@ import SwiftUI
 // The Ligne Claire tandem bike: two riders, one machine — human + agent, one
 // list. Flat fills, uniform ink outline, no gradients.
 //
-// Placement rule (ticket 01 handoff): the bare bike with its double saddle is
-// the brand mark (menu bar glyph, popover header, non-hero empty states); the
-// full riders scene appears once, large, only in the main window's "All
-// clear" empty state where it can actually read.
+// Placement rule (ticket 01 handoff, updated by ticket 03): the bare bike
+// with its double saddle is the brand mark — menu bar glyph and popover
+// header. The main window's empty states now wear the brand photo
+// (BrandAsset), with this vector scene as the fallback when the asset is
+// missing.
 //
 // Geometry lives in a fixed design space and scales to fit; the stroke scales
 // with the drawing so the line stays uniform.

@@ -217,19 +217,13 @@ struct LigneEmptyState: View {
     var palette: Palette
     var title: String
     var subtitle: String
-    /// Hero state ("All clear"): the riders, large, where they can read.
-    /// Other empty states get the small bare bike.
+    /// Hero state ("All clear"): the brand photo, large, where it can read.
+    /// Other empty states get the smaller photo.
     var hero: Bool
 
     var body: some View {
         VStack(spacing: 18) {
-            if hero {
-                BikeScene(palette: palette, riders: true, ground: true)
-                    .frame(width: 220, height: 220 * BikeArt.sceneSize.height / BikeArt.sceneSize.width)
-            } else {
-                BikeScene(palette: palette, riders: false, ground: true)
-                    .frame(width: 96, height: 96 * BikeArt.sceneSize.height / BikeArt.sceneSize.width)
-            }
+            brandArt
             VStack(spacing: 3) {
                 Text(title)
                     .font(.system(size: 14, weight: .medium))
@@ -241,6 +235,32 @@ struct LigneEmptyState: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.vertical, 28)
+    }
+
+    /// The brand photo (ticket 03), framed with a hairline + corner rounding
+    /// so it reads as deliberate on the paper. Falls back to the vector bike
+    /// when the asset is missing, so the state never renders empty.
+    @ViewBuilder
+    private var brandArt: some View {
+        if let photo = BrandAsset.bikePhoto {
+            let width: CGFloat = hero ? 220 : 96
+            let radius: CGFloat = hero ? Radius.control : Radius.checkbox
+            photo
+                .resizable()
+                .scaledToFill()
+                .frame(width: width, height: width * BrandAsset.bikePhotoAspect)
+                .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .strokeBorder(palette.sand, lineWidth: Line.hairline)
+                )
+        } else if hero {
+            BikeScene(palette: palette, riders: true, ground: true)
+                .frame(width: 220, height: 220 * BikeArt.sceneSize.height / BikeArt.sceneSize.width)
+        } else {
+            BikeScene(palette: palette, riders: false, ground: true)
+                .frame(width: 96, height: 96 * BikeArt.sceneSize.height / BikeArt.sceneSize.width)
+        }
     }
 }
 
