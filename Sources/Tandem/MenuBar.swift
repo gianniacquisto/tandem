@@ -30,6 +30,8 @@ final class MenuBarController: NSObject {
 
         if let button = statusItem.button {
             button.image = Self.templateGlyph()
+            button.target = self  // nil target would send the click up the
+                                  // responder chain, which never reaches here
             button.action = #selector(click)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.toolTip = "Tandem"
