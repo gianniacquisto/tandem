@@ -1,5 +1,7 @@
 # Tandem
 
+![The tandem bike — the app's brand mark and icon](Resources/TandemBike.jpg)
+
 A native macOS todo app shared by **humans** and **agents** on the same Mac. One list, two kinds of actor, no divergence:
 
 - The **human** works through the app — a **main window** (filter tabs, quick-add, one-tap complete) and a **menu bar item** (quick glance, quick add).
@@ -19,7 +21,7 @@ brew install --cask gianniacquisto/tap/tandem
 ```
 Installs the formula — `tandem` and `tandem-mcp` on your `PATH` (`/opt/homebrew/bin` on Apple Silicon) — and places `Tandem.app` in `/Applications`, launchable from **Launchpad** and Spotlight. The cask only links the app bundle the formula builds ([ADR 0002](docs/adr/0002-app-distribution.md)), so `brew upgrade tandem` keeps everything current. Builds from source, so it needs the Xcode Command Line Tools. First-time users are asked to confirm trust in the tap — standard for third-party taps.
 
-The app bundle is assembled by `Scripts/make-app-bundle.sh` from the built binary, `Resources/Tandem-Info.plist` (identity: `com.gianniacquisto.tandem`), and `Resources/AppIcon.icns` (regenerate with `Scripts/make-app-icon.sh`).
+The app bundle is assembled by `Scripts/make-app-bundle.sh` from the built binary, `Resources/Tandem-Info.plist` (identity: `com.gianniacquisto.tandem`), `Resources/AppIcon.icns` — the brand photo (`Resources/TandemBike.jpg`) letterboxed on paper, regenerated with `Scripts/make-app-icon.sh` — and the brand photo itself (shipped in `Contents/Resources` for the in-app empty states).
 
 ## Layout
 
@@ -53,7 +55,7 @@ Or click **Tandem** in Launchpad / Spotlight (the Homebrew install puts `Tandem.
 
 Tandem is a regular macOS app: Dock icon, standard window, plus the menu bar item. It is **single-instance**: launching it while it is already running — from any path, bundle or binary — activates the running instance instead of opening a second one (a pidfile in `~/.tandem` links the two launch identities; a stale file after a crash is reclaimed on the next launch).
 
-- **Main window** (Ligne Claire, reach B — muted paper palette that follows the system light/dark): header with **Clear done** (disabled when nothing is done); quick-add field (Return commits; ⌘N focuses it); segmented **Filter** — Open · Done · All — with live counts (⌘1/⌘2/⌘3); todos in creation order; the one-way **checkbox** completes a todo (strikethrough + dimmed when done — a plain row click never completes, and there is no reopen); hover or right-click a row to delete it (GUI-only — agents have no delete); on-theme empty states (two riders when "All clear").
+- **Main window** (Ligne Claire, reach B — muted paper palette that follows the system light/dark): header with **Clear done** (disabled when nothing is done); quick-add field (Return commits; ⌘N focuses it); segmented **Filter** — Open · Done · All — with live counts (⌘1/⌘2/⌘3); todos in creation order; the one-way **checkbox** completes a todo (strikethrough + dimmed when done — a plain row click never completes, and there is no reopen); hover or right-click a row to delete it (GUI-only — agents have no delete); on-theme empty states (the brand photo — large when "All clear", small in the other empty states).
 - **Menu bar item** (plain tandem-bike glyph, no count badge): a themed popover — quick-add field (Return commits); up to 5 open todos (the checkbox completes them — one-way); "… n more" when truncated (opens the Main window); "All clear" when nothing is open; an **Open Tandem** button. Right-click the glyph for Open Tandem / Quit.
 - The list updates live when the store changes elsewhere (e.g. an agent adds or completes a todo).
 - If a corrupt store file is recovered, the app shows a banner naming the backup path (the old file is kept at `~/.tandem/todos.json.corrupt-<timestamp>`, never deleted).
@@ -166,7 +168,7 @@ Two repos: this one holds the source; [`gianniacquisto/homebrew-tap`](https://gi
 
 To cut a release:
 
-1. Tag this repo: `git tag v0.2.0 && git push origin v0.2.0`.
+1. Tag this repo: `git tag v0.4.0 && git push origin v0.4.0`.
 2. Bump the formula **and the cask** — `version`, the tag in `url`, and `sha256` (`curl -L <url> | shasum -a 256`; the cask mirrors the formula's). The tap's `autobump` workflow watches for new tags and opens the bump PR for you; merging it is the whole release. The workflow needs the tap's `HOMEBREW_GITHUB_API_TOKEN` secret (a token with `repo` scope) — without a working token the run fails after pushing the bump branch, so the PR has to be opened by hand.
 3. If bumping by hand, verify before pushing: `brew style Formula/tandem.rb Casks/tandem.rb && brew audit --strict --formula gianniacquisto/tap/tandem && brew audit --cask --strict gianniacquisto/tap/tandem && brew test gianniacquisto/tap/tandem && brew install --build-from-source gianniacquisto/tap/tandem`.
 4. Users get it with `brew update && brew upgrade tandem`.
