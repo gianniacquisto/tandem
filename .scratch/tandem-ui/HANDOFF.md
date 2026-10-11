@@ -1,76 +1,25 @@
-# Handoff: ticket 01 — redo the v2 prototype with clean execution
+# Handoff: ticket 01 resolved — next is the implementation session
 
-For: the agent picking up ticket 01 after the human's first look at the v0
-prototype. Map, brief, and settled decisions live in
-`.scratch/tandem-ui/map.md` (on `main` — read with
-`git show main:.scratch/tandem-ui/map.md` while on the prototype branch).
+Ticket 01 (theme reach prototype) closed 2026-10-11: the human judged the
+v2 clean redo and chose **reach B — subtle Ligne Claire** ("ok i like option
+b of the prototype"). The themed menu bar popover is kept. Main keeps only
+the verdict — it is recorded in the map's "Decisions so far" and on
+`issues/01-theme-variants-prototype.md`.
 
-## Human verdict so far (2026-10-11, verbatim)
+Everything else lives on branch **`prototype/tandem-ui-v2`**:
 
-> "it's going in the right direction but i definitely want the popover and the
-> deeper theme integration but the style looks a bit crappy and not at all
-> clean — especially in the main app."
+- the working prototype (B default face; A/C toggleable in the switcher;
+  real `NSStatusItem` + themed `NSPopover`; `--export-previews` →
+  `prototype/preview/`)
+- the full implementation handoff at `.scratch/tandem-ui/HANDOFF.md`
+  **on that branch** — read it before starting the port: what B is
+  control-by-control, the don'ts, the `ImageRenderer` export gotcha,
+  and the open items.
 
-Keep: **reach C (deeper)** and the **themed menu bar popover**. Redo: the
-visual execution — the **main window is the failure point**.
+Next steps per the map: port B + the popover into the real app
+(`Sources/Tandem/`); confirm IA/chrome + motion details (ticket 02 — the
+v2 prototype already answers most of it at decision fidelity); lock the
+type system and final assets (ticket 03).
 
-## The task
-
-One-shot a clean version of the prototype. Not another round of rough
-variants: make the calls, execute, deliver one polished artifact. The main
-window (reach C) and the popover get the effort; reach A/B stay as cheap
-toggleable references in the switcher.
-
-## Why v0 looked bad (diagnosis from the previous agent — trust it)
-
-1. **Hand-rolled Canvas vector art everywhere**: the two-rider bike, the
-   line-lettered wordmark, the header band, the icon — all hand-tuned
-   geometry. At UI scale that reads amateurish. The two-rider bike is the
-   hardest asset in the set; the **bare bike with the double saddle reads
-   better as the brand mark** than the full riders, which should appear at
-   most once, large, where they can actually read (empty state).
-2. **Over-decoration**: reach C stacked header band + panel treatment +
-   custom controls, and it read busy instead of clean. Ligne Claire "clean"
-   is restraint — uniform hairlines, flat fills, negative space, **native
-   body typography** — not more custom chrome.
-3. **No shared scale**: line weights, corner radii, and spacing were ad-hoc
-   per control. Define the constants once; use them everywhere.
-
-## What stays (don't rebuild)
-
-The v0 scaffold on branch `prototype/tandem-ui-v2` builds and works: the
-SwiftPM package, the reach/face/appearance switcher, the **real
-`NSStatusItem` + themed `NSPopover`**, the in-memory model with the one-way
-checkbox, and `--export-previews`. Rewrite the visual layer in place. All
-settled decisions in the map stand (popover = top-5 open + "… n more",
-filter segmented with counts, quick-add at top, delete = hover + context
-menu, gentle motion, follows system appearance).
-
-## Quality bar (checkable)
-
-- The main window looks like a **shipped indie macOS app**, not a wireframe
-  or a comic panel. Body text is the system face with native metrics.
-- One shared line-weight + radius + spacing scale, used by every control.
-- Illustration appears in **at most two places** in the main window (slim
-  header band + empty state), each with generous negative space. The header
-  band is quiet: sky, one or two geometric hills, a small bare bike — not a
-  scene.
-- Light and dark both look intentional (night is a tuned palette, not an
-  inversion).
-- Verify before handing back: run `--export-previews` and give the renders
-  a vision pass (the previous agent's model could not see images — yours
-  may; if not, say so in the handback instead of guessing). The bar is the
-  human saying "clean".
-
-## Protocol
-
-- Work on `prototype/tandem-ui-v2`; commit the result there. Losing
-  variants/assets stay on the branch.
-- Leave ticket 01 `Status: claimed` — the human records the final verdict
-  (reach, what lands, what dies, palette lock) at resolution.
-- Run: `cd prototype && swift run TandemPrototype` ·
-  Export: `cd prototype && swift run TandemPrototype --export-previews`
-- Palette candidates (named, day + night):
-  `prototype/Sources/TandemPrototype/Palette.swift`.
-- Dead reference, same scaffold shape: v1 prototype on branch
-  `prototype/tandem-ui` (pixel direction — dead, do not revive).
+(The previous handoff here — the v2 redo brief — is in git history; see
+`git log -- .scratch/tandem-ui/HANDOFF.md`.)

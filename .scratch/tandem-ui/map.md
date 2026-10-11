@@ -33,6 +33,7 @@ A ready-for-agent spec for the v2 UI/UX of the Tandem app: a modern native macOS
 ## Decisions so far
 
 <!-- one line per closed ticket: name (wrapping its link) + one-line gist -->
+- **01 — theme reach**: [subtle Ligne Claire (reach B)](issues/01-theme-variants-prototype.md) — theme lives in the chrome: flat paper surfaces, uniform hairlines, line-drawn controls, illustration only in the empty state; no illustrated header band; the themed menu bar popover is kept. Prototype (B default, A/C toggleable) + implementation handoff on branch `prototype/tandem-ui-v2`.
 
 ## Not yet specified
 

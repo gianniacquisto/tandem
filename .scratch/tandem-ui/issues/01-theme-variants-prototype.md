@@ -1,10 +1,19 @@
 # 01 - Prototype: how far does the Ligne Claire theme reach?
 
 Type: prototype
-Status: claimed
+Status: done
 Claimed: 2026-10-11 (agent)
+Resolved: 2026-10-11 (human verdict on the v2 redo)
 
-Feedback (2026-10-11): popover + deeper reach kept; execution rejected as unclean (main window worst) — see `../HANDOFF.md` for the redo brief.
+History: v0 verdict (2026-10-11) — popover + deeper reach kept; execution rejected as unclean (main window worst). The v2 clean redo on `prototype/tandem-ui-v2` was judged the same day.
+
+## Verdict (2026-10-11)
+
+**Chosen reach: B — subtle Ligne Claire.** Human: "ok i like option b of the prototype".
+
+- **Lands:** paper/parchment/ink chrome — flat parchment quick-add (hairline border, ember focus), line-drawn one-way checkbox, flat segmented filter with live counts, sand hairline dividers; hero two-rider art only in the "All clear" empty state; bare bike (double saddle) as the brand mark; Avenir Next Demi Bold wordmark in the UI; one shared scale (1pt hairline, one radius/spacing/motion set); gentle motion; ⌘1/⌘2/⌘3 + ⌘N; themed `NSPopover` (paper card, soft shadow, mark + wordmark header, quick-add, top 5 open + "… n more", Open Tandem).
+- **Dies (as the direction):** reach C's illustrated header band, reach A as default, v0's cel drop-shadows and comic card outlines, line-lettered wordmark in the UI, two-rider bike as the brand mark. A and C stay on the branch, toggleable in the switcher (B is the default face).
+- **Prototype:** `prototype/tandem-ui-v2` (v0 `b487805`, v2 redo `86fe45a`, B-default + verdict `bfcb7de`). Full handoff for the implementation session: `.scratch/tandem-ui/HANDOFF.md` on that branch.
 
 ## Question
 
