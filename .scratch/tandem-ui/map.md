@@ -35,15 +35,14 @@ A ready-for-agent spec for the v2 UI/UX of the Tandem app: a modern native macOS
 <!-- one line per closed ticket: name (wrapping its link) + one-line gist -->
 - **01 — theme reach**: [subtle Ligne Claire (reach B)](issues/01-theme-variants-prototype.md) — theme lives in the chrome: flat paper surfaces, uniform hairlines, line-drawn controls, illustration only in the empty state; no illustrated header band; the themed menu bar popover is kept. Prototype (B default, A/C toggleable) + implementation handoff on branch `prototype/tandem-ui-v2`.
 - **02 — v2 window + popover**: [ported into the app](issues/02-v2-window-and-popover-prototype.md) — B face (paper chrome, line-drawn one-way checkbox + filter, hero empty state, restyled banners, ⌘1/⌘2/⌘3 + ⌘N) replaces v1's MainView; the v1 `NSMenu` is a themed transient `NSPopover` (bike + wordmark header, quick-add, top-5 open, "… n more", Open Tandem) behind a template bare-bike glyph. Motion: insert 0.20 / toggle 0.18 / remove 0.15. Assets stay draft → 03.
+- **03 — brand assets & microcopy lock**: [done](issues/03-brand-assets-and-microcopy-lock.md) — the tandem-bike photo is the brand asset (`Resources/TandemBike.jpg`): it is the app icon (whole frame, letterboxed on day paper) and the main window's empty-state art (sand-hairline framed); the menu bar glyph + popover header keep the vector bike (template-image constraint + legibility); wordmark, palette, microcopy stand as implemented.
 
 ## Not yet specified
 
 - **Interface reach**: how far the Ligne Claire treatment extends beyond brand surfaces (row styling, filter control treatment, surfaces, motion vocabulary, illustrated moments) — judged on ticket 01's variants; graduates into the design spec once a direction is chosen.
 - **Main window IA & chrome**: header/wordmark treatment, quick-add placement, filter control look, row layout (checkbox, title, creation age, delete affordance), title-bar treatment, min size/resizability — judged on ticket 02's prototype.
 - **Popover content & layout**: quick-add placement, top-5 open treatment, "… n more" truncation row, "Open Tandem" action, popover sizing — judged on ticket 02's prototype.
-- **Type system**: wordmark/display treatment (the 8-bit pixel font is dead) plus body face — candidates surfaced in 01, final in 03.
 - **Motion spec**: which events animate, durations/curves, completion animation — judged in 02.
-- **Final asset lock**: exact palette values (light + dark), the tandem-bike illustration set (app icon, menu bar glyph, empty-state art), wordmark, microcopy voice — ticket 03.
 
 ## Out of scope
 
