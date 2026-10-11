@@ -5,20 +5,17 @@ import Observation
 // PROTOTYPE — real NSStatusItem + themed NSPopover, so the popover face can
 // be judged where it will live. Left-click toggles the popover; right-click
 // gives utility items (Open Tandem / Quit) — those are not design decisions.
+// The popover follows the system appearance (map: no appearance forcing).
 
 @MainActor
 final class MenuBarController: NSObject {
     private let model: TandemModel
-    private let paletteProvider: () -> Palette
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
     private var appearanceMode: () -> AppearanceMode
 
-    init(model: TandemModel,
-         paletteProvider: @escaping () -> Palette,
-         appearanceMode: @escaping () -> AppearanceMode) {
+    init(model: TandemModel, appearanceMode: @escaping () -> AppearanceMode) {
         self.model = model
-        self.paletteProvider = paletteProvider
         self.appearanceMode = appearanceMode
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -69,15 +66,18 @@ final class MenuBarController: NSObject {
             popover.performClose(nil)
             return
         }
+        let scheme: NSAppearance.Name
         switch appearanceMode() {
-        case .dark:  popover.appearance = NSAppearance(named: .darkAqua)
-        case .light: popover.appearance = NSAppearance(named: .aqua)
-        case .system: popover.appearance = nil
+        case .dark:  scheme = .darkAqua
+        case .light: scheme = .aqua
+        case .system:
+            scheme = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) ?? .aqua
         }
+        popover.appearance = NSAppearance(named: scheme)
         popover.contentViewController = NSHostingController(
             rootView: PopoverFaceView(
                 model: model,
-                palette: paletteProvider(),
+                palette: scheme == .darkAqua ? .night : .day,
                 onOpenApp: activateApp
             )
         )

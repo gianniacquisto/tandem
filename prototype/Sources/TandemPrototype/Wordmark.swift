@@ -100,8 +100,8 @@ struct BikeBaseline: View {
             var r = line
             r.move(to: CGPoint(x: bikeX + bikeW + 6, y: midY))
             r.addLine(to: CGPoint(x: size.width, y: midY))
-            BikeArt.stroke(&ctx, line, palette.ink, Line.fine)
-            BikeArt.stroke(&ctx, r, palette.ink, Line.fine)
+            BikeArt.stroke(&ctx, line, palette.ink, Line.hairline)
+            BikeArt.stroke(&ctx, r, palette.ink, Line.hairline)
             // the bike, wheel bottoms on the baseline
             let s = (size.height - 6) / BikeArt.sceneSize.height
             var b = ctx

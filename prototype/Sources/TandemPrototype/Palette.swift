@@ -122,9 +122,5 @@ extension Palette {
     }
 }
 
-/// Uniform Ligne Claire line weights (draft).
-enum Line {
-    static let fine: CGFloat = 1.0    // hairlines, dividers
-    static let standard: CGFloat = 1.5 // controls, rows
-    static let bold: CGFloat = 2.5     // illustrations, wordmark
-}
+// Line weights, radii, spacing, and motion live in Scale.swift — every
+// control takes its metrics from there (see ticket 01 v2 redo notes).

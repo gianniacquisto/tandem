@@ -1,85 +1,128 @@
 import SwiftUI
 
-// PROTOTYPE — the themed menu bar popover (v2 settled direction: a themed
-// NSPopover replaces v1's AppKit NSMenu). This is the most-visible brand
-// surface, so it wears the theme in all reach variants.
+// PROTOTYPE — the themed menu bar popover (v2 redo).
 //
-// Content: wordmark + bike mark, quick-add, up to 5 open todos (tap the
-// line-drawn checkbox to complete), "… n more — open Tandem" truncation,
-// "Open Tandem" action, on-theme empty state.
+// The menu bar item is the most-visible brand surface, so it wears the
+// theme in all reach variants — but quietly: brand mark + wordmark,
+// quick-add, up to 5 open todos, "… n more" truncation, "Open Tandem".
+// One hairline per divider, flat fills, no card outline (the real popover
+// provides its own chrome and soft shadow).
 
 struct PopoverFaceView: View {
     var model: TandemModel
     var palette: Palette
     var onOpenApp: () -> Void
     @State private var draft = ""
+    @FocusState private var quickAddFocus: Bool
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 0) {
+            // header: bare-bike mark (the double-saddle tell) + wordmark
             HStack(spacing: 8) {
-                BikeScene(palette: palette, riders: false)
-                    .frame(width: 34, height: 22)
-                Wordmark(treatment: .lineLettering, palette: palette, height: 15)
+                BikeScene(palette: palette, riders: false, lineWidth: 7)
+                    .frame(width: 24, height: 24 * BikeArt.sceneSize.height / BikeArt.sceneSize.width)
+                Text("Tandem")
+                    .font(.custom("AvenirNext-DemiBold", size: 13))
+                    .tracking(0.3)
+                    .foregroundStyle(palette.ink)
                 Spacer()
             }
+            .frame(height: 22)
 
-            LigneQuickAdd(text: $draft, palette: palette) { model.add(draft) }
+            LigneQuickAdd(text: $draft, palette: palette,
+                          onCommit: {
+                              withAnimation(Motion.insert) { model.add(draft) }
+                              draft = ""
+                          },
+                          focus: $quickAddFocus,
+                          height: Space.popoverControl)
+            .padding(.top, 10)
 
-            Rectangle().fill(palette.sand).frame(height: Line.fine)
+            Rectangle().fill(palette.sand).frame(height: Line.hairline)
+                .padding(.top, 10)
 
-            if model.openTodos.isEmpty {
-                VStack(spacing: 6) {
-                    BikeScene(palette: palette, riders: false)
-                        .frame(width: 56, height: 56 * 0.65)
-                    Text("All clear")
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundStyle(palette.inkDim)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-            } else {
-                ForEach(model.openTodos.prefix(5)) { todo in
-                    Button { model.complete(todo.id) } label: {
-                        HStack(spacing: 8) {
-                            LigneCheckbox(done: false, palette: palette, size: 18)
-                            Text(todo.title)
-                                .font(.system(size: 12.5))
-                                .foregroundStyle(palette.ink)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, 6)
-                        .frame(height: 28)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                if model.openTodos.count > 5 {
-                    Button(action: onOpenApp) {
-                        Text("… \(model.openTodos.count - 5) more — open Tandem")
-                            .font(.system(size: 11.5, weight: .medium))
-                            .foregroundStyle(palette.emberDeep)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, -2)
-                }
-            }
+            list
+                .padding(.top, 6)
 
-            Rectangle().fill(palette.sand).frame(height: Line.fine)
+            Rectangle().fill(palette.sand).frame(height: Line.hairline)
+                .padding(.top, 8)
 
-            HStack {
-                Spacer()
-                CelButton(title: "Open Tandem", palette: palette, action: onOpenApp)
-            }
+            PrimaryButton(title: "Open Tandem", palette: palette, height: 30,
+                          action: onOpenApp)
+                .padding(.top, 8)
         }
-        .padding(12)
+        .padding(Space.popoverGutter)
         .frame(width: 280)
         .background(palette.paper)
     }
+
+    @ViewBuilder
+    private var list: some View {
+        if model.openTodos.isEmpty {
+            Text("All clear")
+                .font(.system(size: 12.5))
+                .foregroundStyle(palette.inkDim)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+        } else {
+            VStack(spacing: 0) {
+                ForEach(model.openTodos.prefix(5)) { todo in
+                    PopoverRow(todo: todo, palette: palette,
+                               onComplete: { withAnimation(Motion.toggle) { model.complete(todo.id) } })
+                        .transition(.opacity)
+                }
+                if model.openTodos.count > 5 {
+                    Button(action: onOpenApp) {
+                        Text("… \(model.openTodos.count - 5) more")
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundStyle(palette.emberDeep)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 6)
+                            .frame(height: 26)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
 }
 
-/// On-screen mock of the popover (card + flat arrow) for judging in the
-/// window. The real NSStatusItem opens the same content in a real popover.
+/// One popover row: checkbox completes (the only action — a plain row
+/// click is never destructive), title is plain text.
+struct PopoverRow: View {
+    var todo: Todo
+    var palette: Palette
+    var onComplete: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: onComplete) {
+                LigneCheckbox(done: false, palette: palette)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+
+            Text(todo.title)
+                .font(.system(size: 12.5))
+                .foregroundStyle(palette.ink)
+                .lineLimit(1)
+
+            Spacer(minLength: 4)
+        }
+        .padding(.horizontal, 6)
+        .frame(height: Space.popoverRow)
+        .background(hovering ? AnyShapeStyle(palette.parchment) : AnyShapeStyle(Color.clear))
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+    }
+}
+
+/// On-screen mock of the popover (paper arrow + soft system-style shadow)
+/// for judging in the window. The real NSStatusItem opens the same content
+/// in a real NSPopover, which supplies the chrome.
 struct PopoverMock: View {
     var model: TandemModel
     var palette: Palette
@@ -87,24 +130,17 @@ struct PopoverMock: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // flat arrow (open path: no base edge), paper-filled, ink-outlined;
-            // its base tucks under the card's top border
             PopoverArrow()
                 .fill(palette.paper)
-                .overlay(PopoverArrow().stroke(palette.ink, lineWidth: Line.standard))
-                .frame(width: 22, height: 10)
-                .padding(.bottom, -Line.standard - 0.5)
-
+                .frame(width: 20, height: 9)
+                .padding(.bottom, -1)
             PopoverFaceView(model: model, palette: palette, onOpenApp: onOpenApp)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(palette.shadow)
-                        .offset(x: 4, y: 4)
-                )
                 .background(RoundedRectangle(cornerRadius: 10).fill(palette.paper))
-                .overlay(RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(palette.ink, lineWidth: Line.standard))
+                .shadow(color: .black.opacity(0.22), radius: 14, y: 5)
         }
+        .frame(width: 280)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(palette.paper)
     }
 }
 
@@ -114,6 +150,6 @@ private struct PopoverArrow: Shape {
         p.move(to: CGPoint(x: rect.minX, y: rect.maxY))
         p.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
         p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        return p // open: the base sits on the card's border
+        return p
     }
 }

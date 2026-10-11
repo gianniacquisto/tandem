@@ -28,7 +28,7 @@ struct AssetsFaceView: View {
                                  dayLabel: "day — bare bike (glyph, empty state)",
                                  nightLabel: "night — bare bike")
                     }
-                    note("Two riders, one machine — human + agent, one list. The same drawing feeds the app icon, the menu bar glyph (bare bike), and the empty states.")
+                    note("Two riders, one machine — human + agent, one list. The bare bike (double saddle) is the brand mark: header band, menu bar glyph, icon, parked empty states. The riders appear once, large — the main window's “All clear” empty state, where they can actually read.")
                 }
 
                 section("2 · App icon candidate") {
@@ -41,7 +41,7 @@ struct AssetsFaceView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(RoundedRectangle(cornerRadius: 12).fill(day.paper)
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(day.ink, lineWidth: Line.standard)))
+                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(day.ink, lineWidth: Line.hairline)))
                         HStack(alignment: .bottom, spacing: 8) {
                             BikeIcon(palette: night).frame(width: 96, height: 96)
                             BikeIcon(palette: night).frame(width: 56, height: 56)
@@ -50,7 +50,7 @@ struct AssetsFaceView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(RoundedRectangle(cornerRadius: 12).fill(night.paper)
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(night.ink, lineWidth: Line.standard)))
+                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(night.ink, lineWidth: Line.hairline)))
                     }
                     note("Flat sky, one sun/moon, two geometric untextured hills, the tandem on the near hill. Feeds Scripts/make-app-icon.sh → Resources/AppIcon.icns at final lock (ticket 03).")
                 }
@@ -77,7 +77,7 @@ struct AssetsFaceView: View {
                             }
                         }
                     }
-                    note("Candidate type only — the final wordmark, display face, and any bundled font license are locked in ticket 03.")
+                    note("The main window and popover ship with treatment 2 (display face) — line lettering reads amateurish at UI scale. Treatments 1 and 3 remain candidates for the human; final wordmark + font license lock in ticket 03.")
                 }
 
                 section("5 · Candidate palette") {
@@ -135,7 +135,7 @@ struct AssetsFaceView: View {
             .frame(width: 170, height: 112)
             .padding(8)
             .background(RoundedRectangle(cornerRadius: 10).fill(bg)
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(border, lineWidth: Line.standard)))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(border, lineWidth: Line.hairline)))
     }
 
     private func glyphStrip(background: Color, glyph: Color) -> some View {
@@ -158,7 +158,7 @@ struct AssetsFaceView: View {
         Wordmark(treatment: treatment, palette: pal, height: 30)
             .frame(width: 240, height: 74)
             .background(RoundedRectangle(cornerRadius: 10).fill(pal.paper)
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(pal.ink, lineWidth: Line.standard)))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(pal.ink, lineWidth: Line.hairline)))
     }
 
     private func swatchGrid(_ title: String, _ pal: Palette) -> some View {
@@ -171,7 +171,7 @@ struct AssetsFaceView: View {
                             .fill(s.value)
                             .frame(width: 26, height: 26)
                             .overlay(RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(pal.ink.opacity(0.5), lineWidth: Line.fine))
+                                .strokeBorder(pal.ink.opacity(0.5), lineWidth: Line.hairline))
                         VStack(alignment: .leading, spacing: 1) {
                             Text("\(s.name)  \(s.hexLabel)")
                                 .font(.system(size: 10.5, weight: .medium, design: .monospaced))

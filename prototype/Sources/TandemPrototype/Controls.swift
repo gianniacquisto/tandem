@@ -1,11 +1,10 @@
 import SwiftUI
 
-// PROTOTYPE — shared Ligne Claire controls (used by reach B & C and the
-// themed popover): line-drawn checkbox, line-drawn segmented filter,
-// quick-add field, rows, empty state, corrupt-store banner.
+// PROTOTYPE — shared Ligne Claire controls (ticket 01, v2 redo).
 //
-// Hard constraints from the brief: flat fills, uniform linework, hard-edge
-// (cel) shading only, no gradients, generous negative space.
+// The register at UI scale is restraint: one hairline (Line.hairline),
+// flat fills, no drop shadows, native body typography, generous negative
+// space. Every metric comes from Scale.swift — no literals here.
 
 enum Filter: String, CaseIterable, Identifiable {
     case open = "Open"
@@ -24,34 +23,35 @@ func ageString(_ date: Date) -> String {
     return "\(h / 24)d"
 }
 
-// MARK: checkbox — line-drawn, one-way (v2 decision)
+// MARK: checkbox — flat, one hairline, one-way (v2 decision)
 
 struct LigneCheckbox: View {
     var done: Bool
     var palette: Palette
-    var size: CGFloat = 21
+    var size: CGFloat = 18
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 5.5)
+            RoundedRectangle(cornerRadius: Radius.checkbox)
                 .fill(done ? AnyShapeStyle(palette.moss) : AnyShapeStyle(palette.parchment))
-            RoundedRectangle(cornerRadius: 5.5)
-                .strokeBorder(palette.ink, lineWidth: Line.standard)
             if done {
                 Path { p in
-                    p.move(to: CGPoint(x: 0.24, y: 0.52))
-                    p.addLine(to: CGPoint(x: 0.42, y: 0.7))
-                    p.addLine(to: CGPoint(x: 0.78, y: 0.32))
+                    p.move(to: CGPoint(x: 0.26, y: 0.52))
+                    p.addLine(to: CGPoint(x: 0.42, y: 0.68))
+                    p.addLine(to: CGPoint(x: 0.76, y: 0.34))
                 }
                 .path(in: CGRect(x: 0, y: 0, width: size, height: size))
-                .stroke(palette.paper, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                .stroke(palette.paper, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                .transition(.opacity)
             }
+            RoundedRectangle(cornerRadius: Radius.checkbox)
+                .strokeBorder(palette.ink, lineWidth: Line.hairline)
         }
         .frame(width: size, height: size)
     }
 }
 
-// MARK: segmented filter — one line-drawn control, flat selected fill
+// MARK: segmented filter — flat selected fill, muted counts, no capsules
 
 struct LigneFilter: View {
     @Binding var selection: Filter
@@ -61,73 +61,82 @@ struct LigneFilter: View {
     var body: some View {
         HStack(spacing: 0) {
             ForEach(Filter.allCases) { f in
-                let selected = f == selection
-                let count = f == .open ? counts.open : f == .done ? counts.done : counts.open + counts.done
-                Button {
-                    selection = f
-                } label: {
-                    HStack(spacing: 5) {
-                        Text(f.rawValue)
-                        Text("\(count)")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Capsule().fill(selected ? palette.paper : palette.sand))
-                            .foregroundStyle(selected ? palette.dustyBlueDeep : palette.inkDim)
-                    }
-                    .font(.system(size: 12.5, weight: selected ? .semibold : .regular))
-                    .foregroundStyle(selected ? palette.paper : palette.ink)
-                    .padding(.horizontal, 11)
-                    .frame(height: 28)
-                    .background {
-                        if selected {
-                            // cel shade: hard-edge 2pt drop, no blur, no gradient
-                            ZStack {
-                                Rectangle().fill(palette.dustyBlueDeep)
-                                    .offset(y: 2)
-                                Rectangle().fill(palette.dustyBlue)
-                            }
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
+                segment(f)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(palette.ink, lineWidth: Line.standard))
+        .frame(width: 240, height: 30)
+        .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.paper))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.control))
+        .overlay(RoundedRectangle(cornerRadius: Radius.control)
+            .strokeBorder(palette.ink, lineWidth: Line.hairline))
+    }
+
+    private func segment(_ f: Filter) -> some View {
+        let selected = f == selection
+        let count = f == .open ? counts.open : f == .done ? counts.done : counts.open + counts.done
+        return Button {
+            withAnimation(Motion.toggle) { selection = f }
+        } label: {
+            HStack(spacing: 4) {
+                Text(f.rawValue)
+                    .font(.system(size: 12.5, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? palette.paper : palette.ink)
+                Text("\(count)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(selected ? palette.paper.opacity(0.65) : palette.inkDim)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 30)
+            .background(selected ? AnyShapeStyle(palette.dustyBlue) : AnyShapeStyle(Color.clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
-// MARK: quick-add — line-drawn field, ember focus
+// MARK: quick-add — flat field, one hairline, ember focus (same weight)
 
 struct LigneQuickAdd: View {
     @Binding var text: String
     var palette: Palette
     var onCommit: () -> Void
-    @FocusState private var focused: Bool
+    var focus: FocusState<Bool>.Binding
+    var height: CGFloat = Space.control
+    @Environment(\.tandemExport) private var exportPreview
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "plus")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(focused ? palette.ember : palette.inkDim)
-            TextField("Add a todo…", text: $text)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .foregroundStyle(palette.ink)
-                .focused($focused)
-                .onSubmit {
-                    onCommit()
-                    text = ""
+                .foregroundStyle(focus.wrappedValue ? palette.ember : palette.inkDim)
+            ZStack(alignment: .leading) {
+                if text.isEmpty || exportPreview {
+                    Text("Add a todo…")
+                        .font(.body)
+                        .foregroundStyle(palette.inkDim)
                 }
+                if !exportPreview {
+                    TextField("", text: $text)
+                        .textFieldStyle(.plain)
+                        .font(.body)
+                        .foregroundStyle(palette.ink)
+                        .focused(focus)
+                        .onSubmit {
+                            onCommit()
+                            text = ""
+                        }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 11)
-        .frame(height: 34)
-        .background(RoundedRectangle(cornerRadius: 8).fill(palette.parchment))
+        .frame(height: height)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(focused ? palette.ember : palette.ink,
-                              lineWidth: focused ? 2 : Line.standard)
+            RoundedRectangle(cornerRadius: Radius.control)
+                .strokeBorder(focus.wrappedValue ? palette.ember : palette.ink,
+                              lineWidth: Line.hairline)
         )
     }
 }
@@ -146,11 +155,13 @@ struct LigneRow: View {
         HStack(spacing: 10) {
             Button(action: onComplete) {
                 LigneCheckbox(done: todo.isDone, palette: palette)
+                    .frame(width: 24, height: 24)
             }
             .buttonStyle(.plain)
+            .contentShape(Rectangle())
 
             Text(todo.title)
-                .font(.system(size: 13))
+                .font(.body)
                 .foregroundStyle(todo.isDone ? palette.inkDim : palette.ink)
                 .strikethrough(todo.isDone, color: palette.inkDim)
                 .lineLimit(1)
@@ -159,26 +170,30 @@ struct LigneRow: View {
 
             if showsAge {
                 Text(ageString(todo.createdAt))
-                    .font(.system(size: 11, design: .rounded))
+                    .font(.caption)
                     .foregroundStyle(palette.inkDim)
                     .monospacedDigit()
             }
 
-            if hovering {
-                Button(action: onDelete) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(palette.emberDeep)
-                        .frame(width: 18, height: 18)
-                        .background(Circle().strokeBorder(palette.ember, lineWidth: Line.fine))
+            // fixed slot so the age never shifts when the delete appears
+            ZStack {
+                if hovering {
+                    Button(action: onDelete) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(palette.emberDeep)
+                            .frame(width: 14, height: 14)
+                            .background(Circle().strokeBorder(palette.ember, lineWidth: Line.hairline))
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
                 }
-                .buttonStyle(.plain)
-                .transition(.opacity)
             }
+            .frame(width: 22, height: 22)
         }
-        .padding(.horizontal, 10)
-        .frame(height: 38)
-        .background(hovering ? AnyShapeStyle(palette.sand.opacity(0.4)) : AnyShapeStyle(Color.clear))
+        .padding(.horizontal, Space.gutter)
+        .frame(height: Space.row)
+        .background(hovering ? AnyShapeStyle(palette.parchment) : AnyShapeStyle(Color.clear))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .contextMenu {
@@ -187,18 +202,24 @@ struct LigneRow: View {
     }
 }
 
-// MARK: empty state — the bike in vast negative space
+// MARK: empty states — the one illustrated moment in the main window
 
 struct LigneEmptyState: View {
     var palette: Palette
     var title: String
     var subtitle: String
-    var bikeWidth: CGFloat = 130
+    /// Hero state ("All clear"): the riders, large, where they can read.
+    var hero: Bool
 
     var body: some View {
-        VStack(spacing: 14) {
-            BikeScene(palette: palette, riders: false)
-                .frame(width: bikeWidth, height: bikeWidth * BikeArt.sceneSize.height / BikeArt.sceneSize.width)
+        VStack(spacing: 18) {
+            if hero {
+                BikeScene(palette: palette, riders: true, ground: true)
+                    .frame(width: 220, height: 220 * BikeArt.sceneSize.height / BikeArt.sceneSize.width)
+            } else {
+                BikeScene(palette: palette, riders: false, ground: true)
+                    .frame(width: 96, height: 96 * BikeArt.sceneSize.height / BikeArt.sceneSize.width)
+            }
             VStack(spacing: 3) {
                 Text(title)
                     .font(.system(size: 14, weight: .medium))
@@ -209,57 +230,73 @@ struct LigneEmptyState: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.vertical, 30)
+        .padding(.vertical, 28)
     }
 }
 
-// MARK: cel button — flat fill with hard 2pt offset (no blur, no gradient)
+// MARK: quiet text button — "Clear done"
 
-struct CelButton: View {
+struct TextButton: View {
     var title: String
     var palette: Palette
     var enabled: Bool = true
+    var action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12.5))
+                .foregroundStyle(enabled ? (hovering ? palette.ink : palette.inkDim)
+                                         : palette.inkDim.opacity(0.45))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .onHover { hovering = $0 }
+    }
+}
+
+// MARK: primary button — the popover's "Open Tandem"
+
+struct PrimaryButton: View {
+    var title: String
+    var palette: Palette
+    var height: CGFloat = 30
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(enabled ? palette.paper : palette.inkDim)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6.5)
-                .background {
-                    if enabled {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8).fill(palette.dustyBlueDeep).offset(y: 2)
-                            RoundedRectangle(cornerRadius: 8).fill(palette.dustyBlue)
-                        }
-                    } else {
-                        RoundedRectangle(cornerRadius: 8).fill(palette.sand)
-                    }
-                }
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(palette.ink, lineWidth: Line.fine))
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(palette.paper)
+                .frame(maxWidth: .infinity)
+                .frame(height: height)
+                .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.dustyBlue))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!enabled)
     }
 }
 
-// MARK: corrupt-store banner (restyled; demo toggle in the floating bar)
+// MARK: corrupt-store banner — restyled, no illustration (SF symbol only)
 
 struct LigneBanner: View {
     var palette: Palette
 
     var body: some View {
         HStack(spacing: 10) {
-            Rectangle()
+            RoundedRectangle(cornerRadius: 2)
                 .fill(palette.ember)
                 .frame(width: 4)
-            BikeScene(palette: palette, riders: false)
-                .frame(width: 34, height: 34 * 0.65)
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(palette.emberDeep)
             VStack(alignment: .leading, spacing: 2) {
                 Text("The list was unreadable, so it was backed up and started fresh.")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 12.5, weight: .medium))
                     .foregroundStyle(palette.ink)
                 Text("Backup: ~/.tandem/todos.json.corrupt-2026-10-11T004200Z")
                     .font(.system(size: 11, design: .monospaced))
@@ -267,8 +304,10 @@ struct LigneBanner: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(palette.parchment))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(palette.ink, lineWidth: Line.standard))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: Radius.card).fill(palette.parchment))
+        .overlay(RoundedRectangle(cornerRadius: Radius.card)
+            .strokeBorder(palette.ink, lineWidth: Line.hairline))
     }
 }

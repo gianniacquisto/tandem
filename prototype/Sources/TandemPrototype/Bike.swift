@@ -1,42 +1,55 @@
 import SwiftUI
 
-// PROTOTYPE — Ligne Claire tandem bike (ticket 01, draft asset 1 of 3).
+// PROTOTYPE — Ligne Claire tandem bike (ticket 01, v2 redo).
 //
 // The brand motif: two riders, one machine — human + agent, one list.
-// Uniform line weight, flat fills, hard-edge (cel) shading only, no
-// gradients. Geometry lives in fixed design spaces and scales to fit; the
-// stroke scales with the drawing so the line stays uniform.
 //
-// Drafts:
-//   - drawScene(riders: true)  → illustration (empty state, header band, icon)
-//   - drawScene(riders: false) → bare bike (menu bar glyph, parked moments)
-//   - drawIcon                 → app icon tile candidate
+// v2 placement rule (handoff): the bare bike with its double saddle is the
+// brand mark (header band, menu bar glyph, icon, parked empty states); the
+// full riders scene appears once, large, only in the main window's "All
+// clear" empty state where it can actually read.
+//
+// Geometry lives in a fixed design space and scales to fit; the stroke
+// scales with the drawing so the line stays uniform. Flat fills, uniform
+// ink outline, no gradients.
 
 enum BikeArt {
     // MARK: design spaces
 
     static let sceneSize = CGSize(width: 260, height: 170)
 
+    /// Bare-bike ink extent in design space (for precise placement).
+    static let inkTop: CGFloat = 44      // handlebar grips
+    static let inkBottom: CGFloat = 152  // wheel bottoms
+    static let inkLeft: CGFloat = 24     // rear tyre
+    static let inkRight: CGFloat = 236   // front tyre
+
     // scene geometry
-    static let rearAxle  = CGPoint(x: 62,  y: 118)
-    static let frontAxle = CGPoint(x: 206, y: 118)
+    static let rearAxle  = CGPoint(x: 58,  y: 118)
+    static let frontAxle = CGPoint(x: 204, y: 118)
     static let wheelR: CGFloat = 34
-    static let crank  = CGPoint(x: 132, y: 118)   // pilot crank (chainring 14)
-    static let crank2 = CGPoint(x: 100, y: 118)   // stoker crank (r 10)
-    static let head    = CGPoint(x: 190, y: 60)
-    static let seatPilot  = CGPoint(x: 152, y: 58)
-    static let seatStoker = CGPoint(x: 94,  y: 60)
+    static let crankPilot  = CGPoint(x: 134, y: 118)  // chainring r 12
+    static let crankStoker = CGPoint(x: 106, y: 118)  // stoker crank r 8
+    static let head        = CGPoint(x: 192, y: 58)
+    static let seatPilot   = CGPoint(x: 150, y: 56)
+    static let seatStoker  = CGPoint(x: 92,  y: 58)
 
     // MARK: drawing entry points
 
-    /// Bike (+ riders) centred in `size`, scaled to fit.
+    /// Bike (+ riders) centred in `size`, scaled to fit. `ground` draws a
+    /// short quiet hairline under the wheels (parked moments only).
     static func drawScene(_ ctx: inout GraphicsContext, size: CGSize, palette: Palette,
-                          riders: Bool = true, lw: CGFloat = 3.5) {
+                          riders: Bool = true, lw: CGFloat = Line.illustration,
+                          ground: Bool = false) {
         let s = min(size.width / sceneSize.width, size.height / sceneSize.height)
         var c = ctx
         c.translateBy(x: (size.width - sceneSize.width * s) / 2,
                       y: (size.height - sceneSize.height * s) / 2)
         c.scaleBy(x: s, y: s)
+        if ground {
+            stroke(&c, line([CGPoint(x: 18, y: inkBottom), CGPoint(x: 242, y: inkBottom)]),
+                   palette.sand, lw * 0.45)
+        }
         drawBike(&c, palette: palette, lw: lw, riders: riders)
     }
 
@@ -85,6 +98,8 @@ enum BikeArt {
 
     // MARK: the machine
 
+    /// The bare bike: one long top tube, two saddles (the tandem tell),
+    /// two handlebars, one chainring + stoker crank with four pedals.
     private static func drawBike(_ ctx: inout GraphicsContext, palette: Palette,
                                  lw: CGFloat, riders: Bool) {
         let ink = palette.ink
@@ -95,38 +110,36 @@ enum BikeArt {
             fill(&ctx, circle(c, 4.5), ink)
         }
 
-        // cranks + drive chain
-        stroke(&ctx, circle(crank, 14), ink, lw)
-        stroke(&ctx, circle(crank2, 10), ink, lw * 0.8)
-        stroke(&ctx, line([CGPoint(x: 100, y: 108), CGPoint(x: 132, y: 104)]), ink, lw * 0.65)
-        stroke(&ctx, line([CGPoint(x: 100, y: 128), CGPoint(x: 132, y: 132)]), ink, lw * 0.65)
+        // cranks
+        stroke(&ctx, circle(crankPilot, 12), ink, lw)
+        stroke(&ctx, circle(crankStoker, 8), ink, lw * 0.8)
 
         // frame — one long top tube, two seat clusters
         for f in [
             line([rearAxle, seatStoker]),       // seat stay
-            line([crank, rearAxle]),            // chain stay
-            line([seatStoker, head]),           // top tube
-            line([head, crank]),                // down tube
-            line([seatPilot, crank]),           // pilot seat tube
-            line([seatStoker, crank2]),         // stoker seat tube
+            line([crankPilot, rearAxle]),       // chain stay
+            line([seatStoker, head]),           // top tube (the tandem tell)
+            line([head, crankPilot]),           // down tube
+            line([seatPilot, crankPilot]),      // pilot seat tube
+            line([seatStoker, crankStoker]),    // stoker seat tube
             line([head, frontAxle]),            // fork
         ] {
             stroke(&ctx, f, ink, lw)
         }
 
-        // saddles
-        fill(&ctx, roundedRect(CGRect(x: 140, y: 53, width: 26, height: 6), 3), ink)
-        fill(&ctx, roundedRect(CGRect(x: 82, y: 55, width: 26, height: 6), 3), ink)
+        // saddles — flat ink slabs, the double saddle reads as "tandem"
+        fill(&ctx, roundedRect(CGRect(x: 138, y: 51, width: 26, height: 6), 3), ink)
+        fill(&ctx, roundedRect(CGRect(x: 80, y: 53, width: 26, height: 6), 3), ink)
 
-        // handlebars (pilot, stoker)
-        stroke(&ctx, line([CGPoint(x: 190, y: 60), CGPoint(x: 196, y: 50), CGPoint(x: 204, y: 50)]), ink, lw)
-        stroke(&ctx, line([CGPoint(x: 136, y: 60), CGPoint(x: 140, y: 48), CGPoint(x: 148, y: 48)]), ink, lw)
+        // handlebars (pilot at the head, stoker ahead of its saddle)
+        stroke(&ctx, line([head, CGPoint(x: 198, y: 46), CGPoint(x: 206, y: 46)]), ink, lw)
+        stroke(&ctx, line([CGPoint(x: 104, y: 58), CGPoint(x: 110, y: 46), CGPoint(x: 118, y: 46)]), ink, lw)
 
-        // pedals (pilot on chainring, stoker on stoker crank)
+        // pedals — two per crank
         fill(&ctx, roundedRect(CGRect(x: 136, y: 124, width: 12, height: 4), 2), ink)
-        fill(&ctx, roundedRect(CGRect(x: 116, y: 104, width: 12, height: 4), 2), ink)
-        fill(&ctx, roundedRect(CGRect(x: 102, y: 122, width: 11, height: 4), 2), ink)
-        fill(&ctx, roundedRect(CGRect(x: 86, y: 106, width: 11, height: 4), 2), ink)
+        fill(&ctx, roundedRect(CGRect(x: 122, y: 108, width: 12, height: 4), 2), ink)
+        fill(&ctx, roundedRect(CGRect(x: 108, y: 124, width: 11, height: 4), 2), ink)
+        fill(&ctx, roundedRect(CGRect(x: 95,  y: 108, width: 11, height: 4), 2), ink)
 
         if riders {
             drawStoker(&ctx, palette: palette, lw: lw)
@@ -134,7 +147,7 @@ enum BikeArt {
         }
     }
 
-    // MARK: the riders
+    // MARK: the riders (large, empty-state only)
 
     /// Front rider — dusty blue jersey, on the pilot crank.
     private static func drawPilot(_ ctx: inout GraphicsContext, palette p: Palette, lw: CGFloat) {
@@ -143,7 +156,7 @@ enum BikeArt {
 
         // legs first (under torso): front leg → low pedal, rear leg → high pedal
         stroke(&ctx, line([CGPoint(x: 156, y: 78), CGPoint(x: 172, y: 100), CGPoint(x: 143, y: 124)]), ink, limb)
-        stroke(&ctx, line([CGPoint(x: 152, y: 78), CGPoint(x: 158, y: 104), CGPoint(x: 124, y: 105)]), ink, limb)
+        stroke(&ctx, line([CGPoint(x: 152, y: 78), CGPoint(x: 158, y: 104), CGPoint(x: 128, y: 110)]), ink, limb)
 
         // torso (flat jersey, ink-outlined)
         let torso = Path { t in
@@ -156,7 +169,7 @@ enum BikeArt {
         outline(&ctx, torso, p.dustyBlue, ink, lw * 0.75)
 
         // arm to the pilot bar
-        stroke(&ctx, line([CGPoint(x: 168, y: 46), CGPoint(x: 184, y: 56), CGPoint(x: 200, y: 51)]), ink, limb)
+        stroke(&ctx, line([CGPoint(x: 168, y: 46), CGPoint(x: 188, y: 54), CGPoint(x: 204, y: 46)]), ink, limb)
 
         // head + hair
         fill(&ctx, circle(CGPoint(x: 168, y: 27), 8.5), p.skin)
@@ -173,8 +186,8 @@ enum BikeArt {
         let limb = lw * 0.9
 
         // legs: front leg → low pedal, rear leg → high pedal
-        stroke(&ctx, line([CGPoint(x: 98, y: 76), CGPoint(x: 114, y: 98), CGPoint(x: 108, y: 122)]), ink, limb)
-        stroke(&ctx, line([CGPoint(x: 94, y: 76), CGPoint(x: 94, y: 102), CGPoint(x: 93, y: 107)]), ink, limb)
+        stroke(&ctx, line([CGPoint(x: 98, y: 76), CGPoint(x: 112, y: 98), CGPoint(x: 109, y: 124)]), ink, limb)
+        stroke(&ctx, line([CGPoint(x: 94, y: 76), CGPoint(x: 92, y: 102), CGPoint(x: 101, y: 110)]), ink, limb)
 
         // torso
         let torso = Path { t in
@@ -187,7 +200,7 @@ enum BikeArt {
         outline(&ctx, torso, p.ember, ink, lw * 0.75)
 
         // arm to the stoker bar
-        stroke(&ctx, line([CGPoint(x: 92, y: 44), CGPoint(x: 116, y: 50), CGPoint(x: 146, y: 48)]), ink, limb)
+        stroke(&ctx, line([CGPoint(x: 92, y: 44), CGPoint(x: 106, y: 50), CGPoint(x: 117, y: 46)]), ink, limb)
 
         // head + hair
         fill(&ctx, circle(CGPoint(x: 88, y: 25), 8.5), p.skin)
@@ -237,11 +250,13 @@ enum BikeArt {
 struct BikeScene: View {
     var palette: Palette
     var riders: Bool = true
-    var lineWidth: CGFloat = 3.5
+    var lineWidth: CGFloat = Line.illustration
+    var ground: Bool = false
 
     var body: some View {
         Canvas { ctx, size in
-            BikeArt.drawScene(&ctx, size: size, palette: palette, riders: riders, lw: lineWidth)
+            BikeArt.drawScene(&ctx, size: size, palette: palette,
+                              riders: riders, lw: lineWidth, ground: ground)
         }
     }
 }

@@ -5,9 +5,10 @@ import AppKit
 // Run: cd prototype && swift run TandemPrototype
 // Export draft-asset PNGs to prototype/preview/: --export-previews
 //
-// "Three reach variants (A brand-only / B subtle / C deeper) of both faces —
-// main window + themed menu bar popover — in light and dark, plus draft
-// assets. Cycled from the floating bottom bar (←/→ cycle reach)."
+// Ticket 01 v2 redo: one clean execution per face, not rough variants.
+// Reach C (deeper) + the themed popover are the stars; A/B stay as cheap
+// toggleable references in the switcher. Light and dark both tuned.
+// Cycled from the floating bottom bar (←/→ cycle reach).
 
 @main
 struct TandemPrototypeApp: App {
@@ -36,17 +37,7 @@ struct TandemPrototypeApp: App {
                 .frame(minWidth: 520, idealWidth: 660, minHeight: 560, idealHeight: 700)
                 .onAppear {
                     if menuBar == nil {
-                        menuBar = MenuBarController(
-                            model: model,
-                            paletteProvider: {
-                                switch mode {
-                                case .light: Palette.day
-                                case .dark:  Palette.night
-                                case .system: .day // popover follows system via NSAppearance; day palette is the draft default
-                                }
-                            },
-                            appearanceMode: { mode }
-                        )
+                        menuBar = MenuBarController(model: model, appearanceMode: { mode })
                     }
                     if monitor == nil {
                         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -64,6 +55,11 @@ struct TandemPrototypeApp: App {
                 }
         }
         .windowResizability(.contentMinSize)
+        .commands {
+            // Prototype only: suppress the default ⌘N “New Window” so ⌘N
+            // can focus quick-add (settled default UX, map 2026-10-11).
+            CommandGroup(replacing: .newItem) { }
+        }
     }
 }
 
@@ -149,12 +145,14 @@ enum PreviewExporter {
             for (label, pal) in [("day", Palette.day), ("night", Palette.night)] {
                 let name = "reach-\(String(r.short.prefix(1)))-\(label).png"
                 png(MainFaceView(model: model, reach: r, pal: pal, showBanner: r != .brandOnly),
-                    to: dir.appending(path: name), size: .init(width: 900, height: 700))
+                    to: dir.appending(path: name), size: .init(width: 900, height: 700),
+                    scheme: label == "night" ? .dark : .light)
             }
         }
         for (label, pal) in [("day", Palette.day), ("night", Palette.night)] {
             png(PopoverMock(model: model, palette: pal, onOpenApp: {}),
-                to: dir.appending(path: "popover-\(label).png"), size: .init(width: 400, height: 560))
+                to: dir.appending(path: "popover-\(label).png"), size: .init(width: 400, height: 560),
+                scheme: label == "night" ? .dark : .light)
         }
 
         // asset gallery (palette swatches included)
@@ -181,8 +179,14 @@ enum PreviewExporter {
         .background(bg)
     }
 
-    private static func png<V: View>(_ view: V, to url: URL, size: CGSize, scale: CGFloat = 2) {
-        let renderer = ImageRenderer(content: view.frame(width: size.width, height: size.height))
+    private static func png<V: View>(_ view: V, to url: URL, size: CGSize, scale: CGFloat = 2,
+                                     scheme: ColorScheme = .light) {
+        // ImageRenderer ignores the app appearance; the environment's
+        // colorScheme drives semantic colors and native controls, and the
+        // export flag keeps offscreen TextFields from rendering as focused.
+        let renderer = ImageRenderer(content: view.frame(width: size.width, height: size.height)
+            .environment(\.colorScheme, scheme)
+            .environment(\.tandemExport, true))
         renderer.scale = scale
         guard let nsImage = renderer.nsImage,
               let tiff = nsImage.tiffRepresentation,
