@@ -1,43 +1,54 @@
 import SwiftUI
 import TandemCore
 
-extension Filter {
-    var displayName: String {
-        switch self {
-        case .open: return "Open"
-        case .done: return "Done"
-        case .all: return "All"
-        }
-    }
-}
-
-/// The main window (spec user stories 1–11) — the approved "variant A: filter tabs".
+/// The main window in reach B — subtle Ligne Claire (ticket 01 verdict).
 ///
-///   Header    — "Tandem" + "Clear done" (disabled when nothing is done)
-///   Quick-add — Return commits
-///   Filter    — segmented Open · Done · All with live counts
-///   List      — creation order; tap a row to complete; hover for delete
+///   Header    — "Tandem" wordmark + "Clear done" (disabled when nothing is done)
+///   Quick-add — flat parchment field, Return commits, ⌘N focuses it
+///   Filter    — flat segmented Open/Done/All with live counts, ⌘1/⌘2/⌘3
+///   List      — creation order; the one-way checkbox completes, a plain row
+///               click is never destructive; hover/right-click delete (GUI-only)
+///
+/// The theme lives in the chrome: flat paper surfaces, uniform 1pt hairlines,
+/// line-drawn controls, illustration only in the empty state (ticket 01 handoff).
+
 struct MainView: View {
     @Environment(TandemModel.self) private var model
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var quickAdd = ""
     @State private var filter: Filter = .open
     @FocusState private var quickAddFocused: Bool
 
+    private var palette: Palette { Palette.forScheme(colorScheme) }
+
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
-            quickAddField
-            filterBar
-            todoList
+            LigneQuickAdd(text: $quickAdd, palette: palette,
+                          onCommit: commitAdd,
+                          focus: $quickAddFocused)
+                .padding(.horizontal, Space.gutter)
+                .padding(.top, 12)
+            LigneFilter(selection: $filter,
+                        counts: (open: model.openTodos.count,
+                                 done: model.doneTodos.count),
+                        palette: palette)
+                .padding(.horizontal, Space.gutter)
+                .padding(.top, Space.section)
             recoveryBanner
             errorBanner
+            Rectangle().fill(palette.sand).frame(height: Line.hairline)
+                .padding(.top, Space.section)
+            listArea
         }
+        .background(palette.paper)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minWidth: 360, minHeight: 240)
+        .modifier(TandemShortcuts(filter: $filter, focusQuickAdd: $quickAddFocused))
         .onAppear {
-            // Let the menu bar's "Open Tandem" focus (or reopen) this window.
+            // Let the menu bar item's "Open Tandem" focus (or reopen) this window.
             WindowManager.shared.openMain = { openWindow(id: "main") }
         }
     }
@@ -45,64 +56,32 @@ struct MainView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text("Tandem")
-                .font(.headline)
+                .font(.custom("AvenirNext-DemiBold", size: 15))
+                .tracking(0.3)
+                .foregroundStyle(palette.ink)
             Spacer()
-            Button("Clear done") { model.clearDone() }
-                .controlSize(.small)
-                .disabled(model.doneTodos.isEmpty)
+            TextButton(title: "Clear done", palette: palette,
+                       enabled: !model.doneTodos.isEmpty) {
+                withAnimation(Motion.remove) { model.clearDone() }
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.horizontal, Space.gutter)
+        .padding(.top, 18)
     }
 
     // MARK: - Quick add
 
-    private var quickAddField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "plus.circle.fill")
-                .foregroundStyle(.tertiary)
-            TextField("Add a todo…", text: $quickAdd)
-                .textFieldStyle(.plain)
-                .focused($quickAddFocused)
-                .onSubmit(commitAdd)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-    }
-
     private func commitAdd() {
         let title = quickAdd.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
-        model.add(title)
+        withAnimation(Motion.insert) { model.add(title) }
         quickAdd = ""
         quickAddFocused = true  // keep focus for rapid entry
     }
 
-    // MARK: - Filter
-
-    private var filterBar: some View {
-        Picker("Filter", selection: $filter) {
-            ForEach(Filter.allCases, id: \.self) { f in
-                Text("\(f.displayName) · \(count(f))").tag(f)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .padding(.horizontal, 14)
-        .padding(.top, 4)
-        .padding(.bottom, 8)
-    }
-
-    private func count(_ f: Filter) -> Int {
-        switch f {
-        case .open: return model.openTodos.count
-        case .done: return model.doneTodos.count
-        case .all: return model.todos.count
-        }
-    }
+    // MARK: - List
 
     private var visibleTodos: [Todo] {
         switch filter {
@@ -112,98 +91,96 @@ struct MainView: View {
         }
     }
 
-    // MARK: - List
-
-    private var todoList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(visibleTodos) { todo in
-                    TodoRow(
-                        todo: todo,
-                        onComplete: { model.complete(todo.id.uuidString) },
-                        onDelete: { model.delete(todo.id.uuidString) }
-                    )
-                    Divider()
-                        .padding(.leading, 34)
+    private var listArea: some View {
+        Group {
+            if visibleTodos.isEmpty {
+                switch filter {
+                case .open:
+                    LigneEmptyState(palette: palette, title: "All clear",
+                                    subtitle: "Nothing open — add something above.", hero: true)
+                case .done:
+                    LigneEmptyState(palette: palette, title: "Nothing done yet",
+                                    subtitle: "Completed todos rest here.", hero: false)
+                case .all:
+                    LigneEmptyState(palette: palette, title: "The list is empty",
+                                    subtitle: "Add your first todo above.", hero: false)
                 }
-                if visibleTodos.isEmpty {
-                    Text(emptyMessage)
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 40)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(visibleTodos) { todo in
+                            LigneRow(todo: todo, palette: palette, showsAge: true,
+                                     onComplete: { withAnimation(Motion.toggle) { model.complete(todo.id.uuidString) } },
+                                     onDelete: { withAnimation(Motion.remove) { model.delete(todo.id.uuidString) } })
+                                .transition(.opacity)
+                            if todo.id != visibleTodos.last?.id {
+                                Rectangle()
+                                    .fill(palette.sand)
+                                    .frame(height: Line.hairline)
+                                    .padding(.leading, Space.gutter + 24 + 10)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 6)
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var emptyMessage: String {
-        switch filter {
-        case .open: return model.todos.isEmpty ? "No todos yet — add one above." : "All clear — nothing open."
-        case .done: return "Nothing done yet."
-        case .all: return "No todos yet — add one above."
-        }
-    }
-
-    // MARK: - Banners
+    // MARK: - Banners (restyled per reach B; no illustration in the banner)
 
     @ViewBuilder
     private var recoveryBanner: some View {
         if let note = model.recoveryNote {
-            Banner(
-                systemImage: "exclamationmark.triangle.fill",
-                tint: .orange,
-                title: "Store recovered",
-                message: note,
-                onDismiss: { model.dismissRecoveryNote() }
-            )
+            let path = backupPath(from: note)
+            LigneBanner(palette: palette,
+                        systemImage: "exclamationmark.triangle",
+                        title: "The list was unreadable, so it was backed up and started fresh.",
+                        detail: path.map { "Backup: \($0)" } ?? note,
+                        accentBar: true,
+                        restorePath: path,
+                        onDismiss: { model.dismissRecoveryNote() })
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Space.gutter)
+                .padding(.top, Space.section)
         }
     }
 
     @ViewBuilder
     private var errorBanner: some View {
         if let error = model.lastError {
-            Banner(
-                systemImage: "xmark.circle.fill",
-                tint: .red,
-                title: nil,
-                message: error,
-                onDismiss: { model.dismissError() }
-            )
+            LigneBanner(palette: palette,
+                        systemImage: "xmark.circle.fill",
+                        title: error,
+                        onDismiss: { model.dismissError() })
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Space.gutter)
+                .padding(.top, Space.section)
         }
     }
 }
 
-/// A small dismissable status banner (recovery note or operation error).
-private struct Banner: View {
-    let systemImage: String
-    let tint: Color
-    let title: String?
-    let message: String
-    let onDismiss: () -> Void
+/// Settled default UX (map, 2026-10-11): ⌘1/⌘2/⌘3 switch the Filter,
+/// ⌘N focuses quick-add. Registered once, invisible.
+struct TandemShortcuts: ViewModifier {
+    @Binding var filter: Filter
+    var focusQuickAdd: FocusState<Bool>.Binding
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: systemImage)
-                .foregroundStyle(tint)
-            VStack(alignment: .leading, spacing: 2) {
-                if let title {
-                    Text(title).font(.subheadline.weight(.medium))
-                }
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
+    func body(content: Content) -> some View {
+        content.background {
+            VStack(spacing: 0) {
+                Button("") { setFilter(.open) }.keyboardShortcut("1", modifiers: .command)
+                Button("") { setFilter(.done) }.keyboardShortcut("2", modifiers: .command)
+                Button("") { setFilter(.all) }.keyboardShortcut("3", modifiers: .command)
+                Button("") { focusQuickAdd.wrappedValue = true }.keyboardShortcut("n", modifiers: .command)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.tertiary)
+            .hidden()
         }
-        .padding(10)
-        .background(tint.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal, 12)
-        .padding(.bottom, 10)
+    }
+
+    private func setFilter(_ f: Filter) {
+        withAnimation(Motion.toggle) { filter = f }
     }
 }
