@@ -53,8 +53,8 @@ Or click **Tandem** in Launchpad / Spotlight (the Homebrew install puts `Tandem.
 
 Tandem is a regular macOS app: Dock icon, standard window, plus the menu bar item. It is **single-instance**: launching it while it is already running — from any path, bundle or binary — activates the running instance instead of opening a second one (a pidfile in `~/.tandem` links the two launch identities; a stale file after a crash is reclaimed on the next launch).
 
-- **Main window**: header with **Clear done** (disabled when nothing is done); quick-add field (Return commits); segmented **Filter** — Open · Done · All — with live counts; todos in creation order; tap a row to complete it (strikethrough + dimmed when done); hover a row to delete it (GUI-only — agents have no delete).
-- **Menu bar item** (plain `checklist` glyph, no count badge): quick-add field; up to 5 open todos (tap to complete); "… n more — open Tandem" when truncated; "All clear" when nothing is open; **Open Tandem**.
+- **Main window** (Ligne Claire, reach B — muted paper palette that follows the system light/dark): header with **Clear done** (disabled when nothing is done); quick-add field (Return commits; ⌘N focuses it); segmented **Filter** — Open · Done · All — with live counts (⌘1/⌘2/⌘3); todos in creation order; the one-way **checkbox** completes a todo (strikethrough + dimmed when done — a plain row click never completes, and there is no reopen); hover or right-click a row to delete it (GUI-only — agents have no delete); on-theme empty states (two riders when "All clear").
+- **Menu bar item** (plain tandem-bike glyph, no count badge): a themed popover — quick-add field (Return commits); up to 5 open todos (the checkbox completes them — one-way); "… n more" when truncated (opens the Main window); "All clear" when nothing is open; an **Open Tandem** button. Right-click the glyph for Open Tandem / Quit.
 - The list updates live when the store changes elsewhere (e.g. an agent adds or completes a todo).
 - If a corrupt store file is recovered, the app shows a banner naming the backup path (the old file is kept at `~/.tandem/todos.json.corrupt-<timestamp>`, never deleted).
 
