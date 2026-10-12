@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 Context: [spec](../spec.md) — "Release pipeline" (step 3), "Code surface", and the U2 unit brief under "Execution model". ADR 0003 ("Why the MCP binary lives in the app bundle").
 
@@ -13,3 +13,7 @@ Context: [spec](../spec.md) — "Release pipeline" (step 3), "Code surface", and
 - [ ] The in-bundle binary passes the stdin-EOF smoke: launch with stdin/stdout/stderr to `/dev/null`, clean exit
 - [ ] The rest of the bundle tree is unchanged (versioned Info.plist, icon, brand photo)
 - [ ] Evidence captured: the resulting bundle tree, `codesign --verify` output, and the smoke exit code
+
+## Resolution
+
+Resolved by PR #1 (https://github.com/gianniacquisto/tandem/pull/1, commit 3fa769b). Evidence: bundle tree contains `Contents/MacOS/tandem-mcp`; `codesign --verify --strict` exit 0; `plutil -lint` OK; in-bundle MCP binary stdin-EOF smoke exit 0.
