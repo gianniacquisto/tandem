@@ -1,4 +1,4 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.4
 import PackageDescription
 
 // Tandem — a todo app for humans and agents on the same Mac.
@@ -13,7 +13,7 @@ import PackageDescription
 // The GUI and the MCP server share exactly one module: TandemCore.
 let package = Package(
     name: "tandem",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v27)],
     dependencies: [
         // Official MCP Swift SDK (ticket 01: release 0.12.1; floor Swift 6.0 / macOS 13.0).
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.0")
