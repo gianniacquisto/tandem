@@ -113,9 +113,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # --clobber makes a re-cut of the same tag idempotent (user story 14):
-          # the release is created if missing, and its assets are replaced if present.
+          # Idempotent re-cut of the same tag (user story 14): this gh build
+          # (2.102.0) has no --clobber on `release create`, so an existing
+          # release for the tag is deleted first, then recreated with the
+          # current assets.
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release delete "$GITHUB_REF_NAME" --yes
+          fi
           gh release create "$GITHUB_REF_NAME" \
             --title "Tandem $version" \
             --notes "Tandem $version for macOS 27 (Apple silicon). Install: brew install --cask gianniacquisto/tap/tandem" \
-            --clobber "dist/Tandem-$version.zip" dist/SHA256SUMS
+            "dist/Tandem-$version.zip" dist/SHA256SUMS
