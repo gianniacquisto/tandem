@@ -10,7 +10,7 @@ Context: [spec](../spec.md) — "Release pipeline" and the U3 unit brief under "
 
 - [x] `swift test` runs as the first gate; a failing suite fails the run
 - [x] PR runs: green run produces the verified `Tandem-<version>.zip` as an artifact, no release published
-- [ ] Tag `v*` runs: the GitHub release for the tag is published with the zip + SHA256 checksum attached (pending: the v0.5.0 tag run)
+- [x] Tag `v*` runs: the GitHub release for the tag is published with the zip + SHA256 checksum attached (verified: v0.5.0 tag run 38443808918, both assets attached, checksum verified locally)
 - [x] Verification fails the run on: build failure, `codesign --verify` failure, Info.plist/tag version mismatch, MCP smoke failure, zip that does not contain an intact app
 - [x] Evidence: a green pull-request run on GitHub Actions producing the verified artifact (run link in the PR body)
 
@@ -21,3 +21,4 @@ Context: [spec](../spec.md) — "Release pipeline" and the U3 unit brief under "
 - **Runner label resolution:** `macos-27` is not a GitHub-hosted label (17h queued, zero pickup — run 38321664232); the hosted `xcode-27` preview pool is unstable (3/3 runs stalled the test process 10–17s+, failing the concurrency gate — runs 38437473891, 38438891858). The workflow therefore targets `macos-27` as a repo-scoped label served by the self-hosted runner `tandem-mac-27` (the maintainer's macOS 27.0.1 / Xcode 27 machine — the target platform itself). Runner lives at `~/actions-runner-tandem` (v2.338.0, nohup-started; does NOT survive a reboot — restart: `cd ~/actions-runner-tandem && nohup ./run.sh >> runner.log 2>&1 & disown`).
 - **Test change:** the locked-store test's wait windows were widened 5s → 15s (matching its sibling tests) for headroom against runner stalls; no assertion or product change.
 - **Commits:** `90f4fc2` (workflow), `443310c` (xcode-27 attempt), `99465e8` (test windows), `71ee5f4` (self-hosted label).
+- **Publish-step defect (found on the first tag run):** the merged implementation used `gh release create --clobber`, which does not exist in this machine's gh (2.102.0, a trimmed build — it also lacks `gh runner`); tag run 38442810346 failed with `unknown flag: --clobber` after build/verify/upload had all passed. Fixed with delete-then-create (commit `475bef9`); tag `v0.5.0` re-cut to the fixed tip; green tag run 38443808918 published the release with `Tandem-0.5.0.zip` + `SHA256SUMS`, both re-verified locally (checksum, zip integrity, Info.plist 0.5.0, `codesign --verify --strict`).
