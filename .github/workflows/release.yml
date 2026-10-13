@@ -22,7 +22,10 @@ permissions:
 jobs:
   release:
     # The floor is macOS 27 (Apple silicon); the build needs SDK 27.
-    runs-on: macos-27
+    # `xcode-27` is GitHub's hosted label for the Xcode 27 image, which runs on
+    # a macOS 27 base OS (public preview). There is no `macos-27` label in the
+    # hosted pool — a run pinned to one queues forever.
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - name: Check out the source
