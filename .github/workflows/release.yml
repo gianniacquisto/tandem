@@ -1,0 +1,121 @@
+name: Release
+
+# The repo's first CI (spec "Release pipeline", ADR 0003). A tag v* push (or a
+# manual dispatch) on a macOS 27 runner runs the build-and-verify stages and
+# then publishes the GitHub release; pull-request runs run the same
+# build-and-verify stages and upload the artifact, never publishing. The
+# stages are the test seam (spec "Testing Decisions"): the run fails if the
+# test suite fails, the build fails, the signature does not verify, the
+# Info.plist version does not match the tag, the in-bundle MCP server does not
+# exit cleanly on stdin EOF, or the zip does not contain an intact app. The
+# assertions are the retired formula's brew test, moved here.
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed by the publish step (gh release); PR runs never reach it
+
+jobs:
+  release:
+    # The floor is macOS 27 (Apple silicon); the build needs SDK 27.
+    # `macos-27` is a repo-scoped label served by the maintainer's self-hosted
+    # runner (a macOS 27 machine, Xcode 27). The hosted pool has no `macos-27`
+    # label (a run pinned to one queues forever), and the `xcode-27` preview
+    # pool is unreliable: 3/3 runs stalled the test process 10-17s+ and the
+    # concurrency gate failed (2026-10-13, runs 38437473891 / 38438891858).
+    runs-on: macos-27
+    timeout-minutes: 60
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Resolve the version
+        run: |
+          # Tag runs: the version is the tag with the leading v stripped.
+          # PR / dispatch runs: a fixed dev version (never published).
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "version=0.0.0" >> "$GITHUB_ENV"
+          fi
+
+      - name: "Gate: run the package test suite"
+        run: swift test
+
+      - name: Build both products (release configuration)
+        run: |
+          swift build -c release --product Tandem
+          swift build -c release --product tandem-mcp
+
+      - name: Assemble the app bundle
+        run: Scripts/make-app-bundle.sh .build/release/Tandem .build/release/tandem-mcp "$version" dist
+
+      - name: "Verify: bundle structure"
+        run: |
+          app=dist/Tandem.app
+          test -x "$app/Contents/MacOS/Tandem"
+          test -x "$app/Contents/MacOS/tandem-mcp"
+          test -f "$app/Contents/Info.plist"
+          test -f "$app/Contents/Resources/AppIcon.icns"
+
+      - name: "Verify: ad-hoc signature"
+        run: codesign --verify --strict dist/Tandem.app
+
+      - name: "Verify: Info.plist version matches the tag"
+        run: |
+          actual=$(plutil -extract CFBundleShortVersionString raw dist/Tandem.app/Contents/Info.plist)
+          if [[ "$actual" != "$version" ]]; then
+            echo "::error::Info.plist version '$actual' does not match the expected version '$version'"
+            exit 1
+          fi
+
+      - name: "Verify: in-bundle MCP server smoke (stdin EOF -> clean exit)"
+        run: |
+          # The same smoke the old formula's brew test used (retired, moved here):
+          # the server must launch and exit cleanly when stdin reaches EOF.
+          # All stdio goes to /dev/null: a full initialize round-trip needs a
+          # live client holding stdin open, which CI does not provide.
+          if ! dist/Tandem.app/Contents/MacOS/tandem-mcp </dev/null >/dev/null 2>/dev/null; then
+            echo "::error::tandem-mcp did not exit cleanly on stdin EOF"
+            exit 1
+          fi
+
+      - name: Zip the artifact and compute the checksum
+        run: |
+          cd dist
+          zip -rX "Tandem-$version.zip" Tandem.app
+          shasum -a 256 "Tandem-$version.zip" > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: "Verify: the zip contains an intact app"
+        run: |
+          mkdir "$RUNNER_TEMP/zipcheck"
+          unzip -q "dist/Tandem-$version.zip" -d "$RUNNER_TEMP/zipcheck"
+          app="$RUNNER_TEMP/zipcheck/Tandem.app"
+          test -x "$app/Contents/MacOS/Tandem"
+          test -x "$app/Contents/MacOS/tandem-mcp"
+          codesign --verify --strict "$app"
+
+      - name: Upload the artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tandem-${{ env.version }}
+          path: |
+            dist/Tandem-${{ env.version }}.zip
+            dist/SHA256SUMS
+
+      - name: Publish the GitHub release (tag runs only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # --clobber makes a re-cut of the same tag idempotent (user story 14):
+          # the release is created if missing, and its assets are replaced if present.
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Tandem $version" \
+            --notes "Tandem $version for macOS 27 (Apple silicon). Install: brew install --cask gianniacquisto/tap/tandem" \
+            --clobber "dist/Tandem-$version.zip" dist/SHA256SUMS
