@@ -4,7 +4,7 @@
 
 **Blocked by:** 03, plus the supervised gate: v0.5.0 tagged and the release published (see 06 — the docs reference the live flow)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 Context: [spec](../spec.md) — "Docs", "Migration and version", and the U4 unit brief under "Execution model".
 
@@ -14,3 +14,7 @@ Context: [spec](../spec.md) — "Docs", "Migration and version", and the U4 unit
 - [ ] README carries the ≤ 0.4.x migration note
 - [ ] releasing.md: tag → workflow → autobump PR (single cask file) → merge; manual checks are `brew style` + `brew audit --cask --strict`
 - [ ] Evidence: the doc diff in the PR body
+
+## Resolution
+
+Resolved by PR #4 (https://github.com/gianniacquisto/tandem/pull/4, commit 24f402e, merged 208d98a into `cutover/distribution`). Evidence: full doc diff in the PR body; all ticket boxes hold (single cask install, in-bundle MCP path verbatim for Claude Code and OpenCode, macOS 27 / Apple silicon floor, ≤ 0.4.x migration note, releasing.md rewritten to tag → workflow → autobump PR (single cask) → merge with `brew style` + `brew audit --cask --strict` manual checks); no Gatekeeper/notarization/DMG/direct-download mentions. Release workflow PR run green: 38454572358 (build-and-verify only, no publish).
