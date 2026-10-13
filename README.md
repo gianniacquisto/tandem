@@ -6,11 +6,23 @@ Tandem is a native macOS todo app for you and your AI coding agents.
 
 ## Install
 
+macOS 27 or later, on an Apple silicon Mac.
+
 ```sh
 brew install --cask gianniacquisto/tap/tandem
 ```
 
-That puts `Tandem.app` in `/Applications` and the `tandem` and `tandem-mcp` binaries on your `PATH`. Homebrew will ask you to trust the tap the first time — that's normal.
+That puts `Tandem.app` in `/Applications`. Homebrew will ask you to trust the tap the first time — that's normal.
+
+### Upgrading from ≤ 0.4.x
+
+Before 0.5.0, Tandem installed as a formula plus a linking cask. The migration is one-time, cask first (its uninstall removes the old `/Applications` symlink):
+
+```sh
+brew uninstall --cask tandem   # the old cask
+brew uninstall tandem          # the formula
+brew install --cask gianniacquisto/tap/tandem
+```
 
 ## How it works
 
@@ -24,12 +36,12 @@ Everything runs locally on your Mac. No accounts, no network.
 
 ## Using Tandem from an agent
 
-The install includes `tandem-mcp`, an MCP server with three tools: `list`, `add`, and `complete`.
+The app bundles `tandem-mcp`, an MCP server with three tools: `list`, `add`, and `complete`. The path below survives upgrades.
 
 Claude Code:
 
 ```sh
-claude mcp add tandem -- /opt/homebrew/bin/tandem-mcp
+claude mcp add tandem -- /Applications/Tandem.app/Contents/MacOS/tandem-mcp
 ```
 
 OpenCode — add this to `opencode.json`:
@@ -39,7 +51,7 @@ OpenCode — add this to `opencode.json`:
   "mcp": {
     "tandem": {
       "type": "local",
-      "command": ["/opt/homebrew/bin/tandem-mcp"],
+      "command": ["/Applications/Tandem.app/Contents/MacOS/tandem-mcp"],
       "enabled": true
     }
   }
@@ -66,17 +78,6 @@ OpenCode — add this to `opencode.json`:
 ```
 
 If the file ever gets corrupted, Tandem moves it to `todos.json.corrupt-<timestamp>` and starts with an empty list. The full file protocol is in [ADR 0001](docs/adr/0001-store-protocol.md).
-
-## Building from source
-
-macOS 26+, Swift 6.0+ — the Xcode Command Line Tools are enough.
-
-```sh
-swift build            # debug
-swift build -c release # release
-swift run Tandem
-swift test
-```
 
 ## Releasing
 
