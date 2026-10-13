@@ -123,9 +123,9 @@ struct ConcurrencyTests {
             holder.leave()
         }
         // Deterministic: only attempt the op once the holder definitely has the lock.
-        // 15s windows (matching the sibling tests): the xcode-27 preview pool
-        // shows systematic ~10s process stalls that deschedule the holder thread
-        // past a 5s window (observed 2026-10-13, run 38437473891, 2/2 runs).
+        // 15s windows (matching the sibling tests): ~10s process stalls observed on
+        // macOS 27 runners deschedule the holder thread past a 5s window (first seen
+        // on the hosted xcode-27 pool, 2026-10-13, run 38437473891, 2/2 runs).
         #expect(hasLock.wait(timeout: .now() + 15) == .success, "holder never acquired the lock")
 
         #expect(throws: DomainError.locked) {

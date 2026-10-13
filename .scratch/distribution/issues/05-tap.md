@@ -8,11 +8,11 @@
 
 Context: [spec](../spec.md) — "Distribution shape" and the U5 unit brief under "Execution model". Tap repo: https://github.com/gianniacquisto/homebrew-tap — per its own README, develop where brew keeps the clone: `$(brew --prefix)/Library/Taps/gianniacquisto/homebrew-tap` (an ordinary git clone; branch, commit, push from there).
 
-- [ ] `Casks/tandem.rb`: `url` → the release-asset zip for `v#{version}`, the artifact's real sha256, `depends_on macos: :golden_gate`, plain `app` stanza, no `depends_on formula`, no `postflight_steps`
-- [ ] `Formula/tandem.rb` deleted; `publish.yml` (bottle workflow) deleted; `tests.yml` keeps the tap-syntax step, drops the formulae/bottle steps; `autobump.yml` drops the formula sync flag
-- [ ] Tap README: cask-only install story, no formula section
-- [ ] `brew style Casks/tandem.rb` and `brew audit --cask --strict gianniacquisto/tap/tandem` pass (output in the PR body)
-- [ ] The tap's CI run on the PR is green
+- [x] `Casks/tandem.rb`: `url` → the release-asset zip for `v#{version}`, the artifact's real sha256, `depends_on macos: :golden_gate`, plain `app` stanza, no `depends_on formula`, no `postflight_steps`
+- [x] `Formula/tandem.rb` deleted; `publish.yml` (bottle workflow) deleted; `tests.yml` keeps the tap-syntax step, drops the formulae/bottle steps; `autobump.yml` drops the formula sync flag
+- [x] Tap README: cask-only install story, no formula section
+- [x] `brew style Casks/tandem.rb` and `brew audit --cask --strict gianniacquisto/tap/tandem` pass (output in the PR body)
+- [x] The tap's CI run on the PR is green
 
 ## Resolution
 

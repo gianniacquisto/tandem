@@ -8,12 +8,12 @@
 
 Context: [spec](../spec.md) — "Docs", "Migration and version", and the U4 unit brief under "Execution model".
 
-- [ ] README install section: `brew install --cask gianniacquisto/tap/tandem` only; no compiler/CLT/build-from-source notes in the install story
-- [ ] README agent section: the in-bundle path `/Applications/Tandem.app/Contents/MacOS/tandem-mcp` verbatim for both Claude Code and OpenCode
-- [ ] README states the macOS 27 / Apple silicon floor
-- [ ] README carries the ≤ 0.4.x migration note
-- [ ] releasing.md: tag → workflow → autobump PR (single cask file) → merge; manual checks are `brew style` + `brew audit --cask --strict`
-- [ ] Evidence: the doc diff in the PR body
+- [x] README install section: `brew install --cask gianniacquisto/tap/tandem` only; no compiler/CLT/build-from-source notes in the install story
+- [x] README agent section: the in-bundle path `/Applications/Tandem.app/Contents/MacOS/tandem-mcp` verbatim for both Claude Code and OpenCode
+- [x] README states the macOS 27 / Apple silicon floor
+- [x] README carries the ≤ 0.4.x migration note
+- [x] releasing.md: tag → workflow → autobump PR (single cask file) → merge; manual checks are `brew style` + `brew audit --cask --strict`
+- [x] Evidence: the doc diff in the PR body
 
 ## Resolution
 

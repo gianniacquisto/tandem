@@ -8,11 +8,11 @@
 
 Context: [spec](../spec.md) — "Platform floor", "Code surface", and the U1 unit brief under "Execution model". ADR 0003.
 
-- [ ] `Package.swift` declares `platforms: [.macOS(.v27)]`
-- [ ] `swift build -c release` completes clean on this macOS 27 machine
-- [ ] `swift test` green (the existing 32-test core suite)
-- [ ] No other source changes (the app surface is frozen by the spec)
-- [ ] Evidence captured: the before (v26 declaration + build) and after (v27 + clean release build + green test suite) output
+- [x] `Package.swift` declares `platforms: [.macOS(.v27)]`
+- [x] `swift build -c release` completes clean on this macOS 27 machine
+- [x] `swift test` green (the existing 32-test core suite)
+- [x] No other source changes (the app surface is frozen by the spec)
+- [x] Evidence captured: the before (v26 declaration + build) and after (v27 + clean release build + green test suite) output
 
 ## Resolution
 
