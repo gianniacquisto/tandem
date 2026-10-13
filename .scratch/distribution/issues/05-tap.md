@@ -4,7 +4,7 @@
 
 **Blocked by:** 03, plus the supervised gate: the v0.5.0 release exists (the cask's `url` must point at the live artifact; see 06)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 Context: [spec](../spec.md) — "Distribution shape" and the U5 unit brief under "Execution model". Tap repo: https://github.com/gianniacquisto/homebrew-tap — per its own README, develop where brew keeps the clone: `$(brew --prefix)/Library/Taps/gianniacquisto/homebrew-tap` (an ordinary git clone; branch, commit, push from there).
 
@@ -13,3 +13,7 @@ Context: [spec](../spec.md) — "Distribution shape" and the U5 unit brief under
 - [ ] Tap README: cask-only install story, no formula section
 - [ ] `brew style Casks/tandem.rb` and `brew audit --cask --strict gianniacquisto/tap/tandem` pass (output in the PR body)
 - [ ] The tap's CI run on the PR is green
+
+## Resolution
+
+Resolved by tap PR #2 (https://github.com/gianniacquisto/homebrew-tap/pull/2, branch commit e596d33, squashed to tap main 84b2563). Evidence: `brew style Casks/tandem.rb` clean; `brew audit --cask --strict gianniacquisto/tap/tandem` clean (livecheck present, URL live); cask sha256 `00894c7…` matches the v0.5.0 release's `SHA256SUMS` and the downloaded `Tandem-0.5.0.zip`; zip layout verified — `Tandem.app` at the zip root (plain `app` stanza), MCP binary at `Contents/MacOS/tandem-mcp`, Info.plist 0.5.0; tap CI green (run 38452904232, tap-syntax on macos-26 + ubuntu). Merged on the maintainer's explicit go-ahead (one-way door).
