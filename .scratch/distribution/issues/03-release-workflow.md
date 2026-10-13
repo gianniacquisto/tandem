@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-Context: [spec](../spec.md) — "Release pipeline" and the U3 unit brief under "Execution model". Prior art for the moved assertions: the retired formula's `brew test` block in the tap repo `gianniacustio/homebrew-tap`, `Formula/tandem.rb` (cloned at `$(brew --prefix)/Library/Taps/gianniacquisto/homebrew-tap`). The GitHub Actions runner label for macOS 27 is `macos-27` (Homebrew's runner matrix maps `:golden_gate` → `macos-27`).
+Context: [spec](../spec.md) — "Release pipeline" and the U3 unit brief under "Execution model". Prior art for the moved assertions: the retired formula's `brew test` block in the tap repo `gianniacustio/homebrew-tap`, `Formula/tandem.rb` (cloned at `$(brew --prefix)/Library/Taps/gianniacquisto/homebrew-tap`). The GitHub-**hosted** runner label for macOS 27 is `xcode-27` (the Xcode 27 image runs on a macOS 27 base OS, public preview). `macos-27` is NOT a hosted label — Homebrew's `:golden_gate` → `macos-27` mapping is Homebrew-internal naming; a run pinned to `macos-27` queues forever (observed 2026-10-13: 17h queued, zero pickup).
 
 - [ ] `swift test` runs as the first gate; a failing suite fails the run
 - [ ] PR runs: green run produces the verified `Tandem-<version>.zip` as an artifact, no release published
