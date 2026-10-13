@@ -1,5 +1,7 @@
 # App distribution: formula builds the bundle, cask links it into /Applications
 
+> Status: superseded by [ADR 0003](0003-distribution.md) (2026-10) — prebuilt cask, in-bundle MCP binary, no formula.
+
 Launchpad only indexes `.app` bundles in `/Applications`, and the GUI was a bare SwiftPM executable on `PATH` — so a human had to type `tandem` in a terminal to start it. We decided: the Homebrew **formula** stays the single builder — after `swift build` it assembles `Tandem.app` (`Scripts/make-app-bundle.sh`: the binary as `Contents/MacOS/Tandem`, a versioned `Info.plist` from `Resources/Tandem-Info.plist`, `Resources/AppIcon.icns`, the brand photo `Resources/TandemBike.jpg`, ad-hoc signed) and installs it under `share/` in the Cellar — and a **cask** of the same name depends on the formula and does exactly one thing: a symlink `/Applications/Tandem.app → $(brew --prefix)/opt/tandem/share/Tandem.app`. One build, one upgrade path (`brew upgrade tandem`); because the link points at the versionless `opt` path, the app in `/Applications` is never stale. The bundle identity is `com.gianniacquisto.tandem`.
 
 ## Why a cask link, not the alternatives
