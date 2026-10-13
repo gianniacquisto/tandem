@@ -14,6 +14,16 @@ brew install --cask gianniacquisto/tap/tandem
 
 That puts `Tandem.app` in `/Applications`. Homebrew will ask you to trust the tap the first time — that's normal.
 
+### First launch (once per install or upgrade)
+
+Tandem is signed but not notarized by Apple, so macOS shows a Gatekeeper warning the first time you launch it after a download, and the app quits by itself a few seconds later. Clear the download flag once, then relaunch:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Tandem.app
+```
+
+Tandem then opens normally until the next install or upgrade.
+
 ### Upgrading from ≤ 0.4.x
 
 Before 0.5.0, Tandem installed as a formula plus a linking cask. The migration is one-time, cask first (its uninstall removes the old `/Applications` symlink):
