@@ -25,6 +25,7 @@ A sharp, implementable spec for the bikeshed: an Obsidian-like markdown notes su
 ## Decisions so far
 
 <!-- one line per closed ticket: name (wrapping its link) + one-line gist -->
+- [Editor technology: markdown editing + live preview in SwiftUI](issues/01-editor-technology.md): Inline live preview is feasible — primary path WKWebView + CodeMirror 6 (Obsidian's stack, ~600 KB JS bundle, hidden-marker decorations over an incremental Lezer parse); fallback the sanctioned split view (MarkdownUI/Textual render pane); native-only TextKit 2 has no public hook to hide syntax markers.
 
 ## Not yet specified
 
