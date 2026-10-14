@@ -20,6 +20,7 @@ A sharp, implementable spec for the bikeshed: an Obsidian-like markdown notes su
   - UI: second tab in the main window (Todos | Bikeshed); the menu bar item stays todos-only.
   - Preview mode: inline live preview is the goal (Obsidian-style render in place); split view is the fallback if research shows inline is infeasible.
   - Domains stay separate: no note↔todo cross-references in v1.
+  - Test seams (settled 2026-10-14, at the to-spec check): one new seam — a `Bikeshed` type in `TandemCore` (sibling of `Store`: `Sendable`, directory-rooted, `init(directory:)` for temp-dir tests) holding all vault/wikilink/search logic incl. rename-with-link-rewriting and the sidecar-lock + atomic-write mechanics; app glue only (an observable model mirroring `TandemModel` + a recursive FSEvents watcher — the existing `StoreWatcher` covers one directory level, insufficient for nested folders); the MCP target stays untouched in v1. Core seam is the only unit-tested surface (real files in temp dirs, threads for contention; prior art: `OperationsTests` / `ConcurrencyTests` / `RecoveryTests` in `Tests/TandemCoreTests/`). GUI tested manually.
 
 ## Decisions so far
 
