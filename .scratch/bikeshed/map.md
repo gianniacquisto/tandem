@@ -25,10 +25,10 @@ A sharp, implementable spec for the bikeshed: an Obsidian-like markdown notes su
 ## Decisions so far
 
 <!-- one line per closed ticket: name (wrapping its link) + one-line gist -->
+- [Editor technology: markdown editing + live preview in SwiftUI](issues/01-editor-technology.md): Inline live preview is feasible — primary path WKWebView + CodeMirror 6 (Obsidian's stack, ~600 KB JS bundle, hidden-marker decorations over an incremental Lezer parse); fallback the sanctioned split view (MarkdownUI/Textual render pane); native-only TextKit 2 has no public hook to hide syntax markers.
 
 ## Not yet specified
 
-- **Rendered-markdown feature set** — which markdown features the live preview renders (tables, task lists, code blocks + highlighting, math, mermaid, embedded images). Sharpens once the editor-technology verdict lands.
 - **First launch / empty state** — the bikeshed folder is missing or empty on first launch: does the app create it, seed a welcome note, or show an empty state? Sharpens once the vault protocol lands.
 - **Search and backlinks behavior** — matching semantics and where results/panels live. Intended to be settled inside the UI prototype ticket's human-in-the-loop exchange; graduate to its own ticket if that exchange leaves them loose.
 
