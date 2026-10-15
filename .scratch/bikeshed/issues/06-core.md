@@ -1,7 +1,7 @@
 # 06 - Core: `Bikeshed` type in TandemCore + core test suites
 
 Type: implementation
-Status: claimed
+Status: resolved
 Blocked by: none (decision tickets 01–05 resolved; spec ready-for-agent)
 
 ## What to build
