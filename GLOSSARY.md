@@ -52,7 +52,11 @@ _Avoid_: document, entry, page
 
 **Wikilink**:
 An in-note reference to another note, written `[[target]]` with an optional `#fragment` and `|alias`, resolved live by case-insensitive name against the vault; a wikilink that resolves to no note is a broken link.
-_Avoid_: internal link, backlink, embed
+_Avoid_: internal link, embed
+
+**Backlink**:
+A note that contains a wikilink resolving to a given note; the open note's backlinks are what the Backlinks panel lists. Derived state recomputed from the file set — broken links contribute nothing.
+_Avoid_: inbound link, references, mentions
 
 **Attachment**:
 A non-markdown file (image, etc.) living in the bikeshed. Invisible in the file tree; reachable only by relative path from the note that references it.
