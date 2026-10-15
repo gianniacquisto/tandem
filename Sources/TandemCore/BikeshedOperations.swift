@@ -178,6 +178,36 @@ extension Bikeshed {
         return OperationResult(())
     }
 
+    // MARK: - search
+
+    /// `search(query)`: case-insensitive substring over title (the note's
+    /// first line) + body (the rest — frontmatter included, the core never
+    /// parses it). One row per note, not per match; a title hit wins and
+    /// shows the first line; a body hit shows a snippet around the first
+    /// match (±40 chars, whitespace collapsed, ellipses at sliced edges,
+    /// original case). Sorted by vault path. An empty or whitespace-only
+    /// query yields no results; a missing vault is an empty result.
+    /// Lock-free.
+    public func search(query: String) throws -> OperationResult<[SearchHit]> {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return OperationResult([]) }
+        var hits: [SearchHit] = []
+        for notePath in notePaths() {
+            guard let content = try? readNote(notePath) else { continue }
+            let lines = content.text.components(separatedBy: "\n")
+            let title = lines.first ?? ""
+            let body = lines.dropFirst().joined(separator: "\n")
+            if title.range(of: trimmed, options: .caseInsensitive) != nil {
+                hits.append(SearchHit(path: notePath, display: title))
+            } else if let match = body.range(of: trimmed, options: .caseInsensitive) {
+                hits.append(SearchHit(
+                    path: notePath, display: Self.snippet(around: match, in: body)))
+            }
+        }
+        hits.sort { ($0.path.lowercased(), $0.path) < ($1.path.lowercased(), $1.path) }
+        return OperationResult(hits)
+    }
+
     // MARK: - backlinks
 
     /// `backlinks(path)`: the vault notes containing at least one wikilink
@@ -395,6 +425,22 @@ private extension Bikeshed {
             i = end
         }
         return tokens
+    }
+
+    /// The display text for a body search hit: the slice of `text` around
+    /// the first match (±40 chars, clamped at the edges), whitespace
+    /// collapsed to single spaces, ellipsised where the slice cut the text.
+    static func snippet(around match: Range<String.Index>, in text: String) -> String {
+        let context = 40
+        let start = text.index(
+            match.lowerBound, offsetBy: -context, limitedBy: text.startIndex) ?? text.startIndex
+        let end = text.index(
+            match.upperBound, offsetBy: context, limitedBy: text.endIndex) ?? text.endIndex
+        let collapsed = String(text[start..<end])
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        return (start > text.startIndex ? "…" : "") + collapsed
+            + (end < text.endIndex ? "…" : "")
     }
 
     /// The line of `text` containing `index` (without its newline).
