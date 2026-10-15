@@ -228,9 +228,10 @@ extension Bikeshed {
             throw BikeshedError.unknownNote(path: path)
         }
         var rows: [Backlink] = []
-        for notePath in notePaths() {
+        let notes = notePaths()
+        for notePath in notes {
             guard let content = try? readNote(notePath),
-                  let first = links(in: content.text)
+                  let first = Self.linkOccurrences(in: content.text, against: notes)
                       .first(where: { $0.resolution == .resolved(path: path) })
             else { continue }
             rows.append(Backlink(path: notePath, line: first.line))
@@ -250,7 +251,7 @@ extension Bikeshed {
     /// `.resolved`; zero or multiple → `.broken`. Attachments (non-`.md`) are
     /// never linkable. Lock-free.
     public func resolve(_ target: String) -> LinkResolution {
-        Self.resolveLink(target, in: notePaths())
+        NoteIndex(notes: notePaths()).resolve(target)
     }
 
     // MARK: - links(in:)
@@ -279,51 +280,68 @@ private struct WikilinkToken {
     let content: String
 }
 
+/// A note set pre-indexed for wikilink resolution: built once per scan,
+/// then each target is a dictionary lookup instead of a full walk — a
+/// vault-wide scan resolves one link per note against every note, which is
+/// quadratic without the index. Bare targets index on the lowercased
+/// basename (`.md` off); qualified targets on the lowercased vault path
+/// (`.md` off).
+private struct NoteIndex {
+    private let bare: [String: [String]]
+    private let qualified: [String: [String]]
+
+    init(notes: [String]) {
+        var bare: [String: [String]] = [:]
+        var qualified: [String: [String]] = [:]
+        for note in notes {
+            let lower = note.lowercased()
+            var base = (lower as NSString).lastPathComponent
+            if base.hasSuffix(".md") { base.removeLast(3) }
+            bare[base, default: []].append(note)
+            var path = lower
+            if path.hasSuffix(".md") { path.removeLast(3) }
+            qualified[path, default: []].append(note)
+        }
+        self.bare = bare
+        self.qualified = qualified
+    }
+
+    /// The shared resolution rule (backlinks, rename-rewrite, and the
+    /// public `resolve` all use it): exactly one note whose name matches
+    /// the target — bare targets (no `/`) against the basename, qualified
+    /// targets against the vault-root-relative path — case-insensitive,
+    /// with or without a trailing `.md` on the target. Zero or multiple
+    /// matches → a broken link.
+    func resolve(_ target: String) -> LinkResolution {
+        var lowered = target.lowercased()
+        if lowered.hasSuffix(".md") { lowered.removeLast(3) }
+        let matches = target.contains("/") ? qualified[lowered] : bare[lowered]
+        guard let single = matches?.first, matches?.count == 1 else { return .broken }
+        return .resolved(path: single)
+    }
+}
+
 private extension Bikeshed {
 
     /// The wikilink scan against an explicit note set (instead of the live
     /// file set): the rename-rewrite pass resolves against the pre-rename
     /// set. Core of the public `links(in:)`.
     static func linkOccurrences(in text: String, against notes: [String]) -> [LinkOccurrence] {
+        let tokens = Self.wikilinkTokens(in: text)
+        guard !tokens.isEmpty else { return [] }   // no parse needed: no tokens
         let code = Self.codeRanges(in: text)
+        let index = NoteIndex(notes: notes)
         var occurrences: [LinkOccurrence] = []
-        for token in Self.wikilinkTokens(in: text) {
+        for token in tokens {
             guard let link = Wikilink(raw: token.content) else { continue }
             if code.contains(where: { $0.overlaps(token.range) }) { continue }
             occurrences.append(LinkOccurrence(
                 range: token.range,
                 link: link,
-                resolution: Self.resolveLink(link.target, in: notes),
+                resolution: index.resolve(link.target),
                 line: Self.line(containing: token.range.lowerBound, in: text)))
         }
         return occurrences
-    }
-
-    /// The shared resolution rule (backlinks, rename-rewrite, and the public
-    /// `resolve` all use it): exactly one note whose name matches the target
-    /// — bare targets against the basename (`.md` off), qualified targets
-    /// (containing `/`) against the vault-root-relative path (`.md` off) —
-    /// case-insensitive, with or without a trailing `.md` on the target.
-    static func resolveLink(_ target: String, in notes: [String]) -> LinkResolution {
-        var loweredTarget = target.lowercased()
-        if loweredTarget.hasSuffix(".md") { loweredTarget.removeLast(3) }
-        let qualified = target.contains("/")
-        var matches: [String] = []
-        for note in notes {
-            var candidate = note.lowercased()
-            if qualified {
-                if candidate.hasSuffix(".md") { candidate.removeLast(3) }
-            } else {
-                candidate = (candidate as NSString).lastPathComponent
-                if candidate.hasSuffix(".md") { candidate.removeLast(3) }
-            }
-            if candidate == loweredTarget {
-                matches.append(note)
-                if matches.count > 1 { return .broken }
-            }
-        }
-        guard let single = matches.first else { return .broken }
-        return .resolved(path: single)
     }
 
     /// The flat ranges of every code span in the text — fenced blocks
