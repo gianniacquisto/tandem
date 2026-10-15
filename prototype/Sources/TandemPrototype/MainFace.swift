@@ -62,6 +62,10 @@ struct MainFaceView: View {
     let reach: Reach
     let pal: Palette
     var showBanner: Bool = false
+    /// The bikeshed tab (ticket 02): a second tab in the main window —
+    /// Todos | Bikeshed. The menu bar item stays todos-only (map).
+    var bike: BikeModel
+    @Binding var tab: MainTab
 
     @State private var filter: Filter = .open
     @State private var draft = ""
@@ -93,15 +97,24 @@ struct MainFaceView: View {
 
     private var stock: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 10) {
                 Text("Tandem")
                     .font(.headline)
-                Spacer()
-                Button("Clear done") {
-                    withAnimation(Motion.remove) { model.clearDone() }
+                Picker("Tab", selection: $tab) {
+                    Text("Todos").tag(MainTab.todos)
+                    Text("Bikeshed").tag(MainTab.bikeshed)
                 }
-                .controlSize(.small)
-                .disabled(model.doneTodos.isEmpty)
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 190)
+                Spacer()
+                if tab == .todos {
+                    Button("Clear done") {
+                        withAnimation(Motion.remove) { model.clearDone() }
+                    }
+                    .controlSize(.small)
+                    .disabled(model.doneTodos.isEmpty)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)
@@ -109,6 +122,9 @@ struct MainFaceView: View {
 
             Divider()
 
+            if tab == .bikeshed {
+                BikeshedFaceView(model: bike, pal: pal)
+            } else {
             HStack(spacing: 8) {
                 Image(systemName: "plus.circle.fill")
                     .foregroundStyle(.tertiary)
@@ -174,6 +190,7 @@ struct MainFaceView: View {
             }
 
             stockList
+            }
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -237,20 +254,38 @@ struct MainFaceView: View {
                 HeaderBand(palette: pal)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
                 Text("Tandem")
                     .font(.custom("AvenirNext-DemiBold", size: 15))
                     .tracking(0.3)
                     .foregroundStyle(pal.ink)
+                BikeTabControl(tab: $tab, pal: pal)
                 Spacer()
-                TextButton(title: "Clear done", palette: pal,
-                           enabled: !model.doneTodos.isEmpty) {
-                    withAnimation(Motion.remove) { model.clearDone() }
+                if tab == .todos {
+                    TextButton(title: "Clear done", palette: pal,
+                               enabled: !model.doneTodos.isEmpty) {
+                        withAnimation(Motion.remove) { model.clearDone() }
+                    }
                 }
             }
             .padding(.horizontal, Space.gutter)
             .padding(.top, band ? 14 : 18)
 
+            if tab == .todos {
+                todosContent
+            } else {
+                BikeshedFaceView(model: bike, pal: pal)
+            }
+        }
+        .background(pal.paper)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The todos tab content. The shared window is wider than the old 470pt
+    /// todos window, so the todos column is centred at 540pt — provisional
+    /// until the human reacts (ticket 02 open question: window sizing).
+    private var todosContent: some View {
+        VStack(spacing: 0) {
             LigneQuickAdd(text: $draft, palette: pal,
                           onCommit: {
                               withAnimation(Motion.insert) { model.add(draft) }
@@ -278,8 +313,8 @@ struct MainFaceView: View {
 
             listArea
         }
-        .background(pal.paper)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: 540)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var listArea: some View {

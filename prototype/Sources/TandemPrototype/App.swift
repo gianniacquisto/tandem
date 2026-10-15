@@ -3,20 +3,25 @@ import AppKit
 
 // PROTOTYPE — throwaway, not the real app.
 // Run: cd prototype && swift run TandemPrototype
-// Export draft-asset PNGs to prototype/preview/: --export-previews
+// Export surface PNGs to prototype/preview/: --export-previews
 //
-// Ticket 01 v2 redo: one clean execution per face, not rough variants.
-// Reach C (deeper) + the themed popover are the stars; A/B stay as cheap
-// toggleable references in the switcher. Light and dark both tuned.
-// Cycled from the floating bottom bar (←/→ cycle reach).
+// Bikeshed map, ticket 02: the main window gains a second tab —
+// Todos | Bikeshed — and this prototype explores the bikeshed surface:
+// three search placements (tree / bar / panel) × two backlink placements
+// (bottom dock / side rail), cycled from the floating bottom bar
+// (←/→ cycle the search style). The editor pane is the live-preview mock
+// (ticket 01 settled the real tech: CM6 in a WKWebView).
 
 @main
 struct TandemPrototypeApp: App {
     @State private var model = TandemModel()
-    // B (subtle) is the chosen reach — the human's verdict on the v2 redo
-    // (2026-10-11). A and C stay one tap away in the switcher as references.
+    @State private var bike = BikeModel()
+    // B (subtle) is the chosen reach (2026-10-11); A and C stay one tap
+    // away in the switcher as references.
     @State private var reach: Reach = .subtle
     @State private var face: Face = .main
+    // The prototype opens on the tab under judgment.
+    @State private var tab: MainTab = .bikeshed
     @State private var mode: AppearanceMode = .system
     @State private var showBanner = false
     @State private var menuBar: MenuBarController?
@@ -32,23 +37,27 @@ struct TandemPrototypeApp: App {
     var body: some Scene {
         WindowGroup("Tandem — PROTOTYPE") {
             RootView(model: model,
+                     bike: bike,
                      reach: $reach,
                      face: $face,
+                     tab: $tab,
                      mode: $mode,
                      showBanner: $showBanner)
-                .frame(minWidth: 520, idealWidth: 660, minHeight: 560, idealHeight: 700)
+                .frame(minWidth: 860, idealWidth: 1060, minHeight: 560, idealHeight: 680)
                 .onAppear {
                     if menuBar == nil {
                         menuBar = MenuBarController(model: model, appearanceMode: { mode })
                     }
                     if monitor == nil {
                         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                            // ←/→ cycle reach, unless a text field is focused
+                            // ←/→ cycle the search style, unless a text field
+                            // is focused (ticket 02's primary axis).
                             if event.keyCode == 123 || event.keyCode == 124,
                                !(NSApp.keyWindow?.firstResponder is NSText) {
                                 let delta = event.keyCode == 124 ? 1 : -1
-                                let i = (reach.rawValue + delta + Reach.allCases.count) % Reach.allCases.count
-                                reach = Reach.allCases[i]
+                                let all = BikeSearchStyle.allCases
+                                let i = (bike.searchStyle.rawValue + delta + all.count) % all.count
+                                bike.searchStyle = all[i]
                                 return nil
                             }
                             return event
@@ -67,8 +76,10 @@ struct TandemPrototypeApp: App {
 
 struct RootView: View {
     var model: TandemModel
+    var bike: BikeModel
     @Binding var reach: Reach
     @Binding var face: Face
+    @Binding var tab: MainTab
     @Binding var mode: AppearanceMode
     @Binding var showBanner: Bool
     @Environment(\.colorScheme) private var systemScheme
@@ -85,7 +96,8 @@ struct RootView: View {
         Group {
             switch face {
             case .main:
-                MainFaceView(model: model, reach: reach, pal: pal, showBanner: showBanner)
+                MainFaceView(model: model, reach: reach, pal: pal, showBanner: showBanner,
+                             bike: bike, tab: $tab)
             case .popover:
                 ZStack {
                     pal.paper
@@ -97,8 +109,9 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            SwitcherBar(reach: $reach, face: $face, mode: $mode, showBanner: $showBanner,
-                        onReset: { model.reset() })
+            SwitcherBar(model: model, bike: bike,
+                        reach: $reach, face: $face, mode: $mode, showBanner: $showBanner,
+                        onReset: { model.reset(); bike.reset() })
                 .padding(.bottom, 10)
         }
         .preferredColorScheme(mode.colorScheme)
@@ -142,13 +155,31 @@ enum PreviewExporter {
                 to: dir.appending(path: "wordmark-\(i + 1)-night.png"), size: .init(width: 640, height: 180))
         }
 
-        // 5 · reach variants, both faces
+        // 5 · reach variants, both faces (base app — todos tab)
         for r in Reach.allCases {
             for (label, pal) in [("day", Palette.day), ("night", Palette.night)] {
                 let name = "reach-\(String(r.short.prefix(1)))-\(label).png"
-                png(MainFaceView(model: model, reach: r, pal: pal, showBanner: r != .brandOnly),
+                png(MainFaceView(model: model, reach: r, pal: pal, showBanner: r != .brandOnly,
+                                 bike: BikeModel(), tab: .constant(.todos)),
                     to: dir.appending(path: name), size: .init(width: 900, height: 700),
                     scheme: label == "night" ? .dark : .light)
+            }
+        }
+
+        // 6 · bikeshed surface — search style × backlink style, day + night
+        //    (the ticket 02 question; the main window with the tab active)
+        for s in BikeSearchStyle.allCases {
+            for b in BikeBacklinkStyle.allCases {
+                for (label, pal) in [("day", Palette.day), ("night", Palette.night)] {
+                    let bike = BikeModel()
+                    bike.searchStyle = s
+                    bike.backlinkStyle = b
+                    let name = "bikeshed-\(s.label)-\(b.label)-\(label).png"
+                    png(MainFaceView(model: model, reach: .subtle, pal: pal, showBanner: false,
+                                     bike: bike, tab: .constant(.bikeshed)),
+                        to: dir.appending(path: name), size: .init(width: 1060, height: 680),
+                        scheme: label == "night" ? .dark : .light)
+                }
             }
         }
         for (label, pal) in [("day", Palette.day), ("night", Palette.night)] {

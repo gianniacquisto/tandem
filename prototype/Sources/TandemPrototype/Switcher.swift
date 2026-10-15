@@ -2,8 +2,11 @@ import SwiftUI
 
 // PROTOTYPE — the floating switcher bar (v1 prototype convention).
 // Obviously not part of the design being evaluated: high-contrast pill,
-// bottom-centre. Cycles reach (A/B/C), face (Main/Popover/Assets),
-// appearance (Auto/Light/Dark), banner demo, and resets the seed data.
+// bottom-centre. Cycles:
+//   · search style  (tree / bar / panel) — ←/→ cycle this
+//   · backlink style (bottom / side)
+//   · face (Main/Popover/Assets), reach (A/B/C references),
+//     appearance (Auto/Light/Dark), banner demo, wipe/seed the vault.
 
 enum AppearanceMode: Int, CaseIterable, Identifiable {
     case system, light, dark
@@ -35,6 +38,8 @@ enum AppearanceMode: Int, CaseIterable, Identifiable {
 }
 
 struct SwitcherBar: View {
+    var model: TandemModel
+    @Bindable var bike: BikeModel
     @Binding var reach: Reach
     @Binding var face: Face
     @Binding var mode: AppearanceMode
@@ -43,13 +48,18 @@ struct SwitcherBar: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            arrow("chevron.left") { cycle(-1) }
+            arrow("chevron.left") { cycleSearch(-1) }
 
-            ForEach(Reach.allCases) { r in
-                chip(r.short, active: r == reach) { reach = r }
+            ForEach(BikeSearchStyle.allCases, id: \.rawValue) { s in
+                chip(s.label, active: s == bike.searchStyle) { bike.searchStyle = s }
             }
 
-            arrow("chevron.right") { cycle(1) }
+            arrow("chevron.right") { cycleSearch(1) }
+            divider()
+
+            ForEach(BikeBacklinkStyle.allCases, id: \.rawValue) { b in
+                chip(b.label, active: b == bike.backlinkStyle) { bike.backlinkStyle = b }
+            }
             divider()
 
             ForEach(Face.allCases) { f in
@@ -57,12 +67,22 @@ struct SwitcherBar: View {
             }
             divider()
 
+            ForEach(Reach.allCases) { r in
+                chip(String(r.short.prefix(1)), active: r == reach) { reach = r }
+            }
+
             chip(mode.label, active: false, icon: mode.icon) {
                 mode = AppearanceMode(rawValue: (mode.rawValue + 1) % AppearanceMode.allCases.count)!
             }
 
             if face == .main {
                 chip("banner", active: showBanner) { showBanner.toggle() }
+                chip("wipe vault", active: false) {
+                    bike.notes = []
+                    bike.attachments = []
+                    bike.openPath = nil
+                    bike.query = ""
+                }
             }
             chip("reset data", active: false) { onReset() }
         }
@@ -73,9 +93,10 @@ struct SwitcherBar: View {
         .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
     }
 
-    private func cycle(_ delta: Int) {
-        let i = (reach.rawValue + delta + Reach.allCases.count) % Reach.allCases.count
-        reach = Reach.allCases[i]
+    private func cycleSearch(_ delta: Int) {
+        let all = BikeSearchStyle.allCases
+        let i = (bike.searchStyle.rawValue + delta + all.count) % all.count
+        bike.searchStyle = all[i]
     }
 
     private func arrow(_ icon: String, action: @escaping () -> Void) -> some View {
