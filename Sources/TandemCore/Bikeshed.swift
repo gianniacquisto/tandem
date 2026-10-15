@@ -265,7 +265,7 @@ public struct Bikeshed: Sendable {
     /// Pre-existing name violators (`#`, `|`) are *tolerated* here — they are
     /// on-disk names the app must still show and edit; the create/rename
     /// validation (`validateNewName`) is the separate, stricter rule.
-    func resolve(_ path: String) -> URL? {
+    func fileURL(for path: String) -> URL? {
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
             .map(String.init)
         guard !components.isEmpty else { return nil }
@@ -309,7 +309,7 @@ public struct Bikeshed: Sendable {
     /// Lock-free (readers take no lock — ADR 0001/0004). The core never parses
     /// the text; it is bytes in, bytes out.
     func readNote(_ path: String) throws -> NoteContent {
-        guard let url = resolve(path) else {
+        guard let url = fileURL(for: path) else {
             throw BikeshedError.unknownNote(path: path)
         }
         let fm = FileManager.default
