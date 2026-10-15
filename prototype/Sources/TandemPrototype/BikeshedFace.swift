@@ -9,7 +9,7 @@ import Observation
 //     .bar    — field in the editor's title bar; results drop from the bar
 //     .panel  — a dedicated right panel opened from the title bar
 //   backlink style (model.backlinkStyle)
-//     .bottom — a "Linked mentions" dock under the editor
+//     .bottom — a "Backlinks" dock under the editor (the settled v1 default)
 //     .side   — a right rail beside the editor
 //   (.panel + .side share the right rail: the search panel takes it while
 //   open, backlinks own it while the panel is closed.)
@@ -224,7 +224,7 @@ struct BikeshedFaceView: View {
                 Image(systemName: "arrow.left.arrow.right")
                     .font(.system(size: 9.5, weight: .medium))
                     .foregroundStyle(pal.inkDim)
-                Text("Linked mentions")
+                Text("Backlinks")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(pal.inkDim)
                 Text("\(backlinks.count)")

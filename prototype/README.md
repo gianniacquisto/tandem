@@ -29,13 +29,13 @@ The floating bar (and ←/→, which cycle the first) switches:
 
 - **Search placement** — where the search affordance lives and where results appear:
   - **in tree** — a field at the top of the tree sidebar; typing swaps the
-    tree for full-vault results.
+    tree for full-vault results. **Settled** (2026-10-15 verdict).
   - **in bar** — a field in the editor's title bar; results drop from the
     bar as a floating card over the preview (click away or Esc to dismiss).
   - **panel** — a "Search" toggle in the title bar opens a dedicated right
     panel with its own field and a full results list.
-- **Backlinks placement** — where the "linked mentions" of the open note live:
-  - **bottom** — a collapsible "Linked mentions" dock under the editor.
+- **Backlinks placement** — where the backlinks of the open note live:
+  - **bottom** — a collapsible "Backlinks" dock under the editor. **Settled** (2026-10-15 verdict).
   - **side** — a right rail beside the editor.
 
 With **panel + side** the two share the right rail: the search panel takes
@@ -87,10 +87,12 @@ it while open, backlinks own it while the panel is closed.
 
 ## Decisions this prototype surfaces
 
-1. Search placement + result presentation (the three placements above, and
-   the provisional matching rules).
-2. Backlinks placement + row content (context line yes/no, count, collapse).
-3. Shared-window sizing: one window for both tabs, and how the Todos face
+**Settled 2026-10-15 (human verdict, recorded in ticket 02): search in the
+left sidebar, backlinks in the bottom dock — the matching rules and row
+content as prototyped stand for v1.**
+
+Still open for the spec:
+1. Shared-window sizing: one window for both tabs, and how the Todos face
    reads at the wider width.
-4. Whether the in-title-bar search (bar style) should be the affordance at
-   all, versus ⌘K-style (not modelled — add it if the reaction wants it).
+2. Whether search also gets a ⌘K-style palette entry point (not modelled
+   here — the sidebar field is the settled v1 affordance).
