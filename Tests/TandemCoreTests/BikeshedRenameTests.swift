@@ -11,9 +11,13 @@ import Testing
 @Suite("Bikeshed rename + link rewrite")
 struct BikeshedRenameTests {
 
+    /// A unique temp dir, nested one level below a unique parent: the
+    /// vault's sibling lockfile (`bikeshed.lock`, ADR 0004) must not be
+    /// shared between concurrent tests.
     private func tempDir() -> URL {
-        let dir = FileManager.default.temporaryDirectory
+        let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-rename-\(UUID().uuidString)")
+        let dir = parent.appendingPathComponent("vault")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -40,7 +44,7 @@ struct BikeshedRenameTests {
     @Test("rename moves the note and rewrites bare links to it")
     func renameBareLink() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("A.md", "see [[B]]", in: dir)
@@ -57,7 +61,7 @@ struct BikeshedRenameTests {
     @Test("rename returns the new path and the tree reflects the move")
     func renameTreeShape() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("projects/B.md", "bee", in: dir)
         try stage("A.md", "x", in: dir)
@@ -77,7 +81,7 @@ struct BikeshedRenameTests {
     @Test("rename rewrites every form: bare, alias, fragment, both, reversed order")
     func renameAllForms() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         let original = """
@@ -103,7 +107,7 @@ struct BikeshedRenameTests {
     @Test("rename rewrites qualified and .md-qualified links")
     func renameQualified() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("projects/plan.md", "p", in: dir)
         try stage("A.md", "a [[projects/plan]] b [[projects/plan.md]]", in: dir)
@@ -116,7 +120,7 @@ struct BikeshedRenameTests {
     @Test("rename is case-insensitive: [[b]] to B.md is rewritten")
     func renameCaseInsensitiveTarget() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("A.md", "see [[b]]", in: dir)
@@ -129,7 +133,7 @@ struct BikeshedRenameTests {
     @Test("rename includes the note's own self-links")
     func renameSelfLink() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "note to [[B]] and [[B|self]]", in: dir)
 
@@ -143,7 +147,7 @@ struct BikeshedRenameTests {
     @Test("rename into a taken basename rewrites to the qualified form")
     func renameAmbiguousBecomesQualified() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("x.md", "x", in: dir)
         try stage("y.md", "y", in: dir)
@@ -160,7 +164,7 @@ struct BikeshedRenameTests {
     @Test("rename to a unique basename rewrites to the bare form")
     func renameUniqueStaysBare() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("a/x.md", "a x", in: dir)
         try stage("A.md", "see [[a/x]]", in: dir)
@@ -173,7 +177,7 @@ struct BikeshedRenameTests {
     @Test("a bare link broken by duplicates is not rewritten (it resolved to nothing)")
     func renameBrokenBareUntouched() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("x.md", "root x", in: dir)
         try stage("b/x.md", "b x", in: dir)
@@ -196,7 +200,7 @@ struct BikeshedRenameTests {
     @Test("rename leaves markdown links byte-identical")
     func renameMarkdownLinkUntouched() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("A.md", "[text](B.md) and [[B]]", in: dir)
@@ -209,7 +213,7 @@ struct BikeshedRenameTests {
     @Test("rename leaves wikilinks in leading frontmatter byte-identical")
     func renameFrontmatterUntouched() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         let original = """
@@ -233,7 +237,7 @@ struct BikeshedRenameTests {
     @Test("an unterminated leading --- block is not frontmatter: its links are rewritten")
     func renameUnterminatedFrontmatterRewritten() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("A.md", "---\nlinks: [[B]]\nno closing fence", in: dir)
@@ -246,7 +250,7 @@ struct BikeshedRenameTests {
     @Test("rename leaves embeds byte-identical")
     func renameEmbedUntouched() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("A.md", "![[B]] and [[B]]", in: dir)
@@ -259,7 +263,7 @@ struct BikeshedRenameTests {
     @Test("rename leaves non-resolving links byte-identical")
     func renameBrokenLinkUntouched() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("A.md", "[[Missing]] and [[B]]", in: dir)
@@ -272,7 +276,7 @@ struct BikeshedRenameTests {
     @Test("rename leaves wikilinks in code blocks byte-identical")
     func renameCodeBlockUntouched() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("A.md", "```\n[[B]]\n```\nreal [[B]]", in: dir)
@@ -287,7 +291,7 @@ struct BikeshedRenameTests {
     @Test("rename to a taken path is refused and nothing is written")
     func renameTakenRefused() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("C.md", "cee", in: dir)
@@ -314,7 +318,7 @@ struct BikeshedRenameTests {
     @Test("rename of a missing note is unknownNote")
     func renameMissingOld() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
 
@@ -327,7 +331,7 @@ struct BikeshedRenameTests {
     @Test("rename to an invalid new name is refused before anything is written")
     func renameInvalidNewName() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("A.md", "see [[B]]", in: dir)
@@ -344,7 +348,7 @@ struct BikeshedRenameTests {
     @Test("rename into a new folder creates the parent directories")
     func renameCreatesParents() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
 

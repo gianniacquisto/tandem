@@ -16,11 +16,14 @@ import Testing
 struct BikeshedNoteOpsTests {
 
     /// A unique temp directory (not pre-created: a missing vault folder is a
-    /// valid empty vault, and some tests rely on that). Callers clean up with
-    /// `defer`.
+    /// valid empty vault, and some tests rely on that), nested one level
+    /// below a unique parent so the vault's sibling lockfile
+    /// (`bikeshed.lock`, ADR 0004) is never shared between concurrent tests.
+    /// Callers clean up with `defer` (removing the parent covers the lock).
     private func tempDir() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-ops-\(UUID().uuidString)")
+            .appendingPathComponent("vault")
     }
 
     /// Write a raw file straight into the vault (bypassing the core) to stage
@@ -61,7 +64,7 @@ struct BikeshedNoteOpsTests {
     @Test("list on a missing vault folder is an empty tree, never an error")
     func listMissingFolderIsEmpty() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         let result = try bikeshed.list()
@@ -73,7 +76,7 @@ struct BikeshedNoteOpsTests {
     @Test("list: folders first, alphabetical within each level")
     func listTreeShape() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         for path in ["b.md", "A.md", "z/note.md", "z/alpha.md", "z/beta.md", "apple/x.md"] {
@@ -94,7 +97,7 @@ struct BikeshedNoteOpsTests {
     @Test("list excludes hidden files, hidden folders, and non-.md attachments")
     func listExcludesHiddenAndAttachments() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         try stage("ok.md", "visible", in: dir)
@@ -115,7 +118,7 @@ struct BikeshedNoteOpsTests {
     @Test("list treats .md case-insensitively (NOTE.MD is a note)")
     func listUppercaseExtensionIsANote() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         try stage("NOTE.MD", "uppercase", in: dir)
@@ -130,7 +133,7 @@ struct BikeshedNoteOpsTests {
     @Test("create makes an empty note, creating parent folders")
     func createMakesEmptyNote() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         let result = try bikeshed.create(path: "Projects/My Note.md")
@@ -150,7 +153,7 @@ struct BikeshedNoteOpsTests {
     @Test("create allows spaces but rejects #, |, and malformed / paths")
     func createNameValidation() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         // Spaces are allowed.
@@ -185,7 +188,7 @@ struct BikeshedNoteOpsTests {
     @Test("create requires a .md name (case-insensitive)")
     func createRequiresMarkdownExtension() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         #expect(throws: BikeshedError.invalidName(name: "notmarkdown")) {
@@ -202,7 +205,7 @@ struct BikeshedNoteOpsTests {
     @Test("create on an existing target is an error, not an overwrite")
     func createExistingTarget() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         _ = try bikeshed.write(path: "a.md", text: "original")
@@ -238,7 +241,7 @@ struct BikeshedNoteOpsTests {
     @Test("read returns the note text, its on-disk hash, and its mtime")
     func readReturnsTextHashMtime() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         let text = "# Heading\n\nbody text"
@@ -255,7 +258,7 @@ struct BikeshedNoteOpsTests {
     @Test("read on a missing note throws unknownNote")
     func readMissingNote() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         do {
@@ -275,7 +278,7 @@ struct BikeshedNoteOpsTests {
     @Test("write stores exactly the bytes given (frontmatter pass-through)")
     func writeStoresExactBytes() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         // Frontmatter + wikilinks + code: the core never parses any of it.
@@ -302,7 +305,7 @@ struct BikeshedNoteOpsTests {
     @Test("write overwrites an existing note and records the new hash")
     func writeOverwrites() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         let first = try bikeshed.write(path: "a.md", text: "one").value
@@ -317,7 +320,7 @@ struct BikeshedNoteOpsTests {
     @Test("delete removes a note, and a folder recursively")
     func deleteRemoves() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         _ = try bikeshed.create(path: "a.md")
@@ -337,7 +340,7 @@ struct BikeshedNoteOpsTests {
     @Test("delete on a missing path throws unknownNote")
     func deleteMissing() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         #expect(throws: BikeshedError.unknownNote(path: "nope.md")) {
@@ -350,7 +353,7 @@ struct BikeshedNoteOpsTests {
     @Test("pre-existing name violators are tolerated: listed and readable")
     func preExistingViolatorsTolerated() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         try stage("bad#name.md", "an agent wrote this", in: dir)

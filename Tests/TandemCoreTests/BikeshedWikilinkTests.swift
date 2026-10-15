@@ -10,9 +10,13 @@ import Testing
 @Suite("Bikeshed wikilink resolution")
 struct BikeshedWikilinkTests {
 
+    /// A unique temp dir, nested one level below a unique parent: the
+    /// vault's sibling lockfile (`bikeshed.lock`, ADR 0004) must not be
+    /// shared between concurrent tests.
     private func tempDir() -> URL {
-        let dir = FileManager.default.temporaryDirectory
+        let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-wikilink-\(UUID().uuidString)")
+        let dir = parent.appendingPathComponent("vault")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -106,7 +110,7 @@ struct BikeshedWikilinkTests {
     @Test("resolve: bare target matches basename case-insensitively, exactly one")
     func resolveBareCaseInsensitive() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("Note.md", "x", in: dir)
 
@@ -131,7 +135,7 @@ struct BikeshedWikilinkTests {
     @Test("resolve: zero matches is a broken link")
     func resolveZeroMatches() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("a.md", "x", in: dir)
 
@@ -142,7 +146,7 @@ struct BikeshedWikilinkTests {
     @Test("resolve: a bare target in a subfolder resolves when unique")
     func resolveBareInSubfolder() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("a/x.md", "x", in: dir)
 
@@ -156,7 +160,7 @@ struct BikeshedWikilinkTests {
     @Test("resolve: duplicate basenames are a broken link, never a silent match")
     func resolveDuplicateBasenames() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("a/x.md", "1", in: dir)
         try stage("b/x.md", "2", in: dir)
@@ -176,7 +180,7 @@ struct BikeshedWikilinkTests {
     @Test("resolve: qualified targets are vault-root-relative paths, case-insensitive")
     func resolveQualified() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("projects/plan.md", "p", in: dir)
 
@@ -202,7 +206,7 @@ struct BikeshedWikilinkTests {
     @Test("resolve: attachments are never linkable by wikilink")
     func resolveAttachmentsNever() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("photo.png", "img", in: dir)
         try stage("a/photo.png", "img2", in: dir)
@@ -217,7 +221,7 @@ struct BikeshedWikilinkTests {
     @Test("scan: a wikilink outside code is found with range, form, and resolution")
     func scanBasic() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("Note.md", "x", in: dir)
 
@@ -234,7 +238,7 @@ struct BikeshedWikilinkTests {
     @Test("scan: broken links are reported as broken, not skipped")
     func scanBrokenLinks() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
 
         let found = bikeshed.links(in: "[[Missing]]")
@@ -245,7 +249,7 @@ struct BikeshedWikilinkTests {
     @Test("scan: fenced code blocks (``` and ~~~) are literal text")
     func scanFencedCode() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("Note.md", "x", in: dir)
 
@@ -258,7 +262,7 @@ struct BikeshedWikilinkTests {
     @Test("scan: inline code is literal text")
     func scanInlineCode() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("Note.md", "x", in: dir)
 
@@ -272,7 +276,7 @@ struct BikeshedWikilinkTests {
     @Test("scan: embeds ![[…]] are literal text")
     func scanEmbeds() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("Note.md", "x", in: dir)
 
@@ -283,7 +287,7 @@ struct BikeshedWikilinkTests {
     @Test("scan: an unclosed [[ at end of line or file is literal text")
     func scanUnclosed() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("Note.md", "x", in: dir)
 
@@ -299,7 +303,7 @@ struct BikeshedWikilinkTests {
     @Test("scan: the first ]] closes; text after is literal")
     func scanFirstCloseWins() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("a.md", "x", in: dir)
 
@@ -311,7 +315,7 @@ struct BikeshedWikilinkTests {
     @Test("scan: links inside blockquotes and list items are links")
     func scanInBlocks() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("Note.md", "x", in: dir)
 
@@ -325,7 +329,7 @@ struct BikeshedWikilinkTests {
     @Test("scan: indented code blocks are literal text")
     func scanIndentedCode() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("Note.md", "x", in: dir)
 

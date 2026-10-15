@@ -11,9 +11,13 @@ import Testing
 @Suite("Bikeshed backlinks")
 struct BikeshedBacklinkTests {
 
+    /// A unique temp dir, nested one level below a unique parent: the
+    /// vault's sibling lockfile (`bikeshed.lock`, ADR 0004) must not be
+    /// shared between concurrent tests.
     private func tempDir() -> URL {
-        let dir = FileManager.default.temporaryDirectory
+        let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-backlinks-\(UUID().uuidString)")
+        let dir = parent.appendingPathComponent("vault")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -30,7 +34,7 @@ struct BikeshedBacklinkTests {
     @Test("backlinks: one row per linking note, with the line of the link")
     func basicRow() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("A.md", "see [[B]] below", in: dir)
         try stage("B.md", "bee", in: dir)
@@ -45,7 +49,7 @@ struct BikeshedBacklinkTests {
     @Test("backlinks: multiple links in one note yield one row (first resolving line)")
     func oneRowPerNote() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("A.md", "first [[B]]\nsecond [[B]] again", in: dir)
         try stage("B.md", "bee", in: dir)
@@ -57,7 +61,7 @@ struct BikeshedBacklinkTests {
     @Test("backlinks: every form that resolves produces a row")
     func allForms() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("a/A.md", "bare [[B]]", in: dir)
@@ -80,7 +84,7 @@ struct BikeshedBacklinkTests {
     @Test("backlinks: self-links are included")
     func selfLinksIncluded() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "self [[B]] reference", in: dir)
 
@@ -91,7 +95,7 @@ struct BikeshedBacklinkTests {
     @Test("backlinks: broken links contribute nothing")
     func brokenContributeNothing() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("onlyBroken.md", "[[Missing]] and [[ghost]]", in: dir)
@@ -104,7 +108,7 @@ struct BikeshedBacklinkTests {
     @Test("backlinks: code and embeds are not links")
     func codeAndEmbedsIgnored() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("coded.md", "```\n[[B]]\n```", in: dir)
@@ -116,7 +120,7 @@ struct BikeshedBacklinkTests {
     @Test("backlinks: rows are sorted by the linking note's path")
     func sortedByPath() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("z/z.md", "[[B]]", in: dir)
@@ -132,7 +136,7 @@ struct BikeshedBacklinkTests {
     @Test("backlinks: a missing target is unknownNote")
     func missingTarget() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("A.md", "[[B]]", in: dir)
 
@@ -144,7 +148,7 @@ struct BikeshedBacklinkTests {
     @Test("backlinks: a folder target is unknownNote")
     func folderTarget() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("d/n.md", "x", in: dir)
 
@@ -158,7 +162,7 @@ struct BikeshedBacklinkTests {
     @Test("backlinks: recomputed after note creation")
     func recomputedAfterCreate() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
 
@@ -172,7 +176,7 @@ struct BikeshedBacklinkTests {
     @Test("backlinks: recomputed after note deletion")
     func recomputedAfterDelete() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("A.md", "see [[B]]", in: dir)
@@ -187,7 +191,7 @@ struct BikeshedBacklinkTests {
     @Test("backlinks: recomputed after rename — the row follows the rewritten line")
     func recomputedAfterRename() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("A.md", "see [[B]]", in: dir)

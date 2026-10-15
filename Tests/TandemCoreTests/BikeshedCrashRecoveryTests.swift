@@ -14,9 +14,13 @@ import Testing
 @Suite("Bikeshed crash recovery")
 struct BikeshedCrashRecoveryTests {
 
+    /// A unique temp dir, nested one level below a unique parent: the
+    /// vault's sibling lockfile (`bikeshed.lock`, ADR 0004) must not be
+    /// shared between concurrent tests.
     private func tempDir() -> URL {
-        let dir = FileManager.default.temporaryDirectory
+        let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-crash-\(UUID().uuidString)")
+        let dir = parent.appendingPathComponent("vault")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -47,7 +51,7 @@ struct BikeshedCrashRecoveryTests {
     @Test("crashed rename state: no torn files, no data loss, at most broken links")
     func crashedStateIsSound() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         try stageCrashedRename(in: dir)
         let bikeshed = Bikeshed(directory: dir)
 
@@ -78,7 +82,7 @@ struct BikeshedCrashRecoveryTests {
     @Test("re-running the crashed rename self-heals the vault")
     func reRunSelfHeals() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         try stageCrashedRename(in: dir)
         let bikeshed = Bikeshed(directory: dir)
 
@@ -101,7 +105,7 @@ struct BikeshedCrashRecoveryTests {
     @Test("an orphaned temp older than 60 s from a crash is cleaned by the next locked op")
     func orphanTempCleaned() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("B.md", "bee", in: dir)
         try stage("A.md", "see [[B]]", in: dir)
