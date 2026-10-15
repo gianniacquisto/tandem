@@ -25,12 +25,14 @@ A sharp, implementable spec for the bikeshed: an Obsidian-like markdown notes su
 ## Decisions so far
 
 <!-- one line per closed ticket: name (wrapping its link) + one-line gist -->
+
+- [Vault protocol: file rules, frontmatter, conflicts, deletion](issues/04-vault-protocol.md): notes are `.md` files (`#`/`|` never created, tolerated on disk), frontmatter opaque, ~1 s autosave, dirty buffers never clobber external edits (banner: mine/theirs), UI delete → Trash, app writes hold a one-sided `flock` on `bikeshed.lock`, journal-free rename (crash → broken links only), missing folder → lazy creation — ADR 0004.
 - [Editor technology: markdown editing + live preview in SwiftUI](issues/01-editor-technology.md): Inline live preview is feasible — primary path WKWebView + CodeMirror 6 (Obsidian's stack, ~600 KB JS bundle, hidden-marker decorations over an incremental Lezer parse); fallback the sanctioned split view (MarkdownUI/Textual render pane); native-only TextKit 2 has no public hook to hide syntax markers.
 - [Rendered-markdown feature set: what the live preview renders](issues/05-rendered-markdown-feature-set.md): GFM floor + interactive task checkboxes, curated code highlighting, KaTeX math, local images, wikilinks and markdown links to vault files; everything else (mermaid, callouts, footnotes, emoji, raw HTML, embeds, tags) renders literally, with the deferred set listed as v2 candidates.
+- [Wikilink model: resolution, broken links, rename](issues/03-wikilink-model.md): wikilinks resolve live from the file set by case-insensitive name — bare target needs a unique basename match, qualified target is vault-root-relative, duplicates → visible broken link (no tie-break); grammar `[[target[#fragment][|alias]]]` with inert fragments, no embeds, code blocks exempt; a broken link's click creates the note at its path; an app-performed rename rewrites every resolving wikilink (canonical form: bare if unique) — wikilinks only, frontmatter untouched, agent renames rewrite nothing, crash leaves broken links that a retry self-heals (mechanics per [ADR 0004](../../docs/adr/0004-vault-protocol.md)) — see [ADR 0005](../../docs/adr/0005-wikilink-rename-rewriting.md).
 
 ## Not yet specified
 
-- **First launch / empty state** — the bikeshed folder is missing or empty on first launch: does the app create it, seed a welcome note, or show an empty state? Sharpens once the vault protocol lands.
 - **Search and backlinks behavior** — matching semantics and where results/panels live. Intended to be settled inside the UI prototype ticket's human-in-the-loop exchange; graduate to its own ticket if that exchange leaves them loose.
 
 ## Out of scope

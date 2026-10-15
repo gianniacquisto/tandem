@@ -21,7 +21,7 @@ _Avoid_: top bar element, status bar, tray, badge
 ### The domain
 
 **Todo**:
-A single item with a title and a done state. The only entity in the v1 domain.
+A single item with a title and a done state. The only entity in the todo domain.
 _Avoid_: task, item, to-do (hyphenated)
 
 **Open**:
@@ -39,6 +39,24 @@ _Avoid_: view, tab, scope, state
 **Store**:
 The single source of truth for todos, shared by the app and agents. All reads and writes go through the store; no other copy is authoritative.
 _Avoid_: database, backend, sync, cache
+
+### The bikeshed
+
+**Bikeshed**:
+Tandem's notes surface: a plain folder of notes and attachments, shared by the app and agents on the same machine and watched live by the app.
+_Avoid_: vault, notebook, notes folder
+
+**Note**:
+A single markdown file in the bikeshed. The filename is the note's identity; renaming a note is renaming the file.
+_Avoid_: document, entry, page
+
+**Wikilink**:
+An in-note reference to another note, written `[[target]]` with an optional `#fragment` and `|alias`, resolved live by case-insensitive name against the vault; a wikilink that resolves to no note is a broken link.
+_Avoid_: internal link, backlink, embed
+
+**Attachment**:
+A non-markdown file (image, etc.) living in the bikeshed. Invisible in the file tree; reachable only by relative path from the note that references it.
+_Avoid_: asset, media file, resource
 
 ### The users
 
