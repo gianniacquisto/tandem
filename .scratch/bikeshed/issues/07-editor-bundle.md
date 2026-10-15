@@ -1,7 +1,7 @@
 # 07 - Editor: CM6 inline live-preview bundle (JS/HTML/CSS) + build setup
 
 Type: implementation
-Status: ready
+Status: claimed
 Blocked by: none (independent of the core; integrates with the GUI, ticket 08, only through the bridge contract)
 
 ## What to build
