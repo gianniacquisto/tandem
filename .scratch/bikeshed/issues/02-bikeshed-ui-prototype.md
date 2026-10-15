@@ -1,8 +1,7 @@
 # 02 - Bikeshed surface: main-window tab, tree, editor, search, backlinks
 
 Type: prototype
-Status: open
-Blocked by: 01
+Status: claimed (2026-10-15)
 
 ## Question
 
