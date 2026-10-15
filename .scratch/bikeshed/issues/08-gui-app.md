@@ -33,7 +33,10 @@ Context (pointers):
 - [ ] Designed states: empty vault (no welcome note, designed placeholder — lazy folder creation, never an error state) and no-note-selected (designed placeholder)
 - [ ] Watcher: one recursive `FSEventStream` on the vault root per the spec's behaviour contract — flags `FileEvents | NoDefer | UseCFTypes | WatchRoot`, `sinceWhen = kFSEventStreamEventIdSinceNow`, latency ≈ 0.2 s, background dispatch queue; each batch coalesced into one "vault changed" pass on the main actor (rebuild the tree; reload the open note only if its path is in the batch); self-write dedup; `RootChanged` / stream start / app launch → full rescan; `StoreWatcher` untouched
 - [ ] Editor palette follows the Ligne theme in day and night
+- [ ] Packaging: the editor resources (bundle + KaTeX assets) and the swift-markdown NOTICE are added to `Scripts/make-app-bundle.sh`'s copy list and to the CI bundle-structure verification — otherwise they silently ship missing in tag runs
 - [ ] `swift build -c release` clean; `swift test` green; the app launches, the tab switches without resizing, and the Bikeshed face works end to end against a real (temp-seeded) vault — record the smoke results in Resolution for the human's manual pass per the spec
+
+Note: the platform floor stays `.macOS(.v27)` — the spec prose says "macOS 26+" in places, but the package floor (and the CI runner) are the truth. Do not lower it.
 
 ## Resolution
 
