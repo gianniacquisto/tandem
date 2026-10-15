@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Markdown
 
 /// Contract-level bikeshed note operations (spec: "Bikeshed core —
@@ -87,6 +88,70 @@ extension Bikeshed {
         return OperationResult(WriteRecord(path: path, hash: Self.hash(of: data)))
     }
 
+    // MARK: - rename
+
+    /// `rename(from, to)`: change a note's path (rename = move) with link
+    /// rewrite (ADR 0005). One transaction under the vault lock: first
+    /// rewrite every `[[wikilink]]` in the vault that resolves to the old
+    /// path — every form (bare, qualified, aliased, fragment, any split
+    /// order), in every note including the note itself — re-canonicalised
+    /// against the post-rename file set (bare when the new basename is
+    /// unique, qualified when it is not); wikilinks only — markdown links,
+    /// embeds, code, and wikilinks inside a leading terminated `---`
+    /// frontmatter block are byte-identical. Then a single `rename(2)` of
+    /// the note file (same volume, parent folders created). No journal: a
+    /// mid-sequence crash yields no torn files — at most broken links — and
+    /// re-running the rename self-heals (the rewritten references already
+    /// resolve to the new path). A missing source is `unknownNote`; a taken
+    /// new path (or a file where a folder is needed) is `alreadyExists`
+    /// with nothing written; the new name gets the full naming validation.
+    public func rename(from oldPath: String, to newPath: String) throws -> OperationResult<String> {
+        try validateNewName(newPath)   // validation throws before the lock
+        guard let oldURL = fileURL(for: oldPath),
+              let newURL = fileURL(for: newPath)
+        else {
+            throw BikeshedError.invalidName(name: oldPath)
+        }
+        let newPathValue = try locked {
+            let fm = FileManager.default
+            var oldIsDir: ObjCBool = false
+            guard fm.fileExists(atPath: oldURL.path, isDirectory: &oldIsDir),
+                  !oldIsDir.boolValue
+            else {
+                throw BikeshedError.unknownNote(path: oldPath)
+            }
+            var newIsDir: ObjCBool = false
+            if fm.fileExists(atPath: newURL.path, isDirectory: &newIsDir) {
+                throw BikeshedError.alreadyExists(path: newPath)
+            }
+            if let taken = fileCollision(in: newPath, includingNote: false) {
+                throw BikeshedError.alreadyExists(path: taken)
+            }
+            // Rewrite pass (per-file atomic), before the file moves:
+            // resolution is against the pre-rename file set.
+            let notes = notePaths()
+            let newTarget = Self.canonicalLinkTarget(for: newPath, in: notes, replacing: oldPath)
+            for notePath in notes {
+                guard let content = try? readNote(notePath),
+                      let targetURL = fileURL(for: notePath),
+                      let rewritten = Self.rewriteLinks(
+                        in: content.text,
+                        against: notes,
+                        resolvingTo: oldPath,
+                        as: newTarget)
+                else { continue }
+                try Self.atomicWrite(Data(rewritten.utf8), to: targetURL)
+            }
+            try fm.createDirectory(
+                at: newURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if Darwin.rename(oldURL.path, newURL.path) != 0 {
+                throw BikeshedIOError.posix(op: "rename", code: errno)
+            }
+            return newPath
+        }
+        return OperationResult(newPathValue)
+    }
+
     // MARK: - delete
 
     /// `delete(path)`: removes the note — or folder, recursively — from the
@@ -140,19 +205,7 @@ extension Bikeshed {
     /// markdown's own code rules). Broken links are reported, not skipped —
     /// the GUI renders them distinctly.
     public func links(in text: String) -> [LinkOccurrence] {
-        let notes = notePaths()
-        let code = Self.codeRanges(in: text)
-        var occurrences: [LinkOccurrence] = []
-        for token in Self.wikilinkTokens(in: text) {
-            guard let link = Wikilink(raw: token.content) else { continue }
-            if code.contains(where: { $0.overlaps(token.range) }) { continue }
-            occurrences.append(LinkOccurrence(
-                range: token.range,
-                link: link,
-                resolution: Self.resolveLink(link.target, in: notes),
-                line: Self.line(containing: token.range.lowerBound, in: text)))
-        }
-        return occurrences
+        Self.linkOccurrences(in: text, against: notePaths())
     }
 }
 
@@ -166,6 +219,24 @@ private struct WikilinkToken {
 }
 
 private extension Bikeshed {
+
+    /// The wikilink scan against an explicit note set (instead of the live
+    /// file set): the rename-rewrite pass resolves against the pre-rename
+    /// set. Core of the public `links(in:)`.
+    static func linkOccurrences(in text: String, against notes: [String]) -> [LinkOccurrence] {
+        let code = Self.codeRanges(in: text)
+        var occurrences: [LinkOccurrence] = []
+        for token in Self.wikilinkTokens(in: text) {
+            guard let link = Wikilink(raw: token.content) else { continue }
+            if code.contains(where: { $0.overlaps(token.range) }) { continue }
+            occurrences.append(LinkOccurrence(
+                range: token.range,
+                link: link,
+                resolution: Self.resolveLink(link.target, in: notes),
+                line: Self.line(containing: token.range.lowerBound, in: text)))
+        }
+        return occurrences
+    }
 
     /// The shared resolution rule (backlinks, rename-rewrite, and the public
     /// `resolve` all use it): exactly one note whose name matches the target
@@ -303,5 +374,87 @@ private extension Bikeshed {
         let end = text[text.index(after: index)...]
             .firstIndex(of: "\n") ?? text.endIndex
         return String(text[start..<end])
+    }
+
+    /// The canonical wikilink target for a renamed note against the
+    /// post-rename file set: the bare basename (`.md` off, on-disk case)
+    /// when that basename is unique there, the vault-root-relative path
+    /// (`.md` off) when it is not.
+    static func canonicalLinkTarget(
+        for newPath: String,
+        in currentNotes: [String],
+        replacing oldPath: String
+    ) -> String {
+        var bare = (newPath as NSString).lastPathComponent
+        if bare.lowercased().hasSuffix(".md") { bare.removeLast(3) }
+        let bareLower = bare.lowercased()
+        let postRename = Set(currentNotes).subtracting([oldPath]).union([newPath])
+        let unique = postRename.filter {
+            var base = ($0 as NSString).lastPathComponent.lowercased()
+            if base.hasSuffix(".md") { base.removeLast(3) }
+            return base == bareLower
+        }.count == 1
+        if unique { return bare }
+        var qualified = newPath
+        if qualified.lowercased().hasSuffix(".md") { qualified.removeLast(3) }
+        return qualified
+    }
+
+    /// The rename-rewrite for one note's text: replace the target part of
+    /// every wikilink token that resolves to `resolvingTo` (against the
+    /// pre-rename set `notes`) with `as`, leaving everything after the
+    /// target — fragment, alias, their order — byte-identical. Tokens inside
+    /// a leading terminated `---` frontmatter block are skipped (frontmatter
+    /// stays opaque, ADR 0004); the scanner already exempts code, embeds,
+    /// and unclosed tokens. `nil` when nothing resolves to the target.
+    static func rewriteLinks(
+        in text: String,
+        against notes: [String],
+        resolvingTo targetPath: String,
+        as newTarget: String
+    ) -> String? {
+        let occurrences = Self.linkOccurrences(in: text, against: notes).filter {
+            $0.resolution == .resolved(path: targetPath)
+        }
+        guard !occurrences.isEmpty else { return nil }
+        let frontmatter = frontmatterEnd(in: text)
+        var out = text
+        // Reverse order: replacing later tokens first keeps earlier indices valid.
+        for occ in occurrences.reversed() {
+            if let frontmatter, occ.range.upperBound <= frontmatter { continue }
+            let contentStart = text.index(occ.range.lowerBound, offsetBy: 2)   // past "[["
+            let closeStart = text.index(occ.range.upperBound, offsetBy: -2)    // first "]" of "]]"
+            let content = text[contentStart..<closeStart]
+            let targetEnd = min(
+                content.firstIndex(of: "#") ?? closeStart,
+                content.firstIndex(of: "|") ?? closeStart)
+            out.replaceSubrange(contentStart..<targetEnd, with: newTarget)
+        }
+        return out == text ? nil : out   // every hit was in frontmatter: no write
+    }
+
+    /// The index just past a leading, properly terminated `---` frontmatter
+    /// block, or `nil` (no frontmatter, or unterminated — a bare `---`
+    /// thematic break is not frontmatter).
+    static func frontmatterEnd(in text: String) -> String.Index? {
+        guard let firstNewline = text.firstIndex(of: "\n"),
+              isFrontmatterDelimiter(text[text.startIndex..<firstNewline])
+        else { return nil }
+        var lineStart = text.index(after: firstNewline)
+        while lineStart < text.endIndex {
+            guard let newline = text[lineStart...].firstIndex(of: "\n") else {
+                // A final line with no trailing newline can close the block.
+                return isFrontmatterDelimiter(text[lineStart...]) ? text.endIndex : nil
+            }
+            if isFrontmatterDelimiter(text[lineStart..<newline]) {
+                return text.index(after: newline)
+            }
+            lineStart = text.index(after: newline)
+        }
+        return nil
+    }
+
+    private static func isFrontmatterDelimiter(_ line: Substring) -> Bool {
+        String(line.hasSuffix("\r") ? line.dropLast() : line) == "---"
     }
 }

@@ -106,7 +106,7 @@ public struct Bikeshed: Sendable {
         do {
             try data.write(to: tmp, options: [])
             try Self.fsync(tmp)
-            if rename(tmp.path, url.path) != 0 {
+            if Darwin.rename(tmp.path, url.path) != 0 {
                 throw BikeshedIOError.posix(op: "rename", code: errno)
             }
         } catch {
