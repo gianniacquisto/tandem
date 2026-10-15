@@ -45,3 +45,27 @@ public struct WriteRecord: Sendable, Equatable {
     public let path: String
     public let hash: String
 }
+
+/// One backlink row (spec: "backlinks(path)"): a vault note that contains at
+/// least one wikilink resolving to the target note. Derived state —
+/// recomputed from the file set, never stored.
+public struct Backlink: Sendable, Equatable {
+    /// The linking note's vault-root-relative path.
+    public let path: String
+    /// The line of the linking note containing the first wikilink that
+    /// resolves to the target (without its newline).
+    public let line: String
+}
+
+/// One search result row (spec: "search(query)"): a note matching the
+/// case-insensitive substring query over title (first line) or body (the
+/// rest), with the display text — the first line for a title hit, a snippet
+/// around the first match for a body hit.
+public struct SearchHit: Sendable, Equatable {
+    /// The matching note's vault-root-relative path.
+    public let path: String
+    /// What the result row shows: the note's first line (title hit) or a
+    /// whitespace-collapsed snippet around the first body match, ellipsised
+    /// at the edges when sliced.
+    public let display: String
+}

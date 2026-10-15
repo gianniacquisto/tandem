@@ -178,6 +178,37 @@ extension Bikeshed {
         return OperationResult(())
     }
 
+    // MARK: - backlinks
+
+    /// `backlinks(path)`: the vault notes containing at least one wikilink
+    /// that resolves to the given note — one row per linking note, each with
+    /// the line of its first resolving wikilink (self-links included; broken
+    /// links, code, and embeds contribute nothing). Derived state, recomputed
+    /// from the current file set — no stored link index; the rows move with
+    /// creation, deletion, and rename on their own. A missing (or folder)
+    /// target throws `BikeshedError.unknownNote`. Lock-free.
+    public func backlinks(path: String) throws -> OperationResult<[Backlink]> {
+        guard let url = fileURL(for: path) else {
+            throw BikeshedError.invalidName(name: path)
+        }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir),
+              !isDir.boolValue
+        else {
+            throw BikeshedError.unknownNote(path: path)
+        }
+        var rows: [Backlink] = []
+        for notePath in notePaths() {
+            guard let content = try? readNote(notePath),
+                  let first = links(in: content.text)
+                      .first(where: { $0.resolution == .resolved(path: path) })
+            else { continue }
+            rows.append(Backlink(path: notePath, line: first.line))
+        }
+        rows.sort { ($0.path.lowercased(), $0.path) < ($1.path.lowercased(), $1.path) }
+        return OperationResult(rows)
+    }
+
     // MARK: - resolve (wikilink target)
 
     /// `resolve(target)`: where a wikilink target points, computed live from
