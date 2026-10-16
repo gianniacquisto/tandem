@@ -1,0 +1,29 @@
+<!doctype html>
+<!--
+  Tandem bikeshed editor page (ticket 07) — the whole editor surface:
+  one HTML page, one JS bundle (editor.js), one CSS file (style.css) +
+  the KaTeX woff2 font assets under fonts/.
+
+  Loaded by the Swift host via WKWebView.loadFileURL (spec: Editor —
+  Packaging; no web workers, so file:// works). The page has no network
+  access: no fetch/XHR/WebSocket/file: reads from JS — the document and
+  the vault index cross the bridge (notes/bridge-contract.md):
+
+    Swift → JS   setDocument / insertText / revealLine / setVaultIndex
+    JS → Swift   loaded / dirty / link-opened / checkbox-toggled
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tandem</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- The CM6 entry (editor.js) self-mounts into this container. The
+         Swift host sets data-theme="day" | "night" on <html> so the pane
+         matches the window chrome (LigneTheme.swift). -->
+    <div id="tandem-editor"></div>
+    <script src="editor.js"></script>
+  </body>
+</html>

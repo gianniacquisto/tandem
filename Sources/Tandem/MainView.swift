@@ -3,22 +3,27 @@ import TandemCore
 
 /// The main window in reach B — subtle Ligne Claire (ticket 01 verdict).
 ///
-///   Header    — "Tandem" wordmark + "Clear done" (disabled when nothing is done)
-///   Quick-add — flat parchment field, Return commits, ⌘N focuses it
-///   Filter    — flat segmented Open/Done/All with live counts, ⌘1/⌘2/⌘3
-///   List      — creation order; the one-way checkbox completes, a plain row
-///               click is never destructive; hover/right-click delete (GUI-only)
+///   Header    — "Tandem" wordmark, the Todos/Bikeshed tab control, and
+///               "Clear done" on the Todos tab (disabled when nothing is done)
+///   Todos     — a centered 540 pt column: flat parchment quick-add
+///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All
+///               with live counts (⌘1/⌘2/⌘3), and the creation-order list
+///               (one-way checkbox; hover/right-click delete, GUI-only)
+///   Bikeshed  — the notes face (BikeFace.swift): tree sidebar, the WKWebView
+///               editor, the backlinks dock
 ///
 /// The theme lives in the chrome: flat paper surfaces, uniform 1pt hairlines,
 /// line-drawn controls, illustration only in the empty state (ticket 01 handoff).
 
 struct MainView: View {
     @Environment(TandemModel.self) private var model
+    @Environment(BikeshedModel.self) private var bikeModel
     @Environment(\.openWindow) private var openWindow
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var quickAdd = ""
     @State private var filter: Filter = .open
+    @State private var tab: MainTab = .todos
     @FocusState private var quickAddFocused: Bool
 
     private var palette: Palette { Palette.forScheme(colorScheme) }
@@ -26,6 +31,50 @@ struct MainView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            if tab == .todos {
+                todosFace
+                    .frame(maxWidth: 540)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            } else {
+                BikeFaceView(model: bikeModel)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(palette.paper)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minWidth: 860, minHeight: 560)
+        .modifier(TandemShortcuts(filter: $filter, focusQuickAdd: $quickAddFocused))
+        .onAppear {
+            // Let the menu bar item's "Open Tandem" focus (or reopen) this window.
+            WindowManager.shared.openMain = { openWindow(id: "main") }
+        }
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Text("Tandem")
+                .font(.custom("AvenirNext-DemiBold", size: 15))
+                .tracking(0.3)
+                .foregroundStyle(palette.ink)
+            BikeTabControl(tab: $tab, palette: palette)
+            Spacer()
+            if tab == .todos {
+                TextButton(title: "Clear done", palette: palette,
+                           enabled: !model.doneTodos.isEmpty) {
+                    withAnimation(Motion.remove) { model.clearDone() }
+                }
+            }
+        }
+        .padding(.horizontal, Space.gutter)
+        .padding(.top, 18)
+    }
+
+    // MARK: - Todos face (the centered 540 pt column)
+
+    private var todosFace: some View {
+        VStack(spacing: 0) {
             LigneQuickAdd(text: $quickAdd, palette: palette,
                           onCommit: commitAdd,
                           focus: $quickAddFocused)
@@ -43,32 +92,6 @@ struct MainView: View {
                 .padding(.top, Space.section)
             listArea
         }
-        .background(palette.paper)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .frame(minWidth: 360, minHeight: 240)
-        .modifier(TandemShortcuts(filter: $filter, focusQuickAdd: $quickAddFocused))
-        .onAppear {
-            // Let the menu bar item's "Open Tandem" focus (or reopen) this window.
-            WindowManager.shared.openMain = { openWindow(id: "main") }
-        }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack(spacing: 8) {
-            Text("Tandem")
-                .font(.custom("AvenirNext-DemiBold", size: 15))
-                .tracking(0.3)
-                .foregroundStyle(palette.ink)
-            Spacer()
-            TextButton(title: "Clear done", palette: palette,
-                       enabled: !model.doneTodos.isEmpty) {
-                withAnimation(Motion.remove) { model.clearDone() }
-            }
-        }
-        .padding(.horizontal, Space.gutter)
-        .padding(.top, 18)
     }
 
     // MARK: - Quick add

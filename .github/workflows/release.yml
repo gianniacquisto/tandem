@@ -46,6 +46,19 @@ jobs:
       - name: "Gate: run the package test suite"
         run: swift test
 
+      - name: "Gate: editor bundle tests + reproducible build"
+        run: |
+          # The editor bundle is committed prebuilt (spec: Editor — Packaging):
+          # its tests run on the pinned deps, and the committed bytes must be
+          # exactly what the pinned inputs regenerate — a non-empty diff after
+          # the rebuild is a manual edit or a source/lockfile drift.
+          cd Editor
+          npm ci
+          node --test test/
+          npm run build
+          cd ..
+          git diff --exit-code -- Sources/Tandem/Resources/Editor
+
       - name: Build both products (release configuration)
         run: |
           swift build -c release --product Tandem
@@ -61,6 +74,13 @@ jobs:
           test -x "$app/Contents/MacOS/tandem-mcp"
           test -f "$app/Contents/Info.plist"
           test -f "$app/Contents/Resources/AppIcon.icns"
+          editor="$app/Contents/Resources/tandem_Tandem.bundle/Contents/Resources/Editor"
+          test -f "$app/Contents/Resources/NOTICE.txt"
+          test -f "$editor/index.html"
+          test -f "$editor/editor.js"
+          test -f "$editor/style.css"
+          test -d "$editor/fonts"
+          test -f "$editor/LICENSES.md"
 
       - name: "Verify: ad-hoc signature"
         run: codesign --verify --strict dist/Tandem.app

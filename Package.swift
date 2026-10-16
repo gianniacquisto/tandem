@@ -16,18 +16,34 @@ let package = Package(
     platforms: [.macOS(.v27)],
     dependencies: [
         // Official MCP Swift SDK (ticket 01: release 0.12.1; floor Swift 6.0 / macOS 13.0).
-        .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.0")
+        .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.0"),
+        // swift-markdown (Apache-2.0, cmark-gfm-backed, thread-safe persistent AST):
+        // the in-process vault index — wikilink scanning, backlinks, search (spec:
+        // "Package and modules"). Same GFM dialect the CM6 editor highlights.
+        // NOTICE.txt stays in the repo root (spec: "Its NOTICE stays with the app").
+        .package(url: "https://github.com/apple/swift-markdown.git", from: "0.9.0")
     ],
     targets: [
         // The core module: domain model + Store + operations. Concurrency-clean (Swift 6).
         .target(
-            name: "TandemCore"
+            name: "TandemCore",
+            dependencies: [
+                .product(name: "Markdown", package: "swift-markdown")
+            ]
         ),
         // The GUI app. AppKit/SwiftUI interop stays in Swift 5 language mode to avoid
         // strict-concurrency friction; all logic lives in TandemCore.
+        // Resources: the prebuilt editor bundle (ticket 07) — one HTML
+        // page, one JS bundle, one CSS file + KaTeX fonts. .copy keeps the
+        // directory structure intact (spec: Editor — Packaging), so the
+        // Swift host loads it with
+        //   Bundle.module.url(forResource: "Editor", withExtension: nil)
+        // → …/Editor/index.html via WKWebView.loadFileURL, allowing read
+        // access to the Editor directory (style.css, editor.js, fonts/).
         .executableTarget(
             name: "Tandem",
             dependencies: ["TandemCore"],
+            resources: [.copy("Resources/Editor")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         // The MCP stdio server. Thin adapter over the official Swift SDK + TandemCore.
