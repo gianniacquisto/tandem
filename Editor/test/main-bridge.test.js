@@ -7,9 +7,15 @@ import {
   setDocumentAnnotation,
   setDocumentSpec,
   linkOpenTargetFrom,
+  checkboxToggleFrom,
 } from "../src/main.js";
 import { postLoaded, postDirty, postLinkOpened, postCheckboxToggled } from "../src/bridge.js";
-import { toggleTask } from "../src/widgets.js";
+import {
+  toggleTask,
+  WikilinkWidget,
+  CheckboxWidget,
+  BulletWidget,
+} from "../src/widgets.js";
 
 // Bridge contract (notes/bridge-contract.md), headless: `send` reads
 // window.webkit.messageHandlers.tandem at call time, so a global stub
@@ -142,17 +148,41 @@ test("a click that is not a task marker flips nothing and posts nothing", () => 
 
 // -- Link click decision (the webview never navigates) --------------------------------
 
-const markEl = (href) => ({
-  getAttribute: (name) => (name === "data-href" ? href : null),
+// The DOM shapes the decision walks: closest(sel) finds the marked
+// element (if any) and the mark carries its payload attribute — exactly
+// what the widgets' toDOM (data-target / data-marker-from) and the
+// plan's spans (data-href) produce.
+const markEl = (attr, value) => ({
+  getAttribute: (name) => (name === attr ? value : null),
 });
-const targetEl = (mark) => ({
-  closest: (sel) => (sel === ".tandem-link" ? mark : null),
+const targetEl = (marks) => ({
+  closest: (sel) => (marks && sel in marks ? marks[sel] : null),
 });
 
 test("a click inside a .tandem-link mark returns its data-href", () => {
   assert.equal(
-    linkOpenTargetFrom(targetEl(markEl("Notes/Other.md"))),
+    linkOpenTargetFrom(
+      targetEl({ ".tandem-link": markEl("data-href", "Notes/Other.md") })
+    ),
     "Notes/Other.md"
+  );
+});
+
+test("a click inside a wikilink widget returns its raw data-target", () => {
+  assert.equal(
+    linkOpenTargetFrom(
+      targetEl({ ".tandem-wikilink": markEl("data-target", "Ideas") })
+    ),
+    "Ideas"
+  );
+});
+
+test("a wikilink target with an alias is posted as written (Swift strips it)", () => {
+  assert.equal(
+    linkOpenTargetFrom(
+      targetEl({ ".tandem-wikilink": markEl("data-target", "Ideas|the ideas note") })
+    ),
+    "Ideas|the ideas note"
   );
 });
 
@@ -160,12 +190,77 @@ test("a click that is not on a link returns null", () => {
   assert.equal(linkOpenTargetFrom(targetEl(null)), null);
 });
 
-test("a mark without a usable href returns null", () => {
-  assert.equal(linkOpenTargetFrom(targetEl(markEl(""))), null);
-  assert.equal(linkOpenTargetFrom(targetEl(markEl(null))), null);
+test("a mark without a usable target returns null", () => {
+  assert.equal(
+    linkOpenTargetFrom(targetEl({ ".tandem-wikilink": markEl("data-target", "") })),
+    null
+  );
+  assert.equal(
+    linkOpenTargetFrom(targetEl({ ".tandem-link": markEl("data-href", "") })),
+    null
+  );
+  assert.equal(
+    linkOpenTargetFrom(targetEl({ ".tandem-link": markEl("data-href", null) })),
+    null
+  );
 });
 
 test("a non-element target returns null", () => {
   assert.equal(linkOpenTargetFrom(null), null);
   assert.equal(linkOpenTargetFrom({}), null);
+});
+
+// -- Interactive widgets must not ignore editor events -----------------------------------
+
+// The default WidgetType.ignoreEvent() === true makes the view drop every
+// bubbling event from the widget (eventBelongsToEditor) before any
+// domEventHandlers runs — the second GUI-pass symptom (dead wikilink and
+// checkbox clicks). The interactive widgets override it to false; the
+// inert ones keep the default (all events ignored by the editor).
+test("wikilink and checkbox widgets pass events through to the editor", () => {
+  assert.equal(new WikilinkWidget("Ideas", "Ideas", false).ignoreEvent(), false);
+  assert.equal(new CheckboxWidget(false, 2).ignoreEvent(), false);
+  assert.equal(new BulletWidget(undefined).ignoreEvent(), true);
+});
+
+// -- Checkbox click decision ------------------------------------------------------------
+
+test("a click on a checkbox widget returns its data-marker-from", () => {
+  assert.equal(
+    checkboxToggleFrom(
+      targetEl({ ".tandem-checkbox": markEl("data-marker-from", "13") })
+    ),
+    13
+  );
+});
+
+test("a checkbox at buffer position 0 is valid (falsy-zero trap)", () => {
+  assert.equal(
+    checkboxToggleFrom(
+      targetEl({ ".tandem-checkbox": markEl("data-marker-from", "0") })
+    ),
+    0
+  );
+});
+
+test("a click off a checkbox returns null", () => {
+  assert.equal(checkboxToggleFrom(targetEl(null)), null);
+  assert.equal(
+    checkboxToggleFrom(targetEl({ ".tandem-link": markEl("data-href", "x") })),
+    null
+  );
+  assert.equal(checkboxToggleFrom(null), null);
+  assert.equal(checkboxToggleFrom({}), null);
+});
+
+test("a checkbox without a usable marker position returns null", () => {
+  for (const bad of [null, "", " 2", "1.5", "-1", "abc", "0x2"]) {
+    assert.equal(
+      checkboxToggleFrom(
+        targetEl({ ".tandem-checkbox": markEl("data-marker-from", bad) })
+      ),
+      null,
+      JSON.stringify(bad)
+    );
+  }
 });

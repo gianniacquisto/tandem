@@ -50,27 +50,75 @@ test("the state carries the update listener (the view reads it from this.state)"
 
 // -- The click handler (the extension the view installs as a plugin) -------------------
 
-// A .tandem-link mark, and a click target that walks up to it (the
-// same shapes the bridge's linkOpenTargetFrom tests use).
-const markEl = (href) => ({
-  getAttribute: (name) => (name === "data-href" ? href : null),
+// Click targets (the same shapes the bridge's linkOpenTargetFrom tests
+// use): closest(sel) finds the marked element, and the mark carries its
+// payload attribute — what the widgets' toDOM (data-target /
+// data-marker-from) and the plan's spans (data-href) produce.
+const markEl = (attr, value) => ({
+  getAttribute: (name) => (name === attr ? value : null),
 });
-const targetEl = (mark) => ({
-  closest: (sel) => (sel === ".tandem-link" ? mark : null),
+const targetEl = (marks) => ({
+  closest: (sel) => (marks && sel in marks ? marks[sel] : null),
 });
 const clickHandler = () => editorViewExtensions()[0].domEventHandlers.click;
+const mousedownHandler = () => editorViewExtensions()[0].domEventHandlers.mousedown;
 
 test("a click on a .tandem-link mark posts link-opened and is handled", () => {
   stubBridge();
-  const handled = clickHandler()({ target: targetEl(markEl("Notes/Other.md")) });
+  const handled = clickHandler()(
+    { target: targetEl({ ".tandem-link": markEl("data-href", "Notes/Other.md") }) }
+  );
   assert.equal(handled, true);
   assert.deepEqual(posted, [{ type: "link-opened", target: "Notes/Other.md" }]);
 });
 
-test("a click off any link is passed through and posts nothing", () => {
+test("a click on a wikilink widget posts its raw data-target", () => {
+  stubBridge();
+  const handled = clickHandler()(
+    { target: targetEl({ ".tandem-wikilink": markEl("data-target", "Ideas") }) }
+  );
+  assert.equal(handled, true);
+  assert.deepEqual(posted, [{ type: "link-opened", target: "Ideas" }]);
+});
+
+test("a click on a checkbox widget dispatches the toggle transaction", () => {
+  stubBridge();
+  const st = viewState({ doc: "- [ ] task" });
+  let spec;
+  const view = { state: st, dispatch: (s) => (spec = s) };
+  const handled = clickHandler()(
+    { target: targetEl({ ".tandem-checkbox": markEl("data-marker-from", "2") }) },
+    view
+  );
+  assert.equal(handled, true);
+  assert.equal(spec.changes.from, 3);
+  assert.equal(spec.changes.insert, "x");
+  assert.deepEqual(posted, [{ type: "checkbox-toggled", line: 1, checked: true }]);
+});
+
+test("a click off any link or checkbox is passed through and posts nothing", () => {
   stubBridge();
   assert.equal(clickHandler()({ target: targetEl(null) }), false);
   assert.deepEqual(posted, []);
+});
+
+test("a mousedown on a checkbox widget is handled (focus is kept)", () => {
+  assert.equal(
+    mousedownHandler()(
+      { target: targetEl({ ".tandem-checkbox": markEl("data-marker-from", "2") }) }
+    ),
+    true
+  );
+});
+
+test("a mousedown off a checkbox is passed through", () => {
+  assert.equal(mousedownHandler()({ target: targetEl(null) }), false);
+  assert.equal(
+    mousedownHandler()(
+      { target: targetEl({ ".tandem-link": markEl("data-href", "x") }) }
+    ),
+    false
+  );
 });
 
 // -- The listener, driven with real transactions --------------------------------------

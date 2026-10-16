@@ -4,10 +4,26 @@
 // the buffer is the source of truth (spec invariant 1); the single exception
 // is the task checkbox, whose click dispatches a deliberate one-character
 // transaction (spec: interactive task checkboxes).
+//
+// TRAP — widgets cannot carry their own event handlers, and the editor
+// ignores them by default. (1) The pinned @codemirror/view (6.43.14)
+// WidgetType has NO eventHandlers() method — verified in the published
+// dist, the d.ts, and the CHANGELOG (the view only binds ViewPlugin-level
+// eventHandlers); a widget method by that name is silently never called.
+// (2) WidgetType.ignoreEvent() defaults to true, and the view's
+// eventBelongsToEditor drops every bubbling event whose target is inside
+// such a widget BEFORE any domEventHandlers runs — so even the view-level
+// handlers never see the click. Interactive widgets therefore: carry
+// their payload as a data attribute on their DOM (WikilinkWidget:
+// data-target, CheckboxWidget: data-marker-from), override ignoreEvent()
+// to false, and rely on the view-level EditorView.domEventHandlers in
+// main.js — the same pattern the .tandem-link marks use for data-href.
+// Found in the second human GUI pass: wikilink and checkbox clicks did
+// nothing (only the SwiftUI-side backlinks dock could open notes).
 
 import { WidgetType } from "@codemirror/view";
 import katex from "katex";
-import { postCheckboxToggled, postLinkOpened } from "./bridge.js";
+import { postCheckboxToggled } from "./bridge.js";
 import { resolveImageTarget } from "./pure/image.js";
 
 function el(tag, className, text) {
@@ -37,22 +53,23 @@ export class WikilinkWidget extends WidgetType {
       other.broken === this.broken
     );
   }
+  // The editor must see mousedown/click inside the widget: the default
+  // ignoreEvent() === true makes the view drop every bubbling event from
+  // the widget before any domEventHandlers runs (TRAP note above).
+  ignoreEvent() {
+    return false;
+  }
   toDOM() {
-    return el(
+    const node = el(
       "span",
       this.broken ? "tandem-wikilink tandem-wikilink-broken" : "tandem-wikilink",
       this.display
     );
-  }
-  eventHandlers() {
-    return {
-      click(event) {
-        event.preventDefault();
-        event.stopPropagation();
-        postLinkOpened(this.target);
-        return true;
-      },
-    };
+    // The raw target as written (the display may be an alias); the
+    // view-level click handler in main.js reads it — see the TRAP note
+    // above.
+    node.setAttribute("data-target", this.target);
+    return node;
   }
 }
 
@@ -60,12 +77,13 @@ export class WikilinkWidget extends WidgetType {
 
 // Replaces the TaskMarker ([ ] / [x]) with a 14 pt checkbox (prototype:
 // LigneCheckbox at size 14). Click = a one-character transaction flipping
-// the char at markerFrom + 2; the doc change emits dirty, and the
-// informational checkbox-toggled message goes out with the 1-based line.
+// the char at markerFrom + 1 (the view-level handler in main.js dispatches
+// toggleTask); the doc change emits dirty, and the informational
+// checkbox-toggled message goes out with the 1-based line.
 //
 // markerFrom is captured at decoration time (decorations recompute on every
 // update, so it is always fresh) and is part of eq(): a reused DOM node must
-// not keep a stale position in its click handler.
+// not keep a stale position in its data-marker-from attribute.
 export class CheckboxWidget extends WidgetType {
   constructor(checked, markerFrom) {
     super();
@@ -79,11 +97,21 @@ export class CheckboxWidget extends WidgetType {
       other.markerFrom === this.markerFrom
     );
   }
+  // The editor must see mousedown/click inside the widget: the default
+  // ignoreEvent() === true makes the view drop every bubbling event from
+  // the widget before any domEventHandlers runs (TRAP note above).
+  ignoreEvent() {
+    return false;
+  }
   toDOM() {
     const box = el(
       "span",
       "tandem-checkbox" + (this.checked ? " tandem-checkbox-on" : "")
     );
+    // The marker's opening "[", fresh at (re)draw (eq() includes it); the
+    // view-level click handler in main.js reads it — see the TRAP note
+    // above.
+    box.setAttribute("data-marker-from", String(this.markerFrom));
     if (this.checked) {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.setAttribute("viewBox", "0 0 14 14");
@@ -101,29 +129,13 @@ export class CheckboxWidget extends WidgetType {
     }
     return box;
   }
-  eventHandlers() {
-    return {
-      mousedown(event) {
-        // Keep the editor's focus (no blur/re-focus dance).
-        event.preventDefault();
-        return true;
-      },
-      click(event, view) {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleTask(view, this.markerFrom);
-        return true;
-      },
-    };
-  }
 }
 
 // Flips the state char inside the TaskMarker ("[ ]" <-> "[x]").
 // markerFrom is the marker's opening "[", so the char is markerFrom + 1.
 // The current state is read from the buffer (source of truth), not from
-// the widget. Exported so the toggle transaction + payload are testable
-// headlessly (the click handler itself is DOM-only, verified in the GUI
-// smoke test).
+// the widget. Called by the view-level click handler (main.js); exported
+// so the toggle transaction + payload are testable headlessly.
 export function toggleTask(view, markerFrom) {
   const state = view.state;
   const line = state.doc.lineAt(markerFrom);

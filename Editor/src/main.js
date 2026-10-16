@@ -62,6 +62,7 @@ import {
   CodeTagWidget,
   HrWidget,
   CeilingWarningWidget,
+  toggleTask,
 } from "./widgets.js";
 import { ligneTheme } from "./theme.js";
 import { postDirty, postLinkOpened, postLoaded } from "./bridge.js";
@@ -316,21 +317,56 @@ export function dirtyTextForUpdate(transactions, state) {
   return changed ? state.doc.toString() : null;
 }
 
-// The webview never navigates: every link in the preview is a span
-// (WikilinkWidget handles its own click; .tandem-link marks for markdown
-// links, autolinks, and bare URLs), never an <a>. This is the pure
-// decision the DOM glue applies to a click's target: the href to post as
-// link-opened, or null when the click is not on a link.
+// The webview never navigates: every link in the preview is a span or a
+// widget (WikilinkWidget spans carry the raw target as data-target — the
+// display text may be an alias; the .tandem-link marks for markdown links,
+// autolinks, and bare URLs carry data-href), never an <a>. The clicks are
+// intercepted at the view level (editorViewExtensions) because the pinned
+// @codemirror/view's WidgetType has no eventHandlers() — see the TRAP note
+// in widgets.js. This is the pure decision the DOM glue applies to a
+// click's target: the target to post as link-opened, or null when the click
+// is not on a link.
 export function linkOpenTargetFrom(target) {
-  const mark =
+  const closest = (sel) =>
     target && typeof target.closest === "function"
-      ? target.closest(".tandem-link")
+      ? target.closest(sel)
       : null;
+  // Wikilink widget first: its data-target is the raw target as written
+  // (the Swift host strips fragment/alias per the wikilink grammar).
+  const wikilink = closest(".tandem-wikilink");
+  if (wikilink) {
+    const t =
+      typeof wikilink.getAttribute === "function"
+        ? wikilink.getAttribute("data-target")
+        : null;
+    if (typeof t === "string" && t !== "") return t;
+  }
+  const mark = closest(".tandem-link");
   const href =
     mark && typeof mark.getAttribute === "function"
       ? mark.getAttribute("data-href")
       : null;
   return typeof href === "string" && href !== "" ? href : null;
+}
+
+// The checkbox decision, same shape: the TaskMarker's buffer position for a
+// click on a .tandem-checkbox widget (carried as data-marker-from, fresh at
+// (re)draw — eq() includes it), or null when the click is not on a task
+// checkbox.
+export function checkboxToggleFrom(target) {
+  const box =
+    target && typeof target.closest === "function"
+      ? target.closest(".tandem-checkbox")
+      : null;
+  const marker =
+    box && typeof box.getAttribute === "function"
+      ? box.getAttribute("data-marker-from")
+      : null;
+  // A buffer position is a non-negative integer; the attribute is only ever
+  // written by toDOM as String(markerFrom). A strict digits-only match also
+  // rejects the coercions Number("") === 0 and Number(" 2") === 2.
+  if (typeof marker !== "string" || !/^\d+$/.test(marker)) return null;
+  return Number(marker);
 }
 
 // -- Bridge: Swift → JS page globals (transaction specs, headless) -------------------
@@ -383,8 +419,10 @@ export function setVaultIndexSpec(notes) {
 
 /**
  * The view-level extensions, as one array the state carries:
- *  - the link-click handler (Navigation interception): link clicks arrive
- *    as link-opened; the webview never leaves the bundled page;
+ *  - the click handlers (Navigation interception + interactive widgets):
+ *    link clicks (wikilink widgets, .tandem-link marks) arrive as
+ *    link-opened and checkbox clicks dispatch the toggle transaction;
+ *    the webview never leaves the bundled page;
  *  - the update listener (dirty): the full raw text on every document
  *    change (incl. checkbox toggles); setDocument is excluded by its
  *    annotation.
@@ -394,11 +432,28 @@ export function setVaultIndexSpec(notes) {
  * reads the `updateListener` facet and the plugin facet from
  * `this.state` (a config-only listener silently never fires; found in
  * the first human GUI pass: nothing ever autosaved).
+ *
+ * Widget clicks are decided here (not on the widgets) for the same
+ * "real API" reason: the pinned @codemirror/view's WidgetType has no
+ * eventHandlers() — the widgets carry their payload as data attributes
+ * (widgets.js' TRAP note) and these handlers act on them. Returning true
+ * makes the view call preventDefault and skip its own handlers (caret
+ * placement and co.); no manual preventDefault needed. The checkbox
+ * mousedown keeps the editor's focus (no blur/re-focus dance) — the
+ * view's own mousedown usually already does; this covers the rest.
  */
 export function editorViewExtensions() {
   return [
     EditorView.domEventHandlers({
-      click(event) {
+      mousedown(event) {
+        return checkboxToggleFrom(event.target) !== null;
+      },
+      click(event, view) {
+        const markerFrom = checkboxToggleFrom(event.target);
+        if (markerFrom !== null) {
+          toggleTask(view, markerFrom);
+          return true; // handled
+        }
         const href = linkOpenTargetFrom(event.target);
         if (href !== null) {
           postLinkOpened(href);
