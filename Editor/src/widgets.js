@@ -120,7 +120,9 @@ export class CheckboxWidget extends WidgetType {
 
 // Flips the marker char at markerFrom + 2 ("[ ]" <-> "[x]"). The current
 // state is read from the buffer (source of truth), not from the widget.
-function toggleTask(view, markerFrom) {
+// Exported so the toggle transaction + payload are testable headlessly
+// (the click handler itself is DOM-only, verified in the GUI smoke test).
+export function toggleTask(view, markerFrom) {
   const state = view.state;
   const line = state.doc.lineAt(markerFrom);
   const pos = markerFrom + 2;
@@ -213,6 +215,12 @@ export class ImageWidget extends WidgetType {
     this.src = src;
     this.alt = alt;
     this.notePath = notePath;
+    // Resolved once at decoration time (pure, no DOM): remote http(s)
+    // targets are rewritten to the broken-image placeholder before render —
+    // never fetched (no-network invariant); vault targets become
+    // `tandem:<path>` (the Swift scheme handler serves the file; a missing
+    // file 404s and the error handler swaps in the placeholder with alt).
+    this.target = resolveImageTarget(src, notePath);
     this.block = true;
   }
   eq(other) {
@@ -224,14 +232,13 @@ export class ImageWidget extends WidgetType {
     );
   }
   toDOM() {
-    const target = resolveImageTarget(this.src, this.notePath);
-    if (target.kind !== "vault" || target.path === "") {
-      return brokenImage(this.alt, this.src, target.kind === "remote");
+    if (this.target.kind !== "vault" || this.target.path === "") {
+      return brokenImage(this.alt, this.src, this.target.kind === "remote");
     }
     const img = document.createElement("img");
     img.className = "tandem-img";
     img.alt = this.alt;
-    img.src = "tandem:" + target.path;
+    img.src = "tandem:" + this.target.path;
     img.addEventListener("error", () =>
       img.replaceWith(brokenImage(this.alt, this.src, false))
     );
@@ -386,5 +393,43 @@ export class CodeEndWidget extends WidgetType {
   }
   toDOM() {
     return el("div", "tandem-code-end");
+  }
+}
+
+// -- Horizontal rule -----------------------------------------------------------------
+
+// Block widget replacing the hr line: a 1 pt sand hairline (Ligne). The
+// `---` source stays in the buffer; the widget is view-only.
+export class HrWidget extends WidgetType {
+  constructor() {
+    super();
+    this.block = true;
+  }
+  eq() {
+    return true;
+  }
+  toDOM() {
+    return el("div", "tandem-hr");
+  }
+}
+
+// -- Soft per-note ceiling -----------------------------------------------------------------
+
+// Block widget pinned above the first line when the document passes the
+// soft ceiling (~1 MB, spec: Scale): a quiet ember warning row. View-only —
+// the document is never touched by the warning.
+export class CeilingWarningWidget extends WidgetType {
+  constructor(message) {
+    super();
+    this.message = message;
+    this.block = true;
+  }
+  eq(other) {
+    return (
+      other instanceof CeilingWarningWidget && other.message === this.message
+    );
+  }
+  toDOM() {
+    return el("div", "tandem-ceiling-warning", this.message);
   }
 }

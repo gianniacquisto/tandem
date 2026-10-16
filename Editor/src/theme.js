@@ -11,11 +11,11 @@ import { tags as t } from "@lezer/highlight";
 // ink for the rest. Unknown languages get no highlighting (plain monospace).
 const syntax = HighlightStyle.define([
   { tag: [t.comment, t.quote], color: "var(--ink-dim)", fontStyle: "italic" },
-  { tag: [t.keyword, t.operatorKeyword, t.control], color: "var(--dusty-blue-deep)" },
+  { tag: [t.keyword, t.operatorKeyword, t.controlKeyword, t.controlOperator], color: "var(--dusty-blue-deep)" },
   { tag: [t.string, t.character, t.special(t.string)], color: "var(--moss-deep)" },
   { tag: [t.number, t.bool, t.null], color: "var(--ember-deep)" },
   { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--ink)" },
-  { tag: [t.definition(t.variableName), t.definition(t.functionName)], color: "var(--ink)" },
+  { tag: [t.definition(t.variableName)], color: "var(--ink)" },
   { tag: [t.typeName, t.className], color: "var(--dusty-blue-deep)" },
   { tag: [t.propertyName], color: "var(--ink)" },
   { tag: [t.tagName], color: "var(--dusty-blue-deep)" },
@@ -161,6 +161,22 @@ export const ligneTheme = [
         fontSize: "10.5px",
         color: "var(--ink-dim)",
         fontWeight: "400",
+      },
+      // Horizontal rule (1 pt sand hairline, Ligne restraint).
+      ".tandem-hr": {
+        border: "none",
+        borderTop: "1px solid var(--sand)",
+        margin: "10px 0",
+        height: "0",
+      },
+      // Soft per-note ceiling warning (~1 MB): a quiet ember row at the top.
+      ".tandem-ceiling-warning": {
+        color: "var(--ember-deep)",
+        fontSize: "11px",
+        fontWeight: "500",
+        borderBottom: "1px solid var(--ember)",
+        padding: "2px 0 6px",
+        margin: "0 0 8px",
       },
       // Table widget (prototype: cells 12.5, header semibold, 1pt ink under
       // header, 1pt sand between rows).
