@@ -329,7 +329,13 @@ struct LigneBanner: View {
     /// the backup was corrupt — the human inspects/repairs it and restores it
     /// by hand.
     var restorePath: String? = nil
-    var onDismiss: () -> Void
+    /// Optional action buttons (the conflict banner's
+    /// [Overwrite with mine] / [Take theirs] choice).
+    var actions: [(title: String, action: () -> Void)] = []
+    /// When false, no dismiss xmark (the conflict banner: the choice is the
+    /// only way out — dismissing would silently discard it).
+    var showDismiss: Bool = true
+    var onDismiss: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -361,12 +367,18 @@ struct LigneBanner: View {
                 }
                 .controlSize(.small)
             }
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(palette.inkDim)
+            ForEach(actions.indices, id: \.self) { i in
+                Button(actions[i].title, action: actions[i].action)
+                    .controlSize(.small)
             }
-            .buttonStyle(.plain)
+            if showDismiss, let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(palette.inkDim)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

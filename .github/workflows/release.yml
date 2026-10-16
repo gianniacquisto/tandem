@@ -61,6 +61,13 @@ jobs:
           test -x "$app/Contents/MacOS/tandem-mcp"
           test -f "$app/Contents/Info.plist"
           test -f "$app/Contents/Resources/AppIcon.icns"
+          editor="$app/Contents/Resources/tandem_Tandem.bundle/Contents/Resources/Editor"
+          test -f "$app/Contents/Resources/NOTICE.txt"
+          test -f "$editor/index.html"
+          test -f "$editor/editor.js"
+          test -f "$editor/style.css"
+          test -d "$editor/fonts"
+          test -f "$editor/LICENSES.md"
 
       - name: "Verify: ad-hoc signature"
         run: codesign --verify --strict dist/Tandem.app

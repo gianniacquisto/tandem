@@ -10,9 +10,10 @@ struct TandemApp: App {
         Window("Tandem", id: "main") {
             MainView()
                 .environment(TandemModel.shared)
+                .environment(BikeshedModel.shared)
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 470, height: 600)
+        .defaultSize(width: 1060, height: 680)
     }
 }
 
