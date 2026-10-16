@@ -43,8 +43,8 @@ _Avoid_: database, backend, sync, cache
 ### The bikeshed
 
 **Bikeshed**:
-Tandem's notes surface: a plain folder of notes and attachments, shared by the app and agents on the same machine and watched live by the app.
-_Avoid_: vault, notebook, notes folder
+Tandem's notes surface: a plain folder of notes and attachments, shared by the app and agents on the same machine and watched live by the app. "Vault" (ADR 0004, "Vault protocol") is the accepted alternate name for the same folder — used throughout the ADRs, the spec, and the code (the Wikilink entry below says so too).
+_Avoid_: notebook, notes folder
 
 **Note**:
 A single markdown file in the bikeshed. The filename is the note's identity; renaming a note is renaming the file.
