@@ -94,18 +94,18 @@ Seeded a realistic vault at `~/.tandem/bikeshed` (did not exist before this tick
 - **Post-fix (`a7cc82f`)**: relaunched from the reassembled .app — launched, stayed alive **~2.5 min**, survived repeated real FSEvent batches from the terminal (create, append, delete, recreate — the agent-write path, coalesced main-queue passes, no crash, no runaway), no new crash reports, clean SIGTERM exit with the single-instance pidfile released. Stale-claim reclamation also exercised (the crashed run left a pidfile; the next launch took it over).
 - Headlessly verified: process liveness, watcher-batch survival, single-instance claim/release, .app structure/signature, bundle resolution path. What the shell cannot verify (no GUI input, and this shell has no assistive-access permission for System Events window queries) is recorded below.
 
-**Manual GUI checklist (the human's pass per the spec)** — re-seed the vault first (it was cleaned after the smoke; see "what remains" below).
+**Manual GUI checklist (the human's pass per the spec)** — re-seed the vault first (it was cleaned after the smoke; see "what remains" below). **All 10 items PASSED on the reassembled release .app, 2026-10-17** — four bugs were found during the pass (see below); items 1, 2, 6 passed on the first pass, the rest after the four fixes, final confirmation from the user 2026-10-17.
 
-1. Editor loads the bundled page — **needs-human-pass**: open the Bikeshed tab, the CM6 live-preview page renders (headless: the bundle resolves where `EditorHost` expects it; the JS glue is 136/136-tested).
-2. Typing → autosave ~1 s → file on disk — **needs-human-pass**: type in a note, wait ~1.5 s, `cat` the file; also on note switch, window blur, ⌘S.
-3. Agent-written file → tree + open note update within ~0.5 s, no self-write loop — **watcher half headlessly verified** (real batches processed without crash); **needs-human-pass**: open a note, write/modify a file from the terminal, watch the tree (and the open note adopt) update promptly, and confirm no dirty re-fire loop after the app's own autosave.
-4. Broken-link click creates the note — **needs-human-pass**: click the ember `[[broken-link]]` → an empty `broken-link.md` appears at the root and opens; qualified → the folder is created.
-5. Checkbox toggle persists — **needs-human-pass**: click a task checkbox, wait for autosave, verify `- [x]` on disk.
-6. Math/images/code highlighting render — **needs-human-pass**: open the seeded Welcome — KaTeX inline + display, local image, broken-image placeholder (missing + remote), `js` highlighted, unknown language plain monospace.
-7. Conflict banner (mine/theirs) — **needs-human-pass**: type in a note, edit the file on disk while the buffer is dirty, pick [Overwrite with mine] / [Take theirs]; verify the pending autosave is withheld until the choice.
-8. Trash deletion recoverable — **needs-human-pass**: right-click → Delete → the note is in the macOS Trash.
-9. Day/night matches the window — **needs-human-pass**: toggle the system appearance; the webview pane follows.
-10. Tab switches without resizing — **needs-human-pass**: Todos ↔ Bikeshed; the window frame stays put; the Todos face keeps its 540 pt centred column.
+1. Editor loads the bundled page — **passed**: open the Bikeshed tab, the CM6 live-preview page renders (headless: the bundle resolves where `EditorHost` expects it; the JS glue is 136/136-tested).
+2. Typing → autosave ~1 s → file on disk — **passed**: type in a note, wait ~1.5 s, `cat` the file; also on note switch, window blur, ⌘S.
+3. Agent-written file → tree + open note update within ~0.5 s, no self-write loop — **watcher half headlessly verified** (real batches processed without crash); **passed**: open a note, write/modify a file from the terminal, watch the tree (and the open note adopt) update promptly, and confirm no dirty re-fire loop after the app's own autosave.
+4. Broken-link click creates the note — **passed**: click the ember `[[broken-link]]` → an empty `broken-link.md` appears at the root and opens; qualified → the folder is created.
+5. Checkbox toggle persists — **passed**: click a task checkbox, wait for autosave, verify `- [x]` on disk.
+6. Math/images/code highlighting render — **passed**: open the seeded Welcome — KaTeX inline + display, local image, broken-image placeholder (missing + remote), `js` highlighted, unknown language plain monospace.
+7. Conflict banner (mine/theirs) — **passed**: type in a note, edit the file on disk while the buffer is dirty, pick [Overwrite with mine] / [Take theirs]; verify the pending autosave is withheld until the choice.
+8. Trash deletion recoverable — **passed**: right-click → Delete → the note is in the macOS Trash.
+9. Day/night matches the window — **passed**: toggle the system appearance; the webview pane follows.
+10. Tab switches without resizing — **passed**: Todos ↔ Bikeshed; the window frame stays put; the Todos face keeps its 540 pt centred column.
 
 **What remains in `~/.tandem/bikeshed/` after cleanup** — nothing (the empty vault directory itself remains; it is the app's default location and is created lazily anyway). The todos store (`todos.json`, `tandem.lock`) was never touched; `~/.tandem/app.pid` released on clean exit.
 
@@ -122,3 +122,14 @@ Fixed:
 Deliberately kept (judgement calls, documented): trash-fallback to permanent `delete` when `FileManager.trashItem` fails; flat `setVaultIndex` payload (contract note reconciled, not code); Esc clears the search query; the window-resign observer is never removed (one per app lifetime, no leak); code highlighting for swift/shell/yaml/toml left as plain monospace (no pinned packages to justify adding them).
 
 **Commits** — `7718dbf`, `7f6bc4d` (the prior session's work), `4a36ad0`, `a7cc82f` (verify-and-finish). Branch tip `a7cc82f`, pushed. PR link: left for the orchestrator.
+
+**GUI-pass bugs (found by the human pass, fixed on `bikeshed/implementation`)** — all four were editor-bundle bugs, verified against the reassembled release .app before re-test; traps documented at each seam so none can silently regress:
+
+1. **Autosave never fired** — the view-level extensions (`updateListener`, `domEventHandlers`) must live in the **state**, not the `EditorView` config's `extensions`: the pinned @codemirror/view only merges `config.extensions` when it creates the state itself, and `EditorHost` builds the state via `createEditorState` and passes it in. `edc0e41`.
+2. **Editor blank after load** — WebKit's `callAsyncJavaScript` exposes the `arguments:` dictionary's keys as **bare identifiers**, not `arguments.*` properties; the `send` bodies were written in the `arguments.*` form, so every Swift→JS call threw. `8d65bd4`.
+3. **Frontmatter notes rendered raw** — the `visit()` skip guard in `blocks.js` was `node.from < ctx.fmRange[1]`; the walk starts at the Document root (`from` 0), so the root itself was skipped → zero structural decorations for any note with frontmatter. Guard is now `node.to <= ctx.fmRange[1]`. `52a5610`.
+4. **Wikilink / checkbox clicks dead** — two stacked root causes, both at the bundle level: (a) `WidgetType.eventHandlers()` is a **phantom API** — the pinned @codemirror/view 6.43.14 has no such method (verified in the published dist, the d.ts, and the CHANGELOG), so the widgets' overrides were never called; (b) `WidgetType.ignoreEvent()` defaults to `true` and the view's `eventBelongsToEditor` drops every bubbling event from a widget **before** any `domEventHandlers` runs. Fix: interactive widgets carry their payload as DOM data attributes (`data-target` on `WikilinkWidget`, `data-marker-from` on `CheckboxWidget` — fresh at (re)draw, included in `eq()`), override `ignoreEvent() { return false; }`, and the state-carried view-level `domEventHandlers` decides the click. `2bdaf2f`.
+
+**Final gates at tip `2bdaf2f`** — `swift test` 130/130; `cd Editor && node --test test/` 169/169 (up from 136: frontmatter + widget-click coverage, incl. the `Number("")` trap and a falsy-zero marker-position case); bundle byte-reproducible under `npm ci && npm run build` (CI editor gate green); CI run `38969495221` SUCCESS. The `[DEBUG-editor]` instrumentation was fully stripped — no debug code in any commit.
+
+**Merged** — PR #7 (https://github.com/gianniacquisto/tandem/pull/7, head `2bdaf2f`) merged to `main` as `4c18285` on 2026-10-17, after the human pass was green. The bikeshed feature is done.
