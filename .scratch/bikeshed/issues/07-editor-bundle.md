@@ -1,7 +1,7 @@
 # 07 - Editor: CM6 inline live-preview bundle (JS/HTML/CSS) + build setup
 
 Type: implementation
-Status: claimed
+Status: resolved
 Blocked by: none (independent of the core; integrates with the GUI, ticket 08, only through the bridge contract)
 
 ## What to build
@@ -34,4 +34,30 @@ Context (pointers):
 
 ## Resolution
 
-(to be filled at merge)
+Built on `bikeshed/ticket-07-editor-bundle` (merged `bikeshed/implementation` in at the end; merge commit `d7a0a26`). PR link: left for the orchestrator.
+
+**What was built**
+
+- `Editor/index.html` — the one HTML page: `#tandem-editor` container + `style.css` link + `editor.js` script. No network references, no fetch/XHR; the bundle self-mounts and posts `loaded`.
+- `Editor/style.css` — the one CSS source file: the 10 Ligne custom properties (day + night, values from `LigneTheme.swift`, switched via `[data-theme]` — the Swift host sets `data-theme="day"|"night"` on `<html>`; day is the default), page chrome, and styles for every line class / span / widget class the planner (`blocks.js`) and widgets (`widgets.js`) emit — headings, lists (18 px/level indent), tasks, blockquotes, fenced + indented code, emphasis, inline code, links, wikilinks (broken = `--ember-deep` plain text, no underline — the binding), checkboxes, bullets, math, images + broken-image placeholder, frontmatter, tables, code-tag row, hr, the ~1 MB ceiling warning.
+- `Editor/build.mjs` — esbuild build (new; `npm run build` was referenced but missing): `src/main.js` → single minified IIFE `editor.js`; folds KaTeX's CSS into `style.css` with font stacks reduced to woff2; copies the 20 KaTeX woff2 faces into `fonts/` (relative `fonts/…` URLs resolve from the CSS's output location); copies `index.html`; **generates `LICENSES.md` from the esbuild metafile** — exactly the 30 packages whose code lands in the bundle, each with its npm-declared license, the build failing on any non-MIT package (no GPL/AGPL ships).
+- Committed prebuilt bundle under `Sources/Tandem/Resources/Editor/`: `index.html`, `editor.js`, `style.css`, `fonts/` (20 woff2), `LICENSES.md`.
+- `Package.swift`: `resources: [.copy("Resources/Editor")]` on the `Tandem` executable target (directory structure kept intact for `loadFileURL`).
+
+**Bundle size vs the research budget** — 1,276,575 B (≈1.22 MB) raw across 24 files: `editor.js` 979,031 B (≈318 KB gzip), `style.css` 32,655 B (hand-written 9,817 B + KaTeX CSS folded in), `index.html` 1,152 B, `LICENSES.md` 3,945 B, fonts 259,792 B (matches the research note's woff2 figure byte-for-byte). The research note's measured floor (CM6 set 611,701 B + KaTeX 557,453 B ≈ 1.14 MB) is exceeded by ~107 KB: the spec's rendered feature list mandates fenced-code highlighting for a curated set ("exact list nailed at implementation") — here the pinned `@codemirror/lang-*` packages (css, html, javascript/jsx, json, python, sql, plus markdown's own languages); the spec's other candidate names (swift, shell, yaml, toml, typescript) fall through to plain monospace per the spec's unknown-language rule. The research's minimal bundle included none of these, hence the delta. The ~1 MB budget holds in the note's own min+gzip framing (total ≈ 653 KB gzip).
+
+**Gates (all green, re-run post-merge)**
+
+- `npm ci && npm run build` from clean `node_modules` → reproducible: the rebuild left `git diff` clean (verified twice, including once after the merge); esbuild embeds no timestamps; `LICENSES.md` sorts every list.
+- `node --check` on the output `editor.js`: passes; the bundle also executes cleanly at module level under Node (the DOM glue is guarded).
+- `node --test test/`: 136/136 green (unchanged; the bundle build added no source changes).
+- `swift build` clean with the new resource declaration; the built `tandem_Tandem.bundle` carries `Contents/Resources/Editor` with all 24 files and a byte-identical `editor.js`. Post-merge, SPM fetched swift-markdown as expected.
+
+**Commits** — `bec9081` (bundle + build script + committed prebuilt bundle), `851b812` (Package.swift resource), `d7a0a26` (merge of `bikeshed/implementation`; `Package.swift` auto-merged — both sides kept: the swift-markdown package dependency AND `resources: [.copy("Resources/Editor")]`).
+
+**Notes for ticket 08**
+
+- Bundle location in the built product: `Bundle.module.url(forResource: "Editor", withExtension: nil)` → the directory holding `index.html`, `editor.js`, `style.css`, `fonts/`; load `index.html` via `loadFileURL` with read access to the `Editor` directory.
+- The `tandem:` scheme handler must serve vault-relative paths as local files (images/attachments) and 404 missing ones — a 404 swaps in the bundle's broken-image placeholder (alt text); refuse `..` escapes.
+- Set `data-theme="day"|"night"` on the page's `<html>` (system appearance) so the pane matches the window chrome; day is the default if the attribute is absent.
+- GUI smoke test should verify: page loads and posts `loaded`; `setDocument`/`setVaultIndex` render the preview (headings, lists, tasks + click-toggle, quotes, fenced code with the curated highlighting, tables, math via KaTeX fonts over `file://`, broken wikilinks in ember, missing/remote images as placeholders); `dirty` carries the full text on every change incl. checkbox toggles; link clicks arrive as `link-opened` with no navigation; the ~1 MB ceiling warning renders.
