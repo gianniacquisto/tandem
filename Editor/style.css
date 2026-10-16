@@ -1,0 +1,371 @@
+/*
+ * Tandem bikeshed editor stylesheet (ticket 07) — the one CSS file of the
+ * static bundle.
+ *
+ * Layout:
+ *   1. The Ligne palette — 10 CSS custom properties, day + night. Values
+ *      are the ground truth from Sources/Tandem/LigneTheme.swift; the
+ *      Swift host sets data-theme="day" | "night" on <html> (day is the
+ *      default) so the pane matches the window chrome.
+ *   2. Page chrome (html / body / #tandem-editor).
+ *   3. Live-preview line classes (what blocks.js plans) — line height is
+ *      carried by these classes alone, never by token visibility (spec
+ *      invariant 2).
+ *   4. Inline spans (emphasis, code, links).
+ *   5. Widgets (what widgets.js builds into the DOM).
+ *   6. CM6 UI surfaces the Ligne register must win on (the CM6 runtime
+ *      theme is injected after this file, so these carry the
+ *      #tandem-editor specificity prefix).
+ *
+ * KaTeX's own CSS (node_modules/katex/dist/katex.min.css, font stacks
+ * reduced to woff2) is folded in by build.mjs after this file, so the
+ * bundle stays one CSS file; fonts/ holds the 20 KaTeX woff2 faces it
+ * references by relative URL from this file's location.
+ */
+
+/* 1. Ligne palette (LigneTheme.swift — day = "day panel", night =
+   "night panel") ------------------------------------------------------- */
+
+:root,
+[data-theme="day"] {
+  --paper: #f5f0e6;
+  --parchment: #eae2d0;
+  --sand: #d9cdb4;
+  --ink: #2b2723;
+  --ink-dim: #8a8171;
+  --dusty-blue: #7490a6;
+  --dusty-blue-deep: #58738a;
+  --ember: #c47662;
+  --ember-deep: #a85d4b;
+  --moss-deep: #6f7f5d;
+}
+
+[data-theme="night"] {
+  --paper: #23262b;
+  --parchment: #2c3037;
+  --sand: #3a3f47;
+  --ink: #ede5d4;
+  --ink-dim: #9a958a;
+  --dusty-blue: #92aac0;
+  --dusty-blue-deep: #6e8aa3;
+  --ember: #c98d7a;
+  --ember-deep: #a96e5c;
+  --moss-deep: #7a8a68;
+}
+
+/* 2. Page chrome -------------------------------------------------------- */
+
+html,
+body,
+#tandem-editor {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  overflow: hidden; /* CM6's .cm-scroller owns scrolling */
+}
+
+/* 3. Live-preview line classes (blocks.js) -------------------------------- */
+
+/* Headings (H1 20 bold, H2 16 semibold, H3+ 14 semibold). No extra
+   padding: the height change is the class's font size alone, so a marker
+   appearing or disappearing shifts height by the class, never by hidden
+   tokens (spec invariant 2). */
+.tandem-h1 {
+  font-size: 20px;
+  font-weight: 700;
+}
+.tandem-h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.tandem-h3,
+.tandem-h4,
+.tandem-h5,
+.tandem-h6 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* List nesting (prototype: 18 pt leading-padding steps; depth 0 is the
+   unindented base). */
+.tandem-li-d1 { padding-left: 18px; }
+.tandem-li-d2 { padding-left: 36px; }
+.tandem-li-d3 { padding-left: 54px; }
+.tandem-li-d4 { padding-left: 72px; }
+.tandem-li-d5 { padding-left: 90px; }
+.tandem-li-d6 { padding-left: 108px; }
+.tandem-li-d7 { padding-left: 126px; }
+.tandem-li-d8 { padding-left: 144px; }
+
+/* Done task items: the text dims, the checkbox stays. */
+.tandem-task-done {
+  color: var(--ink-dim);
+}
+
+/* Fenced code blocks: parchment panel, sand hairlines, 9 corners, 12 pt
+   monospaced. */
+.tandem-code-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background-color: var(--parchment);
+  border-left: 1px solid var(--sand);
+  border-right: 1px solid var(--sand);
+  padding: 0 10px;
+}
+.tandem-code-end {
+  background-color: var(--parchment);
+  border: 1px solid var(--sand);
+  border-top: none;
+  border-radius: 0 0 9px 9px;
+  padding: 6px 10px 10px;
+}
+
+/* Indented code blocks: same register, no language-tag row. */
+.tandem-codeblock {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background-color: var(--parchment);
+  border: 1px solid var(--sand);
+  padding: 0 10px;
+}
+.tandem-codeblock-first {
+  border-radius: 9px 9px 0 0;
+  padding: 6px 10px 0;
+}
+.tandem-codeblock-last {
+  border-radius: 0 0 9px 9px;
+  padding: 0 10px 10px;
+}
+
+/* Blockquotes: parchment panel, sand hairline, 9 corners. */
+.tandem-quote {
+  background-color: var(--parchment);
+  border: 1px solid var(--sand);
+  padding: 0 14px;
+}
+.tandem-quote-first {
+  border-radius: 9px 9px 0 0;
+  padding: 10px 14px 0;
+}
+.tandem-quote-last {
+  border-radius: 0 0 9px 9px;
+  padding: 0 14px 10px;
+}
+
+/* 4. Inline spans (blocks.js marks) --------------------------------------- */
+
+.tandem-strong {
+  font-weight: 700;
+}
+.tandem-em {
+  font-style: italic;
+}
+.tandem-strike {
+  text-decoration: line-through;
+}
+.tandem-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background-color: color-mix(in srgb, var(--sand) 45%, transparent);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+/* Markdown links, autolinks, bare URLs. Ligne restraint: the colour
+   carries the affordance — no underline. */
+.tandem-link {
+  color: var(--dusty-blue);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* 5. Widgets (widgets.js DOM) ---------------------------------------------- */
+
+/* Wikilinks: resolved dustyBlue; broken emberDeep, plain text, no
+   underline (binding: day #A85D4B / night #A96E5C via --ember-deep). */
+.tandem-wikilink {
+  color: var(--dusty-blue);
+  text-decoration: none;
+  cursor: pointer;
+}
+.tandem-wikilink-broken {
+  color: var(--ember-deep);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* Task checkbox: LigneCheckbox geometry at size 14 — 5 corners, one ink
+   hairline, parchment fill; checked fills dustyBlueDeep with the paper
+   check (the widget's SVG strokes var(--paper)). */
+.tandem-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border: 1px solid var(--ink);
+  border-radius: 5px;
+  background-color: var(--parchment);
+}
+.tandem-checkbox-on {
+  background-color: var(--dusty-blue-deep);
+}
+
+/* List marks: 4 pt dustyBlue dot (prototype bullet); ordered numbers
+   13.5 pt inkDim monospaced. */
+.tandem-bullet {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background-color: var(--dusty-blue);
+  vertical-align: middle;
+}
+.tandem-bullet-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13.5px;
+  color: var(--ink-dim);
+  margin-right: 7px;
+}
+
+/* Math (KaTeX renders into these; the KaTeX CSS is folded in by the
+   build). Parse errors fall back to the raw source as monospace ink. */
+.tandem-math {
+  color: var(--dusty-blue-deep);
+}
+.tandem-math-error {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink);
+}
+.tandem-display-math {
+  padding: 6px 0;
+  overflow-x: auto;
+  color: var(--dusty-blue-deep);
+}
+
+/* Local images: the container-width cap; a missing file (the tandem:
+   scheme 404) or a remote target (rewritten, never fetched) shows the
+   broken-image placeholder. */
+.tandem-img {
+  display: block;
+  max-width: 100%;
+  margin: 6px 0;
+}
+.tandem-img-broken {
+  display: block;
+  width: fit-content;
+  max-width: 300px;
+  margin: 6px 0;
+  padding: 10px;
+  border: 1px dashed var(--ember);
+  border-radius: 9px;
+  color: var(--ember-deep);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.tandem-img-broken-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tandem-img-ref {
+  margin-top: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--ink-dim);
+  word-break: break-all;
+}
+/* Mid-line image: the alt text only, dimmed. */
+.tandem-inline-img {
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+/* Frontmatter placeholder row (stripped from the preview, never parsed). */
+.tandem-frontmatter {
+  padding: 2px 0 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+/* Tables (prototype: cells 12.5, header semibold, 1 pt ink under the
+   header, 1 pt sand between rows). */
+.tandem-table {
+  border-collapse: collapse;
+  max-width: 100%;
+  margin: 6px 0;
+  font-size: 12.5px;
+}
+.tandem-table th {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ink);
+  font-weight: 600;
+  text-align: left;
+}
+.tandem-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--sand);
+  vertical-align: top;
+}
+
+/* Fenced-code language-tag row (right-aligned 10.5 pt monospaced inkDim). */
+.tandem-code-tag {
+  padding: 6px 10px 2px;
+  border: 1px solid var(--sand);
+  border-bottom: none;
+  border-radius: 9px 9px 0 0;
+  background-color: var(--parchment);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--ink-dim);
+  text-align: right;
+}
+
+/* Horizontal rule: one sand hairline. */
+.tandem-hr {
+  height: 0;
+  margin: 10px 0;
+  border: none;
+  border-top: 1px solid var(--sand);
+}
+
+/* Soft per-note ceiling warning (~1 MB): a quiet ember row at the top. */
+.tandem-ceiling-warning {
+  margin: 0 0 8px;
+  padding: 2px 0 6px;
+  border-bottom: 1px solid var(--ember);
+  color: var(--ember-deep);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* 6. CM6 UI surfaces the Ligne register must win on ------------------------- */
+
+/* basicSetup's runtime theme is injected after this <link>; these rules
+   carry the #tandem-editor prefix so the specificity wins regardless of
+   injection order. */
+#tandem-editor .cm-editor .cm-activeLine {
+  background-color: transparent;
+}
+#tandem-editor .cm-panels {
+  border-top: 1px solid var(--sand);
+  background: var(--parchment);
+  color: var(--ink);
+}
+#tandem-editor .cm-panels input,
+#tandem-editor .cm-panels button {
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--sand);
+}
