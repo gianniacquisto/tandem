@@ -96,3 +96,49 @@ test("target is kept as written (spaces preserved, resolution is the resolver's 
   assert.equal(r.target, "my note");
   assert.equal(r.display, "my note");
 });
+
+// Core parity (Wikilink.present): an empty or whitespace-only fragment or
+// alias counts as ABSENT — the display falls back to the next-present part,
+// and `[[a|]]` never renders as an empty link.
+
+test("empty alias is absent: [[a|]] displays the target", () => {
+  const r = parseWikilink("a|");
+  assert.equal(r.kind, "link");
+  assert.equal(r.target, "a");
+  assert.equal(r.alias, undefined);
+  assert.equal(r.display, "a");
+});
+
+test("empty fragment is absent: [[a#]] displays the target", () => {
+  const r = parseWikilink("a#");
+  assert.equal(r.kind, "link");
+  assert.equal(r.target, "a");
+  assert.equal(r.fragment, undefined);
+  assert.equal(r.display, "a");
+});
+
+test("whitespace-only alias is absent: [[a| ]] displays the target", () => {
+  const r = parseWikilink("a| ");
+  assert.equal(r.kind, "link");
+  assert.equal(r.target, "a");
+  assert.equal(r.alias, undefined);
+  assert.equal(r.display, "a");
+});
+
+test("empty fragment with a real alias: [[a#|b]] displays the alias", () => {
+  const r = parseWikilink("a#|b");
+  assert.equal(r.kind, "link");
+  assert.equal(r.target, "a");
+  assert.equal(r.fragment, undefined);
+  assert.equal(r.alias, "b");
+  assert.equal(r.display, "b");
+});
+
+test("empty alias with a real fragment: [[a|#b]] displays the fragment", () => {
+  const r = parseWikilink("a|#b");
+  assert.equal(r.kind, "link");
+  assert.equal(r.target, "a");
+  assert.equal(r.fragment, "b");
+  assert.equal(r.alias, undefined);
+  assert.equal(r.display, "b");
+});

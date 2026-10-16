@@ -32,25 +32,29 @@ export function parseWikilink(content) {
     pipe === -1 ? content.length : pipe
   );
   target = content.slice(0, targetEnd);
+  // Core parity (Wikilink.present): an empty or whitespace-only fragment or
+  // alias counts as ABSENT — the display text falls back to the next-present
+  // part (`[[a|]]` displays `a`, never an empty link).
+  const present = (s) => (s.trim() === "" ? undefined : s);
   if (hash !== -1 && pipe !== -1) {
     if (hash < pipe) {
-      fragment = content.slice(hash + 1, pipe);
-      alias = content.slice(pipe + 1);
+      fragment = present(content.slice(hash + 1, pipe));
+      alias = present(content.slice(pipe + 1));
     } else {
-      alias = content.slice(pipe + 1, hash);
-      fragment = content.slice(hash + 1);
+      alias = present(content.slice(pipe + 1, hash));
+      fragment = present(content.slice(hash + 1));
     }
   } else if (hash !== -1) {
-    fragment = content.slice(hash + 1);
+    fragment = present(content.slice(hash + 1));
   } else if (pipe !== -1) {
-    alias = content.slice(pipe + 1);
+    alias = present(content.slice(pipe + 1));
   }
 
   if (target.trim() === "") {
     // `[[#Heading]]` is the same-note form; `[[#]]`, `[[|x]]`, `[[ ]]` are
     // empty/whitespace-only targets. All are literal text (spec: not links).
     const reason =
-      (fragment || "").trim() !== "" || alias !== undefined
+      fragment !== undefined || alias !== undefined
         ? NOT_LINK.SAME_NOTE
         : NOT_LINK.EMPTY_TARGET;
     return { kind: "not-link", reason, target };
