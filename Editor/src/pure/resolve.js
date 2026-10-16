@@ -14,9 +14,12 @@
 //   bare link a visible broken link, never a silently chosen match; on a
 //   case-sensitive volume, case-variant duplicates make any link to that name
 //   ambiguous (the exactly-one rule counts both).
-// - The target is compared as written (no trimming, no `.md` stripped from
-//   the target): targets name notes by name, and the grammar keeps `#` and
-//   `|` out of names.
+// - The target is otherwise compared as written (no trimming), EXCEPT that a
+//   trailing `.md` on the target is tolerated — stripped before comparison,
+//   exactly as the core `NoteIndex.resolve` does (ticket 06, tested: a bare
+//   or qualified target may carry a trailing `.md`). The spec is silent on
+//   this case; the editor and the core must agree, and the core is the
+//   single resolver (backlinks, rename-rewrite, search).
 //
 // `notes` is the bridge's file set: vault-root-relative paths of every NOTE,
 // case as on disk (attachments are never in it — notes only are linkable).
@@ -42,7 +45,8 @@ function basename(path) {
  */
 export function resolveWikilink(target, notes) {
   const qualified = target.includes("/");
-  const key = target.toLowerCase();
+  let key = target.toLowerCase();
+  if (key.endsWith(".md")) key = key.slice(0, -3); // tolerate a trailing .md
 
   let match = null;
   let count = 0;

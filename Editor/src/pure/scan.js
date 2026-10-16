@@ -12,10 +12,10 @@
 // - candidates whose target parses as a not-link (empty/whitespace, same-note
 //   form) are dropped — the parse lives in grammar.js;
 // - `![[…]]` embeds are literal (the `!` immediately before `[[` disqualifies);
-// - nothing is processed inside fenced code blocks, inline code spans, a
-//   leading frontmatter block, or any caller-supplied mask range (the editor
-//   masks math ranges, which are found after the wikilink pass — a wikilink
-//   target keeps its text as written);
+// - nothing is processed inside (or overlapping) fenced code blocks, inline
+//   code spans, a leading frontmatter block, or any caller-supplied mask
+//   range (the editor masks math ranges, which are found after the wikilink
+//   pass — a wikilink target keeps its text as written);
 //
 // `masks` is an array of [from, to) ranges never scanned.
 // Pure: no DOM.
@@ -49,6 +49,17 @@ export function scanWikilinks(text, masks = []) {
       const closeIdx = line.indexOf("]]", at + 2);
       if (closeIdx === -1) {
         i = at + 2; // unclosed on this line: literal, keep scanning
+        continue;
+      }
+      // A candidate that overlaps a code range is literal (core parity:
+      // the Swift scanner drops any token whose range overlaps a code span,
+      // not only tokens that start inside one).
+      const candTo = closeIdx + 2;
+      if (
+        masks.some(([s, e]) => ls + at < e && ls + candTo > s) ||
+        spans.some(([s, e]) => at < e && candTo > s)
+      ) {
+        i = candTo;
         continue;
       }
       const content = line.slice(at + 2, closeIdx);

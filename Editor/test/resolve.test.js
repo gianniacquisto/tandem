@@ -55,9 +55,16 @@ test("basename is the filename minus its .md extension (case-insensitive extensi
   assert.equal(resolveWikilink("a.md", ["a.md.bak.md"]).status, "broken");
 });
 
-test("a target written with an explicit .md does not match (targets name notes by name, as written)", () => {
-  assert.equal(resolveWikilink("a.md", ["a.md"]).status, "broken");
-  assert.equal(resolveWikilink("folder/note.md", ["folder/note.md"]).status, "broken");
+test("a trailing .md on the target is tolerated (core parity: NoteIndex.resolve strips it)", () => {
+  const bare = resolveWikilink("a.md", ["a.md"]);
+  assert.equal(bare.status, "resolved");
+  assert.equal(bare.path, "a.md");
+  const qual = resolveWikilink("folder/note.md", ["folder/note.md"]);
+  assert.equal(qual.status, "resolved");
+  assert.equal(qual.path, "folder/note.md");
+  // only one trailing .md is stripped; an inner .md is not the extension
+  assert.equal(resolveWikilink("a.md", ["a.md.bak.md"]).status, "broken");
+  assert.equal(resolveWikilink("a.md.md", ["a.md"]).status, "broken");
 });
 
 test("the path is returned exactly as on disk (case preserved)", () => {
