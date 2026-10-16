@@ -229,10 +229,11 @@ function previewDecorations(state) {
     );
   }
 
-  // RangeSet requires (from, to) order; equal (from, to) is fine (blocks
-  // and line decorations may share a position — their `side` orders them).
-  ranges.sort((a, b) => a.from - b.from || a.to - b.to);
-  return Decoration.set(ranges);
+  // The set must be ordered by (from, startSide): at a fenced code
+  // block's start the line class and the block widgets share a
+  // position, and their `side` values order them — pass sort=true so
+  // the library applies that ordering.
+  return Decoration.set(ranges, true);
 }
 
 export const livePreviewState = StateField.define({
