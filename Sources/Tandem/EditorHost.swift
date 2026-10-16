@@ -132,19 +132,19 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
     /// (open a note, adopt an external change, "Take theirs"). Resets the
     /// dirty state; emits nothing.
     func sendDocument(_ markdown: String, notePath: String) {
-        send("setDocument(arguments.markdown, arguments.notePath)",
+        send("setDocument(markdown, notePath)",
              arguments: ["markdown": markdown, "notePath": notePath])
     }
 
     /// `insertText(text)` — insert at the caret.
     func insertText(_ text: String) {
-        send("insertText(arguments.text)", arguments: ["text": text])
+        send("insertText(text)", arguments: ["text": text])
     }
 
     /// `revealLine(line)` — scroll so the 1-based line is visible and place
     /// the caret at its start.
     func revealLine(_ line: Int) {
-        send("revealLine(arguments.line)", arguments: ["line": line])
+        send("revealLine(line)", arguments: ["line": line])
     }
 
     /// `setVaultIndex(notes)` — the current file set: vault-root-relative
@@ -158,7 +158,7 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
     /// side sends what the bundle consumes (the set's meaning is identical);
     /// reported as a deviation, not silent.
     func sendVaultIndex(paths: [String]) {
-        send("setVaultIndex(arguments.notes)", arguments: ["notes": paths])
+        send("setVaultIndex(notes)", arguments: ["notes": paths])
     }
 
     /// The Ligne day/night theme on the page's `<html>` (the bundle switches
@@ -175,8 +175,24 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
             "document.documentElement.setAttribute('data-theme', '\(theme)')")
     }
 
-    /// All `set*` calls land here: the page is only ready after `loaded`,
-    /// and the contract's loading rule re-sends the state at that point.
+    /// All `set*` call bodies land here: the page is only ready after
+    /// `loaded`, and the contract's loading rule re-sends the state at that
+    /// point.
+    ///
+    /// TRAP — how `callAsyncJavaScript` exposes `arguments:`: the dictionary's
+    /// keys are injected into the function body as BARE IDENTIFIERS
+    /// (`markdown`, `notePath`, `text`, `line`, `notes`), NOT as properties of
+    /// an `arguments` object. The identifier `arguments` inside the body is
+    /// the synthesized async function's native positional arguments object
+    /// (its keys are `"0"`, `"1"`, …), so `arguments.markdown` evaluates to
+    /// `undefined` with no error — the call "succeeds", the page global runs
+    /// with `undefined`, and the document silently becomes empty. The bodies
+    /// above therefore write `setDocument(markdown, notePath)`, never
+    /// `arguments.markdown`. Verified against a live WKWebView during the
+    /// 2026-10 blank-editor diagnosis: `Object.keys(arguments)` returned
+    /// `"0,1"`, `return markdown` round-tripped the value, and the bare-form
+    /// `setDocument` applied the document while the `arguments.*` form left
+    /// it empty.
     private func send(_ functionBody: String, arguments: [String: Any]) {
         guard pageLoaded else { return }
         // `callAsyncJavaScript` is @MainActor in this SDK (WK_SWIFT_UI_ACTOR);
