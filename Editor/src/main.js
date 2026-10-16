@@ -272,14 +272,27 @@ export function editorExtensions() {
  * A plain EditorState with the full editor configuration — no DOM.
  * The seam the headless tests drive; the browser glue builds the same
  * state and then wraps it in an EditorView.
+ *
+ * `viewExtensions` are the view-level extensions (the update listener and
+ * the link-click handler). They MUST be part of the STATE, not passed in
+ * the EditorView config's `extensions`: when a `state` is supplied, the
+ * EditorView constructor ignores config.extensions and reads both the
+ * `updateListener` facet and the `domEventHandlers` plugin from
+ * `this.state` — so a listener handed in the config array never fires.
  */
-export function createEditorState({ doc = "", vaultNotes = [], notePath = "" } = {}) {
+export function createEditorState({
+  doc = "",
+  vaultNotes = [],
+  notePath = "",
+  viewExtensions = [],
+} = {}) {
   return EditorState.create({
     doc,
     extensions: [
       ...editorExtensions(),
       ...(vaultNotes.length ? [vaultNotesFacet.of(vaultNotes)] : []),
       ...(notePath ? [notePathFacet.of(notePath)] : []),
+      ...viewExtensions,
     ],
   });
 }
@@ -363,34 +376,56 @@ export function setVaultIndexSpec(notes) {
 
 // -- DOM glue (browser only) -----------------------------------------------------------
 //
-// Everything below runs only where a real document + window exist (the
-// bundled page loaded via loadFileURL; Node has no DOM, and the tests
-// never reach this layer).
+// The page-global wiring below runs only where a real document + window
+// exist (the bundled page loaded via loadFileURL; Node has no DOM). The
+// extension set and the dirty decision it carries ARE headless-testable
+// (see test/main-page-globals.test.js), because they live in the state.
+
+/**
+ * The view-level extensions, as one array the state carries:
+ *  - the link-click handler (Navigation interception): link clicks arrive
+ *    as link-opened; the webview never leaves the bundled page;
+ *  - the update listener (dirty): the full raw text on every document
+ *    change (incl. checkbox toggles); setDocument is excluded by its
+ *    annotation.
+ *
+ * These MUST be in the state, not the EditorView config's `extensions` —
+ * with a supplied `state` the EditorView ignores that config array and
+ * reads the `updateListener` facet and the plugin facet from
+ * `this.state` (a config-only listener silently never fires; found in
+ * the first human GUI pass: nothing ever autosaved).
+ */
+export function editorViewExtensions() {
+  return [
+    EditorView.domEventHandlers({
+      click(event) {
+        const href = linkOpenTargetFrom(event.target);
+        if (href !== null) {
+          postLinkOpened(href);
+          return true; // handled
+        }
+        return false;
+      },
+    }),
+    EditorView.updateListener.of((vu) => {
+      const text = dirtyTextForUpdate(vu.transactions, vu.state);
+      if (text !== null) postDirty(text);
+    }),
+  ];
+}
 
 export function mountEditor(parent, { doc, vaultNotes, notePath } = {}) {
+  // The view-level extensions go through the state (see
+  // editorViewExtensions' doc comment) — the EditorView constructor
+  // would silently drop them in the config array.
   const view = new EditorView({
-    state: createEditorState({ doc, vaultNotes, notePath }),
+    state: createEditorState({
+      doc,
+      vaultNotes,
+      notePath,
+      viewExtensions: editorViewExtensions(),
+    }),
     parent,
-    extensions: [
-      // Navigation interception: link clicks arrive as link-opened; the
-      // webview never leaves the bundled page.
-      EditorView.domEventHandlers({
-        click(event) {
-          const href = linkOpenTargetFrom(event.target);
-          if (href !== null) {
-            postLinkOpened(href);
-            return true; // handled
-          }
-          return false;
-        },
-      }),
-      // dirty: the full raw text on every document change (incl. checkbox
-      // toggles); setDocument is excluded by its annotation.
-      EditorView.updateListener.of((vu) => {
-        const text = dirtyTextForUpdate(vu.transactions, vu.state);
-        if (text !== null) postDirty(text);
-      }),
-    ],
   });
 
   // Swift → JS page globals (bridge contract).
