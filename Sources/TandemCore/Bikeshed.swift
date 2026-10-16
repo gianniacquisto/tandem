@@ -265,6 +265,11 @@ public struct Bikeshed: Sendable {
     /// Pre-existing name violators (`#`, `|`) are *tolerated* here — they are
     /// on-disk names the app must still show and edit; the create/rename
     /// validation (`validateNewName`) is the separate, stricter rule.
+    ///
+    /// Module boundary: the GUI keeps its own copy of this rule (`VaultPaths`
+    /// in the Tandem target) because it cannot reach this internal and the
+    /// core must not depend on the GUI. The rule is deliberately small and
+    /// stable — keep the two copies in step by review, not by code.
     func fileURL(for path: String) -> URL? {
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
             .map(String.init)

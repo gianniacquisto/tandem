@@ -223,20 +223,23 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
         guard rel.hasPrefix(prefix) else { fail404(urlSchemeTask); return }
         rel.removeFirst(prefix.count)
 
-        // Path hygiene (the contract: refuse `..` escapes): absolute paths,
-        // empty components (`//`), and `.`/`..` components never reach the
-        // file system.
+        // Path hygiene (the contract: refuse `..` escapes) — the shared GUI
+        // rule (VaultPaths), the same one the model's link routing serves.
+        // Decode each component first, then judge: a percent-encoded escape
+        // (`%2e%2e`) is judged as `..` and refused here, not only by the
+        // containment check below (which stays as defence in depth). Empty
+        // components (`//`) are refused too — the core's rule; the JS only
+        // ever emits well-formed vault-relative paths, so this only changes
+        // malformed-input handling (404 where the double slash was a no-op).
         let components = rel.split(separator: "/", omittingEmptySubsequences: false)
             .map(String.init)
-        guard !components.isEmpty else { fail404(urlSchemeTask); return }
-        for c in components where c == "." || c == ".." {
+            .map { $0.removingPercentEncoding ?? $0 }
+        guard let fileURL = VaultPaths.url(
+            under: model.vault.directory,
+            for: components.joined(separator: "/")
+        ) else {
             fail404(urlSchemeTask)
             return
-        }
-
-        var fileURL = model.vault.directory.standardizedFileURL
-        for c in components {
-            fileURL = fileURL.appendingPathComponent(c.removingPercentEncoding ?? c)
         }
         // Containment: the resolved path must stay under the vault root.
         let root = model.vault.directory.standardizedFileURL.path

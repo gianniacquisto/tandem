@@ -384,15 +384,10 @@ final class BikeshedModel {
     }
 
     /// The vault-root-relative path as a file URL, or nil for a vault escape
-    /// (absolute / `.` / `..` components) — the scheme handler shares the rule.
+    /// (absolute / `.` / `..` components) — the shared GUI rule (VaultPaths),
+    /// which the `tandem:` scheme handler also serves.
     private func vaultURL(for path: String) -> URL? {
-        let components = path.split(separator: "/", omittingEmptySubsequences: false)
-            .map(String.init)
-        guard !components.isEmpty else { return nil }
-        for c in components where c.isEmpty || c == "." || c == ".." { return nil }
-        var url = vault.directory.standardizedFileURL
-        for c in components { url = url.appendingPathComponent(c) }
-        return url
+        VaultPaths.url(under: vault.directory, for: path)
     }
 
     // MARK: - Editor bridge — inbound (JS → Swift; the contract's messages)
@@ -419,9 +414,12 @@ final class BikeshedModel {
 
     /// `link-opened`: a wikilink click (target = the raw target exactly as
     /// written — Swift strips fragment/alias per the wikilink grammar) or a
-    /// markdown link click (target = the href). The webview never navigates;
-    /// routing is the Swift side's job (spec: "Broken links" + the rendered
-    /// feature list's markdown-link rules).
+    /// markdown link click (target = the href). The bridge's payload is the
+    /// same either way, so the routing is one decision tree: the wikilink
+    /// exactly-one rule decides first, then the spec's markdown-link path
+    /// existence, then broken-link creation (spec: "Broken links" + the
+    /// rendered feature list's markdown-link rules). The webview never
+    /// navigates; routing is the Swift side's job.
     func linkOpened(target: String) {
         let t = target.trimmingCharacters(in: .whitespaces)
         guard !t.isEmpty else { return }
@@ -434,55 +432,81 @@ final class BikeshedModel {
         // 2. A bare `#fragment` (in-page anchor) is inert in v1.
         if t.hasPrefix("#") { return }
 
-        // 3. Wikilink-first: parse per the grammar (first `#`, then first `|`;
-        //    fragment/alias stripped here) and resolve against the live vault.
-        let wikilink = Wikilink(raw: t)
-        if let link = wikilink {
-            if case let .resolved(path) = vault.resolve(link.target) {
-                open(path)
-                return
-            }
-            // 4. Fall through to path existence (a markdown link whose href
-            //    looks like a name): a target that exists in the vault by
-            //    case-insensitive PATH is internal.
-            if let real = internalPath(for: link.target) {
-                route(to: real)
-                return
-            }
-            // 5. Broken link: create an empty note at the link's path
-            //    (bare → vault root; qualified → that path, folders created
-            //    as needed by the core) and open it. No confirm dialog.
+        // 3. Wikilink resolution — the core's exactly-one rule is the
+        //    wikilink router (parse per the grammar; fragment/alias stripped).
+        //    A resolved link opens the note. (A markdown href to a note by
+        //    path lands here too — same note, same result.)
+        let link = Wikilink(raw: t)
+        if let link,
+           case let .resolved(path) = vault.resolve(link.target)
+        {
+            open(path)
+            return
+        }
+
+        // 4. Path existence (the markdown-link rule): a target that exists in
+        //    the vault by case-insensitive PATH — a path, not a name,
+        //    deliberately distinct from the wikilink exactly-one rule — is
+        //    internal: a note opens in the editor, an attachment in the OS
+        //    default app. This is what a markdown href like `report.pdf`
+        //    (wikilink-parseable, but it names an attachment, not a note)
+        //    must do, and path-form targets the grammar rejects (a leading
+        //    `/`) reach here too.
+        if let real = existingVaultFile(for: link?.target ?? t) {
+            route(to: real)
+            return
+        }
+
+        // 5. A broken WIKILINK: create an empty note at the link's path
+        //    (bare → vault root; qualified → that path, folders created as
+        //    needed by the core) and open it. No confirm dialog — and no
+        //    other fall-through: a broken bare link always lands at the
+        //    vault root, never a same-named note in some other folder
+        //    (the exactly-one rule broke it; reopening one of the
+        //    duplicates would be the silent choice the spec forbids).
+        if let link {
             createAndOpen(link.target)
             return
         }
 
-        // 6. Unparseable as a wikilink (e.g. a leading `/` vault-root path):
-        //    path existence, then the OS default handler (spec: everything
-        //    else → OS default handler).
-        if let real = internalPath(for: t) {
-            route(to: real)
-            return
-        }
+        // 6. A non-wikilink target that exists nowhere in the vault → the
+        //    OS default handler (spec: everything else).
         if let url = URL(string: t) { NSWorkspace.shared.open(url) }
     }
 
-    /// A target that exists in the vault by case-insensitive PATH (a path,
-    /// not a name — deliberately distinct from the wikilink exactly-one
-    /// rule). Leading `/` means vault-root-relative; otherwise the target is
-    /// relative to the open note's folder. Returns the real on-disk path.
-    private func internalPath(for target: String) -> String? {
-        let candidate: String
-        if target.hasPrefix("/") {
-            candidate = String(target.dropFirst())
-        } else {
-            guard let open = openPath else { return nil }
-            if let slash = open.lastIndex(of: "/") {
-                candidate = String(open[..<slash]) + "/" + target
-            } else {
-                candidate = target   // open note at the root: note-relative == root-relative
-            }
+    /// The spec's markdown-link existence rule: the target as a vault-root-
+    /// relative PATH (a leading `/` is stripped) that exists in the vault
+    /// case-insensitively — a path, not a name, deliberately distinct from
+    /// the wikilink exactly-one name resolution. Every component is matched
+    /// against the directory entries case-insensitively (FileManager,
+    /// relative to `Bikeshed.directory`), so a case-variant href still finds
+    /// the file and the result is the real on-disk path. A directory (or a
+    /// path with `.`/`..`/empty components) is not a file: nil.
+    private func existingVaultFile(for target: String) -> String? {
+        let candidate = target.hasPrefix("/") ? String(target.dropFirst()) : target
+        let components = candidate
+            .split(separator: "/", omittingEmptySubsequences: false)
+            .map(String.init)
+        guard !components.isEmpty else { return nil }
+        for c in components where c.isEmpty || c == "." || c == ".." { return nil }
+        var url = vault.directory.standardizedFileURL
+        var resolved: [String] = []
+        for c in components {
+            guard
+                let entries = try? FileManager.default.contentsOfDirectory(
+                    at: url, includingPropertiesForKeys: nil),
+                let match = entries.first(where: {
+                    $0.lastPathComponent.lowercased() == c.lowercased()
+                })
+            else { return nil }
+            url = match
+            resolved.append(match.lastPathComponent)
         }
-        return pathIndex[candidate.lowercased()]
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir),
+              !isDir.boolValue
+        else { return nil }
+        return resolved.joined(separator: "/")
     }
 
     /// Routes to a real vault path: a note opens in the editor; an attachment
