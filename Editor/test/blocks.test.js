@@ -212,12 +212,27 @@ test("frontmatter: stripped block + placeholder, its wikilinks not links", () =>
   assert.equal(w[0].widget.target, "real");
 });
 
+test("frontmatter does not abort the walk: structure after it is planned", () => {
+  // Regression: the skip guard was `node.from < fmRange.to`, which matched
+  // the Document root (from 0) and aborted the whole walk — a note with
+  // frontmatter got zero structural decorations.
+  const text = "---\nt: x\n---\n# After\n\n**bold**";
+  const p = plan(text);
+  assert.ok(blockOf(p, "frontmatter")); // the strip itself still works
+  assert.equal(lineClass(p, 13), "tandem-h1");
+  assert.ok(emptyAt(p, 13, 15)); // "# " hidden
+  assert.ok(
+    p.spans.some((s) => s.from === 24 && s.to === 28 && s.className === "tandem-strong")
+  );
+});
+
 test("no overlapping replaces in any plan", () => {
   const texts = [
     "# H **b** `c` [[x]] $y$\n",
     "- [ ] - [x] done **[[a|b]]**\n",
     "> **[[q]]** and $z$\n",
     "| [[t]] | **u** |\n|---|---|\n| `v` | $w$ |",
+    "---\na: 1\n---\n# H\n[[x]] `c`\n",
     "```\n[[x]] $y$\n```\n",
     "![a](i.png)\n\n![b](j.png) inline ![c](k.png)",
   ];

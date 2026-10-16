@@ -51,6 +51,21 @@ test("setDocument replaces the document, sets the note path, emits no dirty", ()
   assert.equal(dirtyTextForUpdate([tr], next), null);
 });
 
+test("setDocument on a frontmatter note still plans the tree walk's decorations", () => {
+  // The exact app sequence (empty page, then setDocument) with a note that
+  // carries frontmatter: the plan field must not be left with only the
+  // pure-scanner decorations (regression: the visit guard skipped the
+  // Document root and the note rendered as raw source).
+  const st0 = createEditorState({ doc: "" });
+  const tr = st0.update(
+    setDocumentSpec(st0, "---\nt: x\n---\n# After\n", "n.md")
+  );
+  const next = tr.state;
+  const ds = decos(next);
+  assert.ok(ds.some((d) => d.spec.class === "tandem-h1"));
+  assert.ok(ds.some((d) => d.from === 13 && d.to === 15 && !d.spec.widget));
+});
+
 // -- insertText ----------------------------------------------------------------------
 
 test("insertText inserts at the caret, moves it, and dirties", () => {

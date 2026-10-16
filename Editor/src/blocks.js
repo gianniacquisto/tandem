@@ -219,7 +219,16 @@ function childrenOf(node) {
 
 function visit(cur, ctx) {
   const node = cur.node;
-  if (ctx.fmRange && node.from < ctx.fmRange[1]) return; // stripped as a unit
+  // The frontmatter's source is replaced as a unit (section 4); the
+  // grammar misparses it (thematic breaks / a setext underline) and those
+  // misparse nodes are skipped here. The test is `node.to <=`, NOT
+  // `node.from <`: the walk starts at the Document root, which begins at
+  // 0 — a from-based test skips the root itself, aborts the whole walk,
+  // and a note with frontmatter gets NO structural decorations (headings,
+  // emphasis, lists, fences, images all raw source; only the pure
+  // scanners — wikilinks, math — render). Found in the second human GUI
+  // pass: frontmatter notes rendered as raw markdown.
+  if (ctx.fmRange && node.to <= ctx.fmRange[1]) return;
 
   switch (node.name) {
     case "FencedCode": return fence(node, ctx);
