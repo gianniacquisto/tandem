@@ -118,14 +118,16 @@ export class CheckboxWidget extends WidgetType {
   }
 }
 
-// Flips the marker char at markerFrom + 2 ("[ ]" <-> "[x]"). The current
-// state is read from the buffer (source of truth), not from the widget.
-// Exported so the toggle transaction + payload are testable headlessly
-// (the click handler itself is DOM-only, verified in the GUI smoke test).
+// Flips the state char inside the TaskMarker ("[ ]" <-> "[x]").
+// markerFrom is the marker's opening "[", so the char is markerFrom + 1.
+// The current state is read from the buffer (source of truth), not from
+// the widget. Exported so the toggle transaction + payload are testable
+// headlessly (the click handler itself is DOM-only, verified in the GUI
+// smoke test).
 export function toggleTask(view, markerFrom) {
   const state = view.state;
   const line = state.doc.lineAt(markerFrom);
-  const pos = markerFrom + 2;
+  const pos = markerFrom + 1;
   if (pos < line.from || pos + 1 > line.to) return;
   const current = state.doc.sliceString(pos, pos + 1);
   if (current !== " " && current !== "x") return;
