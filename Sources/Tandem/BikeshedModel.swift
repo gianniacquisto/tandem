@@ -600,6 +600,10 @@ final class BikeshedModel {
     /// root itself changed); self-writes dedup by the recorded hash.
     func vaultChanged(_ change: VaultWatcher.Change) {
         reloadTree()
+        // Bridge contract: `setVaultIndex` is sent "on load and after every
+        // vault change" — a broken link in the open note starts resolving
+        // the moment its target appears, without reopening.
+        editor.sendVaultIndex(paths: notePaths())
         refreshBacklinks()
         if searchActive { runSearch(lastSearchQuery) }
 

@@ -179,10 +179,11 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
     /// and the contract's loading rule re-sends the state at that point.
     private func send(_ functionBody: String, arguments: [String: Any]) {
         guard pageLoaded else { return }
-        // `callAsyncJavaScript` is async in this SDK; the result is fire-and-
-        // forget (the JS side reports state back through messages, never via
-        // the call's return value).
-        Task {
+        // `callAsyncJavaScript` is @MainActor in this SDK (WK_SWIFT_UI_ACTOR);
+        // hop to the main actor — a bare `Task {}` would run the call on the
+        // global executor. The result is fire-and-forget (the JS side reports
+        // state back through messages, never via the call's return value).
+        Task { @MainActor in
             _ = try? await webView.callAsyncJavaScript(
                 functionBody, arguments: arguments, in: nil, contentWorld: .page)
         }

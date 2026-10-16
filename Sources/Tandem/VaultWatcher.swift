@@ -91,17 +91,18 @@ final class VaultWatcher {
             }
             return
         }
-        let items = UnsafeBufferPointer<UnsafeRawPointer>(
-            start: paths.assumingMemoryBound(to: UnsafeRawPointer.self),
-            count: numEvents)
+        // With `kFSEventStreamCreateFlagUseCFTypes` the `eventPaths` parameter
+        // is a CFArray of CFStrings — NOT a C array of object pointers (a
+        // C-array read crashes in objc_retain on the first batch; verified
+        // empirically 2026-10-16 with a standalone FSEvents probe).
+        let items = Unmanaged<CFArray>.fromOpaque(paths).takeUnretainedValue() as Array
         var changed = Set<String>()
         var rootChanged = false
-        for i in 0..<numEvents {
+        for (i, element) in items.enumerated() where i < numEvents {
             if flags[i] & UInt32(kFSEventStreamEventFlagRootChanged) != 0 {
                 rootChanged = true
             }
-            // With `kFSEventStreamCreateFlagUseCFTypes` each event path is a CFString.
-            let item = Unmanaged<CFString>.fromOpaque(items[i]).takeUnretainedValue() as String
+            guard let item = element as? String else { continue }
             if let rel = relativePath(of: item) { changed.insert(rel) }
         }
         let change = Change(paths: Array(changed), rootChanged: rootChanged)
