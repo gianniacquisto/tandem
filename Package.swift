@@ -25,9 +25,17 @@ let package = Package(
         ),
         // The GUI app. AppKit/SwiftUI interop stays in Swift 5 language mode to avoid
         // strict-concurrency friction; all logic lives in TandemCore.
+        // Resources: the prebuilt editor bundle (ticket 07) — one HTML
+        // page, one JS bundle, one CSS file + KaTeX fonts. .copy keeps the
+        // directory structure intact (spec: Editor — Packaging), so the
+        // Swift host loads it with
+        //   Bundle.module.url(forResource: "Editor", withExtension: nil)
+        // → …/Editor/index.html via WKWebView.loadFileURL, allowing read
+        // access to the Editor directory (style.css, editor.js, fonts/).
         .executableTarget(
             name: "Tandem",
             dependencies: ["TandemCore"],
+            resources: [.copy("Resources/Editor")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         // The MCP stdio server. Thin adapter over the official Swift SDK + TandemCore.
