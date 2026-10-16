@@ -1,7 +1,7 @@
 # Spec: Bikeshed — an Obsidian-like notes vault in Tandem
 
 Type: spec
-Status: ready-for-agent
+Status: implemented
 Source: `.scratch/bikeshed/map.md` + tickets 01–05, ADRs 0004/0005, branch `research/bikeshed-editor-tech` (editor-technology research report), branch `prototype/bikeshed-ui` (UI prototype; verdict: search in sidebar, backlinks in bottom dock), `GLOSSARY.md` (Bikeshed / Note / Wikilink / Backlink / Attachment terms)
 
 ## Problem Statement

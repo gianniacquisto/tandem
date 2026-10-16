@@ -34,7 +34,7 @@ Context (pointers):
 
 ## Resolution
 
-Built on `bikeshed/ticket-07-editor-bundle` (merged `bikeshed/implementation` in at the end; merge commit `d7a0a26`). PR link: left for the orchestrator.
+Built on `bikeshed/ticket-07-editor-bundle` (merged `bikeshed/implementation` in at the end; merge commit `d7a0a26`). Delivered via PR #7 — https://github.com/gianniacquisto/tandem/pull/7.
 
 **What was built**
 
@@ -52,6 +52,17 @@ Built on `bikeshed/ticket-07-editor-bundle` (merged `bikeshed/implementation` in
 - `node --check` on the output `editor.js`: passes; the bundle also executes cleanly at module level under Node (the DOM glue is guarded).
 - `node --test test/`: 136/136 green (unchanged; the bundle build added no source changes).
 - `swift build` clean with the new resource declaration; the built `tandem_Tandem.bundle` carries `Contents/Resources/Editor` with all 24 files and a byte-identical `editor.js`. Post-merge, SPM fetched swift-markdown as expected.
+
+**Post-merge (review fixes + core parity)**
+
+Two-axis code review (base `main`) findings on this ticket, all fixed at `5a602af` + `7ebd773`:
+
+- `LICENSES.md` was declared-licenses only — now carries the real MIT license texts of the 30 shipped packages (gate: any non-MIT still fails the build).
+- Dead dependency + dead widget class removed; the `ts`/`tsx` code-highlighting flag added via the already-pinned `@codemirror/lang-javascript` `typescript` flag (no new dependency).
+- CI: `release.yml` gained an editor gate — `npm ci`, node tests, `npm run build` reproducibility check (rebuild → `git diff` must be clean) — so the committed bundle can never silently drift. (Simulated locally on the same self-hosted box before the runner returned; the gate passes.)
+- `GLOSSARY.md` wikilink wording aligned with the grammar.
+
+**Core-parity grammar fix (`03afee4`, post-review)** — the Swift core treats an empty/whitespace-only alias or fragment as *absent* (`[[A#]]` ≡ `[[A]]`); the JS grammar still emitted an empty `alias`/`fragment` property for `[[a|]]`, `[[a#]]`, and whitespace-only variants. Fixed in `Editor/src/pure/grammar.js` (a `present()` helper) so both resolvers agree on the pieces; 5 grammar tests added — node tests 144 → 149, all green. Committed `editor.js` rebuilt; reproducibility re-verified (identical sha256 across builds; `node --check` passes).
 
 **Commits** — `bec9081` (bundle + build script + committed prebuilt bundle), `851b812` (Package.swift resource), `d7a0a26` (merge of `bikeshed/implementation`; `Package.swift` auto-merged — both sides kept: the swift-markdown package dependency AND `resources: [.copy("Resources/Editor")]`).
 

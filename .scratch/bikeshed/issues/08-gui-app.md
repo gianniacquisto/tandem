@@ -40,7 +40,7 @@ Note: the platform floor stays `.macOS(.v27)` — the spec prose says "macOS 26+
 
 ## Resolution
 
-Built on `bikeshed/ticket-08-gui-app` (base `bikeshed/implementation` @ `407adf4`, i.e. 06 + 07 merged). Commits: `7718dbf` (model + watcher + editor host), `7f6bc4d` (face + tab integration + packaging), `4a36ad0` + `a7cc82f` (verify-and-finish fixes — see below). PR link: left for the orchestrator.
+Built on `bikeshed/ticket-08-gui-app` (base `bikeshed/implementation` @ `407adf4`, i.e. 06 + 07 merged). Commits: `7718dbf` (model + watcher + editor host), `7f6bc4d` (face + tab integration + packaging), `4a36ad0` + `a7cc82f` (verify-and-finish fixes — see below). Delivered via PR #7 — https://github.com/gianniacquisto/tandem/pull/7.
 
 **What was built**
 
@@ -67,7 +67,7 @@ Built on `bikeshed/ticket-08-gui-app` (base `bikeshed/implementation` @ `407adf4
 15. Packaging — script + CI verify per item 15 above.
 16. Gates + smoke — see below.
 
-**Documented deviation (reported, not silent)** — the bridge-contract note writes the `setVaultIndex` payload as `[{path: string}]`, but the committed bundle (ticket 07, 136/136-tested) consumes a flat `string[]` (`resolveWikilink(target, notes)` iterates raw path strings; the page-global tests exercise `["note.md"]`). Per this ticket's rule — in-tree code wins for signatures, spec/contract wins for behaviour — the Swift side sends what the bundle consumes. Recorded in `EditorHost.sendVaultIndex`'s doc comment and here; the orchestrator should reconcile the contract note (or ticket 07) at review.
+**Documented deviation (reported, not silent)** — the bridge-contract note writes the `setVaultIndex` payload as `[{path: string}]`, but the committed bundle (ticket 07, 136/136-tested) consumes a flat `string[]` (`resolveWikilink(target, notes)` iterates raw path strings; the page-global tests exercise `["note.md"]`). Per this ticket's rule — in-tree code wins for signatures, spec/contract wins for behaviour — the Swift side sends what the bundle consumes. Recorded in `EditorHost.sendVaultIndex`'s doc comment and here; the contract note has since been reconciled to the flat `string[]` shape (orchestrator, post-merge — code was correct, the note was wrong).
 
 **What verify-and-finish found and fixed**
 
@@ -108,5 +108,17 @@ Seeded a realistic vault at `~/.tandem/bikeshed` (did not exist before this tick
 10. Tab switches without resizing — **needs-human-pass**: Todos ↔ Bikeshed; the window frame stays put; the Todos face keeps its 540 pt centred column.
 
 **What remains in `~/.tandem/bikeshed/` after cleanup** — nothing (the empty vault directory itself remains; it is the app's default location and is created lazily anyway). The todos store (`todos.json`, `tandem.lock`) was never touched; `~/.tandem/app.pid` released on clean exit.
+
+**Post-merge (two-axis code review, base `main`)** — Standards + Spec axes run in parallel; all actionable findings fixed in one pass, final review tip `7ebd773`. The core (ticket 06) was untouched — it is the single-resolver reference.
+
+Fixed:
+
+- **Attachment + broken-bare-wikilink routing was wrong vs the spec** — link-opened routing now matches the spec's rules exactly (resolved → open in editor; path-existence fallthrough → note in editor / attachment in OS app; external → OS handler; broken → create + open). `722851d`.
+- **Vault path hygiene was duplicated** — the containment/normalisation logic now lives in one shared helper (`VaultPaths.swift`) used by the scheme handler and the model, instead of two copies that could drift. `722851d`.
+- Bundle-side packaging (LICENSES texts, dead dep/widget, `ts` flag) and the CI editor gate — see ticket 07's post-merge section (`5a602af`, `7ebd773`).
+- `GLOSSARY.md` vault wording aligned with the grammar (`7ebd773`).
+- **Core-parity grammar fix (`03afee4`)** — empty/whitespace alias/fragment now absent in the JS grammar to match the core; the core itself did not change. Node 144 → 149.
+
+Deliberately kept (judgement calls, documented): trash-fallback to permanent `delete` when `FileManager.trashItem` fails; flat `setVaultIndex` payload (contract note reconciled, not code); Esc clears the search query; the window-resign observer is never removed (one per app lifetime, no leak); code highlighting for swift/shell/yaml/toml left as plain monospace (no pinned packages to justify adding them).
 
 **Commits** — `7718dbf`, `7f6bc4d` (the prior session's work), `4a36ad0`, `a7cc82f` (verify-and-finish). Branch tip `a7cc82f`, pushed. PR link: left for the orchestrator.
