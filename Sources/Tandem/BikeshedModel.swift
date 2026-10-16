@@ -231,6 +231,7 @@ final class BikeshedModel {
         let vault = self.vault
         backlinkRun = Task.detached(priority: .userInitiated) { [weak self] in
             let rows = (try? vault.backlinks(path: open))?.value ?? []
+            guard !Task.isCancelled else { return }   // superseded by a newer pass
             DispatchQueue.main.async {
                 // A stale result (the note switched or the task was superseded)
                 // must not overwrite a fresher one.
