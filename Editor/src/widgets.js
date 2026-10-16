@@ -383,21 +383,6 @@ export class CodeTagWidget extends WidgetType {
   }
 }
 
-// Block widget on the closing fence line: the panel's bottom edge (a few px of
-// parchment padding, no text).
-export class CodeEndWidget extends WidgetType {
-  constructor() {
-    super();
-    this.block = true;
-  }
-  eq() {
-    return true;
-  }
-  toDOM() {
-    return el("div", "tandem-code-end");
-  }
-}
-
 // -- Horizontal rule -----------------------------------------------------------------
 
 // Block widget replacing the hr line: a 1 pt sand hairline (Ligne). The

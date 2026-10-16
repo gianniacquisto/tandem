@@ -78,6 +78,11 @@ import { postDirty, postLinkOpened, postLoaded } from "./bridge.js";
 // one and matching throws.
 
 const jsSupport = javascript({ jsx: true });
+// TypeScript via the SAME pinned @codemirror/lang-javascript (its `typescript`
+// flag) — no new dependency. `ts` gets the plain TS dialect, `tsx` the
+// JSX+TS dialect; `js`/`jsx` stay exactly as before.
+const tsSupport = javascript({ typescript: true });
+const tsxSupport = javascript({ jsx: true, typescript: true });
 
 const CURATED_CODE_LANGUAGES = new Map([
   ["css", css().language],
@@ -87,6 +92,9 @@ const CURATED_CODE_LANGUAGES = new Map([
   ["javascript", jsSupport.language],
   ["js", jsSupport.language],
   ["jsx", jsSupport.language],
+  ["typescript", tsSupport.language],
+  ["ts", tsSupport.language],
+  ["tsx", tsxSupport.language],
   ["json", json().language],
   ["python", python().language],
   ["py", python().language],

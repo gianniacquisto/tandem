@@ -7,8 +7,10 @@
 //                  to woff2), so the bundle stays one CSS file
 //   fonts/       — the 20 KaTeX woff2 faces style.css references
 //   LICENSES.md  — generated: every package that actually landed in the
-//                  bundle, with its npm-declared license; the build FAILS
-//                  if any non-MIT package lands in it (no GPL/AGPL ships)
+//                  bundle, with its npm-declared license AND its verbatim
+//                  license text ("license texts stay in the bundle"); the
+//                  build FAILS if any non-MIT package lands in it (no
+//                  GPL/AGPL ships) or a package has no readable license
 //
 // Reproducible by construction: the inputs are the pinned
 // Editor/package.json + lockfile (npm ci) and checked-in sources; esbuild
@@ -115,51 +117,26 @@ for (const input of Object.keys(buildResult.metafile.inputs)) {
 }
 if (!bundled.has("katex")) throw new Error("katex missing from the bundle inputs");
 
-function copyrightLine(pkgDir) {
+// The package's actual license text (spec: Editor — Packaging — "license
+// texts stay in the bundle"): read verbatim from node_modules, not a
+// generic template. A bundled package without a readable license file is a
+// build failure — the bundle must never ship code whose terms we can't
+// show.
+function licenseText(pkgDir) {
   for (const f of ["LICENSE", "LICENSE.md", "LICENSE.txt"]) {
     const p = path.join(pkgDir, f);
-    if (existsSync(p)) {
-      const m = readFileSync(p, "utf8").match(/Copyright[^\n]+/i);
-      if (m) return m[0];
-    }
+    if (existsSync(p)) return readFileSync(p, "utf8").replace(/\s+$/, "");
   }
-  throw new Error(`no copyright line found under ${pkgDir}`);
+  throw new Error(`no license file found under ${pkgDir}`);
 }
-
-const byCopyright = new Map(); // copyright line -> [package names]
-for (const name of [...bundled.keys()].sort()) {
-  const line = copyrightLine(path.join(nm, name));
-  if (!byCopyright.has(line)) byCopyright.set(line, []);
-  byCopyright.get(line).push(name);
-}
-
-const MIT_TEXT = `The MIT License (MIT)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.`;
 
 const pkgRows = [...bundled.entries()]
   .sort((a, b) => a[0].localeCompare(b[0]))
   .map(([name, v]) => `| \`${name}\` | ${v.version} |`)
   .join("\n");
-const copyrightBlocks = [...byCopyright.entries()]
+const licenseBlocks = [...bundled.entries()]
   .sort((a, b) => a[0].localeCompare(b[0]))
-  .map(([line, names]) => `${line}\n\n${names.map((n) => `\`${n}\``).join(", ")}`)
+  .map(([name, v]) => `### \`${name}\` (${v.version})\n\n${licenseText(path.join(nm, name))}`)
   .join("\n\n");
 
 writeFileSync(
@@ -174,19 +151,16 @@ KaTeX's stylesheet (folded into \`style.css\`) and KaTeX woff2 fonts
 lockfile — npm metadata is the source of truth (spec: Editor — Packaging).
 
 Every bundled package is MIT-licensed; the build fails if a non-MIT
-package ever lands in the bundle (spec: nothing GPL/AGPL ships).
+package ever lands in the bundle (spec: nothing GPL/AGPL ships). The
+license texts below are the packages' own files, verbatim.
 
 | package | version |
 | --- | --- |
 ${pkgRows}
 
-## MIT license (every package above)
+## License texts
 
-${MIT_TEXT}
-
-Copyright holders:
-
-${copyrightBlocks}
+${licenseBlocks}
 `
 );
 

@@ -146,10 +146,14 @@ function codeIsMounted(info) {
 }
 
 test("fenced code highlights exactly the curated languages", () => {
-  for (const info of ["css", "js", "md"]) {
+  // js/jsx + typescript/ts/tsx come from the one pinned
+  // @codemirror/lang-javascript (its `typescript` flag).
+  for (const info of ["css", "js", "jsx", "typescript", "ts", "tsx", "md"]) {
     assert.equal(codeIsMounted(info), true, "```" + info + " is highlighted");
   }
-  for (const info of ["swift", "typescript", "no-such-lang", ""]) {
+  // No pinned language package: swift, shell, yaml, toml stay plain
+  // monospace (adding deps would break the pinned-package + license gate).
+  for (const info of ["swift", "no-such-lang", ""]) {
     assert.equal(codeIsMounted(info), false, "```" + info + " is plain monospace");
   }
 });
