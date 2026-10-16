@@ -20,25 +20,30 @@ export function parseWikilink(content) {
   let fragment;
   let alias;
 
+  // Core parity (Wikilink.init): the split is first-#-then-first-| on the
+  // WHOLE content, regardless of textual order. The target runs to whichever
+  // delimiter comes first; the earlier delimiter introduces the fragment,
+  // the later one the alias (so `a|b#c` is target a, alias b, fragment c —
+  // never target `a|b`, which could not resolve).
   const hash = content.indexOf("#");
-  if (hash >= 0) {
-    target = content.slice(0, hash);
-    const rest = content.slice(hash + 1);
-    const pipe = rest.indexOf("|");
-    if (pipe >= 0) {
-      fragment = rest.slice(0, pipe);
-      alias = rest.slice(pipe + 1);
-    } else {
-      fragment = rest;
-    }
-  } else {
-    const pipe = content.indexOf("|");
-    if (pipe >= 0) {
-      target = content.slice(0, pipe);
+  const pipe = content.indexOf("|");
+  const targetEnd = Math.min(
+    hash === -1 ? content.length : hash,
+    pipe === -1 ? content.length : pipe
+  );
+  target = content.slice(0, targetEnd);
+  if (hash !== -1 && pipe !== -1) {
+    if (hash < pipe) {
+      fragment = content.slice(hash + 1, pipe);
       alias = content.slice(pipe + 1);
     } else {
-      target = content;
+      alias = content.slice(pipe + 1, hash);
+      fragment = content.slice(hash + 1);
     }
+  } else if (hash !== -1) {
+    fragment = content.slice(hash + 1);
+  } else if (pipe !== -1) {
+    alias = content.slice(pipe + 1);
   }
 
   if (target.trim() === "") {

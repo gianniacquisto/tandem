@@ -1,13 +1,17 @@
 // Leading YAML frontmatter detection (spec: Vault protocol — Frontmatter).
 //
-// Only a *leading, properly terminated* `---` block counts: the document's
-// first line must be `---` (trailing whitespace allowed) and a later line
-// must be `---` or `...` (the YAML document-end marker; trailing whitespace
-// allowed). An unterminated block is not frontmatter — its lines are plain
-// document text. Pure: no DOM.
+// The core's STRICT rule (BikeshedOperations.frontmatterEnd): only a
+// *leading, properly terminated* block of EXACT `---` delimiters counts —
+// the document's first line is exactly `---` and a later line is exactly
+// `---`. No trailing whitespace, no `...` closer (a `...`-terminated block
+// is plain document text — wikilinks in it stay live, so the core's
+// rename-rewrite and the editor's opaque-frontmatter view agree). A lone
+// trailing `\r` is tolerated (CRLF, core parity). An unterminated block is
+// not frontmatter — its lines are plain document text. Pure: no DOM.
 
-const OPEN = /^---[ \t]*$/;
-const CLOSE = /^(---|\.\.\.)[ \t]*$/;
+function isDelimiter(line) {
+  return line === "---" || line === "---\r";
+}
 
 /**
  * Returns { from: 0, to } covering the frontmatter block including both
@@ -18,7 +22,7 @@ export function frontmatterRange(text) {
   const firstEnd = text.indexOf("\n");
   if (firstEnd === -1) return null; // a lone `---` is not a terminated block
   const firstLine = text.slice(0, firstEnd);
-  if (!OPEN.test(firstLine)) return null;
+  if (!isDelimiter(firstLine)) return null;
 
   // Scan the lines after the opening delimiter for the terminator.
   let pos = firstEnd + 1;
@@ -26,7 +30,7 @@ export function frontmatterRange(text) {
     const nl = text.indexOf("\n", pos);
     const lineEnd = nl === -1 ? text.length : nl;
     const line = text.slice(pos, lineEnd);
-    if (CLOSE.test(line)) {
+    if (isDelimiter(line)) {
       return { from: 0, to: nl === -1 ? lineEnd : lineEnd + 1 };
     }
     if (nl === -1) return null;
