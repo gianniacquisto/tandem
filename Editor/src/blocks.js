@@ -18,7 +18,8 @@
 // mask the wikilink/math scanners (core parity: the Swift scanner masks the
 // CommonMark parser's code ranges).
 
-import { scanDocument } from "./pure/index.js";
+import { scanWikilinks } from "./pure/scan.js";
+import { scanMath } from "./pure/math.js";
 import { resolveWikilink } from "./pure/resolve.js";
 import { frontmatterRange } from "./pure/frontmatter.js";
 
@@ -101,22 +102,30 @@ export function planPreview({ text, tree, notes = [], notePath = "" }) {
   // inline). Computed before the scans so the pure scanners never see code.
   const codeRanges = [];
   if (tree) {
-    const cur = tree.cursor();
-    (function collectCode() {
-      const n = cur.node;
+    (function collectCode(node) {
       if (
-        n.name === "FencedCode" ||
-        n.name === "CodeBlock" ||
-        n.name === "InlineCode"
+        node.name === "FencedCode" ||
+        node.name === "CodeBlock" ||
+        node.name === "InlineCode"
       )
-        codeRanges.push([n.from, n.to]);
-      if (cur.firstChild()) do { collectCode(); } while (cur.nextSibling());
-    })();
+        codeRanges.push([node.from, node.to]);
+      // childrenOf walks a fresh cursor per node, so a deep subtree can't
+      // strand the walk (the same hazard descend() had).
+      for (const c of childrenOf(node)) collectCode(c);
+    })(tree.cursor().node);
   }
 
-  // 1. Wikilinks (grammar + resolution against the bridge's file set).
-  const doc = scanDocument(text, codeRanges);
-  for (const w of doc.wikilinks) {
+  // 1+2. Wikilinks + math: the pure scanners with the tree's code ranges
+  //    masked in (pure/index.js's fixed-point ordering — links first, math
+  //    with the link ranges masked, then a re-pass of both with each other's
+  //    ranges — extended with codeRanges so nothing inside code is scanned).
+  const mask = (extra) => [...codeRanges, ...extra];
+  const ranges = (items) => items.map((i) => [i.from, i.to]);
+  let wikilinks = scanWikilinks(text, mask([]));
+  let math = scanMath(text, mask(ranges(wikilinks)));
+  wikilinks = scanWikilinks(text, mask(ranges(math)));
+  math = scanMath(text, mask(ranges(wikilinks)));
+  for (const w of wikilinks) {
     if (fmRange && w.from < fmRange[1]) continue;
     const res = resolveWikilink(w.target, notes);
     addReplace(w.from, w.to, {
@@ -127,8 +136,8 @@ export function planPreview({ text, tree, notes = [], notePath = "" }) {
     });
   }
 
-  // 2. Math (Obsidian-style triggers; wikilink ranges masked by scanDocument).
-  for (const m of doc.math) {
+  // Math (Obsidian-style triggers; wikilink ranges masked by the re-pass).
+  for (const m of math) {
     if (fmRange && m.from < fmRange[1]) continue;
     if (m.kind === "inline") {
       addReplace(m.from, m.to, { kind: "math", content: m.content });
@@ -193,7 +202,11 @@ export function planPreview({ text, tree, notes = [], notePath = "" }) {
 // (tables, fences) never descend — their source lines are replaced as a unit.
 
 function descend(cur, ctx) {
-  if (cur.firstChild()) do { visit(cur, ctx); } while (cur.nextSibling());
+  // Iterate the children on a fresh cursor at this node: visiting a child may
+  // descend into it, which would otherwise strand the caller's cursor inside
+  // the child's subtree and skip this node's remaining siblings.
+  const c = cur.node.cursor();
+  if (c.firstChild()) do { visit(c, ctx); } while (c.nextSibling());
 }
 
 // SyntaxNode does not expose its children; walk them with a local cursor.
@@ -239,7 +252,7 @@ function fence(node, ctx) {
   if (firstNl === -1) return; // malformed one-liner: leave literal
   let info = "";
   let closeMark = null;
-  for (const c of node.children) {
+  for (const c of childrenOf(node)) {
     if (c.name === "CodeInfo") info = text.slice(c.from, c.to).trim();
     else if (c.name === "CodeMark") closeMark = c; // last CodeMark = closing fence
   }
@@ -276,9 +289,9 @@ function table(node, ctx) {
   const { text, lines, addReplace, blocks } = ctx;
   const header = [];
   const rows = [];
-  for (const c of node.children) {
+  for (const c of childrenOf(node)) {
     if (c.name !== "TableHeader" && c.name !== "TableRow") continue;
-    const cells = [...c.children]
+    const cells = childrenOf(c)
       .filter((t) => t.name === "TableCell")
       .map((t) => text.slice(t.from, t.to));
     if (c.name === "TableHeader") header.push(...cells);
@@ -304,7 +317,7 @@ function atxHeading(node, ctx) {
   const { text, lines, addReplace, addLineClass } = ctx;
   const level = Number(node.name.slice(10));
   addLineClass(lines.indexAt(node.from), "tandem-h" + level);
-  for (const c of node.children) {
+  for (const c of childrenOf(node)) {
     if (c.name !== "HeaderMark") continue;
     let f = c.from;
     let t = c.to;
@@ -321,7 +334,7 @@ function setextHeading(node, ctx) {
   const { lines, addReplace, addLineClass } = ctx;
   const level = node.name === "SetextHeading1" ? 1 : 2;
   addLineClass(lines.indexAt(node.from), "tandem-h" + level);
-  for (const c of node.children) {
+  for (const c of childrenOf(node)) {
     if (c.name !== "HeaderMark") continue;
     const [f, t] = lines.withBreak(lines.indexAt(c.from));
     addReplace(f, t); // whole underline line, incl. its newline
@@ -361,8 +374,8 @@ function list(cur, ctx) {
 function listItem(cur, ctx) {
   const node = cur.node;
   const { text, lines, addReplace, addLineClass } = ctx;
-  const mark = node.children.find((c) => c.name === "ListMark");
-  const task = node.children.find((c) => c.name === "Task");
+  const mark = childrenOf(node).find((c) => c.name === "ListMark");
+  const task = childrenOf(node).find((c) => c.name === "Task");
   if (mark) {
     const i = lines.indexAt(mark.from);
     if (lines.from(i) < mark.from)
@@ -374,9 +387,10 @@ function listItem(cur, ctx) {
       let t = mark.to;
       while (t < task.from && (text[t] === " " || text[t] === "\t")) t++;
       addReplace(mark.from, t);
-      const tm = task.children.find((c) => c.name === "TaskMarker");
+      const tm = childrenOf(task).find((c) => c.name === "TaskMarker");
       if (tm) {
-        const checked = text[tm.from + 2] === "x" || text[tm.from + 2] === "X";
+        // TaskMarker spans `[x]`/`[ ]`; the state char is the middle one.
+        const checked = text[tm.from + 1] === "x" || text[tm.from + 1] === "X";
         addReplace(tm.from, tm.to, { kind: "checkbox", checked, markerFrom: tm.from });
         if (checked) addLineClass(i, "tandem-task-done");
       }
@@ -407,7 +421,7 @@ function emphasis(node, ctx) {
       : node.name === "Emphasis"
         ? "tandem-em"
         : "tandem-strike";
-  const marks = [...node.children].filter(
+  const marks = childrenOf(node).filter(
     (c) => c.name === "EmphasisMark" || c.name === "StrikethroughMark"
   );
   if (marks.length < 2) return;
@@ -417,7 +431,7 @@ function emphasis(node, ctx) {
 
 function inlineCode(node, ctx) {
   const { addReplace, spans } = ctx;
-  const marks = [...node.children].filter((c) => c.name === "CodeMark");
+  const marks = childrenOf(node).filter((c) => c.name === "CodeMark");
   if (marks.length < 2) return;
   for (const m of marks) addReplace(m.from, m.to);
   spans.push({ from: marks[0].to, to: marks[marks.length - 1].from, className: "tandem-code" });
@@ -425,13 +439,12 @@ function inlineCode(node, ctx) {
 
 function link(node, ctx) {
   const { text, addReplace, spans } = ctx;
-  const url = node.children.find((c) => c.name === "URL");
+  const url = childrenOf(node).find((c) => c.name === "URL");
   if (!url) return; // a reference-style [text] stays literal
-  for (const c of node.children)
-    if (c.name === "LinkMark" || c.name === "URL" || c.name === "LinkTitle")
-      addReplace(c.from, c.to);
-  const marks = [...node.children].filter((c) => c.name === "LinkMark");
+  const marks = childrenOf(node).filter((c) => c.name === "LinkMark");
   if (marks.length < 2 || marks[0].to >= marks[1].from) return;
+  addReplace(marks[0].from, marks[0].to); // opening [
+  addReplace(marks[1].from, node.to); // closing ] + (url) hidden as one range
   spans.push({
     from: marks[0].to,
     to: marks[1].from,
@@ -442,9 +455,9 @@ function link(node, ctx) {
 
 function autolink(node, ctx) {
   const { text, addReplace, spans } = ctx;
-  const url = node.children.find((c) => c.name === "URL");
+  const url = childrenOf(node).find((c) => c.name === "URL");
   if (!url) return;
-  for (const c of node.children)
+  for (const c of childrenOf(node))
     if (c.name === "LinkMark") addReplace(c.from, c.to);
   spans.push({
     from: url.from,
@@ -469,10 +482,10 @@ function bareUrl(cur, ctx) {
 
 function image(node, ctx) {
   const { text, lines, addReplace, blocks, notePath } = ctx;
-  const url = node.children.find((c) => c.name === "URL");
+  const url = childrenOf(node).find((c) => c.name === "URL");
   if (!url) return;
   const src = text.slice(url.from, url.to);
-  const marks = [...node.children].filter((c) => c.name === "LinkMark");
+  const marks = childrenOf(node).filter((c) => c.name === "LinkMark");
   const alt = marks.length >= 2 ? text.slice(marks[0].to, marks[1].from) : "";
   const i = lines.indexAt(node.from);
   const lineText = text.slice(lines.from(i), lines.to(i)).trim();

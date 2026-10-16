@@ -23,22 +23,22 @@ test("ATX heading: marker + following space hidden, line class by level", () => 
   const p = plan("# One\n## Two");
   assert.ok(emptyAt(p, 0, 2)); // "# "
   assert.equal(lineClass(p, 0), "tandem-h1");
-  assert.ok(emptyAt(p, 8, 12)); // "## "
-  assert.equal(lineClass(p, 8), "tandem-h2");
+  assert.ok(emptyAt(p, 6, 9)); // "## "
+  assert.equal(lineClass(p, 6), "tandem-h2");
 });
 
 test("ATX closing sequence is hidden (with its space)", () => {
   const p = plan("# H #");
-  // "# " [0,2) hidden, " #": space + mark [5,7) hidden
+  // "# " [0,2) hidden, " #": space + mark [3,5) hidden
   assert.ok(p.replaces.some((r) => r.from === 0 && r.to === 2 && !r.widget));
-  assert.ok(p.replaces.some((r) => r.from === 5 && r.to === 7 && !r.widget));
+  assert.ok(p.replaces.some((r) => r.from === 3 && r.to === 5 && !r.widget));
 });
 
 test("setext heading: underline line gone entirely, text line classed", () => {
   const p = plan("Title\n===\n\nnext");
   assert.equal(lineClass(p, 0), "tandem-h1");
-  // the whole underline line incl. its newline is replaced: [6,11)
-  assert.ok(p.replaces.some((r) => r.from === 6 && r.to === 11 && !r.widget));
+  // the whole underline line incl. its newline is replaced: [6,10)
+  assert.ok(p.replaces.some((r) => r.from === 6 && r.to === 10 && !r.widget));
 });
 
 test("emphasis and strikethrough: markers hidden, inner span classed", () => {
@@ -46,9 +46,9 @@ test("emphasis and strikethrough: markers hidden, inner span classed", () => {
   // **bold**: marks [0,2) [6,8); span [2,6) tandem-strong
   assert.ok(emptyAt(p, 0, 2) && emptyAt(p, 6, 8));
   assert.ok(p.spans.some((s) => s.from === 2 && s.to === 6 && s.className === "tandem-strong"));
-  // ~~strike~~ at 14: marks [14,16) [22,24); span [16,22)
-  assert.ok(emptyAt(p, 14, 16) && emptyAt(p, 22, 24));
-  assert.ok(p.spans.some((s) => s.from === 16 && s.to === 22 && s.className === "tandem-strike"));
+  // ~~strike~~ at 13: marks [13,15) [21,23); span [15,21)
+  assert.ok(emptyAt(p, 13, 15) && emptyAt(p, 21, 23));
+  assert.ok(p.spans.some((s) => s.from === 15 && s.to === 21 && s.className === "tandem-strike"));
 });
 
 test("inline code: backticks hidden, inner span classed", () => {
@@ -61,21 +61,21 @@ test("bullets: unordered dot, ordered number, nested depth class + hidden indent
   const p = plan("- a\n- b\n  - c\n1. one\n2. two");
   assert.deepEqual(widgetAt(p, 0), { kind: "bullet" });
   assert.deepEqual(widgetAt(p, 4), { kind: "bullet" });
-  // nested "- c": leading space [11,12) hidden, depth-1 class, bullet at 12
-  assert.ok(emptyAt(p, 11, 12));
-  assert.deepEqual(widgetAt(p, 12), { kind: "bullet" });
-  assert.match(lineClass(p, 11), /tandem-li-d1/);
+  // nested "- c": leading indent [8,10) hidden, depth-1 class, bullet at 10
+  assert.ok(emptyAt(p, 8, 10));
+  assert.deepEqual(widgetAt(p, 10), { kind: "bullet" });
+  assert.match(lineClass(p, 8), /tandem-li-d1/);
   // ordered
-  assert.deepEqual(widgetAt(p, 16), { kind: "bullet", number: "1" });
-  assert.deepEqual(widgetAt(p, 22), { kind: "bullet", number: "2" });
+  assert.deepEqual(widgetAt(p, 14), { kind: "bullet", number: "1" });
+  assert.deepEqual(widgetAt(p, 21), { kind: "bullet", number: "2" });
 });
 
 test("task items: no bullet, checkbox widget, done class when checked", () => {
   const p = plan("- [ ] open\n- [x] done");
   assert.equal(widgetAt(p, 0), undefined); // no bullet
   assert.deepEqual(widgetAt(p, 2), { kind: "checkbox", checked: false, markerFrom: 2 });
-  assert.deepEqual(widgetAt(p, 12), { kind: "checkbox", checked: true, markerFrom: 12 });
-  assert.match(lineClass(p, 10), /tandem-task-done/);
+  assert.deepEqual(widgetAt(p, 13), { kind: "checkbox", checked: true, markerFrom: 13 });
+  assert.match(lineClass(p, 11), /tandem-task-done/);
   assert.equal(lineClass(p, 0) ?? "", "");
 });
 
@@ -105,9 +105,9 @@ test("fenced code: fence lines hidden, code lines classed, tag widget carries in
   const text = "```swift\nlet x = 1\n```\nnext";
   const p = plan(text);
   assert.ok(emptyAt(p, 0, 9)); // "```swift\n"
-  assert.ok(emptyAt(p, 20, 23)); // closing "```"
+  assert.ok(emptyAt(p, 19, 22)); // closing "```"
   assert.match(lineClass(p, 9), /tandem-code-line/);
-  assert.match(lineClass(p, 20), /tandem-code-end/);
+  assert.match(lineClass(p, 19), /tandem-code-end/);
   const tag = blockOf(p, "codelangtag");
   assert.equal(tag.at, 9);
   assert.equal(tag.widget.info, "swift");
@@ -132,7 +132,7 @@ test("horizontal rule: line replaced, hr block", () => {
   const p = plan("a\n\n---\n\nb");
   const hr = blockOf(p, "hr");
   assert.ok(hr);
-  assert.equal(hr.at, 4);
+  assert.equal(hr.at, 3);
 });
 
 test("wikilinks: resolved vs broken against the vault, display text per grammar", () => {
@@ -161,9 +161,9 @@ test("display math: block widget, whole lines replaced", () => {
   const p = plan(text);
   const d = blockOf(p, "displaymath");
   assert.equal(d.widget.content, "x = 1");
-  assert.equal(d.at, 8); // line start of the opening $$
-  // three lines (incl. trailing newline) replaced: [8, 20)
-  assert.ok(p.replaces.some((r) => r.from === 8 && r.to === 20 && !r.widget));
+  assert.equal(d.at, 7); // line start of the opening $$
+  // three lines (incl. trailing newline) replaced: [7, 19)
+  assert.ok(p.replaces.some((r) => r.from === 7 && r.to === 19 && !r.widget));
 });
 
 test("a wikilink inside a display block is swallowed by the math replace", () => {
@@ -199,14 +199,14 @@ test("bare and angled autolinks: link spans with hrefs", () => {
   const hrefs = p.spans.filter((s) => s.className === "tandem-link").map((s) => s.dataHref);
   assert.deepEqual(hrefs, ["https://a.com/x", "https://b.com/y"]);
   // angle brackets hidden
-  assert.ok(emptyAt(p, 0, 1) && emptyAt(p, 17, 18));
+  assert.ok(emptyAt(p, 0, 1) && emptyAt(p, 16, 17));
 });
 
 test("frontmatter: stripped block + placeholder, its wikilinks not links", () => {
   const text = "---\nt: [[x]]\n---\nbody [[real]]";
   const p = plan(text, { notes: ["real.md", "x.md"] });
   assert.ok(blockOf(p, "frontmatter"));
-  assert.ok(p.replaces.some((r) => r.from === 0 && r.to === 18 && !r.widget));
+  assert.ok(p.replaces.some((r) => r.from === 0 && r.to === 17 && !r.widget));
   const w = p.replaces.filter((r) => r.widget?.kind === "wikilink");
   assert.equal(w.length, 1);
   assert.equal(w[0].widget.target, "real");
