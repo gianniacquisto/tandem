@@ -220,6 +220,83 @@ struct OperationsTests {
         #expect(try store.list(.all).value.map(\.id) == ids)
     }
 
+    // MARK: - reopen
+
+    @Test("reopen clears done and completedAt (the inverse of complete)")
+    func reopenMarksOpen() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let added = try store.add("Task")
+        let completed = try store.complete(added.value.id.uuidString)
+        #expect(completed.value.done == true)
+        #expect(completed.value.completedAt != nil)
+
+        let reopened = try store.reopen(added.value.id.uuidString)
+        #expect(reopened.value.id == added.value.id)
+        #expect(reopened.value.done == false)
+        #expect(reopened.value.completedAt == nil)
+
+        // Persisted, not just returned.
+        let persisted = try store.list(.all).value.first { $0.id == added.value.id }
+        #expect(persisted?.done == false)
+        #expect(persisted?.completedAt == nil)
+    }
+
+    @Test("reopen is idempotent: an already-open todo is returned unchanged")
+    func reopenIsIdempotent() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let added = try store.add("Task")
+        let reopened = try store.reopen(added.value.id.uuidString)
+        #expect(reopened.value.id == added.value.id)
+        #expect(reopened.value.done == false)
+        #expect(reopened.value.completedAt == nil)
+        #expect(try store.list(.all).value.count == 1)
+    }
+
+    @Test("reopen with an unknown or non-UUID id throws unknownID")
+    func reopenUnknownID() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        _ = try store.add("A")
+
+        for id in [UUID().uuidString, "not-a-uuid"] {
+            do {
+                _ = try store.reopen(id)
+                Issue.record("Expected unknownID to be thrown for \(id)")
+            } catch let error as DomainError {
+                guard case .unknownID = error else {
+                    Issue.record("Expected unknownID, got \(error)")
+                    return
+                }
+            }
+        }
+    }
+
+    @Test("complete -> reopen -> complete stamps a fresh completedAt without reordering")
+    func reopenThenCompleteAgain() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let ids = try ["first", "second", "third"].map { try store.add($0).value.id }
+        _ = try store.complete(ids[1].uuidString)
+        _ = try store.reopen(ids[1].uuidString)
+        #expect(try store.list(.all).value.map(\.id) == ids)
+        #expect(try store.list().value.map(\.id) == ids)
+
+        let recompleted = try store.complete(ids[1].uuidString)
+        #expect(recompleted.value.done == true)
+        #expect(recompleted.value.completedAt != nil)
+        #expect(try store.list(.all).value.map(\.id) == ids)
+    }
+
     // MARK: - clearDone
 
     @Test("clearDone removes all done todos and returns the count removed")

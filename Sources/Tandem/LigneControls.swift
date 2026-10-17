@@ -149,20 +149,22 @@ struct LigneQuickAdd: View {
 
 // MARK: row — checkbox · title · age · hover delete (GUI-only)
 
-/// A main-window row. The checkbox completes (one-way); a plain row click is
-/// never destructive. Delete appears on hover and in the context menu — it is
-/// GUI-only (agents have no delete in the MCP surface).
+/// A main-window row. The checkbox is the toggle: checking completes, and
+/// un-checking a done todo reopens it (GUI-only — no reopen in the MCP surface).
+/// A plain row click is never destructive. Delete appears on hover and in the
+/// context menu — also GUI-only (agents have no delete in the MCP surface).
 struct LigneRow: View {
     var todo: Todo
     var palette: Palette
     var showsAge: Bool
     var onComplete: () -> Void
+    var onReopen: () -> Void
     var onDelete: () -> Void
     @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 10) {
-            Button(action: onComplete) {
+            Button(action: todo.done ? onReopen : onComplete) {
                 LigneCheckbox(done: todo.done, palette: palette)
                     .frame(width: 24, height: 24)
             }
@@ -206,6 +208,9 @@ struct LigneRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .contextMenu {
+            if todo.done {
+                Button("Reopen", action: onReopen)
+            }
             Button("Delete", role: .destructive, action: onDelete)
         }
     }

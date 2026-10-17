@@ -66,10 +66,16 @@ final class TandemModel {
         run { try self.store.add(rawTitle) }
     }
 
-    /// One-directional complete (v1: no reopen). The store's `complete` is idempotent,
-    /// so completing an already-done todo is a no-op — tapping a done row does nothing.
+    /// Complete is idempotent at the store level, so completing an already-done todo
+    /// is a no-op.
     func complete(_ id: String) {
         run { try self.store.complete(id) }
+    }
+
+    /// The inverse of `complete` — the checkbox on a done row reopens it. Also
+    /// idempotent: reopening an already-open todo is a no-op.
+    func reopen(_ id: String) {
+        run { try self.store.reopen(id) }
     }
 
     func clearDone() {
