@@ -164,15 +164,24 @@ public struct Store: Sendable {
 
     // MARK: - Schema (private)
 
+    /// The envelope. `sections` and each todo's `section` are **additive** to schema v1,
+    /// which is why the version below does not move.
     private struct FileEnvelope: Codable {
         var version: Int
-        /// The ordered section names. Absent in schema v1 (which had no sections).
+        /// The ordered section names. Absent in a v1 file written before sections existed.
         var sections: [String]?
         var todos: [Todo]
     }
 
+    /// **The envelope version is bumped only for a change an older reader would
+    /// misread — never for additive fields.** `sections` and `section` are additive: an
+    /// older build ignores the unknown keys and reads the file fine. Bumping to 2 made
+    /// it do the opposite — an installed v1-era `tandem-mcp` read a version-2 file,
+    /// called it *corrupt*, backed it up and started empty. That happened to a real
+    /// store on 2026-10-17. So the writer keeps emitting version 1. Reading still
+    /// accepts 2, so any file written during that window loads.
     private static func encode(_ contents: StoreContents) throws -> Data {
-        let envelope = FileEnvelope(version: 2, sections: contents.sections, todos: contents.todos)
+        let envelope = FileEnvelope(version: 1, sections: contents.sections, todos: contents.todos)
         let encoder = JSONEncoder()
         // Pretty-printed: the file is intentionally human-legible (spec: Further Notes).
         encoder.outputFormatting = [.prettyPrinted]
@@ -180,9 +189,10 @@ public struct Store: Sendable {
     }
 
     private static func decode(_ data: Data) throws -> StoreContents {
-        // Standard Codable: unknown extra fields are ignored (forward-compat); a missing
-        // or mistyped required field throws (invalid file → recovery). Both schema v1
-        // (no sections, no `section` on a todo) and v2 (this shape) read.
+        // Lenient read: unknown extra fields are ignored (forward-compat); a missing or
+        // mistyped required field throws (invalid file → recovery). Version 1 is the
+        // current shape (with the additive sections fields); 2 is tolerated for files
+        // written during the window when the version was mistakenly bumped.
         let envelope = try JSONDecoder().decode(FileEnvelope.self, from: data)
         guard envelope.version == 1 || envelope.version == 2 else {
             throw CorruptStore.unsupportedVersion(envelope.version)

@@ -456,7 +456,7 @@ struct OperationsTests {
 
     // MARK: - on-disk round-trip
 
-    @Test("on-disk file is schema v2 and a fresh Store decodes the same todos")
+    @Test("on-disk file keeps envelope version 1 (sections are additive) and round-trips")
     func onDiskRoundTrip() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -469,7 +469,9 @@ struct OperationsTests {
         // Read the raw file straight off disk.
         let text = try String(contentsOf: store.fileURL, encoding: .utf8)
         let obj = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
-        #expect((obj?["version"] as? Int) == 2)
+        // Additive fields must NOT move the version: a v1-era reader has to keep
+        // reading this file (ADR 0006 — bumping it once wiped a real store).
+        #expect((obj?["version"] as? Int) == 1)
         // No sections declared yet, and the field is written as an empty array.
         #expect((obj?["sections"] as? [String])?.isEmpty == true)
 
@@ -495,7 +497,7 @@ struct OperationsTests {
         #expect(doneEntry?["completedAt"] is String)
 
         // Decode round-trip: a fresh Store over the same dir sees the same todos,
-        // newest on top (schema v2 order is the stored order).
+        // newest on top (the stored order is the order).
         let fresh = Store(directory: dir)
         let all = try fresh.list(.all).value
         #expect(all.map(\.id) == [done.value.id, open.value.id])

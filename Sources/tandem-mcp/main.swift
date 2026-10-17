@@ -33,7 +33,7 @@ await server.waitUntilCompleted()
 
 /// Dispatches one `tools/call` to the core store and encodes the outcome per the
 /// tool contract:
-/// - success → `isError` absent, content = schema v2 JSON (+ top-level `note`
+/// - success → `isError` absent, content = store-schema JSON (+ top-level `note`
 ///   only when this call triggered corrupt-store recovery);
 /// - domain failure → `isError: true` with short, actionable plain text
 ///   (an unknown `id` appends the current open list so the caller recovers in

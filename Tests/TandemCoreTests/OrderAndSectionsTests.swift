@@ -2,9 +2,9 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// Stored order + sections (store schema v2): the array order is the order (never
-/// recomputed from `createdAt`), `add` lands on top, sections group the list, `move`
-/// covers both reorder and move-between, and a schema-v1 file still reads.
+/// Stored order + sections (additive to store schema v1): the array order is the order
+/// (never recomputed from `createdAt`), `add` lands on top, sections group the list,
+/// `move` covers both reorder and move-between, and an older file still reads.
 @Suite("Order and sections")
 struct OrderAndSectionsTests {
 
@@ -212,7 +212,7 @@ struct OrderAndSectionsTests {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
-        try writeRaw(#"{"version":2,"sections":[],"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"x","done":false,"section":"Solo","createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#, to: store)
+        try writeRaw(#"{"version":1,"sections":[],"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"x","done":false,"section":"Solo","createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#, to: store)
 
         #expect(try store.sections().value == ["Solo"])
     }
@@ -225,15 +225,15 @@ struct OrderAndSectionsTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
         // Hand-written file with the Work todo before the default one.
-        try writeRaw(#"{"version":2,"sections":["Work"],"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"w","done":false,"section":"Work","createdAt":"2026-01-01T00:00:00Z","completedAt":null},{"id":"00000000-0000-0000-0000-000000000002","title":"d","done":false,"section":null,"createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#, to: store)
+        try writeRaw(#"{"version":1,"sections":["Work"],"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"w","done":false,"section":"Work","createdAt":"2026-01-01T00:00:00Z","completedAt":null},{"id":"00000000-0000-0000-0000-000000000002","title":"d","done":false,"section":null,"createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#, to: store)
 
         // Any write re-establishes the invariant: default group first.
         _ = try store.add("new")
         #expect(try titles(store) == ["new", "d", "w"])
     }
 
-    @Test("a schema-v1 file reads (no sections, todos ungrouped) and a write emits v2")
-    func schemaV1ReadsAndUpgrades() throws {
+    @Test("a file from before sections existed reads, and a write keeps version 1")
+    func olderFileReadsAndVersionStays() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
@@ -244,12 +244,27 @@ struct OrderAndSectionsTests {
         #expect(all[0].title == "old")
         #expect(all[0].section == nil)
         #expect(try store.sections().value.isEmpty)
-        #expect(try store.list(.all).note == nil)               // v1 is not "corrupt"
+        #expect(try store.list(.all).note == nil)               // not "corrupt"
 
-        // A write upgrades the file to v2 with an explicit `sections` array.
+        // A write adds the additive fields but must NOT bump the envelope version —
+        // a v1-era reader has to keep reading this file (ADR 0006).
         _ = try store.add("new")
         let obj = try JSONSerialization.jsonObject(with: Data(contentsOf: store.fileURL)) as? [String: Any]
-        #expect((obj?["version"] as? Int) == 2)
+        #expect((obj?["version"] as? Int) == 1)
         #expect(obj?["sections"] is [Any])
+    }
+
+    @Test("a version-2 file (written during the window the version was bumped) still reads")
+    func versionTwoFileStillReads() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        try writeRaw(#"{"version":2,"sections":["Solo"],"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"kept","done":false,"section":"Solo","createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#, to: store)
+
+        let all = try store.list(.all).value
+        #expect(all.count == 1)
+        #expect(all[0].section == "Solo")
+        #expect(try store.sections().value == ["Solo"])
+        #expect(try store.list(.all).note == nil, "a version-2 file is not corrupt")
     }
 }
