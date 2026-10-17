@@ -91,6 +91,12 @@ final class TandemModel {
         run { try self.store.deleteSection(name) }
     }
 
+    /// Reorders the sections. `index` is 0-based and clamped; the groups (and the order
+    /// of todos inside them) travel whole.
+    func moveSection(_ name: String, to index: Int) {
+        run { try self.store.moveSection(name, to: index) }
+    }
+
     /// Reorders: moves a todo to `index` (0-based) within `section` (`nil` = the default
     /// area), moving it between sections when needed.
     func move(_ id: String, toSection section: String?, at index: Int) {

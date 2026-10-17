@@ -15,6 +15,7 @@
 
 - The order reaches every reader, agents included: MCP `list` returns the **stored** order. Its description and `add`'s say so.
 - A hand-edited file self-heals: any write regroups the array (default, then declared sections, then any dangling name). Interleaving is tolerated on read, normalized on write.
-- Section CRUD (`addSection`/`renameSection`/`deleteSection`) and `move` are GUI-only — no MCP tools. The agent surface stays `list`/`add`/`complete`; an agent `add` lands on top of the default area.
-- `move(id, toSection:at:)` is the one ordering op — reorder-in-place and move-between are the same call.
+- Section CRUD (`addSection`/`renameSection`/`deleteSection`) and both ordering ops (`move`, `moveSection`) are GUI-only — no MCP tools. The agent surface stays `list`/`add`/`complete`; an agent `add` lands on top of the default area.
+- `move(id, toSection:at:)` is the one ordering op for todos — reorder-in-place and move-between are the same call.
+- `moveSection(name, to:)` reorders the `sections` list; the groups travel whole, so the order of todos *within* a section never changes. The default area is not a section and cannot be moved — it is always first.
 - A file written before sections existed reads unchanged (todos simply carry no `section`), and an older build reading a current file loses no todos — at worst it drops the section names when *it* next writes the file.

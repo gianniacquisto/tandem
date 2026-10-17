@@ -207,6 +207,56 @@ struct OrderAndSectionsTests {
         }
     }
 
+    // MARK: - section order
+
+    @Test("moveSection reorders the section list; the index clamps to the ends")
+    func moveSectionReorders() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        _ = try store.addSection("A")
+        _ = try store.addSection("B")
+        _ = try store.addSection("C")
+        #expect(try store.sections().value == ["A", "B", "C"])
+
+        #expect(try store.moveSection("B", to: 2).value == ["A", "C", "B"])   // one down
+        #expect(try store.moveSection("B", to: 0).value == ["B", "A", "C"])   // to the top
+        #expect(try store.moveSection("B", to: 99).value == ["A", "C", "B"])  // clamps to the end
+
+        // It is the stored order, not a UI sort, so it survives a re-read.
+        #expect(try Store(directory: dir).sections().value == ["A", "C", "B"])
+    }
+
+    @Test("moveSection rejects an unknown name")
+    func moveSectionValidation() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        #expect(throws: DomainError.unknownSection("Nope")) {
+            _ = try store.moveSection("Nope", to: 0)
+        }
+    }
+
+    @Test("moving a section carries its todos, and the default area stays first")
+    func moveSectionKeepsTodos() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        _ = try store.addSection("A")
+        _ = try store.addSection("B")
+        _ = try store.add("d1")
+        _ = try store.add("a1", section: "A")
+        _ = try store.add("b1", section: "B")
+        // Stored: default [d1], A [a1], B [b1].
+        #expect(try titles(store) == ["d1", "a1", "b1"])
+
+        _ = try store.moveSection("B", to: 0)
+        // B leads the sections now, but the default area is still the top group.
+        #expect(try store.sections().value == ["B", "A"])
+        #expect(try titles(store) == ["d1", "b1", "a1"])
+        #expect(try store.list(.all).value.map(\.section) == [nil, "B", "A"])
+    }
+
     @Test("sections() reports a dangling name (a hand edit) so the GUI can draw it")
     func danglingSectionReported() throws {
         let dir = tempDir()
