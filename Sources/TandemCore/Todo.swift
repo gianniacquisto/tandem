@@ -6,6 +6,10 @@ import Foundation
 /// string. `title` is trimmed at write time; there is no max length and duplicates
 /// are allowed. `completedAt` is `null` while the todo is open.
 ///
+/// `link` is an optional vault-root-relative path to a Bikeshed note (e.g.
+/// `projects/App.md`). Like `section`, it is **additive** to schema v1 — absent on a
+/// todo that predates it, and the envelope version does not move ([ADR 0006]).
+///
 /// The custom `Codable` conformance pins the on-disk and on-the-wire date format to
 /// ISO-8601 UTC (e.g. `2026-10-09T14:03:22Z`) regardless of the encoder/decoder's
 /// configured date strategy — so the store file and the CLI's JSON always agree.
@@ -17,6 +21,10 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
     /// renders first. A section is a name; the store's ordered `sections` list gives the
     /// order the groups render in. Absent in schema v1 (read as `nil`).
     public var section: String?
+    /// An optional link to a Bikeshed note: a vault-root-relative path like
+    /// `projects/App.md`, or `nil` for an unlinked todo. Set in the GUI only ([ADR 0010]);
+    /// additive to schema v1 (absent reads as `nil`).
+    public var link: String?
     public let createdAt: Date
     public var completedAt: Date?
 
@@ -25,6 +33,7 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
         title: String,
         done: Bool = false,
         section: String? = nil,
+        link: String? = nil,
         createdAt: Date = .now,
         completedAt: Date? = nil
     ) {
@@ -32,6 +41,7 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
         self.title = title
         self.done = done
         self.section = section
+        self.link = link
         self.createdAt = createdAt
         self.completedAt = completedAt
     }
@@ -39,7 +49,7 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
     // MARK: - Custom Codable (ISO-8601 UTC dates, strict on required fields)
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, done, section, createdAt, completedAt
+        case id, title, done, section, link, createdAt, completedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -52,6 +62,9 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
 
         // Absent in schema v1: a v1 todo is in the default (ungrouped) area.
         self.section = try c.decodeIfPresent(String.self, forKey: .section)
+
+        // Additive to schema v1: absent (or `null`) reads as an unlinked todo.
+        self.link = try c.decodeIfPresent(String.self, forKey: .link)
 
         let createdRaw = try c.decode(String.self, forKey: .createdAt)
         guard let createdAt = Timestamp.decode(createdRaw) else {
@@ -78,6 +91,11 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
             try c.encode(section, forKey: .section)
         } else {
             try c.encodeNil(forKey: .section)
+        }
+        if let link {
+            try c.encode(link, forKey: .link)
+        } else {
+            try c.encodeNil(forKey: .link)
         }
         try c.encode(Timestamp.encode(createdAt), forKey: .createdAt)
         if let completedAt {
