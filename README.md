@@ -72,7 +72,16 @@ OpenCode — add this to `opencode.json`:
 
 `skills/tandem-memory/` is an agent skill that makes the bikeshed (`~/.tandem/bikeshed/`) the agent's memory. A session orients from the vault's `Index.md` and its project notes as it starts, then records decisions, gotchas, and open threads as it works, so the next session picks up where the last one left off. The notes double as a wiki of the work, navigable by wikilinks and backlinks in the app.
 
-Install it the way you install any other skill for your agent harness.
+This skill is a folder, not a single file, so it installs differently from the one-file skills. `SKILL.md` is the entry point — the only file the harness loads when the skill fires — and it holds the two things the agent does: **orient**, then **record**. The other files are companions that `SKILL.md` points to and the agent reads only when it needs them:
+
+| file | what the agent reaches it for |
+| --- | --- |
+| `CONVENTIONS.md` | where notes go and how they are named |
+| `WRITE-PROTOCOL.md` | when and what to record |
+| `READ-PROTOCOL.md` | how to orient and find related notes |
+| `CONCURRENCY.md` | two sessions writing the same vault |
+
+Install the whole `tandem-memory/` folder into your harness's skills directory the way you would a single-file skill, keeping the files together — `SKILL.md` reaches the companions by their relative paths, so they only work as a set. Don't install the four companions as skills of their own.
 
 ## The store file
 
