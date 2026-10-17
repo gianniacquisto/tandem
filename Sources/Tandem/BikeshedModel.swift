@@ -384,10 +384,10 @@ final class BikeshedModel {
     }
 
     /// The vault-root-relative path as a file URL, or nil for a vault escape
-    /// (absolute / `.` / `..` components) — the shared GUI rule (VaultPaths),
+    /// (absolute / `.` / `..` components) — the shared rule (`VaultPath`),
     /// which the `tandem:` scheme handler also serves.
     private func vaultURL(for path: String) -> URL? {
-        VaultPaths.url(under: vault.directory, for: path)
+        VaultPath.url(under: vault.directory, for: path)
     }
 
     // MARK: - Editor bridge — inbound (JS → Swift; the contract's messages)
@@ -484,11 +484,12 @@ final class BikeshedModel {
     /// path with `.`/`..`/empty components) is not a file: nil.
     private func existingVaultFile(for target: String) -> String? {
         let candidate = target.hasPrefix("/") ? String(target.dropFirst()) : target
+        // The shared hygiene rule (`VaultPath`, ADR 0008) rejects escapes
+        // (empty / `.` / `..` components) before the walk below.
+        guard VaultPath.url(under: vault.directory, for: candidate) != nil else { return nil }
         let components = candidate
             .split(separator: "/", omittingEmptySubsequences: false)
             .map(String.init)
-        guard !components.isEmpty else { return nil }
-        for c in components where c.isEmpty || c == "." || c == ".." { return nil }
         var url = vault.directory.standardizedFileURL
         var resolved: [String] = []
         for c in components {
