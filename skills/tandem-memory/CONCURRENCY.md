@@ -1,6 +1,6 @@
 # Concurrency — two harnesses, one Bikeshed
 
-OpenCode and Claude Code can work the same project — or the same topic Note — at once. Agent writes take no lock (ADR 0004: the sidecar `flock` is app-only, last write wins), so coordination here is a rule, not mutual exclusion. The write protocol is [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md); the re-read trigger is [`READ-PROTOCOL.md`](READ-PROTOCOL.md).
+Two agent sessions can work the same project — or the same topic Note — at once. Agent writes take no lock (ADR 0004: the sidecar `flock` is app-only, last write wins), so coordination here is a rule, not mutual exclusion. The write protocol is [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md); the re-read trigger is [`READ-PROTOCOL.md`](READ-PROTOCOL.md).
 
 ## Ownership — every Note shared
 
