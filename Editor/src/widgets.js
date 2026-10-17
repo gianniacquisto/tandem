@@ -38,7 +38,7 @@ function el(tag, className, text) {
 // Replaces the whole [[…]] range; shows the display text (alias | fragment |
 // target). Click → link-opened with the raw target exactly as written (the
 // Swift host strips fragment/alias per the wikilink grammar). Resolved links
-// are dustyBlue; broken links are emberDeep; no underline (Ligne restraint).
+// are accent (sage); broken links are emberDeep; no underline (Ligne restraint).
 export class WikilinkWidget extends WidgetType {
   constructor(target, display, broken) {
     super();
@@ -154,7 +154,7 @@ export function toggleTask(view, markerFrom) {
 
 // -- List bullets -----------------------------------------------------------------
 
-// Replaces the ListMark: a 4 pt dustyBlue dot for unordered lists (prototype
+// Replaces the ListMark: a 4 pt accent dot for unordered lists (prototype
 // bullet), the written number for ordered (inkDim monospaced).
 export class BulletWidget extends WidgetType {
   constructor(numberText) {

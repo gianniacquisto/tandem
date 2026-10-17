@@ -1,7 +1,9 @@
 import SwiftUI
 
 // The Ligne Claire tandem bike: two riders, one machine — human + agent, one
-// list. Flat fills, uniform ink outline, no gradients.
+// list. Flat fills, uniform ink outline, no gradients. In colour it wears the
+// brand palette from the photo: sage frame, rust saddles and grips, ink
+// hardware; the menu-bar template glyph flattens the whole mark to one tone.
 //
 // Placement rule (ticket 01 handoff, updated by ticket 03): the bare bike
 // with its double saddle is the brand mark — menu bar glyph and popover
@@ -53,9 +55,12 @@ enum BikeArt {
 
     /// The bare bike: one long top tube, two saddles (the tandem tell),
     /// two handlebars, one chainring + stoker crank with four pedals.
+    /// Wears the brand palette: the frame is sage (the bike's colour), the
+    /// saddles and grips rust, everything hardware stays ink.
     private static func drawBike(_ ctx: inout GraphicsContext, palette: Palette,
                                  lw: CGFloat, riders: Bool) {
         let ink = palette.ink
+        let frame = palette.accent
 
         // wheels + hubs
         for c in [rearAxle, frontAxle] {
@@ -67,7 +72,7 @@ enum BikeArt {
         stroke(&ctx, circle(crankPilot, 12), ink, lw)
         stroke(&ctx, circle(crankStoker, 8), ink, lw * 0.8)
 
-        // frame — one long top tube, two seat clusters
+        // frame — sage, one long top tube, two seat clusters
         for f in [
             line([rearAxle, seatStoker]),       // seat stay
             line([crankPilot, rearAxle]),       // chain stay
@@ -77,16 +82,18 @@ enum BikeArt {
             line([seatStoker, crankStoker]),    // stoker seat tube
             line([head, frontAxle]),            // fork
         ] {
-            stroke(&ctx, f, ink, lw)
+            stroke(&ctx, f, frame, lw)
         }
 
-        // saddles — flat ink slabs, the double saddle reads as "tandem"
-        fill(&ctx, roundedRect(CGRect(x: 138, y: 51, width: 26, height: 6), 3), ink)
-        fill(&ctx, roundedRect(CGRect(x: 80, y: 53, width: 26, height: 6), 3), ink)
+        // saddles — flat rust slabs, the double saddle reads as "tandem"
+        fill(&ctx, roundedRect(CGRect(x: 138, y: 51, width: 26, height: 6), 3), palette.ember)
+        fill(&ctx, roundedRect(CGRect(x: 80, y: 53, width: 26, height: 6), 3), palette.ember)
 
-        // handlebars (pilot at the head, stoker ahead of its saddle)
+        // handlebars (pilot at the head, stoker ahead of its saddle), rust grips
         stroke(&ctx, line([head, CGPoint(x: 198, y: 46), CGPoint(x: 206, y: 46)]), ink, lw)
         stroke(&ctx, line([CGPoint(x: 104, y: 58), CGPoint(x: 110, y: 46), CGPoint(x: 118, y: 46)]), ink, lw)
+        fill(&ctx, roundedRect(CGRect(x: 201, y: 43.5, width: 7, height: 5), 2.5), palette.ember)
+        fill(&ctx, roundedRect(CGRect(x: 113, y: 43.5, width: 7, height: 5), 2.5), palette.ember)
 
         // pedals — two per crank
         fill(&ctx, roundedRect(CGRect(x: 136, y: 124, width: 12, height: 4), 2), ink)
@@ -102,7 +109,7 @@ enum BikeArt {
 
     // MARK: the riders (large, empty-state only)
 
-    /// Front rider — dusty blue jersey, on the pilot crank.
+    /// Front rider — sage jersey, on the pilot crank.
     private static func drawPilot(_ ctx: inout GraphicsContext, palette p: Palette, lw: CGFloat) {
         let ink = p.ink
         let limb = lw * 0.9
@@ -119,7 +126,7 @@ enum BikeArt {
             t.addLine(to: CGPoint(x: 148, y: 76))
             t.closeSubpath()
         }
-        outline(&ctx, torso, p.dustyBlue, ink, lw * 0.75)
+        outline(&ctx, torso, p.accent, ink, lw * 0.75)
 
         // arm to the pilot bar
         stroke(&ctx, line([CGPoint(x: 168, y: 46), CGPoint(x: 188, y: 54), CGPoint(x: 204, y: 46)]), ink, limb)

@@ -35,11 +35,11 @@ let image = NSImage(size: NSSize(width: canvas, height: canvas))
 image.lockFocus()
 
 // Paper plate: ~81% of the canvas, ~22.4% corner radius (Apple icon grid).
-// Day-panel paper (0xF5F0E6): an .icns is a single bitmap, so the light
+// Day-panel paper (0xF1E9D7): an .icns is a single bitmap, so the light
 // plate is the one that reads in both appearances.
 let inset = canvas * 0.095
 let plate = NSRect(x: inset, y: inset, width: canvas - 2 * inset, height: canvas - 2 * inset)
-NSColor(srgbRed: 0xF5 / 255, green: 0xF0 / 255, blue: 0xE6 / 255, alpha: 1).setFill()
+NSColor(srgbRed: 0xF1 / 255, green: 0xE9 / 255, blue: 0xD7 / 255, alpha: 1).setFill()
 NSBezierPath(roundedRect: plate, xRadius: plate.width * 0.2237, yRadius: plate.height * 0.2237).fill()
 
 // Letterbox the photo inside the plate, centred, with a quiet paper margin.

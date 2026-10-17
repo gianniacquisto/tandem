@@ -95,7 +95,7 @@ struct LigneFilter: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 30)
-            .background(selected ? AnyShapeStyle(palette.dustyBlue) : AnyShapeStyle(Color.clear))
+            .background(selected ? AnyShapeStyle(palette.accent) : AnyShapeStyle(Color.clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -304,7 +304,7 @@ struct PrimaryButton: View {
                 .foregroundStyle(palette.paper)
                 .frame(maxWidth: .infinity)
                 .frame(height: height)
-                .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.dustyBlue))
+                .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.accent))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
