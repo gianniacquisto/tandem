@@ -397,8 +397,9 @@ struct BikeTreeView: View {
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(palette.ink)
                 Spacer()
-                Button {
-                    model.createNote(in: nil)
+                Menu {
+                    Button("New note") { model.createNote(in: nil) }
+                    Button("New folder") { model.createFolder(in: nil) }
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 11, weight: .semibold))
@@ -408,8 +409,10 @@ struct BikeTreeView: View {
                             .strokeBorder(palette.line, lineWidth: Line.hairline))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .help("New note")
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("New note or folder")
             }
             .padding(.horizontal, 12)
             .padding(.top, 10)
@@ -496,6 +499,7 @@ struct BikeTreeView: View {
                     .padding(.leading, 10 + CGFloat(depth) * 14)
                     .contextMenu {
                         Button("New note") { model.createNote(in: item.path) }
+                        Button("New folder") { model.createFolder(in: item.path) }
                         Button("Delete", role: .destructive) { model.delete(item.path) }
                     }
                     if model.expandedFolders.contains(item.path) {
@@ -531,6 +535,8 @@ struct BikeTreeView: View {
                 .buttonStyle(.plain)
                 .padding(.leading, 10 + CGFloat(depth) * 14 + 14)
                 .contextMenu {
+                    // Moving a note is the Rename… path change; folder rename
+                    // is out of scope (the core's rename stays notes-only).
                     Button("Rename…") { onRename(item.path) }
                     Button("Delete", role: .destructive) { model.delete(item.path) }
                 }
