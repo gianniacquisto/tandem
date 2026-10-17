@@ -85,7 +85,10 @@ struct BikeFaceView: View {
                     .padding(.horizontal, Space.gutter)
                     .padding(.top, Space.section)
             }
-            if model.notePaths().isEmpty {
+            // The friendly empty state is only for a vault with *nothing* in it.
+            // A vault holding folders but no notes still shows the tree, so the
+            // human can keep building the structure (and add notes inside it).
+            if model.tree.isEmpty {
                 emptyVault
             } else {
                 HStack(spacing: 0) {
@@ -285,7 +288,10 @@ struct BikeFaceView: View {
                     .foregroundStyle(palette.inkDim)
                     .multilineTextAlignment(.center)
             }
-            newNoteButton
+            HStack(spacing: 8) {
+                newNoteButton
+                newFolderButton
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -322,6 +328,26 @@ struct BikeFaceView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// The empty state's secondary action: start the project structure with a
+    /// root folder (the tree then appears, so folders can nest). Quiet, so the
+    /// primary "New note" stays the obvious first move.
+    private var newFolderButton: some View {
+        Button {
+            model.createFolder(in: nil)
+        } label: {
+            Text("New folder")
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(palette.inkDim)
+                .padding(.horizontal, 14)
+                .frame(height: 30)
+                .background(RoundedRectangle(cornerRadius: Radius.control)
+                    .strokeBorder(palette.line, lineWidth: Line.hairline))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Create a folder to organise notes into projects")
     }
 
     // MARK: rename (the tree's context menu)
