@@ -13,10 +13,13 @@ import SwiftUI
 // MARK: - Palette (drawn from the brand asset — Resources/TandemBike.jpg)
 
 // The values are sampled from the tandem-bike illustration: warm cream paper,
-// near-black linework, a sage-green frame (the primary accent), rust saddles
-// and grips (the secondary accent), and dark charcoal tires. The interface
-// reads as the drawing: sage marks what's live, rust what wants attention,
-// ink for structure.
+// a sage-green frame (the primary accent), rust saddles and grips (the
+// secondary accent), and dark charcoal tires. The interface reads as the
+// drawing, but at the calm register of a notes app (Obsidian/Notion
+// conventions, 2026-10-17): structure is carried by low-contrast hairlines
+// (`line`), not heavy ink outlines, and selection is a soft wash rather than a
+// saturated fill. Rust marks what wants attention; sage is reserved for brand
+// and the one primary action.
 //
 // Light = the "day panel" (paper-like, the natural Ligne Claire register);
 // dark = the "night panel" (warm charcoal, linework inverts to paper cream).
@@ -24,14 +27,15 @@ import SwiftUI
 struct Palette: Equatable {
     // surfaces
     var paper: Color       // app background
-    var parchment: Color   // raised surfaces / panels / banner
-    var sand: Color        // secondary fill, hairlines, disabled
+    var parchment: Color   // raised surfaces / panels / selected segment
+    var sand: Color        // secondary fill, dividers, disabled
     var shadow: Color      // hard cel offset (flat, no blur) — reserved
     // linework + text
-    var ink: Color         // uniform line weight, primary text
-    var inkDim: Color      // secondary text (age, placeholder)
+    var line: Color        // control borders — low contrast, calm
+    var ink: Color         // primary text
+    var inkDim: Color      // secondary text (placeholder, unselected)
     // accents
-    var accent: Color      // primary accent (frame sage): selected filter, "Open Tandem"
+    var accent: Color      // primary accent (frame sage): the one primary action
     var accentDeep: Color  // hard-edge cel shade of accent
     var ember: Color       // secondary accent (saddle rust): focus, warning
     var emberDeep: Color
@@ -56,6 +60,7 @@ extension Palette {
         parchment:   hex(0xE7DECA),
         sand:        hex(0xD6C9AE),
         shadow:      hex(0xC6B897),
+        line:        hex(0xC6B99E),
         ink:         hex(0x211D18),
         inkDim:      hex(0x877D6B),
         accent:      hex(0x6E7D6E),
@@ -76,6 +81,7 @@ extension Palette {
         parchment:   hex(0x2C2A23),
         sand:        hex(0x3C3930),
         shadow:      hex(0x191712),
+        line:        hex(0x494437),
         ink:         hex(0xEDE6D3),
         inkDim:      hex(0x9C9583),
         accent:      hex(0x93A48F),
@@ -118,7 +124,7 @@ enum Radius {
 enum Space {
     static let gutter: CGFloat = 20     // main window horizontal inset
     static let row: CGFloat = 40        // main window row height
-    static let control: CGFloat = 34    // main window control height
+    static let control: CGFloat = 32    // one height: tab, filter, quick-add, buttons
     static let popoverControl: CGFloat = 28
     static let popoverRow: CGFloat = 32
     static let popoverGutter: CGFloat = 12

@@ -3,11 +3,12 @@ import TandemCore
 
 /// The main window in reach B — subtle Ligne Claire (ticket 01 verdict).
 ///
-///   Header    — "Tandem" wordmark, the Todos/Bikeshed tab control, and
-///               "Clear done" on the Todos tab (disabled when nothing is done)
+///   Header    — the "Tandem" wordmark and the Todos/Bikeshed tab control,
+///               closed by a hairline (identical on both tabs)
 ///   Todos     — a centered 540 pt column: flat parchment quick-add
 ///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All
-///               with live counts (⌘1/⌘2/⌘3), and the creation-order list
+///               with live counts (⌘1/⌘2/⌘3) on a row with "Clear done"
+///               (disabled when nothing is done), and the creation-order list
 ///               (toggling checkbox — check completes, uncheck reopens; title
 ///               edits in place on double-click; hover/right-click delete,
 ///               GUI-only)
@@ -33,6 +34,7 @@ struct MainView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            Rectangle().fill(palette.sand).frame(height: Line.hairline)
             if tab == .todos {
                 todosFace
                     .frame(maxWidth: 540)
@@ -44,7 +46,7 @@ struct MainView: View {
         }
         .background(palette.paper)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .frame(minWidth: 860, minHeight: 560)
+        .frame(minWidth: 760, minHeight: 560)
         .modifier(TandemShortcuts(filter: $filter, focusQuickAdd: $quickAddFocused))
         .onAppear {
             // Let the menu bar item's "Open Tandem" focus (or reopen) this window.
@@ -55,22 +57,17 @@ struct MainView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Text("Tandem")
                 .font(.custom("AvenirNext-DemiBold", size: 15))
                 .tracking(0.3)
                 .foregroundStyle(palette.ink)
             BikeTabControl(tab: $tab, palette: palette)
             Spacer()
-            if tab == .todos {
-                TextButton(title: "Clear done", palette: palette,
-                           enabled: !model.doneTodos.isEmpty) {
-                    withAnimation(Motion.remove) { model.clearDone() }
-                }
-            }
         }
         .padding(.horizontal, Space.gutter)
-        .padding(.top, 18)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
     }
 
     // MARK: - Todos face (the centered 540 pt column)
@@ -81,13 +78,20 @@ struct MainView: View {
                           onCommit: commitAdd,
                           focus: $quickAddFocused)
                 .padding(.horizontal, Space.gutter)
-                .padding(.top, 12)
-            LigneFilter(selection: $filter,
-                        counts: (open: model.openTodos.count,
-                                 done: model.doneTodos.count),
-                        palette: palette)
-                .padding(.horizontal, Space.gutter)
                 .padding(.top, Space.section)
+            HStack(spacing: 12) {
+                LigneFilter(selection: $filter,
+                            counts: (open: model.openTodos.count,
+                                     done: model.doneTodos.count),
+                            palette: palette)
+                Spacer(minLength: 8)
+                TextButton(title: "Clear done", palette: palette,
+                           enabled: !model.doneTodos.isEmpty) {
+                    withAnimation(Motion.remove) { model.clearDone() }
+                }
+            }
+            .padding(.horizontal, Space.gutter)
+            .padding(.top, Space.section)
             recoveryBanner
             errorBanner
             Rectangle().fill(palette.sand).frame(height: Line.hairline)
@@ -134,7 +138,7 @@ struct MainView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(visibleTodos) { todo in
-                            LigneRow(todo: todo, palette: palette, showsAge: true,
+                            LigneRow(todo: todo, palette: palette,
                                      onComplete: { withAnimation(Motion.toggle) { model.complete(todo.id.uuidString) } },
                                      onReopen: { withAnimation(Motion.toggle) { model.reopen(todo.id.uuidString) } },
                                      onEdit: { model.update(todo.id.uuidString, title: $0) },
