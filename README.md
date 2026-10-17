@@ -89,12 +89,14 @@ Or copy the whole `tandem-memory/` folder into your harness's skills directory t
 
 ```json
 {
-  "version": 1,
+  "version": 2,
+  "sections": ["Errands"],
   "todos": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "Water the plants",
       "done": false,
+      "section": null,
       "createdAt": "2026-10-09T14:03:22Z",
       "completedAt": null
     }
@@ -102,7 +104,9 @@ Or copy the whole `tandem-memory/` folder into your harness's skills directory t
 }
 ```
 
-If the file ever gets corrupted, Tandem moves it to `todos.json.corrupt-<timestamp>` and starts with an empty list. The full file protocol is in [ADR 0001](docs/adr/0001-store-protocol.md).
+The order of `todos` **is** the list order — new todos land on top, and the order is never recomputed from `createdAt`, so you can rearrange the file by hand. Each todo's `section` names one of the `sections`; `null` is the default (ungrouped) area, which always comes first. See [ADR 0001](docs/adr/0001-store-protocol.md) for the file protocol and [ADR 0006](docs/adr/0006-stored-order-and-sections.md) for order and sections.
+
+If the file ever gets corrupted, Tandem moves it to `todos.json.corrupt-<timestamp>` and starts with an empty list. A schema `version: 1` file (no `sections`, no `section`) still reads and is upgraded on the next write.
 
 ## Releasing
 

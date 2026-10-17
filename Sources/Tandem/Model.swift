@@ -19,7 +19,8 @@ final class TandemModel {
     private let store: Store
     private let watcher: StoreWatcher
 
-    /// All todos in creation order (the store's order — never re-sorted here).
+    /// All todos in stored order (the order the human arranged — new todos land on top;
+    /// never re-sorted here).
     private(set) var todos: [Todo] = []
     /// Set when a call triggered corrupt-store recovery; names the backup path. Sticky
     /// until the user dismisses it (a later successful reload does not clear it).

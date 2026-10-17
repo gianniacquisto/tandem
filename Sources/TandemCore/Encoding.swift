@@ -1,7 +1,7 @@
 import Foundation
 
 /// Result encoding for the MCP tool contract (spec: "Result encoding"). Every successful
-/// result is JSON matching store schema v1 verbatim, plus one extension: a top-level
+/// result is JSON matching store schema v2 verbatim, plus one extension: a top-level
 /// `note` string, present only when the call triggered corrupt-store recovery.
 ///
 /// This lives in the core because it is the schema itself; the MCP server just wraps the

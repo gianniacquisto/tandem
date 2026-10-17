@@ -16,8 +16,9 @@ public enum Filter: String, Sendable, CaseIterable {
         return Filter(rawValue: raw)
     }
 
-    /// Apply this filter to a creation-ordered list. Ordering is never changed —
-    /// display sorting is a UI concern, never the Store's (ADR 0001).
+    /// Apply this filter to a stored-order list. Ordering is never changed —
+    /// the stored order is the order (ADR 0001, superseded 2026-10-17: order is
+    /// stored, not derived from `createdAt`).
     func apply(to todos: [Todo]) -> [Todo] {
         switch self {
         case .open: return todos.filter { !$0.done }

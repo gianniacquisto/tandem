@@ -13,6 +13,10 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public var title: String
     public var done: Bool
+    /// The todo's section, or `nil` for the default (ungrouped) area, which always
+    /// renders first. A section is a name; the store's ordered `sections` list gives the
+    /// order the groups render in. Absent in schema v1 (read as `nil`).
+    public var section: String?
     public let createdAt: Date
     public var completedAt: Date?
 
@@ -20,12 +24,14 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
         id: UUID = UUID(),
         title: String,
         done: Bool = false,
+        section: String? = nil,
         createdAt: Date = .now,
         completedAt: Date? = nil
     ) {
         self.id = id
         self.title = title
         self.done = done
+        self.section = section
         self.createdAt = createdAt
         self.completedAt = completedAt
     }
@@ -33,7 +39,7 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
     // MARK: - Custom Codable (ISO-8601 UTC dates, strict on required fields)
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, done, createdAt, completedAt
+        case id, title, done, section, createdAt, completedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -43,6 +49,9 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
         self.id = try c.decode(UUID.self, forKey: .id)
         self.title = try c.decode(String.self, forKey: .title)
         self.done = try c.decode(Bool.self, forKey: .done)
+
+        // Absent in schema v1: a v1 todo is in the default (ungrouped) area.
+        self.section = try c.decodeIfPresent(String.self, forKey: .section)
 
         let createdRaw = try c.decode(String.self, forKey: .createdAt)
         guard let createdAt = Timestamp.decode(createdRaw) else {
@@ -65,6 +74,11 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
         try c.encode(id, forKey: .id)
         try c.encode(title, forKey: .title)
         try c.encode(done, forKey: .done)
+        if let section {
+            try c.encode(section, forKey: .section)
+        } else {
+            try c.encodeNil(forKey: .section)
+        }
         try c.encode(Timestamp.encode(createdAt), forKey: .createdAt)
         if let completedAt {
             try c.encode(Timestamp.encode(completedAt), forKey: .completedAt)

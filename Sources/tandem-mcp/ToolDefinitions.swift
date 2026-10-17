@@ -6,7 +6,7 @@ import MCP
 enum TandemTools {
     static let list = Tool(
         name: "list",
-        description: "List todos from the shared Tandem list — the same todos a human sees and edits in the Tandem app on this Mac. Store: ~/.tandem/todos.json. Optional argument `filter`: `open` (default), `done`, or `all`. Returns todos in creation order as JSON: `id`, `title`, `done`, `createdAt`, `completedAt` (ISO-8601 UTC; `completedAt` is null while open).",
+        description: "List todos from the shared Tandem list — the same todos a human sees and edits in the Tandem app on this Mac. Store: ~/.tandem/todos.json. Optional argument `filter`: `open` (default), `done`, or `all`. Returns todos in the list's stored order (the order the human arranged; new todos land on top) as JSON: `id`, `title`, `done`, `section` (null for the default area), `createdAt`, `completedAt` (ISO-8601 UTC; `completedAt` is null while open).",
         inputSchema: .object([
             "type": "object",
             "properties": .object([
@@ -21,7 +21,7 @@ enum TandemTools {
 
     static let add = Tool(
         name: "add",
-        description: "Add a todo to the shared Tandem list (store: ~/.tandem/todos.json), which a human on this Mac shares with you through the Tandem app. Argument: `title` (required; trimmed, empty is rejected). Duplicate titles are allowed. Returns the created todo as JSON, including the `id` you can pass to `complete`.",
+        description: "Add a todo to the shared Tandem list (store: ~/.tandem/todos.json), which a human on this Mac shares with you through the Tandem app. Argument: `title` (required; trimmed, empty is rejected). Duplicate titles are allowed. The new todo lands on top of the list's default area. Returns the created todo as JSON, including the `id` you can pass to `complete`.",
         inputSchema: .object([
             "type": "object",
             "properties": .object([

@@ -207,17 +207,22 @@ struct OperationsTests {
         }
     }
 
-    @Test("creation order is preserved in list(.all)")
-    func creationOrderPreserved() throws {
+    @Test("add puts each new todo on top; completing does not reorder (.all)")
+    func newTodosLandOnTop() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
 
-        let ids = try ["first", "second", "third"].map { try store.add($0).value.id }
-        // Completing the middle one must not reorder the list.
-        _ = try store.complete(ids[1].uuidString)
+        let first = try store.add("first").value.id
+        let second = try store.add("second").value.id
+        let third = try store.add("third").value.id
 
-        #expect(try store.list(.all).value.map(\.id) == ids)
+        // New todos rise to the top.
+        #expect(try store.list(.all).value.map(\.id) == [third, second, first])
+
+        // Completing the middle one must not reorder the list.
+        _ = try store.complete(second.uuidString)
+        #expect(try store.list(.all).value.map(\.id) == [third, second, first])
     }
 
     // MARK: - update
@@ -239,8 +244,8 @@ struct OperationsTests {
         #expect(updated.value.completedAt != nil)
 
         let all = try store.list(.all).value
-        #expect(all.map(\.id) == [a.value.id, b.value.id])   // order unchanged
-        #expect(all[1].title == "new title")
+        #expect(all.map(\.id) == [b.value.id, a.value.id])   // order unchanged
+        #expect(all[0].title == "new title")
     }
 
     @Test("update rejects an empty or whitespace-only title")
@@ -359,15 +364,16 @@ struct OperationsTests {
         let store = Store(directory: dir)
 
         let ids = try ["first", "second", "third"].map { try store.add($0).value.id }
+        let stored = Array(ids.reversed())   // newest on top
         _ = try store.complete(ids[1].uuidString)
         _ = try store.reopen(ids[1].uuidString)
-        #expect(try store.list(.all).value.map(\.id) == ids)
-        #expect(try store.list().value.map(\.id) == ids)
+        #expect(try store.list(.all).value.map(\.id) == stored)
+        #expect(try store.list().value.map(\.id) == stored)
 
         let recompleted = try store.complete(ids[1].uuidString)
         #expect(recompleted.value.done == true)
         #expect(recompleted.value.completedAt != nil)
-        #expect(try store.list(.all).value.map(\.id) == ids)
+        #expect(try store.list(.all).value.map(\.id) == stored)
     }
 
     // MARK: - clearDone
@@ -450,7 +456,7 @@ struct OperationsTests {
 
     // MARK: - on-disk round-trip
 
-    @Test("on-disk file is schema v1 and a fresh Store decodes the same todos")
+    @Test("on-disk file is schema v2 and a fresh Store decodes the same todos")
     func onDiskRoundTrip() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -463,7 +469,9 @@ struct OperationsTests {
         // Read the raw file straight off disk.
         let text = try String(contentsOf: store.fileURL, encoding: .utf8)
         let obj = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
-        #expect((obj?["version"] as? Int) == 1)
+        #expect((obj?["version"] as? Int) == 2)
+        // No sections declared yet, and the field is written as an empty array.
+        #expect((obj?["sections"] as? [String])?.isEmpty == true)
 
         guard let todos = obj?["todos"] as? [[String: Any]] else {
             Issue.record("`todos` is not a JSON array of objects")
@@ -478,20 +486,22 @@ struct OperationsTests {
         for todo in todos {
             #expect((todo["createdAt"] as? String)?.hasSuffix("Z") == true)
         }
-        // The open todo's completedAt is JSON null.
+        // The open todo's completedAt and section are JSON null.
         let openEntry = todos.first { ($0["done"] as? Bool) == false }
         #expect(openEntry?["completedAt"] is NSNull)
+        #expect(openEntry?["section"] is NSNull)
         // The done todo's completedAt is a real (non-null) string.
         let doneEntry = todos.first { ($0["done"] as? Bool) == true }
         #expect(doneEntry?["completedAt"] is String)
 
-        // Decode round-trip: a fresh Store over the same dir sees the same todos.
+        // Decode round-trip: a fresh Store over the same dir sees the same todos,
+        // newest on top (schema v2 order is the stored order).
         let fresh = Store(directory: dir)
         let all = try fresh.list(.all).value
-        #expect(all.map(\.id) == [open.value.id, done.value.id])
-        #expect(all.map(\.title) == ["open", "done"])
-        #expect(all.map(\.done) == [false, true])
-        #expect(all[0].completedAt == nil)
-        #expect(all[1].completedAt != nil)
+        #expect(all.map(\.id) == [done.value.id, open.value.id])
+        #expect(all.map(\.title) == ["done", "open"])
+        #expect(all.map(\.done) == [true, false])
+        #expect(all[0].completedAt != nil)
+        #expect(all[1].completedAt == nil)
     }
 }
