@@ -4,8 +4,10 @@ Two repos: the main repo holds the source; [`gianniacquisto/homebrew-tap`](https
 
 To cut a release:
 
-1. Tag the main repo: `git tag v0.5.0 && git push origin v0.5.0`.
+1. Tag the main repo: `git tag v0.6.0 && git push origin v0.6.0`.
 2. The [Release workflow](https://github.com/gianniacquisto/tandem/blob/main/.github/workflows/release.yml) runs the test suite, builds and verifies the artifact, and publishes the GitHub release for the tag with `Tandem-<version>.zip` and `SHA256SUMS` attached. It also runs on pull requests — build-and-verify only, never publishing — so a release can be dry-run on a PR. Re-pushing the same tag re-cuts the release.
 3. The tap's `brew bump` workflow livechecks the release assets and opens a bump PR for the single cask file with the artifact's real sha256 — merging it is the whole release. It needs the tap's `HOMEBREW_GITHUB_API_TOKEN` secret (a token with `repo` scope) — without a working token the run fails after pushing the bump branch, so the PR has to be opened by hand.
 4. If bumping by hand, verify before pushing: `brew style Casks/tandem.rb && brew audit --cask --strict gianniacquisto/tap/tandem`.
-5. Users get it with `brew update && brew upgrade --cask tandem`.
+5. Users get it with `brew update && brew upgrade --cask gianniacquisto/tap/tandem`.
+
+Always spell the tap's cask out in full. The token is `tandem`, which collides with Homebrew's unrelated `tandem` (tandem.chat, 348 MB); the Caskroom is keyed by token, so a bare `brew upgrade --cask tandem` resolves core's cask against this tap's files and installs *that* app over this one — and `brew outdated --cask` offers its version as an upgrade forever. Renaming the token is the only real fix; until then, every user-facing command carries the tap prefix (installing with `brew install --cask gianniacquisto/tap/tandem` from the README is safe).
