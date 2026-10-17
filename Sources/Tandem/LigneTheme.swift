@@ -130,4 +130,8 @@ enum Motion {
     static let insert: Animation = .easeOut(duration: 0.2)
     static let toggle: Animation = .easeInOut(duration: 0.18)
     static let remove: Animation = .easeIn(duration: 0.15)
+    /// The checkbox tick: a short, springy pop as the mark is drawn — the
+    /// "click" of checking something off. Slightly under-damped so it
+    /// overshoots once and settles.
+    static let check: Animation = .spring(response: 0.3, dampingFraction: 0.6)
 }

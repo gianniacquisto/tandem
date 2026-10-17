@@ -31,31 +31,44 @@ func ageString(_ date: Date) -> String {
 
 // MARK: checkbox — flat, one hairline, one-way (v2 decision)
 
-/// The one-way checkbox: checking animates to moss; un-checking does nothing
-/// (the checkbox on a done row reads as "done", not as broken).
+/// The checkbox. Checking it is the satisfying moment: the mark is *drawn in*
+/// (not faded) and the box gives one springy pop as it fills to moss. The tick
+/// is always in the hierarchy, clipped by `trim`, so it can animate without a
+/// transition; the pop only fires on a false→true flip, never on first render,
+/// so a list that loads with done rows stays still.
 struct LigneCheckbox: View {
     var done: Bool
     var palette: Palette
     var size: CGFloat = 18
 
+    /// Transient scale during the pop (1 at rest).
+    @State private var pop: CGFloat = 1
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: Radius.checkbox)
                 .fill(done ? AnyShapeStyle(palette.moss) : AnyShapeStyle(palette.parchment))
-            if done {
-                Path { p in
-                    p.move(to: CGPoint(x: 0.26, y: 0.52))
-                    p.addLine(to: CGPoint(x: 0.42, y: 0.68))
-                    p.addLine(to: CGPoint(x: 0.76, y: 0.34))
-                }
-                .path(in: CGRect(x: 0, y: 0, width: size, height: size))
-                .stroke(palette.paper, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                .transition(.opacity)
+            Path { p in
+                p.move(to: CGPoint(x: 0.26, y: 0.52))
+                p.addLine(to: CGPoint(x: 0.42, y: 0.68))
+                p.addLine(to: CGPoint(x: 0.76, y: 0.34))
             }
+            .path(in: CGRect(x: 0, y: 0, width: size, height: size))
+            .trim(from: 0, to: done ? 1 : 0)
+            .stroke(palette.paper, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
             RoundedRectangle(cornerRadius: Radius.checkbox)
                 .strokeBorder(palette.ink, lineWidth: Line.hairline)
         }
         .frame(width: size, height: size)
+        .scaleEffect(pop)
+        // The fill and the drawn tick share the checkbox's own spring, so the
+        // beat reads as one gesture regardless of the caller's animation.
+        .animation(Motion.check, value: done)
+        .onChange(of: done) { _, isDone in
+            guard isDone else { return }
+            withAnimation(Motion.check) { pop = 1.18 }
+            withAnimation(Motion.check.delay(0.06)) { pop = 1 }
+        }
     }
 }
 
