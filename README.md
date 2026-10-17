@@ -30,33 +30,35 @@ All your todos live in `~/.tandem/todos.json`, a plain JSON file you can edit by
 
 The app has a main window and a menu bar item. It watches the file, so the list updates live whenever anything changes it.
 
-Agents read and write the same file through Tandem's MCP server (see below). When an agent adds a todo, it shows up in your app; when you check one off, the agent sees it on its next read.
+Agents read and write the same file through `tandem-cli`, the command line the app bundles (see below). When an agent adds a todo, it shows up in your app; when you check one off, the agent sees it on its next read.
 
 Everything runs locally on your Mac. No accounts, no network.
 
 ## Using Tandem from an agent
 
-The app bundles `tandem-mcp`, an MCP server with three tools: `list`, `add`, and `complete`. The path below survives upgrades.
-
-Claude Code:
+The app bundles `tandem-cli`, the command line your agent reads and writes the list through. It lives at a stable in-bundle path:
 
 ```sh
-claude mcp add tandem -- /Applications/Tandem.app/Contents/MacOS/tandem-mcp
+/Applications/Tandem.app/Contents/MacOS/tandem-cli
 ```
 
-OpenCode — add this to `opencode.json`:
+Four commands:
 
-```json
-{
-  "mcp": {
-    "tandem": {
-      "type": "local",
-      "command": ["/Applications/Tandem.app/Contents/MacOS/tandem-mcp"],
-      "enabled": true
-    }
-  }
-}
+```sh
+tandem-cli todo list [--filter open|done|all]
+tandem-cli todo add --title "Water the plants"
+tandem-cli todo complete --id <id>
+tandem-cli note rename --from "Ideas.md" --to "Backlog.md"
 ```
+
+`tandem-cli --help` prints that syntax and exits `0`. The `tandem` skill, in `skills/tandem/`, teaches an agent those contracts. Agent hosts load it from there:
+
+```sh
+# Claude Code — link the skill into your personal skills directory
+ln -s "$PWD/skills/tandem" ~/.claude/skills/tandem
+```
+
+For OpenCode, add this repo's `skills/` directory to the `skills` array in `opencode.json`.
 
 ### The `tandem-memory` skill
 

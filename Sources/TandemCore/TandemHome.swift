@@ -6,7 +6,7 @@ import Foundation
 /// The rule: the real `~/.tandem` belongs to the *shipped app* — a release build
 /// running inside a `.app` bundle, which is what the cask installs and what agent
 /// configs point at. Everything else — `swift run Tandem`, a bare
-/// `.build/…/tandem-mcp`, any debug build — gets `~/.tandem-dev`. So a run from
+/// `.build/…/tandem-cli`, any debug build — gets `~/.tandem-dev`. So a run from
 /// source can add, complete, reorder, or wipe as violently as it likes without
 /// going near the list the human actually keeps.
 ///
@@ -49,7 +49,7 @@ public enum TandemHome {
     /// Whether `path` is an executable inside a `.app` bundle
     /// (`…/Tandem.app/Contents/MacOS/Tandem`) — i.e. installed, not built and run
     /// in place. An `.app` component anywhere in the path counts: `Bundle.main` for
-    /// the in-bundle `tandem-mcp` resolves to the enclosing app, so its executable
+    /// the in-bundle `tandem-cli` resolves to the enclosing app, so its executable
     /// path is still the one with `Tandem.app` in it.
     static func isInsideAppBundle(_ path: String) -> Bool {
         path.split(separator: "/").contains { $0.hasSuffix(".app") }

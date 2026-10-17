@@ -208,11 +208,11 @@ struct RowDragAndDrop: ViewModifier {
 }
 
 /// A main-window row. The checkbox is the toggle: checking completes, and
-/// un-checking a done todo reopens it (GUI-only — no reopen in the MCP surface).
+/// un-checking a done todo reopens it (GUI-only — no reopen in the CLI).
 /// The title edits in place: double-click it, or use the row's Edit item; Return
 /// commits, Esc cancels, and clicking away commits. A plain row click is never
 /// destructive. Delete appears on hover and in the context menu — also GUI-only
-/// (agents have no delete in the MCP surface). Rows drag to reorder and to move
+/// (agents have no delete in the CLI). Rows drag to reorder and to move
 /// between sections when the caller passes `onDropTodo`, and the context menu's
 /// "Move to" files one into a section at any scroll position.
 struct LigneRow: View {

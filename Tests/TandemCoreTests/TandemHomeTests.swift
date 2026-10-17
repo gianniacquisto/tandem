@@ -30,9 +30,9 @@ struct TandemHomeTests {
     func shippedAppGetsRealHome() {
         #expect(resolve(exe: "/Applications/Tandem.app/Contents/MacOS/Tandem", debug: false)
             == "/Users/tester/.tandem")
-        // The in-bundle MCP server is the same app: Bundle.main resolves to the enclosing
+        // The in-bundle CLI is the same app: Bundle.main resolves to the enclosing
         // .app, so its executable path still carries the Tandem.app component.
-        #expect(resolve(exe: "/Applications/Tandem.app/Contents/MacOS/tandem-mcp", debug: false)
+        #expect(resolve(exe: "/Applications/Tandem.app/Contents/MacOS/tandem-cli", debug: false)
             == "/Users/tester/.tandem")
     }
 

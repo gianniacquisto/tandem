@@ -108,6 +108,8 @@ These semantics are defined in core so the GUI and the MCP server share them; th
 
 ### MCP server executable
 
+> **Superseded (2026-10-17, [ADR 0009](../../docs/adr/0009-cli-agent-face.md)):** the MCP server retires; `tandem-cli` is the agent face, an in-bundle binary carrying the same three operations under `tandem-cli todo list|add|complete`, with the tool descriptions verbatim in `skills/tandem/SKILL.md`. The tools, schemas, verbatim descriptions, and result encoding below describe the retired surface.
+
 - Official Swift SDK (`modelcontextprotocol/swift-sdk` ≥ 0.12): `Server(name: "tandem", version:, capabilities:)` + `StdioTransport()` + `withMethodHandler` for `ListTools` and `CallTool`. `start(transport:)` returns immediately, so the executable must stay alive via `waitUntilCompleted()`.
 - **Tools**: bare names `list` / `add` / `complete` (the server prefix already namespaces them). Client surfacing: `tandem_list` / `tandem_add` / `tandem_complete` in OpenCode (configured under the `mcp` key of `opencode.json`: `"type": "local"`, `command` an array holding the absolute path to the installed binary); `mcp__tandem__list` / `mcp__tandem__add` / `mcp__tandem__complete` in Claude Code (`claude mcp add tandem -- <path>` or `mcpServers` in `.mcp.json`).
 - **Input schemas**: `list` — optional `filter` (enum: open/done/all). `add` — required `title` (string). `complete` — required `id` (string).

@@ -31,7 +31,7 @@ Amend the covering note whenever one exists. Create a new Note only when [`CONVE
 
 ## Threads
 
-An **open Thread** is a Tandem Todo (MCP `add`) **plus** a bullet in the owning note's `## Threads`, leading with the Todo title **verbatim** and a one-clause hook for the context a title cannot carry. A **closed Thread** is MCP `complete` plus the bullet becoming a dated resolved one-liner.
+An **open Thread** is a Tandem Todo (`tandem-cli todo add --title "…"`) **plus** a bullet in the owning note's `## Threads`, leading with the Todo title **verbatim** and a one-clause hook for the context a title cannot carry. A **closed Thread** is `tandem-cli todo complete --id <id>` plus the bullet becoming a dated resolved one-liner.
 
 - `- <Todo title verbatim> — <one-clause hook>`
 - `- <Todo title> — resolved <date>`

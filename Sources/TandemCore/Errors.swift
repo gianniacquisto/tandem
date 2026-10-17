@@ -1,9 +1,8 @@
 import Foundation
 
 /// A Tandem error that carries a short, actionable plain-text `message` suitable for
-/// surfacing verbatim (MCP `isError` results, GUI alerts). Domain and I/O failures
-/// both conform; protocol-level failures (malformed request, unknown method) are
-/// separate and remain thrown MCP errors handled by the SDK.
+/// surfacing verbatim (CLI stderr, GUI alerts). Domain and I/O failures
+/// both conform; there is no protocol layer above them to translate them.
 public protocol TandemError: Error, Sendable {
     var message: String { get }
 }

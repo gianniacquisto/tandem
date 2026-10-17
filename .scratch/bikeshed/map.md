@@ -8,6 +8,8 @@ A sharp, implementable spec for the bikeshed: an Obsidian-like markdown notes su
 
 ## Notes
 
+> **Amended (2026-10-17, [ADR 0009](../../docs/adr/0009-cli-agent-face.md)):** the MCP target retired; the agent face is now `tandem-cli`, in-bundle. The substance below stands — notes are reached as on-disk files, with no note tools beyond the single `tandem-cli note rename` verb (renaming through the CLI is what keeps wikilinks intact).
+
 - Domain: Swift/SwiftUI macOS app (macOS 26+). The bikeshed is a plain folder of `.md` files next to `~/.tandem/todos.json`; agents reach it as on-disk files (same OS user, same Mac) — no new MCP tools in v1. The app's file watcher surfaces changes live.
 - Tracker: local markdown — map at `.scratch/bikeshed/map.md`, tickets at `.scratch/bikeshed/issues/NN-<slug>.md`. Claim = set `Status: claimed`. Blocking = `Blocked by:` line in the ticket header.
 - Spec (the destination): to be written at handoff, e.g. `.scratch/bikeshed/spec.md`.

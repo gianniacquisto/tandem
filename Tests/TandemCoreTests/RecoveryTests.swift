@@ -8,7 +8,7 @@ import Testing
 /// `todos.json.corrupt-<unix-ts>` and the store restarts empty; only the op that
 /// performs the recovery surfaces a `note` naming the backup path. Lenient read:
 /// unknown extra fields are ignored. Encoding: `StoreEncoding` + `tandemErrorText`
-/// produce the exact schema-v1 shapes and actionable error text the MCP surface sends.
+/// produce the exact schema-v1 shapes and actionable error text the CLI sends.
 @Suite("Recovery and encoding")
 struct RecoveryTests {
 

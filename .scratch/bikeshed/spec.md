@@ -177,6 +177,7 @@ GUI and editor (manual; the `prototype/bikeshed-ui` branch is the visual referen
 v1 does not include:
 
 - **MCP note tools** — the agent surface is the on-disk files; the MCP target is untouched.
+  > **Amended (2026-10-17, [ADR 0009](../../docs/adr/0009-cli-agent-face.md)):** the on-disk files stay the agent surface for every notes operation except `rename`; a `tandem-cli note rename` verb rewrites the wikilinks — the one operation the file tools cannot reproduce safely.
 - Graph view, plugins, canvas, embeds.
 - Daily notes, templates.
 - Sync of any kind; mobile.

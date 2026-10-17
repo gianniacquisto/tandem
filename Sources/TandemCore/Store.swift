@@ -3,7 +3,7 @@ import Foundation
 /// The single source of truth for todos (GLOSSARY: Store): one JSON file at
 /// `<home>/todos.json` — the real `~/.tandem` for the shipped app, `~/.tandem-dev`
 /// for anything built and run in place (`TandemHome`) — read and written by the GUI
-/// and the per-session MCP server processes. Implements the protocol from ADR 0001:
+/// and by `tandem-cli` invocations. Implements the protocol from ADR 0001:
 ///
 /// - **Locking** — writers take an exclusive `flock` on the sidecar lockfile
 ///   (`<home>/tandem.lock`, never renamed), held across the whole

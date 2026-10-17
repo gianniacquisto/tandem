@@ -1,8 +1,8 @@
 import Foundation
 
 /// Contract-level todo operations (spec: "Operations (core)"). These are the only
-/// public surface the GUI and the MCP server use; they define the shared semantics so
-/// both faces behave identically. The MCP server adds only encoding; the GUI adds only
+/// public surface the GUI and the CLI use; they define the shared semantics so
+/// both faces behave identically. The CLI adds only encoding; the GUI adds only
 /// presentation.
 ///
 /// Ordering: the **stored order** is authoritative — the position of a todo in `todos.json`
@@ -22,7 +22,7 @@ extension Store {
         return OperationResult(filter.apply(to: contents.todos), note: note)
     }
 
-    /// `list` with the raw wire filter string (the MCP boundary). `nil` (argument absent)
+    /// `list` with the raw wire filter string (the CLI boundary). `nil` (argument absent)
     /// means the default `.open`; any unrecognized value is `DomainError.invalidFilter`.
     public func list(rawFilter raw: String?) throws -> OperationResult<[Todo]> {
         guard let filter = Filter.parse(raw: raw) else {
@@ -31,7 +31,7 @@ extension Store {
         return try list(filter)
     }
 
-    // MARK: - sections (GUI-only — no MCP tools)
+    // MARK: - sections (GUI-only — no CLI verbs)
 
     /// The section names in render order (the default area is implicit and unnamed).
     /// Includes any name that appears only on a todo (a hand edit), so the GUI can draw it.
@@ -142,7 +142,7 @@ extension Store {
         return OperationResult(todo, note: note)
     }
 
-    // MARK: - move (GUI-only — no MCP tool)
+    // MARK: - move (GUI-only — no CLI verb)
 
     /// `move(id, toSection:at:)`: place a todo at a 0-based `index` within `toSection`
     /// (`nil` is the default area), moving it between sections when needed. `index` is
@@ -193,8 +193,8 @@ extension Store {
 
     // MARK: - update
 
-    /// `update(id, title)`: rewrites a todo's title in place. GUI-only, with no MCP
-    /// tool (the agent surface stays `list`/`add`/`complete`). The title is trimmed;
+    /// `update(id, title)`: rewrites a todo's title in place. GUI-only, with no CLI
+    /// verb (the agent surface stays `list`/`add`/`complete`). The title is trimmed;
     /// empty/whitespace-only is rejected with `DomainError.emptyTitle`. An unchanged
     /// title is a no-op (nothing written). `done`, `completedAt` and the section are
     /// untouched, and the stored order is never changed. An unknown id throws
@@ -217,7 +217,7 @@ extension Store {
 
     // MARK: - reopen
 
-    /// `reopen(id)`: the inverse of `complete` — GUI-only, with no MCP tool (the agent
+    /// `reopen(id)`: the inverse of `complete` — GUI-only, with no CLI verb (the agent
     /// surface stays `list`/`add`/`complete`). Idempotent — an already-open todo is
     /// returned unchanged, no error. On a transition back to open, `completedAt` is
     /// cleared. An unknown id throws `DomainError.unknownID` carrying the full current
@@ -256,8 +256,8 @@ extension Store {
 
     // MARK: - delete
 
-    /// `delete(id)`: removes a single todo. GUI-only — there is no delete tool in the MCP
-    /// v1 surface. An unknown id throws `DomainError.unknownID` (with the open list).
+    /// `delete(id)`: removes a single todo. GUI-only — the CLI has no delete verb.
+    /// An unknown id throws `DomainError.unknownID` (with the open list).
     public func delete(_ id: String) throws -> OperationResult<Void> {
         let (_, note) = try mutate { contents -> (value: Void, changed: Bool) in
             guard let uuid = UUID(uuidString: id),

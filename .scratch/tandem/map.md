@@ -40,4 +40,5 @@ A sharp, implementable spec for Tandem: a native macOS todo app (regular app: ma
 - Notifications on agent activity (would require change-origin tracking in the store) — deferred by explicit decision.
 - Extra MCP tools (update/rename, delete, read-one) and MCP resources — v1 surface is `list` / `add` / `complete`.
 - CLI adapter for non-MCP agents or shell scripting — the MCP server is the agent surface.
+  > **Superseded (2026-10-17, [ADR 0009](../../docs/adr/0009-cli-agent-face.md)):** the scope cut is reversed — a `tandem-cli` binary ships in the app bundle as the agent face, so shell scripting and non-MCP agents are served after all.
 - Distribution: App Store, notarization, code signing — personal local tool.
