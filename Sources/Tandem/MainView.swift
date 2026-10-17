@@ -11,6 +11,8 @@ import TandemCore
 ///               "Clear done" (disabled when nothing is done), and the
 ///               stored-order list grouped by section. Only named sections draw
 ///               a header — the ungrouped todos are just the top of the list.
+///               A search field (⌘F) narrows the drawn rows by title, across
+///               every section; Escape clears it (or dismisses a banner).
 ///               Double-click a name to rename; its ⋯ menu moves the section up
 ///               or down, or deletes it, which ungroups its todos rather than
 ///               deleting them.
@@ -31,8 +33,10 @@ struct MainView: View {
 
     @State private var quickAdd = ""
     @State private var filter: Filter = .open
+    @State private var search = ""
     @State private var tab: MainTab = .todos
     @FocusState private var quickAddFocused: Bool
+    @FocusState private var searchFocused: Bool
 
     // Section chrome: the inline "name a new section" field, and the inline rename.
     @State private var addingSection = false
@@ -118,12 +122,26 @@ struct MainView: View {
             }
             .padding(.horizontal, Space.gutter)
             .padding(.top, Space.section)
+            // View-only search: it narrows what is drawn (case-insensitive on the
+            // title, across every section and the current Open/Done/All filter).
+            // It never re-sorts or mutates the store.
+            LigneSearchField(text: $search, palette: palette, focus: $searchFocused)
+                .padding(.horizontal, Space.gutter)
+                .padding(.top, Space.section)
             recoveryBanner
             errorBanner
             Rectangle().fill(palette.sand).frame(height: Line.hairline)
                 .padding(.top, Space.section)
             listArea
         }
+        .modifier(TodosShortcuts(
+            search: $search,
+            focusSearch: $searchFocused,
+            hasBanner: model.recoveryNote != nil || model.lastError != nil,
+            dismissBanners: {
+                model.dismissRecoveryNote()
+                model.dismissError()
+            }))
     }
 
     // MARK: - Quick add
@@ -139,12 +157,26 @@ struct MainView: View {
     // MARK: - List
 
     private var visibleTodos: [Todo] {
+        let base: [Todo]
         switch filter {
-        case .open: return model.openTodos
-        case .done: return model.doneTodos
-        case .all: return model.todos
+        case .open: base = model.openTodos
+        case .done: base = model.doneTodos
+        case .all: base = model.todos
         }
+        // Search is a pure view concern: case-insensitive substring on the title,
+        // applied *before* grouping so section counts reflect the matches. It
+        // never changes the store or the stored order.
+        guard queryActive else { return base }
+        return base.filter { $0.title.lowercased().contains(query) }
     }
+
+    /// The trimmed, lowercased query. Empty means "no filter", and behaviour is
+    /// exactly as it was before the field existed.
+    private var query: String {
+        search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var queryActive: Bool { !query.isEmpty }
 
     /// The list grouped for display. With no sections declared this is a single
     /// unnamed group (the flat list, unchanged); otherwise the default area comes
@@ -171,7 +203,14 @@ struct MainView: View {
 
     private var listArea: some View {
         Group {
-            if visibleTodos.isEmpty && !showsSections {
+            if queryActive && visibleTodos.isEmpty {
+                // A search that matched nothing: a quiet empty state, not a wall
+                // of section headers at 0. Distinct from the true-empty states
+                // below, which are about the store itself being empty.
+                LigneEmptyState(palette: palette, title: "No matches",
+                                subtitle: "No todo title matches your search.",
+                                hero: false)
+            } else if visibleTodos.isEmpty && !showsSections {
                 switch filter {
                 case .open:
                     LigneEmptyState(palette: palette, title: "All clear",
@@ -457,5 +496,43 @@ struct TandemShortcuts: ViewModifier {
 
     private func setFilter(_ f: Filter) {
         withAnimation(Motion.toggle) { filter = f }
+    }
+}
+
+/// Todos-face shortcuts, registered the same invisible-button way as
+/// `TandemShortcuts` (which keeps ⌘1/⌘2/⌘3 and ⌘N — this never steals them):
+///
+///   ⌘F      focuses the search field
+///   Escape  clears a focused, non-empty search; otherwise dismisses a banner
+///
+/// Scoped to the Todos face so its Escape never contends with the Bikeshed's own
+/// Escape handler. Focus is the system's single first responder, so focusing one
+/// field (`⌘F`) automatically resigns the other (`⌘N` quick-add) and vice versa.
+struct TodosShortcuts: ViewModifier {
+    @Binding var search: String
+    var focusSearch: FocusState<Bool>.Binding
+    /// Whether a banner is actually up — Escape is a no-op otherwise.
+    var hasBanner: Bool
+    var dismissBanners: () -> Void
+
+    func body(content: Content) -> some View {
+        content.background {
+            VStack(spacing: 0) {
+                Button("") { focusSearch.wrappedValue = true }
+                    .keyboardShortcut("f", modifiers: .command)
+                Button("") {
+                    // Clear an active search first; only when there is nothing to
+                    // clear does Escape fall through to dismissing a banner.
+                    if focusSearch.wrappedValue && !search.isEmpty {
+                        search = ""
+                    } else if hasBanner {
+                        dismissBanners()
+                    }
+                }
+                .keyboardShortcut(.escape, modifiers: [])
+            }
+            .buttonStyle(.plain)
+            .hidden()
+        }
     }
 }
