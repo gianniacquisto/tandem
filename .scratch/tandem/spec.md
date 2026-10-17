@@ -68,7 +68,7 @@ One local SwiftPM package with three targets:
 - **Todo**: `id` (UUIDv4, string in the file), `title` (trimmed, no max length, duplicates allowed), `done` (boolean), `createdAt` / `completedAt` (ISO-8601 UTC; `completedAt` is null while open). Nothing else in v1.
 - Collection order is **creation order, always**. Display sorting is a UI concern, never the Store's.
 
-> **Superseded (2026-10-17, [ADR 0006](../../docs/adr/0006-stored-order-and-sections.md)):** order is now **stored** — a todo's position in the array is its position in the list, `add` lands on top, and the schema is **v2** with an ordered `sections` list and an optional `section` on each todo. The v1 shape below still reads and upgrades on write.
+> **Superseded (2026-10-17, [ADR 0006](../../docs/adr/0006-stored-order-and-sections.md)):** order is now **stored** — a todo's position in the array is its position in the list, `add` lands on top, and the store gained an ordered `sections` list with an optional `section` on each todo. Those fields are *additive*, so the envelope **version stays 1** (see ADR 0006 for why that matters).
 
 ### Store (core) — per ADR 0001
 
