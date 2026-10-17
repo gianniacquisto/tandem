@@ -220,6 +220,156 @@ struct OperationsTests {
         #expect(try store.list(.all).value.map(\.id) == ids)
     }
 
+    // MARK: - update
+
+    @Test("update rewrites the title (trimmed) and leaves done/timestamps/order intact")
+    func updateRewritesTitle() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let a = try store.add("first")
+        let b = try store.add("old title")
+        _ = try store.complete(b.value.id.uuidString)
+
+        let updated = try store.update(b.value.id.uuidString, title: "  new title  \n")
+        #expect(updated.value.id == b.value.id)
+        #expect(updated.value.title == "new title")
+        #expect(updated.value.done == true)
+        #expect(updated.value.completedAt != nil)
+
+        let all = try store.list(.all).value
+        #expect(all.map(\.id) == [a.value.id, b.value.id])   // order unchanged
+        #expect(all[1].title == "new title")
+    }
+
+    @Test("update rejects an empty or whitespace-only title")
+    func updateRejectsEmptyTitle() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let added = try store.add("Task")
+        for title in ["", "   ", "\t\n  "] {
+            #expect(throws: DomainError.emptyTitle) {
+                _ = try store.update(added.value.id.uuidString, title: title)
+            }
+        }
+        // The title is untouched after the rejected attempts.
+        #expect(try store.list(.all).value.first?.title == "Task")
+    }
+
+    @Test("update with an unchanged title is a no-op, not an error")
+    func updateUnchangedTitle() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let added = try store.add("Same")
+        let updated = try store.update(added.value.id.uuidString, title: "Same")
+        #expect(updated.value.id == added.value.id)
+        #expect(updated.value.title == "Same")
+        #expect(try store.list(.all).value.count == 1)
+    }
+
+    @Test("update with an unknown or non-UUID id throws unknownID")
+    func updateUnknownID() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        _ = try store.add("A")
+
+        for id in [UUID().uuidString, "not-a-uuid"] {
+            do {
+                _ = try store.update(id, title: "whatever")
+                Issue.record("Expected unknownID to be thrown for \(id)")
+            } catch let error as DomainError {
+                guard case .unknownID = error else {
+                    Issue.record("Expected unknownID, got \(error)")
+                    return
+                }
+            }
+        }
+    }
+
+    // MARK: - reopen
+
+    @Test("reopen clears done and completedAt (the inverse of complete)")
+    func reopenMarksOpen() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let added = try store.add("Task")
+        let completed = try store.complete(added.value.id.uuidString)
+        #expect(completed.value.done == true)
+        #expect(completed.value.completedAt != nil)
+
+        let reopened = try store.reopen(added.value.id.uuidString)
+        #expect(reopened.value.id == added.value.id)
+        #expect(reopened.value.done == false)
+        #expect(reopened.value.completedAt == nil)
+
+        // Persisted, not just returned.
+        let persisted = try store.list(.all).value.first { $0.id == added.value.id }
+        #expect(persisted?.done == false)
+        #expect(persisted?.completedAt == nil)
+    }
+
+    @Test("reopen is idempotent: an already-open todo is returned unchanged")
+    func reopenIsIdempotent() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let added = try store.add("Task")
+        let reopened = try store.reopen(added.value.id.uuidString)
+        #expect(reopened.value.id == added.value.id)
+        #expect(reopened.value.done == false)
+        #expect(reopened.value.completedAt == nil)
+        #expect(try store.list(.all).value.count == 1)
+    }
+
+    @Test("reopen with an unknown or non-UUID id throws unknownID")
+    func reopenUnknownID() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        _ = try store.add("A")
+
+        for id in [UUID().uuidString, "not-a-uuid"] {
+            do {
+                _ = try store.reopen(id)
+                Issue.record("Expected unknownID to be thrown for \(id)")
+            } catch let error as DomainError {
+                guard case .unknownID = error else {
+                    Issue.record("Expected unknownID, got \(error)")
+                    return
+                }
+            }
+        }
+    }
+
+    @Test("complete -> reopen -> complete stamps a fresh completedAt without reordering")
+    func reopenThenCompleteAgain() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let ids = try ["first", "second", "third"].map { try store.add($0).value.id }
+        _ = try store.complete(ids[1].uuidString)
+        _ = try store.reopen(ids[1].uuidString)
+        #expect(try store.list(.all).value.map(\.id) == ids)
+        #expect(try store.list().value.map(\.id) == ids)
+
+        let recompleted = try store.complete(ids[1].uuidString)
+        #expect(recompleted.value.done == true)
+        #expect(recompleted.value.completedAt != nil)
+        #expect(try store.list(.all).value.map(\.id) == ids)
+    }
+
     // MARK: - clearDone
 
     @Test("clearDone removes all done todos and returns the count removed")

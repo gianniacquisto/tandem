@@ -31,31 +31,44 @@ func ageString(_ date: Date) -> String {
 
 // MARK: checkbox — flat, one hairline, one-way (v2 decision)
 
-/// The one-way checkbox: checking animates to moss; un-checking does nothing
-/// (the checkbox on a done row reads as "done", not as broken).
+/// The checkbox. Checking it is the satisfying moment: the mark is *drawn in*
+/// (not faded) and the box gives one springy pop as it fills to moss. The tick
+/// is always in the hierarchy, clipped by `trim`, so it can animate without a
+/// transition; the pop only fires on a false→true flip, never on first render,
+/// so a list that loads with done rows stays still.
 struct LigneCheckbox: View {
     var done: Bool
     var palette: Palette
     var size: CGFloat = 18
 
+    /// Transient scale during the pop (1 at rest).
+    @State private var pop: CGFloat = 1
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: Radius.checkbox)
                 .fill(done ? AnyShapeStyle(palette.moss) : AnyShapeStyle(palette.parchment))
-            if done {
-                Path { p in
-                    p.move(to: CGPoint(x: 0.26, y: 0.52))
-                    p.addLine(to: CGPoint(x: 0.42, y: 0.68))
-                    p.addLine(to: CGPoint(x: 0.76, y: 0.34))
-                }
-                .path(in: CGRect(x: 0, y: 0, width: size, height: size))
-                .stroke(palette.paper, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                .transition(.opacity)
+            Path { p in
+                p.move(to: CGPoint(x: 0.26, y: 0.52))
+                p.addLine(to: CGPoint(x: 0.42, y: 0.68))
+                p.addLine(to: CGPoint(x: 0.76, y: 0.34))
             }
+            .path(in: CGRect(x: 0, y: 0, width: size, height: size))
+            .trim(from: 0, to: done ? 1 : 0)
+            .stroke(palette.paper, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
             RoundedRectangle(cornerRadius: Radius.checkbox)
                 .strokeBorder(palette.ink, lineWidth: Line.hairline)
         }
         .frame(width: size, height: size)
+        .scaleEffect(pop)
+        // The fill and the drawn tick share the checkbox's own spring, so the
+        // beat reads as one gesture regardless of the caller's animation.
+        .animation(Motion.check, value: done)
+        .onChange(of: done) { _, isDone in
+            guard isDone else { return }
+            withAnimation(Motion.check) { pop = 1.18 }
+            withAnimation(Motion.check.delay(0.06)) { pop = 1 }
+        }
     }
 }
 
@@ -149,31 +162,55 @@ struct LigneQuickAdd: View {
 
 // MARK: row — checkbox · title · age · hover delete (GUI-only)
 
-/// A main-window row. The checkbox completes (one-way); a plain row click is
-/// never destructive. Delete appears on hover and in the context menu — it is
-/// GUI-only (agents have no delete in the MCP surface).
+/// A main-window row. The checkbox is the toggle: checking completes, and
+/// un-checking a done todo reopens it (GUI-only — no reopen in the MCP surface).
+/// The title edits in place: double-click it, or use the row's Edit item; Return
+/// commits, Esc cancels, and clicking away commits. A plain row click is never
+/// destructive. Delete appears on hover and in the context menu — also GUI-only
+/// (agents have no delete in the MCP surface).
 struct LigneRow: View {
     var todo: Todo
     var palette: Palette
     var showsAge: Bool
     var onComplete: () -> Void
+    var onReopen: () -> Void
+    var onEdit: (String) -> Void
     var onDelete: () -> Void
     @State private var hovering = false
+    @State private var editing = false
+    @State private var draft = ""
+    @FocusState private var titleFocused: Bool
 
     var body: some View {
         HStack(spacing: 10) {
-            Button(action: onComplete) {
+            Button(action: todo.done ? onReopen : onComplete) {
                 LigneCheckbox(done: todo.done, palette: palette)
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
 
-            Text(todo.title)
-                .font(.body)
-                .foregroundStyle(todo.done ? palette.inkDim : palette.ink)
-                .strikethrough(todo.done, color: palette.inkDim)
-                .lineLimit(1)
+            if editing {
+                TextField("", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .foregroundStyle(palette.ink)
+                    .focused($titleFocused)
+                    .onSubmit(commitEdit)
+                    .onExitCommand(perform: cancelEdit)
+                    // Clicking away commits (the inline-edit convention).
+                    .onChange(of: titleFocused) { _, focused in
+                        if !focused { commitEdit() }
+                    }
+            } else {
+                Text(todo.title)
+                    .font(.body)
+                    .foregroundStyle(todo.done ? palette.inkDim : palette.ink)
+                    .strikethrough(todo.done, color: palette.inkDim)
+                    .lineLimit(1)
+                    .onTapGesture(count: 2, perform: beginEdit)
+                    .help("Double-click to edit")
+            }
 
             Spacer(minLength: 8)
 
@@ -206,8 +243,35 @@ struct LigneRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .contextMenu {
+            Button("Edit", action: beginEdit)
+            if todo.done {
+                Button("Reopen", action: onReopen)
+            }
             Button("Delete", role: .destructive, action: onDelete)
         }
+    }
+
+    // MARK: inline edit
+
+    private func beginEdit() {
+        draft = todo.title
+        editing = true
+        titleFocused = true
+    }
+
+    /// Return, or clicking away: keep a non-empty change, drop an empty or
+    /// unchanged one (the store also refuses empty titles — this avoids the error
+    /// banner for what reads as "nothing typed").
+    private func commitEdit() {
+        guard editing else { return }
+        editing = false
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, trimmed != todo.title { onEdit(trimmed) }
+    }
+
+    /// Esc: leave the title as it was.
+    private func cancelEdit() {
+        editing = false
     }
 }
 

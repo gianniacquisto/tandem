@@ -45,8 +45,8 @@ extension Store {
 
     /// `complete(id)`: idempotent — an already-done todo is returned unchanged, no error.
     /// On a transition to done, `completedAt` is set to the current UTC time. An unknown
-    /// id throws `DomainError.unknownID` carrying the full current open list. There is no
-    /// reopen path in v1.
+    /// id throws `DomainError.unknownID` carrying the full current open list. The inverse
+    /// is `reopen` (GUI-only).
     public func complete(_ id: String) throws -> OperationResult<Todo> {
         let (todo, note) = try mutate { list -> (value: Todo, changed: Bool) in
             guard let uuid = UUID(uuidString: id),
@@ -58,6 +58,55 @@ extension Store {
             if !list[i].done {
                 list[i].done = true
                 list[i].completedAt = .now
+                changed = true
+            }
+            return (list[i], changed)
+        }
+        return OperationResult(todo, note: note)
+    }
+
+    // MARK: - update
+
+    /// `update(id, title)`: rewrites a todo's title in place. GUI-only, with no MCP
+    /// tool (the agent surface stays `list`/`add`/`complete`). The title is trimmed;
+    /// empty/whitespace-only is rejected with `DomainError.emptyTitle`. An unchanged
+    /// title is a no-op (nothing written). `done` and `completedAt` are untouched, and
+    /// the list order is never changed. An unknown id throws `DomainError.unknownID`
+    /// carrying the full current open list.
+    public func update(_ id: String, title rawTitle: String) throws -> OperationResult<Todo> {
+        let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { throw DomainError.emptyTitle }
+        let (todo, note) = try mutate { list -> (value: Todo, changed: Bool) in
+            guard let uuid = UUID(uuidString: id),
+                  let i = list.firstIndex(where: { $0.id == uuid })
+            else {
+                throw DomainError.unknownID(id: id, open: list.filter { !$0.done })
+            }
+            let changed = list[i].title != title
+            if changed { list[i].title = title }
+            return (list[i], changed)
+        }
+        return OperationResult(todo, note: note)
+    }
+
+    // MARK: - reopen
+
+    /// `reopen(id)`: the inverse of `complete` — GUI-only, with no MCP tool (the agent
+    /// surface stays `list`/`add`/`complete`). Idempotent — an already-open todo is
+    /// returned unchanged, no error. On a transition back to open, `completedAt` is
+    /// cleared. An unknown id throws `DomainError.unknownID` carrying the full current
+    /// open list.
+    public func reopen(_ id: String) throws -> OperationResult<Todo> {
+        let (todo, note) = try mutate { list -> (value: Todo, changed: Bool) in
+            guard let uuid = UUID(uuidString: id),
+                  let i = list.firstIndex(where: { $0.id == uuid })
+            else {
+                throw DomainError.unknownID(id: id, open: list.filter { !$0.done })
+            }
+            var changed = false
+            if list[i].done {
+                list[i].done = false
+                list[i].completedAt = nil
                 changed = true
             }
             return (list[i], changed)
