@@ -7,18 +7,18 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 
 // Syntax colours for fenced code blocks (the curated highlight set). Kept
-// inside the Ligne register: flat, one accent (dustyBlue) for structure,
+// inside the Ligne register: flat, one accent (the frame sage) for structure,
 // ink for the rest. Unknown languages get no highlighting (plain monospace).
 const syntax = HighlightStyle.define([
   { tag: [t.comment, t.quote], color: "var(--ink-dim)", fontStyle: "italic" },
-  { tag: [t.keyword, t.operatorKeyword, t.controlKeyword, t.controlOperator], color: "var(--dusty-blue-deep)" },
+  { tag: [t.keyword, t.operatorKeyword, t.controlKeyword, t.controlOperator], color: "var(--accent-deep)" },
   { tag: [t.string, t.character, t.special(t.string)], color: "var(--moss-deep)" },
   { tag: [t.number, t.bool, t.null], color: "var(--ember-deep)" },
   { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--ink)" },
   { tag: [t.definition(t.variableName)], color: "var(--ink)" },
-  { tag: [t.typeName, t.className], color: "var(--dusty-blue-deep)" },
+  { tag: [t.typeName, t.className], color: "var(--accent-deep)" },
   { tag: [t.propertyName], color: "var(--ink)" },
-  { tag: [t.tagName], color: "var(--dusty-blue-deep)" },
+  { tag: [t.tagName], color: "var(--accent-deep)" },
   { tag: [t.angleBracket, t.bracket, t.paren], color: "var(--ink-dim)" },
   { tag: [t.separator, t.punctuation], color: "var(--ink-dim)" },
   { tag: [t.variableName, t.propertyName], color: "var(--ink)" },
@@ -53,7 +53,7 @@ export const ligneTheme = [
       },
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--ink)" },
       "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection":
-        { backgroundColor: "color-mix(in srgb, var(--dusty-blue) 28%, transparent)" },
+        { backgroundColor: "color-mix(in srgb, var(--accent) 28%, transparent)" },
       ".cm-activeLine": { backgroundColor: "transparent" },
       ".cm-gutters": { display: "none" },
       // Fenced code blocks (blocks.js line classes).
@@ -120,11 +120,11 @@ export const ligneTheme = [
         padding: "0 3px",
       },
       // Links (Ligne restraint: colour carries the affordance — no underline).
-      ".tandem-link": { color: "var(--dusty-blue)", cursor: "pointer" },
-      ".tandem-wikilink": { color: "var(--dusty-blue)", cursor: "pointer" },
+      ".tandem-link": { color: "var(--accent)", cursor: "pointer" },
+      ".tandem-wikilink": { color: "var(--accent)", cursor: "pointer" },
       ".tandem-wikilink-broken": { color: "var(--ember-deep)", cursor: "pointer" },
       // Math.
-      ".tandem-math": { color: "var(--dusty-blue-deep)" },
+      ".tandem-math": { color: "var(--accent-deep)" },
       ".tandem-math-error": {
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
         color: "var(--ink)",
@@ -132,7 +132,7 @@ export const ligneTheme = [
       ".tandem-display-math": {
         padding: "6px 0",
         overflowX: "auto",
-        color: "var(--dusty-blue-deep)",
+        color: "var(--accent-deep)",
       },
       // Task items.
       ".tandem-task-done": { color: "var(--ink-dim)" },

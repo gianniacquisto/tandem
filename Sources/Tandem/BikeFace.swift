@@ -35,7 +35,7 @@ struct BikeTabControl: View {
                         .foregroundStyle(tab == t ? palette.paper : palette.ink)
                         .frame(maxWidth: .infinity)
                         .frame(height: 28)
-                        .background(tab == t ? AnyShapeStyle(palette.dustyBlue)
+                        .background(tab == t ? AnyShapeStyle(palette.accent)
                                              : AnyShapeStyle(Color.clear))
                         .contentShape(Rectangle())
                 }
@@ -249,10 +249,10 @@ struct BikeFaceView: View {
                 HStack(spacing: 5) {
                     Image(systemName: "doc.text")
                         .font(.system(size: 10))
-                        .foregroundStyle(palette.dustyBlue)
+                        .foregroundStyle(palette.accent)
                     Text(noteTitle(link.path))
                         .font(.system(size: 12.5, weight: .medium))
-                        .foregroundStyle(palette.dustyBlue)
+                        .foregroundStyle(palette.accent)
                         .lineLimit(1)
                 }
                 Text(link.line)
@@ -318,7 +318,7 @@ struct BikeFaceView: View {
                 .foregroundStyle(palette.paper)
                 .padding(.horizontal, 14)
                 .frame(height: 30)
-                .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.dustyBlue))
+                .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.accent))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -525,7 +525,7 @@ struct BikeTreeView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
-                    .background(selected ? AnyShapeStyle(palette.dustyBlue)
+                    .background(selected ? AnyShapeStyle(palette.accent)
                                          : AnyShapeStyle(Color.clear))
                 }
                 .buttonStyle(.plain)

@@ -48,7 +48,7 @@ final class MenuBarController: NSObject {
     private static func templateGlyph() -> NSImage {
         let pal = Palette(
             paper: .clear, parchment: .clear, sand: .clear, shadow: .clear,
-            ink: .black, inkDim: .black, dustyBlue: .black, dustyBlueDeep: .black,
+            ink: .black, inkDim: .black, accent: .black, accentDeep: .black,
             ember: .black, emberDeep: .black, moss: .black, mossDeep: .black,
             sky: .clear, hill: .clear, hillFar: .clear, skin: .black, sun: .black
         )

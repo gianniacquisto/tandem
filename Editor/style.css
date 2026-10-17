@@ -24,33 +24,34 @@
  */
 
 /* 1. Ligne palette (LigneTheme.swift — day = "day panel", night =
-   "night panel") ------------------------------------------------------- */
+   "night panel"; values sampled from the brand asset, the tandem-bike
+   illustration) ------------------------------------------------------- */
 
 :root,
 [data-theme="day"] {
-  --paper: #f5f0e6;
-  --parchment: #eae2d0;
-  --sand: #d9cdb4;
-  --ink: #2b2723;
-  --ink-dim: #8a8171;
-  --dusty-blue: #7490a6;
-  --dusty-blue-deep: #58738a;
-  --ember: #c47662;
-  --ember-deep: #a85d4b;
-  --moss-deep: #6f7f5d;
+  --paper: #f1e9d7;
+  --parchment: #e7deca;
+  --sand: #d6c9ae;
+  --ink: #211d18;
+  --ink-dim: #877d6b;
+  --accent: #6e7d6e;
+  --accent-deep: #55604f;
+  --ember: #a9745c;
+  --ember-deep: #8b5a45;
+  --moss-deep: #7e8d77;
 }
 
 [data-theme="night"] {
-  --paper: #23262b;
-  --parchment: #2c3037;
-  --sand: #3a3f47;
-  --ink: #ede5d4;
-  --ink-dim: #9a958a;
-  --dusty-blue: #92aac0;
-  --dusty-blue-deep: #6e8aa3;
-  --ember: #c98d7a;
-  --ember-deep: #a96e5c;
-  --moss-deep: #7a8a68;
+  --paper: #23211c;
+  --parchment: #2c2a23;
+  --sand: #3c3930;
+  --ink: #ede6d3;
+  --ink-dim: #9c9583;
+  --accent: #93a48f;
+  --accent-deep: #6e7e6a;
+  --ember: #c08a70;
+  --ember-deep: #9e6b54;
+  --moss-deep: #74856e;
 }
 
 /* 2. Page chrome -------------------------------------------------------- */
@@ -178,17 +179,17 @@ body {
 /* Markdown links, autolinks, bare URLs. Ligne restraint: the colour
    carries the affordance — no underline. */
 .tandem-link {
-  color: var(--dusty-blue);
+  color: var(--accent);
   text-decoration: none;
   cursor: pointer;
 }
 
 /* 5. Widgets (widgets.js DOM) ---------------------------------------------- */
 
-/* Wikilinks: resolved dustyBlue; broken emberDeep, plain text, no
-   underline (binding: day #A85D4B / night #A96E5C via --ember-deep). */
+/* Wikilinks: resolved accent; broken emberDeep, plain text, no
+   underline (binding: day #8B5A45 / night #9E6B54 via --ember-deep). */
 .tandem-wikilink {
-  color: var(--dusty-blue);
+  color: var(--accent);
   text-decoration: none;
   cursor: pointer;
 }
@@ -199,7 +200,7 @@ body {
 }
 
 /* Task checkbox: LigneCheckbox geometry at size 14 — 5 corners, one ink
-   hairline, parchment fill; checked fills dustyBlueDeep with the paper
+   hairline, parchment fill; checked fills accentDeep with the paper
    check (the widget's SVG strokes var(--paper)). */
 .tandem-checkbox {
   display: inline-flex;
@@ -215,10 +216,10 @@ body {
   background-color: var(--parchment);
 }
 .tandem-checkbox-on {
-  background-color: var(--dusty-blue-deep);
+  background-color: var(--accent-deep);
 }
 
-/* List marks: 4 pt dustyBlue dot (prototype bullet); ordered numbers
+/* List marks: 4 pt accent dot (prototype bullet); ordered numbers
    13.5 pt inkDim monospaced. */
 .tandem-bullet {
   display: inline-block;
@@ -226,7 +227,7 @@ body {
   height: 4px;
   margin-right: 7px;
   border-radius: 50%;
-  background-color: var(--dusty-blue);
+  background-color: var(--accent);
   vertical-align: middle;
 }
 .tandem-bullet-num {
@@ -239,7 +240,7 @@ body {
 /* Math (KaTeX renders into these; the KaTeX CSS is folded in by the
    build). Parse errors fall back to the raw source as monospace ink. */
 .tandem-math {
-  color: var(--dusty-blue-deep);
+  color: var(--accent-deep);
 }
 .tandem-math-error {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -248,7 +249,7 @@ body {
 .tandem-display-math {
   padding: 6px 0;
   overflow-x: auto;
-  color: var(--dusty-blue-deep);
+  color: var(--accent-deep);
 }
 
 /* Local images: the container-width cap; a missing file (the tandem:

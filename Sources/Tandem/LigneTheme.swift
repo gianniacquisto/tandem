@@ -10,11 +10,16 @@ import SwiftUI
 // One shared scale: every control takes its metrics from here — no literals
 // in control code.
 
-// MARK: - Palette (final values — locked in ticket 03, 2026-10-11)
+// MARK: - Palette (drawn from the brand asset — Resources/TandemBike.jpg)
 
-// "Ligne Claire, muted earth" — dusty blues, washed-out reds, sandy beiges.
+// The values are sampled from the tandem-bike illustration: warm cream paper,
+// near-black linework, a sage-green frame (the primary accent), rust saddles
+// and grips (the secondary accent), and dark charcoal tires. The interface
+// reads as the drawing: sage marks what's live, rust what wants attention,
+// ink for structure.
+//
 // Light = the "day panel" (paper-like, the natural Ligne Claire register);
-// dark = the "night panel" (blue-charcoal, linework inverts to warm paper).
+// dark = the "night panel" (warm charcoal, linework inverts to paper cream).
 // The app follows the system appearance — never forces one.
 struct Palette: Equatable {
     // surfaces
@@ -26,9 +31,9 @@ struct Palette: Equatable {
     var ink: Color         // uniform line weight, primary text
     var inkDim: Color      // secondary text (age, placeholder)
     // accents
-    var dustyBlue: Color   // primary accent: selected filter, "Open Tandem"
-    var dustyBlueDeep: Color  // hard-edge cel shade of dustyBlue
-    var ember: Color       // secondary accent: focus, warning
+    var accent: Color      // primary accent (frame sage): selected filter, "Open Tandem"
+    var accentDeep: Color  // hard-edge cel shade of accent
+    var ember: Color       // secondary accent (saddle rust): focus, warning
     var emberDeep: Color
     var moss: Color        // done state
     var mossDeep: Color
@@ -47,43 +52,43 @@ struct Palette: Equatable {
 
 extension Palette {
     static let day = Palette(
-        paper:       hex(0xF5F0E6),
-        parchment:   hex(0xEAE2D0),
-        sand:        hex(0xD9CDB4),
-        shadow:      hex(0xCDBF9F),
-        ink:         hex(0x2B2723),
-        inkDim:      hex(0x8A8171),
-        dustyBlue:   hex(0x7490A6),
-        dustyBlueDeep: hex(0x58738A),
-        ember:       hex(0xC47662),
-        emberDeep:   hex(0xA85D4B),
-        moss:        hex(0x8C9A78),
-        mossDeep:    hex(0x6F7F5D),
+        paper:       hex(0xF1E9D7),
+        parchment:   hex(0xE7DECA),
+        sand:        hex(0xD6C9AE),
+        shadow:      hex(0xC6B897),
+        ink:         hex(0x211D18),
+        inkDim:      hex(0x877D6B),
+        accent:      hex(0x6E7D6E),
+        accentDeep:  hex(0x55604F),
+        ember:       hex(0xA9745C),
+        emberDeep:   hex(0x8B5A45),
+        moss:        hex(0x6C7A66),
+        mossDeep:    hex(0x7E8D77),
         sky:         hex(0xCFDDE2),
         hill:        hex(0xB7C4AE),
         hillFar:     hex(0xC8CFBB),
-        skin:        hex(0xE9CBA4),
+        skin:        hex(0xE4C9A2),
         sun:         hex(0xE5C07B)
     )
 
     static let night = Palette(
-        paper:       hex(0x23262B),
-        parchment:   hex(0x2C3037),
-        sand:        hex(0x3A3F47),
-        shadow:      hex(0x1A1D21),
-        ink:         hex(0xEDE5D4),
-        inkDim:      hex(0x9A958A),
-        dustyBlue:   hex(0x92AAC0),
-        dustyBlueDeep: hex(0x6E8AA3),
-        ember:       hex(0xC98D7A),
-        emberDeep:   hex(0xA96E5C),
-        moss:        hex(0x9CAB86),
-        mossDeep:    hex(0x7A8A68),
-        sky:         hex(0x2A3038),
+        paper:       hex(0x23211C),
+        parchment:   hex(0x2C2A23),
+        sand:        hex(0x3C3930),
+        shadow:      hex(0x191712),
+        ink:         hex(0xEDE6D3),
+        inkDim:      hex(0x9C9583),
+        accent:      hex(0x93A48F),
+        accentDeep:  hex(0x6E7E6A),
+        ember:       hex(0xC08A70),
+        emberDeep:   hex(0x9E6B54),
+        moss:        hex(0x8FA084),
+        mossDeep:    hex(0x74856E),
+        sky:         hex(0x2A2E28),
         hill:        hex(0x3A4441),
-        hillFar:     hex(0x313A3E),
+        hillFar:     hex(0x313A36),
         skin:        hex(0xE3C29B),
-        sun:         hex(0xEDE5D4)
+        sun:         hex(0xEDE6D3)
     )
 
     static func hex(_ v: UInt32) -> Color {
