@@ -213,7 +213,8 @@ struct RowDragAndDrop: ViewModifier {
 /// commits, Esc cancels, and clicking away commits. A plain row click is never
 /// destructive. Delete appears on hover and in the context menu — also GUI-only
 /// (agents have no delete in the MCP surface). Rows drag to reorder and to move
-/// between sections when the caller passes `onDropTodo`.
+/// between sections when the caller passes `onDropTodo`, and the context menu's
+/// "Move to" files one into a section at any scroll position.
 struct LigneRow: View {
     var todo: Todo
     var palette: Palette
@@ -221,6 +222,10 @@ struct LigneRow: View {
     var onReopen: () -> Void
     var onEdit: (String) -> Void
     var onDelete: () -> Void
+    /// Section names for the "Move to" menu; empty (the flat case) hides it, since
+    /// there is nowhere to move to. GUI-only.
+    var sections: [String] = []
+    var onMoveToSection: ((String?) -> Void)? = nil
     /// Called when another row is dropped on this one, with which half. `nil`
     /// leaves the row undraggable.
     var onDropTodo: ((_ draggedID: String, _ edge: DropEdge) -> Void)? = nil
@@ -284,6 +289,15 @@ struct LigneRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .contextMenu {
+            if let onMoveToSection, !sections.isEmpty {
+                Menu("Move to") {
+                    moveItem("Uncategorized", target: nil, action: onMoveToSection)
+                    Divider()
+                    ForEach(sections, id: \.self) { name in
+                        moveItem(name, target: name, action: onMoveToSection)
+                    }
+                }
+            }
             Button("Edit", action: beginEdit)
             if todo.done {
                 Button("Reopen", action: onReopen)
@@ -292,6 +306,23 @@ struct LigneRow: View {
         }
         .modifier(RowDragAndDrop(payload: todo.id.uuidString, title: todo.title,
                                  palette: palette, onDrop: onDropTodo))
+    }
+
+    /// One "Move to" entry, checkmarked when it is the todo's current section.
+    /// (`Label` in a menu is what draws the checkmark; a selected `Toggle` would
+    /// also work but reads as a switch.)
+    @ViewBuilder
+    private func moveItem(_ title: String, target: String?,
+                          action: @escaping (String?) -> Void) -> some View {
+        Button {
+            action(target)
+        } label: {
+            if todo.section == target {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
     }
 
     // MARK: inline edit

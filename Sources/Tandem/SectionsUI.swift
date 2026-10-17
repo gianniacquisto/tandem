@@ -6,31 +6,35 @@ import TandemCore
 // hairline, flat fills, no capsules.
 
 /// One rendered group in the Todos list. `key == nil` is the default (ungrouped)
-/// area, which always comes first and is unnamed.
+/// area: it always comes first and gets **no header** — it is just the top of the
+/// list. Named groups draw a header.
 struct TodoGroup: Identifiable {
     var key: String?
-    var title: String
     var todos: [Todo]
 
     var id: String { key ?? "\u{0}default" }
     var isDefault: Bool { key == nil }
 }
 
-// MARK: section header — name · count · hover menu (rename / delete)
+// MARK: section header — name · count · hover menu (rename / move / delete)
 
-/// One section's header. The default area is not editable (it is not a section):
-/// pass `canEdit: false` and it draws the label + count with no menu. The header is
-/// also a drop target — dropping a row here moves it to the top of the section.
+/// One section's header. There is no header for the default (ungrouped) area — that
+/// area is just the top of the list. A section can be renamed, moved up or down, and
+/// deleted (deleting one only ungroups its todos). The header is also a drop target:
+/// dropping a row here moves it to the top of the section.
 struct LigneSectionHeader: View {
     var title: String
     var count: Int
     var palette: Palette
-    var canEdit: Bool
     var isRenaming: Bool
     @Binding var draft: String
     var onBeginRename: () -> Void
     var onCommitRename: () -> Void
     var onDelete: () -> Void
+    var canMoveUp: Bool
+    var canMoveDown: Bool
+    var onMoveUp: () -> Void
+    var onMoveDown: () -> Void
     /// Called when a row is dropped on this header. `nil` leaves it inert.
     var onDropIntoSection: ((_ draggedID: String) -> Void)? = nil
 
@@ -55,16 +59,18 @@ struct LigneSectionHeader: View {
                     .font(.system(size: 11.5, weight: .semibold))
                     .tracking(0.4)
                     .foregroundStyle(palette.inkDim)
-                    .onTapGesture(count: 2) { if canEdit { onBeginRename() } }
-                    .help(canEdit ? "Double-click to rename" : "")
+                    .onTapGesture(count: 2) { onBeginRename() }
+                    .help("Double-click to rename")
                 Text("\(count)")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(palette.inkDim.opacity(0.7))
             }
             Spacer(minLength: 8)
-            if canEdit, !isRenaming {
+            if !isRenaming {
                 Menu {
                     Button("Rename", action: onBeginRename)
+                    Button("Move Up", action: onMoveUp).disabled(!canMoveUp)
+                    Button("Move Down", action: onMoveDown).disabled(!canMoveDown)
                     Button("Delete Section", role: .destructive, action: onDelete)
                 } label: {
                     Image(systemName: "ellipsis")
@@ -76,10 +82,10 @@ struct LigneSectionHeader: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
+                // Dim until hovered, never absent: the control has to be findable.
                 // Kept in the hierarchy (not added/removed on hover) so an open menu
                 // is never torn down when the pointer leaves the row.
-                .opacity(hovering ? 1 : 0)
-                .allowsHitTesting(hovering)
+                .opacity(hovering ? 1 : 0.45)
             }
         }
         .padding(.horizontal, Space.gutter)
@@ -99,10 +105,10 @@ struct LigneSectionHeader: View {
             }
         }
         .contextMenu {
-            if canEdit {
-                Button("Rename", action: onBeginRename)
-                Button("Delete Section", role: .destructive, action: onDelete)
-            }
+            Button("Rename", action: onBeginRename)
+            Button("Move Up", action: onMoveUp).disabled(!canMoveUp)
+            Button("Move Down", action: onMoveDown).disabled(!canMoveDown)
+            Button("Delete Section", role: .destructive, action: onDelete)
         }
     }
 }

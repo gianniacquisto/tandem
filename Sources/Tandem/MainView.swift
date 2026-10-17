@@ -9,9 +9,11 @@ import TandemCore
 ///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All
 ///               with live counts (⌘1/⌘2/⌘3) on a row with "+ Section" and
 ///               "Clear done" (disabled when nothing is done), and the
-///               stored-order list grouped by section (a quiet header per group;
-///               double-click a name to rename, the header menu deletes — which
-///               moves its todos to the default area, never deletes them).
+///               stored-order list grouped by section. Only named sections draw
+///               a header — the ungrouped todos are just the top of the list.
+///               Double-click a name to rename; its ⋯ menu moves the section up
+///               or down, or deletes it, which ungroups its todos rather than
+///               deleting them.
 ///               Rows: toggling checkbox (check completes, uncheck reopens);
 ///               title edits in place on double-click; hover/right-click delete
 ///               (all GUI-only)
@@ -145,7 +147,7 @@ struct MainView: View {
     private var groups: [TodoGroup] {
         let visible = visibleTodos
         guard !model.sections.isEmpty else {
-            return [TodoGroup(key: nil, title: "", todos: visible)]
+            return [TodoGroup(key: nil, todos: visible)]
         }
         var keys: [String?] = [nil]
         for name in model.sections where !keys.contains(name) { keys.append(name) }
@@ -153,9 +155,7 @@ struct MainView: View {
             keys.append(todo.section)
         }
         return keys.map { key in
-            TodoGroup(key: key,
-                      title: key ?? "Uncategorized",
-                      todos: visible.filter { $0.section == key })
+            TodoGroup(key: key, todos: visible.filter { $0.section == key })
         }
     }
 
@@ -181,20 +181,25 @@ struct MainView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(groups) { group in
                             let key = group.key
-                            if showsSections {
+                            // The default area gets no header — it is just the top of the
+                            // list, not a section. Only named groups draw one.
+                            if let key, showsSections {
                                 LigneSectionHeader(
-                                    title: group.title,
+                                    title: key,
                                     count: group.todos.count,
                                     palette: palette,
-                                    canEdit: !group.isDefault,
-                                    isRenaming: key != nil && renamingSection == key,
+                                    isRenaming: renamingSection == key,
                                     draft: $renameDraft,
-                                    onBeginRename: { if let key { beginRename(key) } },
-                                    onCommitRename: { if let key { commitRename(key) } },
+                                    onBeginRename: { beginRename(key) },
+                                    onCommitRename: { commitRename(key) },
                                     onDelete: {
-                                        if let key { withAnimation(Motion.remove) { model.deleteSection(key) } }
+                                        withAnimation(Motion.remove) { model.deleteSection(key) }
                                     },
-                                    onDropIntoSection: { dropIntoSection($0, section: key) })
+                                    canMoveUp: canMove(key, by: -1),
+                                    canMoveDown: canMove(key, by: 1),
+                                    onMoveUp: { moveSection(key, by: -1) },
+                                    onMoveDown: { moveSection(key, by: 1) },
+                                    onDropIntoSection: { moveTodo($0, toSection: key) })
                             }
                             ForEach(group.todos) { todo in
                                 LigneRow(todo: todo, palette: palette,
@@ -202,6 +207,8 @@ struct MainView: View {
                                          onReopen: { withAnimation(Motion.toggle) { model.reopen(todo.id.uuidString) } },
                                          onEdit: { model.update(todo.id.uuidString, title: $0) },
                                          onDelete: { withAnimation(Motion.remove) { model.delete(todo.id.uuidString) } },
+                                         sections: model.sections,
+                                         onMoveToSection: { moveTodo(todo.id.uuidString, toSection: $0) },
                                          onDropTodo: { draggedID, edge in
                                              drop(draggedID, onto: todo, edge: edge)
                                          })
@@ -239,12 +246,25 @@ struct MainView: View {
         }
     }
 
-    /// Drop of `draggedID` on a section header (or its empty body): to the top of it.
-    private func dropIntoSection(_ draggedID: String, section: String?) {
-        withAnimation(Motion.toggle) { model.move(draggedID, toSection: section, at: 0) }
+    /// Files a todo at the top of `section` (`nil` = the default area). Used by the
+    /// header drop and by the row's "Move to" menu — the latter being the way out of
+    /// a section that works at any scroll position.
+    private func moveTodo(_ id: String, toSection section: String?) {
+        withAnimation(Motion.toggle) { model.move(id, toSection: section, at: 0) }
     }
 
     // MARK: - Section actions
+
+    /// Whether `key` can move one place towards the start (`by == -1`) or the end (+1).
+    private func canMove(_ key: String, by delta: Int) -> Bool {
+        guard let i = model.sections.firstIndex(of: key) else { return false }
+        return model.sections.indices.contains(i + delta)
+    }
+
+    private func moveSection(_ key: String, by delta: Int) {
+        guard let i = model.sections.firstIndex(of: key) else { return }
+        withAnimation(Motion.toggle) { model.moveSection(key, to: i + delta) }
+    }
 
     private func beginAddSection() {
         addingSection = true

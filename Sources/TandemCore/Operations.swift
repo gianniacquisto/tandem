@@ -99,6 +99,25 @@ extension Store {
         return OperationResult(moved, note: note)
     }
 
+    /// `moveSection(name, to:)`: reorder the declared sections. `index` is 0-based in the
+    /// section list and is clamped (so `Int.max` moves it to the end). An unknown name is
+    /// rejected. Only the section list changes — the groups travel whole, so the order of
+    /// todos *within* every section is untouched. Returns the new section order.
+    /// GUI-only.
+    public func moveSection(_ rawName: String, to index: Int) throws -> OperationResult<[String]> {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let (order, note) = try mutate { contents -> (value: [String], changed: Bool) in
+            guard let from = contents.sections.firstIndex(of: name) else {
+                throw DomainError.unknownSection(name)
+            }
+            contents.sections.remove(at: from)
+            let to = max(0, min(index, contents.sections.count))
+            contents.sections.insert(name, at: to)
+            return (contents.sections, to != from)
+        }
+        return OperationResult(order, note: note)
+    }
+
     // MARK: - add
 
     /// `add(title)`: adds to the default (ungrouped) area, on top.
