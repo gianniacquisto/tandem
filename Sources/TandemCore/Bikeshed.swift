@@ -1,5 +1,4 @@
 import Foundation
-import Darwin
 import CryptoKit
 
 /// Tandem's notes surface (GLOSSARY: Bikeshed): a plain folder of markdown
@@ -31,7 +30,8 @@ import CryptoKit
 ///
 /// A missing vault folder is an empty vault: created lazily, never an error.
 /// The public surface is the note operations (see the `BikeshedOperations`
-/// extension); the locking/file mechanics are private.
+/// extension); the locking/file mechanics are the shared `LockedDirectory`
+/// primitive (ADR 0007), which the store uses too.
 public struct Bikeshed: Sendable {
     /// The vault root (created lazily). Public so the GUI can watch it for
     /// external changes (FSEvents); the GUI never writes it directly.
@@ -39,17 +39,9 @@ public struct Bikeshed: Sendable {
     /// The sidecar lockfile, outside the vault (created if missing, never
     /// renamed).
     let lockURL: URL
-
-    // Contention + cleanup tuning (the ADR 0001 pattern, per ADR 0004).
-    private static let lockTimeout: TimeInterval = 2.0
-    private static let backoffRangeMicros: ClosedRange<UInt32> = 10_000...50_000   // 10–50 ms, in µs
-    private static let orphanMaxAge: TimeInterval = 60        // seconds
-
-    /// Temp-file name for atomic writes: same folder as the note (so `rename`
-    /// is same-volume), dot-prefixed (so it never appears in the tree), with
-    /// the fixed prefix/suffix the orphan pass matches on.
-    static let tempPrefix = ".note-"
-    static let tempSuffix = ".tmp"
+    /// The shared storage mechanics (ADR 0004, reusing ADR 0001): flock + atomic
+    /// write + orphan sweep, identical to the store's.
+    private let storage: LockedDirectory
 
     /// The default vault at `<home>/bikeshed` (lockfile `<home>/bikeshed.lock`),
     /// where `<home>` is the real `~/.tandem` from the shipped app and
@@ -62,104 +54,43 @@ public struct Bikeshed: Sendable {
     /// dir). The lockfile is the sibling `bikeshed.lock` outside the vault.
     public init(directory: URL) {
         self.directory = directory
-        self.lockURL = directory.deletingLastPathComponent()
+        let lock = directory.deletingLastPathComponent()
             .appendingPathComponent("bikeshed.lock")
-    }
-
-    // MARK: - Low-level vault protocol (private)
-
-    /// Acquire the exclusive `flock` on the sidecar lockfile with bounded
-    /// retry. Returns an open fd that must be `close`d (closing releases the
-    /// lock). `flock` releases on process death, so there is no stale-lock
-    /// recovery to build.
-    private func acquireLock() throws -> Int32 {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let fd = open(lockURL.path, O_RDWR | O_CREAT, 0o644)
-        guard fd >= 0 else {
-            throw BikeshedIOError.posix(op: "open lockfile", code: errno)
-        }
-        let deadline = Date().addingTimeInterval(Self.lockTimeout)
-        while true {
-            if flock(fd, LOCK_EX | LOCK_NB) == 0 { return fd }
-            if Date() >= deadline {
-                close(fd)
-                throw BikeshedError.locked
-            }
-            usleep(UInt32.random(in: Self.backoffRangeMicros))
-        }
-    }
-
-    private func releaseLock(_ fd: Int32) {
-        if fd >= 0 { close(fd) }
-    }
-
-    /// Write `data` to `url` atomically: same-directory temp file, fsync,
-    /// `rename(2)`. On any failure the temp is removed and the error rethrown.
-    /// Internal (not public): the operations extension builds on it; call it
-    /// only while holding the vault lock.
-    static func atomicWrite(_ data: Data, to url: URL) throws {
-        let fm = FileManager.default
-        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let tmp = url.deletingLastPathComponent()
-            .appendingPathComponent("\(Self.tempPrefix)\(UUID().uuidString)\(Self.tempSuffix)")
-        do {
-            try data.write(to: tmp, options: [])
-            try Self.fsync(tmp)
-            if Darwin.rename(tmp.path, url.path) != 0 {
-                throw BikeshedIOError.posix(op: "rename", code: errno)
-            }
-        } catch {
-            try? fm.removeItem(at: tmp)
-            throw error
-        }
-    }
-
-    private static func fsync(_ url: URL) throws {
-        let fd = open(url.path, O_RDONLY)
-        guard fd >= 0 else { return }
-        defer { close(fd) }
-        guard Darwin.fsync(fd) == 0 else {
-            throw BikeshedIOError.posix(op: "fsync", code: errno)
-        }
-    }
-
-    /// Remove orphaned `.note-*.tmp` files older than 60 s (crash leftovers).
-    /// Called after acquiring the lock; the age threshold guarantees in-flight
-    /// writes are never touched. Walks the whole tree, since temps live in the
-    /// note's folder.
-    private func cleanOrphans() {
-        let fm = FileManager.default
-        let cutoff = Date().addingTimeInterval(-Self.orphanMaxAge)
-        guard let walker = fm.enumerator(
-            at: directory,
-            includingPropertiesForKeys: [.contentModificationDateKey]
-        ) else { return }
-        for case let url as URL in walker {
-            let name = url.lastPathComponent
-            guard name.hasPrefix(Self.tempPrefix), name.hasSuffix(Self.tempSuffix) else {
-                continue
-            }
-            guard
-                let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
-                let mod = values.contentModificationDate,
-                mod < cutoff
-            else { continue }
-            try? fm.removeItem(at: url)
-        }
+        self.lockURL = lock
+        self.storage = LockedDirectory(
+            lockURL: lock,
+            tempPrefix: ".note-",
+            cleanRoot: directory,
+            cleanRecursively: true)
     }
 
     // MARK: - Locked write primitive
 
-    /// Run `body` under the exclusive vault lock: acquire (bounded retry),
-    /// clean orphaned temps, then do the work — all in one transaction,
+    /// Run `body` under the exclusive vault lock (translating the storage
+    /// primitive's errors into the vault's own vocabulary): acquire (bounded
+    /// retry), clean orphaned temps, then do the work — all in one transaction,
     /// multi-file operations included (ADR 0004). The lock is released when
     /// `body` returns or throws. Internal (not public): the public surface is
     /// the `BikeshedOperations` extension; this is the primitive it builds on.
     func locked<T: Sendable>(_ body: () throws -> T) throws -> T {
-        let fd = try acquireLock()
-        defer { releaseLock(fd) }
-        cleanOrphans()
-        return try body()
+        do {
+            return try storage.withLock(body)
+        } catch LockedDirectoryError.locked {
+            throw BikeshedError.locked
+        } catch LockedDirectoryError.posix(let op, let code) {
+            throw BikeshedIOError.posix(op: op, code: code)
+        }
+    }
+
+    /// Write `data` to `url` atomically — same-directory temp file, fsync,
+    /// `rename(2)` — via the shared storage primitive. Call only while holding
+    /// the vault lock.
+    func atomicWrite(_ data: Data, to url: URL) throws {
+        do {
+            try storage.atomicWrite(data, to: url)
+        } catch LockedDirectoryError.posix(let op, let code) {
+            throw BikeshedIOError.posix(op: op, code: code)
+        }
     }
 
     /// The first component of `path` (root → leaf) that exists as a regular

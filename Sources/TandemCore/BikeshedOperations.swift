@@ -49,7 +49,7 @@ extension Bikeshed {
             if let taken = fileCollision(in: path, includingNote: true) {
                 throw BikeshedError.alreadyExists(path: taken)
             }
-            try Self.atomicWrite(Data(), to: url)
+            try atomicWrite(Data(), to: url)
         }
         return OperationResult(path)
     }
@@ -83,7 +83,7 @@ extension Bikeshed {
             if let taken = fileCollision(in: path, includingNote: false) {
                 throw BikeshedError.alreadyExists(path: taken)
             }
-            try Self.atomicWrite(data, to: url)
+            try atomicWrite(data, to: url)
         }
         return OperationResult(WriteRecord(path: path, hash: Self.hash(of: data)))
     }
@@ -140,7 +140,7 @@ extension Bikeshed {
                         resolvingTo: oldPath,
                         as: newTarget)
                 else { continue }
-                try Self.atomicWrite(Data(rewritten.utf8), to: targetURL)
+                try atomicWrite(Data(rewritten.utf8), to: targetURL)
             }
             try fm.createDirectory(
                 at: newURL.deletingLastPathComponent(), withIntermediateDirectories: true)

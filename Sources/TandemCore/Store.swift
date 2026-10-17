@@ -1,5 +1,4 @@
 import Foundation
-import Darwin
 
 /// The single source of truth for todos (GLOSSARY: Store): one JSON file at
 /// `<home>/todos.json` — the real `~/.tandem` for the shipped app, `~/.tandem-dev`
@@ -23,7 +22,8 @@ import Darwin
 ///   restarts empty. The backup path is surfaced as a note.
 ///
 /// The public surface is the todo operations (see the `Operations` extension); the
-/// locking/file mechanics are private.
+/// locking/file mechanics are the shared `LockedDirectory` primitive (ADR 0001 / 0004),
+/// which the bikeshed uses too.
 public struct Store: Sendable {
     /// The store's directory (created on first write). Public so the GUI can watch it
     /// for external changes (FSEvents); the GUI never writes it directly.
@@ -32,11 +32,9 @@ public struct Store: Sendable {
     let fileURL: URL
     /// The sidecar lockfile (created if missing, never renamed).
     let lockURL: URL
-
-    // Contention + cleanup tuning (ADR 0001).
-    private static let lockTimeout: TimeInterval = 2.0
-    private static let backoffRangeMicros: ClosedRange<UInt32> = 10_000...50_000   // 10–50 ms, in µs
-    private static let orphanMaxAge: TimeInterval = 60        // seconds
+    /// The shared storage mechanics (ADR 0001): flock + atomic write + orphan
+    /// sweep, identical to the bikeshed's (ADR 0004).
+    private let storage: LockedDirectory
 
     /// The default store: the real `~/.tandem` from the shipped app, `~/.tandem-dev`
     /// from anything built and run in place (see `TandemHome`).
@@ -49,6 +47,23 @@ public struct Store: Sendable {
         self.directory = directory
         self.fileURL = directory.appendingPathComponent("todos.json")
         self.lockURL = directory.appendingPathComponent("tandem.lock")
+        self.storage = LockedDirectory(
+            lockURL: self.lockURL,
+            tempPrefix: ".todos-",
+            cleanRoot: directory,
+            cleanRecursively: false)
+    }
+
+    /// Take the store lock (translating the primitive's errors into the store's
+    /// own vocabulary) and run `body` under it, orphan temps cleaned first.
+    private func withLock<T: Sendable>(_ body: () throws -> T) throws -> T {
+        do {
+            return try storage.withLock(body)
+        } catch LockedDirectoryError.locked {
+            throw DomainError.locked
+        } catch LockedDirectoryError.posix(let op, let code) {
+            throw StoreIOError.posix(op: op, code: code)
+        }
     }
 
     // MARK: - Low-level store protocol (private)
@@ -106,62 +121,11 @@ public struct Store: Sendable {
         }
     }
 
-    /// Write while holding the lock: same-directory temp file, fsync, atomic rename.
+    /// Write while holding the lock: encode and hand to the shared atomic
+    /// write-temp+fsync+rename primitive.
     private func writeLocked(_ contents: StoreContents) throws {
-        let fm = FileManager.default
-        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try Self.encode(contents)
-        let tmp = directory.appendingPathComponent(".todos-\(UUID().uuidString).tmp")
-        do {
-            try data.write(to: tmp, options: [])
-            try Self.fsync(tmp)
-            if rename(tmp.path, fileURL.path) != 0 {
-                throw StoreIOError.posix(op: "rename", code: errno)
-            }
-        } catch {
-            try? fm.removeItem(at: tmp)
-            throw error
-        }
-    }
-
-    /// Remove orphaned `.todos-*.tmp` files older than 60 s. Called after acquiring the
-    /// lock; the age threshold guarantees in-flight writes are never touched.
-    private func cleanOrphans() {
-        let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(atPath: directory.path) else { return }
-        let cutoff = Date().addingTimeInterval(-Self.orphanMaxAge)
-        for name in entries where name.hasPrefix(".todos-") && name.hasSuffix(".tmp") {
-            let url = directory.appendingPathComponent(name)
-            guard
-                let attrs = try? fm.attributesOfItem(atPath: url.path),
-                let mod = attrs[.modificationDate] as? Date,
-                mod < cutoff
-            else { continue }
-            try? fm.removeItem(at: url)
-        }
-    }
-
-    /// Acquire the exclusive `flock` on the sidecar lockfile with bounded retry. Returns
-    /// an open fd that must be `close`d (closing releases the lock).
-    private func acquireLock() throws -> Int32 {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let fd = open(lockURL.path, O_RDWR | O_CREAT, 0o644)
-        guard fd >= 0 else {
-            throw StoreIOError.posix(op: "open lockfile", code: errno)
-        }
-        let deadline = Date().addingTimeInterval(Self.lockTimeout)
-        while true {
-            if flock(fd, LOCK_EX | LOCK_NB) == 0 { return fd }
-            if Date() >= deadline {
-                close(fd)
-                throw DomainError.locked
-            }
-            usleep(UInt32.random(in: Self.backoffRangeMicros))
-        }
-    }
-
-    private func releaseLock(_ fd: Int32) {
-        if fd >= 0 { close(fd) }
+        try storage.atomicWrite(data, to: fileURL)
     }
 
     // MARK: - Schema (private)
@@ -202,15 +166,6 @@ public struct Store: Sendable {
         return StoreContents(sections: envelope.sections ?? [], todos: envelope.todos)
     }
 
-    private static func fsync(_ url: URL) throws {
-        let fd = open(url.path, O_RDONLY)
-        guard fd >= 0 else { return }
-        defer { close(fd) }
-        guard Darwin.fsync(fd) == 0 else {
-            throw StoreIOError.posix(op: "fsync", code: errno)
-        }
-    }
-
     // MARK: - Read / mutate primitives
 
     /// A lock-free read (the `list` fast path). Takes the lock only to recover a corrupt
@@ -223,9 +178,7 @@ public struct Store: Sendable {
         case .valid(let contents):
             return (contents, nil)
         case .invalid:
-            let fd = try acquireLock()
-            defer { releaseLock(fd) }
-            let (contents, backup) = try readLocked()
+            let (contents, backup) = try withLock { try readLocked() }
             return (contents, backup.map(Self.recoveryNote))
         }
     }
@@ -240,27 +193,26 @@ public struct Store: Sendable {
     func mutate<T: Sendable>(
         _ body: (inout StoreContents) throws -> (value: T, changed: Bool)
     ) throws -> (value: T, note: String?) {
-        let fd = try acquireLock()
-        defer { releaseLock(fd) }
-        cleanOrphans()
-        let (initial, backup) = try readLocked()
-        let note = backup.map(Self.recoveryNote)
-        var contents = initial
-        contents.normalize()
-        do {
-            let (value, changed) = try body(&contents)
-            if changed {
-                contents.normalize()
-                try writeLocked(contents)
+        try withLock {
+            let (initial, backup) = try readLocked()
+            let note = backup.map(Self.recoveryNote)
+            var contents = initial
+            contents.normalize()
+            do {
+                let (value, changed) = try body(&contents)
+                if changed {
+                    contents.normalize()
+                    try writeLocked(contents)
+                }
+                return (value, note)
+            } catch {
+                if let note {
+                    let underlying: any TandemError = error as? any TandemError
+                        ?? StoreIOError.io("\(error)")
+                    throw RecoveryFailure(underlying: underlying, note: note)
+                }
+                throw error
             }
-            return (value, note)
-        } catch {
-            if let note {
-                let underlying: any TandemError = error as? any TandemError
-                    ?? StoreIOError.io("\(error)")
-                throw RecoveryFailure(underlying: underlying, note: note)
-            }
-            throw error
         }
     }
 
