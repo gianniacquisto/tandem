@@ -2,11 +2,12 @@ import Foundation
 import Darwin
 
 /// The single source of truth for todos (GLOSSARY: Store): one JSON file at
-/// `~/.tandem/todos.json`, read and written by the GUI and the per-session MCP server
-/// processes. Implements the protocol from ADR 0001:
+/// `<home>/todos.json` — the real `~/.tandem` for the shipped app, `~/.tandem-dev`
+/// for anything built and run in place (`TandemHome`) — read and written by the GUI
+/// and the per-session MCP server processes. Implements the protocol from ADR 0001:
 ///
 /// - **Locking** — writers take an exclusive `flock` on the sidecar lockfile
-///   (`~/.tandem/tandem.lock`, never renamed), held across the whole
+///   (`<home>/tandem.lock`, never renamed), held across the whole
 ///   read → modify → write-temp → `rename` cycle. Readers take no lock: atomic rename
 ///   guarantees a reader sees a complete old or new file. `flock` releases on process
 ///   death, so there is no stale-lock recovery to build.
@@ -37,9 +38,10 @@ public struct Store: Sendable {
     private static let backoffRangeMicros: ClosedRange<UInt32> = 10_000...50_000   // 10–50 ms, in µs
     private static let orphanMaxAge: TimeInterval = 60        // seconds
 
-    /// The default store at `~/.tandem`.
+    /// The default store: the real `~/.tandem` from the shipped app, `~/.tandem-dev`
+    /// from anything built and run in place (see `TandemHome`).
     public init() {
-        self.init(directory: URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".tandem"))
+        self.init(directory: TandemHome.directory)
     }
 
     /// A store rooted at an explicit directory (used by tests with a temp dir).

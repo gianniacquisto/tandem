@@ -1,11 +1,13 @@
 import AppKit
+import TandemCore
 
 /// Single-instance guard across launch identities.
 ///
 /// A bare executable (terminal `tandem`, `swift run Tandem`) and the bundled
 /// `Tandem.app` (Launchpad/Spotlight) are distinct identities to LaunchServices,
 /// so both could run at once — two Dock icons, two menu bar items. This guard
-/// makes them one: the first instance to start claims `~/.tandem/app.pid`; a
+/// makes them one: the first instance to start claims `<home>/app.pid` (the store's
+/// directory — `TandemHome`); a
 /// later launch activates the running instance and exits.
 ///
 /// The claim is an atomic `O_CREAT | O_EXCL` (no read-modify-write race). A
@@ -53,12 +55,12 @@ enum SingleInstance {
 
     // MARK: - Internals
 
-    /// `~/.tandem/app.pid` — a sidecar in the store's directory, like
-    /// `tandem.lock` (ADR 0001), but for app lifecycle rather than store writes.
+    /// `<home>/app.pid` — a sidecar in the store's directory, like `tandem.lock`
+    /// (ADR 0001), but for app lifecycle rather than store writes. A dev build has
+    /// its own home (`TandemHome`), so a from-source run and the installed app are
+    /// each one visible instance rather than two identities fighting over one slot.
     private static var pidFileURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".tandem")
-            .appendingPathComponent("app.pid")
+        TandemHome.directory.appendingPathComponent("app.pid")
     }
 
     /// Atomically creates the pidfile containing `tandem <pid>`.

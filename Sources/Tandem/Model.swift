@@ -8,7 +8,9 @@ import TandemCore
 ///
 /// One instance is shared by both faces — the SwiftUI main window (which tracks it via
 /// Observation) and the AppKit menu bar (which reads it on every open) — so it is a
-/// deliberate app-wide singleton: there is exactly one store, at `~/.tandem`.
+/// deliberate app-wide singleton: there is exactly one store, at
+/// `TandemHome.directory` — `~/.tandem` for the shipped app, `~/.tandem-dev` for a
+/// build run from source.
 ///
 /// Everything here runs on the main thread: mutations are driven either by a UI action
 /// or by the FSEvents callback, which is scheduled on the main run loop.
