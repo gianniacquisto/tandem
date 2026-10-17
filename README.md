@@ -24,16 +24,6 @@ xattr -dr com.apple.quarantine /Applications/Tandem.app
 
 Tandem then opens normally until the next install or upgrade.
 
-### Upgrading from ≤ 0.4.x
-
-Before 0.5.0, Tandem installed as a formula plus a linking cask. The migration is one-time, cask first (its uninstall removes the old `/Applications` symlink):
-
-```sh
-brew uninstall --cask tandem   # the old cask
-brew uninstall tandem          # the formula
-brew install --cask gianniacquisto/tap/tandem
-```
-
 ## How it works
 
 All your todos live in `~/.tandem/todos.json`, a plain JSON file you can edit by hand.
