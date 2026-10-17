@@ -20,8 +20,9 @@ final class BikeshedModel {
 
     /// The only vault logic the GUI holds (a core value; all note semantics —
     /// locking, atomic writes, link rewrite, resolution — live in TandemCore).
-    let vault: Bikeshed
-    private let watcher: VaultWatcher
+    /// Replaced whole by `switchVault(to:)`.
+    private(set) var vault: Bikeshed
+    private var watcher: VaultWatcher
 
     // MARK: Tree + selection + search
 
@@ -116,6 +117,41 @@ final class BikeshedModel {
         backlinkRun?.cancel()
     }
     // (Tasks capture `self` weakly; a deallocated model leaves them no-ops.)
+
+    // MARK: - Vault switch (the human's chosen folder, applied live)
+
+    /// Switch the notes vault to `url` with no restart: flush the open note,
+    /// persist the choice, rebuild the vault and its recursive watcher, and
+    /// reset the editor to the no-note-selected state. A no-op when `url` is
+    /// already the vault; frozen while a conflict is pending (the banner's
+    /// choice must be resolved first — mirroring `open`). A failure to record
+    /// the choice surfaces the error and leaves the current vault watching.
+    func switchVault(to url: URL) {
+        guard !conflict,
+              url.standardizedFileURL != vault.directory.standardizedFileURL
+        else { return }
+        flushSave()
+        watcher.stop()
+        do {
+            try TandemSettings.setChosenVault(url)
+        } catch {
+            apply(error: error)
+            watcher.start()   // the old vault is still in place: keep watching it
+            return
+        }
+        let home = TandemHome.directory
+        vault = Bikeshed(
+            directory: url,
+            lockURL: home.appendingPathComponent("bikeshed.lock"))
+        expandedFolders = []
+        closeNote(silent: false)
+        watcher = VaultWatcher(directory: vault.directory)
+        watcher.onEvent = { [weak self] in self?.vaultChanged($0) }
+        reloadTree()
+        watcher.start()
+        editor.sendVaultIndex(paths: notePaths())
+        lastError = nil
+    }
 
     // MARK: - Tree / derived state
 
