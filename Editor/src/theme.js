@@ -46,6 +46,9 @@ export const ligneTheme = [
         margin: "0 auto",
         padding: "0 28px",
         caretColor: "var(--ink)",
+        // An unbreakable run (a long URL, an endless word) wraps instead of
+        // forcing a horizontal scrollbar.
+        overflowWrap: "anywhere",
       },
       ".cm-line": {
         padding: "0 2px",

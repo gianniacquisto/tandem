@@ -264,6 +264,8 @@ export function editorExtensions() {
     notePathState,
     livePreviewState,
     markdown({ base: markdownLanguage, codeLanguages: codeLanguageFor }),
+    // Soft-wrap long lines: the pane never scrolls sideways.
+    EditorView.lineWrapping,
     ...ligneTheme,
     basicSetup,
   ];
