@@ -28,8 +28,8 @@
 //     and the page-global transaction specs (setDocument/insertText/
 //     revealLine/setVaultIndex) — all testable on plain states.
 //   - Formatting actions: `wrapSelectionSpec` / `toggleLinePrefixSpec` /
-//     `cycleHeadingSpec` (the toolbar's edits) and the font-size helpers —
-//     also pure, testable on plain states.
+//     `cycleHeadingSpec` / `fencedBlockSpec` (the toolbar's edits) and the
+//     font-size helpers — also pure, testable on plain states.
 //
 // Invariants (spec): raw markdown is the source of truth (decorations are
 // view-only); line height comes from line CSS classes, never from token
@@ -539,6 +539,62 @@ function lineChangeSpec(state, changes, userEvent) {
   };
 }
 
+/**
+ * Wrap the lines the selection touches in a fenced code block (a ``` fence
+ * on its own line above and below), or remove an existing fence when the
+ * selection starts and ends on bare fence lines with content between them.
+ * A fence needs its own lines — a line prefix cannot express one — so this
+ * is its own spec rather than a `toggleLinePrefixSpec` case. The inner text
+ * stays selected, so the change is visible and reversible.
+ */
+export function fencedBlockSpec(state) {
+  const { from, to } = state.selection.main;
+  const first = state.doc.lineAt(from);
+  const last = state.doc.lineAt(to);
+  const isFence = (line) => line != null && line.text.trim() === "```";
+
+  // An existing block is recognised either when the selection *is* the whole
+  // block (its own lines carry the fences) or when the selection is the inner
+  // content a previous insertion left selected (the fences sit just outside).
+  let open = null;
+  let close = null;
+  if (isFence(first) && last.number - first.number >= 2 && isFence(last)) {
+    open = first;
+    close = last;
+  } else if (
+    first.number > 1 &&
+    last.number < state.doc.lines &&
+    isFence(state.doc.line(first.number - 1)) &&
+    isFence(state.doc.line(last.number + 1))
+  ) {
+    open = state.doc.line(first.number - 1);
+    close = state.doc.line(last.number + 1);
+  }
+
+  if (open && close) {
+    // Already fenced: drop both fence lines (each with its own newline) and
+    // keep the content between them selected.
+    const inner = state.doc.sliceString(open.to + 1, close.from - 1);
+    return {
+      changes: state.changes([
+        { from: open.from, to: open.to + 1, insert: "" },
+        { from: close.from - 1, to: close.to, insert: "" },
+      ]),
+      selection: { anchor: open.from, head: open.from + inner.length },
+      userEvent: "tandem.format.fence",
+    };
+  }
+  // Add the fence: replace the touched lines with ``` / content / ```. With
+  // an empty selection this yields an empty fenced block, caret inside.
+  const blockFrom = first.from;
+  const inner = state.doc.sliceString(blockFrom, last.to);
+  return {
+    changes: { from: blockFrom, to: last.to, insert: "```\n" + inner + "\n```" },
+    selection: { anchor: blockFrom + 4, head: blockFrom + 4 + inner.length },
+    userEvent: "tandem.format.fence",
+  };
+}
+
 /** The TransactionSpec for a toolbar action kind (see toolbar.js). */
 export function specFor(kind, state) {
   switch (kind) {
@@ -565,7 +621,7 @@ export function specFor(kind, state) {
     case "quote":
       return toggleLinePrefixSpec(state, "> ");
     case "code-block":
-      return toggleLinePrefixSpec(state, "```");
+      return fencedBlockSpec(state);
     default:
       throw new RangeError("unknown format kind: " + kind);
   }

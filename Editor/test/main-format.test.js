@@ -7,6 +7,7 @@ import {
   wrapSelectionSpec,
   toggleLinePrefixSpec,
   cycleHeadingSpec,
+  fencedBlockSpec,
   specFor,
   WRAP_PLACEHOLDER,
   DEFAULT_EDITOR_FONT_SIZE,
@@ -149,6 +150,34 @@ test("an indented heading keeps its indent through the cycle", () => {
   assert.equal(docText(st), "  ### Title");
 });
 
+// -- fencedBlockSpec ------------------------------------------------------------------
+
+test("a code block fences the touched lines", () => {
+  const st = run("let x = 1", { anchor: 0, head: 9 }, (s) => specFor("code-block", s));
+  assert.equal(docText(st), "```\nlet x = 1\n```");
+  assert.equal(selected(st), "let x = 1");
+});
+
+test("a code block over multiple lines fences them as one block", () => {
+  const st = run("a\nb", { anchor: 0, head: 3 }, fencedBlockSpec);
+  assert.equal(docText(st), "```\na\nb\n```");
+  assert.equal(selected(st), "a\nb");
+});
+
+test("a code block on an empty selection leaves the caret inside", () => {
+  const st = run("", { anchor: 0 }, fencedBlockSpec);
+  assert.equal(docText(st), "```\n\n```");
+  assert.equal(st.selection.main.from, 4);
+  assert.equal(st.selection.main.empty, true);
+});
+
+test("a second code block removes the fence (round-trip)", () => {
+  const st = run("a\nb", { anchor: 0, head: 3 }, fencedBlockSpec);
+  const back = st.update(fencedBlockSpec(st)).state;
+  assert.equal(docText(back), "a\nb");
+  assert.equal(selected(back), "a\nb");
+});
+
 // -- specFor --------------------------------------------------------------------------
 
 test("specFor maps each toolbar kind to a transaction", () => {
@@ -160,7 +189,7 @@ test("specFor maps each toolbar kind to a transaction", () => {
     "bullet-list": ["ab", "- ab"],
     "numbered-list": ["ab", "1. ab"],
     quote: ["ab", "> ab"],
-    "code-block": ["ab", "```ab"],
+    "code-block": ["ab", "```\nab\n```"],
   };
   for (const [kind, [before, after]] of Object.entries(cases)) {
     const st = run(before, { anchor: 0, head: before.length }, (s) => specFor(kind, s));
