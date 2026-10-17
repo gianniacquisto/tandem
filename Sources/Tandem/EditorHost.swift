@@ -239,8 +239,9 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
         guard rel.hasPrefix(prefix) else { fail404(urlSchemeTask); return }
         rel.removeFirst(prefix.count)
 
-        // Path hygiene (the contract: refuse `..` escapes) — the shared GUI
-        // rule (VaultPaths), the same one the model's link routing serves.
+        // Path hygiene (the contract: refuse `..` escapes) — the shared
+        // `VaultPath` rule (ADR 0008), the same one the model's link routing
+        // serves.
         // Decode each component first, then judge: a percent-encoded escape
         // (`%2e%2e`) is judged as `..` and refused here, not only by the
         // containment check below (which stays as defence in depth). Empty
@@ -250,7 +251,7 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
         let components = rel.split(separator: "/", omittingEmptySubsequences: false)
             .map(String.init)
             .map { $0.removingPercentEncoding ?? $0 }
-        guard let fileURL = VaultPaths.url(
+        guard let fileURL = VaultPath.url(
             under: model.vault.directory,
             for: components.joined(separator: "/")
         ) else {

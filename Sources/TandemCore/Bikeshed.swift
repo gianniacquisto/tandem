@@ -189,29 +189,15 @@ public struct Bikeshed: Sendable {
 
     // MARK: - Path resolution (internal)
 
-    /// Resolve a vault-root-relative path to a URL inside the vault. Path
-    /// hygiene only: absolute paths, empty components (`//`), `.` / `..`
-    /// components (vault escapes), and a missing final component are rejected.
-    /// Pre-existing name violators (`#`, `|`) are *tolerated* here — they are
-    /// on-disk names the app must still show and edit; the create/rename
-    /// validation (`validateNewName`) is the separate, stricter rule.
-    ///
-    /// Module boundary: the GUI keeps its own copy of this rule (`VaultPaths`
-    /// in the Tandem target) because it cannot reach this internal and the
-    /// core must not depend on the GUI. The rule is deliberately small and
-    /// stable — keep the two copies in step by review, not by code.
+    /// Resolve a vault-root-relative path to a URL inside the vault (the shared
+    /// `VaultPath` hygiene rule, ADR 0008): absolute paths, empty components
+    /// (`//`), `.` / `..` components (vault escapes), and a missing final
+    /// component are rejected. Pre-existing name violators (`#`, `|`) are
+    /// *tolerated* here — they are on-disk names the app must still show and
+    /// edit; the create/rename validation (`validateNewName`) is the separate,
+    /// stricter rule.
     func fileURL(for path: String) -> URL? {
-        let components = path.split(separator: "/", omittingEmptySubsequences: false)
-            .map(String.init)
-        guard !components.isEmpty else { return nil }
-        for component in components where component.isEmpty || component == "." || component == ".." {
-            return nil
-        }
-        var url = directory
-        for component in components {
-            url = url.appendingPathComponent(component)
-        }
-        return url
+        VaultPath.url(under: directory, for: path)
     }
 
     /// The naming rules for a path the app is about to create (create / rename
