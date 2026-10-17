@@ -1,14 +1,14 @@
 name: Release
 
 # The repo's first CI (spec "Release pipeline", ADR 0003). A tag v* push (or a
-# manual dispatch) on a macOS 27 runner runs the build-and-verify stages and
-# then publishes the GitHub release; pull-request runs run the same
-# build-and-verify stages and upload the artifact, never publishing. The
-# stages are the test seam (spec "Testing Decisions"): the run fails if the
-# test suite fails, the build fails, the signature does not verify, the
-# Info.plist version does not match the tag, the in-bundle MCP server does not
-# exit cleanly on stdin EOF, or the zip does not contain an intact app. The
-# assertions are the retired formula's brew test, moved here.
+# manual dispatch) on a GitHub-hosted macOS 27 runner (`xcode-27`) runs the
+# build-and-verify stages and then publishes the GitHub release; pull-request
+# runs run the same build-and-verify stages and upload the artifact, never
+# publishing. The stages are the test seam (spec "Testing Decisions"): the run
+# fails if the test suite fails, the build fails, the signature does not
+# verify, the Info.plist version does not match the tag, the in-bundle MCP
+# server does not exit cleanly on stdin EOF, or the zip does not contain an
+# intact app. The assertions are the retired formula's brew test, moved here.
 
 on:
   push:
@@ -22,12 +22,13 @@ permissions:
 jobs:
   release:
     # The floor is macOS 27 (Apple silicon); the build needs SDK 27.
-    # `macos-27` is a repo-scoped label served by the maintainer's self-hosted
-    # runner (a macOS 27 machine, Xcode 27). The hosted pool has no `macos-27`
-    # label (a run pinned to one queues forever), and the `xcode-27` preview
-    # pool is unreliable: 3/3 runs stalled the test process 10-17s+ and the
-    # concurrency gate failed (2026-10-13, runs 38437473891 / 38438891858).
-    runs-on: macos-27
+    # `xcode-27` is the GitHub-hosted public-preview image: macOS 27.0.1 /
+    # Xcode 27 / macosx27.0 SDK / Node 24 — the target toolchain, no self-hosted
+    # runner to keep online. `macos-27` is NOT a hosted label (Homebrew's
+    # :golden_gate naming; a run pinned to it queues forever), and the macOS 26
+    # images ship Xcode 26 / SDK 26, so they cannot build a `.macOS(.v27)`
+    # package. The few-core preview runner needs the serialized test gate below.
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - name: Check out the source
