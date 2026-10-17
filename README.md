@@ -26,7 +26,7 @@ Tandem then opens normally until the next install or upgrade.
 
 ## How it works
 
-All your todos live in `~/.tandem/todos.json`, a plain JSON file you can edit by hand.
+All your todos live in `~/.tandem/todos.json`, a plain JSON file you can edit by hand. A build you run from source keeps its own list in `~/.tandem-dev` instead, so developing Tandem can never touch the real one.
 
 The app has a main window and a menu bar item. It watches the file, so the list updates live whenever anything changes it.
 

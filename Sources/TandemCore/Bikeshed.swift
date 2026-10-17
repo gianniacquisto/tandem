@@ -15,7 +15,7 @@ import CryptoKit
 ///   pre-existing violators on disk are still shown and edited.
 /// - **Frontmatter** — tolerated, opaque: the core never parses note text.
 /// - **Locking** — app writes take an exclusive `flock` on the sidecar
-///   lockfile (`~/.tandem/bikeshed.lock`, outside the vault, never renamed —
+///   lockfile (`<home>/bikeshed.lock`, outside the vault, never renamed —
 ///   the ADR 0001 sidecar pattern), held across the whole operation,
 ///   multi-file operations included. Readers take no lock: atomic rename
 ///   guarantees a reader sees a complete old or new file. The lock is
@@ -51,12 +51,11 @@ public struct Bikeshed: Sendable {
     static let tempPrefix = ".note-"
     static let tempSuffix = ".tmp"
 
-    /// The default vault at `~/.tandem/bikeshed` (lockfile
-    /// `~/.tandem/bikeshed.lock`).
+    /// The default vault at `<home>/bikeshed` (lockfile `<home>/bikeshed.lock`),
+    /// where `<home>` is the real `~/.tandem` from the shipped app and
+    /// `~/.tandem-dev` from anything built and run in place (see `TandemHome`).
     public init() {
-        self.init(directory: URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".tandem")
-            .appendingPathComponent("bikeshed"))
+        self.init(directory: TandemHome.directory.appendingPathComponent("bikeshed"))
     }
 
     /// A vault rooted at an explicit directory (used by tests with a temp
