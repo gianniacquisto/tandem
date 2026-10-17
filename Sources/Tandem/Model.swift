@@ -123,6 +123,12 @@ final class TandemModel {
         run { try self.store.update(id, title: title) }
     }
 
+    /// Points a todo at a Bikeshed note (vault-root-relative path), or clears the link
+    /// with `nil`. GUI-only — no CLI verb; the unknown-id error surfaces verbatim.
+    func setLink(_ id: String, to link: String?) {
+        run { try self.store.setLink(id, to: link) }
+    }
+
     func clearDone() {
         run { try self.store.clearDone() }
     }
