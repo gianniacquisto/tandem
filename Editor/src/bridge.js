@@ -5,9 +5,10 @@
 //   dirty {type:"dirty", text:<full raw markdown>}        (every doc change)
 //   link-opened {type:"link-opened", target:<raw target or href>}
 //   checkbox-toggled {type:"checkbox-toggled", line:<1-based>, checked:<bool>}
+//   font-size {type:"font-size", value:<px>}              (preset, persisted)
 //
 // Swift → JS via page globals (see main.js): setDocument, insertText,
-// revealLine, setVaultIndex.
+// revealLine, setVaultIndex, setFontSize.
 //
 // The JS has no file or network access — everything crosses this bridge.
 
@@ -25,3 +26,4 @@ export const postDirty = (text) => send({ type: "dirty", text });
 export const postLinkOpened = (target) => send({ type: "link-opened", target });
 export const postCheckboxToggled = (line, checked) =>
   send({ type: "checkbox-toggled", line, checked });
+export const postFontSize = (value) => send({ type: "font-size", value });
