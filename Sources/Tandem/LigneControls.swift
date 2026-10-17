@@ -151,12 +151,69 @@ struct LigneQuickAdd: View {
 
 // MARK: row — checkbox · title · hover delete (GUI-only)
 
+/// Which half of a row a dragged todo was dropped on. The row's own height decides
+/// the split, so the caller never sees a coordinate.
+enum DropEdge {
+    case before
+    case after
+}
+
+/// Drag-and-drop for one row: the row is a drag source (its id is the payload) and a
+/// drop target (dropping on its top half means "before me", the bottom half "after
+/// me"). No-op when the caller passes no `onDrop`, so the menu-bar popover and any
+/// future read-only list can reuse `LigneRow` without drag.
+struct RowDragAndDrop: ViewModifier {
+    var payload: String
+    var title: String
+    var palette: Palette
+    var onDrop: ((String, DropEdge) -> Void)?
+
+    @State private var targeted = false
+
+    func body(content: Content) -> some View {
+        if let onDrop {
+            content
+                .draggable(payload) { preview }
+                .dropDestination(for: String.self) { items, location in
+                    // Ignore a drop of the row on itself — nothing to do.
+                    guard let id = items.first, id != payload else { return false }
+                    onDrop(id, location.y < Space.row / 2 ? .before : .after)
+                    return true
+                } isTargeted: { targeted = $0 }
+                .background(targeted ? AnyShapeStyle(palette.parchment) : AnyShapeStyle(Color.clear))
+                .overlay(alignment: .leading) {
+                    if targeted {
+                        Rectangle().fill(palette.accent).frame(width: 2)
+                    }
+                }
+        } else {
+            content
+        }
+    }
+
+    /// The drag image: the row's title on a small parchment card, so the drag reads
+    /// as "this todo", not a raw string.
+    private var preview: some View {
+        Text(title)
+            .font(.system(size: 12.5))
+            .foregroundStyle(palette.ink)
+            .lineLimit(1)
+            .frame(maxWidth: 260, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
+            .overlay(RoundedRectangle(cornerRadius: Radius.control)
+                .strokeBorder(palette.line, lineWidth: Line.hairline))
+    }
+}
+
 /// A main-window row. The checkbox is the toggle: checking completes, and
 /// un-checking a done todo reopens it (GUI-only — no reopen in the MCP surface).
 /// The title edits in place: double-click it, or use the row's Edit item; Return
 /// commits, Esc cancels, and clicking away commits. A plain row click is never
 /// destructive. Delete appears on hover and in the context menu — also GUI-only
-/// (agents have no delete in the MCP surface).
+/// (agents have no delete in the MCP surface). Rows drag to reorder and to move
+/// between sections when the caller passes `onDropTodo`.
 struct LigneRow: View {
     var todo: Todo
     var palette: Palette
@@ -164,6 +221,9 @@ struct LigneRow: View {
     var onReopen: () -> Void
     var onEdit: (String) -> Void
     var onDelete: () -> Void
+    /// Called when another row is dropped on this one, with which half. `nil`
+    /// leaves the row undraggable.
+    var onDropTodo: ((_ draggedID: String, _ edge: DropEdge) -> Void)? = nil
     @State private var hovering = false
     @State private var editing = false
     @State private var draft = ""
@@ -230,6 +290,8 @@ struct LigneRow: View {
             }
             Button("Delete", role: .destructive, action: onDelete)
         }
+        .modifier(RowDragAndDrop(payload: todo.id.uuidString, title: todo.title,
+                                 palette: palette, onDrop: onDropTodo))
     }
 
     // MARK: inline edit

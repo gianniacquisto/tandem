@@ -181,7 +181,7 @@ struct MainView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(groups) { group in
                             let key = group.key
-                            if showsSections, !group.isDefault || !group.todos.isEmpty {
+                            if showsSections {
                                 LigneSectionHeader(
                                     title: group.title,
                                     count: group.todos.count,
@@ -193,14 +193,18 @@ struct MainView: View {
                                     onCommitRename: { if let key { commitRename(key) } },
                                     onDelete: {
                                         if let key { withAnimation(Motion.remove) { model.deleteSection(key) } }
-                                    })
+                                    },
+                                    onDropIntoSection: { dropIntoSection($0, section: key) })
                             }
                             ForEach(group.todos) { todo in
                                 LigneRow(todo: todo, palette: palette,
                                          onComplete: { withAnimation(Motion.toggle) { model.complete(todo.id.uuidString) } },
                                          onReopen: { withAnimation(Motion.toggle) { model.reopen(todo.id.uuidString) } },
                                          onEdit: { model.update(todo.id.uuidString, title: $0) },
-                                         onDelete: { withAnimation(Motion.remove) { model.delete(todo.id.uuidString) } })
+                                         onDelete: { withAnimation(Motion.remove) { model.delete(todo.id.uuidString) } },
+                                         onDropTodo: { draggedID, edge in
+                                             drop(draggedID, onto: todo, edge: edge)
+                                         })
                                     .transition(.opacity)
                                 if todo.id != group.todos.last?.id {
                                     Rectangle()
@@ -216,6 +220,28 @@ struct MainView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Drag and drop
+
+    /// Drop of `draggedID` onto the row showing `anchor`, on the given half. The
+    /// arithmetic lives in the core (`TodoOrdering.dropIndex`) so it is provable against
+    /// the real `move` — see `OrderingTests`.
+    private func drop(_ draggedID: String, onto anchor: Todo, edge: DropEdge) {
+        guard let dragged = UUID(uuidString: draggedID),
+              let index = TodoOrdering.dropIndex(in: model.todos,
+                                                 moving: dragged,
+                                                 relativeTo: anchor.id,
+                                                 after: edge == .after)
+        else { return }
+        withAnimation(Motion.toggle) {
+            model.move(draggedID, toSection: anchor.section, at: index)
+        }
+    }
+
+    /// Drop of `draggedID` on a section header (or its empty body): to the top of it.
+    private func dropIntoSection(_ draggedID: String, section: String?) {
+        withAnimation(Motion.toggle) { model.move(draggedID, toSection: section, at: 0) }
     }
 
     // MARK: - Section actions

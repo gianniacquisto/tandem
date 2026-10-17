@@ -19,7 +19,8 @@ struct TodoGroup: Identifiable {
 // MARK: section header — name · count · hover menu (rename / delete)
 
 /// One section's header. The default area is not editable (it is not a section):
-/// pass `canEdit: false` and it draws the label + count with no menu.
+/// pass `canEdit: false` and it draws the label + count with no menu. The header is
+/// also a drop target — dropping a row here moves it to the top of the section.
 struct LigneSectionHeader: View {
     var title: String
     var count: Int
@@ -30,9 +31,12 @@ struct LigneSectionHeader: View {
     var onBeginRename: () -> Void
     var onCommitRename: () -> Void
     var onDelete: () -> Void
+    /// Called when a row is dropped on this header. `nil` leaves it inert.
+    var onDropIntoSection: ((_ draggedID: String) -> Void)? = nil
 
     @FocusState private var focused: Bool
     @State private var hovering = false
+    @State private var targeted = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -83,6 +87,17 @@ struct LigneSectionHeader: View {
         .padding(.top, 6)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
+        .dropDestination(for: String.self) { items, _ in
+            guard let id = items.first, let onDropIntoSection else { return false }
+            onDropIntoSection(id)
+            return true
+        } isTargeted: { targeted = $0 }
+        .background(targeted ? AnyShapeStyle(palette.parchment) : AnyShapeStyle(Color.clear))
+        .overlay(alignment: .leading) {
+            if targeted {
+                Rectangle().fill(palette.accent).frame(width: 2)
+            }
+        }
         .contextMenu {
             if canEdit {
                 Button("Rename", action: onBeginRename)
