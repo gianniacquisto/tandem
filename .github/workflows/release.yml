@@ -45,7 +45,16 @@ jobs:
           fi
 
       - name: "Gate: run the package test suite"
-        run: swift test
+        run: |
+          # Serialized (`--no-parallel`): Swift Testing runs tests in parallel by
+          # default (`--no-parallel` is the XCTest default only), and on the
+          # few-core hosted xcode-27 runner the CPU-heavy suites starve the
+          # DispatchQueue pool the contention tests use — their helper threads
+          # miss even the widened 15 s waits, so the gate fails on load, not on
+          # behaviour. Serial execution removes that artificial contention; each
+          # test's own threads still exercise the lock. (The self-hosted 10-core
+          # Mac had the headroom for the default parallel run.)
+          swift test --no-parallel
 
       - name: "Gate: editor bundle tests + reproducible build"
         run: |
