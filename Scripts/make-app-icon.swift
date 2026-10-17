@@ -1,7 +1,9 @@
-// Renders the Tandem app icon at 1024px: a bicycle wheel — the brand mark — in
-// the Ligne Claire register (flat fills, uniform ink linework, no gradients) on
-// the day panel's paper, in Apple's icon-grid proportions. The mark is drawn as
-// a vector, so it stays crisp at every size in the iconset.
+// Renders the Tandem app icon at 1024px: the bicycle wheel from the brand
+// illustration (Resources/TandemBike.jpg) — the app's logo. The illustration's
+// wheel is stylized: a dark charcoal tyre, a slim silver rim, an *empty* (paper)
+// interior with no drawn spokes, and a small dark hub ringed by a starburst of
+// short ink ticks. Redrawn as clean flat vector onto the day-panel's paper, in
+// Apple's icon-grid proportions.
 //
 // Companion to `make-app-icon.sh`, which turns the result into an .iconset and
 // .icns.
@@ -21,12 +23,12 @@ try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories
 
 let canvas: CGFloat = 1024
 
-// The Ligne Claire palette (sampled in LigneTheme.swift from the bike art):
-// day-panel paper, near-black ink, the sage frame accent, the rust saddle pop.
+// Colors sampled from the illustration: day-panel paper, the charcoal tyre, the
+// silver rim, and the near-black ink of the hub and ticks.
 let paper = NSColor(srgbRed: 0xF1 / 255, green: 0xE9 / 255, blue: 0xD7 / 255, alpha: 1)
+let tyre  = NSColor(srgbRed: 0x3A / 255, green: 0x38 / 255, blue: 0x32 / 255, alpha: 1)
+let rim   = NSColor(srgbRed: 0xB0 / 255, green: 0xB4 / 255, blue: 0xA9 / 255, alpha: 1)
 let ink   = NSColor(srgbRed: 0x21 / 255, green: 0x1D / 255, blue: 0x18 / 255, alpha: 1)
-let sage  = NSColor(srgbRed: 0x6E / 255, green: 0x7D / 255, blue: 0x6E / 255, alpha: 1)
-let rust  = NSColor(srgbRed: 0xA9 / 255, green: 0x74 / 255, blue: 0x5C / 255, alpha: 1)
 
 /// A stroked ring of line width `w` whose outer edge sits at `radius`.
 func ring(_ center: NSPoint, radius: CGFloat, width: CGFloat) {
@@ -37,12 +39,17 @@ func ring(_ center: NSPoint, radius: CGFloat, width: CGFloat) {
     path.stroke()
 }
 
+/// A filled disc of `radius`.
+func disc(_ center: NSPoint, radius: CGFloat) {
+    let path = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius,
+                                           width: 2 * radius, height: 2 * radius))
+    path.fill()
+}
+
 let image = NSImage(size: NSSize(width: canvas, height: canvas))
 image.lockFocus()
 
 // Paper plate: ~81% of the canvas, ~22.4% corner radius (Apple icon grid).
-// Day-panel paper: an .icns is a single bitmap, so the light plate is the one
-// that reads in both appearances.
 let inset = canvas * 0.095
 let plate = NSRect(x: inset, y: inset, width: canvas - 2 * inset, height: canvas - 2 * inset)
 paper.setFill()
@@ -50,47 +57,51 @@ NSBezierPath(roundedRect: plate, xRadius: plate.width * 0.2237, yRadius: plate.h
 
 // The wheel, centred on the plate.
 let center = NSPoint(x: plate.midX, y: plate.midY)
-let tireR  = plate.width * 0.335      // outer (tread) radius
-let tireW  = canvas * 0.058           // tire thickness
-let rimW   = canvas * 0.019           // rim thickness
-let spokeW = canvas * 0.013           // spoke stroke
-let hubR   = plate.width * 0.062      // hub radius
+let radius = plate.width * 0.365                   // outer (tread) radius
+let tyreW = radius * 0.165                         // tyre thickness
+let rimW = radius * 0.060                          // rim thickness
+let hubR = radius * 0.105                          // hub radius
 
-// Tire: one bold ink ring — the silhouette that reads first.
-ink.setStroke()
-ring(center, radius: tireR, width: tireW)
+// Tyre: the bold charcoal silhouette. Its inner edge bounds the rim.
+tyre.setStroke()
+ring(center, radius: radius, width: tyreW)
 
-// Rim: a sage ring tucked just inside the tire (the frame accent).
-sage.setStroke()
-ring(center, radius: tireR - tireW - rimW / 2, width: rimW)
+// Rim: a slim silver band tucked just inside the tyre.
+rim.setStroke()
+ring(center, radius: radius - tyreW - rimW / 2, width: rimW)
 
-// Spokes: thin ink lines from the hub out to the rim, offset so none sits
-// dead-vertical (a wheel, not a clock face).
-let spokeOuter = tireR - tireW - rimW
-let spokes = 10
-let spoke = NSBezierPath()
-spoke.lineWidth = spokeW
-for i in 0..<spokes {
-    let a = (CGFloat(i) / CGFloat(spokes)) * 2 * .pi + .pi / CGFloat(spokes)
-    spoke.move(to: NSPoint(x: center.x + hubR * cos(a), y: center.y + hubR * sin(a)))
-    spoke.line(to: NSPoint(x: center.x + spokeOuter * cos(a), y: center.y + spokeOuter * sin(a)))
-}
-ink.setStroke()
-spoke.stroke()
+// Interior stays paper — the illustration draws no spokes.
 
-// Hub: an ink disc with a paper axle, and a rust collar nut for the brand pop.
-let hub = NSBezierPath(ovalIn: NSRect(x: center.x - hubR, y: center.y - hubR,
-                                      width: 2 * hubR, height: 2 * hubR))
+// Hub: a charcoal disc, a silver collar, and an ink bolt at the centre.
+tyre.setFill()
+disc(center, radius: hubR)
+rim.setFill()
+disc(center, radius: hubR * 0.62)
 ink.setFill()
-hub.fill()
-let axleR = hubR * 0.40
-let axle = NSBezierPath(ovalIn: NSRect(x: center.x - axleR, y: center.y - axleR,
-                                       width: 2 * axleR, height: 2 * axleR))
-paper.setFill()
-axle.fill()
-// Collar nut: a small rust ring around the axle.
-rust.setStroke()
-ring(center, radius: hubR * 0.72, width: canvas * 0.012)
+disc(center, radius: hubR * 0.26)
+
+// The motion flourish: short ink ticks scattered around the hub (the
+// illustration's stand-in for spokes). Fixed values keep renders reproducible;
+// the angles, radii, and lengths vary so it reads as a sketch, not a cog.
+ink.setStroke()
+let ticks: [(deg: CGFloat, r: CGFloat, len: CGFloat)] = [
+    (18, 2.35, 0.62), (52, 2.05, 0.48), (86, 2.45, 0.70), (120, 2.15, 0.55),
+    (158, 2.40, 0.66), (196, 2.10, 0.50), (230, 2.50, 0.72), (264, 2.20, 0.58),
+    (300, 2.05, 0.46), (338, 2.30, 0.64),
+]
+for t in ticks {
+    let a = t.deg * .pi / 180
+    let inner = hubR * t.r
+    let outer = inner + hubR * t.len
+    let start = NSPoint(x: center.x + inner * cos(a), y: center.y + inner * sin(a))
+    let end = NSPoint(x: center.x + outer * cos(a), y: center.y + outer * sin(a))
+    let p = NSBezierPath()
+    p.lineWidth = canvas * 0.006
+    p.lineCapStyle = .round
+    p.move(to: start)
+    p.line(to: end)
+    p.stroke()
+}
 
 image.unlockFocus()
 
