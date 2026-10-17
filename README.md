@@ -81,7 +81,17 @@ This skill is a folder, not a single file, so it installs differently from the o
 | `READ-PROTOCOL.md` | how to orient and find related notes |
 | `CONCURRENCY.md` | two sessions writing the same vault |
 
-Install the whole `tandem-memory/` folder into your harness's skills directory the way you would a single-file skill, keeping the files together — `SKILL.md` reaches the companions by their relative paths, so they only work as a set. Don't install the four companions as skills of their own.
+Install it one of two ways.
+
+Point your harness at this repo's `skills/` directory, so there is one copy and no re-install when the repo changes. For OpenCode, add that directory to the `skills` array in `opencode.json` (beside any entries already there):
+
+```json
+{
+  "skills": ["/path/to/tandem/skills"]
+}
+```
+
+Or copy the whole `tandem-memory/` folder into your harness's skills directory the way you would a single-file skill, keeping the files together — `SKILL.md` reaches the companions by their relative paths, so they only work as a set. Don't install the four companions as skills of their own.
 
 ## The store file
 
