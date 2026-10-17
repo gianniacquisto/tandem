@@ -14,8 +14,9 @@ import CryptoKit
 ///   pre-existing violators on disk are still shown and edited.
 /// - **Frontmatter** — tolerated, opaque: the core never parses note text.
 /// - **Locking** — app writes take an exclusive `flock` on the sidecar
-///   lockfile (`<home>/bikeshed.lock`, outside the vault, never renamed —
-///   the ADR 0001 sidecar pattern), held across the whole operation,
+///   lockfile (`<home>/bikeshed.lock`, in Tandem's home and outside the vault
+///   even when the vault is a chosen folder elsewhere — ADR 0011 — never
+///   renamed, the ADR 0001 sidecar pattern), held across the whole operation,
 ///   multi-file operations included. Readers take no lock: atomic rename
 ///   guarantees a reader sees a complete old or new file. The lock is
 ///   one-sided by design — agents and external editors bypass it (ADR 0004).
@@ -43,25 +44,39 @@ public struct Bikeshed: Sendable {
     /// write + orphan sweep, identical to the store's.
     private let storage: LockedDirectory
 
-    /// The default vault at `<home>/bikeshed` (lockfile `<home>/bikeshed.lock`),
-    /// where `<home>` is the real `~/.tandem` from the shipped app and
-    /// `~/.tandem-dev` from anything built and run in place (see `TandemHome`).
+    /// The default vault: the human's chosen folder when one is set
+    /// (`TandemSettings.chosenVault()`, ADR 0011), else `<home>/bikeshed`. The
+    /// lockfile stays `<home>/bikeshed.lock` (in Tandem's home, never inside
+    /// a chosen user folder), where `<home>` is the real `~/.tandem` from the
+    /// shipped app and `~/.tandem-dev` from anything built and run in place
+    /// (see `TandemHome`).
     public init() {
-        self.init(directory: TandemHome.directory.appendingPathComponent("bikeshed"))
+        let home = TandemHome.directory
+        self.init(
+            directory: TandemSettings.chosenVault() ?? home.appendingPathComponent("bikeshed"),
+            lockURL: home.appendingPathComponent("bikeshed.lock"))
+    }
+
+    /// A vault rooted at an explicit directory with an explicit sidecar
+    /// lockfile. Used by the default (chosen-vault) path, whose lock lives in
+    /// Tandem's home rather than beside an arbitrary user folder.
+    public init(directory: URL, lockURL: URL) {
+        self.directory = directory
+        self.lockURL = lockURL
+        self.storage = LockedDirectory(
+            lockURL: lockURL,
+            tempPrefix: ".note-",
+            cleanRoot: directory,
+            cleanRecursively: true)
     }
 
     /// A vault rooted at an explicit directory (used by tests with a temp
     /// dir). The lockfile is the sibling `bikeshed.lock` outside the vault.
     public init(directory: URL) {
-        self.directory = directory
-        let lock = directory.deletingLastPathComponent()
-            .appendingPathComponent("bikeshed.lock")
-        self.lockURL = lock
-        self.storage = LockedDirectory(
-            lockURL: lock,
-            tempPrefix: ".note-",
-            cleanRoot: directory,
-            cleanRecursively: true)
+        self.init(
+            directory: directory,
+            lockURL: directory.deletingLastPathComponent()
+                .appendingPathComponent("bikeshed.lock"))
     }
 
     // MARK: - Locked write primitive
