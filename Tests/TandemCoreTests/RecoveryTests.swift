@@ -98,7 +98,8 @@ struct RecoveryTests {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
-        try writeRaw(#"{"version":2,"todos":[]}"#, to: store)
+        // v1 and v2 read; anything else is recovered.
+        try writeRaw(#"{"version":3,"todos":[]}"#, to: store)
 
         let result = try store.list(.all)
         #expect(result.note != nil, "unknown version should be recovered")

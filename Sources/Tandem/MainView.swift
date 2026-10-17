@@ -8,7 +8,7 @@ import TandemCore
 ///   Todos     — a centered 540 pt column: flat parchment quick-add
 ///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All
 ///               with live counts (⌘1/⌘2/⌘3) on a row with "Clear done"
-///               (disabled when nothing is done), and the creation-order list
+///               (disabled when nothing is done), and the stored-order list
 ///               (toggling checkbox — check completes, uncheck reopens; title
 ///               edits in place on double-click; hover/right-click delete,
 ///               GUI-only)

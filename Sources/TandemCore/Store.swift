@@ -53,7 +53,7 @@ public struct Store: Sendable {
 
     private enum Peek {
         case absent
-        case valid([Todo])
+        case valid(StoreContents)
         case invalid
     }
 
@@ -77,14 +77,14 @@ public struct Store: Sendable {
 
     /// Read while holding the exclusive lock. Re-checks under the lock so a process that
     /// already recovered is not double-recovered; if still corrupt, backs the file up and
-    /// restarts empty. Returns the todos and, when *this* call performed the backup, the
+    /// restarts empty. Returns the contents and, when *this* call performed the backup, the
     /// backup path.
-    private func readLocked() throws -> (todos: [Todo], backupPath: String?) {
+    private func readLocked() throws -> (contents: StoreContents, backupPath: String?) {
         switch peek() {
         case .absent:
-            return ([], nil)
-        case .valid(let todos):
-            return (todos, nil)
+            return (StoreContents(sections: [], todos: []), nil)
+        case .valid(let contents):
+            return (contents, nil)
         case .invalid:
             let ts = Int(Date().timeIntervalSince1970)
             var backup = directory.appendingPathComponent("todos.json.corrupt-\(ts)")
@@ -100,15 +100,15 @@ public struct Store: Sendable {
                 // Never silently discard: if we cannot back the corrupt file up, fail loudly.
                 throw StoreIOError.io("could not back up corrupt store: \(error)")
             }
-            return ([], backup.path)
+            return (StoreContents(sections: [], todos: []), backup.path)
         }
     }
 
     /// Write while holding the lock: same-directory temp file, fsync, atomic rename.
-    private func writeLocked(_ todos: [Todo]) throws {
+    private func writeLocked(_ contents: StoreContents) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
-        let data = try Self.encode(todos)
+        let data = try Self.encode(contents)
         let tmp = directory.appendingPathComponent(".todos-\(UUID().uuidString).tmp")
         do {
             try data.write(to: tmp, options: [])
@@ -162,29 +162,32 @@ public struct Store: Sendable {
         if fd >= 0 { close(fd) }
     }
 
-    // MARK: - Schema v1 (private)
+    // MARK: - Schema (private)
 
     private struct FileEnvelope: Codable {
         var version: Int
+        /// The ordered section names. Absent in schema v1 (which had no sections).
+        var sections: [String]?
         var todos: [Todo]
     }
 
-    private static func encode(_ todos: [Todo]) throws -> Data {
-        let envelope = FileEnvelope(version: 1, todos: todos)
+    private static func encode(_ contents: StoreContents) throws -> Data {
+        let envelope = FileEnvelope(version: 2, sections: contents.sections, todos: contents.todos)
         let encoder = JSONEncoder()
         // Pretty-printed: the file is intentionally human-legible (spec: Further Notes).
         encoder.outputFormatting = [.prettyPrinted]
         return try encoder.encode(envelope)
     }
 
-    private static func decode(_ data: Data) throws -> [Todo] {
+    private static func decode(_ data: Data) throws -> StoreContents {
         // Standard Codable: unknown extra fields are ignored (forward-compat); a missing
-        // or mistyped required field throws (invalid file → recovery).
+        // or mistyped required field throws (invalid file → recovery). Both schema v1
+        // (no sections, no `section` on a todo) and v2 (this shape) read.
         let envelope = try JSONDecoder().decode(FileEnvelope.self, from: data)
-        guard envelope.version == 1 else {
+        guard envelope.version == 1 || envelope.version == 2 else {
             throw CorruptStore.unsupportedVersion(envelope.version)
         }
-        return envelope.todos
+        return StoreContents(sections: envelope.sections ?? [], todos: envelope.todos)
     }
 
     private static func fsync(_ url: URL) throws {
@@ -199,40 +202,45 @@ public struct Store: Sendable {
     // MARK: - Read / mutate primitives
 
     /// A lock-free read (the `list` fast path). Takes the lock only to recover a corrupt
-    /// file. Returns the todos and an optional recovery note. Internal (not public): the
+    /// file. Returns the contents and an optional recovery note. Internal (not public): the
     /// public surface is the `Operations` extension; this is the primitive it builds on.
-    func readAll() throws -> (todos: [Todo], note: String?) {
+    func readAll() throws -> (contents: StoreContents, note: String?) {
         switch peek() {
         case .absent:
-            return ([], nil)
-        case .valid(let todos):
-            return (todos, nil)
+            return (StoreContents(sections: [], todos: []), nil)
+        case .valid(let contents):
+            return (contents, nil)
         case .invalid:
             let fd = try acquireLock()
             defer { releaseLock(fd) }
-            let (todos, backup) = try readLocked()
-            return (todos, backup.map(Self.recoveryNote))
+            let (contents, backup) = try readLocked()
+            return (contents, backup.map(Self.recoveryNote))
         }
     }
 
-    /// A read-modify-write under the exclusive lock. `body` receives the current todos
-    /// (after any recovery) and returns `(value, changed)`; when `changed` is false no
-    /// write is performed — but the lock is still taken and recovery is still checked.
-    /// If `body` throws and this call performed a recovery, the failure is wrapped in a
-    /// `RecoveryFailure` so the note is not lost. Internal (not public): the public
-    /// surface is the `Operations` extension; this is the primitive it builds on.
+    /// A read-modify-write under the exclusive lock. `body` receives the current contents
+    /// (after any recovery, and normalized to the grouped-by-section invariant) and returns
+    /// `(value, changed)`; when `changed` is false no write is performed — but the lock is
+    /// still taken and recovery is still checked. The contents are normalized again before
+    /// the write, so every operation leaves the invariant holding. If `body` throws and this
+    /// call performed a recovery, the failure is wrapped in a `RecoveryFailure` so the note
+    /// is not lost. Internal (not public): the public surface is the `Operations` extension.
     func mutate<T: Sendable>(
-        _ body: (inout [Todo]) throws -> (value: T, changed: Bool)
+        _ body: (inout StoreContents) throws -> (value: T, changed: Bool)
     ) throws -> (value: T, note: String?) {
         let fd = try acquireLock()
         defer { releaseLock(fd) }
         cleanOrphans()
         let (initial, backup) = try readLocked()
         let note = backup.map(Self.recoveryNote)
-        var list = initial
+        var contents = initial
+        contents.normalize()
         do {
-            let (value, changed) = try body(&list)
-            if changed { try writeLocked(list) }
+            let (value, changed) = try body(&contents)
+            if changed {
+                contents.normalize()
+                try writeLocked(contents)
+            }
             return (value, note)
         } catch {
             if let note {
