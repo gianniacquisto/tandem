@@ -68,6 +68,19 @@ OpenCode — add this to `opencode.json`:
 }
 ```
 
+### The `tandem-memory` skill
+
+`skills/tandem-memory/` is an agent skill that makes the bikeshed (`~/.tandem/bikeshed/`) the agent's memory. A session orients from the vault's `Index.md` and its project notes as it starts, then records decisions, gotchas, and open threads as it works, so the next session picks up where the last one left off. The notes double as a wiki of the work, navigable by wikilinks and backlinks in the app.
+
+Install it the way you install any skill — link it into your harness's skills directory:
+
+```sh
+ln -s "$PWD/skills/tandem-memory" ~/.agents/skills/tandem-memory   # OpenCode
+ln -s "$PWD/skills/tandem-memory" ~/.claude/skills/tandem-memory   # Claude Code
+```
+
+Both harnesses follow symlinks and hot-reload, so a repo update reaches every session; there is nothing else to install.
+
 ## The store file
 
 `~/.tandem/todos.json` looks like this:

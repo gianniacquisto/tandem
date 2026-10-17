@@ -24,10 +24,6 @@ _Avoid_: top bar element, status bar, tray, badge
 A single item with a title and a done state. The only entity in the todo domain.
 _Avoid_: task, item, to-do (hyphenated)
 
-**Thread**:
-A unit of active work: a Tandem todo plus the note context a title cannot carry. The owning note's `Threads` bullet leads with the todo title verbatim; the todo list stays the authoritative one.
-_Avoid_: issue, ticket, task
-
 **Open**:
 A todo that has not yet been completed.
 _Avoid_: pending, active

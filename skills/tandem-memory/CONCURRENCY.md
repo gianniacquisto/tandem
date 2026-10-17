@@ -2,9 +2,9 @@
 
 OpenCode and Claude Code can work the same project — or the same topic Note — at once. Agent writes take no lock (ADR 0004: the sidecar `flock` is app-only, last write wins), so coordination here is a rule, not mutual exclusion. The write protocol is [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md); the re-read trigger is [`READ-PROTOCOL.md`](READ-PROTOCOL.md).
 
-## Ownership — no scratch tier
+## Ownership — every Note shared
 
-Every Note is shared; there are no per-session or per-agent Notes. A session's working memory is its context window, never the Bikeshed. Anything worth persisting goes straight into the covering shared Note (one concept, one Note — [`CONVENTIONS.md`](CONVENTIONS.md)), so there is no merge-back lifecycle and no scratch to collect.
+Every Note is shared; there are no per-session or per-agent Notes. A session's working memory is its context window, never the Bikeshed. Anything worth persisting goes straight into the covering shared Note (one concept, one Note — [`CONVENTIONS.md`](CONVENTIONS.md)), so there is no merge-back lifecycle and no private tier to collect.
 
 ## The write boundary
 
@@ -14,7 +14,7 @@ Keep the write window tiny; every write is **re-read → patch → write**, neve
 - If it changed, re-apply your edit as a **minimal patch onto the current content** — keep the other session's text, layer yours on top, so both survive.
 - Never overwrite a region you did not re-read in the same breath.
 
-A clash on the *same* line — two contradicting decisions — falls to [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md): newest wins, the loser leaves one dated reversal line (`**X** — reversed <date>: <reason>`).
+A clash on the *same* line — two contradicting decisions — falls to [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md): newest wins, the loser leaves the one dated reversal line.
 
 ## Additive by default
 

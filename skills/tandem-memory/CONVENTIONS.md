@@ -11,13 +11,13 @@ The **Bikeshed** — `~/.tandem/bikeshed/` — is a plain folder of `.md` notes.
 - **`projects/`** — one **anchor note** per project, `projects/<Project>.md`. It becomes a folder, `projects/<Project>/` with the anchor inside, only when the project earns a second note.
 - **`topics/`** — flat, cross-project concepts, `topics/<Topic>.md`.
 
-No other folders, no deeper nesting. Placement is **intermixed**: a note lives wherever its topic naturally lives, beside **human notes**. When a human note already covers a topic, extend it — never create a parallel agent note. One concept, one note.
+No nesting below those two, so placement stays predictable — ADR 0004 permits nested folders, and this convention spends none. Placement is **intermixed**: a note lives wherever its topic naturally lives, beside **human notes**. When a human note already covers a topic, extend it — never create a parallel agent note. One concept, one note.
 
 ## Names
 
 - **Title Case** — `Bikeshed`, `Throwaway Branch Workflow` — matching the human notes.
 - **Basename unique vault-wide**: a bare `[[Name]]` needs exactly one case-insensitive filename match.
-- Keep names free of `#` and `|` — the wikilink grammar's separators — so every name stays writable as a link.
+- Keep names free of `/`, `#`, and `|` — the path and wikilink separators — so every name stays one file and writable as a link.
 - **No agent prefix.** There is no agent namespace and no name-based ownership; on a collision you rename *your* note.
 
 ## The entry point — `Index.md`
@@ -42,7 +42,7 @@ No other folders, no deeper nesting. Placement is **intermixed**: a note lives w
 Active work lives in the Tandem todos (MCP `list`). A project note's Threads section names the threads that belong to it.
 ```
 
-Two tiers below it: the **anchor note** (`Where left off` at the top) → **topic notes** via wikilinks. The app's **Backlinks** dock is the one-hop neighbourhood, derived and maintained by nobody.
+Two tiers below it: the **anchor note** (`Where left off` at the top) → **topic notes** via wikilinks. The app's **Backlinks** panel is the one-hop neighbourhood, derived and maintained by nobody.
 
 The Index stays honest by being derived, never authored: a project's Index line is **re-derived from that anchor's `Where left off`**, and a session that updates the anchor updates its Index line in the same session — and only when the status actually changed. That is what keeps the Index from becoming a second source of truth.
 

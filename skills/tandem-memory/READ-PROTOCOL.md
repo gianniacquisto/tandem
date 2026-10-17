@@ -23,16 +23,16 @@ No project matches the task → read only the Index's `Topics` list, then grep t
 Preference order:
 
 1. **Wikilinks the anchor already names** — curated for this session; a match beats any search.
-2. **Backlinks**, when the question is what *depends on* a note or what its neighbourhood is. The agent's stand-in for the app's Backlinks dock is `grep -r '[[Name]]'`.
+2. **Backlinks**, when the question is what *depends on* a note or what its neighbourhood is. The agent's stand-in for the app's Backlinks panel is `grep -rF '[[Name]]' ~/.tandem/bikeshed/` — `-F` keeps the brackets literal.
 3. **Keyword grep** of `~/.tandem/bikeshed/` when neither surfaces it.
 
-Resolving a `[[Name]]` is a **filename match** — case-insensitive, unique basename. The target *is* a file, not a search result.
+Resolving a `[[Name]]` is a **filename match** — case-insensitive, unique basename. The target *is* a file, not a search result. The app's Backlinks panel and full-text search are the human's equivalent of the backlink and grep steps.
 
 ## Staleness — the repo is ground truth
 
 When a note contradicts the current repo, work from the **repo** and correct the note in place: a fact is corrected silently; a **decision that flipped** leaves the one dated reversal line ([`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md)). Re-verify cheaply first — moved code may not mean changed intent. Never silently work around a stale note; that leaves the trap for the next session.
 
-A broken `[[wikilink]]` — its note was renamed on disk, or deleted — is fixed **when you touch the note**, never by a vault-wide sweep: search for the near-identical target name and rewrite the link; if the target is gone, demote the reference to plain text. Never re-point a link at a guess.
+A broken `[[wikilink]]` — its note was renamed **outside the app**, or deleted; the app rewrites links on its own renames, so those self-heal (ADR 0005) — is fixed **when you touch the note**, never by a vault-wide sweep: search for the near-identical target name and rewrite the link; if the target is gone, demote the reference to plain text. Never re-point a link at a guess.
 
 ## Freshness — trust this session's reads
 
