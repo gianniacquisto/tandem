@@ -18,17 +18,6 @@ extension Filter {
     }
 }
 
-/// Short relative creation age for rows: "now", "3m", "5h", "2d".
-func ageString(_ date: Date) -> String {
-    let s = max(0, Int(Date().timeIntervalSince(date)))
-    if s < 90 { return "now" }
-    let m = s / 60
-    if m < 90 { return "\(m)m" }
-    let h = m / 60
-    if h < 36 { return "\(h)h" }
-    return "\(h / 24)d"
-}
-
 // MARK: checkbox — flat, one hairline, one-way (v2 decision)
 
 /// The checkbox. Checking it is the satisfying moment: the mark is *drawn in*
@@ -57,7 +46,7 @@ struct LigneCheckbox: View {
             .trim(from: 0, to: done ? 1 : 0)
             .stroke(palette.paper, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
             RoundedRectangle(cornerRadius: Radius.checkbox)
-                .strokeBorder(palette.ink, lineWidth: Line.hairline)
+                .strokeBorder(palette.line, lineWidth: Line.hairline)
         }
         .frame(width: size, height: size)
         .scaleEffect(pop)
@@ -72,7 +61,7 @@ struct LigneCheckbox: View {
     }
 }
 
-// MARK: segmented filter — flat selected fill, muted counts, no capsules
+// MARK: segmented filter — soft-wash selection, muted counts, no capsules
 
 struct LigneFilter: View {
     @Binding var selection: Filter
@@ -85,11 +74,11 @@ struct LigneFilter: View {
                 segment(f)
             }
         }
-        .frame(width: 240, height: 30)
+        .frame(width: 240, height: Space.control)
         .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.paper))
         .clipShape(RoundedRectangle(cornerRadius: Radius.control))
         .overlay(RoundedRectangle(cornerRadius: Radius.control)
-            .strokeBorder(palette.ink, lineWidth: Line.hairline))
+            .strokeBorder(palette.line, lineWidth: Line.hairline))
     }
 
     private func segment(_ f: Filter) -> some View {
@@ -101,14 +90,14 @@ struct LigneFilter: View {
             HStack(spacing: 4) {
                 Text(f.displayName)
                     .font(.system(size: 12.5, weight: selected ? .semibold : .regular))
-                    .foregroundStyle(selected ? palette.paper : palette.ink)
+                    .foregroundStyle(selected ? palette.ink : palette.inkDim)
                 Text("\(count)")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(selected ? palette.paper.opacity(0.65) : palette.inkDim)
+                    .foregroundStyle(palette.inkDim)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 30)
-            .background(selected ? AnyShapeStyle(palette.accent) : AnyShapeStyle(Color.clear))
+            .frame(height: Space.control)
+            .background(selected ? AnyShapeStyle(palette.parchment) : AnyShapeStyle(Color.clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -154,13 +143,13 @@ struct LigneQuickAdd: View {
         .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.control)
-                .strokeBorder(focus.wrappedValue ? palette.ember : palette.ink,
+                .strokeBorder(focus.wrappedValue ? palette.ember : palette.line,
                               lineWidth: Line.hairline)
         )
     }
 }
 
-// MARK: row — checkbox · title · age · hover delete (GUI-only)
+// MARK: row — checkbox · title · hover delete (GUI-only)
 
 /// A main-window row. The checkbox is the toggle: checking completes, and
 /// un-checking a done todo reopens it (GUI-only — no reopen in the MCP surface).
@@ -171,7 +160,6 @@ struct LigneQuickAdd: View {
 struct LigneRow: View {
     var todo: Todo
     var palette: Palette
-    var showsAge: Bool
     var onComplete: () -> Void
     var onReopen: () -> Void
     var onEdit: (String) -> Void
@@ -214,14 +202,7 @@ struct LigneRow: View {
 
             Spacer(minLength: 8)
 
-            if showsAge {
-                Text(ageString(todo.createdAt))
-                    .font(.caption)
-                    .foregroundStyle(palette.inkDim)
-                    .monospacedDigit()
-            }
-
-            // fixed slot so the age never shifts when the delete appears
+            // fixed slot so nothing shifts when the delete appears
             ZStack {
                 if hovering {
                     Button(action: onDelete) {
@@ -448,7 +429,7 @@ struct LigneBanner: View {
         .padding(.vertical, 10)
         .background(RoundedRectangle(cornerRadius: Radius.card).fill(palette.parchment))
         .overlay(RoundedRectangle(cornerRadius: Radius.card)
-            .strokeBorder(palette.ink, lineWidth: Line.hairline))
+            .strokeBorder(palette.line, lineWidth: Line.hairline))
     }
 }
 

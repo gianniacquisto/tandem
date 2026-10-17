@@ -19,7 +19,7 @@ enum MainTab: String, CaseIterable, Identifiable {
 }
 
 /// The main window's tab control (settled: the second tab in the main window,
-/// header row between the wordmark and "Clear done").
+/// header row after the wordmark).
 struct BikeTabControl: View {
     @Binding var tab: MainTab
     var palette: Palette
@@ -32,21 +32,21 @@ struct BikeTabControl: View {
                 } label: {
                     Text(t.rawValue)
                         .font(.system(size: 12.5, weight: tab == t ? .semibold : .regular))
-                        .foregroundStyle(tab == t ? palette.paper : palette.ink)
+                        .foregroundStyle(tab == t ? palette.ink : palette.inkDim)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 28)
-                        .background(tab == t ? AnyShapeStyle(palette.accent)
+                        .frame(height: Space.control)
+                        .background(tab == t ? AnyShapeStyle(palette.parchment)
                                              : AnyShapeStyle(Color.clear))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .frame(width: 190, height: 28)
+        .frame(width: 190, height: Space.control)
         .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.paper))
         .clipShape(RoundedRectangle(cornerRadius: Radius.control))
         .overlay(RoundedRectangle(cornerRadius: Radius.control)
-            .strokeBorder(palette.ink, lineWidth: Line.hairline))
+            .strokeBorder(palette.line, lineWidth: Line.hairline))
     }
 }
 
@@ -353,7 +353,7 @@ struct BikeFaceView: View {
                 .frame(maxWidth: .infinity)
                 .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
                 .overlay(RoundedRectangle(cornerRadius: Radius.control)
-                    .strokeBorder(palette.ink, lineWidth: Line.hairline))
+                    .strokeBorder(palette.line, lineWidth: Line.hairline))
             HStack {
                 Button("Cancel") { renameTarget = nil }
                     .keyboardShortcut(.cancelAction)
@@ -405,7 +405,7 @@ struct BikeTreeView: View {
                         .foregroundStyle(palette.inkDim)
                         .frame(width: 20, height: 20)
                         .background(RoundedRectangle(cornerRadius: Radius.checkbox)
-                            .strokeBorder(palette.ink, lineWidth: Line.hairline))
+                            .strokeBorder(palette.line, lineWidth: Line.hairline))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -436,7 +436,7 @@ struct BikeTreeView: View {
             .frame(height: 28)
             .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
             .overlay(RoundedRectangle(cornerRadius: Radius.control)
-                .strokeBorder(palette.ink, lineWidth: Line.hairline))
+                .strokeBorder(palette.line, lineWidth: Line.hairline))
             .padding(.horizontal, 10)
             .padding(.top, 8)
 
