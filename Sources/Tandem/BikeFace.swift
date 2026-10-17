@@ -85,7 +85,10 @@ struct BikeFaceView: View {
                     .padding(.horizontal, Space.gutter)
                     .padding(.top, Space.section)
             }
-            if model.notePaths().isEmpty {
+            // The friendly empty state is only for a vault with *nothing* in it.
+            // A vault holding folders but no notes still shows the tree, so the
+            // human can keep building the structure (and add notes inside it).
+            if model.tree.isEmpty {
                 emptyVault
             } else {
                 HStack(spacing: 0) {
@@ -285,7 +288,10 @@ struct BikeFaceView: View {
                     .foregroundStyle(palette.inkDim)
                     .multilineTextAlignment(.center)
             }
-            newNoteButton
+            HStack(spacing: 8) {
+                newNoteButton
+                newFolderButton
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -322,6 +328,26 @@ struct BikeFaceView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// The empty state's secondary action: start the project structure with a
+    /// root folder (the tree then appears, so folders can nest). Quiet, so the
+    /// primary "New note" stays the obvious first move.
+    private var newFolderButton: some View {
+        Button {
+            model.createFolder(in: nil)
+        } label: {
+            Text("New folder")
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(palette.inkDim)
+                .padding(.horizontal, 14)
+                .frame(height: 30)
+                .background(RoundedRectangle(cornerRadius: Radius.control)
+                    .strokeBorder(palette.line, lineWidth: Line.hairline))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Create a folder to organise notes into projects")
     }
 
     // MARK: rename (the tree's context menu)
@@ -397,8 +423,9 @@ struct BikeTreeView: View {
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(palette.ink)
                 Spacer()
-                Button {
-                    model.createNote(in: nil)
+                Menu {
+                    Button("New note") { model.createNote(in: nil) }
+                    Button("New folder") { model.createFolder(in: nil) }
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 11, weight: .semibold))
@@ -408,8 +435,10 @@ struct BikeTreeView: View {
                             .strokeBorder(palette.line, lineWidth: Line.hairline))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .help("New note")
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("New note or folder")
             }
             .padding(.horizontal, 12)
             .padding(.top, 10)
@@ -496,6 +525,7 @@ struct BikeTreeView: View {
                     .padding(.leading, 10 + CGFloat(depth) * 14)
                     .contextMenu {
                         Button("New note") { model.createNote(in: item.path) }
+                        Button("New folder") { model.createFolder(in: item.path) }
                         Button("Delete", role: .destructive) { model.delete(item.path) }
                     }
                     if model.expandedFolders.contains(item.path) {
@@ -531,6 +561,8 @@ struct BikeTreeView: View {
                 .buttonStyle(.plain)
                 .padding(.leading, 10 + CGFloat(depth) * 14 + 14)
                 .contextMenu {
+                    // Moving a note is the Rename… path change; folder rename
+                    // is out of scope (the core's rename stays notes-only).
                     Button("Rename…") { onRename(item.path) }
                     Button("Delete", role: .destructive) { model.delete(item.path) }
                 }

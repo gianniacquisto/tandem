@@ -222,9 +222,29 @@ public struct Bikeshed: Sendable {
     /// any component (the wikilink grammar's separators), and the note name
     /// ends in `.md` (case-insensitive). Spaces are allowed.
     func validateNewName(_ path: String) throws {
+        let last = try validateComponents(path)
+        guard Self.isNoteName(last) else {
+            throw BikeshedError.invalidName(name: path)
+        }
+    }
+
+    /// The naming rules for a *folder* the app is about to create
+    /// (`createFolder`): the same path hygiene as `validateNewName` — no
+    /// empty / `.` / `..` component, no hidden component, no `#` or `|` — minus
+    /// the `.md` requirement (a folder legitimately has no extension). Reuses
+    /// the same error.
+    func validateNewFolderName(_ path: String) throws {
+        _ = try validateComponents(path)
+    }
+
+    /// The shared path hygiene for `validateNewName` / `validateNewFolderName`:
+    /// no empty, `.`, or `..` component, no hidden component, no `#` or `|` in
+    /// any component. Returns the last component so the note rule can add its
+    /// `.md` check on top.
+    private func validateComponents(_ path: String) throws -> String {
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
             .map(String.init)
-        guard !components.isEmpty else {
+        guard let last = components.last, !components.isEmpty else {
             throw BikeshedError.invalidName(name: path)
         }
         for component in components
@@ -234,9 +254,7 @@ public struct Bikeshed: Sendable {
         {
             throw BikeshedError.invalidName(name: path)
         }
-        guard let last = components.last, Self.isNoteName(last) else {
-            throw BikeshedError.invalidName(name: path)
-        }
+        return last
     }
 
     // MARK: - Note read (internal)
