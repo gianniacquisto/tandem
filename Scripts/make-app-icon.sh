@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Regenerates Resources/AppIcon.icns (and the .iconset sources) from the SF
-# Symbol renderer. Run on a Mac with the Xcode Command Line Tools.
+# Regenerates Resources/AppIcon.icns (and the .iconset sources) from the
+# bicycle-wheel renderer (make-app-icon.swift). Run on a Mac with the Xcode
+# Command Line Tools.
 #
 # Usage: Scripts/make-app-icon.sh
 set -euo pipefail
