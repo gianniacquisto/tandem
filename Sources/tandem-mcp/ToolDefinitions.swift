@@ -36,7 +36,7 @@ enum TandemTools {
 
     static let complete = Tool(
         name: "complete",
-        description: "Mark a todo as done on the shared Tandem list (store: ~/.tandem/todos.json). Argument: `id` (from `list` or `add`). Idempotent: completing an already-done todo returns it unchanged. If the id is unknown, the error includes the current open list so you can pick the right one. There is no reopen in v1.",
+        description: "Mark a todo as done on the shared Tandem list (store: ~/.tandem/todos.json). Argument: `id` (from `list` or `add`). Idempotent: completing an already-done todo returns it unchanged. If the id is unknown, the error includes the current open list so you can pick the right one. There is no reopen tool (a human can reopen a done todo in the app).",
         inputSchema: .object([
             "type": "object",
             "properties": .object([
