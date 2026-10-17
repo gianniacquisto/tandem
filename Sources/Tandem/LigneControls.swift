@@ -322,6 +322,8 @@ struct TextButton: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12.5))
+                .lineLimit(1)
+                .fixedSize()
                 .foregroundStyle(enabled ? (hovering ? palette.ink : palette.inkDim)
                                          : palette.inkDim.opacity(0.45))
                 .padding(.horizontal, 6)

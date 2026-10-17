@@ -7,11 +7,14 @@ import TandemCore
 ///               closed by a hairline (identical on both tabs)
 ///   Todos     — a centered 540 pt column: flat parchment quick-add
 ///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All
-///               with live counts (⌘1/⌘2/⌘3) on a row with "Clear done"
-///               (disabled when nothing is done), and the stored-order list
-///               (toggling checkbox — check completes, uncheck reopens; title
-///               edits in place on double-click; hover/right-click delete,
-///               GUI-only)
+///               with live counts (⌘1/⌘2/⌘3) on a row with "+ Section" and
+///               "Clear done" (disabled when nothing is done), and the
+///               stored-order list grouped by section (a quiet header per group;
+///               double-click a name to rename, the header menu deletes — which
+///               moves its todos to the default area, never deletes them).
+///               Rows: toggling checkbox (check completes, uncheck reopens);
+///               title edits in place on double-click; hover/right-click delete
+///               (all GUI-only)
 ///   Bikeshed  — the notes face (BikeFace.swift): tree sidebar, the WKWebView
 ///               editor, the backlinks dock
 ///
@@ -28,6 +31,13 @@ struct MainView: View {
     @State private var filter: Filter = .open
     @State private var tab: MainTab = .todos
     @FocusState private var quickAddFocused: Bool
+
+    // Section chrome: the inline "name a new section" field, and the inline rename.
+    @State private var addingSection = false
+    @State private var sectionDraft = ""
+    @State private var renamingSection: String?
+    @State private var renameDraft = ""
+    @FocusState private var sectionFocused: Bool
 
     private var palette: Palette { Palette.forScheme(colorScheme) }
 
@@ -85,6 +95,13 @@ struct MainView: View {
                                      done: model.doneTodos.count),
                             palette: palette)
                 Spacer(minLength: 8)
+                if addingSection {
+                    LigneSectionField(text: $sectionDraft, palette: palette,
+                                      focus: $sectionFocused,
+                                      onCommit: commitSection, onCancel: cancelSection)
+                } else {
+                    TextButton(title: "+ Section", palette: palette) { beginAddSection() }
+                }
                 TextButton(title: "Clear done", palette: palette,
                            enabled: !model.doneTodos.isEmpty) {
                     withAnimation(Motion.remove) { model.clearDone() }
@@ -120,9 +137,34 @@ struct MainView: View {
         }
     }
 
+    /// The list grouped for display. With no sections declared this is a single
+    /// unnamed group (the flat list, unchanged); otherwise the default area comes
+    /// first, then the declared sections, then any section that only appears on a
+    /// todo (a hand edit) so nothing is hidden. Order within a group is the stored
+    /// order.
+    private var groups: [TodoGroup] {
+        let visible = visibleTodos
+        guard !model.sections.isEmpty else {
+            return [TodoGroup(key: nil, title: "", todos: visible)]
+        }
+        var keys: [String?] = [nil]
+        for name in model.sections where !keys.contains(name) { keys.append(name) }
+        for todo in visible where todo.section != nil && !keys.contains(todo.section) {
+            keys.append(todo.section)
+        }
+        return keys.map { key in
+            TodoGroup(key: key,
+                      title: key ?? "Uncategorized",
+                      todos: visible.filter { $0.section == key })
+        }
+    }
+
+    /// Sections are shown once any exist; the flat look is the no-section case.
+    private var showsSections: Bool { !model.sections.isEmpty }
+
     private var listArea: some View {
         Group {
-            if visibleTodos.isEmpty {
+            if visibleTodos.isEmpty && !showsSections {
                 switch filter {
                 case .open:
                     LigneEmptyState(palette: palette, title: "All clear",
@@ -137,18 +179,35 @@ struct MainView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(visibleTodos) { todo in
-                            LigneRow(todo: todo, palette: palette,
-                                     onComplete: { withAnimation(Motion.toggle) { model.complete(todo.id.uuidString) } },
-                                     onReopen: { withAnimation(Motion.toggle) { model.reopen(todo.id.uuidString) } },
-                                     onEdit: { model.update(todo.id.uuidString, title: $0) },
-                                     onDelete: { withAnimation(Motion.remove) { model.delete(todo.id.uuidString) } })
-                                .transition(.opacity)
-                            if todo.id != visibleTodos.last?.id {
-                                Rectangle()
-                                    .fill(palette.sand)
-                                    .frame(height: Line.hairline)
-                                    .padding(.leading, Space.gutter + 24 + 10)
+                        ForEach(groups) { group in
+                            let key = group.key
+                            if showsSections, !group.isDefault || !group.todos.isEmpty {
+                                LigneSectionHeader(
+                                    title: group.title,
+                                    count: group.todos.count,
+                                    palette: palette,
+                                    canEdit: !group.isDefault,
+                                    isRenaming: key != nil && renamingSection == key,
+                                    draft: $renameDraft,
+                                    onBeginRename: { if let key { beginRename(key) } },
+                                    onCommitRename: { if let key { commitRename(key) } },
+                                    onDelete: {
+                                        if let key { withAnimation(Motion.remove) { model.deleteSection(key) } }
+                                    })
+                            }
+                            ForEach(group.todos) { todo in
+                                LigneRow(todo: todo, palette: palette,
+                                         onComplete: { withAnimation(Motion.toggle) { model.complete(todo.id.uuidString) } },
+                                         onReopen: { withAnimation(Motion.toggle) { model.reopen(todo.id.uuidString) } },
+                                         onEdit: { model.update(todo.id.uuidString, title: $0) },
+                                         onDelete: { withAnimation(Motion.remove) { model.delete(todo.id.uuidString) } })
+                                    .transition(.opacity)
+                                if todo.id != group.todos.last?.id {
+                                    Rectangle()
+                                        .fill(palette.sand)
+                                        .frame(height: Line.hairline)
+                                        .padding(.leading, Space.gutter + 24 + 10)
+                                }
                             }
                         }
                     }
@@ -157,6 +216,41 @@ struct MainView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Section actions
+
+    private func beginAddSection() {
+        addingSection = true
+        sectionDraft = ""
+    }
+
+    private func commitSection() {
+        addingSection = false
+        let name = sectionDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        sectionDraft = ""
+        guard !name.isEmpty else { return }
+        model.addSection(name)
+    }
+
+    private func cancelSection() {
+        addingSection = false
+        sectionDraft = ""
+    }
+
+    private func beginRename(_ key: String) {
+        renameDraft = key
+        renamingSection = key
+    }
+
+    /// Return or clicking away: keep a non-empty, changed name; otherwise leave the
+    /// section as it was.
+    private func commitRename(_ key: String) {
+        guard renamingSection == key else { return }
+        renamingSection = nil
+        let name = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != key else { return }
+        model.renameSection(key, to: name)
     }
 
     // MARK: - Banners (restyled per reach B; no illustration in the banner)
