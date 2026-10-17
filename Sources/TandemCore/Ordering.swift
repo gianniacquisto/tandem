@@ -1,6 +1,6 @@
 import Foundation
 
-/// Pure ordering arithmetic for drag-and-drop (GUI-only — there is no MCP surface for
+/// Pure ordering arithmetic for drag-and-drop (GUI-only — there is no CLI verb for
 /// order). It lives beside `Store.move` because it is the missing half of it: a view
 /// knows *which row* the human dropped onto, and this turns that into the `index` that
 /// `move` wants.

@@ -117,7 +117,7 @@ final class TandemModel {
         run { try self.store.reopen(id) }
     }
 
-    /// Rewrites a todo's title (inline edit). GUI-only — no MCP tool; the empty-title
+    /// Rewrites a todo's title (inline edit). GUI-only — no CLI verb; the empty-title
     /// and unknown-id errors surface verbatim.
     func update(_ id: String, title: String) {
         run { try self.store.update(id, title: title) }
@@ -127,7 +127,7 @@ final class TandemModel {
         run { try self.store.clearDone() }
     }
 
-    /// GUI-only in v1 — there is no delete tool in the MCP surface.
+    /// GUI-only in v1 — there is no delete verb in the CLI.
     func delete(_ id: String) {
         run { try self.store.delete(id) }
     }

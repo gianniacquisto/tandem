@@ -4,7 +4,7 @@ import Foundation
 ///
 /// The `note` is present only when this call triggered corrupt-store recovery
 /// (ADR 0001: any operation — including reads — can be the one to recover). The GUI
-/// surfaces it as a notification; the MCP server carries it as a top-level `note` in
+/// surfaces it as a notification; the CLI carries it as a top-level `note` in
 /// the result. Domain failures are *thrown* `DomainError`s, not carried here.
 public struct OperationResult<T: Sendable>: Sendable {
     public let value: T

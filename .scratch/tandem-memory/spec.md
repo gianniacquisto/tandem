@@ -4,6 +4,8 @@ Type: spec
 Status: ready-for-agent
 Source: `.scratch/tandem-memory/map.md` + tickets 01–05 (each ticket's Answer is normative for its area), ADR 0004 (vault protocol) and ADR 0005 (wikilink rename rewriting), branch `prototype/tandem-memory-layout` (layout sketch; verdict accepted 2026-10-17), branch `research/tandem-memory-model-invocation` (harness mechanics), `GLOSSARY.md` (Bikeshed / Memory note / Human note / Anchor note / Orientation note / Wikilink / Backlink / Threads), and the `writing-for-agents` skill (+ `SKILL-MECHANICS.md`) for the writing discipline the skill is built on.
 
+> **Amended (2026-10-17, [ADR 0009](../../docs/adr/0009-cli-agent-face.md)):** the todo surface this spec names as MCP below — `list` / `add` / `complete`, and the **MCP server** glossary term — is now `tandem-cli`: `tandem-cli todo list` / `todo add --title "…"` / `todo complete --id <id>`. The skill's own text is updated; the MCP references here (including the quoted `SKILL.md` description) are historical.
+
 ## Problem Statement
 
 Every agent session starts cold. A local coding agent (OpenCode or Claude Code) opens a repo with no memory of the last session: the decision that was made and why, the gotcha that cost an hour, the fact that took a dozen dead ends to derive — all gone, to be rediscovered or repeated. A long session that would keep some of it instead thrashes against its context limit. Tandem already has a shared notes surface — the bikeshed, a plain folder of `[[wikilinked]]` markdown the app renders live — but nothing tells an agent what to write there, where it goes, or how a new session should pick it up. So the folder is a place to keep notes, not the backbone of memory, and each session pays again for what the last one already learned.

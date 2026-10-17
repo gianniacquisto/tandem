@@ -2,14 +2,14 @@ import Foundation
 
 /// Which todos are in view: `open` (the default), `done`, or `all` (GLOSSARY: Filter).
 ///
-/// One term for two surfaces: the Main window's segmented control and the MCP `list`
-/// tool's argument. The raw wire values are lowercase `open` / `done` / `all`.
+/// One term for two surfaces: the Main window's segmented control and the CLI's
+/// `todo list --filter` argument. The raw wire values are lowercase `open` / `done` / `all`.
 public enum Filter: String, Sendable, CaseIterable {
     case open
     case done
     case all
 
-    /// `nil` (argument absent) means the default filter, `open`.
+    /// `nil` (the CLI's `--filter` omitted) means the default filter, `open`.
     /// Any non-`nil` value that is not one of the three cases is invalid.
     static func parse(raw: String?) -> Filter? {
         guard let raw else { return .open }

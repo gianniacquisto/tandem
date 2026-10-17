@@ -1,11 +1,11 @@
 import Foundation
 
-/// Result encoding for the MCP tool contract (spec: "Result encoding"). Every successful
+/// Result encoding for the agent-facing tool contract (spec: "Result encoding"). Every successful
 /// result is JSON matching the store schema verbatim, plus one extension: a top-level
 /// `note` string, present only when the call triggered corrupt-store recovery.
 ///
-/// This lives in the core because it is the schema itself; the MCP server just wraps the
-/// returned text in a tool content block.
+/// This lives in the core because it is the schema itself; the CLI just writes the
+/// returned text to stdout.
 public enum StoreEncoding {
 
     /// The `list` result: `{"todos": [...]}`, with a top-level `note` when non-nil.
@@ -53,7 +53,7 @@ public enum StoreEncoding {
     }
 }
 
-/// Renders any Tandem failure to the short, actionable plain text the MCP surface returns
+/// Renders any Tandem failure to the short, actionable plain text the CLI returns
 /// (spec: "Error convention"). For `DomainError.unknownID`, the current open list is
 /// appended in the `list` shape. A `RecoveryFailure` additionally appends its note.
 public func tandemErrorText(_ error: any Error) -> String {

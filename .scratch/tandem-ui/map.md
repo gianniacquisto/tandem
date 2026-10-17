@@ -8,6 +8,8 @@ A ready-for-agent spec for the v2 UI/UX of the Tandem app: a modern native macOS
 
 ## Notes
 
+> **Amended (2026-10-17, [ADR 0009](../../docs/adr/0009-cli-agent-face.md)):** `tandem-mcp` retired; the frozen agent surface is now `tandem-cli`, in-bundle, carrying the same `list` / `add` / `complete` operations. "Frozen" below still holds for this effort — the v2 UI changes neither the core nor the agent face.
+
 - Domain: Swift/SwiftUI macOS app — the `Tandem` GUI target only (`Sources/Tandem/`). `TandemCore` and `tandem-mcp` are frozen. macOS 26+, SwiftPM (no Xcode project), Homebrew distribution (no App Store/signing/notarization), single-instance regular app (Dock + standard window).
 - Tracker: local markdown — map at `.scratch/tandem-ui/map.md`, tickets at `.scratch/tandem-ui/issues/NN-<slug>.md`. Claim = set `Status: claimed`. Blocking = `Blocked by:` line in the ticket header.
 - Skills to consult: `grilling` + `domain-modeling` for grilling tickets; `prototype` for prototype tickets; `research` for research tickets. `GLOSSARY.md` at repo root is the vocabulary authority.

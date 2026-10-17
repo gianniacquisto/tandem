@@ -33,7 +33,7 @@ A todo that has been completed.
 _Avoid_: closed, finished, complete (as a noun)
 
 **Filter**:
-Which todos are in view: `open` (the default), `done`, or `all`. One term for two surfaces: the main window's segmented control and the MCP `list` tool's argument.
+Which todos are in view: `open` (the default), `done`, or `all`. One term for two surfaces: the main window's segmented control and the CLI's `list --filter` argument.
 _Avoid_: view, tab, scope, state
 
 **Store**:
@@ -85,9 +85,9 @@ A person using Tandem through the main window or menu bar item.
 _Avoid_: user (ambiguous with the OS account), client, owner
 
 **Agent**:
-A local AI coding agent (e.g. OpenCode, Claude Code) running as the same OS user on the same Mac, interacting with Tandem through the MCP server.
+A local AI coding agent (e.g. OpenCode, Claude Code) running as the same OS user on the same Mac, interacting with Tandem through the CLI.
 _Avoid_: bot, client, automation, user
 
-**MCP server**:
-Tandem's agent-facing interface: a Model Context Protocol server exposing todo operations as tools.
+**CLI**:
+Tandem's agent-facing interface: a command-line binary, `tandem-cli`, shipped inside the app bundle and reached at its in-bundle path.
 _Avoid_: API (too generic), backend, endpoint

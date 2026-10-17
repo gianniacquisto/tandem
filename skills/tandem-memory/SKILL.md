@@ -1,6 +1,6 @@
 ---
 name: tandem-memory
-description: "Memory and the wiki of work, backed by the Tandem bikeshed (`~/.tandem/bikeshed/`) — a plain folder of markdown notes. Reach this at the **start of a session in any project on this Mac, before reading or editing project files**, to orient: read `Index.md`, the matching project anchor, and Tandem's open threads (MCP `list`). Reach it again **as you work** to record — write a memory note when you make a non-obvious decision, hit a gotcha, finish a significant unit of work, or open/close a thread; don't batch to session end."
+description: "Memory and the wiki of work, backed by the Tandem bikeshed (`~/.tandem/bikeshed/`) — a plain folder of markdown notes. Reach this at the **start of a session in any project on this Mac, before reading or editing project files**, to orient: read `Index.md`, the matching project anchor, and Tandem's open threads (`tandem-cli todo list`). Reach it again **as you work** to record — write a memory note when you make a non-obvious decision, hit a gotcha, finish a significant unit of work, or open/close a thread; don't batch to session end."
 ---
 
 # Tandem memory
@@ -14,7 +14,7 @@ Before reading or editing project files, in order:
 1. Read **`Index.md`** — the Orientation note at the vault root: pointers and one-line status.
 2. Match the task to a project line, then read that project's **anchor note** — `Where left off` in full; `Decisions` / `Gotchas` / `Facts` scanned by heading and pulled only when the task touches them.
 3. Follow only the anchor's **wikilinks** the task needs.
-4. Check MCP `list` for the open **threads**.
+4. Check `tandem-cli todo list` for the open **threads**.
 
 No project line matches → read the Index `Topics` list, then grep the vault; create the anchor at session end (Record). **Read protocol** — retrieval order, staleness repair, freshness, human-note authority → `READ-PROTOCOL.md`.
 

@@ -8,6 +8,8 @@ A working, model-invoked skill stored in this repo at `skills/tandem-memory/`: `
 
 ## Notes
 
+> **Amended (2026-10-17, [ADR 0009](../../docs/adr/0009-cli-agent-face.md)):** the todo surface is now `tandem-cli` (`todo list` / `todo add` / `todo complete`), not MCP — read every MCP todo reference below as that binary. The notes surface is unaffected: the bikeshed is still on-disk files.
+
 - Domain: an agent-facing skill plus the conventions it encodes. The memory surface is the existing bikeshed: a plain `.md` folder at `~/.tandem/bikeshed/` (ADR 0004: filename = note identity, one-sided sidecar lock — agents write plain files with no lock, last write wins; the app watches live). Wikilinks resolve by case-insensitive name (ADR 0005). MCP exposes todos only (`list`/`add`/`complete`).
 - Tracker: local markdown — map at `.scratch/tandem-memory/map.md`, tickets at `.scratch/tandem-memory/issues/NN-<slug>.md`. Claim = set `Status: claimed`. Blocking = `Blocked by:` line in the ticket header.
 - Spec (the destination): `.scratch/tandem-memory/spec.md` — written 2026-10-17 from the resolved decisions below; labelled `ready-for-agent`. Deliverable: two skills under `skills/` — `tandem-memory` (model-invoked) and `setup-tandem-memory` (user-invoked, run once) — the second being the global install/link step embodied as a skill.

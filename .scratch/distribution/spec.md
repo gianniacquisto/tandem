@@ -4,6 +4,8 @@ Type: spec
 Status: ready-for-agent
 Source: grilling session on ADR 0002 (Oct 2026) → [ADR 0003](../../docs/adr/0003-distribution.md)
 
+> **Superseded (2026-10-17, [ADR 0009](../../docs/adr/0009-cli-agent-face.md)):** the in-bundle agent face is now `tandem-cli`, not `tandem-mcp` — the bundle script ships it at `Contents/MacOS/tandem-cli`, and the release verification is the CLI's `--help` / no-argument exit-code checks in place of the retired stdin-EOF smoke. The distribution model itself (prebuilt cask, brew-only, macOS 27 floor) stands.
+
 ## Problem Statement
 
 Tandem is distributed as a Homebrew formula *and* a cask under the same name. The formula compiles the app from source on every user's machine (Xcode Command Line Tools required, multi-minute build) and installs the app bundle into the Cellar; the cask only symlinks it into `/Applications`. The result is two brew records for one product: after every release `brew upgrade` moves the formula forward and the cask's recorded version lags — brew then flags Tandem as outdated although the running app is current — and the cask is an artifact that mirrors the formula's url/sha256 without ever downloading from it. For a public, user-friendliness-first app this is the wrong shape: the install story is a source build, the upgrade story is two identities, and the release story is two files to keep in sync.

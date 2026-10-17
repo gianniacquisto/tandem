@@ -8,7 +8,7 @@ import Foundation
 ///
 /// The custom `Codable` conformance pins the on-disk and on-the-wire date format to
 /// ISO-8601 UTC (e.g. `2026-10-09T14:03:22Z`) regardless of the encoder/decoder's
-/// configured date strategy — so the store file and the MCP results always agree.
+/// configured date strategy — so the store file and the CLI's JSON always agree.
 public struct Todo: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public var title: String

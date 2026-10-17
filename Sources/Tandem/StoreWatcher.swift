@@ -2,7 +2,7 @@ import Foundation
 
 /// Watches a directory for changes via a `DispatchSource` on the directory's file
 /// descriptor, invoking `onEvent` on the main queue when anything in it changes. The
-/// GUI uses this to refresh when another process (an MCP server) writes the store.
+/// GUI uses this to refresh when another process (the CLI) writes the store.
 ///
 /// We watch the *directory*, not the data file: the store writes atomically via
 /// `rename`, which replaces the file's inode, so a monitor on the file's fd would keep

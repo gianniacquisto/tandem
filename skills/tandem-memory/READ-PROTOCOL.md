@@ -10,7 +10,7 @@ At the start of a session, before reading or editing project files:
 2. **Match the task to a project line** — that line's wikilink is the project's **anchor note**.
 3. **Read the anchor** — `Where left off` in full; `Decisions`, `Gotchas`, `Facts` scanned by heading and pulled only when the task touches them.
 4. **Follow the anchor's wikilinks outward** only as the task needs them.
-5. **Check the Tandem todos** (MCP `list`) for the open threads.
+5. **Check the Tandem todos** (`tandem-cli todo list`) for the open threads.
 
 **Stop** as soon as you can state the project's **current state**, its **next move**, and which **threads are open**. Topic notes and human root notes are read on demand — see Retrieval — never at orientation.
 

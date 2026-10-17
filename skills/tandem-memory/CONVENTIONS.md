@@ -39,7 +39,7 @@ No nesting below those two, so placement stays predictable — ADR 0004 permits 
 
 ## Threads
 
-Active work lives in the Tandem todos (MCP `list`). A project note's Threads section names the threads that belong to it.
+Active work lives in the Tandem todos (`tandem-cli todo list`). A project note's Threads section names the threads that belong to it.
 ```
 
 Two tiers below it: the **anchor note** (`Where left off` at the top) → **topic notes** via wikilinks. The app's **Backlinks** panel is the one-hop neighbourhood, derived and maintained by nobody.

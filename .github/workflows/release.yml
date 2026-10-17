@@ -6,9 +6,9 @@ name: Release
 # runs run the same build-and-verify stages and upload the artifact, never
 # publishing. The stages are the test seam (spec "Testing Decisions"): the run
 # fails if the test suite fails, the build fails, the signature does not
-# verify, the Info.plist version does not match the tag, the in-bundle MCP
-# server does not exit cleanly on stdin EOF, or the zip does not contain an
-# intact app. The assertions are the retired formula's brew test, moved here.
+# verify, the Info.plist version does not match the tag, the in-bundle CLI
+# fails its --help / no-argument exit-code assertions, or the zip does not
+# contain an intact app.
 
 on:
   push:
@@ -76,16 +76,16 @@ jobs:
       - name: Build both products (release configuration)
         run: |
           swift build -c release --product Tandem
-          swift build -c release --product tandem-mcp
+          swift build -c release --product tandem-cli
 
       - name: Assemble the app bundle
-        run: Scripts/make-app-bundle.sh .build/release/Tandem .build/release/tandem-mcp "$version" dist
+        run: Scripts/make-app-bundle.sh .build/release/Tandem .build/release/tandem-cli "$version" dist
 
       - name: "Verify: bundle structure"
         run: |
           app=dist/Tandem.app
           test -x "$app/Contents/MacOS/Tandem"
-          test -x "$app/Contents/MacOS/tandem-mcp"
+          test -x "$app/Contents/MacOS/tandem-cli"
           test -f "$app/Contents/Info.plist"
           test -f "$app/Contents/Resources/AppIcon.icns"
           editor="$app/Contents/Resources/tandem_Tandem.bundle/Contents/Resources/Editor"
@@ -119,7 +119,7 @@ jobs:
           app=dist/Tandem.app
           plist_floor=$(plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist")
           failed=0
-          for bin in Tandem tandem-mcp; do
+          for bin in Tandem tandem-cli; do
             minos=$(otool -l "$app/Contents/MacOS/$bin" | awk '/LC_BUILD_VERSION/{f=1} f && $1 == "minos"{print $2; exit}')
             if [[ "${plist_floor%%.*}" != "${minos%%.*}" ]]; then
               echo "::error::$bin is built for macOS $minos but Info.plist LSMinimumSystemVersion is $plist_floor"
@@ -128,14 +128,17 @@ jobs:
           done
           exit $failed
 
-      - name: "Verify: in-bundle MCP server smoke (stdin EOF -> clean exit)"
+      - name: "Verify: in-bundle CLI help and no-argument exit codes"
         run: |
-          # The same smoke the old formula's brew test used (retired, moved here):
-          # the server must launch and exit cleanly when stdin reaches EOF.
-          # All stdio goes to /dev/null: a full initialize round-trip needs a
-          # live client holding stdin open, which CI does not provide.
-          if ! dist/Tandem.app/Contents/MacOS/tandem-mcp </dev/null >/dev/null 2>/dev/null; then
-            echo "::error::tandem-mcp did not exit cleanly on stdin EOF"
+          # tandem-cli replaces the retired MCP server (ADR 0009). --help prints
+          # usage to stdout and exits 0; no arguments prints usage to stderr and
+          # exits 2. (The old formula's stdin-EOF smoke retired with the server.)
+          cli=dist/Tandem.app/Contents/MacOS/tandem-cli
+          "$cli" --help >/dev/null
+          code=0
+          "$cli" </dev/null >/dev/null 2>/dev/null || code=$?
+          if [[ "$code" -ne 2 ]]; then
+            echo "::error::tandem-cli with no arguments exited $code, expected 2"
             exit 1
           fi
 
@@ -152,7 +155,7 @@ jobs:
           unzip -q "dist/Tandem-$version.zip" -d "$RUNNER_TEMP/zipcheck"
           app="$RUNNER_TEMP/zipcheck/Tandem.app"
           test -x "$app/Contents/MacOS/Tandem"
-          test -x "$app/Contents/MacOS/tandem-mcp"
+          test -x "$app/Contents/MacOS/tandem-cli"
           codesign --verify --strict "$app"
 
       - name: Upload the artifact
