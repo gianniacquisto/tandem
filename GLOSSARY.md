@@ -54,6 +54,10 @@ _Avoid_: document, entry, page
 A note created by a memory session recording the highlights of work — where the work left off, decisions with one-line rationale, learnings and gotchas, expensive-to-derive facts — written for the next agent session as reader.
 _Avoid_: session log, journal, scratch note
 
+**Human note**:
+A note a person wrote, rather than an agent memory session. Indistinguishable from a memory note on disk (no author field), so its authority is judged by content: human prose is context, not state of record; only a memory note's _Where left off_/decisions carry current-state authority.
+_Avoid_: user note, personal note
+
 **Anchor note**:
 A project's note: the orientation surface for that project, Where left off at the top. A project's memory starts as a single anchor; it becomes a folder when a second note is earned.
 _Avoid_: project page, home note, project index
