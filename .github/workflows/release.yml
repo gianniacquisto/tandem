@@ -107,6 +107,27 @@ jobs:
             exit 1
           fi
 
+      - name: "Verify: Info.plist floor matches the binaries"
+        run: |
+          # A plist floor below the binaries' deployment target admits an
+          # install the binaries cannot load, through both Gatekeeper and brew:
+          # `brew bump` derives the cask's `depends_on macos:` from this value,
+          # so a stale plist silently lowers the cask floor (2026-10-17: the
+          # plist said 26.0 while both binaries' LC_BUILD_VERSION minos was
+          # 27.0, and the 0.6.0 bump PR moved the cask to :tahoe/macOS 26).
+          # Compare the plist against each binary's minos, major component only.
+          app=dist/Tandem.app
+          plist_floor=$(plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist")
+          failed=0
+          for bin in Tandem tandem-mcp; do
+            minos=$(otool -l "$app/Contents/MacOS/$bin" | awk '/LC_BUILD_VERSION/{f=1} f && $1 == "minos"{print $2; exit}')
+            if [[ "${plist_floor%%.*}" != "${minos%%.*}" ]]; then
+              echo "::error::$bin is built for macOS $minos but Info.plist LSMinimumSystemVersion is $plist_floor"
+              failed=1
+            fi
+          done
+          exit $failed
+
       - name: "Verify: in-bundle MCP server smoke (stdin EOF -> clean exit)"
         run: |
           # The same smoke the old formula's brew test used (retired, moved here):
