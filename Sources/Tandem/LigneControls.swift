@@ -149,6 +149,39 @@ struct LigneQuickAdd: View {
     }
 }
 
+// MARK: search — magnifying-glass · plain field, one hairline (the sidebar's in-tree look)
+
+/// The Todos-face search field: a magnifying glass, a plain `TextField` on
+/// parchment with one `line` hairline, `Radius.control` — visually the same
+/// field as the Bikeshed sidebar's in-tree search. It is a pure view filter:
+/// it narrows what is drawn and never touches the store.
+struct LigneSearchField: View {
+    @Binding var text: String
+    var palette: Palette
+    var focus: FocusState<Bool>.Binding
+    var height: CGFloat = Space.control
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundStyle(palette.inkDim)
+            TextField("Search todos…", text: $text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12.5))
+                .foregroundStyle(palette.ink)
+                .focused(focus)
+        }
+        .padding(.horizontal, 11)
+        .frame(height: height)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
+        .overlay(RoundedRectangle(cornerRadius: Radius.control)
+            .strokeBorder(palette.line, lineWidth: Line.hairline))
+        .help("Filter todos by title (⌘F)")
+    }
+}
+
 // MARK: row — checkbox · title · hover delete (GUI-only)
 
 /// Which half of a row a dragged todo was dropped on. The row's own height decides
