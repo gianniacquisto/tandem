@@ -64,7 +64,11 @@ jobs:
           # the rebuild is a manual edit or a source/lockfile drift.
           cd Editor
           npm ci
-          node --test test/
+          # `node --test` with no path (auto-discovery): the hosted image's Node
+          # 24 rejects a directory positional (`node --test test/` →
+          # "Cannot find module …/Editor/test"); bare `--test` discovers the same
+          # 169 tests on Node 24 and 26.
+          node --test
           npm run build
           cd ..
           git diff --exit-code -- Sources/Tandem/Resources/Editor
