@@ -8,6 +8,7 @@
  *      Swift host sets data-theme="day" | "night" on <html> (day is the
  *      default) so the pane matches the window chrome.
  *   2. Page chrome (html / body / #tandem-editor).
+ *   2b. The formatting toolbar (the quiet row above the note).
  *   3. Live-preview line classes (what blocks.js plans) — line height is
  *      carried by these classes alone, never by token visibility (spec
  *      invariant 2).
@@ -57,8 +58,7 @@
 /* 2. Page chrome -------------------------------------------------------- */
 
 html,
-body,
-#tandem-editor {
+body {
   height: 100%;
 }
 
@@ -68,6 +68,110 @@ body {
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   overflow: hidden; /* CM6's .cm-scroller owns scrolling */
+  /* The formatting toolbar (section 2b) sits above the note; the editor
+     fills the rest of the column. */
+  display: flex;
+  flex-direction: column;
+}
+
+#tandem-editor {
+  flex: 1 1 auto;
+  min-height: 0; /* let the flex item shrink; .cm-scroller owns scrolling */
+  /* The note font size the toolbar's control drives (theme.js' "&" rule
+     reads it). A literal here is the default; the page's setFontSize sets
+     it on this element. The toolbar's own chrome does NOT use it. */
+  --tandem-editor-font-size: 13.5px;
+}
+
+/* 2b. The formatting toolbar (Editor/src/toolbar.js) ----------------------
+   The quiet row above the note. Ligne register: hairline bottom border,
+   paper surface, ink-dim line-drawn glyphs, no filled or saturated
+   buttons; the note typography itself is untouched. Its chrome is a fixed
+   small size and must NOT scale with --tandem-editor-font-size. */
+
+#tandem-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--sand);
+  background: var(--paper);
+  color: var(--ink-dim);
+  font-size: 11px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#tandem-toolbar .tandem-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+#tandem-toolbar .tandem-tool:hover {
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+#tandem-toolbar .tandem-tool:active {
+  color: var(--accent-deep);
+}
+
+#tandem-toolbar .tandem-tool svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+#tandem-toolbar .tandem-font-btn {
+  width: auto;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+#tandem-toolbar .tandem-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--sand);
+}
+
+#tandem-toolbar .tandem-fontsize {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+#tandem-toolbar .tandem-fontsize-readout {
+  min-width: 32px;
+  height: 24px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+#tandem-toolbar .tandem-fontsize-readout:hover {
+  background: var(--parchment);
+  color: var(--ink);
 }
 
 /* 3. Live-preview line classes (blocks.js) -------------------------------- */
