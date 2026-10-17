@@ -12,3 +12,4 @@ Given the layout and entry point settled in 01, settle the read protocol the ski
 2. **Retrieval**: how a session finds information related to the topic it is working on — wikilinks, backlinks, plain search of the vault (the agent can grep `~/.tandem/bikeshed/`; the app's full-text search is the same operation with a UI) — and the order of preference among them.
 3. **Staleness**: what a session does when what it reads contradicts the current state of the repo — re-verify, correct the note, or work around it; and what it does when a wikilink is broken (the note was renamed or deleted).
 4. **Freshness during a session**: how often a long session re-reads its notes, or when it may trust its earlier reads.
+5. **Human notes as memory sources**: which human notes count as project context when orienting (the intermixed case settled in 01: a human note in `projects/` with no agent memory yet), and how much weight they carry next to agent notes.

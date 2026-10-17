@@ -24,13 +24,12 @@ A working, model-invoked skill stored in this repo at `skills/tandem-memory/`: `
 
 <!-- one line per closed ticket: name (wrapping its link) + one-line gist -->
 
-— none yet —
+- [Memory layout and entry point: intermixed notes, naming, orientation](issues/01-memory-layout.md): two folder kinds — `projects/` (one note per project; the note becomes a folder when a second note is earned) and `topics/` (flat, cross-project); the agent extends a human note that covers a topic instead of creating a parallel note; Title Case, basename unique vault-wide, no agent prefix, no `#`/`|`; the entry point is two tiers — `Index.md` at the vault root (pointers + one-line status only, lines re-derived from the project anchor and updated in the same session) → project anchor (Where left off at top) → topics via wikilinks, the Backlinks dock as the one-hop neighbourhood; a concept earns its own note when 2+ notes must link to it or it spans projects, else a section, and only outbound links are maintained.
 
 ## Not yet specified
 
-- Memory growth and decay: compaction, archiving, and pruning as the vault accumulates over months; specifiable once placement (01) and the write protocol (02) are settled.
-- The human-note boundary: when a memory fact belongs in a human note, and when a human note is a natural memory source; needs the intermixed-placement model from 01.
-- Note granularity and link density: when a concept earns its own note vs a section in an existing note, and how dense the wikilink graph should stay navigable; surfaces through 01 and 02.
+- Memory growth and decay: compaction, archiving, and pruning as the vault accumulates over months; specifiable once the write protocol (02) is settled.
+- Link density: how dense the wikilink graph can get before navigation degrades, as the vault accumulates; specifiable alongside growth and decay.
 - `writing-for-agents` coupling: whether the skill references the installed `writing-for-agents` skill or inlines a distilled rule set; a handoff decision.
 
 ## Out of scope
