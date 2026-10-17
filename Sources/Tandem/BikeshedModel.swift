@@ -309,6 +309,31 @@ final class BikeshedModel {
         }
     }
 
+    /// "New folder": an empty folder inside `parent` (`nil` / `""` = the vault
+    /// root) with a collision-free name, then expand `parent` so it shows.
+    /// Mirrors `createNote(in:)`. Folder rename/move is out of scope — a note
+    /// moves via the Rename… sheet (rename IS the path change); an empty
+    /// folder is harmless to wikilink resolution (it resolves by basename).
+    func createFolder(in parent: String? = nil) {
+        guard !conflict else { return }
+        let prefix = parent.map { $0 + "/" } ?? ""
+        let taken = Set(treeChildren(of: parent ?? "").map { $0.name.lowercased() })
+        var name = "New Folder"
+        var n = 2
+        while taken.contains(name.lowercased()) {
+            name = "New Folder \(n)"
+            n += 1
+        }
+        do {
+            _ = try vault.createFolder(path: prefix + name).value
+            lastError = nil
+            reloadTree()
+            if let parent, !parent.isEmpty { expandedFolders.insert(parent) }
+        } catch {
+            apply(error: error)
+        }
+    }
+
     /// Renames/moves a note — rename IS the path change (spec): the core
     /// rewrites every resolving wikilink in one locked transaction, then moves
     /// the file. A taken target or a bad name is refused by the core with

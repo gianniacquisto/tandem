@@ -54,6 +54,37 @@ extension Bikeshed {
         return OperationResult(path)
     }
 
+    // MARK: - createFolder
+
+    /// `createFolder(path)`: a new folder — no note is created. The name is
+    /// validated before the lock with the same hygiene rules as a note name
+    /// (`validateNewFolderName`): no `#` / `|` / malformed `/`, no hidden
+    /// components — minus the `.md` requirement. Parent folders are created.
+    /// A target that is already taken (a file or a folder) or an ancestor that
+    /// is a file is `alreadyExists`, not an overwrite.
+    public func createFolder(path: String) throws -> OperationResult<String> {
+        try validateNewFolderName(path)   // validation throws before the lock
+        guard let url = fileURL(for: path) else {
+            throw BikeshedError.invalidName(name: path)   // unreachable: validated above
+        }
+        try locked {
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) {
+                throw BikeshedError.alreadyExists(path: path)
+            }
+            if let taken = fileCollision(in: path, includingNote: false) {
+                throw BikeshedError.alreadyExists(path: taken)
+            }
+            do {
+                try FileManager.default.createDirectory(
+                    at: url, withIntermediateDirectories: true)
+            } catch {
+                throw BikeshedIOError.io("could not create folder \"\(path)\": \(error)")
+            }
+        }
+        return OperationResult(path)
+    }
+
     // MARK: - write
 
     /// `write(path, text)`: the autosave path — an atomic write under the

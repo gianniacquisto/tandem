@@ -236,6 +236,92 @@ struct BikeshedNoteOpsTests {
         }
     }
 
+    // MARK: - createFolder
+
+    @Test("createFolder makes a nested folder (no note) and it appears in list")
+    func createFolderMakesNestedFolder() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        let bikeshed = Bikeshed(directory: dir)
+
+        let result = try bikeshed.createFolder(path: "projects/tandem")
+        #expect(result.value == "projects/tandem")
+        #expect(result.note == nil)
+
+        // On disk, with the intermediate folder created, and empty — no `.md`
+        // file is ever written by createFolder.
+        let folder = dir.appendingPathComponent("projects/tandem")
+        var isDir: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDir)
+            && isDir.boolValue)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
+
+        // Both levels are folders in the tree, folders-first, alphabetical.
+        let shape = shape(try bikeshed.list().value)
+        #expect(shape == [
+            .init(path: "projects", isNote: false),
+            .init(path: "projects/tandem", isNote: false),
+        ])
+        #expect(shape.allSatisfy { !$0.isNote }, "createFolder must not create a note")
+    }
+
+    @Test("createFolder on an existing target is an error, not an overwrite")
+    func createFolderExistingTarget() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        let bikeshed = Bikeshed(directory: dir)
+
+        _ = try bikeshed.createFolder(path: "projects")
+        #expect(throws: BikeshedError.alreadyExists(path: "projects")) {
+            _ = try bikeshed.createFolder(path: "projects")
+        }
+
+        // A file at the target path is taken too.
+        _ = try bikeshed.create(path: "a.md")
+        #expect(throws: BikeshedError.alreadyExists(path: "a.md")) {
+            _ = try bikeshed.createFolder(path: "a.md")
+        }
+    }
+
+    @Test("createFolder allows spaces but rejects #, |, hidden, and malformed / names")
+    func createFolderNameValidation() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        let bikeshed = Bikeshed(directory: dir)
+
+        // Spaces are allowed (and no `.md` required).
+        _ = try bikeshed.createFolder(path: "My Project")
+
+        for bad in [
+            "bad#name", "bad|name", "folder/bad#name", "folder/bad|name",
+            ".hidden", "sub/.hidden",
+            "", "a//b", "/absolute", "trailing/", "../escape", "a/../b", "./dot",
+        ] {
+            #expect(throws: BikeshedError.invalidName(name: bad)) {
+                _ = try bikeshed.createFolder(path: bad)
+            }
+        }
+
+        // Nothing but the valid folder was created.
+        #expect(shape(try bikeshed.list().value) == [.init(path: "My Project", isNote: false)])
+    }
+
+    @Test("createFolder refuses an ancestor that is a file")
+    func createFolderAncestorIsFile() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        let bikeshed = Bikeshed(directory: dir)
+
+        _ = try bikeshed.create(path: "file.md")
+        #expect(throws: BikeshedError.alreadyExists(path: "file.md")) {
+            _ = try bikeshed.createFolder(path: "file.md/inner/deep")
+        }
+
+        // The file is untouched and no partial folder tree was created.
+        #expect(try bikeshed.read(path: "file.md").value.text == "")
+        #expect(shape(try bikeshed.list().value) == [.init(path: "file.md", isNote: true)])
+    }
+
     // MARK: - read
 
     @Test("read returns the note text, its on-disk hash, and its mtime")
