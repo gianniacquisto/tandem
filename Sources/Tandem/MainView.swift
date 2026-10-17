@@ -8,8 +8,9 @@ import TandemCore
 ///   Todos     — a centered 540 pt column: flat parchment quick-add
 ///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All
 ///               with live counts (⌘1/⌘2/⌘3), and the creation-order list
-///               (toggling checkbox — check completes, uncheck reopens;
-///               hover/right-click delete, GUI-only)
+///               (toggling checkbox — check completes, uncheck reopens; title
+///               edits in place on double-click; hover/right-click delete,
+///               GUI-only)
 ///   Bikeshed  — the notes face (BikeFace.swift): tree sidebar, the WKWebView
 ///               editor, the backlinks dock
 ///
@@ -136,6 +137,7 @@ struct MainView: View {
                             LigneRow(todo: todo, palette: palette, showsAge: true,
                                      onComplete: { withAnimation(Motion.toggle) { model.complete(todo.id.uuidString) } },
                                      onReopen: { withAnimation(Motion.toggle) { model.reopen(todo.id.uuidString) } },
+                                     onEdit: { model.update(todo.id.uuidString, title: $0) },
                                      onDelete: { withAnimation(Motion.remove) { model.delete(todo.id.uuidString) } })
                                 .transition(.opacity)
                             if todo.id != visibleTodos.last?.id {

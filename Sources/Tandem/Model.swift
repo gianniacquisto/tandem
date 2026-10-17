@@ -78,6 +78,12 @@ final class TandemModel {
         run { try self.store.reopen(id) }
     }
 
+    /// Rewrites a todo's title (inline edit). GUI-only — no MCP tool; the empty-title
+    /// and unknown-id errors surface verbatim.
+    func update(_ id: String, title: String) {
+        run { try self.store.update(id, title: title) }
+    }
+
     func clearDone() {
         run { try self.store.clearDone() }
     }

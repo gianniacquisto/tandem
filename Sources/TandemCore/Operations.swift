@@ -65,6 +65,30 @@ extension Store {
         return OperationResult(todo, note: note)
     }
 
+    // MARK: - update
+
+    /// `update(id, title)`: rewrites a todo's title in place. GUI-only, with no MCP
+    /// tool (the agent surface stays `list`/`add`/`complete`). The title is trimmed;
+    /// empty/whitespace-only is rejected with `DomainError.emptyTitle`. An unchanged
+    /// title is a no-op (nothing written). `done` and `completedAt` are untouched, and
+    /// the list order is never changed. An unknown id throws `DomainError.unknownID`
+    /// carrying the full current open list.
+    public func update(_ id: String, title rawTitle: String) throws -> OperationResult<Todo> {
+        let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { throw DomainError.emptyTitle }
+        let (todo, note) = try mutate { list -> (value: Todo, changed: Bool) in
+            guard let uuid = UUID(uuidString: id),
+                  let i = list.firstIndex(where: { $0.id == uuid })
+            else {
+                throw DomainError.unknownID(id: id, open: list.filter { !$0.done })
+            }
+            let changed = list[i].title != title
+            if changed { list[i].title = title }
+            return (list[i], changed)
+        }
+        return OperationResult(todo, note: note)
+    }
+
     // MARK: - reopen
 
     /// `reopen(id)`: the inverse of `complete` — GUI-only, with no MCP tool (the agent

@@ -164,16 +164,22 @@ struct LigneQuickAdd: View {
 
 /// A main-window row. The checkbox is the toggle: checking completes, and
 /// un-checking a done todo reopens it (GUI-only — no reopen in the MCP surface).
-/// A plain row click is never destructive. Delete appears on hover and in the
-/// context menu — also GUI-only (agents have no delete in the MCP surface).
+/// The title edits in place: double-click it, or use the row's Edit item; Return
+/// commits, Esc cancels, and clicking away commits. A plain row click is never
+/// destructive. Delete appears on hover and in the context menu — also GUI-only
+/// (agents have no delete in the MCP surface).
 struct LigneRow: View {
     var todo: Todo
     var palette: Palette
     var showsAge: Bool
     var onComplete: () -> Void
     var onReopen: () -> Void
+    var onEdit: (String) -> Void
     var onDelete: () -> Void
     @State private var hovering = false
+    @State private var editing = false
+    @State private var draft = ""
+    @FocusState private var titleFocused: Bool
 
     var body: some View {
         HStack(spacing: 10) {
@@ -184,11 +190,27 @@ struct LigneRow: View {
             .buttonStyle(.plain)
             .contentShape(Rectangle())
 
-            Text(todo.title)
-                .font(.body)
-                .foregroundStyle(todo.done ? palette.inkDim : palette.ink)
-                .strikethrough(todo.done, color: palette.inkDim)
-                .lineLimit(1)
+            if editing {
+                TextField("", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .foregroundStyle(palette.ink)
+                    .focused($titleFocused)
+                    .onSubmit(commitEdit)
+                    .onExitCommand(perform: cancelEdit)
+                    // Clicking away commits (the inline-edit convention).
+                    .onChange(of: titleFocused) { _, focused in
+                        if !focused { commitEdit() }
+                    }
+            } else {
+                Text(todo.title)
+                    .font(.body)
+                    .foregroundStyle(todo.done ? palette.inkDim : palette.ink)
+                    .strikethrough(todo.done, color: palette.inkDim)
+                    .lineLimit(1)
+                    .onTapGesture(count: 2, perform: beginEdit)
+                    .help("Double-click to edit")
+            }
 
             Spacer(minLength: 8)
 
@@ -221,11 +243,35 @@ struct LigneRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .contextMenu {
+            Button("Edit", action: beginEdit)
             if todo.done {
                 Button("Reopen", action: onReopen)
             }
             Button("Delete", role: .destructive, action: onDelete)
         }
+    }
+
+    // MARK: inline edit
+
+    private func beginEdit() {
+        draft = todo.title
+        editing = true
+        titleFocused = true
+    }
+
+    /// Return, or clicking away: keep a non-empty change, drop an empty or
+    /// unchanged one (the store also refuses empty titles — this avoids the error
+    /// banner for what reads as "nothing typed").
+    private func commitEdit() {
+        guard editing else { return }
+        editing = false
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, trimmed != todo.title { onEdit(trimmed) }
+    }
+
+    /// Esc: leave the title as it was.
+    private func cancelEdit() {
+        editing = false
     }
 }
 
