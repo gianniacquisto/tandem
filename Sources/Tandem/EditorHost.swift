@@ -61,6 +61,22 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
     /// The pending `data-theme` on `<html>` ("day"/"night"); applied on
     /// `loaded` if the appearance was set before the page finished.
     private var theme = "day"
+    /// The note font size in CSS px, persisted across launches. The page's
+    /// toolbar control posts every change (`font-size`) and the size is sent
+    /// back on `loaded`; unset, the page's own default (13.5) is used.
+    private var fontSize: Double = EditorHost.storedFontSize()
+
+    /// `UserDefaults` key for the persisted note font size (a stable key so
+    /// the choice survives upgrades).
+    private static let fontSizeDefaultsKey = "tandem.editor.fontSize"
+    /// The page's default note font size (must match style.css'
+    /// `--tandem-editor-font-size` fallback) when nothing is stored.
+    static let defaultFontSize: Double = 13.5
+
+    private static func storedFontSize() -> Double {
+        (UserDefaults.standard.object(forKey: fontSizeDefaultsKey) as? Int)
+            .map(Double.init) ?? defaultFontSize
+    }
 
     override init() {
         // `self` may not be handed out before `super.init()`, so the handlers
@@ -112,6 +128,7 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
         case "loaded":
             pageLoaded = true
             applyTheme()
+            applyFontSize()
             model.editorLoaded()
         case "dirty":
             model.editorDirty(text: obj["text"] as? String ?? "")
@@ -121,6 +138,14 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
             // Informational (the contract): the document change itself
             // arrives via `dirty`, which autosaves — nothing to do here.
             break
+        case "font-size":
+            // The user's toolbar choice: the page already applied it, so
+            // only persist it (as an integer) for the next launch.
+            if let value = (obj["value"] as? NSNumber)?.doubleValue {
+                fontSize = value
+                UserDefaults.standard.set(
+                    Int(value.rounded()), forKey: Self.fontSizeDefaultsKey)
+            }
         default:
             break
         }
@@ -173,6 +198,19 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
         guard pageLoaded else { return }
         webView.evaluateJavaScript(
             "document.documentElement.setAttribute('data-theme', '\(theme)')")
+    }
+
+    /// The note font size (CSS px) on the page's editor root — the toolbar
+    /// control posts changes and `loaded` re-sends the persisted value.
+    /// Mirrors `setTheme`/`applyTheme` (tracked here, applied on the page).
+    func setFontSize(_ px: Double) {
+        fontSize = px
+        applyFontSize()
+    }
+
+    private func applyFontSize() {
+        guard pageLoaded else { return }
+        webView.evaluateJavaScript("setFontSize(\(fontSize))")
     }
 
     /// All `set*` call bodies land here: the page is only ready after
