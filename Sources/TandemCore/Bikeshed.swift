@@ -4,7 +4,7 @@ import CryptoKit
 /// Tandem's notes surface (GLOSSARY: Bikeshed): a plain folder of markdown
 /// notes (filename = note identity, nested folders, non-`.md` files are
 /// attachments that are invisible in the tree), shared by the app and agents
-/// on the same machine. Sibling of `Store`; implements the vault protocol of
+/// on the same machine. Sibling of `Store`; implements the bikeshed protocol of
 /// ADR 0004 and the rename mechanics of ADR 0005:
 ///
 /// - **Identity & naming** — a note is any file ending `.md` (case-
@@ -14,14 +14,14 @@ import CryptoKit
 ///   pre-existing violators on disk are still shown and edited.
 /// - **Frontmatter** — tolerated, opaque: the core never parses note text.
 /// - **Locking** — app writes take an exclusive `flock` on the sidecar
-///   lockfile (`<home>/bikeshed.lock`, in Tandem's home and outside the vault
-///   even when the vault is a chosen folder elsewhere — ADR 0011 — never
+///   lockfile (`<home>/bikeshed.lock`, in Tandem's home and outside the bikeshed
+///   even when the bikeshed is a chosen folder elsewhere — ADR 0011 — never
 ///   renamed, the ADR 0001 sidecar pattern), held across the whole operation,
 ///   multi-file operations included. Readers take no lock: atomic rename
 ///   guarantees a reader sees a complete old or new file. The lock is
 ///   one-sided by design — agents and external editors bypass it (ADR 0004).
 /// - **Contention** — bounded retry (10–50 ms backoff, ~2 s), then a clear
-///   "vault locked" error.
+///   "bikeshed locked" error.
 /// - **Atomic writes** — same-directory temp `.note-<random>.tmp` + fsync +
 ///   `rename(2)`; orphaned temps older than 60 s are cleaned after acquiring
 ///   the lock.
@@ -29,23 +29,23 @@ import CryptoKit
 ///   (per-file atomic), then a single `rename(2)` of the note file. No
 ///   journal (ADR 0005).
 ///
-/// A missing vault folder is an empty vault: created lazily, never an error.
+/// A missing bikeshed folder is an empty bikeshed: created lazily, never an error.
 /// The public surface is the note operations (see the `BikeshedOperations`
 /// extension); the locking/file mechanics are the shared `LockedDirectory`
 /// primitive (ADR 0007), which the store uses too.
 public struct Bikeshed: Sendable {
-    /// The vault root (created lazily). Public so the GUI can watch it for
+    /// The bikeshed root (created lazily). Public so the GUI can watch it for
     /// external changes (FSEvents); the GUI never writes it directly.
     public let directory: URL
-    /// The sidecar lockfile, outside the vault (created if missing, never
+    /// The sidecar lockfile, outside the bikeshed (created if missing, never
     /// renamed).
     let lockURL: URL
     /// The shared storage mechanics (ADR 0004, reusing ADR 0001): flock + atomic
     /// write + orphan sweep, identical to the store's.
     private let storage: LockedDirectory
 
-    /// The default vault: the human's chosen folder when one is set
-    /// (`TandemSettings.chosenVault()`, ADR 0011), else `<home>/bikeshed`. The
+    /// The default bikeshed: the human's chosen folder when one is set
+    /// (`TandemSettings.chosenBikeshed()`, ADR 0011), else `<home>/bikeshed`. The
     /// lockfile stays `<home>/bikeshed.lock` (in Tandem's home, never inside
     /// a chosen user folder), where `<home>` is the real `~/.tandem` from the
     /// shipped app and `~/.tandem-dev` from anything built and run in place
@@ -53,12 +53,12 @@ public struct Bikeshed: Sendable {
     public init() {
         let home = TandemHome.directory
         self.init(
-            directory: TandemSettings.chosenVault() ?? home.appendingPathComponent("bikeshed"),
+            directory: TandemSettings.chosenBikeshed() ?? home.appendingPathComponent("bikeshed"),
             lockURL: home.appendingPathComponent("bikeshed.lock"))
     }
 
-    /// A vault rooted at an explicit directory with an explicit sidecar
-    /// lockfile. Used by the default (chosen-vault) path, whose lock lives in
+    /// A bikeshed rooted at an explicit directory with an explicit sidecar
+    /// lockfile. Used by the default (chosen) path, whose lock lives in
     /// Tandem's home rather than beside an arbitrary user folder.
     public init(directory: URL, lockURL: URL) {
         self.directory = directory
@@ -70,8 +70,8 @@ public struct Bikeshed: Sendable {
             cleanRecursively: true)
     }
 
-    /// A vault rooted at an explicit directory (used by tests with a temp
-    /// dir). The lockfile is the sibling `bikeshed.lock` outside the vault.
+    /// A bikeshed rooted at an explicit directory (used by tests with a temp
+    /// dir). The lockfile is the sibling `bikeshed.lock` outside the bikeshed.
     public init(directory: URL) {
         self.init(
             directory: directory,
@@ -81,8 +81,8 @@ public struct Bikeshed: Sendable {
 
     // MARK: - Locked write primitive
 
-    /// Run `body` under the exclusive vault lock (translating the storage
-    /// primitive's errors into the vault's own vocabulary): acquire (bounded
+    /// Run `body` under the exclusive bikeshed lock (translating the storage
+    /// primitive's errors into the bikeshed's own vocabulary): acquire (bounded
     /// retry), clean orphaned temps, then do the work — all in one transaction,
     /// multi-file operations included (ADR 0004). The lock is released when
     /// `body` returns or throws. Internal (not public): the public surface is
@@ -99,7 +99,7 @@ public struct Bikeshed: Sendable {
 
     /// Write `data` to `url` atomically — same-directory temp file, fsync,
     /// `rename(2)` — via the shared storage primitive. Call only while holding
-    /// the vault lock.
+    /// the bikeshed lock.
     func atomicWrite(_ data: Data, to url: URL) throws {
         do {
             try storage.atomicWrite(data, to: url)
@@ -131,7 +131,7 @@ public struct Bikeshed: Sendable {
         return nil
     }
 
-    // MARK: - Vault walk (internal)
+    // MARK: - Bikeshed walk (internal)
 
     private static func isHidden(_ name: String) -> Bool {
         name.hasPrefix(".")
@@ -151,7 +151,7 @@ public struct Bikeshed: Sendable {
     /// each level. Hidden entries are ignored (hidden folders prune their
     /// whole subtree); non-`.md` files are attachments and stay out of the
     /// tree. A missing directory is an empty level — never an error.
-    private static func nodes(in dir: URL, relativePath: String) -> [VaultNode] {
+    private static func nodes(in dir: URL, relativePath: String) -> [BikeshedNode] {
         let fm = FileManager.default
         guard
             let entries = try? fm.contentsOfDirectory(
@@ -159,8 +159,8 @@ public struct Bikeshed: Sendable {
         else {
             return []
         }
-        var folders: [VaultNode] = []
-        var notes: [VaultNode] = []
+        var folders: [BikeshedNode] = []
+        var notes: [BikeshedNode] = []
         for url in entries {
             let name = url.lastPathComponent
             if isHidden(name) { continue }
@@ -170,11 +170,11 @@ public struct Bikeshed: Sendable {
                 let isDir = values.isDirectory
             else { continue }
             if isDir {
-                folders.append(VaultNode(
+                folders.append(BikeshedNode(
                     name: name, path: relative, kind: .folder,
                     children: nodes(in: url, relativePath: relative)))
             } else if isNoteName(name) {
-                notes.append(VaultNode(name: name, path: relative, kind: .note, children: []))
+                notes.append(BikeshedNode(name: name, path: relative, kind: .note, children: []))
             }
         }
         folders.sort { sortKey($0.name) < sortKey($1.name) }
@@ -183,16 +183,16 @@ public struct Bikeshed: Sendable {
     }
 
     /// The full tree, root level (folders first, alphabetical).
-    func tree() -> [VaultNode] {
+    func tree() -> [BikeshedNode] {
         Self.nodes(in: directory, relativePath: "")
     }
 
-    /// The vault's note paths (vault-root-relative, original case), recursive.
-    /// Hidden files and non-`.md` attachments are excluded; a missing vault
+    /// The bikeshed's note paths (bikeshed-root-relative, original case), recursive.
+    /// Hidden files and non-`.md` attachments are excluded; a missing bikeshed
     /// folder is an empty set.
     func notePaths() -> [String] {
         var paths: [String] = []
-        func collect(_ nodes: [VaultNode]) {
+        func collect(_ nodes: [BikeshedNode]) {
             for node in nodes {
                 if node.kind == .note { paths.append(node.path) }
                 collect(node.children)
@@ -204,15 +204,15 @@ public struct Bikeshed: Sendable {
 
     // MARK: - Path resolution (internal)
 
-    /// Resolve a vault-root-relative path to a URL inside the vault (the shared
-    /// `VaultPath` hygiene rule, ADR 0008): absolute paths, empty components
-    /// (`//`), `.` / `..` components (vault escapes), and a missing final
+    /// Resolve a bikeshed-root-relative path to a URL inside the bikeshed (the shared
+    /// `BikeshedPath` hygiene rule, ADR 0008): absolute paths, empty components
+    /// (`//`), `.` / `..` components (bikeshed escapes), and a missing final
     /// component are rejected. Pre-existing name violators (`#`, `|`) are
     /// *tolerated* here — they are on-disk names the app must still show and
     /// edit; the create/rename validation (`validateNewName`) is the separate,
     /// stricter rule.
     func fileURL(for path: String) -> URL? {
-        VaultPath.url(under: directory, for: path)
+        BikeshedPath.url(under: directory, for: path)
     }
 
     /// The naming rules for a path the app is about to create (create / rename

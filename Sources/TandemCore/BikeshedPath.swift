@@ -1,23 +1,23 @@
 import Foundation
 
-/// The vault path-hygiene rule — the one place that decides whether a
-/// vault-root-relative path is legal or a vault escape.
+/// The bikeshed path-hygiene rule — the one place that decides whether a
+/// bikeshed-root-relative path is legal or a bikeshed escape.
 ///
 /// Refused (`nil`): an empty path, any empty component (`//`), and any `.` or
 /// `..` component. This is the security boundary that keeps a resolved path
-/// inside the vault, so it lives in exactly one place: the core's
+/// inside the bikeshed, so it lives in exactly one place: the core's
 /// `Bikeshed.fileURL(for:)`, the GUI's `EditorHost` and `BikeshedModel`, and
 /// the `tandem:` scheme handler all call it (ADR 0008). It is deliberately
 /// separate from the stricter create/rename naming rule
 /// (`Bikeshed.validateNewName`), which additionally rejects hidden names and
 /// `#` / `|`.
 ///
-/// Absolute targets never reach here: a leading `/` means "vault-root-relative"
+/// Absolute targets never reach here: a leading `/` means "bikeshed-root-relative"
 /// and callers strip it first.
-public enum VaultPath {
+public enum BikeshedPath {
 
-    /// The vault-root-relative `path` as a file URL under `root`, or `nil` for
-    /// a vault escape (see the type's documentation). `root` is standardized so
+    /// The bikeshed-root-relative `path` as a file URL under `root`, or `nil` for
+    /// a bikeshed escape (see the type's documentation). `root` is standardized so
     /// the result is stable regardless of a trailing slash or redundant
     /// separators.
     public static func url(under root: URL, for path: String) -> URL? {

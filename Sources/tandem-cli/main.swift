@@ -3,7 +3,7 @@ import TandemCore
 
 // tandem-cli — Tandem's agent face (ADR 0009).
 //
-// A synchronous, single-shot command line over the shared store and vault: it
+// A synchronous, single-shot command line over the shared store and bikeshed: it
 // links TandemCore, writes the same files the app does under the same sidecar
 // locks, and dies with the invocation — so an upgrade can never leave a stale
 // writer behind (the failure the MCP server it replaces made possible). It

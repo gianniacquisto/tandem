@@ -7,35 +7,35 @@ import TandemCore
 /// a deliberate singleton, everything on the main actor, `private(set)` state,
 /// thin non-throwing op wrappers that surface the core's error `message`
 /// verbatim, watcher callbacks on main. The `Bikeshed` core type is the ONLY
-/// vault logic the GUI holds (spec); the views draw, the model decides.
+/// bikeshed logic the GUI holds (spec); the views draw, the model decides.
 ///
 /// Everything runs on the main thread by convention (the `TandemModel`
 /// pattern, Swift 5 language mode): UI actions, the watcher callback (main
 /// queue), and the debounce/retry task hops (DispatchQueue.main) all land
-/// here. The only off-main work is the vault-wide search/backlinks scans,
+/// here. The only off-main work is the bikeshed-wide search/backlinks scans,
 /// which run in detached tasks and hop their result back to main.
 @Observable
 final class BikeshedModel {
     static let shared = BikeshedModel()
 
-    /// The only vault logic the GUI holds (a core value; all note semantics —
+    /// The only bikeshed logic the GUI holds (a core value; all note semantics —
     /// locking, atomic writes, link rewrite, resolution — live in TandemCore).
-    /// Replaced whole by `switchVault(to:)`.
-    private(set) var vault: Bikeshed
-    private var watcher: VaultWatcher
+    /// Replaced whole by `switchBikeshed(to:)`.
+    private(set) var bikeshed: Bikeshed
+    private var watcher: BikeshedWatcher
 
     // MARK: Tree + selection + search
 
-    /// The vault tree (folders first, alphabetical; `.md` notes only).
-    private(set) var tree: [VaultNode] = []
-    /// The note open in the editor (vault-root-relative path), if any.
+    /// The bikeshed tree (folders first, alphabetical; `.md` notes only).
+    private(set) var tree: [BikeshedNode] = []
+    /// The note open in the editor (bikeshed-root-relative path), if any.
     private(set) var openPath: String?
     /// Folders currently expanded in the tree.
     private(set) var expandedFolders: Set<String> = []
     /// Lowercased-path → real-path map (case-insensitive link resolution;
     /// rebuilt with the tree).
     private var pathIndex: [String: String] = [:]
-    /// Current full-vault search results (one row per note, path-sorted).
+    /// Current bikeshed-wide search results (one row per note, path-sorted).
     private(set) var searchResults: [SearchHit] = []
     /// True while a trimmed non-empty search query is active (results show
     /// in place of the tree).
@@ -83,9 +83,9 @@ final class BikeshedModel {
     private var backlinkDebounce: DispatchWorkItem?
     private var backlinkRun: Task<Void, Never>?
 
-    private init(vault: Bikeshed = Bikeshed()) {
-        self.vault = vault
-        self.watcher = VaultWatcher(directory: vault.directory)
+    private init(bikeshed: Bikeshed = Bikeshed()) {
+        self.bikeshed = bikeshed
+        self.watcher = BikeshedWatcher(directory: bikeshed.directory)
         // The editor host owns the WKWebView and the bridge plumbing (the
         // contract). It is built before `self` is usable (Swift forbids
         // passing `self` to a nested init mid-initialization), so the model
@@ -95,7 +95,7 @@ final class BikeshedModel {
         self.editor.attach(to: self)
         // Attach the watcher callback only now that `self` is fully
         // initialized (the `StoreWatcher` pattern).
-        self.watcher.onEvent = { [weak self] in self?.vaultChanged($0) }
+        self.watcher.onEvent = { [weak self] in self?.bikeshedChanged($0) }
         // Cold start reads the tree directly (the spec's full-rescan rule).
         self.reloadTree()
         self.watcher.start()
@@ -118,48 +118,48 @@ final class BikeshedModel {
     }
     // (Tasks capture `self` weakly; a deallocated model leaves them no-ops.)
 
-    // MARK: - Vault switch (the human's chosen folder, applied live)
+    // MARK: - Bikeshed switch (the human's chosen folder, applied live)
 
-    /// Switch the notes vault to `url` with no restart: flush the open note,
-    /// persist the choice, rebuild the vault and its recursive watcher, and
+    /// Switch the bikeshed to `url` with no restart: flush the open note,
+    /// persist the choice, rebuild the bikeshed and its recursive watcher, and
     /// reset the editor to the no-note-selected state. A no-op when `url` is
-    /// already the vault; frozen while a conflict is pending (the banner's
+    /// already the bikeshed; frozen while a conflict is pending (the banner's
     /// choice must be resolved first — mirroring `open`). A failure to record
-    /// the choice surfaces the error and leaves the current vault watching.
-    func switchVault(to url: URL) {
+    /// the choice surfaces the error and leaves the current bikeshed watching.
+    func switchBikeshed(to url: URL) {
         guard !conflict,
-              url.standardizedFileURL != vault.directory.standardizedFileURL
+              url.standardizedFileURL != bikeshed.directory.standardizedFileURL
         else { return }
         flushSave()
         watcher.stop()
         do {
-            try TandemSettings.setChosenVault(url)
+            try TandemSettings.setChosenBikeshed(url)
         } catch {
             apply(error: error)
-            watcher.start()   // the old vault is still in place: keep watching it
+            watcher.start()   // the old bikeshed is still in place: keep watching it
             return
         }
         let home = TandemHome.directory
-        vault = Bikeshed(
+        bikeshed = Bikeshed(
             directory: url,
             lockURL: home.appendingPathComponent("bikeshed.lock"))
         expandedFolders = []
         closeNote(silent: false)
-        watcher = VaultWatcher(directory: vault.directory)
-        watcher.onEvent = { [weak self] in self?.vaultChanged($0) }
+        watcher = BikeshedWatcher(directory: bikeshed.directory)
+        watcher.onEvent = { [weak self] in self?.bikeshedChanged($0) }
         reloadTree()
         watcher.start()
-        editor.sendVaultIndex(paths: notePaths())
+        editor.sendNoteIndex(paths: notePaths())
         lastError = nil
     }
 
     // MARK: - Tree / derived state
 
-    /// Re-reads the vault tree lock-free (core read paths can never observe a
+    /// Re-reads the bikeshed tree lock-free (core read paths can never observe a
     /// partial file) and refreshes the derived path index. Called at startup,
     /// after every app op, and on every watcher batch.
     func reloadTree() {
-        let nodes = (try? vault.list())?.value ?? []
+        let nodes = (try? bikeshed.list())?.value ?? []
         tree = nodes
         var index: [String: String] = [:]
         Self.indexPaths(nodes, into: &index)
@@ -172,15 +172,15 @@ final class BikeshedModel {
         }
     }
 
-    private static func indexPaths(_ nodes: [VaultNode], into index: inout [String: String]) {
+    private static func indexPaths(_ nodes: [BikeshedNode], into index: inout [String: String]) {
         for node in nodes {
             if node.kind == .note { index[node.path.lowercased()] = node.path }
             indexPaths(node.children, into: &index)
         }
     }
 
-    /// The vault's note paths (vault-root-relative, case as on disk) — the
-    /// `setVaultIndex` payload. Derived from the tree (notes only; attachments
+    /// The bikeshed's note paths (bikeshed-root-relative, case as on disk) — the
+    /// `setNoteIndex` payload. Derived from the tree (notes only; attachments
     /// are never in it — notes only are linkable).
     func notePaths() -> [String] {
         Array(pathIndex.values).sorted {
@@ -194,15 +194,15 @@ final class BikeshedModel {
         }
     }
 
-    /// The tree's children of one level (`""` = the vault root), folders
+    /// The tree's children of one level (`""` = the bikeshed root), folders
     /// first, alphabetical — exactly the core's `list()` order.
-    func treeChildren(of path: String) -> [VaultNode] {
+    func treeChildren(of path: String) -> [BikeshedNode] {
         if path.isEmpty { return tree }
         guard let node = Self.find(tree, path: path), node.kind == .folder else { return [] }
         return node.children
     }
 
-    private static func find(_ nodes: [VaultNode], path: String) -> VaultNode? {
+    private static func find(_ nodes: [BikeshedNode], path: String) -> BikeshedNode? {
         for node in nodes where node.path == path { return node }
         for node in nodes where node.kind == .folder {
             if path.hasPrefix(node.path + "/"), let hit = find(node.children, path: path) {
@@ -212,7 +212,7 @@ final class BikeshedModel {
         return nil
     }
 
-    // MARK: - Search (full vault; debounced; off-main — a vault-wide scan
+    // MARK: - Search (full bikeshed; debounced; off-main — a bikeshed-wide scan
     // reads every note and must never block the UI)
 
     func setQuery(_ raw: String) {
@@ -233,9 +233,9 @@ final class BikeshedModel {
     }
 
     private func runSearch(_ q: String) {
-        let vault = self.vault
+        let bikeshed = self.bikeshed
         searchRun = Task.detached(priority: .userInitiated) { [weak self] in
-            let hits = (try? vault.search(query: q))?.value ?? []
+            let hits = (try? bikeshed.search(query: q))?.value ?? []
             guard !Task.isCancelled else { return }
             DispatchQueue.main.async {
                 self?.searchResults = hits
@@ -243,7 +243,7 @@ final class BikeshedModel {
         }
     }
 
-    // MARK: - Backlinks (derived; off-main; the vault-wide recompute is the
+    // MARK: - Backlinks (derived; off-main; the bikeshed-wide recompute is the
     // slow one — debounce + background, per the core's scale note)
 
     func refreshBacklinks() {
@@ -253,7 +253,7 @@ final class BikeshedModel {
             backlinks = []
             return
         }
-        // The vault-wide recompute is slow; debounce it, and skip the result
+        // The bikeshed-wide recompute is slow; debounce it, and skip the result
         // if the open note switched in the meantime.
         let item = DispatchWorkItem { [weak self] in
             guard let self, self.openPath == open else { return }
@@ -264,9 +264,9 @@ final class BikeshedModel {
     }
 
     private func runBacklinks(_ open: String) {
-        let vault = self.vault
+        let bikeshed = self.bikeshed
         backlinkRun = Task.detached(priority: .userInitiated) { [weak self] in
-            let rows = (try? vault.backlinks(path: open))?.value ?? []
+            let rows = (try? bikeshed.backlinks(path: open))?.value ?? []
             guard !Task.isCancelled else { return }   // superseded by a newer pass
             DispatchQueue.main.async {
                 // A stale result (the note switched or the task was superseded)
@@ -283,12 +283,12 @@ final class BikeshedModel {
     /// first (autosave on note switch), then loads the on-disk state into the
     /// buffer and hands it to the webview.
     func open(_ path: String) {
-        // The vault is frozen while a conflict is pending (the banner offers
+        // The bikeshed is frozen while a conflict is pending (the banner offers
         // the only way out — switching would silently discard the choice).
         guard !conflict, openPath != path else { return }
         flushSave()
         do {
-            let content = try vault.read(path: path).value
+            let content = try bikeshed.read(path: path).value
             bufferText = content.text
             baselineHash = content.hash
             isDirty = false
@@ -297,7 +297,7 @@ final class BikeshedModel {
             lastWrite = nil
             openPath = path
             editor.sendDocument(bufferText, notePath: path)
-            editor.sendVaultIndex(paths: notePaths())
+            editor.sendNoteIndex(paths: notePaths())
             // The human asked for this note — put the caret in it, so typing
             // works without a click into the pane first.
             editor.focusEditor()
@@ -325,7 +325,7 @@ final class BikeshedModel {
         refreshBacklinks()
     }
 
-    /// "New note": an empty note at the vault root (the spec's one-click
+    /// "New note": an empty note at the bikeshed root (the spec's one-click
     /// capture) with a collision-free name, then open it. `in:` creates inside
     /// a folder (the tree's folder-row action; user story 5).
     func createNote(in folder: String? = nil) {
@@ -339,7 +339,7 @@ final class BikeshedModel {
             n += 1
         }
         do {
-            _ = try vault.create(path: name).value
+            _ = try bikeshed.create(path: name).value
             lastError = nil
             reloadTree()
             open(name)
@@ -348,7 +348,7 @@ final class BikeshedModel {
         }
     }
 
-    /// "New folder": an empty folder inside `parent` (`nil` / `""` = the vault
+    /// "New folder": an empty folder inside `parent` (`nil` / `""` = the bikeshed
     /// root) with a collision-free name, then expand `parent` so it shows.
     /// Mirrors `createNote(in:)`. Folder rename/move is out of scope — a note
     /// moves via the Rename… sheet (rename IS the path change); an empty
@@ -364,7 +364,7 @@ final class BikeshedModel {
             n += 1
         }
         do {
-            _ = try vault.createFolder(path: prefix + name).value
+            _ = try bikeshed.createFolder(path: prefix + name).value
             lastError = nil
             reloadTree()
             if let parent, !parent.isEmpty { expandedFolders.insert(parent) }
@@ -382,7 +382,7 @@ final class BikeshedModel {
         let trimmed = newPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         do {
-            _ = try vault.rename(from: oldPath, to: trimmed).value
+            _ = try bikeshed.rename(from: oldPath, to: trimmed).value
             lastError = nil
             if openPath == oldPath {
                 // The open note moved: the path (and thus relative image
@@ -391,7 +391,7 @@ final class BikeshedModel {
                 editor.sendDocument(bufferText, notePath: trimmed)
             }
             reloadTree()
-            editor.sendVaultIndex(paths: notePaths())
+            editor.sendNoteIndex(paths: notePaths())
             refreshBacklinks()
         } catch {
             apply(error: error)
@@ -406,7 +406,7 @@ final class BikeshedModel {
     /// save aborts the delete (the error is already surfaced).
     func delete(_ path: String) {
         guard !conflict else { return }
-        guard let url = vaultURL(for: path) else { return }
+        guard let url = fileURL(for: path) else { return }
         if let open = openPath, open == path || open.hasPrefix(path + "/") {
             flushSave()
             guard !isDirty else { return }   // the save failed; lastError set
@@ -416,10 +416,10 @@ final class BikeshedModel {
             try FileManager.default.trashItem(at: url, resultingItemURL: &resulting)
             removed(path)
         } catch {
-            // Trash failed (e.g. the item left the vault in the race): fall
+            // Trash failed (e.g. the item left the bikeshed in the race): fall
             // back to the core's permanent delete.
             do {
-                _ = try vault.delete(path: path).value
+                _ = try bikeshed.delete(path: path).value
                 removed(path)
             } catch {
                 apply(error: error)
@@ -428,7 +428,7 @@ final class BikeshedModel {
     }
 
     /// Post-deletion refresh: close the note if the removal covered it,
-    /// rebuild the tree, re-send the vault index, recompute backlinks.
+    /// rebuild the tree, re-send the note index, recompute backlinks.
     private func removed(_ path: String) {
         if let open = openPath, open == path || open.hasPrefix(path + "/") {
             openPath = nil
@@ -443,24 +443,24 @@ final class BikeshedModel {
         }
         lastError = nil
         reloadTree()
-        editor.sendVaultIndex(paths: notePaths())
+        editor.sendNoteIndex(paths: notePaths())
         refreshBacklinks()
     }
 
-    /// The vault-root-relative path as a file URL, or nil for a vault escape
-    /// (absolute / `.` / `..` components) — the shared rule (`VaultPath`),
+    /// The bikeshed-root-relative path as a file URL, or nil for a bikeshed escape
+    /// (absolute / `.` / `..` components) — the shared rule (`BikeshedPath`),
     /// which the `tandem:` scheme handler also serves.
-    private func vaultURL(for path: String) -> URL? {
-        VaultPath.url(under: vault.directory, for: path)
+    private func fileURL(for path: String) -> URL? {
+        BikeshedPath.url(under: bikeshed.directory, for: path)
     }
 
     // MARK: - Editor bridge — inbound (JS → Swift; the contract's messages)
 
     /// `loaded`: the page is ready (after DOM + bundle init). Per the
-    /// contract, Swift now sends `setVaultIndex`, and `setDocument` if a note
+    /// contract, Swift now sends `setNoteIndex`, and `setDocument` if a note
     /// is already selected.
     func editorLoaded() {
-        editor.sendVaultIndex(paths: notePaths())
+        editor.sendNoteIndex(paths: notePaths())
         if let path = openPath {
             editor.sendDocument(bufferText, notePath: path)
             // The note was selected before the page finished loading (the
@@ -505,30 +505,30 @@ final class BikeshedModel {
         //    path lands here too — same note, same result.)
         let link = Wikilink(raw: t)
         if let link,
-           case let .resolved(path) = vault.resolve(link.target)
+           case let .resolved(path) = bikeshed.resolve(link.target)
         {
             open(path)
             return
         }
 
         // 4. Path existence (the markdown-link rule): a target that exists in
-        //    the vault by case-insensitive PATH — a path, not a name,
+        //    the bikeshed by case-insensitive PATH — a path, not a name,
         //    deliberately distinct from the wikilink exactly-one rule — is
         //    internal: a note opens in the editor, an attachment in the OS
         //    default app. This is what a markdown href like `report.pdf`
         //    (wikilink-parseable, but it names an attachment, not a note)
         //    must do, and path-form targets the grammar rejects (a leading
         //    `/`) reach here too.
-        if let real = existingVaultFile(for: link?.target ?? t) {
+        if let real = existingFile(for: link?.target ?? t) {
             route(to: real)
             return
         }
 
         // 5. A broken WIKILINK: create an empty note at the link's path
-        //    (bare → vault root; qualified → that path, folders created as
+        //    (bare → bikeshed root; qualified → that path, folders created as
         //    needed by the core) and open it. No confirm dialog — and no
         //    other fall-through: a broken bare link always lands at the
-        //    vault root, never a same-named note in some other folder
+        //    bikeshed root, never a same-named note in some other folder
         //    (the exactly-one rule broke it; reopening one of the
         //    duplicates would be the silent choice the spec forbids).
         if let link {
@@ -536,28 +536,28 @@ final class BikeshedModel {
             return
         }
 
-        // 6. A non-wikilink target that exists nowhere in the vault → the
+        // 6. A non-wikilink target that exists nowhere in the bikeshed → the
         //    OS default handler (spec: everything else).
         if let url = URL(string: t) { NSWorkspace.shared.open(url) }
     }
 
-    /// The spec's markdown-link existence rule: the target as a vault-root-
-    /// relative PATH (a leading `/` is stripped) that exists in the vault
+    /// The spec's markdown-link existence rule: the target as a bikeshed-root-
+    /// relative PATH (a leading `/` is stripped) that exists in the bikeshed
     /// case-insensitively — a path, not a name, deliberately distinct from
     /// the wikilink exactly-one name resolution. Every component is matched
     /// against the directory entries case-insensitively (FileManager,
     /// relative to `Bikeshed.directory`), so a case-variant href still finds
     /// the file and the result is the real on-disk path. A directory (or a
     /// path with `.`/`..`/empty components) is not a file: nil.
-    private func existingVaultFile(for target: String) -> String? {
+    private func existingFile(for target: String) -> String? {
         let candidate = target.hasPrefix("/") ? String(target.dropFirst()) : target
-        // The shared hygiene rule (`VaultPath`, ADR 0008) rejects escapes
+        // The shared hygiene rule (`BikeshedPath`, ADR 0008) rejects escapes
         // (empty / `.` / `..` components) before the walk below.
-        guard VaultPath.url(under: vault.directory, for: candidate) != nil else { return nil }
+        guard BikeshedPath.url(under: bikeshed.directory, for: candidate) != nil else { return nil }
         let components = candidate
             .split(separator: "/", omittingEmptySubsequences: false)
             .map(String.init)
-        var url = vault.directory.standardizedFileURL
+        var url = bikeshed.directory.standardizedFileURL
         var resolved: [String] = []
         for c in components {
             guard
@@ -577,18 +577,18 @@ final class BikeshedModel {
         return resolved.joined(separator: "/")
     }
 
-    /// Routes to a real vault path: a note opens in the editor; an attachment
+    /// Routes to a real bikeshed path: a note opens in the editor; an attachment
     /// (non-`.md`) opens in the OS default app.
     private func route(to realPath: String) {
         if realPath.lowercased().hasSuffix(".md") {
             open(realPath)
         } else {
-            if let url = vaultURL(for: realPath) { NSWorkspace.shared.open(url) }
+            if let url = fileURL(for: realPath) { NSWorkspace.shared.open(url) }
         }
     }
 
     /// A broken link's click: `create` an empty note at the link's path
-    /// (bare → vault root; qualified → that path; the core creates parent
+    /// (bare → bikeshed root; qualified → that path; the core creates parent
     /// folders) and open it. A target that already exists at that exact path
     /// is opened instead (never overwritten).
     private func createAndOpen(_ target: String) {
@@ -598,7 +598,7 @@ final class BikeshedModel {
             return
         }
         do {
-            _ = try vault.create(path: path).value
+            _ = try bikeshed.create(path: path).value
             lastError = nil
             reloadTree()
             open(path)
@@ -629,7 +629,7 @@ final class BikeshedModel {
         saving = true
         // Conflict detection: the buffer tracks the on-disk hash from `read`;
         // a changed hash means an external write landed.
-        if let onDisk = try? vault.read(path: path).value,
+        if let onDisk = try? bikeshed.read(path: path).value,
            let baseline = baselineHash,
            onDisk.hash != baseline {
             saving = false
@@ -641,14 +641,14 @@ final class BikeshedModel {
             return
         }
         do {
-            let record = try vault.write(path: path, text: bufferText).value
+            let record = try bikeshed.write(path: path, text: bufferText).value
             lastWrite = record
             baselineHash = record.hash
             isDirty = false
             saving = false
             lastError = nil
             // The write itself fires the watcher ~0.2 s later; the recorded
-            // hash dedups it in vaultChanged.
+            // hash dedups it in bikeshedChanged.
         } catch {
             saving = false
             // Keep the buffer, surface the error, retry.
@@ -685,17 +685,17 @@ final class BikeshedModel {
         refreshBacklinks()
     }
 
-    // MARK: - Watcher (one "vault changed" pass per FSEvents batch)
+    // MARK: - Watcher (one "bikeshed changed" pass per FSEvents batch)
 
-    /// The coalesced batch from `VaultWatcher` (main queue). Rebuild the
+    /// The coalesced batch from `BikeshedWatcher` (main queue). Rebuild the
     /// tree; reload the open note only if its path is in the batch (or the
     /// root itself changed); self-writes dedup by the recorded hash.
-    func vaultChanged(_ change: VaultWatcher.Change) {
+    func bikeshedChanged(_ change: BikeshedWatcher.Change) {
         reloadTree()
-        // Bridge contract: `setVaultIndex` is sent "on load and after every
-        // vault change" — a broken link in the open note starts resolving
+        // Bridge contract: `setNoteIndex` is sent "on load and after every
+        // bikeshed change" — a broken link in the open note starts resolving
         // the moment its target appears, without reopening.
-        editor.sendVaultIndex(paths: notePaths())
+        editor.sendNoteIndex(paths: notePaths())
         refreshBacklinks()
         if searchActive { runSearch(lastSearchQuery) }
 
@@ -706,13 +706,13 @@ final class BikeshedModel {
         // Self-write dedup: an FSEvent for our own atomic write whose
         // on-disk hash equals the hash we just wrote is not an external change.
         if let record = lastWrite, record.path == open,
-           let onDisk = try? vault.read(path: open).value,
+           let onDisk = try? bikeshed.read(path: open).value,
            onDisk.hash == record.hash {
             lastWrite = nil
             return
         }
 
-        guard let onDisk = try? vault.read(path: open).value else {
+        guard let onDisk = try? bikeshed.read(path: open).value else {
             // The note vanished (agent delete/rename). Clean buffer → close;
             // dirty buffer → keep it (reloadTree already decided: the next
             // autosave re-creates the path).
@@ -735,7 +735,7 @@ final class BikeshedModel {
         }
     }
 
-    /// The active (trimmed) search query, re-run on vault change so live
+    /// The active (trimmed) search query, re-run on bikeshed change so live
     /// results stay current while the field has a query.
     private var lastSearchQuery = ""
 

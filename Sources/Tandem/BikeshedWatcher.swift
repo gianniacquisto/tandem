@@ -1,7 +1,7 @@
 import Foundation
 import Darwin
 
-/// Watches the vault root for external changes (agents, Finder, other editors)
+/// Watches the bikeshed root for external changes (agents, Finder, other editors)
 /// with one recursive `FSEventStream` (spec: "Watcher").
 ///
 /// Per the spec's behaviour contract:
@@ -11,7 +11,7 @@ import Darwin
 ///   into one event), scheduled on a **background** dispatch queue;
 /// - each batch is coalesced into a single callback delivered on the **main
 ///   queue** (so the model may mutate its observable state directly),
-///   carrying the changed paths (vault-root-relative, deduped) and whether
+///   carrying the changed paths (bikeshed-root-relative, deduped) and whether
 ///   the stream flagged the root itself as changed;
 /// - a full rescan happens on `RootChanged`, on stream start, and on app
 ///   launch — all three reduce to "the model reads the tree directly."
@@ -19,10 +19,10 @@ import Darwin
 /// Self-write dedup (the app's own atomic write re-fires ~0.2 s later) is the
 /// model's job: it recognizes the recorded `WriteRecord.hash`. `StoreWatcher`
 /// stays as-is for the todos store (different lifecycle, different API).
-final class VaultWatcher {
-    /// One coalesced "vault changed" pass: the batch's changed paths
-    /// (vault-root-relative, deduped) and whether the stream saw `RootChanged`
-    /// (the vault dir itself deleted/replaced — force a full rescan).
+final class BikeshedWatcher {
+    /// One coalesced "bikeshed changed" pass: the batch's changed paths
+    /// (bikeshed-root-relative, deduped) and whether the stream saw `RootChanged`
+    /// (the bikeshed dir itself deleted/replaced — force a full rescan).
     struct Change {
         let paths: [String]
         let rootChanged: Bool
@@ -35,7 +35,7 @@ final class VaultWatcher {
     private var stream: ConstFSEventStreamRef?
     /// FSEvents must run on a dispatch queue (or a run loop); the spec says
     /// background — the handler hops to main to deliver the coalesced batch.
-    private let queue = DispatchQueue(label: "tandem.vault-watcher")
+    private let queue = DispatchQueue(label: "tandem.bikeshed-watcher")
 
     init(directory: URL) {
         self.directory = directory
@@ -43,7 +43,7 @@ final class VaultWatcher {
 
     func start() {
         guard stream == nil else { return }
-        // A missing vault is an empty vault (created lazily); make sure the
+        // A missing bikeshed is an empty bikeshed (created lazily); make sure the
         // watch root exists or the stream would have nothing to watch.
         try? FileManager.default.createDirectory(
             at: directory, withIntermediateDirectories: true)
@@ -60,7 +60,7 @@ final class VaultWatcher {
             | kFSEventStreamCreateFlagWatchRoot)
 
         let callback: FSEventStreamCallback = { _, clientInfo, numEvents, eventPaths, eventFlags, _ in
-            let watcher = Unmanaged<VaultWatcher>.fromOpaque(clientInfo!).takeUnretainedValue()
+            let watcher = Unmanaged<BikeshedWatcher>.fromOpaque(clientInfo!).takeUnretainedValue()
             watcher.handle(numEvents: numEvents,
                            paths: eventPaths,
                            flags: eventFlags)
@@ -80,7 +80,7 @@ final class VaultWatcher {
         FSEventStreamStart(ref)
     }
 
-    /// Folds one FSEvents batch into a single main-queue "vault changed" pass.
+    /// Folds one FSEvents batch into a single main-queue "bikeshed changed" pass.
     private func handle(numEvents: Int,
                         paths: UnsafeMutableRawPointer!,
                         flags: UnsafePointer<FSEventStreamEventFlags>) {
@@ -111,8 +111,8 @@ final class VaultWatcher {
         }
     }
 
-    /// The vault-root-relative form of an absolute event path, or `nil` for
-    /// anything outside the vault (defensive — the watch root covers it only).
+    /// The bikeshed-root-relative form of an absolute event path, or `nil` for
+    /// anything outside the bikeshed (defensive — the watch root covers it only).
     private func relativePath(of absolute: String) -> String? {
         let root = directory.standardizedFileURL.path
         guard absolute.hasPrefix(root) else { return nil }

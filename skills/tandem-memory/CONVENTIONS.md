@@ -1,8 +1,8 @@
-# Conventions — the vault, names, and where notes go
+# Conventions — the bikeshed, names, and where notes go
 
-The vault layout, naming, entry point, and link discipline for every memory note. The read walk is in [`READ-PROTOCOL.md`](READ-PROTOCOL.md); when and what to write is in [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md).
+The bikeshed layout, naming, entry point, and link discipline for every memory note. The read walk is in [`READ-PROTOCOL.md`](READ-PROTOCOL.md); when and what to write is in [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md).
 
-## The vault
+## The bikeshed
 
 The **Bikeshed** — `~/.tandem/bikeshed/` — is a plain folder of `.md` notes. The **filename is the note's identity**: renaming a note renames the file. Attachments (non-`.md` files) sit alongside and are reachable only by relative path from a note (ADR 0004).
 
@@ -16,18 +16,18 @@ No nesting below those two, so placement stays predictable — ADR 0004 permits 
 ## Names
 
 - **Title Case** — `Bikeshed`, `Throwaway Branch Workflow` — matching the human notes.
-- **Basename unique vault-wide**: a bare `[[Name]]` needs exactly one case-insensitive filename match.
+- **Basename unique bikeshed-wide**: a bare `[[Name]]` needs exactly one case-insensitive filename match.
 - Keep names free of `/`, `#`, and `|` — the path and wikilink separators — so every name stays one file and writable as a link.
 - **No agent prefix.** There is no agent namespace and no name-based ownership; on a collision you rename *your* note.
 
 ## The entry point — `Index.md`
 
-`Index.md` at the vault root is the one fixed constant every session knows. It holds **pointers and one-line status only** — no rationale, no detail; those live in the project and topic notes.
+`Index.md` at the bikeshed root is the one fixed constant every session knows. It holds **pointers and one-line status only** — no rationale, no detail; those live in the project and topic notes.
 
 ```markdown
 # Index
 
-<one line: what this vault is>
+<one line: what this bikeshed is>
 
 ## Projects
 

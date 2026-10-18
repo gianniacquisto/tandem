@@ -43,8 +43,8 @@ _Avoid_: database, backend, sync, cache
 ### The bikeshed
 
 **Bikeshed**:
-Tandem's notes surface: a plain folder of notes and attachments, shared by the app and agents on the same machine and watched live by the app. "Vault" (ADR 0004, "Vault protocol") is the accepted alternate name for the same folder — used throughout the ADRs, the spec, and the code (the Wikilink entry below says so too).
-_Avoid_: notebook, notes folder
+Tandem's notes surface: a plain folder of notes and attachments, shared by the app and agents on the same machine and watched live by the app. The folder and the surface share one name — there is no second word for the folder.
+_Avoid_: vault, notebook, notes folder
 
 **Note**:
 A single markdown file in the bikeshed. The filename is the note's identity; renaming a note is renaming the file.
@@ -63,11 +63,11 @@ A project's note: the orientation surface for that project, Where left off at th
 _Avoid_: project page, home note, project index
 
 **Orientation note**:
-The vault's entry point: the note a new session opens first to find the project it needs. Exactly one, at the vault root (`Index.md`); pointers and one-line status, never detail.
+The bikeshed's entry point: the note a new session opens first to find the project it needs. Exactly one, at the bikeshed root (`Index.md`); pointers and one-line status, never detail.
 _Avoid_: dashboard, home page, table of contents
 
 **Wikilink**:
-An in-note reference to another note, written `[[target]]` with an optional `#fragment` and `|alias`, resolved live by case-insensitive name against the vault; a wikilink that resolves to no note is a broken link.
+An in-note reference to another note, written `[[target]]` with an optional `#fragment` and `|alias`, resolved live by case-insensitive name against the bikeshed; a wikilink that resolves to no note is a broken link.
 _Avoid_: internal link, embed
 
 **Backlink**:

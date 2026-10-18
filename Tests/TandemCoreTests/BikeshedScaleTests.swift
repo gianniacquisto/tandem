@@ -3,9 +3,9 @@ import Testing
 @testable import TandemCore
 
 /// Scale sentinel (spec: "Scale sentinel"): one generous, non-flaky bound —
-/// a full vault-wide recompute (every note read, scanned, and its wikilinks
+/// a full bikeshed-wide recompute (every note read, scanned, and its wikilinks
 /// resolved — the heaviest derived operation: `backlinks` over a hub note)
-/// over a synthetic vault of hundreds of notes and ~100 MB total completes
+/// over a synthetic bikeshed of hundreds of notes and ~100 MB total completes
 /// in seconds, keeping the sub-second feel honest. The bound is measured on
 /// the reference hardware and set far above it (see the test's comment) so
 /// it catches order-of-magnitude regressions, not scheduler noise.
@@ -13,11 +13,11 @@ import Testing
 struct BikeshedScaleTests {
 
     private func tempDir() -> URL {
-        /// Nested one level below a unique parent so the vault's sibling
+        /// Nested one level below a unique parent so the bikeshed's sibling
         /// lockfile (`bikeshed.lock`) is never shared between concurrent tests.
         let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-scale-\(UUID().uuidString)")
-        let dir = parent.appendingPathComponent("vault")
+        let dir = parent.appendingPathComponent("bikeshed")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -39,7 +39,7 @@ struct BikeshedScaleTests {
         return out
     }
 
-    @Test("a full vault-wide recompute over ~100 MB of hundreds of notes completes in seconds")
+    @Test("a full bikeshed-wide recompute over ~100 MB of hundreds of notes completes in seconds")
     func fullRecomputeStaysFast() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
@@ -61,14 +61,14 @@ struct BikeshedScaleTests {
         try "The hub note.\n".write(
             to: dir.appendingPathComponent("Hub.md"), atomically: false, encoding: .utf8)
 
-        let vaultBytes = staged + 14
+        let totalBytes = staged + 14
         // Every note links the hub; the [[Note …]] links are deliberately
         // broken (no note carries that name) and must contribute nothing.
         let expected = noteCount
 
         // The heaviest derived op: read, scan, and resolve every wikilink in
-        // the whole vault. Measured on Apple silicon (2026-10): ~11 s for
-        // this vault. The bound below carries ~4× headroom — generous and
+        // the whole bikeshed. Measured on Apple silicon (2026-10): ~11 s for
+        // this bikeshed. The bound below carries ~4× headroom — generous and
         // non-flaky, yet it still catches order-of-magnitude regressions
         // (an unindexed per-link resolution walk measured 474 s here).
         let start = Date()
@@ -76,9 +76,9 @@ struct BikeshedScaleTests {
         let elapsed = Date().timeIntervalSince(start)
 
         FileHandle.standardError.write(
-            "SCALE \(vaultBytes / (1024 * 1024)) MB, \(noteCount) notes: \(String(format: "%.2f", elapsed)) s\n"
+            "SCALE \(totalBytes / (1024 * 1024)) MB, \(noteCount) notes: \(String(format: "%.2f", elapsed)) s\n"
                 .data(using: .utf8)!)
-        #expect(vaultBytes >= 90 * 1024 * 1024, "vault smaller than intended: \(vaultBytes) bytes")
+        #expect(totalBytes >= 90 * 1024 * 1024, "bikeshed smaller than intended: \(totalBytes) bytes")
         #expect(rows.count == expected, "expected \(expected) backlink rows, got \(rows.count)")
         #expect(elapsed < 45, "full recompute took \(elapsed) s — should stay in seconds")
     }

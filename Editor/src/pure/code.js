@@ -2,7 +2,7 @@
 // special — wikilink, math, image — is processed inside code fences or
 // inline code"). Pure: no DOM.
 //
-// Fence tracking follows the GFM/CommonMark rules the vault index uses: a
+// Fence tracking follows the GFM/CommonMark rules the bikeshed index uses: a
 // fence opens with ≥3 backticks or tildes (up to 3 leading spaces); a
 // backtick fence's info string may not contain backticks; a fence closes with
 // a line of the same marker, at least as long, and no info string.

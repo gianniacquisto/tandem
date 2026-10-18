@@ -4,15 +4,15 @@ import assert from "node:assert/strict";
 import {
   createEditorState,
   livePreviewState,
-  vaultNotesState,
+  noteIndexState,
   notePathState,
-  setVaultIndexEffect,
+  setNoteIndexEffect,
   setNotePathEffect,
 } from "../src/main.js";
 import { WikilinkWidget, TableWidget, DisplayMathWidget, FrontmatterWidget } from "../src/widgets.js";
 
 // The live-preview plan field contract: a StateField over a plain EditorState
-// that recomputes the blocks.js plan from syntaxTree(state) + the vault
+// that recomputes the blocks.js plan from syntaxTree(state) + the bikeshed
 // index + the open note path, and publishes it as a DecorationSet.
 // Headless: no DOM anywhere in this file.
 
@@ -65,10 +65,10 @@ test("an unclosed [[ at end of file is not a link", () => {
   );
 });
 
-test("a wikilink resolves against the vault field (unique basename, case-insensitive)", () => {
+test("a wikilink resolves against the note-index field (unique basename, case-insensitive)", () => {
   const st = createEditorState({
     doc: "see [[My Note]]",
-    vaultNotes: ["folder/my note.md"],
+    notes: ["folder/my note.md"],
   });
   const w = widgetReplace(decos(st), 4);
   assert.ok(w instanceof WikilinkWidget);
@@ -80,24 +80,24 @@ test("a wikilink resolves against the vault field (unique basename, case-insensi
 test("duplicate basenames make a bare wikilink broken", () => {
   const st = createEditorState({
     doc: "[[note]]",
-    vaultNotes: ["a/note.md", "b/note.md"],
+    notes: ["a/note.md", "b/note.md"],
   });
   const w = widgetReplace(decos(st), 0);
   assert.ok(w instanceof WikilinkWidget);
   assert.equal(w.broken, true);
 });
 
-test("an empty vault leaves every wikilink broken", () => {
+test("an empty bikeshed leaves every wikilink broken", () => {
   const st = createEditorState({ doc: "[[note]]" });
   assert.equal(widgetReplace(decos(st), 0).broken, true);
 });
 
-test("setVaultIndex re-resolves links without any document change", () => {
+test("setNoteIndex re-resolves links without any document change", () => {
   let st = createEditorState({ doc: "[[note]]" });
   assert.equal(widgetReplace(decos(st), 0).broken, true);
 
-  st = st.update({ effects: [setVaultIndexEffect.of(["note.md"])] }).state;
-  assert.deepEqual(st.field(vaultNotesState), ["note.md"]);
+  st = st.update({ effects: [setNoteIndexEffect.of(["note.md"])] }).state;
+  assert.deepEqual(st.field(noteIndexState), ["note.md"]);
   const w = widgetReplace(decos(st), 0);
   assert.ok(w instanceof WikilinkWidget);
   assert.equal(w.broken, false);

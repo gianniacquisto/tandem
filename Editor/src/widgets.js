@@ -218,8 +218,8 @@ export class DisplayMathWidget extends WidgetType {
 // -- Images ---------------------------------------------------------------------------
 
 // Block widget for a whole-line image. Local targets render as
-// <img src="tandem:<vault path>"> (the Swift scheme handler serves the file
-// under the vault root; a missing file 404s and the error handler swaps in
+// <img src="tandem:<bikeshed path>"> (the Swift scheme handler serves the file
+// under the bikeshed root; a missing file 404s and the error handler swaps in
 // the broken-image placeholder with alt text). Remote and escaping targets
 // render the placeholder directly — never fetched (no-network invariant).
 // Container-width cap is CSS (.tandem-img).
@@ -231,7 +231,7 @@ export class ImageWidget extends WidgetType {
     this.notePath = notePath;
     // Resolved once at decoration time (pure, no DOM): remote http(s)
     // targets are rewritten to the broken-image placeholder before render —
-    // never fetched (no-network invariant); vault targets become
+    // never fetched (no-network invariant); bikeshed targets become
     // `tandem:<path>` (the Swift scheme handler serves the file; a missing
     // file 404s and the error handler swaps in the placeholder with alt).
     this.target = resolveImageTarget(src, notePath);
@@ -246,7 +246,7 @@ export class ImageWidget extends WidgetType {
     );
   }
   toDOM() {
-    if (this.target.kind !== "vault" || this.target.path === "") {
+    if (this.target.kind !== "bikeshed" || this.target.path === "") {
       return brokenImage(this.alt, this.src, this.target.kind === "remote");
     }
     const img = document.createElement("img");

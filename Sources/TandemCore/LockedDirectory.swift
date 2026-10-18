@@ -14,13 +14,13 @@ import Darwin
 /// window, the fsync call, or the orphan age is one edit here rather than two.
 struct LockedDirectory: Sendable {
     /// The sidecar lockfile (created if missing, never renamed — ADR 0001; it
-    /// lives outside the vault for the bikeshed, per ADR 0004).
+    /// lives outside the bikeshed directory, per ADR 0004).
     let lockURL: URL
     /// Same-directory temp files are named `<tempPrefix><uuid>.tmp`.
     let tempPrefix: String
     /// The tree the orphan sweep walks.
     let cleanRoot: URL
-    /// Whether the orphan sweep recurses — true for the vault, whose temps sit
+    /// Whether the orphan sweep recurses — true for the bikeshed, whose temps sit
     /// beside each note; false for the store, one flat file per directory.
     let cleanRecursively: Bool
 
@@ -138,7 +138,7 @@ struct LockedDirectory: Sendable {
 
 /// The storage mechanism's own failures. Each domain translates these into its
 /// own error vocabulary (`DomainError` / `StoreIOError` for the store,
-/// `BikeshedError` / `BikeshedIOError` for the vault), so user-facing messages
+/// `BikeshedError` / `BikeshedIOError` for the bikeshed), so user-facing messages
 /// stay domain-specific.
 enum LockedDirectoryError: Error, Sendable, Equatable {
     /// The lock could not be acquired within the bounded retry window (~2 s).

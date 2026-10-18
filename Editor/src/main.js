@@ -10,23 +10,23 @@
 // Architecture: everything headless-testable lives above the
 // `typeof document` guard at the bottom of this file.
 //
-//   - `editorExtensions()` — the full Extension set: vault index + note
+//   - `editorExtensions()` — the full Extension set: bikeshed index + note
 //     path, the live-preview plan field, the GFM markdown language with the
 //     curated code languages, and the Ligne theme.
 //   - `livePreviewState` — a StateField<DecorationSet> that recomputes
-//     planPreview from syntaxTree(state) + vault + note path on every
-//     document change and every setVaultIndex/setDocument effect. Block
+//     planPreview from syntaxTree(state) + bikeshed + note path on every
+//     document change and every setNoteIndex/setDocument effect. Block
 //     decorations (tables, display math, images, frontmatter, code
 //     language tag, hr) come from this StateField — CM6 forbids block
 //     decorations from a ViewPlugin's decorations facet.
-//   - `vaultNotesState` / `notePathState` — where the plan sees the bridge
+//   - `noteIndexState` / `notePathState` — where the plan sees the bridge
 //     file set and the open note's path; facets seed the initial values,
 //     effects (from the page globals) update them.
-//   - `createEditorState({doc, vaultNotes, notePath})` — a plain
+//   - `createEditorState({doc, notes, notePath})` — a plain
 //     EditorState (no DOM): the seam the headless tests drive.
 //   - Bridge decision logic: `dirtyTextForUpdate` (what `dirty` carries)
 //     and the page-global transaction specs (setDocument/insertText/
-//     revealLine/setVaultIndex) — all testable on plain states.
+//     revealLine/setNoteIndex) — all testable on plain states.
 //   - Formatting actions: `wrapSelectionSpec` / `toggleLinePrefixSpec` /
 //     `cycleHeadingSpec` / `fencedBlockSpec` (the toolbar's edits) and the
 //     font-size helpers — also pure, testable on plain states.
@@ -115,26 +115,26 @@ export function codeLanguageFor(info) {
   return CURATED_CODE_LANGUAGES.get(String(info ?? "").trim().toLowerCase()) ?? null;
 }
 
-// -- Vault index + note path (bridge: setVaultIndex / setDocument) ------------------
+// -- Bikeshed index + note path (bridge: setNoteIndex / setDocument) ------------------
 //
 // A facet seeds the initial value (createEditorState); a StateField holds
 // the live value, updated by an effect from the page globals. The plan
 // field reads the StateField, so a re-index re-resolves wikilinks without
 // touching the document (derived state — no stored link index).
 
-export const setVaultIndexEffect = StateEffect.define(["string[]"]);
+export const setNoteIndexEffect = StateEffect.define(["string[]"]);
 export const setNotePathEffect = StateEffect.define(["string"]);
 
-export const vaultNotesFacet = Facet.define({
+export const noteIndexFacet = Facet.define({
   combine: (v) => (v.length ? v[v.length - 1] : []),
 });
 
-export const vaultNotesState = StateField.define({
+export const noteIndexState = StateField.define({
   // The second state.field arg is the require flag, not a fallback:
-  // an unseeded facet is absent, and the empty vault is the default.
-  create: (state) => state.field(vaultNotesFacet, false) ?? [],
+  // an unseeded facet is absent, and the empty bikeshed is the default.
+  create: (state) => state.field(noteIndexFacet, false) ?? [],
   update: (value, tr) => {
-    for (const e of tr.effects) if (e.is(setVaultIndexEffect)) value = e.value;
+    for (const e of tr.effects) if (e.is(setNoteIndexEffect)) value = e.value;
     return value;
   },
 });
@@ -198,7 +198,7 @@ function previewDecorations(state) {
   const plan = planPreview({
     text,
     tree: syntaxTree(state),
-    notes: state.field(vaultNotesState),
+    notes: state.field(noteIndexState),
     notePath: state.field(notePathState),
   });
 
@@ -254,7 +254,7 @@ export const livePreviewState = StateField.define({
   create: (state) => previewDecorations(state),
   update: (value, tr) => {
     const reindexed = tr.effects.some(
-      (e) => e.is(setVaultIndexEffect) || e.is(setNotePathEffect)
+      (e) => e.is(setNoteIndexEffect) || e.is(setNotePathEffect)
     );
     return tr.docChanged || reindexed ? previewDecorations(tr.state) : value;
   },
@@ -265,7 +265,7 @@ export const livePreviewState = StateField.define({
 
 export function editorExtensions() {
   return [
-    vaultNotesState,
+    noteIndexState,
     notePathState,
     livePreviewState,
     markdown({ base: markdownLanguage, codeLanguages: codeLanguageFor }),
@@ -290,7 +290,7 @@ export function editorExtensions() {
  */
 export function createEditorState({
   doc = "",
-  vaultNotes = [],
+  notes = [],
   notePath = "",
   viewExtensions = [],
 } = {}) {
@@ -298,7 +298,7 @@ export function createEditorState({
     doc,
     extensions: [
       ...editorExtensions(),
-      ...(vaultNotes.length ? [vaultNotesFacet.of(vaultNotes)] : []),
+      ...(notes.length ? [noteIndexFacet.of(notes)] : []),
       ...(notePath ? [notePathFacet.of(notePath)] : []),
       ...viewExtensions,
     ],
@@ -412,9 +412,9 @@ export function revealLineSpec(state, line) {
   };
 }
 
-/** setVaultIndex([{path}]): the current vault file set (notes only). */
-export function setVaultIndexSpec(notes) {
-  return { effects: [setVaultIndexEffect.of(notes)] };
+/** setNoteIndex([{path}]): the current bikeshed file set (notes only). */
+export function setNoteIndexSpec(notes) {
+  return { effects: [setNoteIndexEffect.of(notes)] };
 }
 
 // -- Formatting actions (toolbar; pure specs, headless) -------------------------------
@@ -712,14 +712,14 @@ export function editorViewExtensions() {
   ];
 }
 
-export function mountEditor(parent, { doc, vaultNotes, notePath } = {}) {
+export function mountEditor(parent, { doc, notes, notePath } = {}) {
   // The view-level extensions go through the state (see
   // editorViewExtensions' doc comment) — the EditorView constructor
   // would silently drop them in the config array.
   const view = new EditorView({
     state: createEditorState({
       doc,
-      vaultNotes,
+      notes,
       notePath,
       viewExtensions: editorViewExtensions(),
     }),
@@ -759,7 +759,7 @@ export function mountEditor(parent, { doc, vaultNotes, notePath } = {}) {
       view.dispatch(setDocumentSpec(view.state, markdownText, notePath2));
     window.insertText = (text) => view.dispatch(insertTextSpec(view.state, text));
     window.revealLine = (line) => view.dispatch(revealLineSpec(view.state, line));
-    window.setVaultIndex = (notes) => view.dispatch(setVaultIndexSpec(notes));
+    window.setNoteIndex = (notes) => view.dispatch(setNoteIndexSpec(notes));
     // The persisted font size arrives on `loaded`; Swift → JS only sets the
     // property (the page does not echo it back across the bridge).
     window.setFontSize = (px) => applyFontSize(px);
@@ -769,13 +769,13 @@ export function mountEditor(parent, { doc, vaultNotes, notePath } = {}) {
     window.focusEditor = () => view.focus();
   }
 
-  postLoaded(); // the page is ready; Swift then sends setVaultIndex/setDocument
+  postLoaded(); // the page is ready; Swift then sends setNoteIndex/setDocument
   return view;
 }
 
 if (typeof document !== "undefined" && typeof window !== "undefined") {
   // Single self-contained page: mount into the container the bundled
-  // index.html provides (falling back to <body>). The document and vault
+  // index.html provides (falling back to <body>). The document and bikeshed
   // index arrive from Swift over the bridge — nothing here reads files or
   // the network.
   const parent = document.querySelector("#tandem-editor") || document.body;

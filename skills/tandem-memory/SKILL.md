@@ -5,22 +5,22 @@ description: "Memory and the wiki of work, backed by the Tandem bikeshed (`~/.ta
 
 # Tandem memory
 
-The **bikeshed** (`~/.tandem/bikeshed/`) is the wiki of all work on this Mac and its memory: a plain folder of `[[wikilinked]]` markdown notes, shared by humans and agents and written for the next agent session as reader. This skill orients any session from the vault and records its work back into it, in two steps — **Orient** at session start, **Record** as work happens. The reference detail lives in four companions, each reached by its pointer below when that branch fires.
+The **bikeshed** (`~/.tandem/bikeshed/`) is the wiki of all work on this Mac and its memory: a plain folder of `[[wikilinked]]` markdown notes, shared by humans and agents and written for the next agent session as reader. This skill orients any session from the bikeshed and records its work back into it, in two steps — **Orient** at session start, **Record** as work happens. The reference detail lives in four companions, each reached by its pointer below when that branch fires.
 
 ## Orient — pick up where the work left off
 
 Before reading or editing project files, in order:
 
-1. Read **`Index.md`** — the Orientation note at the vault root: pointers and one-line status.
+1. Read **`Index.md`** — the Orientation note at the bikeshed root: pointers and one-line status.
 2. Match the task to a project line, then read that project's **anchor note** — `Where left off` in full; `Decisions` / `Gotchas` / `Facts` scanned by heading and pulled only when the task touches them.
 3. Follow only the anchor's **wikilinks** the task needs.
 4. Check `tandem-cli todo list` for the open **threads**.
 
-No project line matches → read the Index `Topics` list, then grep the vault; create the anchor at session end (Record). **Read protocol** — retrieval order, staleness repair, freshness, human-note authority → `READ-PROTOCOL.md`.
+No project line matches → read the Index `Topics` list, then grep the bikeshed; create the anchor at session end (Record). **Read protocol** — retrieval order, staleness repair, freshness, human-note authority → `READ-PROTOCOL.md`.
 
-**Done when** the session can resume from the vault alone: the project's current state, its next move, and its open threads in hand — or, with no matching project, has read the `Topics` list, grepped, and knows there is no prior memory.
+**Done when** the session can resume from the bikeshed alone: the project's current state, its next move, and its open threads in hand — or, with no matching project, has read the `Topics` list, grepped, and knows there is no prior memory.
 
-## Record — keep the vault current as you work
+## Record — keep the bikeshed current as you work
 
 At each qualifying moment, write one small edit — right then, not batched to session end. The moments:
 
@@ -35,4 +35,4 @@ Qualify by **cost of derivation** — write what took real effort to derive and 
 
 Write the note itself for the next session as reader: apply the installed **`writing-for-agents`** skill and its `SKILL-MECHANICS.md`.
 
-**Done when** a cold session could resume from the vault alone — or would be strictly slower without it.
+**Done when** a cold session could resume from the bikeshed alone — or would be strictly slower without it.

@@ -1,4 +1,4 @@
-// Leading YAML frontmatter detection (spec: Vault protocol — Frontmatter).
+// Leading YAML frontmatter detection (spec: Bikeshed protocol — Frontmatter).
 //
 // The core's STRICT rule (BikeshedOperations.frontmatterEnd): only a
 // *leading, properly terminated* block of EXACT `---` delimiters counts —

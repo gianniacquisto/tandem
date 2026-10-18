@@ -217,7 +217,7 @@ extension Store {
 
     // MARK: - setLink (GUI-only — no CLI verb)
 
-    /// `setLink(id, to:)`: points a todo at a Bikeshed note (a vault-root-relative path
+    /// `setLink(id, to:)`: points a todo at a Bikeshed note (a bikeshed-root-relative path
     /// like `projects/App.md`), or clears the link with `nil`. The link is trimmed; an
     /// empty/whitespace-only value unlinks. GUI-only, with no CLI verb (the agent surface
     /// stays `list`/`add`/`complete`). An unchanged link is a no-op (nothing written).

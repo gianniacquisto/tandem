@@ -15,12 +15,11 @@ struct TandemApp: App {
         .windowResizability(.contentMinSize)
         .defaultSize(width: 1060, height: 680)
         .commands {
-            // The human picks the notes vault from the app (todo: "need the
-            // ability to choose a vault"). The choice is persisted and applied
-            // live — no restart.
+            // The human picks the bikeshed from the app; the choice is
+            // persisted and applied live — no restart.
             CommandGroup(after: .newItem) {
-                Button("Choose Bikeshed Vault…") {
-                    chooseBikeshedVault()
+                Button("Choose Bikeshed…") {
+                    chooseBikeshed()
                 }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
             }
@@ -28,21 +27,21 @@ struct TandemApp: App {
     }
 }
 
-/// Runs the "Choose Bikeshed Vault…" folder picker and hands the result to the
-/// model, which switches the vault live. A folders-only, single-selection
-/// `NSOpenPanel`; the chosen folder becomes the notes vault (a new folder may
+/// Runs the "Choose Bikeshed…" folder picker and hands the result to the
+/// model, which switches the bikeshed live. A folders-only, single-selection
+/// `NSOpenPanel`; the chosen folder becomes the bikeshed (a new folder may
 /// be created).
-private func chooseBikeshedVault() {
+private func chooseBikeshed() {
     let panel = NSOpenPanel()
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
     panel.allowsMultipleSelection = false
     panel.canCreateDirectories = true
     panel.prompt = "Choose"
-    panel.message = "Choose the folder Tandem uses as your Bikeshed notes vault. "
+    panel.message = "Choose the folder Tandem uses as your bikeshed. "
         + "Its markdown files become your notes."
     if panel.runModal() == .OK, let url = panel.url {
-        BikeshedModel.shared.switchVault(to: url)
+        BikeshedModel.shared.switchBikeshed(to: url)
     }
 }
 

@@ -7,17 +7,17 @@ import Testing
 /// core never parses it). One row per note, not per match; a title hit
 /// wins and shows the first line; a body hit shows a snippet around the
 /// first match (±40 chars, whitespace collapsed, ellipses at sliced
-/// edges). Sorted by vault path; empty vault and empty (or
+/// edges). Sorted by bikeshed path; empty bikeshed and empty (or
 /// whitespace-only) query → empty results.
 @Suite("Bikeshed search")
 struct BikeshedSearchTests {
 
     private func tempDir() -> URL {
-        /// Nested one level below a unique parent so the vault's sibling
+        /// Nested one level below a unique parent so the bikeshed's sibling
         /// lockfile (`bikeshed.lock`) is never shared between concurrent tests.
         let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-search-\(UUID().uuidString)")
-        let dir = parent.appendingPathComponent("vault")
+        let dir = parent.appendingPathComponent("bikeshed")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -142,7 +142,7 @@ struct BikeshedSearchTests {
         #expect(hits.first?.display.contains("secret-needle") == true)
     }
 
-    @Test("search: results are sorted by vault path (case-insensitive)")
+    @Test("search: results are sorted by bikeshed path (case-insensitive)")
     func sortedByPath() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }

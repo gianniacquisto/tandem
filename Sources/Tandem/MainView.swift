@@ -316,7 +316,7 @@ struct MainView: View {
         linkPickerFor = todo
     }
 
-    /// The note picker: a filterable list of the vault's note paths. Picking one
+    /// The note picker: a filterable list of the bikeshed's note paths. Picking one
     /// links the todo and dismisses; the picker never reads note content (the core
     /// owns it). Styled like the rename sheet (monospaced field, parchment, hairline).
     private func linkSheet(_ todo: Todo) -> some View {

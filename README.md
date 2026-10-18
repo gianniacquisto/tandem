@@ -62,7 +62,7 @@ For OpenCode, add this repo's `skills/` directory to the `skills` array in `open
 
 ### The `tandem-memory` skill
 
-`skills/tandem-memory/` is an agent skill that makes the bikeshed (`~/.tandem/bikeshed/`) the agent's memory. A session orients from the vault's `Index.md` and its project notes as it starts, then records decisions, gotchas, and open threads as it works, so the next session picks up where the last one left off. The notes double as a wiki of the work, navigable by wikilinks and backlinks in the app.
+`skills/tandem-memory/` is an agent skill that makes the bikeshed (`~/.tandem/bikeshed/`) the agent's memory. A session orients from the bikeshed's `Index.md` and its project notes as it starts, then records decisions, gotchas, and open threads as it works, so the next session picks up where the last one left off. The notes double as a wiki of the work, navigable by wikilinks and backlinks in the app.
 
 This skill is a folder, not a single file, so it installs differently from the one-file skills. `SKILL.md` is the entry point — the only file the harness loads when the skill fires — and it holds the two things the agent does: **orient**, then **record**. The other files are companions that `SKILL.md` points to and the agent reads only when it needs them:
 
@@ -71,7 +71,7 @@ This skill is a folder, not a single file, so it installs differently from the o
 | `CONVENTIONS.md` | where notes go and how they are named |
 | `WRITE-PROTOCOL.md` | when and what to record |
 | `READ-PROTOCOL.md` | how to orient and find related notes |
-| `CONCURRENCY.md` | two sessions writing the same vault |
+| `CONCURRENCY.md` | two sessions writing the same bikeshed |
 
 Install it one of two ways.
 

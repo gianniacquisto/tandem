@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// Note operations (spec: "Bikeshed core — operations", "Vault protocol"):
+/// Note operations (spec: "Bikeshed core — operations", "Bikeshed protocol"):
 /// create / read / write / list / delete — tree shape (folders first,
 /// alphabetical), hidden files and attachments excluded, missing folder =
 /// empty tree, name validation, existing target = error not overwrite,
@@ -11,22 +11,22 @@ import Testing
 /// never parses note text).
 ///
 /// Every test runs against a temp dir via `Bikeshed`'s explicit-directory
-/// initialiser — no fixture vault, no real `~/.tandem`, no network.
+/// initialiser — no fixture bikeshed, no real `~/.tandem`, no network.
 @Suite("Bikeshed note operations")
 struct BikeshedNoteOpsTests {
 
-    /// A unique temp directory (not pre-created: a missing vault folder is a
-    /// valid empty vault, and some tests rely on that), nested one level
-    /// below a unique parent so the vault's sibling lockfile
+    /// A unique temp directory (not pre-created: a missing bikeshed folder is a
+    /// valid empty bikeshed, and some tests rely on that), nested one level
+    /// below a unique parent so the bikeshed's sibling lockfile
     /// (`bikeshed.lock`, ADR 0004) is never shared between concurrent tests.
     /// Callers clean up with `defer` (removing the parent covers the lock).
     private func tempDir() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-ops-\(UUID().uuidString)")
-            .appendingPathComponent("vault")
+            .appendingPathComponent("bikeshed")
     }
 
-    /// Write a raw file straight into the vault (bypassing the core) to stage
+    /// Write a raw file straight into the bikeshed (bypassing the core) to stage
     /// pre-existing on-disk state: attachments, hidden files, name violators.
     private func stage(_ relativePath: String, _ text: String, in dir: URL) throws {
         let url = dir.appendingPathComponent(relativePath)
@@ -42,9 +42,9 @@ struct BikeshedNoteOpsTests {
     }
 
     /// The ordered (path, kind) pairs of a tree, depth-first — the tree shape.
-    private func shape(_ nodes: [VaultNode]) -> [NodeShape] {
+    private func shape(_ nodes: [BikeshedNode]) -> [NodeShape] {
         var out: [NodeShape] = []
-        func walk(_ list: [VaultNode]) {
+        func walk(_ list: [BikeshedNode]) {
             for node in list {
                 out.append(NodeShape(path: node.path, isNote: node.kind == .note))
                 walk(node.children)
@@ -61,7 +61,7 @@ struct BikeshedNoteOpsTests {
 
     // MARK: - list
 
-    @Test("list on a missing vault folder is an empty tree, never an error")
+    @Test("list on a missing bikeshed folder is an empty tree, never an error")
     func listMissingFolderIsEmpty() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
@@ -146,7 +146,7 @@ struct BikeshedNoteOpsTests {
         #expect(fm.fileExists(atPath: fileURL.path, isDirectory: &isDir) && !isDir.boolValue)
         #expect(try Data(contentsOf: fileURL).isEmpty, "a new note is empty")
 
-        // The vault folder itself was created lazily.
+        // The bikeshed folder itself was created lazily.
         #expect(FileManager.default.fileExists(atPath: dir.path))
     }
 
@@ -174,7 +174,7 @@ struct BikeshedNoteOpsTests {
         }
 
         // Malformed / use: empty components, leading/trailing slash, dot
-        // components (vault escape).
+        // components (bikeshed escape).
         for bad in ["a//b.md", "/absolute.md", "trailing/.md", "../escape.md", "a/../b.md", "./dot.md", ""] {
             #expect(throws: BikeshedError.invalidName(name: bad)) {
                 _ = try bikeshed.create(path: bad)
@@ -445,7 +445,7 @@ struct BikeshedNoteOpsTests {
         try stage("bad#name.md", "an agent wrote this", in: dir)
         try stage("bad|pipe.md", "another one", in: dir)
 
-        // The tree shows them (the vault is what is on disk).
+        // The tree shows them (the bikeshed is what is on disk).
         let shape = shape(try bikeshed.list().value)
         #expect(Set(shape.map(\.path)) == Set(["bad#name.md", "bad|pipe.md"]))
 

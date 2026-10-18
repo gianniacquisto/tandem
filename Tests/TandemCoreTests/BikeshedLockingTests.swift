@@ -25,12 +25,12 @@ struct BikeshedLockingTests {
     }
 
     /// A unique temp dir, nested one level below a unique parent: the
-    /// vault's sibling lockfile (`bikeshed.lock`, ADR 0004) must not be
+    /// bikeshed's sibling lockfile (`bikeshed.lock`, ADR 0004) must not be
     /// shared between concurrent tests.
     private func tempDir() -> URL {
         let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-lock-\(UUID().uuidString)")
-        let dir = parent.appendingPathComponent("vault")
+        let dir = parent.appendingPathComponent("bikeshed")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -79,14 +79,14 @@ struct BikeshedLockingTests {
 
     // MARK: - Bounded retry, then locked
 
-    @Test("a write on a locked vault throws locked after the bounded retry")
-    func lockedVaultThrows() throws {
+    @Test("a write on a locked bikeshed throws locked after the bounded retry")
+    func lockedBikeshedThrows() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
         try stage("A.md", "seed", in: dir)
 
-        // Hold the vault's exclusive flock in another thread for ~2.5s —
+        // Hold the bikeshed's exclusive flock in another thread for ~2.5s —
         // longer than the ~2 s bounded retry window.
         let hasLock = DispatchSemaphore(value: 0)
         let holder = DispatchGroup()

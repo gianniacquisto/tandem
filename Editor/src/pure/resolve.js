@@ -1,14 +1,14 @@
 // Wikilink resolution (spec: Wikilink model — Resolution).
 //
 // `resolveWikilink(target, notes)` resolves a parsed wikilink target against
-// the current vault file set, exactly the rules the core `Bikeshed` resolver
+// the current bikeshed file set, exactly the rules the core `Bikeshed` resolver
 // implements (single resolver semantics — editor, backlinks, rename-rewrite):
 //
 // - a BARE target (no `/`) matches a note's basename — the filename minus its
 //   `.md` extension, compared case-insensitively — and resolves iff EXACTLY
 //   ONE note matches;
-// - a QUALIFIED target (contains `/`) is a vault-root-relative path, matched
-//   case-insensitively against each note's vault-root-relative path with its
+// - a QUALIFIED target (contains `/`) is a bikeshed-root-relative path, matched
+//   case-insensitively against each note's bikeshed-root-relative path with its
 //   `.md` extension stripped; same exactly-one rule;
 // - zero or multiple matches → broken. Duplicate basenames therefore make a
 //   bare link a visible broken link, never a silently chosen match; on a
@@ -21,7 +21,7 @@
 //   this case; the editor and the core must agree, and the core is the
 //   single resolver (backlinks, rename-rewrite, search).
 //
-// `notes` is the bridge's file set: vault-root-relative paths of every NOTE,
+// `notes` is the bridge's file set: bikeshed-root-relative paths of every NOTE,
 // case as on disk (attachments are never in it — notes only are linkable).
 // The resolved path is returned exactly as on disk. Pure: no DOM.
 
@@ -40,7 +40,7 @@ function basename(path) {
 /**
  * @param {string} target the wikilink target as written (no brackets, no
  *   fragment/alias — those are stripped by the grammar).
- * @param {string[]} notes vault-root-relative note paths, case as on disk.
+ * @param {string[]} notes bikeshed-root-relative note paths, case as on disk.
  * @returns {{status: "resolved", path: string} | {status: "broken"}}
  */
 export function resolveWikilink(target, notes) {

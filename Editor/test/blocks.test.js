@@ -135,7 +135,7 @@ test("horizontal rule: line replaced, hr block", () => {
   assert.equal(hr.at, 3);
 });
 
-test("wikilinks: resolved vs broken against the vault, display text per grammar", () => {
+test("wikilinks: resolved vs broken against the bikeshed, display text per grammar", () => {
   const p = plan("see [[note]] [[missing#H|A]]", { notes: ["note.md"] });
   const w = p.replaces.filter((r) => r.widget?.kind === "wikilink");
   assert.equal(w.length, 2);
