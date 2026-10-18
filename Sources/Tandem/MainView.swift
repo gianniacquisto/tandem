@@ -28,6 +28,7 @@ import TandemCore
 struct MainView: View {
     @Environment(TandemModel.self) private var model
     @Environment(BikeshedModel.self) private var bikeModel
+    @Environment(SetupPresenter.self) private var setup
     @Environment(\.openWindow) private var openWindow
     @Environment(\.colorScheme) private var colorScheme
 
@@ -37,6 +38,9 @@ struct MainView: View {
     @State private var tab: MainTab = .todos
     @FocusState private var quickAddFocused: Bool
     @FocusState private var searchFocused: Bool
+
+    /// The first-run check runs once per window, on the first appear.
+    @State private var checkedSetup = false
 
     // Section chrome: the inline "name a new section" field, and the inline rename.
     @State private var addingSection = false
@@ -52,7 +56,8 @@ struct MainView: View {
     private var palette: Palette { Palette.forScheme(colorScheme) }
 
     var body: some View {
-        VStack(spacing: 0) {
+        @Bindable var setup = setup
+        return VStack(spacing: 0) {
             header
             Rectangle().fill(palette.sand).frame(height: Line.hairline)
             if tab == .todos {
@@ -71,10 +76,26 @@ struct MainView: View {
         .sheet(item: $linkPickerFor) { todo in
             linkSheet(todo)
         }
+        .sheet(isPresented: $setup.isPresented) {
+            SetupWizardView(
+                bikeshedPath: bikeModel.bikeshed.directory.path,
+                onChooseBikeshed: { chooseBikeshed() },
+                onClose: { setup.isPresented = false })
+        }
         .onAppear {
             // Let the menu bar item's "Open Tandem" focus (or reopen) this window.
             WindowManager.shared.openMain = { openWindow(id: "main") }
+            showSetupIfNeeded()
         }
+    }
+
+    /// First launch only (the check runs once per window): raise the setup
+    /// wizard when the flag is unset. The flag is written when the wizard is
+    /// finished or skipped, so a crash mid-wizard re-shows it next launch.
+    private func showSetupIfNeeded() {
+        guard !checkedSetup else { return }
+        checkedSetup = true
+        if !TandemSettings.setupComplete() { setup.isPresented = true }
     }
 
     // MARK: - Header

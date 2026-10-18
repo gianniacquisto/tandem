@@ -11,6 +11,7 @@ struct TandemApp: App {
             MainView()
                 .environment(TandemModel.shared)
                 .environment(BikeshedModel.shared)
+                .environment(SetupPresenter.shared)
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 1060, height: 680)
@@ -22,6 +23,10 @@ struct TandemApp: App {
                     chooseBikeshed()
                 }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
+                // The first-run setup surface, re-openable later.
+                Button("Setup…") {
+                    SetupPresenter.shared.isPresented = true
+                }
             }
         }
     }
@@ -30,8 +35,9 @@ struct TandemApp: App {
 /// Runs the "Choose Bikeshed…" folder picker and hands the result to the
 /// model, which switches the bikeshed live. A folders-only, single-selection
 /// `NSOpenPanel`; the chosen folder becomes the bikeshed (a new folder may
-/// be created).
-private func chooseBikeshed() {
+/// be created). The one picker path: the File menu command and the setup
+/// wizard both call this.
+func chooseBikeshed() {
     let panel = NSOpenPanel()
     panel.canChooseDirectories = true
     panel.canChooseFiles = false

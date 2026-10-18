@@ -2,23 +2,29 @@ import Foundation
 import Darwin
 
 /// The persisted, human-chosen settings Tandem keeps beside its other state:
-/// today just the bikeshed, in `<TandemHome.directory>/settings.json`
-/// (ADR 0011). One tiny `{"bikeshedPath": "<absolute path>"}`
-/// record, deliberately separate from the store schema and the bikeshed itself —
-/// a settings file is not domain data, and a new setting is one more key, not
-/// a schema version bump.
+/// the bikeshed and the first-run setup flag, in
+/// `<TandemHome.directory>/settings.json` (ADR 0011). One tiny
+/// `{"bikeshedPath": "<absolute path>", "setupComplete": true}` record,
+/// deliberately separate from the store schema and the bikeshed itself — a
+/// settings file is not domain data, and a new setting is one more key, not a
+/// schema version bump.
 ///
-/// The key is **absent when no choice was ever made**, which is the default
-/// state: `chosenBikeshed()` returning `nil` means "wherever the default is"
-/// (`<home>/bikeshed`; see `Bikeshed.init()`). Reads never create the file and
-/// never throw — a missing, unreadable, or malformed file is simply "no
-/// choice" (`nil`), because a broken settings file must never take the app
-/// down. Writes create the home directory if needed and replace the file
-/// atomically (a same-directory temp file + `rename(2)`).
+/// A key is **absent when it was never set**, which is the default state:
+/// `chosenBikeshed()` returning `nil` means "wherever the default is"
+/// (`<home>/bikeshed`; see `Bikeshed.init()`), and `setupComplete()` returning
+/// `false` means "the setup wizard has not been finished or skipped". Reads
+/// never create the file and never throw — a missing, unreadable, or malformed
+/// file is simply the default, because a broken settings file must never take
+/// the app down. Writes create the home directory if needed, merge onto the
+/// existing record (so a bikeshed choice and the setup flag never clobber each
+/// other), and replace the file atomically (a same-directory temp file +
+/// `rename(2)`).
 public enum TandemSettings {
 
     /// The key inside `settings.json` holding the chosen bikeshed's absolute path.
     private static let bikeshedKey = "bikeshedPath"
+    /// The key inside `settings.json` holding whether first-run setup finished.
+    private static let setupKey = "setupComplete"
     /// The settings file's name, under `TandemHome.directory`.
     private static let fileName = "settings.json"
 
@@ -35,29 +41,71 @@ public enum TandemSettings {
         try setChosenBikeshed(url, in: TandemHome.directory)
     }
 
+    /// Whether the first-run setup has been finished or skipped, read from the
+    /// real `TandemHome.directory`. `false` when the flag was never written —
+    /// including a missing, unreadable, or malformed settings file (the same
+    /// leniency as `chosenBikeshed()`: a broken file re-shows the wizard rather
+    /// than crashing the app).
+    public static func setupComplete() -> Bool {
+        setupComplete(in: TandemHome.directory)
+    }
+
+    /// Record that first-run setup is done, writing `settings.json` atomically
+    /// under the real `TandemHome.directory`.
+    public static func setSetupComplete(_ done: Bool) throws {
+        try setSetupComplete(done, in: TandemHome.directory)
+    }
+
     /// The testable seam: `chosenBikeshed()` against an explicit home directory,
     /// so tests never read or write the process's real home.
     static func chosenBikeshed(in home: URL) -> URL? {
-        let file = home.appendingPathComponent(fileName)
-        guard let data = try? Data(contentsOf: file),
-              let json = try? JSONSerialization.jsonObject(with: data),
-              let object = json as? [String: Any],
-              let path = object[bikeshedKey] as? String,
-              !path.isEmpty
-        else { return nil }
+        let object = object(in: home)
+        guard let path = object[bikeshedKey] as? String, !path.isEmpty else { return nil }
         return URL(fileURLWithPath: path).standardizedFileURL
     }
 
+    /// The testable seam: `setupComplete()` against an explicit home directory.
+    static func setupComplete(in home: URL) -> Bool {
+        object(in: home)[setupKey] as? Bool ?? false
+    }
+
     /// The testable seam: `setChosenBikeshed(_:)` against an explicit home
-    /// directory. Creates `home` if needed, then writes a same-directory temp
-    /// file and `rename(2)`s it over `settings.json` — a reader ever sees the
-    /// complete old or new file, never a torn one.
+    /// directory. Merges the key onto the existing record (keeping any other
+    /// settings), then writes atomically.
     static func setChosenBikeshed(_ url: URL, in home: URL) throws {
+        var settings = object(in: home)
+        settings[bikeshedKey] = url.standardizedFileURL.path
+        try write(settings, in: home)
+    }
+
+    /// The testable seam: `setSetupComplete(_:)` against an explicit home
+    /// directory. Merges the key onto the existing record (a bikeshed choice is
+    /// preserved), then writes atomically.
+    static func setSetupComplete(_ done: Bool, in home: URL) throws {
+        var settings = object(in: home)
+        settings[setupKey] = done
+        try write(settings, in: home)
+    }
+
+    /// The settings file parsed as a JSON object, or `[:]` when it is missing,
+    /// unreadable, or malformed — the read leniency, shared by every getter.
+    private static func object(in home: URL) -> [String: Any] {
+        let file = home.appendingPathComponent(fileName)
+        guard let data = try? Data(contentsOf: file),
+              let json = try? JSONSerialization.jsonObject(with: data),
+              let object = json as? [String: Any]
+        else { return [:] }
+        return object
+    }
+
+    /// Write `settings` atomically: create `home` if needed, write a
+    /// same-directory temp file, then `rename(2)` it over `settings.json` — a
+    /// reader ever sees the complete old or new file, never a torn one.
+    private static func write(_ settings: [String: Any], in home: URL) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: home, withIntermediateDirectories: true)
-        let data = try JSONSerialization.data(
-            withJSONObject: [bikeshedKey: url.standardizedFileURL.path],
-            options: [.sortedKeys])
+        let data = try JSONSerialization.data(withJSONObject: settings,
+                                              options: [.sortedKeys])
         let destination = home.appendingPathComponent(fileName)
         let temp = home.appendingPathComponent(".settings-\(UUID().uuidString).tmp")
         do {
