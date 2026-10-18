@@ -28,6 +28,19 @@ public enum StoreEncoding {
         try serialize(["todos": try todoArray(todos)])
     }
 
+    /// The `doctor` result: the setup report as JSON (`{"ok": …, "checks": […]}`),
+    /// keys sorted like every other result. The shape is a contract — the tandem
+    /// skill documents it — so it is pinned here beside the other result shapes.
+    public static func doctorResult(_ report: SetupDiagnostics.Report) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(report)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw StoreIOError.io("could not serialize doctor report to UTF-8")
+        }
+        return text
+    }
+
     // MARK: - Internals
 
     private static func todoArray(_ todos: [Todo]) throws -> [Any] {

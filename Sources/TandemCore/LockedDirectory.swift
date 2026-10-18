@@ -41,6 +41,22 @@ struct LockedDirectory: Sendable {
         return try body()
     }
 
+    /// A non-destructive probe: is the sidecar lock currently held by another
+    /// process? Tries a non-blocking exclusive `flock` and, when it wins,
+    /// releases it immediately — so a free lock stays free and nothing is
+    /// written. A missing lockfile is a free lock (no writer has run yet) and
+    /// the probe never creates one. Used by `tandem-cli doctor` (ADR 0014).
+    func isLocked() -> Bool {
+        let fd = open(lockURL.path, O_RDWR)   // no O_CREAT: a missing lockfile is free
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+            _ = flock(fd, LOCK_UN)
+            return false
+        }
+        return errno == EWOULDBLOCK
+    }
+
     /// Write `data` to `url` atomically: same-directory temp file, fsync,
     /// `rename(2)`. On any failure the temp is removed and the error rethrown.
     /// Call only while holding the lock.

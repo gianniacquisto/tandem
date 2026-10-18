@@ -27,6 +27,18 @@ public enum TandemHome {
                 isDebugBuild: isDebugBuild)
     }
 
+    /// Why a process resolved where it did — the human-facing half of the rule,
+    /// surfaced by `tandem-cli doctor` (ADR 0014). One owner: `source` is the
+    /// rule, `resolve` derives the directory from it.
+    public enum Source: Sendable, Equatable {
+        /// `TANDEM_HOME` was set non-empty and wins outright.
+        case environmentOverride
+        /// A release build living inside an `.app` bundle — the shipped app.
+        case shippedApp
+        /// Anything else — `swift run`, a bare `.build/…` binary, any debug build.
+        case devBuild
+    }
+
     /// The pure rule, factored out so it can be tested without building two
     /// binaries.
     ///
@@ -37,13 +49,32 @@ public enum TandemHome {
                         executablePath: String,
                         home: String,
                         isDebugBuild: Bool) -> URL {
-        if let override = environment["TANDEM_HOME"], !override.isEmpty {
+        switch source(environment: environment,
+                      executablePath: executablePath,
+                      isDebugBuild: isDebugBuild) {
+        case .environmentOverride:
+            let override = environment["TANDEM_HOME"] ?? ""
             return URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
                 .standardizedFileURL
+        case .shippedApp:
+            return URL(fileURLWithPath: home).appendingPathComponent(".tandem")
+        case .devBuild:
+            return URL(fileURLWithPath: home).appendingPathComponent(".tandem-dev")
+        }
+    }
+
+    /// Which branch of the rule this process takes, as a value (the `resolve`
+    /// switch reads it, and `doctor` reports it verbatim). Same precedence as
+    /// `resolve`; the two cannot drift because `resolve` is defined in terms of
+    /// this.
+    static func source(environment: [String: String],
+                       executablePath: String,
+                       isDebugBuild: Bool) -> Source {
+        if let override = environment["TANDEM_HOME"], !override.isEmpty {
+            return .environmentOverride
         }
         let shippedApp = !isDebugBuild && isInsideAppBundle(executablePath)
-        return URL(fileURLWithPath: home)
-            .appendingPathComponent(shippedApp ? ".tandem" : ".tandem-dev")
+        return shippedApp ? .shippedApp : .devBuild
     }
 
     /// Whether `path` is an executable inside a `.app` bundle

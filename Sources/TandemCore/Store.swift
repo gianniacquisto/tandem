@@ -220,6 +220,41 @@ public struct Store: Sendable {
     static func recoveryNote(backupPath: String) -> String {
         "Previous store was corrupt and backed up to \(backupPath); the store restarted empty."
     }
+
+    // MARK: - Diagnostics (read-only; ADR 0014)
+
+    /// The store's health for `tandem-cli doctor`: the open/done counts, or
+    /// "unreadable" for a present-but-invalid file. Unlike `readAll`, this
+    /// performs **no recovery** — a corrupt store is reported, never backed up
+    /// or rewritten — so a diagnostic never modifies the store. Lock-free, like
+    /// every read.
+    public enum Health: Sendable, Equatable {
+        /// No file yet — a valid empty store (created on first write).
+        case absent
+        /// A readable store: the load-free counts.
+        case counts(open: Int, done: Int)
+        /// A file is present but cannot be decoded (corrupt) or read (permission).
+        case unreadable
+    }
+
+    /// A lock-free, non-mutating health read (see `Health`).
+    public func health() -> Health {
+        switch peek() {
+        case .absent:
+            return .absent
+        case .valid(let contents):
+            let done = contents.todos.lazy.filter { $0.done }.count
+            return .counts(open: contents.todos.count - done, done: done)
+        case .invalid:
+            return .unreadable
+        }
+    }
+
+    /// Whether the store's sidecar lock is currently held by another process —
+    /// a non-destructive probe (see `LockedDirectory.isLocked`).
+    public func lockIsHeld() -> Bool {
+        storage.isLocked()
+    }
 }
 
 /// A domain failure that also triggered corrupt-store recovery. Carries the underlying
