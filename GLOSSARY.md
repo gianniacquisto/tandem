@@ -58,6 +58,10 @@ _Avoid_: session log, journal, scratch note
 A raw memory note an agent files with `tandem-cli note capture` as it works: a small, create-only record under its project's hidden `.raw/` layer, out of the curated graph, for the consolidation pass to fold into the project's curated notes.
 _Avoid_: note (ambiguous with a curated note), log entry, scratch note
 
+**Consolidator**:
+The agent that performs a consolidation pass: the sole writer of the curated notes (`Index.md` and the notes under `projects/**`), invoked as the `consolidator` agent or the `/consolidate` command. It folds the pending raw captures in and archives them — it never writes a raw note, and no other agent writes the curated layer.
+_Avoid_: memory agent, curator, synthesizer, cleaner
+
 **Human note**:
 A note a person wrote, rather than an agent memory session. Indistinguishable from a memory note on disk (no author field), so its authority is judged by content: human prose is context, not state of record; only a memory note's _Where left off_/decisions carry current-state authority.
 _Avoid_: user note, personal note

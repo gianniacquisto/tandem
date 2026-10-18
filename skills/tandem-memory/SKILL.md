@@ -24,11 +24,13 @@ No project line matches → read the Index `Topics` list, then grep the bikeshed
 
 **File a raw note at each moment.** At each qualifying moment — a non-obvious decision, a gotcha or hard-won fact, a finished unit of work, a thread opened or closed — file one raw note with `tandem-cli note capture`, right then, not batched to session end. This includes sub-agents: a child finishes with one `work` note before it returns. The kinds, body shape, and naming are the verb's contract, not yours → `skills/tandem/SKILL.md`. **Floor: one `work` note at session end.** **Write protocol** — cadence, the loosened qualification gate, threads as todos, the curated shape → `WRITE-PROTOCOL.md`. **Concurrency** — raw create-only, the curated write boundary → `CONCURRENCY.md`.
 
-**Never edit a curated note.** `Index.md` and the notes under `projects/**` have exactly one writer: the **consolidation pass**, a distinct agent dispatched at session close (or on demand). Staleness you notice becomes a raw `gotcha`/`fact` note for that pass — never a patch in place. **Consolidation protocol** — the hidden queue, the writes, the archive → `CONSOLIDATION.md`.
+**Never edit a curated note.** `Index.md` and the notes under `projects/**` have exactly one writer: the **`consolidator`** agent — the consolidation pass dispatched at session close (or on demand), or run by the human as `/consolidate`. Staleness you notice becomes a raw `gotcha`/`fact` note for that pass — never a patch in place. **Consolidation protocol** — the hidden queue, the writes, the archive → `CONSOLIDATION.md`.
 
 ### Dispatch discipline
 
-A child session starts fresh and sees no skill, so the root agent carries this instruction into **every sub-agent brief**: orient first (Index → the project's curated note → `tandem-cli todo list`), file raw notes as work happens, and finish with one `work` note. At session close the root dispatches the consolidation pass. This lives here because the child cannot discover the skill on its own.
+A **working** sub-agent starts fresh and sees no skill, so the root agent carries this instruction into **every working sub-agent brief**: orient first (Index → the project's curated note → `tandem-cli todo list`), file raw notes as work happens, and finish with one `work` note. This lives here because the child cannot discover the skill on its own.
+
+Consolidation is no longer hand-written into a brief: at session close the root **dispatches the `consolidator`** agent — its own OpenCode agent definition with its own permissions (`/consolidate` runs it too). The pass reads its own protocol; the root briefs it with nothing.
 
 Write the note itself for the next session as reader: apply the installed **`writing-for-agents`** skill and its `SKILL-MECHANICS.md`.
 
