@@ -1,10 +1,10 @@
 import Foundation
 
-/// The parsed command line: one of the five verbs, or a request for the usage
+/// The parsed command line: one of the six verbs, or a request for the usage
 /// text. Long flags only, and the flags mirror the core argument names exactly
-/// (`--filter`, `--title`, `--id`, `--from`, `--to`) — the CLI renames nothing.
-/// `doctor` is a setup/diagnostic verb outside the `todo`/`note` domains
-/// (ADR 0014) and takes no flags.
+/// (`--filter`, `--title`, `--id`, `--from`, `--to`, `--kind`, `--project`,
+/// `--session`) — the CLI renames nothing. `doctor` is a setup/diagnostic verb
+/// outside the `todo`/`note` domains (ADR 0014) and takes no flags.
 enum Command {
     case help
     case doctor
@@ -12,6 +12,7 @@ enum Command {
     case todoAdd(title: String)
     case todoComplete(id: String)
     case noteRename(from: String, to: String)
+    case noteCapture(kind: String, project: String?, session: String?)
 }
 
 /// A usage failure — no arguments, an unknown subcommand, an unknown flag, or a
@@ -73,8 +74,10 @@ private func parseTodo(_ args: [String]) throws -> Command {
 
 // MARK: - note
 
-/// `note rename` — the one note verb (ADR 0009): the rename whose wikilink
-/// rewriting a raw `mv` cannot reproduce.
+/// `note rename|capture` — the two note verbs. `rename` is the rename whose
+/// wikilink rewriting a raw `mv` cannot reproduce (ADR 0009); `capture` is the
+/// raw memory-note write whose naming/queue invariant a plain file write cannot
+/// own (ADR 0016).
 private func parseNote(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
     let flags = try parseFlags(Array(args.dropFirst()))
@@ -82,6 +85,16 @@ private func parseNote(_ args: [String]) throws -> Command {
     case "rename":
         try accept(flags, ["--from", "--to"])
         return .noteRename(from: flags["--from"] ?? "", to: flags["--to"] ?? "")
+    case "capture":
+        try accept(flags, ["--kind", "--project", "--session"])
+        // An unknown `--kind` is a domain failure, not a usage one: `main`
+        // maps it to a `CaptureKind` and the core rejects it. `--project` /
+        // `--session` are absent → nil (use the default); present but empty is
+        // the `""` the core rejects, exactly as a missing value elsewhere.
+        return .noteCapture(
+            kind: flags["--kind"] ?? "",
+            project: flags["--project"],
+            session: flags["--session"])
     default:
         throw UsageError()
     }

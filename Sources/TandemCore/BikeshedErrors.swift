@@ -16,6 +16,11 @@ public enum BikeshedError: Error, Sendable, Equatable {
     /// The name violates the bikeshed naming rules (spec: bikeshed protocol — the
     /// app only creates names free of `#` and `|`; note names end in `.md`).
     case invalidName(name: String)
+    /// `capture` was called with a `project` or `session` that is not one
+    /// visible folder name (empty, `.`, `..`, a leading dot, or a `/`, `#`, `|`).
+    case invalidCaptureName(name: String)
+    /// `capture` was called with a `--kind` that is not one of the five kinds.
+    case invalidCaptureKind(kind: String)
 
     public var message: String {
         switch self {
@@ -27,6 +32,11 @@ public enum BikeshedError: Error, Sendable, Equatable {
             return "A file already exists at \"\(path)\". Choose a different name."
         case .invalidName(let name):
             return "Name \"\(name)\" is not allowed: note names cannot contain # or |, and must end in .md. Choose a different name."
+        case .invalidCaptureName(let name):
+            return "Capture name \"\(name)\" is not allowed: project and session must each be one folder name with no /, #, |, or leading dot. Choose a different name."
+        case .invalidCaptureKind(let kind):
+            let kinds = CaptureKind.allCases.map(\.rawValue).joined(separator: ", ")
+            return "Unknown capture kind \"\(kind)\". Use one of: \(kinds)."
         }
     }
 }

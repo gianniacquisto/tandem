@@ -52,7 +52,11 @@ $ tandem-cli todo complete --id 550e8400-e29b-41d4-a716-446655440000
 
 ## Notes
 
-The bikeshed (`~/.tandem/bikeshed/`) is a plain folder of `.md` files, and the file itself is the interface. Create, edit, and delete notes with your own file tools; the CLI writes no note content. `note rename` is the one note verb, and the one rename path:
+The bikeshed (`~/.tandem/bikeshed/`) is a plain folder of `.md` files, and the file itself is the interface. Create, edit, and delete curated notes with your own file tools; the CLI writes no note content. Two CLI verbs act on notes: `rename`, the one rename path, and `capture`, which files a raw memory note.
+
+### `tandem-cli note rename --from <path> --to <path>`
+
+Rename a bikeshed note (both paths bikeshed-root-relative, `.md` included):
 
 ```
 $ tandem-cli note rename --from "Ideas.md" --to "Backlog.md"
@@ -60,6 +64,21 @@ $ tandem-cli note rename --from "Ideas.md" --to "Backlog.md"
 ```
 
 It rewrites every wikilink that resolves to the note — bare, qualified, aliased, and `#fragment` forms, in every note including itself — in one locked transaction. Rename through the CLI only: a raw `mv` moves the file but leaves every wikilink pointing at the old name silently broken, and nothing repairs them but re-running the rename through the CLI.
+
+### `tandem-cli note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]`
+
+File one **raw memory note** — a small, create-only record of a moment that would be lost when the session ends — into the hidden per-project capture layer. The body is read from **stdin** (all of it, UTF-8; empty is allowed):
+
+```
+$ printf '# Gotcha — caret not placed\n\nThe editor opened without focus.\n' | tandem-cli note capture --kind gotcha
+{"path":"projects/tandem/.raw/ses_eafd…/20261018T140211Z-gotcha-gotcha-caret-not-placed.md"}
+```
+
+- `--kind` (required): one of `decision`, `gotcha`, `fact`, `work`, `thread` — the curated section the consolidator will fold it into.
+- `--project` (optional): the project folder; defaults to the working directory's last path component (`…/projects/tandem` → `tandem`).
+- `--session` (optional): defaults to `$OPENCODE_SESSION_ID`, else a short generated token.
+
+The note lands at `projects/<project>/.raw/<session>/<utc>-<kind>-<slug>.md`, where `<utc>` is a UTC timestamp, `<kind>` is the kind, and `<slug>` comes from the body's first line; a same-second, same-slug note gets a `-2`, `-3`, … suffix rather than overwriting. The `.raw` layer is **hidden**: captured notes never appear in the tree, search, backlinks, or wikilink resolution, and they should contain no `[[wikilinks]]` — capture raw material as you work, and let the consolidation pass promote it into the curated notes. An unknown `--kind`, or a `--project`/`--session` that is not one folder name, is a domain failure (exit `1`).
 
 A note filename may not contain `/`, `#`, `|`, or a leading dot, and must end `.md`. `#` and `|` are the wikilink grammar's separators, so a note whose name contains either can never be resolved by a wikilink (ADR 0004). Pre-existing violators are still shown and edited — the rule constrains what is *created*.
 
