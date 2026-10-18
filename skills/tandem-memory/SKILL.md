@@ -28,7 +28,7 @@ No project line matches → read the Index `Topics` list, then grep the bikeshed
 
 ### Dispatch discipline
 
-A **working** sub-agent starts fresh and sees no skill, so the root agent carries this instruction into **every working sub-agent brief**: orient first (Index → the project's curated note → `tandem-cli todo list`), file raw notes as work happens, and finish with one `work` note. This lives here because the child cannot discover the skill on its own.
+A **working** sub-agent carries this discipline already: the root's instruction file reaches a child session too, so its brief holds the task and nothing else. The child reads the skill off that instruction — orient (Index → the project's curated note → `tandem-cli todo list`), file raw notes as work happens, finish with one `work` note. Where a host does not deliver ambient instructions to children, that gap belongs to [`HARNESS.md`](HARNESS.md).
 
 Consolidation is a distinct agent, never one of those briefed children: at session close the root **hands the raw queue to the consolidation agent** — a fresh agent that reads its own protocol, so the root briefs it with nothing beyond the queue.
 
