@@ -7,7 +7,7 @@ How a session picks up where the work left off, and finds related information ch
 At the start of a session, before reading or editing project files:
 
 1. **Open `Index.md`** — the one fixed constant. In one small read it names every project the bikeshed has memory for, and where the topics live.
-2. **Match the task to a project line** — that line's wikilink is the project's **curated note**, under `projects/<project>/`. A project is always a folder holding its curated notes and a hidden `.raw/` capture layer.
+2. **Match the task to a project line** — that line's wikilink is the project's **curated note**, under `projects/<project>/`. A project is always a folder holding its curated notes and a hidden saddlebag (`.raw/`).
 3. **Read the note** — `Where left off` in full; `Decisions`, `Gotchas`, `Facts` scanned by heading and pulled only when the task touches them.
 4. **Follow the note's wikilinks outward** only as the task needs them.
 5. **Check the Tandem todos** (`tandem-cli todo list`) for the open threads.
@@ -16,7 +16,7 @@ At the start of a session, before reading or editing project files:
 
 No project matches the task → read only the Index's `Topics` list, then grep the bikeshed for reusable knowledge; the project note is bootstrap-created by the consolidation pass ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
 
-The **raw** capture layer (`projects/<project>/.raw/`) is **not** part of orientation: it is hidden, and only the consolidation pass reads it, with hidden enabled (glob `hidden: true`, `rg --hidden`, `ls -a`). Orientation reads the curated notes alone.
+The **saddlebag** (`projects/<project>/.raw/`) is **not** part of orientation: it is hidden, and only the consolidation pass reads it, with hidden enabled (glob `hidden: true`, `rg --hidden`, `ls -a`). Orientation reads the curated notes alone.
 
 **Done when** a cold session could resume the project from the bikeshed alone — current state, next move, open threads in hand.
 
@@ -32,9 +32,9 @@ Resolving a `[[Name]]` is a **filename match** — case-insensitive, unique base
 
 ## Staleness — the repo is ground truth
 
-When a note contradicts the current repo, work from the **repo**. A **working agent does not patch the note** — it files a raw `gotcha`/`fact` note naming the contradiction, and the consolidation pass corrects the curated note in place: a fact silently; a **decision that flipped** leaves the one dated reversal line ([`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md)). Re-verify cheaply first — moved code may not mean changed intent. Never silently work around a stale note; that leaves the trap for the next session.
+When a note contradicts the current repo, work from the **repo**. A **working agent does not patch the note** — it files a `gotcha`/`fact` capture naming the contradiction, and the consolidation pass corrects the curated note in place: a fact silently; a **decision that flipped** leaves the one dated reversal line ([`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md)). Re-verify cheaply first — moved code may not mean changed intent. Never silently work around a stale note; that leaves the trap for the next session.
 
-A broken `[[wikilink]]` — its note was renamed **outside the app**, or deleted; the app rewrites links on its own renames, so those self-heal (ADR 0005) — is fixed **when the note is next written**, never by a bikeshed-wide sweep: search for the near-identical target name and rewrite the link; if the target is gone, demote the reference to plain text. Never re-point a link at a guess. A working agent that hits one files a raw `fact` note instead of editing.
+A broken `[[wikilink]]` — its note was renamed **outside the app**, or deleted; the app rewrites links on its own renames, so those self-heal (ADR 0005) — is fixed **when the note is next written**, never by a bikeshed-wide sweep: search for the near-identical target name and rewrite the link; if the target is gone, demote the reference to plain text. Never re-point a link at a guess. A working agent that hits one files a `fact` capture instead of editing.
 
 ## Freshness — trust this session's reads
 

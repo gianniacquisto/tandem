@@ -54,12 +54,16 @@ _Avoid_: document, entry, page
 A note created by a memory session recording the highlights of work — where the work left off, decisions with one-line rationale, learnings and gotchas, expensive-to-derive facts — written for the next agent session as reader.
 _Avoid_: session log, journal, scratch note
 
+**Saddlebag**:
+A project's hidden layer of captures — the `projects/<project>/.raw/` folder: what an agent carries as it works, emptied at the consolidation stop. Holds many captures; a **Capture** is one note in it.
+_Avoid_: raw layer, queue, inbox, backlog
+
 **Capture**:
-A raw memory note an agent files with `tandem-cli note capture` as it works: a small, create-only record under its project's hidden `.raw/` layer, out of the curated graph, for the consolidation pass to fold into the project's curated notes.
-_Avoid_: note (ambiguous with a curated note), log entry, scratch note
+A small, create-only note an agent files with `tandem-cli note capture` as it works: one file in its project's **saddlebag**, out of the curated graph, for the consolidation pass to fold into the project's curated notes.
+_Avoid_: note (ambiguous with a curated note), raw note, log entry, scratch note
 
 **Consolidator**:
-The role that performs a consolidation pass: the agent that is the sole writer of the curated notes (`Index.md` and the notes under `projects/**`). It folds the pending raw captures in and archives them — it never writes a raw note, and no other agent writes the curated layer.
+The role that performs a consolidation pass: the agent that is the sole writer of the curated notes (`Index.md` and the notes under `projects/**`). It folds the pending captures in and archives them — it never writes a capture, and no other agent writes the curated layer.
 _Avoid_: memory agent, curator, synthesizer, cleaner
 
 **Human note**:
@@ -70,9 +74,9 @@ _Avoid_: user note, personal note
 A project's note: the orientation surface for that project, Where left off at the top. A project's memory starts as a single anchor; it becomes a folder when a second note is earned.
 _Avoid_: project page, home note, project index
 
-**Orientation note**:
-The bikeshed's entry point: the note a new session opens first to find the project it needs. Exactly one, at the bikeshed root (`Index.md`); pointers and one-line status, never detail.
-_Avoid_: dashboard, home page, table of contents
+**Hub**:
+The bikeshed's entry point: the note a new session opens first to find the project it needs. Exactly one, at the bikeshed root (`Index.md`); pointers and one-line status, never detail. Its wikilinks are the **spokes** that reach the project notes.
+_Avoid_: orientation note, dashboard, home page, table of contents
 
 **Wikilink**:
 An in-note reference to another note, written `[[target]]` with an optional `#fragment` and `|alias`, resolved live by case-insensitive name against the bikeshed; a wikilink that resolves to no note is a broken link.
@@ -81,6 +85,10 @@ _Avoid_: internal link, embed
 **Backlink**:
 A note that contains a wikilink resolving to a given note; the open note's backlinks are what the Backlinks panel lists. Derived state recomputed from the file set — broken links contribute nothing.
 _Avoid_: inbound link, references, mentions
+
+**Spokes**:
+The wikilinks a note sends out, seen as its connections to the rest of the bikeshed; the Hub's spokes are how the entry point reaches the project notes. Every note is a small hub with its own spokes.
+_Avoid_: links (too broad), connections
 
 **Attachment**:
 A non-markdown file (image, etc.) living in the bikeshed. Invisible in the file tree; reachable only by relative path from the note that references it.

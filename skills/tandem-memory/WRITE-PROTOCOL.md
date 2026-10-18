@@ -1,10 +1,10 @@
 # Write protocol — when and what to record
 
-When and what a session records, so the next session picks up without re-deriving what this one learned. Two layers: the working agent files **raw** notes; a **consolidation pass** promotes them into the **curated** notes. This file is the working agent's cadence and the curated shape it writes toward; the pass's own protocol is [`CONSOLIDATION.md`](CONSOLIDATION.md); the layout is [`CONVENTIONS.md`](CONVENTIONS.md); the read walk is [`READ-PROTOCOL.md`](READ-PROTOCOL.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill while writing every note — it is the writing discipline, not restated here.
+When and what a session records, so the next session picks up without re-deriving what this one learned. Two layers: the working agent files **captures**; a **consolidation pass** promotes them into the **curated** notes. This file is the working agent's cadence and the curated shape it writes toward; the pass's own protocol is [`CONSOLIDATION.md`](CONSOLIDATION.md); the layout is [`CONVENTIONS.md`](CONVENTIONS.md); the read walk is [`READ-PROTOCOL.md`](READ-PROTOCOL.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill while writing every note — it is the writing discipline, not restated here.
 
-## Raw cadence — file a note at each moment
+## Capture cadence — file a note at each moment
 
-File one **raw** note at each qualifying moment, as it happens; never batch to session end. **Every agent does this, sub-agents included.**
+File one **capture** at each qualifying moment, as it happens; never batch to session end. **Every agent does this, sub-agents included.**
 
 ```
 printf '# <short title>\n\n<1-3 lines>\n' | tandem-cli note capture --kind <kind> --project <project>
@@ -17,23 +17,23 @@ The moments and their kinds:
 - A **significant unit of work finished** — `work`.
 - A **Thread opened or closed** — `thread`, the context a title cannot carry.
 
-The verb owns the kinds, the body shape (`# <short title>` then 1–3 lines), and the naming — its contract is `skills/tandem/SKILL.md`. Raw notes are **create-only** and carry **no `[[wikilinks]]`**; the consolidation pass adds those when it promotes a note.
+The verb owns the kinds, the body shape (`# <short title>` then 1–3 lines), and the naming — its contract is `skills/tandem/SKILL.md`. Captures are **create-only** and carry **no `[[wikilinks]]`**; the consolidation pass adds those when it promotes a note.
 
 **Floor: one `work` note at session end** (or when context nears exhaustion) — what was done and where it left off. That is a sub-agent's minimum deliverable before it returns.
 
-**Threads stay immediate**: `tandem-cli todo add --title "…"` runs the moment a thread opens — the Todos are the authoritative live list — with a raw `thread` note for the context a title cannot carry. Closing one: `tandem-cli todo complete --id <id>`, plus a `thread` note.
+**Threads stay immediate**: `tandem-cli todo add --title "…"` runs the moment a thread opens — the Todos are the authoritative live list — with a `thread` capture for the context a title cannot carry. Closing one: `tandem-cli todo complete --id <id>`, plus a `thread` note.
 
 ## Qualification gate — what you'd lose when the session ends
 
-File when the information would be **lost when the session ends** and re-deriving it would cost real effort. Raw capture is cheap, so borderline notes are welcome — omit only what the repo or environment reproduces on the next look (a command's output, a file's contents, a `--help`). The stricter cost-of-derivation gate, the ≲50/≲40 length targets, and the pruning discipline govern only what consolidation **promotes** into the curated notes; they ride on that pass, not on the moment.
+File when the information would be **lost when the session ends** and re-deriving it would cost real effort. A capture is cheap, so borderline notes are welcome — omit only what the repo or environment reproduces on the next look (a command's output, a file's contents, a `--help`). The stricter cost-of-derivation gate, the ≲50/≲40 length targets, and the pruning discipline govern only what consolidation **promotes** into the curated notes; they ride on that pass, not on the moment.
 
 ## Working agents never edit curated notes
 
-`Index.md` and the curated notes under `projects/**` have exactly one writer: the consolidation pass (decision 8). Staleness a working agent notices — a note that contradicts the repo, a flipped decision, an outdated status — is captured as a raw `gotcha`/`fact` note for the consolidation pass, never patched in place ([`CONCURRENCY.md`](CONCURRENCY.md)).
+`Index.md` and the curated notes under `projects/**` have exactly one writer: the consolidation pass (decision 8). Staleness a working agent notices — a note that contradicts the repo, a flipped decision, an outdated status — is captured as a `gotcha`/`fact` capture for the consolidation pass, never patched in place ([`CONCURRENCY.md`](CONCURRENCY.md)).
 
 ## The closing pass
 
-At session end (or when context nears exhaustion), file the floor `work` note, then **hand the raw queue to the consolidation agent** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — a fresh agent, never a recording sub-agent, that folds this session's raw notes into the curated notes and refreshes the Index. The human can run the same pass on demand. The working session does not consolidate itself.
+At session end (or when context nears exhaustion), file the floor `work` note, then **hand the saddlebag to the consolidation agent** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — a fresh agent, never a recording sub-agent, that folds this session's captures into the curated notes and refreshes the Index. The human can run the same pass on demand. The working session does not consolidate itself.
 
 ## The curated shape — what the consolidation pass writes
 
@@ -65,4 +65,4 @@ Targets: ≲50 lines a project note, ≲40 a topic — a *trigger*, not a rule. 
 
 ## Completion criterion
 
-A write is done when a cold session could resume from the Bikeshed alone — current state, next move, open Threads in hand — or would be strictly slower without it. For the working agent that means the raw notes are filed and the consolidation pass is dispatched.
+A write is done when a cold session could resume from the Bikeshed alone — current state, next move, open Threads in hand — or would be strictly slower without it. For the working agent that means the captures are filed and the consolidation pass is dispatched.

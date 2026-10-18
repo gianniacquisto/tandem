@@ -2,10 +2,10 @@
 
 Two agent sessions can work the same project — or the same topic Note — at once. Agent writes take no lock (ADR 0004: the sidecar `flock` is app-only, last write wins), so coordination here is a rule, not mutual exclusion. The write protocol is [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md); the re-read trigger is [`READ-PROTOCOL.md`](READ-PROTOCOL.md); the sole writer of the shared notes is [`CONSOLIDATION.md`](CONSOLIDATION.md).
 
-## Ownership — raw private, curated single-writer
+## Ownership — captures private, curated single-writer
 
-- **Raw capture notes are create-only and per-session.** Every file is named for its session and moment (`projects/<project>/.raw/<session>/<utc>-<kind>-<slug>.md`), so two sessions never target the same file and a raw note is never amended. There is no shared raw file and no write boundary: the filesystem's collision suffix (`-2`, `-3`, …) is the whole race.
-- **Curated notes are shared, with one writer.** `Index.md` and every note under `projects/**` are written only by the **consolidation pass** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — working agents never edit them (decision 8). A session's working memory is its context window and its raw notes, never the curated notes.
+- **Captures are create-only and per-session.** Every file is named for its session and moment (`projects/<project>/.raw/<session>/<utc>-<kind>-<slug>.md`), so two sessions never target the same file and a capture is never amended. There is no shared capture file and no write boundary: the filesystem's collision suffix (`-2`, `-3`, …) is the whole race.
+- **Curated notes are shared, with one writer.** `Index.md` and every note under `projects/**` are written only by the **consolidation pass** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — working agents never edit them (decision 8). A session's working memory is its context window and its captures, never the curated notes.
 
 So there is no merge-back lifecycle against shared notes: a working agent only ever creates its own files.
 
@@ -27,9 +27,9 @@ A new highlight is a new bullet — naturally additive. An in-place edit touches
 
 A project's curated note is created with `O_CREAT|O_EXCL`. At most one writer wins the create; a loser gets `EEXIST`, re-reads, and **amends** the note (appends its section) instead of erroring. This is the one write a rule cannot lean on a re-read for, so the OS closes the race — mirroring ADR 0004's atomic-`rename`, no-journal ethos.
 
-## Archiving a consumed raw file
+## Archiving a consumed capture
 
-Archiving is a **move** of a raw file to `projects/<project>/.raw/.done/<session>/<file>`. No boundary is needed: only the session that created it wrote it (create-only), and only the consolidation pass consumes it. Because pending is defined by **location** — any file under `.raw/` not under `.done/` — the move is the only state change, and no index can drift.
+Archiving is a **move** of a capture to `projects/<project>/.raw/.done/<session>/<file>`. No boundary is needed: only the session that created it wrote it (create-only), and only the consolidation pass consumes it. Because pending is defined by **location** — any file under `.raw/` not under `.done/` — the move is the only state change, and no index can drift.
 
 ## Derived cases
 
@@ -42,4 +42,4 @@ All fall out of the rules above:
 
 ## Completion criterion
 
-Two concurrent sessions can work the same project — or the same topic note — on one Bikeshed, with no lock, and neither loses a highlight: the raw layer is private per session, and the curated notes have the single writer and the boundary above. The one accepted loss is a genuinely concurrent delete.
+Two concurrent sessions can work the same project — or the same topic note — on one Bikeshed, with no lock, and neither loses a highlight: the saddlebag is private per session, and the curated notes have the single writer and the boundary above. The one accepted loss is a genuinely concurrent delete.
