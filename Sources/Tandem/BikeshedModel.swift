@@ -298,6 +298,9 @@ final class BikeshedModel {
             openPath = path
             editor.sendDocument(bufferText, notePath: path)
             editor.sendVaultIndex(paths: notePaths())
+            // The human asked for this note — put the caret in it, so typing
+            // works without a click into the pane first.
+            editor.focusEditor()
             lastError = nil
             refreshBacklinks()
         } catch {
@@ -460,6 +463,9 @@ final class BikeshedModel {
         editor.sendVaultIndex(paths: notePaths())
         if let path = openPath {
             editor.sendDocument(bufferText, notePath: path)
+            // The note was selected before the page finished loading (the
+            // usual cold-start path) — the caret belongs in it.
+            editor.focusEditor()
         }
     }
 

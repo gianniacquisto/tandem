@@ -194,6 +194,13 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
         applyTheme()
     }
 
+    /// `focusEditor()` — put the caret in the note. Called when a note opens
+    /// so typing works without clicking into the pane first (the note is the
+    /// thing the human just asked for).
+    func focusEditor() {
+        send("focusEditor()", arguments: [:])
+    }
+
     private func applyTheme() {
         guard pageLoaded else { return }
         webView.evaluateJavaScript(
@@ -366,6 +373,10 @@ struct BikeEditorPane: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         model.editor.setTheme(colorScheme == .dark ? "night" : "day")
+        // The pane appearing for a note is the human's "let me edit this":
+        // take the caret (the model's `open` call may have landed before the
+        // webview was mounted in the window).
+        model.editor.focusEditor()
         return model.editor.webView
     }
 

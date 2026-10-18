@@ -8,7 +8,7 @@
 //   font-size {type:"font-size", value:<px>}              (preset, persisted)
 //
 // Swift → JS via page globals (see main.js): setDocument, insertText,
-// revealLine, setVaultIndex, setFontSize.
+// revealLine, setVaultIndex, setFontSize, focusEditor.
 //
 // The JS has no file or network access — everything crosses this bridge.
 

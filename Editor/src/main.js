@@ -763,6 +763,10 @@ export function mountEditor(parent, { doc, vaultNotes, notePath } = {}) {
     // The persisted font size arrives on `loaded`; Swift → JS only sets the
     // property (the page does not echo it back across the bridge).
     window.setFontSize = (px) => applyFontSize(px);
+    // The caret: Swift pulls focus into the note when one opens, so
+    // "New note → type" works without a click into the pane first (the
+    // content element holds the DOM focus that keystrokes need).
+    window.focusEditor = () => view.focus();
   }
 
   postLoaded(); // the page is ready; Swift then sends setVaultIndex/setDocument
