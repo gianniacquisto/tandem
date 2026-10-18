@@ -1,10 +1,13 @@
 import Foundation
 
-/// The parsed command line: one of the four verbs, or a request for the usage
+/// The parsed command line: one of the five verbs, or a request for the usage
 /// text. Long flags only, and the flags mirror the core argument names exactly
 /// (`--filter`, `--title`, `--id`, `--from`, `--to`) — the CLI renames nothing.
+/// `doctor` is a setup/diagnostic verb outside the `todo`/`note` domains
+/// (ADR 0014) and takes no flags.
 enum Command {
     case help
+    case doctor
     case todoList(filter: String?)
     case todoAdd(title: String)
     case todoComplete(id: String)
@@ -26,6 +29,11 @@ func parseCommand(_ args: [String]) throws -> Command {
     switch first {
     case "--help", "-h":
         return .help
+    case "doctor":
+        // A setup/diagnostic verb (ADR 0014): no group, no flags. Any extra
+        // argument is a usage failure.
+        guard args.count == 1 else { throw UsageError() }
+        return .doctor
     case "todo":
         return try parseTodo(Array(args.dropFirst()))
     case "note":

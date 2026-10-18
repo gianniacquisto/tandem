@@ -42,6 +42,8 @@ func dispatch(_ args: [String]) -> Int32 {
     case .help:
         print(Usage.text)
         return 0
+    case .doctor:
+        return runDoctor()
     case .todoList(let filter):
         return run {
             let result = try Store().list(rawFilter: filter)
@@ -76,6 +78,28 @@ func run(_ body: () throws -> String) -> Int32 {
         FileHandle.standardError.write(Data((tandemErrorText(error) + "\n").utf8))
         return 1
     }
+}
+
+/// `doctor` (ADR 0014): a setup report is not a domain call, so it does not go
+/// through `run`. It always prints the report JSON to stdout — the report is the
+/// success value, even when a check fails — and exits 0 when every
+/// failing-capable check passed, 1 otherwise, echoing each failing check's
+/// next step to stderr. A serialization failure is the only other exit 1.
+func runDoctor() -> Int32 {
+    let report = SetupDiagnostics.run()
+    do {
+        print(try StoreEncoding.doctorResult(report))
+    } catch {
+        FileHandle.standardError.write(Data((tandemErrorText(error) + "\n").utf8))
+        return 1
+    }
+    guard report.ok else {
+        for check in report.checks where !check.ok {
+            FileHandle.standardError.write(Data(("doctor: \(check.name) — \(check.detail)\n").utf8))
+        }
+        return 1
+    }
+    return 0
 }
 
 /// The `note rename` result — `{"path": "<new>"}` — serialized in the same style

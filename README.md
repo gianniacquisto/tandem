@@ -51,6 +51,8 @@ tandem-cli todo complete --id <id>
 tandem-cli note rename --from "Ideas.md" --to "Backlog.md"
 ```
 
+`tandem-cli doctor` is a fifth, setup-only command: it prints one JSON report of where your state lives and whether it is healthy (the store, the bikeshed, the lock, the installed app, and the agent skill), and exits `1` if something needs attention. It is the quickest way to check a fresh install.
+
 `tandem-cli --help` prints that syntax and exits `0`. The `tandem` skill, in `skills/tandem/`, teaches an agent those contracts. Agent hosts load it from there:
 
 ```sh

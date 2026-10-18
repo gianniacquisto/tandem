@@ -10,6 +10,7 @@ enum Usage {
       tandem-cli todo add --title <string>
       tandem-cli todo complete --id <string>
       tandem-cli note rename --from <path> --to <path>
+      tandem-cli doctor
       tandem-cli --help | -h
     """
 }

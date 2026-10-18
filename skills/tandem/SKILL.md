@@ -1,6 +1,6 @@
 ---
 name: tandem
-description: "Read and write the shared Tandem todo list, and rename bikeshed notes, from `tandem-cli` on this Mac. Reach for it when the user says to add a todo, asks what's on their list, asks to mark a todo done, or wants a note renamed (reopened under a new name). The same todos a human sees and edits in the Tandem app."
+description: "Read and write the shared Tandem todo list, and rename bikeshed notes, from `tandem-cli` on this Mac. Reach for it when the user says to add a todo, asks what's on their list, asks to mark a todo done, or wants a note renamed (reopened under a new name). Also runs a local setup check when the user asks whether Tandem is installed or working. The same todos a human sees and edits in the Tandem app."
 ---
 
 # Tandem
@@ -62,6 +62,28 @@ $ tandem-cli note rename --from "Ideas.md" --to "Backlog.md"
 It rewrites every wikilink that resolves to the note — bare, qualified, aliased, and `#fragment` forms, in every note including itself — in one locked transaction. Rename through the CLI only: a raw `mv` moves the file but leaves every wikilink pointing at the old name silently broken, and nothing repairs them but re-running the rename through the CLI.
 
 A note filename may not contain `/`, `#`, `|`, or a leading dot, and must end `.md`. `#` and `|` are the wikilink grammar's separators, so a note whose name contains either can never be resolved by a wikilink (ADR 0004). Pre-existing violators are still shown and edited — the rule constrains what is *created*.
+
+## Setup check
+
+`tandem-cli doctor` reports where this machine's Tandem state lives and whether it is healthy — the first-run check for a human or an agent setting Tandem up. It is a setup/diagnostic verb, not part of the `todo` / `note` domains, and takes no arguments.
+
+Returns one JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "detail": "..."}]}`. The checks, in this order:
+
+| name | what it reports | can fail |
+| --- | --- | --- |
+| `home` | the resolved state directory (see The store), and why — `TANDEM_HOME` override, shipped app, or dev build | no |
+| `store` | the `todos.json` path and its open/done counts (`absent` = a valid empty store) | yes — present but unreadable or corrupt |
+| `bikeshed` | the bikeshed path and its note count | yes — the path is a file, not a folder |
+| `lock` | whether a writer currently holds the store lock | yes — held by another process |
+| `app` | the installed `/Applications/Tandem.app` version, with the quarantine-strip hint when it is flagged | no |
+| `skills` | whether this skill is found for each agent host, and whether opencode's config lists the repo `skills/` dir | no |
+
+`ok` is true when no failing-capable check failed. Exit `0` when `ok` is true and `1` when it is false (each failing check's next step is echoed to stderr); `2` on a usage error. A missing app or an uninstalled agent host are informational, not failures.
+
+```
+$ tandem-cli doctor
+{"checks":[{"detail":"/Users/you/.tandem-dev (dev build)","name":"home","ok":true},{"detail":"/Users/you/.tandem-dev/todos.json — 3 open, 2 done","name":"store","ok":true}, …],"ok":true}
+```
 
 ## Streams and exit codes
 
