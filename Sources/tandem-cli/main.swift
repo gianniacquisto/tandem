@@ -11,9 +11,9 @@ import TandemCore
 //
 // This file is the whole adapter: it turns a command line into the core calls
 // and writes their outcome to the right stream. It adds no boundary logic — the
-// semantics (`list(rawFilter:)`, `add`, `complete`, `rename`) and the encoding
-// (`StoreEncoding`, `tandemErrorText`) stay in TandemCore, which the single test
-// seam (`TandemCoreTests`) covers.
+// semantics (`list(rawFilter:)`, `add`, `complete`, `rename`, `capture`) and the
+// encoding (`StoreEncoding`, `tandemErrorText`) stay in TandemCore, which the
+// single test seam (`TandemCoreTests`) covers.
 //
 // Streams and exit codes (the contract):
 // - success → exactly one JSON object on stdout, one trailing newline, exit 0;
@@ -62,7 +62,19 @@ func dispatch(_ args: [String]) -> Int32 {
     case .noteRename(let from, let to):
         return run {
             let result = try Bikeshed().rename(from: from, to: to)
-            return try renameResult(result.value)
+            return try pathResult(result.value)
+        }
+    case .noteCapture(let kind, let project, let session):
+        return run {
+            guard let captureKind = CaptureKind(rawValue: kind) else {
+                throw BikeshedError.invalidCaptureKind(kind: kind)
+            }
+            let result = try Bikeshed().capture(
+                project: project ?? captureProjectDefault(),
+                kind: captureKind,
+                body: readStandardInput(),
+                session: session ?? captureSessionDefault())
+            return try pathResult(result.value)
         }
     }
 }
@@ -102,12 +114,42 @@ func runDoctor() -> Int32 {
     return 0
 }
 
-/// The `note rename` result — `{"path": "<new>"}` — serialized in the same style
-/// as `StoreEncoding` (sorted keys, UTF-8). A note operation has no store-schema
-/// encoder of its own, so the CLI builds the one-value object here.
-func renameResult(_ newPath: String) throws -> String {
+/// The body of a `note capture` call: everything on stdin, decoded as UTF-8,
+/// empty allowed (ADR 0016). Invalid UTF-8 is a domain failure, not a usage one.
+func readStandardInput() throws -> String {
+    let data = FileHandle.standardInput.readDataToEndOfFile()
+    guard let text = String(data: data, encoding: .utf8) else {
+        throw BikeshedIOError.io("stdin is not valid UTF-8")
+    }
+    return text
+}
+
+/// The `note capture` project default: the working directory's last path
+/// component (`…/projects/tandem` → `tandem`), per ADR 0016 — the codebase being
+/// worked on, so its capture layer nests under its own folder.
+func captureProjectDefault() -> String {
+    URL(fileURLWithPath: FileManager.default.currentDirectoryPath).lastPathComponent
+}
+
+/// The `note capture` session default: `$OPENCODE_SESSION_ID` when set to a
+/// non-empty value, else a short generated token for hosts that export none
+/// (ADR 0016).
+func captureSessionDefault() -> String {
+    if let session = ProcessInfo.processInfo.environment["OPENCODE_SESSION_ID"],
+       !session.isEmpty
+    {
+        return session
+    }
+    return String(UUID().uuidString.prefix(8)).lowercased()
+}
+
+/// The `note rename` / `note capture` result — `{"path": "<path>"}` — serialized
+/// in the same style as `StoreEncoding` (sorted keys, UTF-8). A note operation
+/// has no store-schema encoder of its own, so the CLI builds the one-value
+/// object here.
+func pathResult(_ path: String) throws -> String {
     let data = try JSONSerialization.data(
-        withJSONObject: ["path": newPath], options: [.sortedKeys])
+        withJSONObject: ["path": path], options: [.sortedKeys])
     guard let text = String(data: data, encoding: .utf8) else {
         throw StoreIOError.io("could not serialize result to UTF-8")
     }

@@ -30,6 +30,8 @@
 - **`write` and `delete` are out.** The agent's own file tools already write, and the app's conflict detection is built for external writers; `delete` in the core is permanent (only the GUI wraps a Trash move) and rewrites no links, so it would be `rm` with more typing.
 - **This reverses a scope cut, narrowly and on the record.** `.scratch/bikeshed/spec.md`'s "the agent surface is the on-disk files" now holds for every notes operation but `rename`, and ADR 0004's clause (b) — the lock "in case MCP note tools ever return" — is answered by a CLI that takes the same lock, not by note tools.
 
+> **Amended 2026-10-18 ([ADR 0016](0016-note-capture.md)):** the `note` namespace is now **two** verbs — `rename` plus `capture`, the raw memory-note write whose naming and queue invariant the filesystem cannot own. Everything below still governs `create` / `write` / `delete`, which stay out.
+
 ## Rejected
 
 - **Keep the MCP server.** The stale-writer class is structural to a per-session server, and it already cost real data once.
