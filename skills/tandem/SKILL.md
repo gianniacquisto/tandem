@@ -70,8 +70,8 @@ It rewrites every wikilink that resolves to the note — bare, qualified, aliase
 File one **raw memory note** — a small, create-only record of a moment that would be lost when the session ends — into the hidden per-project capture layer. The body is read from **stdin** (all of it, UTF-8; empty is allowed):
 
 ```
-$ printf '# Gotcha — caret not placed\n\nThe editor opened without focus.\n' | tandem-cli note capture --kind gotcha
-{"path":"projects/tandem/.raw/ses_eafd…/20261018T140211Z-gotcha-gotcha-caret-not-placed.md"}
+$ printf '# Caret not placed\n\nThe editor opened without focus.\n' | tandem-cli note capture --kind gotcha
+{"path":"projects/tandem/.raw/ses_eafd…/20261018T140211Z-gotcha-caret-not-placed.md"}
 ```
 
 - `--kind` (required): one of `decision`, `gotcha`, `fact`, `work`, `thread` — the curated section the consolidator will fold it into.

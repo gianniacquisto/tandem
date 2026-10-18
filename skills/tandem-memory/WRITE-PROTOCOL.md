@@ -1,46 +1,43 @@
 # Write protocol — when and what to record
 
-When and what a session records, so the next session picks up without re-deriving what this one learned. The layout it writes into is [`CONVENTIONS.md`](CONVENTIONS.md); the read walk that precedes a write is [`READ-PROTOCOL.md`](READ-PROTOCOL.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill while writing every note — it is the writing discipline, not restated here.
+When and what a session records, so the next session picks up without re-deriving what this one learned. Two layers: the working agent files **raw** notes; a **consolidation pass** promotes them into the **curated** notes. This file is the working agent's cadence and the curated shape it writes toward; the pass's own protocol is [`CONSOLIDATION.md`](CONSOLIDATION.md); the layout is [`CONVENTIONS.md`](CONVENTIONS.md); the read walk is [`READ-PROTOCOL.md`](READ-PROTOCOL.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill while writing every note — it is the writing discipline, not restated here.
 
-## Cadence — eager, event-driven
+## Raw cadence — file a note at each moment
 
-Record one small edit at each qualifying moment, as it happens; never batch to session end. The moments:
+File one **raw** note at each qualifying moment, as it happens; never batch to session end. **Every agent does this, sub-agents included.**
 
-- A **non-obvious decision** — the choice plus a one-line rationale.
-- A **gotcha or hard-won fact**.
-- A **significant unit of work finished**.
-- A **Thread opened or closed**.
+```
+printf '# <short title>\n\n<1-3 lines>\n' | tandem-cli note capture --kind <kind> --project <project>
+```
 
-Plus the **closing pass**, at session end or when context nears exhaustion: refresh `Where left off`; re-derive the project's `Index` line and rewrite it **only if the status changed** — adding to `Decisions`/`Gotchas` never churns the `Index`.
+The moments and their kinds:
 
-*The notes are the compression.* A session that would compact instead ends, and the next cold-starts from the Bikeshed; eager, dense notes are what make compaction unnecessary.
+- A **non-obvious decision** — `decision`, the choice plus a one-line rationale.
+- A **gotcha or hard-won fact** — `gotcha` / `fact`.
+- A **significant unit of work finished** — `work`.
+- A **Thread opened or closed** — `thread`, the context a title cannot carry.
 
-## Qualification gate — cost of derivation
+The verb owns the kinds, the body shape (`# <short title>` then 1–3 lines), and the naming — its contract is `skills/tandem/SKILL.md`. Raw notes are **create-only** and carry **no `[[wikilinks]]`**; the consolidation pass adds those when it promotes a note.
 
-Record when the information took real effort to derive and re-deriving it would cost that effort again (tokens, exploration breadth, dead ends). Omit what the repo or environment reproduces cheaply — a lookup, a file's contents, a command's output, a tool's `--help`. Judge by **effort to create**, not wall-clock: the same fact costs a cloud model and a local model differently. Borderline → one line, never a paragraph.
+**Floor: one `work` note at session end** (or when context nears exhaustion) — what was done and where it left off. That is a sub-agent's minimum deliverable before it returns.
 
-## Correct in place; supersede a flipped decision
+**Threads stay immediate**: `tandem-cli todo add --title "…"` runs the moment a thread opens — the Todos are the authoritative live list — with a raw `thread` note for the context a title cannot carry. Closing one: `tandem-cli todo complete --id <id>`, plus a `thread` note.
 
-The covering note is the single source of truth: edit a contradicting truth into it. Facts are corrected silently; a **decision that flips** leaves one dated line so the next session does not re-litigate it — `**X** — reversed <date>: <reason>`. Never two live contradicting lines; never append-only. Correcting a note against the repo is [`READ-PROTOCOL.md`](READ-PROTOCOL.md); concurrency of the edit is [`CONCURRENCY.md`](CONCURRENCY.md)'s write boundary.
+## Qualification gate — what you'd lose when the session ends
 
-## Create vs amend
+File when the information would be **lost when the session ends** and re-deriving it would cost real effort. Raw capture is cheap, so borderline notes are welcome — omit only what the repo or environment reproduces on the next look (a command's output, a file's contents, a `--help`). The stricter cost-of-derivation gate, the ≲50/≲40 length targets, and the pruning discipline govern only what consolidation **promotes** into the curated notes; they ride on that pass, not on the moment.
 
-Amend the covering note whenever one exists. Create a new Note only when [`CONVENTIONS.md`](CONVENTIONS.md)'s granularity rule fires (2+ notes must wikilink to it, or it spans projects); placement, naming, and extending a human note are also [`CONVENTIONS.md`](CONVENTIONS.md).
+## Working agents never edit curated notes
 
-**Anchor bootstrap.** A project's first qualifying highlight creates `projects/<Project>.md` — full skeleton, `Where left off` first — **and** its `Index` line in the same write. The anchor becomes `projects/<P>/` with the anchor inside only when a second note is earned. A concurrent anchor create is [`CONCURRENCY.md`](CONCURRENCY.md)'s atomic-create case.
+`Index.md` and the curated notes under `projects/**` have exactly one writer: the consolidation pass (decision 8). Staleness a working agent notices — a note that contradicts the repo, a flipped decision, an outdated status — is captured as a raw `gotcha`/`fact` note for the consolidation pass, never patched in place ([`CONCURRENCY.md`](CONCURRENCY.md)).
 
-## Threads
+## The closing pass
 
-An **open Thread** is a Tandem Todo (`tandem-cli todo add --title "…"`) **plus** a bullet in the owning note's `## Threads`, leading with the Todo title **verbatim** and a one-clause hook for the context a title cannot carry. A **closed Thread** is `tandem-cli todo complete --id <id>` plus the bullet becoming a dated resolved one-liner.
+At session end (or when context nears exhaustion), file the floor `work` note, then **dispatch the consolidation pass** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — a distinct agent that folds this session's raw notes into the curated notes and refreshes the Index. The working session does not consolidate itself.
 
-- `- <Todo title verbatim> — <one-clause hook>`
-- `- <Todo title> — resolved <date>`
+## The curated shape — what the consolidation pass writes
 
-The Todos stay the single authoritative list of active work; the note carries only the context. Threads are plain text, never `[[wikilinks]]` — Todos are not Notes, and the link graph stays clean. Active work lives in the Todos; durable memory lives in the Notes.
-
-## The skeleton
-
-Every Note — Anchor or topic — uses this skeleton, in this order, with these exact `##` headings:
+Every curated note — project note or topic — uses this skeleton, in this order, with these exact `##` headings:
 
 ```
 # <Note name>
@@ -58,14 +55,14 @@ Every Note — Anchor or topic — uses this skeleton, in this order, with these
 - `Decisions` — one line per decision: the choice plus its rationale.
 - `Gotchas` — what cost time; the trap the next session would fall into.
 - `Facts` — expensive-to-derive facts.
-- `Threads` — as above.
+- `Threads` — as below.
 
-Targets: ≲50 lines an Anchor, ≲40 a topic — a *trigger*, not a rule. A section outgrowing its target is the signal the concept earned its own note ([`CONVENTIONS.md`](CONVENTIONS.md)). Pointers over restatement, one-line entries, no code, no step-by-step procedures.
+Correct in place: the covering note is the single source of truth — edit a contradicting truth into it. Facts are corrected silently; a **decision that flips** leaves one dated line so the next session does not re-litigate it — `**X** — reversed <date>: <reason>`. Never two live contradicting lines; never append-only. Amend the covering note; create a new one only when [`CONVENTIONS.md`](CONVENTIONS.md)'s granularity gate fires.
 
-## Prune on write
+Targets: ≲50 lines a project note, ≲40 a topic — a *trigger*, not a rule. A section outgrowing its target is the signal the concept earned its own note ([`CONVENTIONS.md`](CONVENTIONS.md)). Pointers over restatement, one-line entries, no code, no step-by-step procedures.
 
-Adding a line invites retiring one; the target stays live because every write makes room. Delete whole any line the repo or environment reproduces, a stale line, or a no-op. (The Bikeshed has no history; the dated reversal line is the stopgap.)
+**Prune on write**: adding a line invites retiring one, so the target stays live because every write makes room. Delete whole any line the repo or environment reproduces, a stale line, or a no-op. (The Bikeshed has no history; the dated reversal line is the stopgap.)
 
 ## Completion criterion
 
-A write is done when a cold session could resume from the Bikeshed alone — current state, next move, open Threads in hand — or would be strictly slower without it.
+A write is done when a cold session could resume from the Bikeshed alone — current state, next move, open Threads in hand — or would be strictly slower without it. For the working agent that means the raw notes are filed and the consolidation pass is dispatched.
