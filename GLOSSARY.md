@@ -59,7 +59,7 @@ A raw memory note an agent files with `tandem-cli note capture` as it works: a s
 _Avoid_: note (ambiguous with a curated note), log entry, scratch note
 
 **Consolidator**:
-The agent that performs a consolidation pass: the sole writer of the curated notes (`Index.md` and the notes under `projects/**`), invoked as the `consolidator` agent or the `/consolidate` command. It folds the pending raw captures in and archives them — it never writes a raw note, and no other agent writes the curated layer.
+The role that performs a consolidation pass: the agent that is the sole writer of the curated notes (`Index.md` and the notes under `projects/**`). It folds the pending raw captures in and archives them — it never writes a raw note, and no other agent writes the curated layer.
 _Avoid_: memory agent, curator, synthesizer, cleaner
 
 **Human note**:

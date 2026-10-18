@@ -1,6 +1,6 @@
 # Consolidation — from raw capture to curated notes
 
-The one writer of the curated Bikeshed: the **`consolidator`** agent — its own OpenCode agent definition, which the root session **dispatches at close** (or on demand), and which the human runs as the `/consolidate` command. It is **never** a recording sub-agent: it reads the raw capture notes every working agent filed, distills them, and archives them. The raw cadence is [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md); the layout and naming are [`CONVENTIONS.md`](CONVENTIONS.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill to every curated note.
+The one writer of the curated Bikeshed: the **consolidation agent** — a distinct, fresh agent the root session **hands the raw queue to at close** (or a human runs on demand), and **never** a recording sub-agent. It reads the raw capture notes every working agent filed, distills them, and archives them. How a given host names and launches it (its agent name, its command) is that host's own binding → [`HARNESS.md`](HARNESS.md). The raw cadence is [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md); the layout and naming are [`CONVENTIONS.md`](CONVENTIONS.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill to every curated note.
 
 It is the **only** writer of `Index.md` and the notes under `projects/**` — no working agent may touch them (decision 8). It never writes a raw note.
 

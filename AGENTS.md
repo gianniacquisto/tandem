@@ -7,6 +7,8 @@ This project's memory is the Tandem **bikeshed** (`~/.tandem/bikeshed/`), reache
 - **Orient first.** Load the `tandem-memory` skill, then read `Index.md`, the project's curated note under `projects/<project>/`, and `tandem-cli todo list`. Do this before touching project files.
 - **Record raw notes as you work.** File one with `tandem-cli note capture --kind <decision|gotcha|fact|work|thread> --project tandem` at each non-obvious decision or gotcha, and finish with one `work` note. The curated bikeshed notes have one writer — the consolidation pass — so never edit them.
 - **Brief every sub-agent the same way.** A child session starts fresh with no skill, so put the orient-and-record instruction in its brief and have it finish with one `work` raw note.
-- **Consolidate at close.** Dispatch the `consolidator` agent (`/consolidate`) to fold the raw notes into the curated notes.
+- **Consolidate at close.** Hand the raw queue to a fresh **consolidation agent** — a separate agent whose only job is to fold the raw notes into the curated notes.
+
+How a particular host names and launches the consolidation agent — its agent name, its command — belongs to that host's own configuration, not this file.
 
 The full protocol is in the skill: `SKILL.md`, `WRITE-PROTOCOL.md`, `CONSOLIDATION.md`.

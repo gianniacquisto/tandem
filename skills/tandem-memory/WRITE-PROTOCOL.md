@@ -33,7 +33,7 @@ File when the information would be **lost when the session ends** and re-derivin
 
 ## The closing pass
 
-At session end (or when context nears exhaustion), file the floor `work` note, then **dispatch the `consolidator`** agent ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — the defined pass that folds this session's raw notes into the curated notes and refreshes the Index. The human can run the same pass as `/consolidate`. The working session does not consolidate itself.
+At session end (or when context nears exhaustion), file the floor `work` note, then **hand the raw queue to the consolidation agent** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — a fresh agent, never a recording sub-agent, that folds this session's raw notes into the curated notes and refreshes the Index. The human can run the same pass on demand. The working session does not consolidate itself.
 
 ## The curated shape — what the consolidation pass writes
 
