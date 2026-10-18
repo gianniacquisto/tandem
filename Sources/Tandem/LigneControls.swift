@@ -257,7 +257,7 @@ struct LigneRow: View {
     var onReopen: () -> Void
     var onEdit: (String) -> Void
     var onDelete: () -> Void
-    /// Opens the todo's linked Bikeshed note (its vault-root-relative path). GUI-only.
+    /// Opens the todo's linked Bikeshed note (its bikeshed-root-relative path). GUI-only.
     var onOpenLink: (String) -> Void
     /// Section names for the "Move to" menu; empty (the flat case) hides it, since
     /// there is nowhere to move to. GUI-only.

@@ -3,7 +3,7 @@ import Testing
 @testable import TandemCore
 
 /// `setLink` (Operations.swift) and the additive `link` field on `Todo` — a todo may
-/// point at a Bikeshed note by vault-root-relative path, GUI-only (ADR 0010).
+/// point at a Bikeshed note by bikeshed-root-relative path, GUI-only (ADR 0010).
 @Suite("Todo links")
 struct TodoLinkTests {
 
@@ -17,7 +17,7 @@ struct TodoLinkTests {
 
     // MARK: - setLink
 
-    @Test("setLink stores a trimmed vault-relative path and it persists")
+    @Test("setLink stores a trimmed bikeshed-relative path and it persists")
     func setLinkPersists() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

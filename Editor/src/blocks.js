@@ -1,7 +1,7 @@
 // Live-preview decoration planner (spec: Editor — inline live preview).
 //
 // Pure (no DOM): given the document text, the incremental @lezer/markdown
-// tree, the bridge's vault file set, and the open note's path, it plans the
+// tree, the bridge's note file set, and the open note's path, it plans the
 // decoration set the CM6 layer renders:
 //   - replaces: inline Decoration.replace ranges — marker ranges with a
 //     widget (wikilink, checkbox, bullet, math) or empty (bare markers);

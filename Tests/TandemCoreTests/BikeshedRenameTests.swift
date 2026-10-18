@@ -12,12 +12,12 @@ import Testing
 struct BikeshedRenameTests {
 
     /// A unique temp dir, nested one level below a unique parent: the
-    /// vault's sibling lockfile (`bikeshed.lock`, ADR 0004) must not be
+    /// bikeshed's sibling lockfile (`bikeshed.lock`, ADR 0004) must not be
     /// shared between concurrent tests.
     private func tempDir() -> URL {
         let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-rename-\(UUID().uuidString)")
-        let dir = parent.appendingPathComponent("vault")
+        let dir = parent.appendingPathComponent("bikeshed")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

@@ -6,7 +6,7 @@ import Foundation
 /// string. `title` is trimmed at write time; there is no max length and duplicates
 /// are allowed. `completedAt` is `null` while the todo is open.
 ///
-/// `link` is an optional vault-root-relative path to a Bikeshed note (e.g.
+/// `link` is an optional bikeshed-root-relative path to a Bikeshed note (e.g.
 /// `projects/App.md`). Like `section`, it is **additive** to schema v1 — absent on a
 /// todo that predates it, and the envelope version does not move ([ADR 0006]).
 ///
@@ -21,7 +21,7 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
     /// renders first. A section is a name; the store's ordered `sections` list gives the
     /// order the groups render in. Absent in schema v1 (read as `nil`).
     public var section: String?
-    /// An optional link to a Bikeshed note: a vault-root-relative path like
+    /// An optional link to a Bikeshed note: a bikeshed-root-relative path like
     /// `projects/App.md`, or `nil` for an unlinked todo. Set in the GUI only ([ADR 0010]);
     /// additive to schema v1 (absent reads as `nil`).
     public var link: String?

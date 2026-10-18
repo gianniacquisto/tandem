@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// Backlinks (spec: "backlinks(path)"): the vault notes containing at least
+/// Backlinks (spec: "backlinks(path)"): the bikeshed notes containing at least
 /// one wikilink that resolves to the given note, each with the line that
 /// mentions it. Derived state, recomputed from the file set (no stored link
 /// index): one row per linking note (the line of its first resolving
@@ -12,12 +12,12 @@ import Testing
 struct BikeshedBacklinkTests {
 
     /// A unique temp dir, nested one level below a unique parent: the
-    /// vault's sibling lockfile (`bikeshed.lock`, ADR 0004) must not be
+    /// bikeshed's sibling lockfile (`bikeshed.lock`, ADR 0004) must not be
     /// shared between concurrent tests.
     private func tempDir() -> URL {
         let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-backlinks-\(UUID().uuidString)")
-        let dir = parent.appendingPathComponent("vault")
+        let dir = parent.appendingPathComponent("bikeshed")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

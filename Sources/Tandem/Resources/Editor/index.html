@@ -7,9 +7,9 @@
   Loaded by the Swift host via WKWebView.loadFileURL (spec: Editor —
   Packaging; no web workers, so file:// works). The page has no network
   access: no fetch/XHR/WebSocket/file: reads from JS — the document and
-  the vault index cross the bridge (notes/bridge-contract.md):
+  the bikeshed index cross the bridge (notes/bridge-contract.md):
 
-    Swift → JS   setDocument / insertText / revealLine / setVaultIndex / setFontSize / focusEditor
+    Swift → JS   setDocument / insertText / revealLine / setNoteIndex / setFontSize / focusEditor
     JS → Swift   loaded / dirty / link-opened / checkbox-toggled / font-size
 -->
 <html lang="en">

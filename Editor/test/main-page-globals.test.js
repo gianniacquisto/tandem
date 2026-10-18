@@ -6,14 +6,14 @@ import { syntaxTree } from "@codemirror/language";
 import {
   createEditorState,
   livePreviewState,
-  vaultNotesState,
+  noteIndexState,
   notePathState,
   NOTE_CEILING,
   CEILING_WARNING,
   setDocumentSpec,
   insertTextSpec,
   revealLineSpec,
-  setVaultIndexSpec,
+  setNoteIndexSpec,
   dirtyTextForUpdate,
 } from "../src/main.js";
 import { CeilingWarningWidget, ImageWidget } from "../src/widgets.js";
@@ -101,14 +101,14 @@ test("revealLine clamps out-of-range lines to the document", () => {
   assert.equal(revealLineSpec(empty, 7).selection.anchor, 0);
 });
 
-// -- setVaultIndex -------------------------------------------------------------------
+// -- setNoteIndex -------------------------------------------------------------------
 
-test("setVaultIndex updates the index field and re-resolves links, doc untouched", () => {
+test("setNoteIndex updates the index field and re-resolves links, doc untouched", () => {
   const st = createEditorState({ doc: "[[note]]" });
-  const tr = st.update(setVaultIndexSpec(["note.md"]));
+  const tr = st.update(setNoteIndexSpec(["note.md"]));
   const next = tr.state;
   assert.equal(tr.docChanged, false);
-  assert.deepEqual(next.field(vaultNotesState), ["note.md"]);
+  assert.deepEqual(next.field(noteIndexState), ["note.md"]);
   const w = widgetReplace(decos(next), 0);
   assert.ok(w);
   assert.equal(w.broken, false);
@@ -128,7 +128,7 @@ test("a note exactly at the ceiling does not warn (the bound is soft, not strict
   assert.equal(blockAt(decos(st), 0), undefined);
 });
 
-// -- Image targets (remote rewrite, vault resolution) ----------------------------------
+// -- Image targets (remote rewrite, bikeshed resolution) ----------------------------------
 
 test("a remote image carries a remote target (never fetched)", () => {
   const st = createEditorState({ doc: "![a](https://example.com/p.png)" });
@@ -137,11 +137,11 @@ test("a remote image carries a remote target (never fetched)", () => {
   assert.equal(img.spec.widget.target.kind, "remote");
 });
 
-test("a local image resolves against the note's folder in the vault", () => {
+test("a local image resolves against the note's folder in the bikeshed", () => {
   const st = createEditorState({ doc: "![alt](img/p.png)", notePath: "a/n.md" });
   const img = blockAt(decos(st), 0);
   assert.ok(img.spec.widget instanceof ImageWidget);
-  assert.equal(img.spec.widget.target.kind, "vault");
+  assert.equal(img.spec.widget.target.kind, "bikeshed");
   assert.equal(img.spec.widget.target.path, "a/img/p.png");
 });
 

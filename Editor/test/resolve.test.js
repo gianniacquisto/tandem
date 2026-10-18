@@ -6,7 +6,7 @@ import { resolveWikilink } from "../src/pure/resolve.js";
 // Spec: Wikilink model — Resolution.
 // Bare target: case-insensitive basename (filename minus extension) match,
 // resolving iff EXACTLY ONE note matches; zero or multiple → broken.
-// Qualified target (contains /): vault-root-relative path, same exactly-one
+// Qualified target (contains /): bikeshed-root-relative path, same exactly-one
 // rule. Duplicated names (incl. case-variant duplicates) → broken, never a
 // silently chosen match.
 
@@ -29,7 +29,7 @@ test("case-variant duplicates are ambiguous → broken", () => {
   assert.equal(resolveWikilink("a", ["a.md", "A.md"]).status, "broken");
 });
 
-test("qualified target is vault-root-relative and case-insensitive", () => {
+test("qualified target is bikeshed-root-relative and case-insensitive", () => {
   const r = resolveWikilink("FOLDER/NOTE", ["folder/note.md"]);
   assert.equal(r.status, "resolved");
   assert.equal(r.path, "folder/note.md");

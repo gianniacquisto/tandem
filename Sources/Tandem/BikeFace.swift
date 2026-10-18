@@ -85,11 +85,11 @@ struct BikeFaceView: View {
                     .padding(.horizontal, Space.gutter)
                     .padding(.top, Space.section)
             }
-            // The friendly empty state is only for a vault with *nothing* in it.
-            // A vault holding folders but no notes still shows the tree, so the
+            // The friendly empty state is only for a bikeshed with *nothing* in it.
+            // A bikeshed holding folders but no notes still shows the tree, so the
             // human can keep building the structure (and add notes inside it).
             if model.tree.isEmpty {
-                emptyVault
+                emptyBikeshed
             } else {
                 HStack(spacing: 0) {
                     BikeTreeView(model: model, palette: palette, query: $query,
@@ -273,8 +273,8 @@ struct BikeFaceView: View {
 
     // MARK: empty states (the designed ones, not errors)
 
-    /// Empty vault (the app creates the folder lazily, seeds no welcome note).
-    private var emptyVault: some View {
+    /// Empty bikeshed (the app creates the folder lazily, seeds no welcome note).
+    private var emptyBikeshed: some View {
         VStack(spacing: 18) {
             BikeScene(palette: palette, riders: false, ground: true)
                 .frame(width: 190,
@@ -283,7 +283,7 @@ struct BikeFaceView: View {
                 Text("The bikeshed is empty")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(palette.ink)
-                Text("Notes are plain markdown files in \(model.vault.directory.path) —\nadd one here, or let an agent write one.")
+                Text("Notes are plain markdown files in \(model.bikeshed.directory.path) —\nadd one here, or let an agent write one.")
                     .font(.system(size: 12))
                     .foregroundStyle(palette.inkDim)
                     .multilineTextAlignment(.center)
@@ -367,7 +367,7 @@ struct BikeFaceView: View {
             Text("Rename note")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(palette.ink)
-            Text("The vault-root-relative path (must end in .md).")
+            Text("The bikeshed-root-relative path (must end in .md).")
                 .font(.system(size: 11.5))
                 .foregroundStyle(palette.inkDim)
             TextField("Path", text: $renameText)
@@ -447,7 +447,7 @@ struct BikeTreeView: View {
             Rectangle().fill(palette.sand).frame(height: Line.hairline)
 
             // In-tree search: the field lives at the top of the sidebar;
-            // typing swaps the tree for full-vault results (debounced in the
+            // typing swaps the tree for bikeshed-wide results (debounced in the
             // model; the scan runs off-main).
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
@@ -494,7 +494,7 @@ struct BikeTreeView: View {
     }
 
     /// AnyView: the tree recurses, and `some View` can't name itself.
-    private func node(_ item: VaultNode, depth: Int) -> AnyView {
+    private func node(_ item: BikeshedNode, depth: Int) -> AnyView {
         switch item.kind {
         case .folder:
             return AnyView(
@@ -580,7 +580,7 @@ struct BikeTreeView: View {
                     Text("No matches")
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundStyle(palette.ink)
-                    Text("Nothing in the vault matches “\(query)”.")
+                    Text("Nothing in the bikeshed matches “\(query)”.")
                         .font(.system(size: 11.5))
                         .foregroundStyle(palette.inkDim)
                         .lineLimit(2)

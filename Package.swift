@@ -16,7 +16,7 @@ let package = Package(
     platforms: [.macOS(.v27)],
     dependencies: [
         // swift-markdown (Apache-2.0, cmark-gfm-backed, thread-safe persistent AST):
-        // the in-process vault index — wikilink scanning, backlinks, search (spec:
+        // the in-process bikeshed index — wikilink scanning, backlinks, search (spec:
         // "Package and modules"). Same GFM dialect the CM6 editor highlights.
         // NOTICE.txt stays in the repo root (spec: "Its NOTICE stays with the app").
         .package(url: "https://github.com/apple/swift-markdown.git", from: "0.9.0")

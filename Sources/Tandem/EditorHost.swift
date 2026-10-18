@@ -89,7 +89,7 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
         // JS → Swift: the one handler the contract names.
         webView.configuration.userContentController.add(
             self, contentWorld: .page, name: "tandem")
-        // Local images/attachments: `tandem:<vault-relative-path>`.
+        // Local images/attachments: `tandem:<bikeshed-relative-path>`.
         webView.configuration.setURLSchemeHandler(self, forURLScheme: "tandem")
         webView.navigationDelegate = self
         // The webview never leaves the bundled page (the contract's
@@ -172,9 +172,9 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
         send("revealLine(line)", arguments: ["line": line])
     }
 
-    /// `setVaultIndex(notes)` — the current file set: vault-root-relative
+    /// `setNoteIndex(notes)` — the current file set: bikeshed-root-relative
     /// paths of every note (case as on disk), sent on load and after every
-    /// vault change.
+    /// bikeshed change.
     ///
     /// Contract note: the bridge-contract note writes the payload as
     /// `[{path: string}]`, but the committed bundle (ticket 07) consumes a
@@ -182,8 +182,8 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
     /// strings and the bundle's 136/136 tests exercise that shape. The Swift
     /// side sends what the bundle consumes (the set's meaning is identical);
     /// reported as a deviation, not silent.
-    func sendVaultIndex(paths: [String]) {
-        send("setVaultIndex(notes)", arguments: ["notes": paths])
+    func sendNoteIndex(paths: [String]) {
+        send("setNoteIndex(notes)", arguments: ["notes": paths])
     }
 
     /// The Ligne day/night theme on the page's `<html>` (the bundle switches
@@ -264,9 +264,9 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
         return .cancel
     }
 
-    // MARK: WKURLSchemeHandler — `tandem:<vault-relative-path>`
+    // MARK: WKURLSchemeHandler — `tandem:<bikeshed-relative-path>`
 
-    /// Serves local images/attachments, confined to the vault root (the
+    /// Serves local images/attachments, confined to the bikeshed root (the
     /// no-network invariant: remote `http(s)` targets are rewritten by the
     /// JS before render and never reach here). A missing file → 404, which
     /// makes the bundle's `<img>` error handler swap in the broken-image
@@ -277,7 +277,7 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
             fail404(urlSchemeTask)
             return
         }
-        // The bundle renders local references as `tandem:<vault-relative-path>`;
+        // The bundle renders local references as `tandem:<bikeshed-relative-path>`;
         // absoluteString minus the scheme prefix is that path, percent-encoded.
         let prefix = "tandem:"
         var rel = url.absoluteString
@@ -285,26 +285,26 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
         rel.removeFirst(prefix.count)
 
         // Path hygiene (the contract: refuse `..` escapes) — the shared
-        // `VaultPath` rule (ADR 0008), the same one the model's link routing
+        // `BikeshedPath` rule (ADR 0008), the same one the model's link routing
         // serves.
         // Decode each component first, then judge: a percent-encoded escape
         // (`%2e%2e`) is judged as `..` and refused here, not only by the
         // containment check below (which stays as defence in depth). Empty
         // components (`//`) are refused too — the core's rule; the JS only
-        // ever emits well-formed vault-relative paths, so this only changes
+        // ever emits well-formed bikeshed-relative paths, so this only changes
         // malformed-input handling (404 where the double slash was a no-op).
         let components = rel.split(separator: "/", omittingEmptySubsequences: false)
             .map(String.init)
             .map { $0.removingPercentEncoding ?? $0 }
-        guard let fileURL = VaultPath.url(
-            under: model.vault.directory,
+        guard let fileURL = BikeshedPath.url(
+            under: model.bikeshed.directory,
             for: components.joined(separator: "/")
         ) else {
             fail404(urlSchemeTask)
             return
         }
-        // Containment: the resolved path must stay under the vault root.
-        let root = model.vault.directory.standardizedFileURL.path
+        // Containment: the resolved path must stay under the bikeshed root.
+        let root = model.bikeshed.directory.standardizedFileURL.path
         guard fileURL.standardizedFileURL.path.hasPrefix(root + "/") else {
             fail404(urlSchemeTask)
             return
@@ -319,7 +319,7 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
             return
         }
 
-        // No-store: the vault is live (agents write while the app runs), so
+        // No-store: the bikeshed is live (agents write while the app runs), so
         // a stale cached image must not survive a file change.
         guard let response = HTTPURLResponse(
             url: url,

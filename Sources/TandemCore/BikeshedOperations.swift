@@ -15,11 +15,11 @@ extension Bikeshed {
 
     // MARK: - list
 
-    /// `list()`: the vault tree — nested folders + `.md` notes, folders
+    /// `list()`: the bikeshed tree — nested folders + `.md` notes, folders
     /// first, alphabetical within each level. Hidden files, non-`.md`
-    /// attachments, and the lockfile (outside the vault) are excluded. A
-    /// missing vault folder is an empty tree, never an error. Lock-free.
-    public func list() throws -> OperationResult<[VaultNode]> {
+    /// attachments, and the lockfile (outside the bikeshed) are excluded. A
+    /// missing bikeshed folder is an empty tree, never an error. Lock-free.
+    public func list() throws -> OperationResult<[BikeshedNode]> {
         return OperationResult(tree())
     }
 
@@ -88,7 +88,7 @@ extension Bikeshed {
     // MARK: - write
 
     /// `write(path, text)`: the autosave path — an atomic write under the
-    /// vault lock, storing exactly the bytes given (the core never parses
+    /// bikeshed lock, storing exactly the bytes given (the core never parses
     /// note text; frontmatter passes through untouched). Creates parent
     /// folders and, for a not-yet-existing path, applies the full naming
     /// validation; an existing path (including pre-existing name violators)
@@ -122,8 +122,8 @@ extension Bikeshed {
     // MARK: - rename
 
     /// `rename(from, to)`: change a note's path (rename = move) with link
-    /// rewrite (ADR 0005). One transaction under the vault lock: first
-    /// rewrite every `[[wikilink]]` in the vault that resolves to the old
+    /// rewrite (ADR 0005). One transaction under the bikeshed lock: first
+    /// rewrite every `[[wikilink]]` in the bikeshed that resolves to the old
     /// path — every form (bare, qualified, aliased, fragment, any split
     /// order), in every note including the note itself — re-canonicalised
     /// against the post-rename file set (bare when the new basename is
@@ -186,7 +186,7 @@ extension Bikeshed {
     // MARK: - delete
 
     /// `delete(path)`: removes the note — or folder, recursively — from the
-    /// vault under the lock. A permanent primitive that rewrites nothing:
+    /// bikeshed under the lock. A permanent primitive that rewrites nothing:
     /// links to a deleted note become broken (no tombstones, ADR 0004). The
     /// GUI performs the macOS Trash move (recoverable) ahead of this; this is
     /// the fallback the Trash move falls back to. A missing path throws
@@ -216,8 +216,8 @@ extension Bikeshed {
     /// parses it). One row per note, not per match; a title hit wins and
     /// shows the first line; a body hit shows a snippet around the first
     /// match (±40 chars, whitespace collapsed, ellipses at sliced edges,
-    /// original case). Sorted by vault path. An empty or whitespace-only
-    /// query yields no results; a missing vault is an empty result.
+    /// original case). Sorted by bikeshed path. An empty or whitespace-only
+    /// query yields no results; a missing bikeshed is an empty result.
     /// Lock-free.
     public func search(query: String) throws -> OperationResult<[SearchHit]> {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -241,7 +241,7 @@ extension Bikeshed {
 
     // MARK: - backlinks
 
-    /// `backlinks(path)`: the vault notes containing at least one wikilink
+    /// `backlinks(path)`: the bikeshed notes containing at least one wikilink
     /// that resolves to the given note — one row per linking note, each with
     /// the line of its first resolving wikilink (self-links included; broken
     /// links, code, and embeds contribute nothing). Derived state, recomputed
@@ -274,10 +274,10 @@ extension Bikeshed {
     // MARK: - resolve (wikilink target)
 
     /// `resolve(target)`: where a wikilink target points, computed live from
-    /// the current vault file set — derived state, no stored link index
+    /// the current bikeshed file set — derived state, no stored link index
     /// (spec: wikilink model). A bare target (no `/`) matches a note
     /// basename with the `.md` off; a qualified target matches the
-    /// vault-root-relative path with the `.md` off. Case-insensitive, with or
+    /// bikeshed-root-relative path with the `.md` off. Case-insensitive, with or
     /// without a trailing `.md` on the target. Exactly one match →
     /// `.resolved`; zero or multiple → `.broken`. Attachments (non-`.md`) are
     /// never linkable. Lock-free.
@@ -289,7 +289,7 @@ extension Bikeshed {
 
     /// `links(in: text)`: every wikilink occurrence in a note's text — the
     /// token's range (brackets included), its parsed form, where it resolves
-    /// against the current vault, and the line it sits on. Scanner rules
+    /// against the current bikeshed, and the line it sits on. Scanner rules
     /// (spec: wikilink model): the first `]]` on the same line closes a `[[`
     /// (a newline before the close makes the `[[` literal text); a `[[`
     /// immediately preceded by `!` (an embed) is literal text; and anything
@@ -313,9 +313,9 @@ private struct WikilinkToken {
 
 /// A note set pre-indexed for wikilink resolution: built once per scan,
 /// then each target is a dictionary lookup instead of a full walk — a
-/// vault-wide scan resolves one link per note against every note, which is
+/// bikeshed-wide scan resolves one link per note against every note, which is
 /// quadratic without the index. Bare targets index on the lowercased
-/// basename (`.md` off); qualified targets on the lowercased vault path
+/// basename (`.md` off); qualified targets on the lowercased bikeshed path
 /// (`.md` off).
 private struct NoteIndex {
     private let bare: [String: [String]]
@@ -340,7 +340,7 @@ private struct NoteIndex {
     /// The shared resolution rule (backlinks, rename-rewrite, and the
     /// public `resolve` all use it): exactly one note whose name matches
     /// the target — bare targets (no `/`) against the basename, qualified
-    /// targets against the vault-root-relative path — case-insensitive,
+    /// targets against the bikeshed-root-relative path — case-insensitive,
     /// with or without a trailing `.md` on the target. Zero or multiple
     /// matches → a broken link.
     func resolve(_ target: String) -> LinkResolution {
@@ -504,7 +504,7 @@ private extension Bikeshed {
 
     /// The canonical wikilink target for a renamed note against the
     /// post-rename file set: the bare basename (`.md` off, on-disk case)
-    /// when that basename is unique there, the vault-root-relative path
+    /// when that basename is unique there, the bikeshed-root-relative path
     /// (`.md` off) when it is not.
     static func canonicalLinkTarget(
         for newPath: String,

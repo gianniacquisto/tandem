@@ -15,11 +15,11 @@ import Testing
 struct BikeshedConflictTests {
 
     private func tempDir() -> URL {
-        /// Nested one level below a unique parent so the vault's sibling
+        /// Nested one level below a unique parent so the bikeshed's sibling
         /// lockfile (`bikeshed.lock`) is never shared between concurrent tests.
         let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-conflict-\(UUID().uuidString)")
-        let dir = parent.appendingPathComponent("vault")
+        let dir = parent.appendingPathComponent("bikeshed")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

@@ -60,10 +60,10 @@ public struct Wikilink: Sendable, Equatable {
     }
 }
 
-/// Where a wikilink target resolves, computed live from the current vault
+/// Where a wikilink target resolves, computed live from the current bikeshed
 /// file set — derived state, no stored link index (spec: wikilink model).
 public enum LinkResolution: Sendable, Equatable {
-    /// Exactly one note matches; `path` is its vault-root-relative path.
+    /// Exactly one note matches; `path` is its bikeshed-root-relative path.
     case resolved(path: String)
     /// Zero or multiple matches: a broken link.
     case broken

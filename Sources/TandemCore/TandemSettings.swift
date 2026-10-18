@@ -2,14 +2,14 @@ import Foundation
 import Darwin
 
 /// The persisted, human-chosen settings Tandem keeps beside its other state:
-/// today just the notes vault, in `<TandemHome.directory>/settings.json`
-/// (ADR 0011, "A chosen vault"). One tiny `{"vaultPath": "<absolute path>"}`
-/// record, deliberately separate from the store schema and the vault itself —
+/// today just the bikeshed, in `<TandemHome.directory>/settings.json`
+/// (ADR 0011). One tiny `{"bikeshedPath": "<absolute path>"}`
+/// record, deliberately separate from the store schema and the bikeshed itself —
 /// a settings file is not domain data, and a new setting is one more key, not
 /// a schema version bump.
 ///
 /// The key is **absent when no choice was ever made**, which is the default
-/// state: `chosenVault()` returning `nil` means "wherever the default is"
+/// state: `chosenBikeshed()` returning `nil` means "wherever the default is"
 /// (`<home>/bikeshed`; see `Bikeshed.init()`). Reads never create the file and
 /// never throw — a missing, unreadable, or malformed file is simply "no
 /// choice" (`nil`), because a broken settings file must never take the app
@@ -17,46 +17,46 @@ import Darwin
 /// atomically (a same-directory temp file + `rename(2)`).
 public enum TandemSettings {
 
-    /// The key inside `settings.json` holding the chosen vault's absolute path.
-    private static let vaultKey = "vaultPath"
+    /// The key inside `settings.json` holding the chosen bikeshed's absolute path.
+    private static let bikeshedKey = "bikeshedPath"
     /// The settings file's name, under `TandemHome.directory`.
     private static let fileName = "settings.json"
 
-    /// The human's chosen vault, or `nil` when none was chosen (or the file is
+    /// The human's chosen bikeshed, or `nil` when none was chosen (or the file is
     /// missing, unreadable, or malformed). Reads the real
     /// `TandemHome.directory`; returns a standardized absolute URL.
-    public static func chosenVault() -> URL? {
-        chosenVault(in: TandemHome.directory)
+    public static func chosenBikeshed() -> URL? {
+        chosenBikeshed(in: TandemHome.directory)
     }
 
-    /// Persist `url` as the chosen vault, writing `settings.json` atomically
+    /// Persist `url` as the chosen bikeshed, writing `settings.json` atomically
     /// under the real `TandemHome.directory`.
-    public static func setChosenVault(_ url: URL) throws {
-        try setChosenVault(url, in: TandemHome.directory)
+    public static func setChosenBikeshed(_ url: URL) throws {
+        try setChosenBikeshed(url, in: TandemHome.directory)
     }
 
-    /// The testable seam: `chosenVault()` against an explicit home directory,
+    /// The testable seam: `chosenBikeshed()` against an explicit home directory,
     /// so tests never read or write the process's real home.
-    static func chosenVault(in home: URL) -> URL? {
+    static func chosenBikeshed(in home: URL) -> URL? {
         let file = home.appendingPathComponent(fileName)
         guard let data = try? Data(contentsOf: file),
               let json = try? JSONSerialization.jsonObject(with: data),
               let object = json as? [String: Any],
-              let path = object[vaultKey] as? String,
+              let path = object[bikeshedKey] as? String,
               !path.isEmpty
         else { return nil }
         return URL(fileURLWithPath: path).standardizedFileURL
     }
 
-    /// The testable seam: `setChosenVault(_:)` against an explicit home
+    /// The testable seam: `setChosenBikeshed(_:)` against an explicit home
     /// directory. Creates `home` if needed, then writes a same-directory temp
     /// file and `rename(2)`s it over `settings.json` — a reader ever sees the
     /// complete old or new file, never a torn one.
-    static func setChosenVault(_ url: URL, in home: URL) throws {
+    static func setChosenBikeshed(_ url: URL, in home: URL) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: home, withIntermediateDirectories: true)
         let data = try JSONSerialization.data(
-            withJSONObject: [vaultKey: url.standardizedFileURL.path],
+            withJSONObject: [bikeshedKey: url.standardizedFileURL.path],
             options: [.sortedKeys])
         let destination = home.appendingPathComponent(fileName)
         let temp = home.appendingPathComponent(".settings-\(UUID().uuidString).tmp")

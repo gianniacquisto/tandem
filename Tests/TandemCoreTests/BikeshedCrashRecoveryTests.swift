@@ -15,12 +15,12 @@ import Testing
 struct BikeshedCrashRecoveryTests {
 
     /// A unique temp dir, nested one level below a unique parent: the
-    /// vault's sibling lockfile (`bikeshed.lock`, ADR 0004) must not be
+    /// bikeshed's sibling lockfile (`bikeshed.lock`, ADR 0004) must not be
     /// shared between concurrent tests.
     private func tempDir() -> URL {
         let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-bikeshed-crash-\(UUID().uuidString)")
-        let dir = parent.appendingPathComponent("vault")
+        let dir = parent.appendingPathComponent("bikeshed")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -79,7 +79,7 @@ struct BikeshedCrashRecoveryTests {
         }
     }
 
-    @Test("re-running the crashed rename self-heals the vault")
+    @Test("re-running the crashed rename self-heals the bikeshed")
     func reRunSelfHeals() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
