@@ -75,4 +75,70 @@ struct TandemSettingsTests {
         try Data(#"{"somethingElse": 1}"#.utf8).write(to: settingsFile(in: home))
         #expect(TandemSettings.chosenBikeshed(in: home) == nil)
     }
+
+    // MARK: - First-run setup flag
+
+    @Test("no settings file → setup not complete (the default)")
+    func setupDefaultIsFalse() {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        #expect(TandemSettings.setupComplete(in: home) == false)
+    }
+
+    @Test("setting then getting round-trips the setup flag")
+    func setupRoundTrip() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setSetupComplete(true, in: home)
+        #expect(TandemSettings.setupComplete(in: home))
+    }
+
+    @Test("a false setup flag stays false")
+    func setupExplicitFalse() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setSetupComplete(true, in: home)
+        try TandemSettings.setSetupComplete(false, in: home)
+        #expect(TandemSettings.setupComplete(in: home) == false)
+    }
+
+    @Test("the two settings coexist: a bikeshed choice survives the setup write")
+    func setupWriteKeepsBikeshed() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let chosen = home.appendingPathComponent("Notes")
+        try TandemSettings.setChosenBikeshed(chosen, in: home)
+        try TandemSettings.setSetupComplete(true, in: home)
+        #expect(TandemSettings.chosenBikeshed(in: home) == chosen.standardizedFileURL)
+        #expect(TandemSettings.setupComplete(in: home))
+    }
+
+    @Test("the two settings coexist: the setup flag survives a bikeshed write")
+    func bikeshedWriteKeepsSetup() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setSetupComplete(true, in: home)
+        let chosen = home.appendingPathComponent("Notes")
+        try TandemSettings.setChosenBikeshed(chosen, in: home)
+        #expect(TandemSettings.setupComplete(in: home))
+        #expect(TandemSettings.chosenBikeshed(in: home) == chosen.standardizedFileURL)
+    }
+
+    @Test("a corrupt settings file reads as setup not complete, never a crash")
+    func corruptFileIsNotComplete() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try Data("not json at all".utf8).write(to: settingsFile(in: home))
+        #expect(TandemSettings.setupComplete(in: home) == false)
+    }
+
+    @Test("valid JSON without the setup key reads as not complete")
+    func missingSetupKeyIsFalse() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try Data(#"{"bikeshedPath": "/tmp/Notes"}"#.utf8).write(to: settingsFile(in: home))
+        #expect(TandemSettings.setupComplete(in: home) == false)
+    }
 }
