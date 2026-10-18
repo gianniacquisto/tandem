@@ -57,9 +57,9 @@ Every curated note — project note or topic — uses this skeleton, in this ord
 - `Facts` — expensive-to-derive facts.
 - `Threads` — as below.
 
-Correct in place: the covering note is the single source of truth — edit a contradicting truth into it. Facts are corrected silently; a **decision that flips** leaves one dated line so the next session does not re-litigate it — `**X** — reversed <date>: <reason>`. Never two live contradicting lines; never append-only. Amend the covering note; create a new one only when [`CONVENTIONS.md`](CONVENTIONS.md)'s granularity gate fires.
+Correct in place: the covering note is the single source of truth — edit a contradicting truth into it. Facts are corrected silently; a **decision that flips** leaves one dated line so the next session does not re-litigate it — `**X** — reversed <date>: <reason>`. Never two live contradicting lines; never append-only. Amend the covering note; create a new one only when [`CONVENTIONS.md`](CONVENTIONS.md)'s coherence test fires.
 
-Targets: ≲50 lines a project note, ≲40 a topic — a *trigger*, not a rule. A section outgrowing its target is the signal the concept earned its own note ([`CONVENTIONS.md`](CONVENTIONS.md)). Pointers over restatement, one-line entries, no code, no step-by-step procedures.
+Targets: ≲50 lines a project note, ≲40 a topic — a *trigger*, not a rule. A **project note is an overview**, so its ≲50 lines are an index budget, kept small by **linking out**, not by compressing subsystem detail. When a section outgrows its target **or** a coherent subsystem appears ([`CONVENTIONS.md`](CONVENTIONS.md)), the pass **creates the subsystem note and links it from the project note** — it never deepens the project note past its overview role. Pointers over restatement, one-line entries, no code, no step-by-step procedures.
 
 **Prune on write**: adding a line invites retiring one, so the target stays live because every write makes room. Delete whole any line the repo or environment reproduces, a stale line, or a no-op. (The Bikeshed has no history; the dated reversal line is the stopgap.)
 

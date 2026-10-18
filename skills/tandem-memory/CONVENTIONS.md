@@ -55,7 +55,9 @@ The Index stays honest by being derived, never authored: a note's Index line is 
 
 ## Granularity and links
 
-A concept **earns its own topic note** when two or more notes must link to it, or it spans projects. Otherwise it is a section in the most relevant note; a section outgrowing its length target is the signal that the concept earned a note (targets in [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md)). Creating that note is the consolidation pass's call.
+A **coherent topic earns its own note**. The test is **topical coherence** — the concept carries its own vocabulary and its own durable decisions and gotchas — *not* how many notes link it yet. A subsystem inside one project qualifies as readily as a cross-project concept; write it down the moment it is coherent, before the links arrive. Placement follows ownership: a concept one project owns lives at `projects/<project>/<Anchor>.md`; a cross-project concept lives at `topics/<Topic>.md`. Creating that note is the consolidation pass's call.
+
+The **project note is the project's overview and index**: it holds the current state, the next move, and links out to its own notes. Subsystem detail lives in the note that owns it, so the project note never accumulates it. One concept, one note.
 
 Wikilinks live **only in curated notes**, and the consolidation pass is the only thing that writes them — a raw note carries none, so the graph has one writer. A curated note **wikilinks out** to every existing note it mentions by name. A broken `[[link]]` is written only when you create its target in the same breath; a one-off mention stays plain text. Outbound links are the writer's to maintain; the inbound side is derived (**backlinks**).
 

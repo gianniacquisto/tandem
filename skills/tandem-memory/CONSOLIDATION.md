@@ -16,14 +16,20 @@ Read every pending file — the **whole** queue, not a session's slice. Group by
 
 ## Write the curated notes
 
-For each project, fold its notes into the covering curated note — the project folder's note that owns the moment — with `decision` → `Decisions`, `gotcha` → `Gotchas`, `fact`/`work` → `Facts` / `Where left off`, `thread` → `Threads`. Use the skeleton, one-line entries, and length targets in [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md).
+For each project, **route each raw note to the narrowest note that owns it** — never pour it into the project note. The kind picks the section: `decision` → `Decisions`, `gotcha` → `Gotchas`, `fact` → `Facts`, `work` → `Where left off`, `thread` → `Threads`. Use the skeleton, one-line entries, and length targets in [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md).
+
+Route each moment in this order:
+
+1. **Narrowest owner first.** Write it into the narrowest existing note whose topic it belongs to — a subsystem note before the project note.
+2. **Coherent subsystem or topic, no note?** A moment that has found its own vocabulary, decisions, or gotchas ([`CONVENTIONS.md`](CONVENTIONS.md)) **earns that note**: create it with the full skeleton, at the placement CONVENTIONS fixes, and wikilink it from the note that covers it (its project note, or the Index `Topics`).
+3. **Overgrown note?** A note whose section has outgrown its target is **split** into the subsystem note it now describes — never appended to past the target.
+4. **A project note stays an overview and index** — current state plus links to its notes; it never becomes a changelog, and subsystem detail lives in the note that owns it.
 
 - **Refresh `Where left off`** from the session's `work` notes: current state and next move.
 - **Add `Threads` bullets** for open `thread` notes — Todo title verbatim plus a one-clause hook — and mark resolved ones.
 - **Create the project note** (full skeleton, `Where left off` first) when the project has none. A concurrent create is the atomic case in [`CONCURRENCY.md`](CONCURRENCY.md).
-- **Create a topic note** only when [`CONVENTIONS.md`](CONVENTIONS.md)'s granularity gate fires (2+ notes must link it, or it spans projects); otherwise it stays a section.
 - **`Index.md`** — re-derive the project's one-line status and rewrite it **only if the status changed**; adding to `Decisions`/`Gotchas` never churns the Index.
-- **Link** — a curated note wikilinks out to every existing note it mentions by name. A raw note carries none; adding links is this pass's job.
+- **Link** — every note this pass writes wikilinks out to each existing note it names. A raw note carries none; adding links is this pass's job.
 
 Write behind the boundary ([`CONCURRENCY.md`](CONCURRENCY.md)): re-read → minimal patch → write, prune on write. Never invent state the raw notes do not support.
 
