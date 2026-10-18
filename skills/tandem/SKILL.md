@@ -74,7 +74,7 @@ $ printf '# Caret not placed\n\nThe editor opened without focus.\n' | tandem-cli
 {"path":"projects/tandem/.raw/ses_eafd…/20261018T140211Z-gotcha-caret-not-placed.md"}
 ```
 
-- `--kind` (required): one of `decision`, `gotcha`, `fact`, `work`, `thread` — the curated section the consolidator will fold it into.
+- `--kind` (required): one of `decision`, `gotcha`, `fact`, `work`, `thread` — the curated section the consolidation pass folds it into.
 - `--project` (optional): the project folder; defaults to the working directory's last path component (`…/projects/tandem` → `tandem`).
 - `--session` (optional): defaults to `$OPENCODE_SESSION_ID`, else a short generated token.
 
