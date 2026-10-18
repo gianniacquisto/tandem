@@ -20,8 +20,9 @@ final class BikeshedModel {
 
     /// The only vault logic the GUI holds (a core value; all note semantics —
     /// locking, atomic writes, link rewrite, resolution — live in TandemCore).
-    let vault: Bikeshed
-    private let watcher: VaultWatcher
+    /// Replaced whole by `switchVault(to:)`.
+    private(set) var vault: Bikeshed
+    private var watcher: VaultWatcher
 
     // MARK: Tree + selection + search
 
@@ -116,6 +117,41 @@ final class BikeshedModel {
         backlinkRun?.cancel()
     }
     // (Tasks capture `self` weakly; a deallocated model leaves them no-ops.)
+
+    // MARK: - Vault switch (the human's chosen folder, applied live)
+
+    /// Switch the notes vault to `url` with no restart: flush the open note,
+    /// persist the choice, rebuild the vault and its recursive watcher, and
+    /// reset the editor to the no-note-selected state. A no-op when `url` is
+    /// already the vault; frozen while a conflict is pending (the banner's
+    /// choice must be resolved first — mirroring `open`). A failure to record
+    /// the choice surfaces the error and leaves the current vault watching.
+    func switchVault(to url: URL) {
+        guard !conflict,
+              url.standardizedFileURL != vault.directory.standardizedFileURL
+        else { return }
+        flushSave()
+        watcher.stop()
+        do {
+            try TandemSettings.setChosenVault(url)
+        } catch {
+            apply(error: error)
+            watcher.start()   // the old vault is still in place: keep watching it
+            return
+        }
+        let home = TandemHome.directory
+        vault = Bikeshed(
+            directory: url,
+            lockURL: home.appendingPathComponent("bikeshed.lock"))
+        expandedFolders = []
+        closeNote(silent: false)
+        watcher = VaultWatcher(directory: vault.directory)
+        watcher.onEvent = { [weak self] in self?.vaultChanged($0) }
+        reloadTree()
+        watcher.start()
+        editor.sendVaultIndex(paths: notePaths())
+        lastError = nil
+    }
 
     // MARK: - Tree / derived state
 
@@ -262,6 +298,9 @@ final class BikeshedModel {
             openPath = path
             editor.sendDocument(bufferText, notePath: path)
             editor.sendVaultIndex(paths: notePaths())
+            // The human asked for this note — put the caret in it, so typing
+            // works without a click into the pane first.
+            editor.focusEditor()
             lastError = nil
             refreshBacklinks()
         } catch {
@@ -304,6 +343,31 @@ final class BikeshedModel {
             lastError = nil
             reloadTree()
             open(name)
+        } catch {
+            apply(error: error)
+        }
+    }
+
+    /// "New folder": an empty folder inside `parent` (`nil` / `""` = the vault
+    /// root) with a collision-free name, then expand `parent` so it shows.
+    /// Mirrors `createNote(in:)`. Folder rename/move is out of scope — a note
+    /// moves via the Rename… sheet (rename IS the path change); an empty
+    /// folder is harmless to wikilink resolution (it resolves by basename).
+    func createFolder(in parent: String? = nil) {
+        guard !conflict else { return }
+        let prefix = parent.map { $0 + "/" } ?? ""
+        let taken = Set(treeChildren(of: parent ?? "").map { $0.name.lowercased() })
+        var name = "New Folder"
+        var n = 2
+        while taken.contains(name.lowercased()) {
+            name = "New Folder \(n)"
+            n += 1
+        }
+        do {
+            _ = try vault.createFolder(path: prefix + name).value
+            lastError = nil
+            reloadTree()
+            if let parent, !parent.isEmpty { expandedFolders.insert(parent) }
         } catch {
             apply(error: error)
         }
@@ -399,6 +463,9 @@ final class BikeshedModel {
         editor.sendVaultIndex(paths: notePaths())
         if let path = openPath {
             editor.sendDocument(bufferText, notePath: path)
+            // The note was selected before the page finished loading (the
+            // usual cold-start path) — the caret belongs in it.
+            editor.focusEditor()
         }
     }
 

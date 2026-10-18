@@ -32,7 +32,11 @@ export const ligneTheme = [
       "&": {
         backgroundColor: "var(--paper)",
         color: "var(--ink)",
-        fontSize: "13.5px",
+        // The note font size — set on the editor root by the toolbar's
+        // font-size control (default 13.5px in style.css) and persisted
+        // across launches via the bridge. Not a literal here so the whole
+        // pane scales as one.
+        fontSize: "var(--tandem-editor-font-size)",
         height: "100%",
       },
       ".cm-scroller": {
@@ -46,6 +50,9 @@ export const ligneTheme = [
         margin: "0 auto",
         padding: "0 28px",
         caretColor: "var(--ink)",
+        // An unbreakable run (a long URL, an endless word) wraps instead of
+        // forcing a horizontal scrollbar.
+        overflowWrap: "anywhere",
       },
       ".cm-line": {
         padding: "0 2px",

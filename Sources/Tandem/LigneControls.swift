@@ -149,6 +149,39 @@ struct LigneQuickAdd: View {
     }
 }
 
+// MARK: search — magnifying-glass · plain field, one hairline (the sidebar's in-tree look)
+
+/// The Todos-face search field: a magnifying glass, a plain `TextField` on
+/// parchment with one `line` hairline, `Radius.control` — visually the same
+/// field as the Bikeshed sidebar's in-tree search. It is a pure view filter:
+/// it narrows what is drawn and never touches the store.
+struct LigneSearchField: View {
+    @Binding var text: String
+    var palette: Palette
+    var focus: FocusState<Bool>.Binding
+    var height: CGFloat = Space.control
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundStyle(palette.inkDim)
+            TextField("Search todos…", text: $text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12.5))
+                .foregroundStyle(palette.ink)
+                .focused(focus)
+        }
+        .padding(.horizontal, 11)
+        .frame(height: height)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
+        .overlay(RoundedRectangle(cornerRadius: Radius.control)
+            .strokeBorder(palette.line, lineWidth: Line.hairline))
+        .help("Filter todos by title (⌘F)")
+    }
+}
+
 // MARK: row — checkbox · title · hover delete (GUI-only)
 
 /// Which half of a row a dragged todo was dropped on. The row's own height decides
@@ -215,6 +248,8 @@ struct RowDragAndDrop: ViewModifier {
 /// (agents have no delete in the CLI). Rows drag to reorder and to move
 /// between sections when the caller passes `onDropTodo`, and the context menu's
 /// "Move to" files one into a section at any scroll position.
+/// A linked todo (`todo.link`) shows a quiet trailing paperclip that opens the note,
+/// with "Link to note…" / "Remove link" in the context menu (GUI-only, ADR 0010).
 struct LigneRow: View {
     var todo: Todo
     var palette: Palette
@@ -222,10 +257,16 @@ struct LigneRow: View {
     var onReopen: () -> Void
     var onEdit: (String) -> Void
     var onDelete: () -> Void
+    /// Opens the todo's linked Bikeshed note (its vault-root-relative path). GUI-only.
+    var onOpenLink: (String) -> Void
     /// Section names for the "Move to" menu; empty (the flat case) hides it, since
     /// there is nowhere to move to. GUI-only.
     var sections: [String] = []
     var onMoveToSection: ((String?) -> Void)? = nil
+    /// Opens the note picker to link this todo to a note. `nil` hides the item.
+    var onSetLink: (() -> Void)? = nil
+    /// Clears this todo's link. `nil` hides the item.
+    var onClearLink: (() -> Void)? = nil
     /// Called when another row is dropped on this one, with which half. `nil`
     /// leaves the row undraggable.
     var onDropTodo: ((_ draggedID: String, _ edge: DropEdge) -> Void)? = nil
@@ -267,6 +308,20 @@ struct LigneRow: View {
 
             Spacer(minLength: 8)
 
+            // The link affordance: a quiet paperclip, drawn only when the todo is
+            // linked. Clicking it opens the note (the GUI never reads note content).
+            if let link = todo.link {
+                Button { onOpenLink(link) } label: {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 11))
+                        .foregroundStyle(palette.inkDim)
+                        .frame(width: 16, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open note: \(link)")
+            }
+
             // fixed slot so nothing shifts when the delete appears
             ZStack {
                 if hovering {
@@ -289,6 +344,13 @@ struct LigneRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .contextMenu {
+            if let link = todo.link {
+                Button("Open note") { onOpenLink(link) }
+                if let onSetLink { Button("Link to note…", action: onSetLink) }
+                if let onClearLink { Button("Remove link", action: onClearLink) }
+            } else if let onSetLink {
+                Button("Link to note…", action: onSetLink)
+            }
             if let onMoveToSection, !sections.isEmpty {
                 Menu("Move to") {
                     moveItem("Uncategorized", target: nil, action: onMoveToSection)

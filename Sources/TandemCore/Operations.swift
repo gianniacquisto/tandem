@@ -215,6 +215,31 @@ extension Store {
         return OperationResult(todo, note: note)
     }
 
+    // MARK: - setLink (GUI-only — no CLI verb)
+
+    /// `setLink(id, to:)`: points a todo at a Bikeshed note (a vault-root-relative path
+    /// like `projects/App.md`), or clears the link with `nil`. The link is trimmed; an
+    /// empty/whitespace-only value unlinks. GUI-only, with no CLI verb (the agent surface
+    /// stays `list`/`add`/`complete`). An unchanged link is a no-op (nothing written).
+    /// `title`, `done`, `completedAt` and the section are untouched, and the stored order
+    /// is never changed. An unknown id throws `DomainError.unknownID` carrying the full
+    /// current open list.
+    public func setLink(_ id: String, to rawLink: String?) throws -> OperationResult<Todo> {
+        let trimmed = rawLink?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let link = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
+            guard let uuid = UUID(uuidString: id),
+                  let i = contents.todos.firstIndex(where: { $0.id == uuid })
+            else {
+                throw DomainError.unknownID(id: id, open: contents.todos.filter { !$0.done })
+            }
+            let changed = contents.todos[i].link != link
+            if changed { contents.todos[i].link = link }
+            return (contents.todos[i], changed)
+        }
+        return OperationResult(todo, note: note)
+    }
+
     // MARK: - reopen
 
     /// `reopen(id)`: the inverse of `complete` — GUI-only, with no CLI verb (the agent

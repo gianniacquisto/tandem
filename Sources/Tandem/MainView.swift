@@ -11,6 +11,8 @@ import TandemCore
 ///               "Clear done" (disabled when nothing is done), and the
 ///               stored-order list grouped by section. Only named sections draw
 ///               a header — the ungrouped todos are just the top of the list.
+///               A search field (⌘F) narrows the drawn rows by title, across
+///               every section; Escape clears it (or dismisses a banner).
 ///               Double-click a name to rename; its ⋯ menu moves the section up
 ///               or down, or deletes it, which ungroups its todos rather than
 ///               deleting them.
@@ -31,8 +33,10 @@ struct MainView: View {
 
     @State private var quickAdd = ""
     @State private var filter: Filter = .open
+    @State private var search = ""
     @State private var tab: MainTab = .todos
     @FocusState private var quickAddFocused: Bool
+    @FocusState private var searchFocused: Bool
 
     // Section chrome: the inline "name a new section" field, and the inline rename.
     @State private var addingSection = false
@@ -40,6 +44,10 @@ struct MainView: View {
     @State private var renamingSection: String?
     @State private var renameDraft = ""
     @FocusState private var sectionFocused: Bool
+
+    // The todo being linked to a note, and the picker's filter text.
+    @State private var linkPickerFor: Todo?
+    @State private var linkFilter = ""
 
     private var palette: Palette { Palette.forScheme(colorScheme) }
 
@@ -60,6 +68,9 @@ struct MainView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minWidth: 760, minHeight: 560)
         .modifier(TandemShortcuts(filter: $filter, focusQuickAdd: $quickAddFocused))
+        .sheet(item: $linkPickerFor) { todo in
+            linkSheet(todo)
+        }
         .onAppear {
             // Let the menu bar item's "Open Tandem" focus (or reopen) this window.
             WindowManager.shared.openMain = { openWindow(id: "main") }
@@ -111,12 +122,26 @@ struct MainView: View {
             }
             .padding(.horizontal, Space.gutter)
             .padding(.top, Space.section)
+            // View-only search: it narrows what is drawn (case-insensitive on the
+            // title, across every section and the current Open/Done/All filter).
+            // It never re-sorts or mutates the store.
+            LigneSearchField(text: $search, palette: palette, focus: $searchFocused)
+                .padding(.horizontal, Space.gutter)
+                .padding(.top, Space.section)
             recoveryBanner
             errorBanner
             Rectangle().fill(palette.sand).frame(height: Line.hairline)
                 .padding(.top, Space.section)
             listArea
         }
+        .modifier(TodosShortcuts(
+            search: $search,
+            focusSearch: $searchFocused,
+            hasBanner: model.recoveryNote != nil || model.lastError != nil,
+            dismissBanners: {
+                model.dismissRecoveryNote()
+                model.dismissError()
+            }))
     }
 
     // MARK: - Quick add
@@ -132,12 +157,26 @@ struct MainView: View {
     // MARK: - List
 
     private var visibleTodos: [Todo] {
+        let base: [Todo]
         switch filter {
-        case .open: return model.openTodos
-        case .done: return model.doneTodos
-        case .all: return model.todos
+        case .open: base = model.openTodos
+        case .done: base = model.doneTodos
+        case .all: base = model.todos
         }
+        // Search is a pure view concern: case-insensitive substring on the title,
+        // applied *before* grouping so section counts reflect the matches. It
+        // never changes the store or the stored order.
+        guard queryActive else { return base }
+        return base.filter { $0.title.lowercased().contains(query) }
     }
+
+    /// The trimmed, lowercased query. Empty means "no filter", and behaviour is
+    /// exactly as it was before the field existed.
+    private var query: String {
+        search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var queryActive: Bool { !query.isEmpty }
 
     /// The list grouped for display. With no sections declared this is a single
     /// unnamed group (the flat list, unchanged); otherwise the default area comes
@@ -164,7 +203,14 @@ struct MainView: View {
 
     private var listArea: some View {
         Group {
-            if visibleTodos.isEmpty && !showsSections {
+            if queryActive && visibleTodos.isEmpty {
+                // A search that matched nothing: a quiet empty state, not a wall
+                // of section headers at 0. Distinct from the true-empty states
+                // below, which are about the store itself being empty.
+                LigneEmptyState(palette: palette, title: "No matches",
+                                subtitle: "No todo title matches your search.",
+                                hero: false)
+            } else if visibleTodos.isEmpty && !showsSections {
                 switch filter {
                 case .open:
                     LigneEmptyState(palette: palette, title: "All clear",
@@ -207,8 +253,11 @@ struct MainView: View {
                                          onReopen: { withAnimation(Motion.toggle) { model.reopen(todo.id.uuidString) } },
                                          onEdit: { model.update(todo.id.uuidString, title: $0) },
                                          onDelete: { withAnimation(Motion.remove) { model.delete(todo.id.uuidString) } },
+                                         onOpenLink: { openLinkedNote($0) },
                                          sections: model.sections,
                                          onMoveToSection: { moveTodo(todo.id.uuidString, toSection: $0) },
+                                         onSetLink: { beginLink(todo) },
+                                         onClearLink: { model.setLink(todo.id.uuidString, to: nil) },
                                          onDropTodo: { draggedID, edge in
                                              drop(draggedID, onto: todo, edge: edge)
                                          })
@@ -251,6 +300,100 @@ struct MainView: View {
     /// a section that works at any scroll position.
     private func moveTodo(_ id: String, toSection section: String?) {
         withAnimation(Motion.toggle) { model.move(id, toSection: section, at: 0) }
+    }
+
+    // MARK: - Note links (GUI-only, ADR 0010)
+
+    /// Opens the todo's linked note: switch to the Bikeshed tab and load it.
+    private func openLinkedNote(_ path: String) {
+        tab = .bikeshed
+        bikeModel.open(path)
+    }
+
+    /// Opens the note picker for `todo`.
+    private func beginLink(_ todo: Todo) {
+        linkFilter = ""
+        linkPickerFor = todo
+    }
+
+    /// The note picker: a filterable list of the vault's note paths. Picking one
+    /// links the todo and dismisses; the picker never reads note content (the core
+    /// owns it). Styled like the rename sheet (monospaced field, parchment, hairline).
+    private func linkSheet(_ todo: Todo) -> some View {
+        let paths = bikeModel.notePaths()
+        let q = linkFilter.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let shown = q.isEmpty ? paths : paths.filter { $0.lowercased().contains(q) }
+        return VStack(spacing: 14) {
+            Text("Link to note")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(palette.ink)
+            Text("Pick a note in the bikeshed.")
+                .font(.system(size: 11.5))
+                .foregroundStyle(palette.inkDim)
+            TextField("Filter", text: $linkFilter)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12.5, design: .monospaced))
+                .foregroundStyle(palette.ink)
+                .padding(.horizontal, 11)
+                .frame(height: 28)
+                .frame(maxWidth: .infinity)
+                .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
+                .overlay(RoundedRectangle(cornerRadius: Radius.control)
+                    .strokeBorder(palette.line, lineWidth: Line.hairline))
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if shown.isEmpty {
+                        Text(paths.isEmpty ? "No notes yet." : "No notes match.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(palette.inkDim)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                    } else {
+                        ForEach(shown, id: \.self) { path in
+                            linkRow(path, todo: todo)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            .frame(maxHeight: 260)
+            .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
+            .overlay(RoundedRectangle(cornerRadius: Radius.control)
+                .strokeBorder(palette.line, lineWidth: Line.hairline))
+            HStack {
+                Button("Cancel") { linkPickerFor = nil }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
+    }
+
+    /// One note in the picker; the todo's current link is checkmarked.
+    private func linkRow(_ path: String, todo: Todo) -> some View {
+        Button {
+            model.setLink(todo.id.uuidString, to: path)
+            linkPickerFor = nil
+        } label: {
+            HStack(spacing: 6) {
+                if todo.link == path {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(palette.emberDeep)
+                }
+                Text(path)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(palette.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Section actions
@@ -353,5 +496,43 @@ struct TandemShortcuts: ViewModifier {
 
     private func setFilter(_ f: Filter) {
         withAnimation(Motion.toggle) { filter = f }
+    }
+}
+
+/// Todos-face shortcuts, registered the same invisible-button way as
+/// `TandemShortcuts` (which keeps ⌘1/⌘2/⌘3 and ⌘N — this never steals them):
+///
+///   ⌘F      focuses the search field
+///   Escape  clears a focused, non-empty search; otherwise dismisses a banner
+///
+/// Scoped to the Todos face so its Escape never contends with the Bikeshed's own
+/// Escape handler. Focus is the system's single first responder, so focusing one
+/// field (`⌘F`) automatically resigns the other (`⌘N` quick-add) and vice versa.
+struct TodosShortcuts: ViewModifier {
+    @Binding var search: String
+    var focusSearch: FocusState<Bool>.Binding
+    /// Whether a banner is actually up — Escape is a no-op otherwise.
+    var hasBanner: Bool
+    var dismissBanners: () -> Void
+
+    func body(content: Content) -> some View {
+        content.background {
+            VStack(spacing: 0) {
+                Button("") { focusSearch.wrappedValue = true }
+                    .keyboardShortcut("f", modifiers: .command)
+                Button("") {
+                    // Clear an active search first; only when there is nothing to
+                    // clear does Escape fall through to dismissing a banner.
+                    if focusSearch.wrappedValue && !search.isEmpty {
+                        search = ""
+                    } else if hasBanner {
+                        dismissBanners()
+                    }
+                }
+                .keyboardShortcut(.escape, modifiers: [])
+            }
+            .buttonStyle(.plain)
+            .hidden()
+        }
     }
 }

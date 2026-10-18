@@ -21,15 +21,15 @@ That path is stable across upgrades. `tandem-cli --help` prints the syntax and e
 
 ## Todos
 
-Three commands under `todo`; each section below is that command's contract.
+Three commands under `todo`; each section below is that command's contract. Every todo object they return carries `link` — a path to a bikeshed note, or null. A human sets it in the app; no CLI verb writes it.
 
 ### `tandem-cli todo list [--filter open|done|all]`
 
-List todos from the shared Tandem list — the same todos a human sees and edits in the Tandem app on this Mac. Store: ~/.tandem/todos.json. Optional argument `filter`: `open` (default), `done`, or `all`. Returns todos in the list's stored order (the order the human arranged; new todos land on top) as JSON: `id`, `title`, `done`, `section` (null for the default area), `createdAt`, `completedAt` (ISO-8601 UTC; `completedAt` is null while open).
+List todos from the shared Tandem list — the same todos a human sees and edits in the Tandem app on this Mac. Store: ~/.tandem/todos.json. Optional argument `filter`: `open` (default), `done`, or `all`. Returns todos in the list's stored order (the order the human arranged; new todos land on top) as JSON: `id`, `title`, `done`, `section` (null for the default area), `link` (a bikeshed note path, or null), `createdAt`, `completedAt` (ISO-8601 UTC; `completedAt` is null while open).
 
 ```
 $ tandem-cli todo list --filter open
-{"todos":[{"completedAt":null,"createdAt":"2026-10-09T14:03:22Z","done":false,"id":"550e8400-e29b-41d4-a716-446655440000","section":null,"title":"Water the plants"}]}
+{"todos":[{"completedAt":null,"createdAt":"2026-10-09T14:03:22Z","done":false,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"section":null,"title":"Water the plants"}]}
 ```
 
 ### `tandem-cli todo add --title <string>`
@@ -38,7 +38,7 @@ Add a todo to the shared Tandem list (store: ~/.tandem/todos.json), which a huma
 
 ```
 $ tandem-cli todo add --title "Water the plants"
-{"completedAt":null,"createdAt":"2026-10-17T09:12:00Z","done":false,"id":"550e8400-e29b-41d4-a716-446655440000","section":null,"title":"Water the plants"}
+{"completedAt":null,"createdAt":"2026-10-17T09:12:00Z","done":false,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"section":null,"title":"Water the plants"}
 ```
 
 ### `tandem-cli todo complete --id <string>`
@@ -47,7 +47,7 @@ Mark a todo as done on the shared Tandem list (store: ~/.tandem/todos.json). Arg
 
 ```
 $ tandem-cli todo complete --id 550e8400-e29b-41d4-a716-446655440000
-{"completedAt":"2026-10-17T09:14:37Z","createdAt":"2026-10-09T14:03:22Z","done":true,"id":"550e8400-e29b-41d4-a716-446655440000","section":null,"title":"Water the plants"}
+{"completedAt":"2026-10-17T09:14:37Z","createdAt":"2026-10-09T14:03:22Z","done":true,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"section":null,"title":"Water the plants"}
 ```
 
 ## Notes
