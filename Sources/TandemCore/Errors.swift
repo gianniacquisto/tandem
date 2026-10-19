@@ -16,12 +16,12 @@ public enum DomainError: Error, Sendable, Equatable {
     case emptyTitle
     /// `list` was called with a filter that is not `open`, `done`, or `all`.
     case invalidFilter(String)
-    /// A section name was empty or whitespace-only.
-    case emptySectionName
-    /// A section name was already in use.
-    case duplicateSection(String)
-    /// A section name was referenced but does not exist.
-    case unknownSection(String)
+    /// A lane name was empty or whitespace-only.
+    case emptyLaneName
+    /// A lane name was already in use.
+    case duplicateLane(String)
+    /// A lane name was referenced but does not exist.
+    case unknownLane(String)
     /// `complete`/`delete` was called with an id not present in the store. `open` is
     /// the full current open list (in the `list` shape) so the caller recovers in one turn.
     case unknownID(id: String, open: [Todo])
@@ -34,12 +34,12 @@ public enum DomainError: Error, Sendable, Equatable {
             return "Title is empty. Provide a non-empty todo title and try again."
         case .invalidFilter(let bad):
             return "filter must be one of open, done, all (got \"\(bad)\")."
-        case .emptySectionName:
-            return "Section name is empty. Provide a non-empty section name and try again."
-        case .duplicateSection(let name):
-            return "A section named \"\(name)\" already exists."
-        case .unknownSection(let name):
-            return "Unknown section \"\(name)\". Create it first."
+        case .emptyLaneName:
+            return "Cycle lane name is empty. Provide a non-empty name and try again."
+        case .duplicateLane(let name):
+            return "A cycle lane named \"\(name)\" already exists."
+        case .unknownLane(let name):
+            return "Unknown cycle lane \"\(name)\". Create it first."
         case .unknownID(let id, _):
             return "Unknown todo id \"\(id)\". Here is the current open list to pick the right one from:"
         }

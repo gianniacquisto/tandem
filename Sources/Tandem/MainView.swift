@@ -7,13 +7,13 @@ import TandemCore
 ///               closed by a hairline (identical on both tabs)
 ///   Todos     — a centered 540 pt column: flat parchment quick-add
 ///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All
-///               with live counts (⌘1/⌘2/⌘3) on a row with "+ Section" and
+///               with live counts (⌘1/⌘2/⌘3) on a row with "+ Lane" and
 ///               "Clear done" (disabled when nothing is done), and the
-///               stored-order list grouped by section. Only named sections draw
+///               stored-order list grouped by lane. Only named lanes draw
 ///               a header — the ungrouped todos are just the top of the list.
 ///               A search field (⌘F) narrows the drawn rows by title, across
-///               every section; Escape clears it (or dismisses a banner).
-///               Double-click a name to rename; its ⋯ menu moves the section up
+///               every lane; Escape clears it (or dismisses a banner).
+///               Double-click a name to rename; its ⋯ menu moves the lane up
 ///               or down, or deletes it, which ungroups its todos rather than
 ///               deleting them.
 ///               Rows: toggling checkbox (check completes, uncheck reopens);
@@ -42,12 +42,12 @@ struct MainView: View {
     /// The first-run check runs once per window, on the first appear.
     @State private var checkedSetup = false
 
-    // Section chrome: the inline "name a new section" field, and the inline rename.
-    @State private var addingSection = false
-    @State private var sectionDraft = ""
-    @State private var renamingSection: String?
+    // Lane chrome: the inline "name a new lane" field, and the inline rename.
+    @State private var addingLane = false
+    @State private var laneDraft = ""
+    @State private var renamingLane: String?
     @State private var renameDraft = ""
-    @FocusState private var sectionFocused: Bool
+    @FocusState private var laneFocused: Bool
 
     // The todo being linked to a note, and the picker's filter text.
     @State private var linkPickerFor: Todo?
@@ -122,19 +122,19 @@ struct MainView: View {
                           onCommit: commitAdd,
                           focus: $quickAddFocused)
                 .padding(.horizontal, Space.gutter)
-                .padding(.top, Space.section)
+                .padding(.top, Space.lane)
             HStack(spacing: 12) {
                 LigneFilter(selection: $filter,
                             counts: (open: model.openTodos.count,
                                      done: model.doneTodos.count),
                             palette: palette)
                 Spacer(minLength: 8)
-                if addingSection {
-                    LigneSectionField(text: $sectionDraft, palette: palette,
-                                      focus: $sectionFocused,
-                                      onCommit: commitSection, onCancel: cancelSection)
+                if addingLane {
+                    LigneLaneField(text: $laneDraft, palette: palette,
+                                      focus: $laneFocused,
+                                      onCommit: commitLane, onCancel: cancelLane)
                 } else {
-                    TextButton(title: "+ Section", palette: palette) { beginAddSection() }
+                    TextButton(title: "+ Cycle lane", palette: palette) { beginAddLane() }
                 }
                 TextButton(title: "Clear done", palette: palette,
                            enabled: !model.doneTodos.isEmpty) {
@@ -142,17 +142,17 @@ struct MainView: View {
                 }
             }
             .padding(.horizontal, Space.gutter)
-            .padding(.top, Space.section)
+            .padding(.top, Space.lane)
             // View-only search: it narrows what is drawn (case-insensitive on the
-            // title, across every section and the current Open/Done/All filter).
+            // title, across every lane and the current Open/Done/All filter).
             // It never re-sorts or mutates the store.
             LigneSearchField(text: $search, palette: palette, focus: $searchFocused)
                 .padding(.horizontal, Space.gutter)
-                .padding(.top, Space.section)
+                .padding(.top, Space.lane)
             recoveryBanner
             errorBanner
             Rectangle().fill(palette.sand).frame(height: Line.hairline)
-                .padding(.top, Space.section)
+                .padding(.top, Space.lane)
             listArea
         }
         .modifier(TodosShortcuts(
@@ -185,7 +185,7 @@ struct MainView: View {
         case .all: base = model.todos
         }
         // Search is a pure view concern: case-insensitive substring on the title,
-        // applied *before* grouping so section counts reflect the matches. It
+        // applied *before* grouping so lane counts reflect the matches. It
         // never changes the store or the stored order.
         guard queryActive else { return base }
         return base.filter { $0.title.lowercased().contains(query) }
@@ -199,39 +199,39 @@ struct MainView: View {
 
     private var queryActive: Bool { !query.isEmpty }
 
-    /// The list grouped for display. With no sections declared this is a single
+    /// The list grouped for display. With no lanes declared this is a single
     /// unnamed group (the flat list, unchanged); otherwise the default area comes
-    /// first, then the declared sections, then any section that only appears on a
+    /// first, then the declared lanes, then any lane that only appears on a
     /// todo (a hand edit) so nothing is hidden. Order within a group is the stored
     /// order.
     private var groups: [TodoGroup] {
         let visible = visibleTodos
-        guard !model.sections.isEmpty else {
+        guard !model.lanes.isEmpty else {
             return [TodoGroup(key: nil, todos: visible)]
         }
         var keys: [String?] = [nil]
-        for name in model.sections where !keys.contains(name) { keys.append(name) }
-        for todo in visible where todo.section != nil && !keys.contains(todo.section) {
-            keys.append(todo.section)
+        for name in model.lanes where !keys.contains(name) { keys.append(name) }
+        for todo in visible where todo.lane != nil && !keys.contains(todo.lane) {
+            keys.append(todo.lane)
         }
         return keys.map { key in
-            TodoGroup(key: key, todos: visible.filter { $0.section == key })
+            TodoGroup(key: key, todos: visible.filter { $0.lane == key })
         }
     }
 
-    /// Sections are shown once any exist; the flat look is the no-section case.
-    private var showsSections: Bool { !model.sections.isEmpty }
+    /// Lanes are shown once any exist; the flat look is the no-lane case.
+    private var showsLanes: Bool { !model.lanes.isEmpty }
 
     private var listArea: some View {
         Group {
             if queryActive && visibleTodos.isEmpty {
                 // A search that matched nothing: a quiet empty state, not a wall
-                // of section headers at 0. Distinct from the true-empty states
+                // of lane headers at 0. Distinct from the true-empty states
                 // below, which are about the store itself being empty.
                 LigneEmptyState(palette: palette, title: "No matches",
                                 subtitle: "No todo title matches your search.",
                                 hero: false)
-            } else if visibleTodos.isEmpty && !showsSections {
+            } else if visibleTodos.isEmpty && !showsLanes {
                 switch filter {
                 case .open:
                     LigneEmptyState(palette: palette, title: "All clear",
@@ -249,24 +249,24 @@ struct MainView: View {
                         ForEach(groups) { group in
                             let key = group.key
                             // The default area gets no header — it is just the top of the
-                            // list, not a section. Only named groups draw one.
-                            if let key, showsSections {
-                                LigneSectionHeader(
+                            // list, not a lane. Only named groups draw one.
+                            if let key, showsLanes {
+                                LigneLaneHeader(
                                     title: key,
                                     count: group.todos.count,
                                     palette: palette,
-                                    isRenaming: renamingSection == key,
+                                    isRenaming: renamingLane == key,
                                     draft: $renameDraft,
                                     onBeginRename: { beginRename(key) },
                                     onCommitRename: { commitRename(key) },
                                     onDelete: {
-                                        withAnimation(Motion.remove) { model.deleteSection(key) }
+                                        withAnimation(Motion.remove) { model.deleteLane(key) }
                                     },
                                     canMoveUp: canMove(key, by: -1),
                                     canMoveDown: canMove(key, by: 1),
-                                    onMoveUp: { moveSection(key, by: -1) },
-                                    onMoveDown: { moveSection(key, by: 1) },
-                                    onDropIntoSection: { moveTodo($0, toSection: key) })
+                                    onMoveUp: { moveLane(key, by: -1) },
+                                    onMoveDown: { moveLane(key, by: 1) },
+                                    onDropIntoLane: { moveTodo($0, toLane: key) })
                             }
                             ForEach(group.todos) { todo in
                                 LigneRow(todo: todo, palette: palette,
@@ -275,8 +275,8 @@ struct MainView: View {
                                          onEdit: { model.update(todo.id.uuidString, title: $0) },
                                          onDelete: { withAnimation(Motion.remove) { model.delete(todo.id.uuidString) } },
                                          onOpenLink: { openLinkedNote($0) },
-                                         sections: model.sections,
-                                         onMoveToSection: { moveTodo(todo.id.uuidString, toSection: $0) },
+                                         lanes: model.lanes,
+                                         onMoveToLane: { moveTodo(todo.id.uuidString, toLane: $0) },
                                          onSetLink: { beginLink(todo) },
                                          onClearLink: { model.setLink(todo.id.uuidString, to: nil) },
                                          onDropTodo: { draggedID, edge in
@@ -312,15 +312,15 @@ struct MainView: View {
                                                  after: edge == .after)
         else { return }
         withAnimation(Motion.toggle) {
-            model.move(draggedID, toSection: anchor.section, at: index)
+            model.move(draggedID, toLane: anchor.lane, at: index)
         }
     }
 
-    /// Files a todo at the top of `section` (`nil` = the default area). Used by the
+    /// Files a todo at the top of `lane` (`nil` = the default area). Used by the
     /// header drop and by the row's "Move to" menu — the latter being the way out of
-    /// a section that works at any scroll position.
-    private func moveTodo(_ id: String, toSection section: String?) {
-        withAnimation(Motion.toggle) { model.move(id, toSection: section, at: 0) }
+    /// a lane that works at any scroll position.
+    private func moveTodo(_ id: String, toLane lane: String?) {
+        withAnimation(Motion.toggle) { model.move(id, toLane: lane, at: 0) }
     }
 
     // MARK: - Note links (GUI-only, ADR 0010)
@@ -417,50 +417,50 @@ struct MainView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Section actions
+    // MARK: - Lane actions
 
     /// Whether `key` can move one place towards the start (`by == -1`) or the end (+1).
     private func canMove(_ key: String, by delta: Int) -> Bool {
-        guard let i = model.sections.firstIndex(of: key) else { return false }
-        return model.sections.indices.contains(i + delta)
+        guard let i = model.lanes.firstIndex(of: key) else { return false }
+        return model.lanes.indices.contains(i + delta)
     }
 
-    private func moveSection(_ key: String, by delta: Int) {
-        guard let i = model.sections.firstIndex(of: key) else { return }
-        withAnimation(Motion.toggle) { model.moveSection(key, to: i + delta) }
+    private func moveLane(_ key: String, by delta: Int) {
+        guard let i = model.lanes.firstIndex(of: key) else { return }
+        withAnimation(Motion.toggle) { model.moveLane(key, to: i + delta) }
     }
 
-    private func beginAddSection() {
-        addingSection = true
-        sectionDraft = ""
+    private func beginAddLane() {
+        addingLane = true
+        laneDraft = ""
     }
 
-    private func commitSection() {
-        addingSection = false
-        let name = sectionDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        sectionDraft = ""
+    private func commitLane() {
+        addingLane = false
+        let name = laneDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        laneDraft = ""
         guard !name.isEmpty else { return }
-        model.addSection(name)
+        model.addLane(name)
     }
 
-    private func cancelSection() {
-        addingSection = false
-        sectionDraft = ""
+    private func cancelLane() {
+        addingLane = false
+        laneDraft = ""
     }
 
     private func beginRename(_ key: String) {
         renameDraft = key
-        renamingSection = key
+        renamingLane = key
     }
 
     /// Return or clicking away: keep a non-empty, changed name; otherwise leave the
-    /// section as it was.
+    /// lane as it was.
     private func commitRename(_ key: String) {
-        guard renamingSection == key else { return }
-        renamingSection = nil
+        guard renamingLane == key else { return }
+        renamingLane = nil
         let name = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != key else { return }
-        model.renameSection(key, to: name)
+        model.renameLane(key, to: name)
     }
 
     // MARK: - Banners (restyled per reach B; no illustration in the banner)
@@ -478,7 +478,7 @@ struct MainView: View {
                         onDismiss: { model.dismissRecoveryNote() })
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Space.gutter)
-                .padding(.top, Space.section)
+                .padding(.top, Space.lane)
         }
     }
 
@@ -491,7 +491,7 @@ struct MainView: View {
                         onDismiss: { model.dismissError() })
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Space.gutter)
-                .padding(.top, Space.section)
+                .padding(.top, Space.lane)
         }
     }
 }

@@ -24,9 +24,9 @@ final class TandemModel {
     /// All todos in stored order (the order the human arranged — new todos land on top;
     /// never re-sorted here).
     private(set) var todos: [Todo] = []
-    /// The declared section names, in render order. The default (ungrouped) area at the
+    /// The declared lane names, in render order. The default (ungrouped) area at the
     /// top of the list is implicit and unnamed, so it is not in here.
-    private(set) var sections: [String] = []
+    private(set) var lanes: [String] = []
     /// Set when a call triggered corrupt-store recovery; names the backup path. Sticky
     /// until the user dismisses it (a later successful reload does not clear it).
     private(set) var recoveryNote: String?
@@ -59,7 +59,7 @@ final class TandemModel {
         do {
             let result = try store.list(.all)
             todos = result.value
-            sections = (try? store.sections().value) ?? []
+            lanes = (try? store.lanes().value) ?? []
             if let note = result.note { recoveryNote = note }
             lastError = nil
         } catch {
@@ -73,36 +73,36 @@ final class TandemModel {
         run { try self.store.add(rawTitle) }
     }
 
-    /// Adds a todo on top of `section` (`nil` = the default area).
-    func add(_ rawTitle: String, section: String?) {
-        run { try self.store.add(rawTitle, section: section) }
+    /// Adds a todo on top of `lane` (`nil` = the default area).
+    func add(_ rawTitle: String, lane: String?) {
+        run { try self.store.add(rawTitle, lane: lane) }
     }
 
-    // MARK: - Sections and order (GUI-only)
+    // MARK: - Lanes and order (GUI-only)
 
-    func addSection(_ name: String) {
-        run { try self.store.addSection(name) }
+    func addLane(_ name: String) {
+        run { try self.store.addLane(name) }
     }
 
-    func renameSection(_ from: String, to: String) {
-        run { try self.store.renameSection(from, to: to) }
+    func renameLane(_ from: String, to: String) {
+        run { try self.store.renameLane(from, to: to) }
     }
 
-    /// Deleting a section moves its todos to the default area — it never deletes them.
-    func deleteSection(_ name: String) {
-        run { try self.store.deleteSection(name) }
+    /// Deleting a lane moves its todos to the default area — it never deletes them.
+    func deleteLane(_ name: String) {
+        run { try self.store.deleteLane(name) }
     }
 
-    /// Reorders the sections. `index` is 0-based and clamped; the groups (and the order
+    /// Reorders the lanes. `index` is 0-based and clamped; the groups (and the order
     /// of todos inside them) travel whole.
-    func moveSection(_ name: String, to index: Int) {
-        run { try self.store.moveSection(name, to: index) }
+    func moveLane(_ name: String, to index: Int) {
+        run { try self.store.moveLane(name, to: index) }
     }
 
-    /// Reorders: moves a todo to `index` (0-based) within `section` (`nil` = the default
-    /// area), moving it between sections when needed.
-    func move(_ id: String, toSection section: String?, at index: Int) {
-        run { try self.store.move(id, toSection: section, at: index) }
+    /// Reorders: moves a todo to `index` (0-based) within `lane` (`nil` = the default
+    /// area), moving it between lanes when needed.
+    func move(_ id: String, toLane lane: String?, at index: Int) {
+        run { try self.store.move(id, toLane: lane, at: index) }
     }
 
     /// Complete is idempotent at the store level, so completing an already-done todo

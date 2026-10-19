@@ -83,7 +83,7 @@ struct BikeFaceView: View {
                             onDismiss: { model.dismissError() })
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, Space.gutter)
-                    .padding(.top, Space.section)
+                    .padding(.top, Space.lane)
             }
             // The friendly empty state is only for a bikeshed with *nothing* in it.
             // A bikeshed holding folders but no notes still shows the tree, so the

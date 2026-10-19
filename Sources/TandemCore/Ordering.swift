@@ -10,9 +10,9 @@ import Foundation
 /// one place, next to the operation they feed.
 public enum TodoOrdering {
 
-    /// The `index` to hand to `Store.move(_:toSection:at:)` so the todo `id` lands
+    /// The `index` to hand to `Store.move(_:toLane:at:)` so the todo `id` lands
     /// immediately before (`after == false`) or after `anchorID`, **within the anchor's
-    /// own section**. `nil` when either todo is missing, or when the row was dropped on
+    /// own lane**. `nil` when either todo is missing, or when the row was dropped on
     /// itself.
     ///
     /// Two rules this encodes:
@@ -30,7 +30,7 @@ public enum TodoOrdering {
               let anchor = todos.first(where: { $0.id == anchorID })
         else { return nil }
 
-        let members = todos.filter { $0.section == anchor.section }
+        let members = todos.filter { $0.lane == anchor.lane }
         guard let anchorIndex = members.firstIndex(where: { $0.id == anchorID }) else { return nil }
 
         var index = anchorIndex + (after ? 1 : 0)

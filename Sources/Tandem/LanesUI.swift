@@ -1,7 +1,7 @@
 import SwiftUI
 import TandemCore
 
-// The sections chrome (reach B): a quiet header per group, a compact inline field
+// The lanes chrome (reach B): a quiet header per group, a compact inline field
 // for naming one. Same register as the rest of the Ligne Claire controls — one
 // hairline, flat fills, no capsules.
 
@@ -16,13 +16,13 @@ struct TodoGroup: Identifiable {
     var isDefault: Bool { key == nil }
 }
 
-// MARK: section header — name · count · hover menu (rename / move / delete)
+// MARK: lane header — name · count · hover menu (rename / move / delete)
 
-/// One section's header. There is no header for the default (ungrouped) area — that
-/// area is just the top of the list. A section can be renamed, moved up or down, and
+/// One lane's header. There is no header for the default (ungrouped) area — that
+/// area is just the top of the list. A lane can be renamed, moved up or down, and
 /// deleted (deleting one only ungroups its todos). The header is also a drop target:
-/// dropping a row here moves it to the top of the section.
-struct LigneSectionHeader: View {
+/// dropping a row here moves it to the top of the lane.
+struct LigneLaneHeader: View {
     var title: String
     var count: Int
     var palette: Palette
@@ -36,7 +36,7 @@ struct LigneSectionHeader: View {
     var onMoveUp: () -> Void
     var onMoveDown: () -> Void
     /// Called when a row is dropped on this header. `nil` leaves it inert.
-    var onDropIntoSection: ((_ draggedID: String) -> Void)? = nil
+    var onDropIntoLane: ((_ draggedID: String) -> Void)? = nil
 
     @FocusState private var focused: Bool
     @State private var hovering = false
@@ -71,7 +71,7 @@ struct LigneSectionHeader: View {
                     Button("Rename", action: onBeginRename)
                     Button("Move Up", action: onMoveUp).disabled(!canMoveUp)
                     Button("Move Down", action: onMoveDown).disabled(!canMoveDown)
-                    Button("Delete Section", role: .destructive, action: onDelete)
+                    Button("Delete Cycle lane", role: .destructive, action: onDelete)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 11, weight: .semibold))
@@ -94,8 +94,8 @@ struct LigneSectionHeader: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .dropDestination(for: String.self) { items, _ in
-            guard let id = items.first, let onDropIntoSection else { return false }
-            onDropIntoSection(id)
+            guard let id = items.first, let onDropIntoLane else { return false }
+            onDropIntoLane(id)
             return true
         } isTargeted: { targeted = $0 }
         .background(targeted ? AnyShapeStyle(palette.parchment) : AnyShapeStyle(Color.clear))
@@ -108,17 +108,17 @@ struct LigneSectionHeader: View {
             Button("Rename", action: onBeginRename)
             Button("Move Up", action: onMoveUp).disabled(!canMoveUp)
             Button("Move Down", action: onMoveDown).disabled(!canMoveDown)
-            Button("Delete Section", role: .destructive, action: onDelete)
+            Button("Delete Cycle lane", role: .destructive, action: onDelete)
         }
     }
 }
 
-// MARK: section field — the compact inline "name a section" field
+// MARK: lane field — the compact inline "name a lane" field
 
-/// The inline field that names a new section (filter row, so it is always on
+/// The inline field that names a new lane (filter row, so it is always on
 /// screen). Return commits; Esc cancels (blur commits, the inline-edit
 /// convention — Esc clears the draft first, so the commit is a no-op).
-struct LigneSectionField: View {
+struct LigneLaneField: View {
     @Binding var text: String
     var palette: Palette
     var focus: FocusState<Bool>.Binding
@@ -126,7 +126,7 @@ struct LigneSectionField: View {
     var onCancel: () -> Void
 
     var body: some View {
-        TextField("Section name", text: $text)
+        TextField("Cycle lane name", text: $text)
             .textFieldStyle(.plain)
             .font(.system(size: 12.5))
             .foregroundStyle(palette.ink)

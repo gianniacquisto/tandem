@@ -456,7 +456,7 @@ struct OperationsTests {
 
     // MARK: - on-disk round-trip
 
-    @Test("on-disk file keeps envelope version 1 (sections are additive) and round-trips")
+    @Test("on-disk file keeps envelope version 1 (lanes are additive) and round-trips")
     func onDiskRoundTrip() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -472,7 +472,7 @@ struct OperationsTests {
         // Additive fields must NOT move the version: a v1-era reader has to keep
         // reading this file (ADR 0006 — bumping it once wiped a real store).
         #expect((obj?["version"] as? Int) == 1)
-        // No sections declared yet, and the field is written as an empty array.
+        // No lanes declared yet, and the field is written as an empty array.
         #expect((obj?["sections"] as? [String])?.isEmpty == true)
 
         guard let todos = obj?["todos"] as? [[String: Any]] else {
@@ -488,7 +488,7 @@ struct OperationsTests {
         for todo in todos {
             #expect((todo["createdAt"] as? String)?.hasSuffix("Z") == true)
         }
-        // The open todo's completedAt and section are JSON null.
+        // The open todo's completedAt and lane are JSON null.
         let openEntry = todos.first { ($0["done"] as? Bool) == false }
         #expect(openEntry?["completedAt"] is NSNull)
         #expect(openEntry?["section"] is NSNull)
