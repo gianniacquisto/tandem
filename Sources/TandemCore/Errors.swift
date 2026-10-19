@@ -20,6 +20,10 @@ public enum DomainError: Error, Sendable, Equatable {
     case invalidStatus(String)
     /// An archive value that is not `excluded`, `included`, or `only`.
     case invalidArchived(String)
+    /// `move` was given an index that is not a whole number.
+    case invalidIndex(String)
+    /// `--assignee self` was used but the environment names no agent.
+    case agentNameUnset
     /// A lane name was empty or whitespace-only.
     case emptyLaneName
     /// A lane name was already in use.
@@ -42,6 +46,10 @@ public enum DomainError: Error, Sendable, Equatable {
             return "status must be one of \(Status.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
         case .invalidArchived(let bad):
             return "archived must be one of excluded, included, only (got \"\(bad)\")."
+        case .invalidIndex(let bad):
+            return "index must be a whole number (got \"\(bad)\")."
+        case .agentNameUnset:
+            return "Cannot resolve --assignee self: set TANDEM_AGENT to this agent's name, or pass --assignee <name>."
         case .emptyLaneName:
             return "Cycle lane name is empty. Provide a non-empty name and try again."
         case .duplicateLane(let name):

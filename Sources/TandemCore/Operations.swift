@@ -152,13 +152,13 @@ extension Store {
         return OperationResult(todo, note: note)
     }
 
-    // MARK: - move (GUI-only — no CLI verb)
+    // MARK: - move
 
     /// `move(id, toLane:at:)`: place a todo at a 0-based `index` within `toLane`
     /// (`nil` is the default area), moving it between lanes when needed. `index` is
     /// clamped into range, so `Int.max` appends. Covers both reorder-in-place and
     /// move-between-lanes. An unknown id throws `DomainError.unknownID`; an unknown
-    /// `lane` is rejected. GUI-only.
+    /// `lane` is rejected. The agent's `todo move` and the GUI's drag both land here.
     public func move(_ id: String, toLane lane: String?, at index: Int) throws -> OperationResult<Todo> {
         let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
             guard let uuid = UUID(uuidString: id),
@@ -182,7 +182,7 @@ extension Store {
     /// `complete(id)`: idempotent — an already-done todo is returned unchanged, no error.
     /// On a transition to done, `completedAt` is set to the current UTC time. An unknown
     /// id throws `DomainError.unknownID` carrying the full current open list. The inverse
-    /// is `reopen` (GUI-only). The stored order is never changed.
+    /// is `reopen`. The stored order is never changed.
     public func complete(_ id: String) throws -> OperationResult<Todo> {
         let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
             guard let uuid = UUID(uuidString: id),
@@ -296,8 +296,9 @@ extension Store {
 
     /// `setLink(id, to:)`: points a todo at a Bikeshed note (a bikeshed-root-relative path
     /// like `projects/App.md`), or clears the link with `nil`. The link is trimmed; an
-    /// empty/whitespace-only value unlinks. GUI-only, with no CLI verb (the agent surface
-    /// stays `list`/`add`/`complete`). An unchanged link is a no-op (nothing written).
+    /// empty/whitespace-only value unlinks. GUI-only: no CLI verb links notes — the agent
+    /// surface stays tickets, and a note is the human's connection (ADR 0010). An
+    /// unchanged link is a no-op (nothing written).
     /// `title`, `done`, `completedAt` and the lane are untouched, and the stored order
     /// is never changed. An unknown id throws `DomainError.unknownID` carrying the full
     /// current open list.

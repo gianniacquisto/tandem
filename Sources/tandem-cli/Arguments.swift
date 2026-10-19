@@ -1,16 +1,27 @@
 import Foundation
 
-/// The parsed command line: one of the six verbs, or a request for the usage
-/// text. Long flags only, and the flags mirror the core argument names exactly
-/// (`--filter`, `--title`, `--id`, `--from`, `--to`, `--kind`, `--project`,
-/// `--session`) — the CLI renames nothing. `doctor` is a setup/diagnostic verb
+/// The parsed command line: one of the verbs, or a request for the usage text.
+/// Long flags only, and the flags mirror the core argument names exactly
+/// (`--filter`, `--text`, `--status`, `--assignee`, `--lane`, `--title`, `--id`,
+/// `--description`, `--index`, `--from`, `--to`, `--kind`, `--project`, `--session`)
+/// — the CLI renames nothing and parses nothing: raw values travel to the core,
+/// which validates them and owns the error text. `doctor` is a setup/diagnostic verb
 /// outside the `todo`/`note` domains (ADR 0014) and takes no flags.
 enum Command {
     case help
     case doctor
-    case todoList(filter: String?)
-    case todoAdd(title: String)
+    case todoList(filter: String?, text: String?, status: String?, assignee: String?, lane: String?)
+    case todoAdd(title: String, status: String?, assignee: String?, lane: String?)
+    case todoSet(
+        id: String,
+        title: String?,
+        status: String?,
+        assignee: String?,
+        description: String?
+    )
+    case todoMove(id: String, lane: String?, index: String?)
     case todoComplete(id: String)
+    case todoArchive
     case noteRename(from: String, to: String)
     case noteCapture(kind: String, project: String?, session: String?)
 }
@@ -46,27 +57,58 @@ func parseCommand(_ args: [String]) throws -> Command {
 
 // MARK: - todo
 
-/// `todo list|add|complete` — the three todo verbs (the agent surface).
+/// `todo list|add|set|move|complete|archive` — the six todo verbs (the agent surface).
+/// An absent flag is `nil` (the core's default); a flag with no value is `""`, which the
+/// core rejects or reads as the empty field. That is the one rule every verb below
+/// follows, so no verb repeats a validation the core already owns.
 private func parseTodo(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
     let flags = try parseFlags(Array(args.dropFirst()))
     switch verb {
     case "list":
-        try accept(flags, ["--filter"])
-        // No `--filter` is `nil` — the core's default (`open`); the CLI does not
-        // re-derive the parse, `list(rawFilter:)` owns it.
-        return .todoList(filter: flags["--filter"])
+        try accept(flags, ["--filter", "--text", "--status", "--assignee", "--lane"])
+        return .todoList(
+            filter: flags["--filter"],
+            text: flags["--text"],
+            status: flags["--status"],
+            assignee: flags["--assignee"],
+            lane: flags["--lane"])
     case "add":
-        try accept(flags, ["--title"])
+        try accept(flags, ["--title", "--status", "--assignee", "--lane"])
         // A missing `--title` is not a usage error: it is the empty title the
         // domain rejects (`emptyTitle`), exactly as the MCP server read an
         // absent argument.
-        return .todoAdd(title: flags["--title"] ?? "")
+        return .todoAdd(
+            title: flags["--title"] ?? "",
+            status: flags["--status"],
+            assignee: flags["--assignee"],
+            lane: flags["--lane"])
+    case "set":
+        try accept(flags, ["--id", "--title", "--status", "--assignee", "--description"])
+        // Every field is optional: the ones not named are left alone, in one write.
+        // `--description -` is read from stdin (multi-line markdown is a quoting trap);
+        // `main` recognizes the dash, because stdin belongs to the adapter.
+        return .todoSet(
+            id: flags["--id"] ?? "",
+            title: flags["--title"],
+            status: flags["--status"],
+            assignee: flags["--assignee"],
+            description: flags["--description"])
+    case "move":
+        try accept(flags, ["--id", "--lane", "--index"])
+        return .todoMove(
+            id: flags["--id"] ?? "",
+            lane: flags["--lane"],
+            index: flags["--index"])
     case "complete":
         try accept(flags, ["--id"])
         // A missing `--id` is likewise the empty id whose `unknownID` error
         // carries the open list.
         return .todoComplete(id: flags["--id"] ?? "")
+    case "archive":
+        // Bulk, whole-list: finished work leaves the view, nothing is deleted.
+        try accept(flags, [])
+        return .todoArchive
     default:
         throw UsageError()
     }

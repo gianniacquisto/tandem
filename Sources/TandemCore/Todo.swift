@@ -106,7 +106,7 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
         // recoverable where calling the whole file corrupt is not.
         let legacyDone = try c.decode(Bool.self, forKey: .done)
         let storedStatus = try c.decodeIfPresent(String.self, forKey: .status)
-        let status = storedStatus.flatMap(Status.parse(raw:)) ?? .backlog
+        let status = storedStatus.flatMap(Status.init(rawValue:)) ?? .backlog
         self.status = legacyDone ? .done : (status == .done ? .backlog : status)
 
         // Additive to schema v1: absent reads as the default.

@@ -25,10 +25,14 @@ public enum Status: String, Sendable, CaseIterable, Hashable {
     /// Every wire value, in workflow order.
     public static var wireValues: [String] { workflow.map(\.rawValue) }
 
-    /// `nil` for a value that is not one of the five, so the *caller* decides what an
-    /// unknown value means: an operation rejects it by name, while reading a file treats
-    /// it as `backlog` (see `Todo`'s decoder — the two edges have different horizons).
-    public static func parse(raw: String) -> Status? {
-        Status(rawValue: raw)
+    /// The domain boundary: the value, or the error that names what was given and lists
+    /// the five that would have worked. A *file* is a different edge — it reads an
+    /// unrecognised status as `backlog` instead (see `Todo`'s decoder), because nobody
+    /// can retry a file.
+    public static func parse(raw: String) throws -> Status {
+        guard let status = Status(rawValue: raw) else {
+            throw DomainError.invalidStatus(raw)
+        }
+        return status
     }
 }

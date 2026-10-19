@@ -144,10 +144,7 @@ extension TodoQuery {
         guard !parts.isEmpty else { throw DomainError.invalidStatus(raw) }
         var statuses: Set<Status> = []
         for part in parts {
-            guard let status = Status.parse(raw: part) else {
-                throw DomainError.invalidStatus(part)
-            }
-            statuses.insert(status)
+            statuses.insert(try Status.parse(raw: part))
         }
         return statuses
     }
