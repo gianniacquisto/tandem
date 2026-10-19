@@ -4,6 +4,10 @@ import Foundation
 ///
 /// One term for two surfaces: the Main window's segmented control and the CLI's
 /// `todo list --filter` argument. The raw wire values are lowercase `open` / `done` / `all`.
+///
+/// This is **sugar over `TodoQuery`** (ADR 0017), not a second filter: the three shipped
+/// cases are spelled once, here, in terms of the query's axes, so the segmented control
+/// and a query an agent writes cannot drift apart.
 public enum Filter: String, Sendable, CaseIterable {
     case open
     case done
@@ -16,14 +20,26 @@ public enum Filter: String, Sendable, CaseIterable {
         return Filter(rawValue: raw)
     }
 
+    /// The query this filter stands for: `open` is every Status but done, `done` is done,
+    /// and `all` is everything — archived tickets included, which is how the archive is
+    /// reached with the shipped flag.
+    public var query: TodoQuery {
+        switch self {
+        case .open:
+            return TodoQuery(
+                statuses: Set(Status.workflow.filter { $0 != .done }),
+                archived: .excluded)
+        case .done:
+            return TodoQuery(statuses: [.done], archived: .excluded)
+        case .all:
+            return TodoQuery(archived: .included)
+        }
+    }
+
     /// Apply this filter to a stored-order list. Ordering is never changed —
     /// the stored order is the order (ADR 0001, superseded 2026-10-17: order is
     /// stored, not derived from `createdAt`).
-    func apply(to todos: [Todo]) -> [Todo] {
-        switch self {
-        case .open: return todos.filter { !$0.done }
-        case .done: return todos.filter { $0.done }
-        case .all: return todos
-        }
+    public func apply(to todos: [Todo]) -> [Todo] {
+        query.apply(to: todos)
     }
 }

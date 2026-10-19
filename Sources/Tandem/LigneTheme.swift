@@ -128,7 +128,7 @@ enum Space {
     static let popoverControl: CGFloat = 28
     static let popoverRow: CGFloat = 32
     static let popoverGutter: CGFloat = 12
-    static let section: CGFloat = 12    // vertical rhythm between sections
+    static let lane: CGFloat = 12    // vertical rhythm between lanes
 }
 
 enum Motion {

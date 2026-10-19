@@ -11,9 +11,11 @@ import TandemCore
 //
 // This file is the whole adapter: it turns a command line into the core calls
 // and writes their outcome to the right stream. It adds no boundary logic — the
-// semantics (`list(rawFilter:)`, `add`, `complete`, `rename`, `capture`) and the
-// encoding (`StoreEncoding`, `tandemErrorText`) stay in TandemCore, which the
-// single test seam (`TandemCoreTests`) covers.
+// semantics (`list`, `TodoQuery.parse`, `add`, `set`, `move`, `complete`,
+// `archiveDone`, `rename`, `capture`) and the encoding (`StoreEncoding`,
+// `tandemErrorText`) stay in TandemCore, which the single test seam
+// (`TandemCoreTests`) covers. The two things that belong to a process rather
+// than to the domain live here: stdin and the environment.
 //
 // Streams and exit codes (the contract):
 // - success → exactly one JSON object on stdout, one trailing newline, exit 0;
@@ -44,20 +46,57 @@ func dispatch(_ args: [String]) -> Int32 {
         return 0
     case .doctor:
         return runDoctor()
-    case .todoList(let filter):
+    case .todoList(let filter, let text, let status, let assignee, let lane):
         return run {
-            let result = try Store().list(rawFilter: filter)
+            let query = try TodoQuery.parse(
+                filter: filter,
+                text: text,
+                status: status,
+                assignee: try resolveAssignee(assignee),
+                lane: lane)
+            let result = try Store().list(query)
             return try StoreEncoding.listResult(result.value, note: result.note)
         }
-    case .todoAdd(let title):
+    case .todoAdd(let title, let status, let assignee, let lane):
         return run {
-            let result = try Store().add(title)
+            let result = try Store().add(
+                title,
+                lane: lane,
+                status: try status.map { try Status.parse(raw: $0) } ?? .backlog,
+                assignee: try resolveAssignee(assignee))
+            return try StoreEncoding.todoResult(result.value, note: result.note)
+        }
+    case .todoSet(let id, let title, let status, let assignee, let description):
+        return run {
+            // `--description -`: the body is stdin, the precedent `note capture` set.
+            let body: Edit<String?>
+            if let description {
+                body = .set(description == "-" ? try readStandardInput() : description)
+            } else {
+                body = .unchanged
+            }
+            let result = try Store().set(
+                id,
+                title: edit(title) { $0 },
+                status: try edit(status) { try Status.parse(raw: $0) },
+                assignee: assignee.map { .set(try resolveAssignee($0)) } ?? .unchanged,
+                description: body)
+            return try StoreEncoding.todoResult(result.value, note: result.note)
+        }
+    case .todoMove(let id, let lane, let index):
+        return run {
+            let result = try Store().move(id, toLane: lane, at: try parseIndex(index))
             return try StoreEncoding.todoResult(result.value, note: result.note)
         }
     case .todoComplete(let id):
         return run {
             let result = try Store().complete(id)
             return try StoreEncoding.todoResult(result.value, note: result.note)
+        }
+    case .todoArchive:
+        return run {
+            let result = try Store().archiveDone()
+            return try StoreEncoding.archivedResult(result.value, note: result.note)
         }
     case .noteRename(let from, let to):
         return run {
@@ -112,6 +151,35 @@ func runDoctor() -> Int32 {
         return 1
     }
     return 0
+}
+
+/// A raw flag as an `Edit`: absent is `.unchanged`, present is `.set` of the converted
+/// value — the CLI spelling of "leave it alone" versus "set it".
+func edit<T: Sendable>(_ raw: String?, _ convert: (String) throws -> T) rethrows -> Edit<T> {
+    guard let raw else { return .unchanged }
+    return .set(try convert(raw))
+}
+
+/// `move`'s position: absent means the end of the target lane, which appends without
+/// disturbing the order above it; a value is the 0-based index within that lane.
+func parseIndex(_ raw: String?) throws -> Int {
+    guard let raw else { return Int.max }
+    guard let index = Int(raw) else { throw DomainError.invalidIndex(raw) }
+    return index
+}
+
+/// `--assignee self` means the agent running this command: its name is `$TANDEM_AGENT`,
+/// the one place a ticket owner can come from until the persona registry exists. Any
+/// other value passes straight through to the core — including `""`, which selects the
+/// unowned tickets, and so must not be mistaken for "me".
+func resolveAssignee(_ raw: String?) throws -> String? {
+    guard raw == "self" else { return raw }
+    guard let name = ProcessInfo.processInfo.environment["TANDEM_AGENT"],
+          !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+        throw DomainError.agentNameUnset
+    }
+    return name
 }
 
 /// The body of a `note capture` call: everything on stdin, decoded as UTF-8,

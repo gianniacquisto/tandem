@@ -1,6 +1,6 @@
 ---
 name: tandem
-description: "Read and write the shared Tandem todo list, and rename bikeshed notes, from `tandem-cli` on this Mac. Reach for it when the user says to add a todo, asks what's on their list, asks to mark a todo done, or wants a note renamed (reopened under a new name). Also runs a local setup check when the user asks whether Tandem is installed or working. The same todos a human sees and edits in the Tandem app."
+description: "Read and write the shared Tandem ticket list, and rename bikeshed notes, from `tandem-cli` on this Mac. Reach for it when the user says to add a todo, asks what's on their list, wants a ticket's status or assignee changed, asks to mark a todo done, or wants a note renamed (reopened under a new name). Also runs a local setup check when the user asks whether Tandem is installed or working. The same tickets a human sees and edits in the Tandem app."
 ---
 
 # Tandem
@@ -19,35 +19,81 @@ That path is stable across upgrades. `tandem-cli --help` prints the syntax and e
 
 `tandem-cli` reads and writes the same file the app does: `~/.tandem/todos.json`, the human's real list. A from-source build (`swift run tandem-cli`) writes `~/.tandem-dev/todos.json` instead, so development can never reach the real list. Notes live under the same home — `~/.tandem/bikeshed/`, or `~/.tandem-dev/bikeshed/` from source.
 
-## Todos
+## Tickets
 
-Three commands under `todo`; each section below is that command's contract. Every todo object they return carries `link` — a path to a bikeshed note, or null. A human sets it in the app; no CLI verb writes it.
+Six commands under `todo`; each section below is that command's contract. A todo is a **ticket** — the same object a human sees in the Tandem app — and every object these commands return has the same shape:
 
-### `tandem-cli todo list [--filter open|done|all]`
+| field | meaning |
+| --- | --- |
+| `id` | pass it back to `set`, `move`, `complete` |
+| `title` | one line, trimmed |
+| `status` | `backlog` (default), `refined`, `ready`, `in-progress`, or `done` |
+| `archived` | true when the ticket is set aside — out of the default views, still in the store |
+| `description` | markdown body, or null; write it from stdin with `todo set --description -` |
+| `assignee` | `human`, an agent's name, or null for unowned |
+| `section` | the **cycle lane**, or null for the default area; the wire keeps its v1 name |
+| `done` | the legacy mirror of `status == "done"` — read `status`, not this |
+| `link` | a bikeshed note path, or null; a human sets it in the app |
+| `createdAt`, `completedAt` | ISO-8601 UTC; `completedAt` is null unless done |
 
-List todos from the shared Tandem list — the same todos a human sees and edits in the Tandem app on this Mac. Store: ~/.tandem/todos.json. Optional argument `filter`: `open` (default), `done`, or `all`. Returns todos in the list's stored order (the order the human arranged; new todos land on top) as JSON: `id`, `title`, `done`, `section` (null for the default area), `link` (a bikeshed note path, or null), `createdAt`, `completedAt` (ISO-8601 UTC; `completedAt` is null while open).
+`done` is still written for the older app's sake, but `status` is the truth. A status change is free-form — any status to any other, backwards included — because the board records what is true, not a process.
+
+### `tandem-cli todo list [--filter open|done|all] [--status <value[,value]>] [--assignee <name|self>] [--lane <name>] [--text <string>]`
+
+List the tickets in view, in the list's stored order (the order the human arranged; new tickets land on top). Every filter is optional, and they combine:
+
+- `--filter` — `open` (default: not done, not archived), `done`, or `all` (everything, the archive included).
+- `--status` — one or more comma-separated values, e.g. `--status ready,in-progress`. A repeated flag keeps only its last value, which is why the axis is comma-separated.
+- `--assignee` — an exact name, `self` for your own (`$TANDEM_AGENT`), or `""` for the unowned tickets.
+- `--lane` — a cycle lane name, or `""` for the default area.
+- `--text` — a case- and accent-insensitive substring of the title **or the description**.
+
+An empty result is a success: `{"todos":[]}`.
 
 ```
-$ tandem-cli todo list --filter open
-{"todos":[{"completedAt":null,"createdAt":"2026-10-09T14:03:22Z","done":false,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"section":null,"title":"Water the plants"}]}
+$ tandem-cli todo list --status ready --assignee self
+{"todos":[{"archived":false,"assignee":"ui","completedAt":null,"createdAt":"2026-10-09T14:03:22Z","description":"## Why\n…","done":false,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"section":"Core","status":"ready","title":"Ship the board"}]}
 ```
 
-### `tandem-cli todo add --title <string>`
+### `tandem-cli todo add --title <string> [--status <value>] [--assignee <name|self>] [--lane <name>]`
 
-Add a todo to the shared Tandem list (store: ~/.tandem/todos.json), which a human on this Mac shares with you through the Tandem app. Argument: `title` (required; trimmed, empty is rejected). Duplicate titles are allowed. The new todo lands on top of the list's default area. Returns the created todo as JSON, including the `id` you can pass to `complete`.
+Add a ticket to the shared Tandem list (store: ~/.tandem/todos.json), which a human on this Mac shares with you through the Tandem app. The title is required, trimmed, and empty is rejected; duplicate titles are allowed. A title alone lands in `backlog`, unowned, on top of the list's default area. `--assignee self` claims it — `add` never assigns implicitly, because agents routinely file tickets *for* the human (`--assignee human`). A lane must already exist.
 
 ```
-$ tandem-cli todo add --title "Water the plants"
-{"completedAt":null,"createdAt":"2026-10-17T09:12:00Z","done":false,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"section":null,"title":"Water the plants"}
+$ tandem-cli todo add --title "Water the plants" --assignee self
+{"archived":false,"assignee":"ui","completedAt":null,"createdAt":"2026-10-17T09:12:00Z","description":null,"done":false,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"section":null,"status":"backlog","title":"Water the plants"}
 ```
+
+### `tandem-cli todo set --id <string> [--title …] [--status …] [--assignee …] [--description …]`
+
+Change the fields you name in **one write**; everything you do not name is left alone. `--description -` reads the body from stdin, which is how multi-line markdown lands intact:
+
+```
+$ printf '## Why\n\nA long body.\n' | tandem-cli todo set --id 550e8400-… --status refined --description -
+```
+
+`--assignee ""` clears the owner, `--description ""` clears the body, and `--assignee human` hands the ticket to the human for a decision. Moving to `done` stamps `completedAt`; moving out of it clears the stamp. An empty `--title` is rejected.
+
+### `tandem-cli todo move --id <string> [--lane <name>] [--index <number>]`
+
+Move a ticket between cycle lanes and/or within one. `--index` is 0-based inside the target lane; omit it to append, which leaves the order above it untouched. `--lane ""` moves it to the default area; the lane must already exist.
 
 ### `tandem-cli todo complete --id <string>`
 
-Mark a todo as done on the shared Tandem list (store: ~/.tandem/todos.json). Argument: `id` (from `list` or `add`). Idempotent: completing an already-done todo returns it unchanged. If the id is unknown, the error includes the current open list so you can pick the right one. There is no reopen (a human reopens a done todo in the app).
+The short path to `--status done`: idempotent — completing an already-done ticket returns it unchanged — and an unknown id's error carries the current open list so you can pick the right one. There is no `reopen` verb: `todo set --id … --status backlog` is the reopen.
 
 ```
 $ tandem-cli todo complete --id 550e8400-e29b-41d4-a716-446655440000
-{"completedAt":"2026-10-17T09:14:37Z","createdAt":"2026-10-09T14:03:22Z","done":true,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"section":null,"title":"Water the plants"}
+{"archived":false,"assignee":null,"completedAt":"2026-10-17T09:14:37Z","createdAt":"2026-10-09T14:03:22Z","description":null,"done":true,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"section":null,"status":"done","title":"Water the plants"}
+```
+
+### `tandem-cli todo archive`
+
+Archive every done ticket in one call: nothing is deleted, the tickets leave the default views (and `--filter all` still shows them). Returns how many it archived; a second call returns 0.
+
+```
+$ tandem-cli todo archive
+{"archived":3}
 ```
 
 ## Notes
@@ -106,7 +152,7 @@ $ tandem-cli doctor
 
 ## Streams and exit codes
 
-- **stdout** — one JSON object on success. `list` returns `{"todos": [...]}`; `add` and `complete` return the todo object. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
+- **stdout** — one JSON object on success. `list` returns `{"todos": [...]}`; `add`, `set`, `move` and `complete` return the todo object; `archive` returns `{"archived": <n>}`. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
 - **stderr** — short, actionable plain text on failure, naming the failed value and the next step. `complete` with an unknown id appends the current open list in the `list` shape:
 
   ```

@@ -22,6 +22,15 @@ public enum StoreEncoding {
         return try serialize(object)
     }
 
+    /// The `archive` result: `{"archived": <n>}`, with a top-level `note` when non-nil.
+    /// A bulk operation reports how much it did, not which tickets it touched — the
+    /// caller's next `list` has the tickets, and the count keeps the reply one line.
+    public static func archivedResult(_ count: Int, note: String?) throws -> String {
+        var object: [String: Any] = ["archived": count]
+        if let note { object["note"] = note }
+        return try serialize(object)
+    }
+
     /// The open list in the `list` shape — used to render the unknown-id error so the
     /// caller recovers in one turn (spec: tool contract, `complete`).
     public static func openList(_ todos: [Todo]) throws -> String {

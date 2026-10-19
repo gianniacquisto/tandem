@@ -6,12 +6,25 @@ enum Usage {
     tandem-cli — Tandem's agent-facing command line.
 
     Usage:
-      tandem-cli todo list [--filter open|done|all]
-      tandem-cli todo add --title <string>
-      tandem-cli todo complete --id <string>
+      tandem-cli todo list [--filter open|done|all] [--status <value[,value]>]
+                           [--assignee <name|self>] [--lane <name>] [--text <string>]
+      tandem-cli todo add --title <string> [--status <value>] [--assignee <name|self>]
+                          [--lane <name>]
+      tandem-cli todo set --id <id> [--title <string>] [--status <value>]
+                         [--assignee <name|self>] [--description <string|->]
+      tandem-cli todo move --id <id> [--lane <name>] [--index <number>]
+      tandem-cli todo complete --id <id>
+      tandem-cli todo archive
       tandem-cli note rename --from <path> --to <path>
       tandem-cli note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]
       tandem-cli doctor
       tandem-cli --help | -h
+
+    Values:
+      status    backlog | refined | ready | in-progress | done
+      filter    open (default) | done | all
+      assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
+      lane      a lane name, or "" for the default area
+      index     0-based within the lane; omitted appends to it
     """
 }

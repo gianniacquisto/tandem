@@ -16,12 +16,20 @@ public enum DomainError: Error, Sendable, Equatable {
     case emptyTitle
     /// `list` was called with a filter that is not `open`, `done`, or `all`.
     case invalidFilter(String)
-    /// A section name was empty or whitespace-only.
-    case emptySectionName
-    /// A section name was already in use.
-    case duplicateSection(String)
-    /// A section name was referenced but does not exist.
-    case unknownSection(String)
+    /// A Status value that is not one of the five (ADR 0017).
+    case invalidStatus(String)
+    /// An archive value that is not `excluded`, `included`, or `only`.
+    case invalidArchived(String)
+    /// `move` was given an index that is not a whole number.
+    case invalidIndex(String)
+    /// `--assignee self` was used but the environment names no agent.
+    case agentNameUnset
+    /// A lane name was empty or whitespace-only.
+    case emptyLaneName
+    /// A lane name was already in use.
+    case duplicateLane(String)
+    /// A lane name was referenced but does not exist.
+    case unknownLane(String)
     /// `complete`/`delete` was called with an id not present in the store. `open` is
     /// the full current open list (in the `list` shape) so the caller recovers in one turn.
     case unknownID(id: String, open: [Todo])
@@ -34,12 +42,20 @@ public enum DomainError: Error, Sendable, Equatable {
             return "Title is empty. Provide a non-empty todo title and try again."
         case .invalidFilter(let bad):
             return "filter must be one of open, done, all (got \"\(bad)\")."
-        case .emptySectionName:
-            return "Section name is empty. Provide a non-empty section name and try again."
-        case .duplicateSection(let name):
-            return "A section named \"\(name)\" already exists."
-        case .unknownSection(let name):
-            return "Unknown section \"\(name)\". Create it first."
+        case .invalidStatus(let bad):
+            return "status must be one of \(Status.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
+        case .invalidArchived(let bad):
+            return "archived must be one of excluded, included, only (got \"\(bad)\")."
+        case .invalidIndex(let bad):
+            return "index must be a whole number (got \"\(bad)\")."
+        case .agentNameUnset:
+            return "Cannot resolve --assignee self: set TANDEM_AGENT to this agent's name, or pass --assignee <name>."
+        case .emptyLaneName:
+            return "Cycle lane name is empty. Provide a non-empty name and try again."
+        case .duplicateLane(let name):
+            return "A cycle lane named \"\(name)\" already exists."
+        case .unknownLane(let name):
+            return "Unknown cycle lane \"\(name)\". Create it first."
         case .unknownID(let id, _):
             return "Unknown todo id \"\(id)\". Here is the current open list to pick the right one from:"
         }

@@ -246,8 +246,8 @@ struct RowDragAndDrop: ViewModifier {
 /// commits, Esc cancels, and clicking away commits. A plain row click is never
 /// destructive. Delete appears on hover and in the context menu — also GUI-only
 /// (agents have no delete in the CLI). Rows drag to reorder and to move
-/// between sections when the caller passes `onDropTodo`, and the context menu's
-/// "Move to" files one into a section at any scroll position.
+/// between lanes when the caller passes `onDropTodo`, and the context menu's
+/// "Move to" files one into a lane at any scroll position.
 /// A linked todo (`todo.link`) shows a quiet trailing paperclip that opens the note,
 /// with "Link to note…" / "Remove link" in the context menu (GUI-only, ADR 0010).
 struct LigneRow: View {
@@ -259,10 +259,10 @@ struct LigneRow: View {
     var onDelete: () -> Void
     /// Opens the todo's linked Bikeshed note (its bikeshed-root-relative path). GUI-only.
     var onOpenLink: (String) -> Void
-    /// Section names for the "Move to" menu; empty (the flat case) hides it, since
+    /// Lane names for the "Move to" menu; empty (the flat case) hides it, since
     /// there is nowhere to move to. GUI-only.
-    var sections: [String] = []
-    var onMoveToSection: ((String?) -> Void)? = nil
+    var lanes: [String] = []
+    var onMoveToLane: ((String?) -> Void)? = nil
     /// Opens the note picker to link this todo to a note. `nil` hides the item.
     var onSetLink: (() -> Void)? = nil
     /// Clears this todo's link. `nil` hides the item.
@@ -351,12 +351,12 @@ struct LigneRow: View {
             } else if let onSetLink {
                 Button("Link to note…", action: onSetLink)
             }
-            if let onMoveToSection, !sections.isEmpty {
+            if let onMoveToLane, !lanes.isEmpty {
                 Menu("Move to") {
-                    moveItem("Uncategorized", target: nil, action: onMoveToSection)
+                    moveItem("Uncategorized", target: nil, action: onMoveToLane)
                     Divider()
-                    ForEach(sections, id: \.self) { name in
-                        moveItem(name, target: name, action: onMoveToSection)
+                    ForEach(lanes, id: \.self) { name in
+                        moveItem(name, target: name, action: onMoveToLane)
                     }
                 }
             }
@@ -370,7 +370,7 @@ struct LigneRow: View {
                                  palette: palette, onDrop: onDropTodo))
     }
 
-    /// One "Move to" entry, checkmarked when it is the todo's current section.
+    /// One "Move to" entry, checkmarked when it is the todo's current lane.
     /// (`Label` in a menu is what draws the checkmark; a selected `Toggle` would
     /// also work but reads as a switch.)
     @ViewBuilder
@@ -379,7 +379,7 @@ struct LigneRow: View {
         Button {
             action(target)
         } label: {
-            if todo.section == target {
+            if todo.lane == target {
                 Label(title, systemImage: "checkmark")
             } else {
                 Text(title)
@@ -464,7 +464,7 @@ struct LigneEmptyState: View {
     }
 }
 
-// MARK: quiet text button — "Clear done"
+// MARK: quiet text button — "Archive done"
 
 struct TextButton: View {
     var title: String

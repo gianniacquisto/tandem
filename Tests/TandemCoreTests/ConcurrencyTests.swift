@@ -159,4 +159,42 @@ struct ConcurrencyTests {
         #expect(!fm.fileExists(atPath: orphan.path), "stale orphan was not removed")
         #expect(fm.fileExists(atPath: fresh.path), "fresh temp was wrongly removed")
     }
+
+    // MARK: - Ticket fields under contention
+
+    @Test("two writers setting different fields never produce a half-edited ticket")
+    func concurrentFieldSetsDoNotClobber() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let id = try store.add("shared").value.id.uuidString
+        let statuses: [Status] = [.ready, .inProgress]
+        let bodies = ["alpha", "beta"]
+        let rounds = 25
+        let done = DispatchGroup()
+
+        done.enter()
+        DispatchQueue.global().async {
+            for i in 0..<rounds {
+                _ = try? store.set(id, status: .set(statuses[i % statuses.count]))
+            }
+            done.leave()
+        }
+        done.enter()
+        DispatchQueue.global().async {
+            for i in 0..<rounds {
+                _ = try? store.set(id, description: .set(bodies[i % bodies.count]))
+            }
+            done.leave()
+        }
+        #expect(done.wait(timeout: .now() + 15) == .success, "writer threads did not finish")
+
+        // Each writer named one field, so neither field may carry the other's edit away.
+        let todo = try #require(try store.list(.all).value.first)
+        #expect(bodies.contains(todo.description ?? ""), "the description survived the status writes")
+        #expect(todo.status == .ready || todo.status == .inProgress,
+                "the status survived the description writes")
+        #expect(todo.title == "shared")
+    }
 }
