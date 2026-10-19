@@ -376,10 +376,10 @@ struct OperationsTests {
         #expect(try store.list(.all).value.map(\.id) == stored)
     }
 
-    // MARK: - clearDone
+    // MARK: - archiveDone
 
-    @Test("clearDone removes all done todos and returns the count removed")
-    func clearDoneRemoves() throws {
+    @Test("archiveDone archives every done todo — nothing is removed — and reports the count")
+    func archiveDoneArchives() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
@@ -390,15 +390,20 @@ struct OperationsTests {
         _ = try store.complete(d1.value.id.uuidString)
         _ = try store.complete(d2.value.id.uuidString)
 
-        #expect(try store.clearDone().value == 2)
+        #expect(try store.archiveDone().value == 2)
 
+        // Nothing is deleted: the tickets are all still in the store.
         let all = try store.list(.all).value
-        #expect(all.count == 1)
-        #expect(all.first?.done == false)
+        #expect(all.count == 3)
+        #expect(all.filter(\.archived).map(\.title) == ["done-2", "done-1"])
+
+        // But they leave the default views.
+        #expect(try store.list(.open).value.map(\.title) == ["open"])
+        #expect(try store.list(.done).value.isEmpty)
     }
 
-    @Test("clearDone with none done returns 0 and leaves open todos intact")
-    func clearDoneNone() throws {
+    @Test("archiveDone with nothing done archives nothing and leaves open todos intact")
+    func archiveDoneNone() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
@@ -406,11 +411,25 @@ struct OperationsTests {
         _ = try store.add("open-1")
         _ = try store.add("open-2")
 
-        #expect(try store.clearDone().value == 0)
+        #expect(try store.archiveDone().value == 0)
 
         let all = try store.list(.all).value
         #expect(all.count == 2)
-        #expect(all.allSatisfy { !$0.done })
+        #expect(all.allSatisfy { !$0.done && !$0.archived })
+    }
+
+    @Test("archiveDone is idempotent: already-archived tickets are not counted again")
+    func archiveDoneIdempotent() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let done = try store.add("done")
+        _ = try store.complete(done.value.id.uuidString)
+
+        #expect(try store.archiveDone().value == 1)
+        #expect(try store.archiveDone().value == 0)
+        #expect(try store.list(.all).value.filter(\.archived).count == 1)
     }
 
     // MARK: - delete

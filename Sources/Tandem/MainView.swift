@@ -7,12 +7,12 @@ import TandemCore
 ///               closed by a hairline (identical on both tabs)
 ///   Todos     — a centered 540 pt column: flat parchment quick-add
 ///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All
-///               with live counts (⌘1/⌘2/⌘3) on a row with "+ Lane" and
-///               "Clear done" (disabled when nothing is done), and the
+///               with live counts (⌘1/⌘2/⌘3) on a row with "+ Cycle lane" and
+///               "Archive done" (disabled when nothing is done), and the
 ///               stored-order list grouped by lane. Only named lanes draw
 ///               a header — the ungrouped todos are just the top of the list.
-///               A search field (⌘F) narrows the drawn rows by title, across
-///               every lane; Escape clears it (or dismisses a banner).
+///               A search field (⌘F) narrows the drawn rows by title and description,
+///               across every lane; Escape clears it (or dismisses a banner).
 ///               Double-click a name to rename; its ⋯ menu moves the lane up
 ///               or down, or deletes it, which ungroups its todos rather than
 ///               deleting them.
@@ -136,16 +136,16 @@ struct MainView: View {
                 } else {
                     TextButton(title: "+ Cycle lane", palette: palette) { beginAddLane() }
                 }
-                TextButton(title: "Clear done", palette: palette,
+                TextButton(title: "Archive done", palette: palette,
                            enabled: !model.doneTodos.isEmpty) {
-                    withAnimation(Motion.remove) { model.clearDone() }
+                    withAnimation(Motion.remove) { model.archiveDone() }
                 }
             }
             .padding(.horizontal, Space.gutter)
             .padding(.top, Space.lane)
-            // View-only search: it narrows what is drawn (case-insensitive on the
-            // title, across every lane and the current Open/Done/All filter).
-            // It never re-sorts or mutates the store.
+            // View-only search: it narrows what is drawn (case- and diacritic-
+            // insensitive, over title and description, across every lane and the
+            // current Open/Done/All filter). It never re-sorts or mutates the store.
             LigneSearchField(text: $search, palette: palette, focus: $searchFocused)
                 .padding(.horizontal, Space.gutter)
                 .padding(.top, Space.lane)
@@ -177,27 +177,21 @@ struct MainView: View {
 
     // MARK: - List
 
+    /// The tickets in view: the shipped filter, narrowed by the search field — one
+    /// `TodoQuery` for both, the same predicate an agent's `list` runs. The search
+    /// matches the title *and the description*, and it never re-sorts or mutates the
+    /// store.
     private var visibleTodos: [Todo] {
-        let base: [Todo]
-        switch filter {
-        case .open: base = model.openTodos
-        case .done: base = model.doneTodos
-        case .all: base = model.todos
-        }
-        // Search is a pure view concern: case-insensitive substring on the title,
-        // applied *before* grouping so lane counts reflect the matches. It
-        // never changes the store or the stored order.
-        guard queryActive else { return base }
-        return base.filter { $0.title.lowercased().contains(query) }
+        var query = filter.query
+        query.text = search
+        return query.apply(to: model.todos)
     }
 
-    /// The trimmed, lowercased query. Empty means "no filter", and behaviour is
-    /// exactly as it was before the field existed.
-    private var query: String {
-        search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    /// Whether the search field has anything in it. The matching itself — case- and
+    /// diacritic-insensitive, over title and description — belongs to `TodoQuery`.
+    private var queryActive: Bool {
+        !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
-
-    private var queryActive: Bool { !query.isEmpty }
 
     /// The list grouped for display. With no lanes declared this is a single
     /// unnamed group (the flat list, unchanged); otherwise the default area comes

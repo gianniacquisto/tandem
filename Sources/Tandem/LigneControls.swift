@@ -464,7 +464,7 @@ struct LigneEmptyState: View {
     }
 }
 
-// MARK: quiet text button — "Clear done"
+// MARK: quiet text button — "Archive done"
 
 struct TextButton: View {
     var title: String

@@ -34,8 +34,10 @@ final class TandemModel {
     /// successful operation/reload.
     private(set) var lastError: String?
 
-    var openTodos: [Todo] { todos.filter { !$0.done } }
-    var doneTodos: [Todo] { todos.filter { $0.done } }
+    // The shipped filters, defined once in the core (`Filter.query`): the app's counts
+    // and the CLI's `--filter` are views over the same predicate, not two definitions.
+    var openTodos: [Todo] { Filter.open.apply(to: todos) }
+    var doneTodos: [Todo] { Filter.done.apply(to: todos) }
 
     private init(store: Store = Store()) {
         self.store = store
@@ -129,8 +131,10 @@ final class TandemModel {
         run { try self.store.setLink(id, to: link) }
     }
 
-    func clearDone() {
-        run { try self.store.clearDone() }
+    /// Archives every done ticket — "clear done" without the deleting: finished work
+    /// leaves the view and stays in the file.
+    func archiveDone() {
+        run { try self.store.archiveDone() }
     }
 
     /// GUI-only in v1 — there is no delete verb in the CLI.

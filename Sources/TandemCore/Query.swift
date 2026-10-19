@@ -1,0 +1,173 @@
+import Foundation
+
+/// One view over the tickets (GLOSSARY: Filter; ADR 0017).
+///
+/// The single definition of "which tickets are in view", shared by both faces: the CLI's
+/// flags and the app's filter row are two syntaxes over this value, so "the ready
+/// tickets" cannot mean one thing to a human and another to an agent. It is a pure
+/// predicate — it never reorders (the stored order is the order) and it never writes.
+public struct TodoQuery: Sendable, Equatable {
+    /// Free text, matched case- and diacritic-insensitively against the **title and the
+    /// description**. `nil` or whitespace-only matches everything.
+    public var text: String?
+    /// The Statuses in view; empty means every Status.
+    public var statuses: Set<Status>
+    /// Who the ticket is on.
+    public var assignee: Assignee
+    /// The cycle lane the ticket belongs to.
+    public var lane: Lane
+    /// Whether archived tickets are in view.
+    public var archived: Archived
+
+    public init(
+        text: String? = nil,
+        statuses: Set<Status> = [],
+        assignee: Assignee = .any,
+        lane: Lane = .any,
+        archived: Archived = .excluded
+    ) {
+        self.text = text
+        self.statuses = statuses
+        self.assignee = assignee
+        self.lane = lane
+        self.archived = archived
+    }
+
+    /// The assignee axis: anyone, the unassigned tickets, or one named owner.
+    public enum Assignee: Sendable, Equatable, Hashable {
+        case any
+        case unassigned
+        case named(String)
+    }
+
+    /// The lane axis: any lane, the unnamed default area, or one named lane.
+    public enum Lane: Sendable, Equatable, Hashable {
+        case any
+        case unnamed
+        case named(String)
+    }
+
+    /// The archive axis is three-valued because both halves are real asks: "hide finished
+    /// work" is the default, and "show me only the archive" is how it is undone.
+    public enum Archived: String, Sendable, CaseIterable {
+        case excluded
+        case included
+        case only
+    }
+}
+
+// MARK: - The predicate
+
+extension TodoQuery {
+
+    /// The tickets in view, in stored order. An empty result is a success, not a failure.
+    public func apply(to todos: [Todo]) -> [Todo] {
+        todos.filter(matches)
+    }
+
+    /// One ticket against every axis: all of them must hold (the axes are ANDed).
+    func matches(_ todo: Todo) -> Bool {
+        switch archived {
+        case .excluded: if todo.archived { return false }
+        case .only: if !todo.archived { return false }
+        case .included: break
+        }
+        if !statuses.isEmpty, !statuses.contains(todo.status) { return false }
+        switch assignee {
+        case .any: break
+        case .unassigned: if todo.assignee != nil { return false }
+        case .named(let name): if todo.assignee != name { return false }
+        }
+        switch lane {
+        case .any: break
+        case .unnamed: if todo.lane != nil { return false }
+        case .named(let name): if todo.lane != name { return false }
+        }
+        if let needle = normalizedText {
+            let inTitle = todo.title.range(of: needle, options: Self.textOptions) != nil
+            let inDescription = todo.description.map {
+                $0.range(of: needle, options: Self.textOptions) != nil
+            } ?? false
+            if !inTitle && !inDescription { return false }
+        }
+        return true
+    }
+
+    private static let textOptions: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+
+    /// The search text with its edges trimmed. An empty filter box means no text filter,
+    /// not "match nothing".
+    var normalizedText: String? {
+        guard let text else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+// MARK: - The boundary (raw values in)
+
+extension TodoQuery {
+
+    /// The CLI boundary: raw flag values in, one query out — or a domain error naming
+    /// what was wrong and what would have worked. The CLI parses nothing itself, so both
+    /// faces reject the same value with the same words.
+    ///
+    /// `filter` is the shipped `open|done|all` contract kept as sugar over the axes; an
+    /// explicitly named axis overrides the part of the sugar it names.
+    public static func parse(
+        filter rawFilter: String? = nil,
+        text: String? = nil,
+        status rawStatus: String? = nil,
+        assignee rawAssignee: String? = nil,
+        lane rawLane: String? = nil,
+        archived rawArchived: String? = nil
+    ) throws -> TodoQuery {
+        guard let filter = Filter.parse(raw: rawFilter) else {
+            throw DomainError.invalidFilter(rawFilter ?? "")
+        }
+        var query = filter.query
+        if let text { query.text = text }
+        if let rawStatus { query.statuses = try parseStatuses(rawStatus) }
+        if let rawAssignee { query.assignee = parseAssignee(rawAssignee) }
+        if let rawLane { query.lane = parseLane(rawLane) }
+        if let rawArchived { query.archived = try parseArchived(rawArchived) }
+        return query
+    }
+
+    /// `ready,in-progress` — comma-separated, because the flag grammar keeps only the last
+    /// value of a repeated flag and would silently drop the earlier ones.
+    static func parseStatuses(_ raw: String) throws -> Set<Status> {
+        let parts = raw
+            .split(separator: ",", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !parts.isEmpty else { throw DomainError.invalidStatus(raw) }
+        var statuses: Set<Status> = []
+        for part in parts {
+            guard let status = Status.parse(raw: part) else {
+                throw DomainError.invalidStatus(part)
+            }
+            statuses.insert(status)
+        }
+        return statuses
+    }
+
+    /// The empty value is the empty field: `--assignee ""` asks for the unassigned.
+    static func parseAssignee(_ raw: String) -> Assignee {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? .unassigned : .named(name)
+    }
+
+    /// The empty value is the unnamed default area.
+    static func parseLane(_ raw: String) -> Lane {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? .unnamed : .named(name)
+    }
+
+    static func parseArchived(_ raw: String) throws -> Archived {
+        guard let value = Archived(rawValue: raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw DomainError.invalidArchived(raw)
+        }
+        return value
+    }
+}

@@ -16,6 +16,10 @@ public enum DomainError: Error, Sendable, Equatable {
     case emptyTitle
     /// `list` was called with a filter that is not `open`, `done`, or `all`.
     case invalidFilter(String)
+    /// A Status value that is not one of the five (ADR 0017).
+    case invalidStatus(String)
+    /// An archive value that is not `excluded`, `included`, or `only`.
+    case invalidArchived(String)
     /// A lane name was empty or whitespace-only.
     case emptyLaneName
     /// A lane name was already in use.
@@ -34,6 +38,10 @@ public enum DomainError: Error, Sendable, Equatable {
             return "Title is empty. Provide a non-empty todo title and try again."
         case .invalidFilter(let bad):
             return "filter must be one of open, done, all (got \"\(bad)\")."
+        case .invalidStatus(let bad):
+            return "status must be one of \(Status.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
+        case .invalidArchived(let bad):
+            return "archived must be one of excluded, included, only (got \"\(bad)\")."
         case .emptyLaneName:
             return "Cycle lane name is empty. Provide a non-empty name and try again."
         case .duplicateLane(let name):
