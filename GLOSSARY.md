@@ -21,8 +21,12 @@ _Avoid_: top bar element, status bar, tray, badge
 ### The domain
 
 **Todo**:
-A single item with a title and a done state. The only entity in the todo domain.
+A single item in the shared list — the only entity in the todo domain, and the word the store and the CLI use for it.
 _Avoid_: task, item, to-do (hyphenated)
+
+**Ticket**:
+A Todo carrying the full shape — a description, an assignee, a Status, and a Cycle lane. The board's unit of work; not a second entity, since the store's word for it stays Todo.
+_Avoid_: card, issue, story
 
 **Open**:
 A todo that has not yet been completed.
@@ -31,6 +35,18 @@ _Avoid_: pending, active
 **Done**:
 A todo that has been completed.
 _Avoid_: closed, finished, complete (as a noun)
+
+**Status**:
+A todo's position in the workflow: backlog (the default), refined, ready, in-progress, or done. One axis with five values — done is where the workflow ends, not a flag set beside it.
+_Avoid_: state, stage, step
+
+**Archived**:
+A todo set aside: out of the default views, still in the store. Any todo can be archived, and archiving a done todo is how a list is cleared without deleting.
+_Avoid_: closed, deleted, cleared, hidden
+
+**Cycle lane**:
+The named area a todo belongs to: the board's row and the list's grouping. Every todo sits in one lane, or in the unnamed default area, which stays first.
+_Avoid_: section, swimlane, epic, list (Trello's word)
 
 **Filter**:
 Which todos are in view: `open` (the default), `done`, or `all`. One term for two surfaces: the main window's segmented control and the CLI's `list --filter` argument.
