@@ -102,14 +102,20 @@ struct TicketModelTests {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
-        try writeRaw(#"{"version":1,"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"old","done":false,"createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#, to: store)
+        try writeRaw(#"{"version":1,"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"old","done":false,"createdAt":"2026-01-01T00:00:00Z","completedAt":null},{"id":"00000000-0000-0000-0000-000000000002","title":"finished by the old app","done":true,"createdAt":"2026-01-01T00:00:00Z","completedAt":"2026-01-02T00:00:00Z"}]}"#, to: store)
 
-        let todo = try #require(try store.list(.all).value.first)
+        let todo = try #require(try store.list(.all).value.first { $0.title == "old" })
         #expect(todo.status == .backlog)
         #expect(todo.archived == false)
         #expect(todo.assignee == nil)
         #expect(todo.description == nil)
         #expect(todo.lane == nil)
+
+        // `done` true with no `status` key at all is the plain upgrade case: still done.
+        let finished = try #require(try store.list(.all).value.first { $0.title == "finished by the old app" })
+        #expect(finished.status == .done)
+        #expect(finished.done == true)
+
         #expect(try store.list(.all).note == nil, "older is not corrupt")
     }
 
