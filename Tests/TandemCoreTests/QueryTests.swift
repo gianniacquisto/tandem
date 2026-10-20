@@ -173,7 +173,7 @@ struct QueryTests {
         #expect(try TodoQuery.parse(filter: "all").archived == .included)
         #expect(try TodoQuery.parse(filter: "all", archived: "excluded").archived == .excluded)
         #expect(try TodoQuery.parse(filter: "done").statuses == [.done])
-        #expect(try TodoQuery.parse(filter: "open").statuses == [.backlog, .refined, .ready, .inProgress])
+        #expect(try TodoQuery.parse(filter: "open").statuses == [.backlog, .refined, .ready, .inProgress, .inReview])
     }
 
     // MARK: - the human's inbox

@@ -80,6 +80,24 @@ struct BoardTests {
         #expect(reread.map { $0.lane } == ["Board"])
     }
 
+    @Test("a drop into in-review persists and draws in the in-review column")
+    func placeInReview() throws {
+        let (store, dir) = makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try store.add("waiting for a reader").value
+
+        let placed = try store.place(ticket.id.uuidString, lane: nil, status: .inReview).value
+        #expect(placed.status == .inReview)
+        #expect(!placed.done)
+
+        // The file agrees, and the board draws the ticket in the in-review cell.
+        let reread = try #require(try Store(directory: dir).list(.all).value.first)
+        let rows = TodoBoard.rows(from: [reread], lanes: [])
+        #expect(rows[0].tickets(.inReview).map { $0.title } == ["waiting for a reader"])
+        #expect(rows[0].tickets(.inProgress).isEmpty)
+        #expect(rows[0].tickets(.done).isEmpty)
+    }
+
     @Test("a drop appends to its lane by default and takes an index when given one")
     func placeIndex() throws {
         let (store, dir) = makeStore()
