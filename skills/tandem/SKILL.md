@@ -122,6 +122,17 @@ $ tandem-cli lane delete --name Tandem
 
 A lane must exist before `todo add --lane` / `todo move --lane` will accept it, which is what these verbs are for. `lane list` does not exist: `todo list --filter all` shows every lane that has a ticket in its `section`; a lane with no tickets is visible only in the app.
 
+## Session records
+
+Every agent session files one ticket for itself, so the board shows what is running and what each session did. The convention lives in `AGENTS.md`; this is the CLI's side of it.
+
+- **Start** — `todo add --title "Session — <project> · <session-id>" --status in-progress`, then `todo set --id <id> --description "<what this session is for>"`. `<project>` is the codebase the session works in, `<session-id>` is `$OPENCODE_SESSION_ID`.
+- **One per session** — check `todo list --text "<session-id>"` first: the id is in the title, so it matches.
+- **End** — `todo set --id <id> --status done --description "<what this session did>"`. `todo complete --id <id>` does the same without the description.
+- **Where they live** — the default area, not a lane, so a session ticket never depends on a lane that may not exist. `todo list --text "Session —"` shows the session tickets — the prefix is in the title, and `--text` also reads descriptions, so it is a near-match and not an exact one.
+- **They are records, not work** — a triage pass skips any ticket whose title starts with `Session —`.
+- **Origin** — when the installed CLI carries `--origin`, file with `--origin self`; an omitted flag stamps the ticket as the human's.
+
 ## Notes
 
 The bikeshed (`~/.tandem/bikeshed/`) is a plain folder of `.md` files, and the file itself is the interface. Create, edit, and delete curated notes with your own file tools; the CLI writes no note content. Three CLI verbs act on notes: `rename`, the one rename path; `capture`, which files a capture; and `stats`, the read-only memory-health readout.

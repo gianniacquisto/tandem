@@ -47,11 +47,12 @@ A ticket that needs a decision from the human is `refined` with `assignee human`
 
 1. `tandem-cli todo list --filter open` — the board in stored order.
 2. Skip any title beginning `PINNED —`. Pinned tickets wait for their own wayfinder; do not refine, move, or reassign them except to hand them to the human.
-3. Read each description. A ticket with no description is raw material, not work.
-4. Refine by grilling — the round below — until the description passes **Definition of refined**.
-5. Write the description with `todo set --description -`, then set the status that matches the gates.
-6. `ready` → **Dispatch**. Human-only → **Escalate**. Neither → leave `refined` and say so.
-7. Record one capture for the pass: what moved, what waits, and why.
+3. Skip any title beginning `Session —`. A session ticket is a record of a session that ran, not work to refine: the session files it and closes it itself (the convention is in `AGENTS.md`).
+4. Read each description. A ticket with no description is raw material, not work.
+5. Refine by grilling — the round below — until the description passes **Definition of refined**.
+6. Write the description with `todo set --description -`, then set the status that matches the gates.
+7. `ready` → **Dispatch**. Human-only → **Escalate**. Neither → leave `refined` and say so.
+8. Record one capture for the pass: what moved, what waits, and why.
 
 ## Refine by grilling
 
