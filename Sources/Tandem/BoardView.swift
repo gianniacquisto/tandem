@@ -288,9 +288,10 @@ private struct BoardTicket: View {
                         .lineLimit(1)
                 }
                 if let assignee = todo.assignee {
-                    Text(assignee == "human" ? "human" : "@\(assignee)")
+                    Text(assignee == TodoQuery.human ? "human" : "@\(assignee)")
                         .font(.system(size: 10.5))
-                        .foregroundStyle(palette.inkDim)
+                        .foregroundStyle(assignee == TodoQuery.human ? palette.emberDeep
+                                                                     : palette.inkDim)
                         .lineLimit(1)
                 }
             }

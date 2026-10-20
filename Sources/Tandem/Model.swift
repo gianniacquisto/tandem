@@ -45,6 +45,8 @@ final class TandemModel {
     var doneTodos: [Todo] { Filter.done.apply(to: todos) }
     /// The archive: out of every default view, still in the store. The list's fourth state.
     var archivedTodos: [Todo] { TodoQuery(archived: .only).apply(to: todos) }
+    /// What is waiting for the person: the tickets agents assigned to `human`.
+    var inboxTodos: [Todo] { TodoQuery.inbox.apply(to: todos) }
 
     private init(store: Store = Store()) {
         self.store = store

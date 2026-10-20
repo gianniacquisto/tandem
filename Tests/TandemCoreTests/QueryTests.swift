@@ -176,6 +176,25 @@ struct QueryTests {
         #expect(try TodoQuery.parse(filter: "open").statuses == [.backlog, .refined, .ready, .inProgress])
     }
 
+    // MARK: - the human's inbox
+
+    @Test("the inbox is the open, non-archived tickets assigned to human")
+    func inboxView() {
+        let tickets = [
+            ticket("asked of the person", status: .ready, assignee: "human"),
+            ticket("asked and done", status: .done, assignee: "human"),
+            ticket("asked and filed away", archived: true, assignee: "human"),
+            ticket("agent work", status: .ready, assignee: "core"),
+            ticket("nobody's", status: .backlog),
+        ]
+        #expect(TodoQuery.inbox.apply(to: tickets).map(\.title) == ["asked of the person"])
+    }
+
+    @Test("the inbox is empty when nothing is assigned, not an error")
+    func emptyInbox() {
+        #expect(TodoQuery.inbox.apply(to: [ticket("agent work", assignee: "ui")]).isEmpty)
+    }
+
     @Test("parse rejects a bad filter, status, or archive value by name")
     func parseBadValues() {
         #expect(throws: DomainError.invalidFilter("bogus")) {

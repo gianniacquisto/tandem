@@ -22,6 +22,9 @@ import TandemCore
 ///               tag wherever a view includes it, and its menu brings it back.
 ///   Board     — Status columns, lane rows (BoardView.swift): the same tickets
 ///               laid out by where they are in the workflow
+///   Inbox     — the tickets agents assigned to `human`: the escalation lane, drawn
+///               with the list's own rows (the description sheet holds the question).
+///               A dot on the tab says one is waiting, from any other face
 ///   Bikeshed  — the notes face (BikeFace.swift): tree sidebar, the WKWebView
 ///               editor, the backlinks dock
 ///
@@ -81,6 +84,10 @@ struct MainView: View {
                                              focusSearch: $searchFocused,
                                              hasBanner: false,
                                              dismissBanners: {}))
+            } else if tab == .inbox {
+                inboxFace
+                    .frame(maxWidth: 540)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
                 BikeFaceView(model: bikeModel)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -133,7 +140,8 @@ struct MainView: View {
                 .font(.custom("AvenirNext-DemiBold", size: 15))
                 .tracking(0.3)
                 .foregroundStyle(palette.ink)
-            BikeTabControl(tab: $tab, palette: palette)
+            BikeTabControl(tab: $tab, palette: palette,
+                       inboxCount: model.inboxTodos.count)
             Spacer()
         }
         .padding(.horizontal, Space.gutter)
@@ -294,30 +302,87 @@ struct MainView: View {
                                     onDropIntoLane: { moveTodo($0, toLane: key) })
                             }
                             ForEach(group.todos) { todo in
-                                LigneRow(todo: todo, palette: palette,
-                                         onComplete: { withAnimation(Motion.toggle) { model.complete(todo.id.uuidString) } },
-                                         onReopen: { withAnimation(Motion.toggle) { model.reopen(todo.id.uuidString) } },
-                                         onEdit: { model.update(todo.id.uuidString, title: $0) },
-                                         onDelete: { withAnimation(Motion.remove) { model.delete(todo.id.uuidString) } },
-                                         onOpenLink: { openLinkedNote($0) },
-                                         lanes: model.lanes,
-                                         onMoveToLane: { moveTodo(todo.id.uuidString, toLane: $0) },
-                                         onSetLink: { beginLink(todo) },
-                                         onClearLink: { model.setLink(todo.id.uuidString, to: nil) },
-                                         onUnarchive: { withAnimation(Motion.toggle) {
-                                             model.setArchived(todo.id.uuidString, false)
-                                         } },
-                                         onEditDescription: { descriptionFor = todo },
-                                         onDropTodo: { draggedID, edge in
-                                             drop(draggedID, onto: todo, edge: edge)
-                                         })
-                                    .transition(.opacity)
+                                ticketRow(todo)
                                 if todo.id != group.todos.last?.id {
                                     Rectangle()
                                         .fill(palette.sand)
                                         .frame(height: Line.hairline)
                                         .padding(.leading, Space.gutter + 24 + 10)
                                 }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - One row
+
+    /// One ticket row, with every handler the list and the inbox share. The faces differ in
+    /// what they show and how they order it, never in what a ticket can do — so the row is
+    /// built once, here.
+    private func ticketRow(_ todo: Todo) -> some View {
+        LigneRow(todo: todo, palette: palette,
+                 onComplete: { withAnimation(Motion.toggle) { model.complete(todo.id.uuidString) } },
+                 onReopen: { withAnimation(Motion.toggle) { model.reopen(todo.id.uuidString) } },
+                 onEdit: { model.update(todo.id.uuidString, title: $0) },
+                 onDelete: { withAnimation(Motion.remove) { model.delete(todo.id.uuidString) } },
+                 onOpenLink: { openLinkedNote($0) },
+                 lanes: model.lanes,
+                 onMoveToLane: { moveTodo(todo.id.uuidString, toLane: $0) },
+                 onSetLink: { beginLink(todo) },
+                 onClearLink: { model.setLink(todo.id.uuidString, to: nil) },
+                 onUnarchive: { withAnimation(Motion.toggle) {
+                     model.setArchived(todo.id.uuidString, false)
+                 } },
+                 onEditDescription: { descriptionFor = todo },
+                 onDropTodo: { draggedID, edge in
+                     drop(draggedID, onto: todo, edge: edge)
+                 })
+            .transition(.opacity)
+    }
+
+    // MARK: - Inbox face
+
+    /// The human's inbox: the tickets an agent assigned to `human` to ask for a decision.
+    /// A query (`TodoQuery.inbox`), not a second store — the row is the list's row, and the
+    /// question itself is the ticket's description, read in the description sheet.
+    private var inboxFace: some View {
+        let inbox = model.inboxTodos
+        return VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Text("For you")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(palette.ink)
+                Text("\(inbox.count)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(palette.inkDim)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Space.gutter)
+            .padding(.top, Space.lane)
+            .padding(.bottom, Space.lane)
+            Rectangle().fill(palette.sand).frame(height: Line.hairline)
+
+            if inbox.isEmpty {
+                LigneEmptyState(
+                    palette: palette,
+                    title: "Nothing for you",
+                    subtitle: "When an agent needs a decision, it assigns a ticket to human.",
+                    hero: false)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(inbox) { todo in
+                            ticketRow(todo)
+                            if todo.id != inbox.last?.id {
+                                Rectangle()
+                                    .fill(palette.sand)
+                                    .frame(height: Line.hairline)
+                                    .padding(.leading, Space.gutter + 24 + 10)
                             }
                         }
                     }
