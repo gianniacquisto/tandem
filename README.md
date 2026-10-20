@@ -87,6 +87,10 @@ Point your harness at this repo's `skills/` directory, so there is one copy and 
 
 Or copy the whole `tandem-memory/` folder into your harness's skills directory the way you would a single-file skill, keeping the files together — `SKILL.md` reaches the companions by their relative paths, so they only work as a set. Don't install the four companions as skills of their own.
 
+### The `tandem-handoff` skill
+
+`skills/tandem-handoff/` assembles the orient a session does on its own into one self-contained block a human can paste into a new agent session: the open tickets (`tandem-cli todo list --filter open`), the bikeshed `Index.md`, a project's `Where left off` and Threads, and the open tickets assigned to `human`. It is **read-only** — it edits no note and changes no ticket. Give it an optional project name for the full block; with none it prints the Index plus every project's one-line status. The opencode binding is a `/handoff` command.
+
 ## The store file
 
 `~/.tandem/todos.json` looks like this:
