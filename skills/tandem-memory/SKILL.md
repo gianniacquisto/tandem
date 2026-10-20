@@ -12,7 +12,7 @@ The **bikeshed** (`~/.tandem/bikeshed/`) is the wiki of all work on this Mac and
 Before reading or editing project files, in order:
 
 1. Read **`Index.md`** — the Hub at the bikeshed root: pointers and one-line status.
-2. Match the task to a project line, then read that project's **curated note** — `projects/<project>/<anchor>.md`. A **project is always a folder** holding its curated notes and a hidden saddlebag (`.raw/`). Read `Where left off` in full; `Decisions` / `Gotchas` / `Facts` scanned by heading and pulled only when the task touches them.
+2. Match the task to a project line, then read that project's **curated note** — `projects/<project>/<anchor>.md`, or `projects/<project>/<group>/<anchor>.md` in a grouped project. A **project is always a folder** holding its curated notes and a hidden saddlebag (`.raw/`). Read `Where left off` in full; `Decisions` / `Gotchas` / `Facts` scanned by heading and pulled only when the task touches them.
 3. Follow only the note's **wikilinks** the task needs.
 4. Check `tandem-cli todo list` for the open **threads**.
 
