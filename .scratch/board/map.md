@@ -43,7 +43,7 @@ Chart these here; the live list is the board. (Order is not a sequence — most 
 10. **PINNED — assignee identity and personas** — `agent.md`-defined specialists ("UI", "core", "CLI"), each with memory under its own part of the bikeshed, the human as the escalation target. Needs its own wayfinder: it touches the memory protocol, the CLI, and the app. `assignee` is a string until then.
 11. **Archived is reachable in the GUI** — the archived view (the list is the natural home, as an "Archived" state beside Open/Done/All) and the way back: unarchive a ticket. The board excludes archived by decision, so without this an archived ticket has no face at all. `Store.set(id, archived:)` already exists; this is the view.
 
-Built so far: **1, 2, 3, 7** (PR #38), **4** (the board), **6** (the description's face, `.scratch/board/description-spec.md`), **9** (the cached lane) and **11** (the archive's face). Left: **5** (the human's inbox) and **8** (the migrator, gated on the install); **10** is pinned. The live list is still the board.
+Built so far: **1, 2, 3, 7** (PR #38), **4** (the board), **5** (the inbox, `.scratch/board/inbox-spec.md`), **6** (the description's face, `.scratch/board/description-spec.md`), **9** (the cached lane) and **11** (the archive's face). Left: **8** (the migrator, gated on the install); **10** is pinned. The live list is still the board.
 
 ## Out of scope
 

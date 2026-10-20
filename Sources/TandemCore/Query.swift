@@ -54,6 +54,22 @@ public struct TodoQuery: Sendable, Equatable {
         case included
         case only
     }
+
+    /// The reserved assignee: the person using the app, as opposed to an agent. Stored
+    /// lowercase so it is one name (see `Store.normalizeAssignee`).
+    public static let human = "human"
+
+    /// The human's inbox: every open, non-archived ticket assigned to the person.
+    ///
+    /// This is the escalation surface — an agent that needs a decision files a ticket
+    /// assigned to `human`, its description carrying the question — so the inbox is a
+    /// query, not a second store and not a flag. Defined here, beside the other views, so
+    /// "what is waiting for me" means one thing everywhere it is shown.
+    public static var inbox: TodoQuery {
+        TodoQuery(statuses: Set(Status.workflow.filter { $0 != .done }),
+                  assignee: .named(human),
+                  archived: .excluded)
+    }
 }
 
 // MARK: - The predicate

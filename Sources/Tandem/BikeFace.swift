@@ -15,6 +15,7 @@ import TandemCore
 enum MainTab: String, CaseIterable, Identifiable {
     case todos = "Todos"
     case board = "Board"
+    case inbox = "Inbox"
     case bikeshed = "Bikeshed"
     var id: String { rawValue }
 }
@@ -24,6 +25,9 @@ enum MainTab: String, CaseIterable, Identifiable {
 struct BikeTabControl: View {
     @Binding var tab: MainTab
     var palette: Palette
+    /// What is waiting in the inbox — drawn as a dot on the tab, so an agent's request for
+    /// a decision is visible from the other faces.
+    var inboxCount: Int = 0
 
     var body: some View {
         HStack(spacing: 0) {
@@ -31,19 +35,24 @@ struct BikeTabControl: View {
                 Button {
                     withAnimation(Motion.toggle) { tab = t }
                 } label: {
-                    Text(t.rawValue)
-                        .font(.system(size: 12.5, weight: tab == t ? .semibold : .regular))
-                        .foregroundStyle(tab == t ? palette.ink : palette.inkDim)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: Space.control)
-                        .background(tab == t ? AnyShapeStyle(palette.parchment)
-                                             : AnyShapeStyle(Color.clear))
-                        .contentShape(Rectangle())
+                    HStack(spacing: 4) {
+                        Text(t.rawValue)
+                            .font(.system(size: 12.5, weight: tab == t ? .semibold : .regular))
+                            .foregroundStyle(tab == t ? palette.ink : palette.inkDim)
+                        if t == .inbox, inboxCount > 0 {
+                            Circle().fill(palette.ember).frame(width: 5, height: 5)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Space.control)
+                    .background(tab == t ? AnyShapeStyle(palette.parchment)
+                                         : AnyShapeStyle(Color.clear))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .frame(width: 260, height: Space.control)
+        .frame(width: 340, height: Space.control)
         .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.paper))
         .clipShape(RoundedRectangle(cornerRadius: Radius.control))
         .overlay(RoundedRectangle(cornerRadius: Radius.control)
