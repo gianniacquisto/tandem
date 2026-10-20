@@ -65,4 +65,4 @@ Wikilinks live **only in curated notes**, and the consolidation pass is the only
 
 A `[[Name]]` resolves as a **case-insensitive filename match**, not a search — a duplicated basename is a **visible broken link**, never a silent tie-break (ADR 0005).
 
-Captures are **out of the graph** by construction: the `.raw/` subtree is hidden, so `Bikeshed.isHidden` prunes it from `notePaths`, search, backlinks, and wikilink resolution — code-enforced, not a rule an agent must remember. The app's tree prunes it too, unless the human turns on **Show hidden files** (ADR 0021); that is a view change, and the graph stays the same either way.
+Captures are **out of the graph** by construction: the `.raw/` subtree is hidden, so `Bikeshed.isHidden` prunes it from `notePaths`, search, backlinks, and wikilink resolution — code-enforced, not a rule an agent must remember. The app's tree prunes it too, unless the human turns on **Show hidden files** (ADR 0023); that is a view change, and the graph stays the same either way.

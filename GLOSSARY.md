@@ -87,7 +87,7 @@ A note created by a memory session recording the highlights of work — where th
 _Avoid_: session log, journal, scratch note
 
 **Saddlebag**:
-A project's hidden layer of captures — the `projects/<project>/.raw/` folder: what an agent carries as it works, emptied at the consolidation stop. Holds many captures; a **Capture** is one note in it. Hidden from the tree by default; the app's settings can reveal it (ADR 0021) — revealed, it is still outside the curated graph.
+A project's hidden layer of captures — the `projects/<project>/.raw/` folder: what an agent carries as it works, emptied at the consolidation stop. Holds many captures; a **Capture** is one note in it. Hidden from the tree by default; the app's settings can reveal it (ADR 0023) — revealed, it is still outside the curated graph.
 _Avoid_: raw layer, queue, inbox, backlog
 
 **Capture**:
