@@ -73,7 +73,7 @@ public enum TandemHome {
         if let override = environment["TANDEM_HOME"], !override.isEmpty {
             return .environmentOverride
         }
-        let shippedApp = !isDebugBuild && isInsideAppBundle(executablePath)
+        let shippedApp = !isDebugBuild && isInsideAppBundle(resolvedPath(executablePath))
         return shippedApp ? .shippedApp : .devBuild
     }
 
@@ -84,6 +84,16 @@ public enum TandemHome {
     /// path is still the one with `Tandem.app` in it.
     static func isInsideAppBundle(_ path: String) -> Bool {
         path.split(separator: "/").contains { $0.hasSuffix(".app") }
+    }
+
+    /// The executable's real path. `Bundle.main` reports the path the process was
+    /// *started* by — so a `PATH` symlink (`/opt/homebrew/bin/tandem-cli` →
+    /// `…/Tandem.app/Contents/MacOS/tandem-cli`) arrives without the `.app`
+    /// component, and would read as a dev build, splitting the linked CLI onto
+    /// `~/.tandem-dev` while the GUI beside it writes `~/.tandem`. Resolving the
+    /// link first keeps the `.app` test true for both invocation styles.
+    static func resolvedPath(_ path: String) -> String {
+        (path as NSString).resolvingSymlinksInPath
     }
 
     /// This executable's path, with a fallback for the (unlikely) case where the
