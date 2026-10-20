@@ -21,6 +21,9 @@ public enum BikeshedError: Error, Sendable, Equatable {
     case invalidCaptureName(name: String)
     /// `capture` was called with a `--kind` that is not one of the five kinds.
     case invalidCaptureKind(kind: String)
+    /// A folder was moved into itself or into one of its own descendants — the
+    /// move would make the tree cyclic.
+    case moveCycle(path: String, into: String)
 
     public var message: String {
         switch self {
@@ -37,6 +40,9 @@ public enum BikeshedError: Error, Sendable, Equatable {
         case .invalidCaptureKind(let kind):
             let kinds = CaptureKind.allCases.map(\.rawValue).joined(separator: ", ")
             return "Unknown capture kind \"\(kind)\". Use one of: \(kinds)."
+        case .moveCycle(let path, let into):
+            let destination = into.isEmpty ? "the bikeshed root" : "\"\(into)\""
+            return "Cannot move \"\(path)\" into \(destination): a folder cannot be moved into itself. Choose a different folder."
         }
     }
 }

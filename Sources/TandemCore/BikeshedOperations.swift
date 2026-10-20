@@ -161,18 +161,9 @@ extension Bikeshed {
             // Rewrite pass (per-file atomic), before the file moves:
             // resolution is against the pre-rename file set.
             let notes = notePaths()
-            let newTarget = Self.canonicalLinkTarget(for: newPath, in: notes, replacing: oldPath)
-            for notePath in notes {
-                guard let content = try? readNote(notePath),
-                      let targetURL = fileURL(for: notePath),
-                      let rewritten = Self.rewriteLinks(
-                        in: content.text,
-                        against: notes,
-                        resolvingTo: oldPath,
-                        as: newTarget)
-                else { continue }
-                try atomicWrite(Data(rewritten.utf8), to: targetURL)
-            }
+            let postRename = Set(notes).subtracting([oldPath]).union([newPath])
+            let mapping = [oldPath: Self.canonicalLinkTarget(for: newPath, in: postRename)]
+            try applyLinkRewrite(to: notes, mapping: mapping)
             try fm.createDirectory(
                 at: newURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             if Darwin.rename(oldURL.path, newURL.path) != 0 {
@@ -181,6 +172,105 @@ extension Bikeshed {
             return newPath
         }
         return OperationResult(newPathValue)
+    }
+
+    // MARK: - move
+
+    /// `move(path, into:)`: move a note or a folder into another folder — the
+    /// tree's drag-to-re-parent. The same machinery as `rename` (ADR 0005), in
+    /// one locked transaction: every wikilink in the bikeshed that resolves to
+    /// a moved note is rewritten to its new canonical target (bare when the
+    /// new basename is unique, qualified when it is not) — bare, qualified,
+    /// aliased and `#fragment` forms alike, in every note including the moved
+    /// ones — and then a single `rename(2)` moves the note, or the folder
+    /// with everything under it. A folder move rewrites the links to *every*
+    /// note inside it.
+    ///
+    /// Refused, with nothing written:
+    /// - a folder moved into itself or into one of its own descendants (a
+    ///   cycle) — `BikeshedError.moveCycle`;
+    /// - a name already taken in the destination folder (or a file where a
+    ///   folder is needed) — `BikeshedError.alreadyExists`;
+    /// - a missing source, or a destination that is not an existing folder —
+    ///   `BikeshedError.unknownNote`.
+    ///
+    /// Moving an item into the folder it is already in is a no-op: the
+    /// outcome is returned with no note moved and nothing written.
+    public func move(path source: String, into destination: String) throws -> OperationResult<MoveOutcome> {
+        guard let sourceURL = fileURL(for: source) else {
+            throw BikeshedError.invalidName(name: source)
+        }
+        let destComponents = try Self.folderComponents(destination)
+        let outcome = try locked {
+            let fm = FileManager.default
+            var sourceIsDir: ObjCBool = false
+            guard fm.fileExists(atPath: sourceURL.path, isDirectory: &sourceIsDir) else {
+                throw BikeshedError.unknownNote(path: source)
+            }
+            // The destination is an existing folder ("" is the bikeshed root).
+            let destURL = destComponents.reduce(directory) { $0.appendingPathComponent($1) }
+            var destIsDir: ObjCBool = false
+            guard fm.fileExists(atPath: destURL.path, isDirectory: &destIsDir),
+                  destIsDir.boolValue
+            else {
+                throw BikeshedError.unknownNote(path: destination)
+            }
+            // A folder cannot be moved into itself or into its own subtree.
+            if sourceIsDir.boolValue, Self.isDescendant(destURL, of: sourceURL) {
+                throw BikeshedError.moveCycle(path: source, into: destination)
+            }
+            // The paths, in the bikeshed's own spelling (on-disk case).
+            let sourceRel = relativePath(of: sourceURL)
+            let destRel = relativePath(of: destURL)
+            let name = sourceURL.lastPathComponent
+            let newPath = destRel.isEmpty ? name : destRel + "/" + name
+            // Already there: nothing to move, nothing to write.
+            if newPath == sourceRel {
+                return MoveOutcome(path: newPath, oldPath: sourceRel,
+                                   isFolder: sourceIsDir.boolValue, movedNotes: [])
+            }
+            guard let newURL = fileURL(for: newPath) else {
+                throw BikeshedError.invalidName(name: newPath)
+            }
+            if fm.fileExists(atPath: newURL.path) {
+                throw BikeshedError.alreadyExists(path: newPath)
+            }
+            if let taken = fileCollision(in: newPath, includingNote: false) {
+                throw BikeshedError.alreadyExists(path: taken)
+            }
+            // The notes whose path changes: the note itself, or every note
+            // under the moved folder.
+            let notes = notePaths()
+            let moves: [(old: String, new: String)]
+            if sourceIsDir.boolValue {
+                let prefix = sourceRel + "/"
+                moves = notes.filter { $0.hasPrefix(prefix) }.map {
+                    (old: $0, new: newPath + "/" + $0.dropFirst(prefix.count))
+                }
+            } else {
+                moves = [(old: sourceRel, new: newPath)]
+            }
+            // Rewrite pass (per-file atomic), before the file moves:
+            // resolution is against the pre-move file set, the canonical
+            // targets against the post-move one.
+            let postMove = Set(notes).subtracting(moves.map(\.old)).union(moves.map(\.new))
+            var mapping: [String: String] = [:]
+            for move in moves {
+                mapping[move.old] = Self.canonicalLinkTarget(for: move.new, in: postMove)
+            }
+            try applyLinkRewrite(to: notes, mapping: mapping)
+            try fm.createDirectory(
+                at: newURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if Darwin.rename(sourceURL.path, newURL.path) != 0 {
+                throw BikeshedIOError.posix(op: "rename", code: errno)
+            }
+            return MoveOutcome(
+                path: newPath,
+                oldPath: sourceRel,
+                isFolder: sourceIsDir.boolValue,
+                movedNotes: moves.map { MovedNote(oldPath: $0.old, newPath: $0.new) })
+        }
+        return OperationResult(outcome)
     }
 
     // MARK: - delete
@@ -354,6 +444,46 @@ private struct NoteIndex {
 
 private extension Bikeshed {
 
+    /// The link-rewrite pass over the whole bikeshed: in every note, every
+    /// wikilink that resolves to a moved note is rewritten to its new
+    /// canonical target. Per-file atomic, and it runs *before* the move —
+    /// resolution is against the pre-move file set.
+    func applyLinkRewrite(to notes: [String], mapping: [String: String]) throws {
+        guard !mapping.isEmpty else { return }
+        for notePath in notes {
+            guard let content = try? readNote(notePath),
+                  let targetURL = fileURL(for: notePath),
+                  let rewritten = Self.rewriteLinks(
+                    in: content.text,
+                    against: notes,
+                    mapping: mapping)
+            else { continue }
+            try atomicWrite(Data(rewritten.utf8), to: targetURL)
+        }
+    }
+
+    /// The components of a destination folder path, checked for path hygiene
+    /// (no empty, `.` or `..` component). The bikeshed root is the empty
+    /// path.
+    static func folderComponents(_ path: String) throws -> [String] {
+        guard !path.isEmpty else { return [] }
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+            .map(String.init)
+        for component in components
+        where component.isEmpty || component == "." || component == ".." {
+            throw BikeshedError.invalidName(name: path)
+        }
+        return components
+    }
+
+    /// True when `url` is `ancestor` itself or sits inside it — a folder
+    /// moved into its own subtree would make the tree cyclic.
+    static func isDescendant(_ url: URL, of ancestor: URL) -> Bool {
+        let child = url.standardizedFileURL.path
+        let parent = ancestor.standardizedFileURL.path
+        return child == parent || child.hasPrefix(parent + "/")
+    }
+
     /// The wikilink scan against an explicit note set (instead of the live
     /// file set): the rename-rewrite pass resolves against the pre-rename
     /// set. Core of the public `links(in:)`.
@@ -502,20 +632,15 @@ private extension Bikeshed {
         return String(text[start..<end])
     }
 
-    /// The canonical wikilink target for a renamed note against the
-    /// post-rename file set: the bare basename (`.md` off, on-disk case)
+    /// The canonical wikilink target for a moved note against the
+    /// post-move file set: the bare basename (`.md` off, on-disk case)
     /// when that basename is unique there, the bikeshed-root-relative path
     /// (`.md` off) when it is not.
-    static func canonicalLinkTarget(
-        for newPath: String,
-        in currentNotes: [String],
-        replacing oldPath: String
-    ) -> String {
+    static func canonicalLinkTarget(for newPath: String, in postMoveNotes: Set<String>) -> String {
         var bare = (newPath as NSString).lastPathComponent
         if bare.lowercased().hasSuffix(".md") { bare.removeLast(3) }
         let bareLower = bare.lowercased()
-        let postRename = Set(currentNotes).subtracting([oldPath]).union([newPath])
-        let unique = postRename.filter {
+        let unique = postMoveNotes.filter {
             var base = ($0 as NSString).lastPathComponent.lowercased()
             if base.hasSuffix(".md") { base.removeLast(3) }
             return base == bareLower
@@ -527,26 +652,26 @@ private extension Bikeshed {
     }
 
     /// The rename-rewrite for one note's text: replace the target part of
-    /// every wikilink token that resolves to `resolvingTo` (against the
-    /// pre-rename set `notes`) with `as`, leaving everything after the
-    /// target — fragment, alias, their order — byte-identical. Tokens inside
-    /// a leading terminated `---` frontmatter block are skipped (frontmatter
-    /// stays opaque, ADR 0004); the scanner already exempts code, embeds,
-    /// and unclosed tokens. `nil` when nothing resolves to the target.
+    /// every wikilink token that resolves to a moved note with its new
+    /// target, leaving everything after the target — fragment, alias, their
+    /// order — byte-identical. Tokens inside a leading terminated `---`
+    /// frontmatter block are skipped (frontmatter stays opaque, ADR 0004);
+    /// the scanner already exempts code, embeds, and unclosed tokens. `nil`
+    /// when nothing resolves to a moved note.
     static func rewriteLinks(
         in text: String,
         against notes: [String],
-        resolvingTo targetPath: String,
-        as newTarget: String
+        mapping: [String: String]
     ) -> String? {
-        let occurrences = Self.linkOccurrences(in: text, against: notes).filter {
-            $0.resolution == .resolved(path: targetPath)
-        }
-        guard !occurrences.isEmpty else { return nil }
+        let occurrences = Self.linkOccurrences(in: text, against: notes)
+        guard !occurrences.isEmpty else { return nil }   // no parse needed: no tokens
         let frontmatter = frontmatterEnd(in: text)
         var out = text
         // Reverse order: replacing later tokens first keeps earlier indices valid.
         for occ in occurrences.reversed() {
+            guard case .resolved(let path) = occ.resolution,
+                  let newTarget = mapping[path]
+            else { continue }
             if let frontmatter, occ.range.upperBound <= frontmatter { continue }
             let contentStart = text.index(occ.range.lowerBound, offsetBy: 2)   // past "[["
             let closeStart = text.index(occ.range.upperBound, offsetBy: -2)    // first "]" of "]]"

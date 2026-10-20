@@ -46,6 +46,30 @@ public struct WriteRecord: Sendable, Equatable {
     public let hash: String
 }
 
+/// What a `move` did: the moved item's new path, and every note whose path
+/// changed with it (one for a note move; all of them for a folder move).
+public struct MoveOutcome: Sendable, Equatable {
+    /// The moved item's new bikeshed-root-relative path — a note path (with
+    /// its `.md`) or a folder path.
+    public let path: String
+    /// The moved item's old bikeshed-root-relative path.
+    public let oldPath: String
+    /// True when the moved item is a folder (its notes moved with it).
+    public let isFolder: Bool
+    /// The notes whose path changed — a note move carries one, a folder move
+    /// every note under it. Empty when the item was already in the
+    /// destination folder (the move was a no-op).
+    public let movedNotes: [MovedNote]
+}
+
+/// One note whose path changed in a move: where it was, where it is now.
+public struct MovedNote: Sendable, Equatable {
+    /// The note's path before the move.
+    public let oldPath: String
+    /// The note's path after the move.
+    public let newPath: String
+}
+
 /// One backlink row (spec: "backlinks(path)"): a bikeshed note that contains at
 /// least one wikilink resolving to the target note. Derived state —
 /// recomputed from the file set, never stored.

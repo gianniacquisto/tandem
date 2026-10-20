@@ -398,6 +398,61 @@ final class BikeshedModel {
         }
     }
 
+    /// Moves a note or a folder into another folder — the tree's
+    /// drag-to-re-parent. The core does the work: it rewrites every wikilink
+    /// that resolves to a moved note (a folder move: every note inside it)
+    /// and moves the file or the folder in one locked transaction. A cycle
+    /// (a folder into its own descendant) and a name already taken in the
+    /// destination are refused by the core with nothing written; the message
+    /// surfaces verbatim.
+    ///
+    /// The open note's pending edits are saved first: the move rewrites the
+    /// note's own text on disk, and a stale buffer would overwrite that
+    /// rewrite on the next save. A failed save aborts the move (the error is
+    /// already surfaced).
+    func move(_ path: String, into folder: String) {
+        guard !conflict else { return }
+        flushSave()
+        guard !isDirty else { return }   // the save failed; lastError is set
+        do {
+            let outcome = try bikeshed.move(path: path, into: folder).value
+            lastError = nil
+            if let open = openPath,
+               let moved = outcome.movedNotes.first(where: { $0.oldPath == open })
+            {
+                // The open note moved: the path (and thus relative image
+                // targets) changed, so hand the document over again — with
+                // the text the move rewrote, not the buffer's older copy.
+                openPath = moved.newPath
+                if let content = try? bikeshed.read(path: moved.newPath).value {
+                    bufferText = content.text
+                    baselineHash = content.hash
+                }
+                editor.sendDocument(bufferText, notePath: moved.newPath)
+            }
+            remapExpandedFolders(outcome)
+            reloadTree()
+            editor.sendNoteIndex(paths: notePaths())
+            refreshBacklinks()
+        } catch {
+            apply(error: error)
+        }
+    }
+
+    /// A moved folder carries its expanded state with it: the paths of the
+    /// expanded folders inside it change with the move, and the tree's
+    /// expansion is keyed by path.
+    private func remapExpandedFolders(_ outcome: MoveOutcome) {
+        guard outcome.isFolder, outcome.oldPath != outcome.path else { return }
+        let old = outcome.oldPath
+        let new = outcome.path
+        expandedFolders = Set(expandedFolders.map { path in
+            if path == old { return new }
+            if path.hasPrefix(old + "/") { return new + String(path.dropFirst(old.count)) }
+            return path
+        })
+    }
+
     /// Deletion (note or folder): the macOS Trash first (recoverable — user
     /// story 7), falling back to the core's permanent delete. No confirm
     /// beyond the standard (the row's destructive context menu). If the open
