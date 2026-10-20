@@ -19,6 +19,8 @@ That path is stable across upgrades. `tandem-cli --help` prints the syntax and e
 
 `tandem-cli` reads and writes the same file the app does: `~/.tandem/todos.json`, the human's real list. A from-source build (`swift run tandem-cli`) writes `~/.tandem-dev/todos.json` instead, so development can never reach the real list. Notes live under the same home — `~/.tandem/bikeshed/`, or `~/.tandem-dev/bikeshed/` from source.
 
+Every write keeps one previous good copy beside it, in `todos.json.bak` — the file as it was before that write. If a write goes wrong, `mv ~/.tandem/todos.json.bak ~/.tandem/todos.json` is the one-command recovery; the app reloads it on its own.
+
 ## Tickets
 
 Six commands under `todo`; each section below is that command's contract. A todo is a **ticket** — the same object a human sees in the Tandem app — and every object these commands return has the same shape:
@@ -137,7 +139,7 @@ Returns one JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "d
 | name | what it reports | can fail |
 | --- | --- | --- |
 | `home` | the resolved state directory (see The store), and why — `TANDEM_HOME` override, shipped app, or dev build | no |
-| `store` | the `todos.json` path and its open/done counts (`absent` = a valid empty store) | yes — present but unreadable or corrupt |
+| `store` | the `todos.json` path, its open/done counts (`absent` = a valid empty store), and the rolling backup beside it — `backup 5m old`, or `no backup yet` until the second write | yes — present but unreadable or corrupt |
 | `bikeshed` | the bikeshed path and its note count | yes — the path is a file, not a folder |
 | `lock` | whether a writer currently holds the store lock | yes — held by another process |
 | `app` | the installed `/Applications/Tandem.app` version, with the quarantine-strip hint when it is flagged | no |
@@ -147,7 +149,7 @@ Returns one JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "d
 
 ```
 $ tandem-cli doctor
-{"checks":[{"detail":"/Users/you/.tandem-dev (dev build)","name":"home","ok":true},{"detail":"/Users/you/.tandem-dev/todos.json — 3 open, 2 done","name":"store","ok":true}, …],"ok":true}
+{"checks":[{"detail":"/Users/you/.tandem-dev (dev build)","name":"home","ok":true},{"detail":"/Users/you/.tandem-dev/todos.json — 3 open, 2 done; backup 5m old","name":"store","ok":true}, …],"ok":true}
 ```
 
 ## Streams and exit codes

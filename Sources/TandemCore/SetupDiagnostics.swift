@@ -62,6 +62,8 @@ public enum SetupDiagnostics {
         public var homeSource: TandemHome.Source
         public var storePath: String
         public var storeHealth: Store.Health
+        /// The rolling backup beside the store (ADR 0018): absent, or its age.
+        public var storeBackup: Store.BackupHealth
         public var storeLockHeld: Bool
         public var bikeshedPath: String
         public var bikeshedNoteCount: Int
@@ -75,7 +77,8 @@ public enum SetupDiagnostics {
         public var opencodeListsSkills: Bool
 
         public init(homePath: String, homeSource: TandemHome.Source,
-                    storePath: String, storeHealth: Store.Health, storeLockHeld: Bool,
+                    storePath: String, storeHealth: Store.Health,
+                    storeBackup: Store.BackupHealth, storeLockHeld: Bool,
                     bikeshedPath: String, bikeshedNoteCount: Int, bikeshedIsFile: Bool,
                     appPresent: Bool, appVersion: String?, appQuarantined: Bool,
                     skillHosts: [SkillHost], opencodeListsSkills: Bool) {
@@ -83,6 +86,7 @@ public enum SetupDiagnostics {
             self.homeSource = homeSource
             self.storePath = storePath
             self.storeHealth = storeHealth
+            self.storeBackup = storeBackup
             self.storeLockHeld = storeLockHeld
             self.bikeshedPath = bikeshedPath
             self.bikeshedNoteCount = bikeshedNoteCount
@@ -112,17 +116,19 @@ public enum SetupDiagnostics {
         checks.append(Check(name: "home", ok: true,
                             detail: "\(facts.homePath) (\(why))"))
 
+        let backup = backupDetail(facts.storeBackup)
         switch facts.storeHealth {
         case .absent:
             checks.append(Check(name: "store", ok: true,
-                                detail: "\(facts.storePath) — absent (a valid empty store)"))
+                                detail: "\(facts.storePath) — absent (a valid empty store); \(backup)"))
         case .counts(let open, let done):
             checks.append(Check(name: "store", ok: true,
-                                detail: "\(facts.storePath) — \(open) open, \(done) done"))
+                                detail: "\(facts.storePath) — \(open) open, \(done) done; \(backup)"))
         case .unreadable:
             checks.append(Check(name: "store", ok: false,
                                 detail: "\(facts.storePath) — present but unreadable or corrupt; "
-                                      + "fix the file, or let the app back it up and start empty"))
+                                      + "fix the file, or let the app back it up and start empty; "
+                                      + backup))
         }
 
         if facts.bikeshedIsFile {
@@ -154,6 +160,26 @@ public enum SetupDiagnostics {
                             detail: skillDetail(facts)))
 
         return Report(ok: checks.allSatisfy { $0.ok }, checks: checks)
+    }
+
+    /// The rolling backup's clause for the store check: presence and age, the recovery
+    /// copy's one line of context (ADR 0018). Informational — a store written once, or
+    /// one nobody may write, is not a failure.
+    static func backupDetail(_ health: Store.BackupHealth) -> String {
+        switch health {
+        case .absent: return "no backup yet"
+        case .present(let age): return "backup \(ageText(age)) old"
+        }
+    }
+
+    /// An age in the shortest unit that still reads as one: seconds, minutes, hours,
+    /// days. Coarse on purpose — the question is "is there a recent copy?", not "when?".
+    static func ageText(_ age: TimeInterval) -> String {
+        let seconds = max(0, Int(age.rounded()))
+        if seconds < 60 { return "\(seconds)s" }
+        if seconds < 3_600 { return "\(seconds / 60)m" }
+        if seconds < 86_400 { return "\(seconds / 3_600)h" }
+        return "\(seconds / 86_400)d"
     }
 
     /// Gather the real machine's facts, then assemble. The only impure entry
@@ -188,6 +214,7 @@ public enum SetupDiagnostics {
                 isDebugBuild: TandemHome.isDebugBuild),
             storePath: store.directory.appendingPathComponent("todos.json").path,
             storeHealth: health,
+            storeBackup: store.backupHealth(),
             storeLockHeld: store.lockIsHeld(),
             bikeshedPath: bikeshed.directory.path,
             bikeshedNoteCount: noteCount(notes),
