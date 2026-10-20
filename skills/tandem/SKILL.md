@@ -98,7 +98,7 @@ $ tandem-cli todo archive
 
 ## Notes
 
-The bikeshed (`~/.tandem/bikeshed/`) is a plain folder of `.md` files, and the file itself is the interface. Create, edit, and delete curated notes with your own file tools; the CLI writes no note content. Two CLI verbs act on notes: `rename`, the one rename path, and `capture`, which files a capture.
+The bikeshed (`~/.tandem/bikeshed/`) is a plain folder of `.md` files, and the file itself is the interface. Create, edit, and delete curated notes with your own file tools; the CLI writes no note content. Three CLI verbs act on notes: `rename`, the one rename path; `capture`, which files a capture; and `stats`, the read-only memory-health readout.
 
 ### `tandem-cli note rename --from <path> --to <path>`
 
@@ -127,6 +127,24 @@ $ printf '# Caret not placed\n\nThe editor opened without focus.\n' | tandem-cli
 The note lands at `projects/<project>/.raw/<session>/<utc>-<kind>-<slug>.md`, where `<utc>` is a UTC timestamp, `<kind>` is the kind, and `<slug>` comes from the body's first line; a same-second, same-slug note gets a `-2`, `-3`, … suffix rather than overwriting. The saddlebag is **hidden**: captures never appear in the tree, search, backlinks, or wikilink resolution, and they should contain no `[[wikilinks]]` — file captures as you work, and let the consolidation pass promote them into the curated notes. An unknown `--kind`, or a `--project`/`--session` that is not one folder name, is a domain failure (exit `1`).
 
 A note filename may not contain `/`, `#`, `|`, or a leading dot, and must end `.md`. `#` and `|` are the wikilink grammar's separators, so a note whose name contains either can never be resolved by a wikilink (ADR 0004). Pre-existing violators are still shown and edited — the rule constrains what is *created*.
+
+### `tandem-cli note stats [--project <name>]`
+
+Report whether memory is draining: one JSON object, read-only and lock-free (it writes nothing and takes no lock). It is the one command that deliberately looks *inside* the hidden saddlebag.
+
+```json
+{"bikeshed":"/Users/you/.tandem/bikeshed","projects":[{"curatedNotes":6,"lastConsolidated":"2026-10-18T21:10:00Z","oldestPending":null,"project":"tandem","rawArchived":15,"rawPending":0}],"totals":{"curatedNotes":6,"rawArchived":15,"rawPending":0}}
+```
+
+- `bikeshed` — the resolved bikeshed root, absolute.
+- `projects` — one row per project folder, alphabetical; `--project <name>` narrows it to one folder (a name that matches none is an empty list, not an error).
+- `curatedNotes` — `.md` notes under `projects/<project>/`, the hidden saddlebag pruned.
+- `rawPending` / `rawArchived` — captures pending under `projects/<project>/.raw/`, and consumed ones under `projects/<project>/.raw/.done/`.
+- `oldestPending` — the oldest pending capture's UTC time (the queue's age), or `null` when nothing is pending.
+- `lastConsolidated` — the newest curated-note mtime, or `null` when the project has no curated notes.
+- `totals` — the sums across every reported project.
+
+A pending count that stays high, or an `oldestPending` far behind, is the queue not draining; a `lastConsolidated` that stopped moving is the curated layer going stale. Both are signals to hand the saddlebag to a consolidation pass.
 
 ## Setup check
 

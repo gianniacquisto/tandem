@@ -12,7 +12,7 @@ import TandemCore
 // This file is the whole adapter: it turns a command line into the core calls
 // and writes their outcome to the right stream. It adds no boundary logic — the
 // semantics (`list`, `TodoQuery.parse`, `add`, `set`, `move`, `complete`,
-// `archiveDone`, `rename`, `capture`) and the encoding (`StoreEncoding`,
+// `archiveDone`, `rename`, `capture`, `stats`) and the encoding (`StoreEncoding`,
 // `tandemErrorText`) stay in TandemCore, which the single test seam
 // (`TandemCoreTests`) covers. The two things that belong to a process rather
 // than to the domain live here: stdin and the environment.
@@ -114,6 +114,11 @@ func dispatch(_ args: [String]) -> Int32 {
                 body: readStandardInput(),
                 session: session ?? captureSessionDefault())
             return try pathResult(result.value)
+        }
+    case .noteStats(let project):
+        return run {
+            let result = try Bikeshed().stats(project: project)
+            return try StoreEncoding.bikeshedStatsResult(result.value)
         }
     }
 }

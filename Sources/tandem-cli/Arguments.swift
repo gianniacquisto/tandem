@@ -24,6 +24,7 @@ enum Command {
     case todoArchive
     case noteRename(from: String, to: String)
     case noteCapture(kind: String, project: String?, session: String?)
+    case noteStats(project: String?)
 }
 
 /// A usage failure — no arguments, an unknown subcommand, an unknown flag, or a
@@ -116,10 +117,10 @@ private func parseTodo(_ args: [String]) throws -> Command {
 
 // MARK: - note
 
-/// `note rename|capture` — the two note verbs. `rename` is the rename whose
+/// `note rename|capture|stats` — the three note verbs. `rename` is the rename whose
 /// wikilink rewriting a raw `mv` cannot reproduce (ADR 0009); `capture` is the
 /// raw memory-note write whose naming/queue invariant a plain file write cannot
-/// own (ADR 0016).
+/// own (ADR 0016); `stats` is the read-only memory-health readout.
 private func parseNote(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
     let flags = try parseFlags(Array(args.dropFirst()))
@@ -137,6 +138,11 @@ private func parseNote(_ args: [String]) throws -> Command {
             kind: flags["--kind"] ?? "",
             project: flags["--project"],
             session: flags["--session"])
+    case "stats":
+        try accept(flags, ["--project"])
+        // Absent `--project` reports every project; a present value narrows to
+        // that folder name (no match is an empty list, not an error).
+        return .noteStats(project: flags["--project"])
     default:
         throw UsageError()
     }
