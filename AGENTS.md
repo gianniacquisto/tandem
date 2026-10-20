@@ -28,7 +28,7 @@ Every session records itself as a ticket, so the board shows what is running and
 
 - **One ticket per session.** If `tandem-cli todo list --text "<session-id>"` already shows one, file nothing.
 
-- **Close it at session end**, before your final reply: `tandem-cli todo set --id <ticket-id> --status done --description "<one line: what this session did>"`. The ticket id is the `id` `todo add` returned; find it again with `todo list --text "<session-id>"`.
+- **Close it at session end**, before your final reply: `tandem-cli todo set --id <ticket-id> --status done --description "<one line: what this session did>"`. The ticket id is the `id` `todo add` returned; find it again with `todo list --text "<session-id>"`. A session that resumes reopens it: `tandem-cli todo set --id <ticket-id> --status in-progress`.
 
 - **Children file their own.** A sub-agent session is a session; it closes its ticket when it finishes.
 
