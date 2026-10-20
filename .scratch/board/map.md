@@ -42,8 +42,9 @@ Chart these here; the live list is the board. (Order is not a sequence — most 
 9. **Cycle lane selection** — a cached default lane for new tickets (the standing todo 34150D95). **Built 2026-10-20** as a chip in the quick-add, cached in `settings.json` (`TandemSettings.defaultLane`) rather than in the store: it is the human's filing habit, agents have `--lane`, and a renamed or deleted lane simply stops being the cache.
 10. **PINNED — assignee identity and personas** — `agent.md`-defined specialists ("UI", "core", "CLI"), each with memory under its own part of the bikeshed, the human as the escalation target. Needs its own wayfinder: it touches the memory protocol, the CLI, and the app. `assignee` is a string until then.
 11. **Archived is reachable in the GUI** — the archived view (the list is the natural home, as an "Archived" state beside Open/Done/All) and the way back: unarchive a ticket. The board excludes archived by decision, so without this an archived ticket has no face at all. `Store.set(id, archived:)` already exists; this is the view.
+12. **The ticket sheet: open a ticket and edit it whole** — double-click opens it; title, Status, lane and body in one place; assignee read-only. Decisions: `.scratch/board/ticket-sheet-spec.md`.
 
-Built so far: **1, 2, 3, 7** (PR #38), **4** (the board), **5** (the inbox, `.scratch/board/inbox-spec.md`), **6** (the description's face, `.scratch/board/description-spec.md`), **9** (the cached lane) and **11** (the archive's face). Left: **8** (the migrator, gated on the install); **10** is pinned. The live list is still the board.
+Built so far: **1, 2, 3, 7** (PR #38), **4** (the board), **5** (the inbox, `.scratch/board/inbox-spec.md`), **6** (the description's face, `.scratch/board/description-spec.md`), **9** (the cached lane), **11** (the archive's face) and **12** (the ticket sheet, `.scratch/board/ticket-sheet-spec.md`). Left: **8** (the migrator, gated on the install); **10** is pinned. The live list is still the board.
 
 ## Out of scope
 

@@ -174,10 +174,28 @@ final class TandemModel {
         run { try self.store.set(id, archived: .set(archived)) }
     }
 
-    /// Sets a ticket's body (markdown). Trimming and empty-as-nil are the store's rules;
-    /// the description sheet passes what the human typed.
-    func setDescription(_ id: String, to text: String) {
-        run { try self.store.set(id, description: .set(text)) }
+    /// Applies the ticket sheet's edits. Fields travel through **one** `set` (title, Status,
+    /// body — each only when it actually changed), and the lane is its own `move`, because
+    /// changing a lane also decides where in the lane the ticket lands. A sheet that was
+    /// opened, read, and saved writes nothing.
+    func saveTicket(_ id: String, edits: TicketEdits) {
+        guard let stored = todos.first(where: { $0.id.uuidString == id }) else { return }
+        let trimmedBody = edits.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let titleChanged = edits.title != stored.title
+        let bodyChanged = (stored.description ?? "") != trimmedBody
+        let statusChanged = edits.status != stored.status
+        if titleChanged || bodyChanged || statusChanged {
+            run {
+                try self.store.set(
+                    id,
+                    title: titleChanged ? .set(edits.title) : .unchanged,
+                    status: statusChanged ? .set(edits.status) : .unchanged,
+                    description: bodyChanged ? .set(trimmedBody) : .unchanged)
+            }
+        }
+        if edits.lane != stored.lane {
+            run { try self.store.move(id, toLane: edits.lane, at: .max) }
+        }
     }
 
     /// GUI-only in v1 — there is no delete verb in the CLI.

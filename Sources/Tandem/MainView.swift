@@ -17,7 +17,8 @@ import TandemCore
 ///               or down, or deletes it, which ungroups its todos rather than
 ///               deleting them.
 ///               Rows: toggling checkbox (check completes, uncheck reopens);
-///               title edits in place on double-click; hover/right-click delete
+///               double-click opens the ticket sheet (title, status, lane, body);
+///               rename is the menu's item; hover/right-click delete
 ///               (all GUI-only). An archived ticket carries a quiet "archived"
 ///               tag wherever a view includes it, and its menu brings it back.
 ///   Board     — Status columns, lane rows (BoardView.swift): the same tickets
@@ -59,8 +60,8 @@ struct MainView: View {
     @State private var linkPickerFor: Todo?
     @State private var linkFilter = ""
 
-    // The ticket whose description is open in the sheet, if any.
-    @State private var descriptionFor: Todo?
+    // The ticket open in the ticket sheet, if any.
+    @State private var ticketFor: Todo?
 
     private var palette: Palette { Palette.forScheme(colorScheme) }
 
@@ -100,15 +101,17 @@ struct MainView: View {
         .sheet(item: $linkPickerFor) { todo in
             linkSheet(todo)
         }
-        .sheet(item: $descriptionFor) { todo in
-            DescriptionSheet(
+        .sheet(item: $ticketFor) { todo in
+            TicketSheet(
                 todo: todo,
                 palette: palette,
-                onSave: { text in
-                    model.setDescription(todo.id.uuidString, to: text)
-                    descriptionFor = nil
+                lanes: model.lanes,
+                onSave: { edits in
+                    model.saveTicket(todo.id.uuidString, edits: edits)
+                    ticketFor = nil
                 },
-                onCancel: { descriptionFor = nil })
+                onCancel: { ticketFor = nil },
+                onOpenLink: openLinkedNote)
         }
         .sheet(isPresented: $setup.isPresented) {
             SetupWizardView(
@@ -338,7 +341,7 @@ struct MainView: View {
                  onUnarchive: { withAnimation(Motion.toggle) {
                      model.setArchived(todo.id.uuidString, false)
                  } },
-                 onEditDescription: { descriptionFor = todo },
+                 onOpenTicket: { ticketFor = todo },
                  onDropTodo: { draggedID, edge in
                      drop(draggedID, onto: todo, edge: edge)
                  })

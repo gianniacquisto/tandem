@@ -36,8 +36,8 @@ struct BoardContext {
     /// (the board draws a row for those, so its menu must offer them).
     var lanes: [String]
     var onOpenLink: (String) -> Void
-    /// Opens the description sheet for a ticket — the face owns the sheet.
-    var onEditDescription: (Todo) -> Void
+    /// Opens the ticket sheet for a ticket — the face owns the sheet.
+    var onOpenTicket: (Todo) -> Void
 }
 
 /// The board's outer frame: the search field (the same `TodoQuery` text the list uses),
@@ -50,8 +50,8 @@ struct BoardFace: View {
     /// Opens the ticket's linked note — the parent owns the tab switch.
     var onOpenLink: (String) -> Void
 
-    /// The ticket whose description is open in the sheet, if any.
-    @State private var descriptionFor: Todo?
+    /// The ticket open in the ticket sheet, if any.
+    @State private var ticketFor: Todo?
 
     /// The tickets in view: archived ones are out (the board is about work in the way),
     /// and the search narrows by title and description. One `TodoQuery`, as ever.
@@ -80,7 +80,7 @@ struct BoardFace: View {
                      palette: palette,
                      lanes: lanes,
                      onOpenLink: onOpenLink,
-                     onEditDescription: { descriptionFor = $0 })
+                     onOpenTicket: { ticketFor = $0 })
     }
 
     var body: some View {
@@ -115,15 +115,17 @@ struct BoardFace: View {
                 board
             }
         }
-        .sheet(item: $descriptionFor) { todo in
-            DescriptionSheet(
+        .sheet(item: $ticketFor) { todo in
+            TicketSheet(
                 todo: todo,
                 palette: palette,
-                onSave: { text in
-                    model.setDescription(todo.id.uuidString, to: text)
-                    descriptionFor = nil
+                lanes: lanes,
+                onSave: { edits in
+                    model.saveTicket(todo.id.uuidString, edits: edits)
+                    ticketFor = nil
                 },
-                onCancel: { descriptionFor = nil })
+                onCancel: { ticketFor = nil },
+                onOpenLink: onOpenLink)
         }
     }
 
@@ -278,8 +280,6 @@ private struct BoardTicket: View {
                         .strikethrough(todo.done, color: palette.inkDim)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
-                        .onTapGesture(count: 2, perform: beginEdit)
-                        .help("Double-click to edit")
                 }
                 if let body = todo.description {
                     Text(body)
@@ -316,6 +316,9 @@ private struct BoardTicket: View {
         .overlay(RoundedRectangle(cornerRadius: Radius.control)
             .strokeBorder(hovering ? palette.line : palette.sand, lineWidth: Line.hairline))
         .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            if !editing { context.onOpenTicket(todo) }
+        }
         .onHover { hovering = $0 }
         .contextMenu { menu }
         .draggable(todo.id.uuidString) { dragPreview }
@@ -330,6 +333,8 @@ private struct BoardTicket: View {
 
     @ViewBuilder
     private var menu: some View {
+        Button("Open ticket…") { context.onOpenTicket(todo) }
+        Divider()
         Menu("Status") {
             ForEach(Status.workflow, id: \.self) { status in
                 Button {
@@ -356,10 +361,7 @@ private struct BoardTicket: View {
         if let link = todo.link {
             Button("Open note") { context.onOpenLink(link) }
         }
-        Button(todo.description == nil ? "Add description…" : "Edit description…") {
-            context.onEditDescription(todo)
-        }
-        Button("Edit title", action: beginEdit)
+        Button("Rename", action: beginEdit)
         if todo.done {
             Button("Reopen") {
                 withAnimation(Motion.toggle) { context.model.reopen(todo.id.uuidString) }

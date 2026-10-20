@@ -282,9 +282,9 @@ struct RowDragAndDrop: ViewModifier {
 
 /// A main-window row. The checkbox is the toggle: checking completes, and
 /// un-checking a done todo reopens it (GUI-only — no reopen in the CLI).
-/// The title edits in place: double-click it, or use the row's Edit item; Return
-/// commits, Esc cancels, and clicking away commits. A plain row click is never
-/// destructive. Delete appears on hover and in the context menu — also GUI-only
+/// Double-clicking the row opens the ticket sheet — the whole ticket in one place.
+/// The title edits in place from the menu's Rename item: Return commits, Esc cancels,
+/// and clicking away commits. A plain row click is never destructive. Delete appears on hover and in the context menu — also GUI-only
 /// (agents have no delete in the CLI). Rows drag to reorder and to move
 /// between lanes when the caller passes `onDropTodo`, and the context menu's
 /// "Move to" files one into a lane at any scroll position.
@@ -310,8 +310,10 @@ struct LigneRow: View {
     /// Brings an archived ticket back into the default views. `nil` hides the item; only
     /// an archived row shows it, so every caller can pass the same closure.
     var onUnarchive: (() -> Void)? = nil
-    /// Opens the description sheet for this ticket. `nil` hides the item.
-    var onEditDescription: (() -> Void)? = nil
+    /// Opens the ticket sheet — the whole ticket, read and edited in one place. Double
+    /// clicking a row (anywhere but the title, which renames) does the same. `nil` hides
+    /// both.
+    var onOpenTicket: (() -> Void)? = nil
     /// Called when another row is dropped on this one, with which half. `nil`
     /// leaves the row undraggable.
     var onDropTodo: ((_ draggedID: String, _ edge: DropEdge) -> Void)? = nil
@@ -352,8 +354,6 @@ struct LigneRow: View {
                             .foregroundStyle(todo.done ? palette.inkDim : palette.ink)
                             .strikethrough(todo.done, color: palette.inkDim)
                             .lineLimit(1)
-                            .onTapGesture(count: 2, perform: beginEdit)
-                            .help("Double-click to edit")
                     }
 
                     // An archived ticket is still in the store; in the views that include
@@ -375,7 +375,7 @@ struct LigneRow: View {
                         .foregroundStyle(palette.inkDim)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                        .help("Right-click → Edit description…")
+                        .help("Double-click to open the ticket")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -417,8 +417,18 @@ struct LigneRow: View {
         .frame(minHeight: Space.row)
         .background(hovering ? AnyShapeStyle(palette.parchment) : AnyShapeStyle(Color.clear))
         .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            // Double-click is "open the ticket", the whole row — including the title. Rename
+            // is the menu's item (inline, still) or the sheet's title field, so the big,
+            // predictable target does the common thing.
+            if !editing { onOpenTicket?() }
+        }
         .onHover { hovering = $0 }
         .contextMenu {
+            if let onOpenTicket {
+                Button("Open ticket…", action: onOpenTicket)
+                Divider()
+            }
             if todo.archived, let onUnarchive {
                 Button("Unarchive", action: onUnarchive)
                 Divider()
@@ -439,11 +449,7 @@ struct LigneRow: View {
                     }
                 }
             }
-            if let onEditDescription {
-            Button(todo.description == nil ? "Add description…" : "Edit description…",
-                   action: onEditDescription)
-        }
-        Button("Edit", action: beginEdit)
+            Button("Rename", action: beginEdit)
             if todo.done {
                 Button("Reopen", action: onReopen)
             }
