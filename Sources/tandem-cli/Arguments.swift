@@ -3,7 +3,8 @@ import Foundation
 /// The parsed command line: one of the verbs, or a request for the usage text.
 /// Long flags only, and the flags mirror the core argument names exactly
 /// (`--filter`, `--text`, `--status`, `--assignee`, `--lane`, `--title`, `--id`,
-/// `--description`, `--index`, `--from`, `--to`, `--kind`, `--project`, `--session`)
+/// `--description`, `--index`, `--from`, `--to`, `--name`, `--kind`, `--project`,
+/// `--session`)
 /// — the CLI renames nothing and parses nothing: raw values travel to the core,
 /// which validates them and owns the error text. `doctor` is a setup/diagnostic verb
 /// outside the `todo`/`note` domains (ADR 0014) and takes no flags.
@@ -22,6 +23,9 @@ enum Command {
     case todoMove(id: String, lane: String?, index: String?)
     case todoComplete(id: String)
     case todoArchive
+    case laneAdd(name: String)
+    case laneRename(from: String, to: String)
+    case laneDelete(name: String)
     case noteRename(from: String, to: String)
     case noteCapture(kind: String, project: String?, session: String?)
     case noteStats(project: String?)
@@ -49,6 +53,8 @@ func parseCommand(_ args: [String]) throws -> Command {
         return .doctor
     case "todo":
         return try parseTodo(Array(args.dropFirst()))
+    case "lane":
+        return try parseLane(Array(args.dropFirst()))
     case "note":
         return try parseNote(Array(args.dropFirst()))
     default:
@@ -110,6 +116,29 @@ private func parseTodo(_ args: [String]) throws -> Command {
         // Bulk, whole-list: finished work leaves the view, nothing is deleted.
         try accept(flags, [])
         return .todoArchive
+    default:
+        throw UsageError()
+    }
+}
+
+// MARK: - lane
+
+/// `lane add|rename|delete` — the lane lifecycle, the one part of the lane surface the
+/// app used to own alone. The names travel raw: the core trims and owns every rejection
+/// (empty name, duplicate, unknown lane), exactly as it does for the app's tree.
+private func parseLane(_ args: [String]) throws -> Command {
+    guard let verb = args.first else { throw UsageError() }
+    let flags = try parseFlags(Array(args.dropFirst()))
+    switch verb {
+    case "add":
+        try accept(flags, ["--name"])
+        return .laneAdd(name: flags["--name"] ?? "")
+    case "rename":
+        try accept(flags, ["--from", "--to"])
+        return .laneRename(from: flags["--from"] ?? "", to: flags["--to"] ?? "")
+    case "delete":
+        try accept(flags, ["--name"])
+        return .laneDelete(name: flags["--name"] ?? "")
     default:
         throw UsageError()
     }

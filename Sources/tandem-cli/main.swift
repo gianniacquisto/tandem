@@ -12,7 +12,8 @@ import TandemCore
 // This file is the whole adapter: it turns a command line into the core calls
 // and writes their outcome to the right stream. It adds no boundary logic — the
 // semantics (`list`, `TodoQuery.parse`, `add`, `set`, `move`, `complete`,
-// `archiveDone`, `rename`, `capture`, `stats`) and the encoding (`StoreEncoding`,
+// `archiveDone`, `addLane`, `renameLane`, `deleteLane`, `rename`, `capture`,
+// `stats`) and the encoding (`StoreEncoding`,
 // `tandemErrorText`) stay in TandemCore, which the single test seam
 // (`TandemCoreTests`) covers. The two things that belong to a process rather
 // than to the domain live here: stdin and the environment.
@@ -97,6 +98,21 @@ func dispatch(_ args: [String]) -> Int32 {
         return run {
             let result = try Store().archiveDone()
             return try StoreEncoding.archivedResult(result.value, note: result.note)
+        }
+    case .laneAdd(let name):
+        return run {
+            let result = try Store().addLane(name)
+            return try StoreEncoding.lanesResult(result.value, note: result.note)
+        }
+    case .laneRename(let from, let to):
+        return run {
+            let result = try Store().renameLane(from, to: to)
+            return try StoreEncoding.lanesResult(result.value, note: result.note)
+        }
+    case .laneDelete(let name):
+        return run {
+            let result = try Store().deleteLane(name)
+            return try StoreEncoding.laneDeletionResult(result.value, note: result.note)
         }
     case .noteRename(let from, let to):
         return run {

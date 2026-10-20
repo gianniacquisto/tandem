@@ -91,7 +91,7 @@ final class TandemModel {
         run { try self.store.add(rawTitle, lane: lane) }
     }
 
-    // MARK: - Lanes and order (GUI-only)
+    // MARK: - Lanes and order (the lane lifecycle is also on the CLI; reordering is GUI-only)
 
     /// Remembers (or, with `nil`, clears) the lane new tickets are filed into. A failure
     /// to persist is silent: the next launch falls back to the default area, and a

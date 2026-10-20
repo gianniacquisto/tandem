@@ -19,3 +19,11 @@
 - `move(id, toSection:at:)` is the one ordering op for todos — reorder-in-place and move-between are the same call.
 - `moveSection(name, to:)` reorders the `sections` list; the groups travel whole, so the order of todos *within* a section never changes. The default area is not a section and cannot be moved — it is always first.
 - A file written before sections existed reads unchanged (todos simply carry no `section`), and an older build reading a current file loses no todos — at worst it drops the section names when *it* next writes the file.
+
+## Amendment, 2026-10-20: lane lifecycle reaches the agent face
+
+The first clause of the consequence above — section CRUD is GUI-only, no agent verbs — is reversed for the three lifecycle operations. `tandem-cli lane add --name`, `lane rename --from --to`, and `lane delete --name` call the same `addLane` / `renameLane` / `deleteLane` the app's tree calls, so trimming, the empty-name and duplicate rejections, the unknown-lane rejection, and "delete moves members to the default area, never deletes them" are one implementation, not two. `moveLane` (reordering the rows) stays GUI-only: the ask was creation, not arrangement.
+
+Each verb returns the lane list after the write (`{"lanes": [...]}`; `delete` adds `"moved": <n>`), so an agent learns the resulting names without a second, unlocked read — which would also have dropped the corrupt-store recovery note the write carried.
+
+Lanes cut by project made the gap concrete: creating the first project lane took a hand edit of the store under the lock, because the app was the only writer of the lane list. A lane is still **not** a permission boundary: any writer may move any ticket between lanes, and requiring validation to leave a lane would need an identity to validate against, which `assignee` does not yet have ([ADR 0017](0017-the-ticket-model.md), personas). That rule is deliberately out of scope here.

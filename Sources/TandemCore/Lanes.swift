@@ -1,5 +1,18 @@
 import Foundation
 
+/// The outcome of `deleteLane`: how many todos fell back to the default area, and the
+/// lane list after the write. One value, so the caller reports the result of the write
+/// it made rather than a second read of the store.
+public struct LaneDeletion: Sendable, Equatable {
+    public let lanes: [String]
+    public let moved: Int
+
+    public init(lanes: [String], moved: Int) {
+        self.lanes = lanes
+        self.moved = moved
+    }
+}
+
 /// The store's contents: the ordered lane names and the todos, in stored order.
 ///
 /// **Stored order is the order.** The `todos` array position is authoritative (new todos

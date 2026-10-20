@@ -38,7 +38,7 @@ extension Store {
         return try list(filter)
     }
 
-    // MARK: - lanes (GUI-only — no CLI verbs)
+    // MARK: - lanes (both faces: the app's tree and the CLI's `lane` verbs)
 
     /// The lane names in render order (the default area is implicit and unnamed).
     /// Includes any name that appears only on a todo (a hand edit), so the GUI can draw it.
@@ -48,32 +48,34 @@ extension Store {
     }
 
     /// `addLane(name)`: append a new, empty lane. The name is trimmed; an empty or
-    /// already-used name is rejected. GUI-only.
-    public func addLane(_ rawName: String) throws -> OperationResult<Void> {
+    /// already-used name is rejected. Returns the lane list after the write, so a caller
+    /// (the CLI) reports the state without a second, unlocked read.
+    public func addLane(_ rawName: String) throws -> OperationResult<[String]> {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { throw DomainError.emptyLaneName }
-        let (_, note) = try mutate { contents -> (value: Void, changed: Bool) in
+        let (lanes, note) = try mutate { contents -> (value: [String], changed: Bool) in
             guard !contents.knownLanes.contains(name) else {
                 throw DomainError.duplicateLane(name)
             }
             contents.lanes.append(name)
-            return ((), true)
+            return (contents.knownLanes, true)
         }
-        return OperationResult((), note: note)
+        return OperationResult(lanes, note: note)
     }
 
     /// `renameLane(from, to)`: rename a lane in place — the lane list and every
     /// todo that belongs to it, in one write. An unknown `from`, an empty `to`, or a `to`
-    /// already in use is rejected. Renaming to the same name is a no-op. GUI-only.
-    public func renameLane(_ rawFrom: String, to rawTo: String) throws -> OperationResult<Void> {
+    /// already in use is rejected. Renaming to the same name is a no-op. Returns the lane
+    /// list after the write.
+    public func renameLane(_ rawFrom: String, to rawTo: String) throws -> OperationResult<[String]> {
         let from = rawFrom.trimmingCharacters(in: .whitespacesAndNewlines)
         let to = rawTo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !to.isEmpty else { throw DomainError.emptyLaneName }
-        let (_, note) = try mutate { contents -> (value: Void, changed: Bool) in
+        let (lanes, note) = try mutate { contents -> (value: [String], changed: Bool) in
             guard let i = contents.lanes.firstIndex(of: from) else {
                 throw DomainError.unknownLane(from)
             }
-            if from == to { return ((), false) }
+            if from == to { return (contents.knownLanes, false) }
             guard !contents.knownLanes.contains(to) else {
                 throw DomainError.duplicateLane(to)
             }
@@ -81,17 +83,17 @@ extension Store {
             for j in contents.todos.indices where contents.todos[j].lane == from {
                 contents.todos[j].lane = to
             }
-            return ((), true)
+            return (contents.knownLanes, true)
         }
-        return OperationResult((), note: note)
+        return OperationResult(lanes, note: note)
     }
 
     /// `deleteLane(name)`: remove a lane and move its todos to the default area —
-    /// **a lane is never a way to delete todos**. Returns the number of todos moved.
-    /// An unknown name is rejected. GUI-only.
-    public func deleteLane(_ rawName: String) throws -> OperationResult<Int> {
+    /// **a lane is never a way to delete todos**. An unknown name is rejected. Returns
+    /// how many todos moved, plus the lane list after the write.
+    public func deleteLane(_ rawName: String) throws -> OperationResult<LaneDeletion> {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let (moved, note) = try mutate { contents -> (value: Int, changed: Bool) in
+        let (deletion, note) = try mutate { contents -> (value: LaneDeletion, changed: Bool) in
             guard let i = contents.lanes.firstIndex(of: name) else {
                 throw DomainError.unknownLane(name)
             }
@@ -101,9 +103,9 @@ extension Store {
                 contents.todos[j].lane = nil
                 moved += 1
             }
-            return (moved, true)
+            return (LaneDeletion(lanes: contents.knownLanes, moved: moved), true)
         }
-        return OperationResult(moved, note: note)
+        return OperationResult(deletion, note: note)
     }
 
     /// `moveLane(name, to:)`: reorder the declared lanes. `index` is 0-based in the

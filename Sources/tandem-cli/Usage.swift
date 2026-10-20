@@ -15,6 +15,9 @@ enum Usage {
       tandem-cli todo move --id <id> [--lane <name>] [--index <number>]
       tandem-cli todo complete --id <id>
       tandem-cli todo archive
+      tandem-cli lane add --name <name>
+      tandem-cli lane rename --from <name> --to <name>
+      tandem-cli lane delete --name <name>
       tandem-cli note rename --from <path> --to <path>
       tandem-cli note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]
       tandem-cli note stats [--project <name>]

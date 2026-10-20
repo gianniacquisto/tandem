@@ -93,6 +93,9 @@ struct OrderAndLanesTests {
         _ = try store.addLane("Work")
         _ = try store.addLane("  Home  ")                    // trimmed
         #expect(try store.lanes().value == ["Work", "Home"])
+        // Each verb returns the lane list after its write, so the CLI reports it
+        // without a second read.
+        #expect(try store.addLane("Play").value == ["Work", "Home", "Play"])
         #expect(throws: DomainError.emptyLaneName) { _ = try store.addLane("   ") }
         #expect(throws: DomainError.duplicateLane("Work")) { _ = try store.addLane("Work") }
     }
@@ -128,6 +131,7 @@ struct OrderAndLanesTests {
         _ = try store.add("w1", lane: "Work")
         _ = try store.add("d1")
         _ = try store.renameLane("Work", to: "Job")
+        #expect(try store.renameLane("Job", to: "Job").value == ["Job"])   // no-op still reports
 
         #expect(try store.lanes().value == ["Job"])
         let all = try store.list(.all).value
@@ -154,7 +158,8 @@ struct OrderAndLanesTests {
         _ = try store.add("w2", lane: "Work")
 
         let moved = try store.deleteLane("Work")
-        #expect(moved.value == 2)
+        #expect(moved.value.moved == 2)
+        #expect(moved.value.lanes.isEmpty)
         #expect(try store.lanes().value.isEmpty)
 
         let all = try store.list(.all).value
