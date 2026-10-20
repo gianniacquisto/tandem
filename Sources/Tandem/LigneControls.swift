@@ -299,6 +299,8 @@ struct LigneRow: View {
     /// Brings an archived ticket back into the default views. `nil` hides the item; only
     /// an archived row shows it, so every caller can pass the same closure.
     var onUnarchive: (() -> Void)? = nil
+    /// Opens the description sheet for this ticket. `nil` hides the item.
+    var onEditDescription: (() -> Void)? = nil
     /// Called when another row is dropped on this one, with which half. `nil`
     /// leaves the row undraggable.
     var onDropTodo: ((_ draggedID: String, _ edge: DropEdge) -> Void)? = nil
@@ -316,39 +318,56 @@ struct LigneRow: View {
             .buttonStyle(.plain)
             .contentShape(Rectangle())
 
-            if editing {
-                TextField("", text: $draft)
-                    .textFieldStyle(.plain)
-                    .font(.body)
-                    .foregroundStyle(palette.ink)
-                    .focused($titleFocused)
-                    .onSubmit(commitEdit)
-                    .onExitCommand(perform: cancelEdit)
-                    // Clicking away commits (the inline-edit convention).
-                    .onChange(of: titleFocused) { _, focused in
-                        if !focused { commitEdit() }
+            // The title, and — when the ticket has one — the first lines of its body. The
+            // body is the ticket's substance, so it reads in the row; editing it is the
+            // sheet's job, and a row never expands.
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    if editing {
+                        TextField("", text: $draft)
+                            .textFieldStyle(.plain)
+                            .font(.body)
+                            .foregroundStyle(palette.ink)
+                            .focused($titleFocused)
+                            .onSubmit(commitEdit)
+                            .onExitCommand(perform: cancelEdit)
+                            // Clicking away commits (the inline-edit convention).
+                            .onChange(of: titleFocused) { _, focused in
+                                if !focused { commitEdit() }
+                            }
+                    } else {
+                        Text(todo.title)
+                            .font(.body)
+                            .foregroundStyle(todo.done ? palette.inkDim : palette.ink)
+                            .strikethrough(todo.done, color: palette.inkDim)
+                            .lineLimit(1)
+                            .onTapGesture(count: 2, perform: beginEdit)
+                            .help("Double-click to edit")
                     }
-            } else {
-                Text(todo.title)
-                    .font(.body)
-                    .foregroundStyle(todo.done ? palette.inkDim : palette.ink)
-                    .strikethrough(todo.done, color: palette.inkDim)
-                    .lineLimit(1)
-                    .onTapGesture(count: 2, perform: beginEdit)
-                    .help("Double-click to edit")
-            }
 
-            // An archived ticket is still in the store; in the views that include the
-            // archive it says so, quietly, so it is never mistaken for live work.
-            if todo.archived {
-                Text("archived")
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(palette.inkDim)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .overlay(Capsule().strokeBorder(palette.sand, lineWidth: Line.hairline))
-                    .help("Archived: out of the default views, still in the store")
+                    // An archived ticket is still in the store; in the views that include
+                    // the archive it says so, quietly, so it is never mistaken for live work.
+                    if todo.archived {
+                        Text("archived")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(palette.inkDim)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .overlay(Capsule().strokeBorder(palette.sand, lineWidth: Line.hairline))
+                            .help("Archived: out of the default views, still in the store")
+                    }
+                    Spacer(minLength: 0)
+                }
+                if !editing, let body = todo.description {
+                    Text(body)
+                        .font(.system(size: 11))
+                        .foregroundStyle(palette.inkDim)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .help("Right-click → Edit description…")
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer(minLength: 8)
 
@@ -383,7 +402,8 @@ struct LigneRow: View {
             .frame(width: 22, height: 22)
         }
         .padding(.horizontal, Space.gutter)
-        .frame(height: Space.row)
+        .padding(.vertical, 7)
+        .frame(minHeight: Space.row)
         .background(hovering ? AnyShapeStyle(palette.parchment) : AnyShapeStyle(Color.clear))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
@@ -408,7 +428,11 @@ struct LigneRow: View {
                     }
                 }
             }
-            Button("Edit", action: beginEdit)
+            if let onEditDescription {
+            Button(todo.description == nil ? "Add description…" : "Edit description…",
+                   action: onEditDescription)
+        }
+        Button("Edit", action: beginEdit)
             if todo.done {
                 Button("Reopen", action: onReopen)
             }

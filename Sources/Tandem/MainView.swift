@@ -56,6 +56,9 @@ struct MainView: View {
     @State private var linkPickerFor: Todo?
     @State private var linkFilter = ""
 
+    // The ticket whose description is open in the sheet, if any.
+    @State private var descriptionFor: Todo?
+
     private var palette: Palette { Palette.forScheme(colorScheme) }
 
     var body: some View {
@@ -89,6 +92,16 @@ struct MainView: View {
         .modifier(TandemShortcuts(scope: $scope, focusQuickAdd: $quickAddFocused))
         .sheet(item: $linkPickerFor) { todo in
             linkSheet(todo)
+        }
+        .sheet(item: $descriptionFor) { todo in
+            DescriptionSheet(
+                todo: todo,
+                palette: palette,
+                onSave: { text in
+                    model.setDescription(todo.id.uuidString, to: text)
+                    descriptionFor = nil
+                },
+                onCancel: { descriptionFor = nil })
         }
         .sheet(isPresented: $setup.isPresented) {
             SetupWizardView(
@@ -291,6 +304,7 @@ struct MainView: View {
                                          onUnarchive: { withAnimation(Motion.toggle) {
                                              model.setArchived(todo.id.uuidString, false)
                                          } },
+                                         onEditDescription: { descriptionFor = todo },
                                          onDropTodo: { draggedID, edge in
                                              drop(draggedID, onto: todo, edge: edge)
                                          })

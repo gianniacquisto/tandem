@@ -36,6 +36,8 @@ struct BoardContext {
     /// (the board draws a row for those, so its menu must offer them).
     var lanes: [String]
     var onOpenLink: (String) -> Void
+    /// Opens the description sheet for a ticket — the face owns the sheet.
+    var onEditDescription: (Todo) -> Void
 }
 
 /// The board's outer frame: the search field (the same `TodoQuery` text the list uses),
@@ -47,6 +49,9 @@ struct BoardFace: View {
     var focus: FocusState<Bool>.Binding
     /// Opens the ticket's linked note — the parent owns the tab switch.
     var onOpenLink: (String) -> Void
+
+    /// The ticket whose description is open in the sheet, if any.
+    @State private var descriptionFor: Todo?
 
     /// The tickets in view: archived ones are out (the board is about work in the way),
     /// and the search narrows by title and description. One `TodoQuery`, as ever.
@@ -71,7 +76,11 @@ struct BoardFace: View {
     }
 
     private var context: BoardContext {
-        BoardContext(model: model, palette: palette, lanes: lanes, onOpenLink: onOpenLink)
+        BoardContext(model: model,
+                     palette: palette,
+                     lanes: lanes,
+                     onOpenLink: onOpenLink,
+                     onEditDescription: { descriptionFor = $0 })
     }
 
     var body: some View {
@@ -105,6 +114,16 @@ struct BoardFace: View {
             } else {
                 board
             }
+        }
+        .sheet(item: $descriptionFor) { todo in
+            DescriptionSheet(
+                todo: todo,
+                palette: palette,
+                onSave: { text in
+                    model.setDescription(todo.id.uuidString, to: text)
+                    descriptionFor = nil
+                },
+                onCancel: { descriptionFor = nil })
         }
     }
 
@@ -262,6 +281,12 @@ private struct BoardTicket: View {
                         .onTapGesture(count: 2, perform: beginEdit)
                         .help("Double-click to edit")
                 }
+                if let body = todo.description {
+                    Text(body)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(palette.inkDim)
+                        .lineLimit(1)
+                }
                 if let assignee = todo.assignee {
                     Text(assignee == "human" ? "human" : "@\(assignee)")
                         .font(.system(size: 10.5))
@@ -329,6 +354,9 @@ private struct BoardTicket: View {
         Divider()
         if let link = todo.link {
             Button("Open note") { context.onOpenLink(link) }
+        }
+        Button(todo.description == nil ? "Add description…" : "Edit description…") {
+            context.onEditDescription(todo)
         }
         Button("Edit title", action: beginEdit)
         if todo.done {
