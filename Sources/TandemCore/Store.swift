@@ -24,6 +24,11 @@ import Foundation
 ///   as `todos.json.pre-migrator-<unix-ts>` on the first write, then rewritten with
 ///   `status` alone. Reads never migrate: a read-only store keeps its old shape, and the
 ///   decoder keeps honouring it.
+/// - **Rolling backup** — each write first copies the file it is about to replace to
+///   `todos.json.bak` (one generation, same temp + fsync + `rename` under the same lock,
+///   ADR 0018), so an ordinary bad write — a kill mid-rename, a bad regex — leaves one
+///   previous good copy to fall back on. The first write has no `.bak` (no file yet), and
+///   a failed write leaves the previous one untouched. Reads write nothing.
 ///
 /// The public surface is the todo operations (see the `Operations` extension); the
 /// locking/file mechanics are the shared `LockedDirectory` primitive (ADR 0001 / 0004),
@@ -34,6 +39,9 @@ public struct Store: Sendable {
     public let directory: URL
     /// The data file.
     let fileURL: URL
+    /// The rolling backup of the file the last write replaced — the one previous
+    /// good copy. Not written by reads, and not on the first write (ADR 0018).
+    let backupURL: URL
     /// The sidecar lockfile (created if missing, never renamed).
     let lockURL: URL
     /// The shared storage mechanics (ADR 0001): flock + atomic write + orphan
@@ -50,6 +58,7 @@ public struct Store: Sendable {
     public init(directory: URL) {
         self.directory = directory
         self.fileURL = directory.appendingPathComponent("todos.json")
+        self.backupURL = directory.appendingPathComponent("todos.json.bak")
         self.lockURL = directory.appendingPathComponent("tandem.lock")
         self.storage = LockedDirectory(
             lockURL: self.lockURL,
@@ -129,10 +138,30 @@ public struct Store: Sendable {
     }
 
     /// Write while holding the lock: encode and hand to the shared atomic
-    /// write-temp+fsync+rename primitive.
+    /// write-temp+fsync+rename primitive, taking the rolling backup of the file the
+    /// write replaces just before the commit (see `backUpCurrentFile`).
     private func writeLocked(_ contents: StoreContents) throws {
         let data = try Self.encode(contents)
-        try storage.atomicWrite(data, to: fileURL)
+        try storage.atomicWrite(data, to: fileURL) { try backUpCurrentFile() }
+    }
+
+    /// Roll the file this write is about to replace to `todos.json.bak` — **one
+    /// generation**, the state before the write. Runs under the lock, from inside the
+    /// atomic write (new bytes durable, `rename` not yet done), so the backup is itself
+    /// temp + fsync + `rename` and no failure mode leaves it half-written or stale-wrong:
+    /// a failed write leaves the previous `.bak` untouched. No file yet means nothing to
+    /// roll — the first write writes no backup. A backup we cannot take fails the write
+    /// rather than going unrecorded (the `backUpBeforeMigrating` rule).
+    private func backUpCurrentFile() throws {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        guard let data = try? Data(contentsOf: fileURL) else {
+            throw StoreIOError.io("could not read \(fileURL.path) to roll its backup")
+        }
+        do {
+            try storage.atomicWrite(data, to: backupURL)
+        } catch {
+            throw StoreIOError.io("could not back up the store to \(backupURL.path): \(error)")
+        }
     }
 
     // MARK: - Schema (private)
@@ -206,7 +235,8 @@ public struct Store: Sendable {
     /// still taken and recovery is still checked. The contents are normalized again before
     /// the write, so every operation leaves the invariant holding. A first write over a
     /// file that still carries the legacy `done` mirror copies that file aside first (the
-    /// migrator's safety net). If `body` throws and this call performed a recovery, the
+    /// migrator's safety net), and every write rolls the file it replaces to
+    /// `todos.json.bak`. If `body` throws and this call performed a recovery, the
     /// failure is wrapped in a `RecoveryFailure` so the note is not lost. Internal (not
     /// public): the public surface is the `Operations` extension.
     func mutate<T: Sendable>(
@@ -298,6 +328,27 @@ public struct Store: Sendable {
         case .invalid:
             return .unreadable
         }
+    }
+
+    /// The rolling backup's state (ADR 0018) for `tandem-cli doctor`: whether
+    /// `todos.json.bak` exists, and how long ago it was last written. Separate from
+    /// `Health` because it is a property *beside* the store, not of its contents —
+    /// and never a failure: a store written once, or read-only, simply has no backup.
+    /// Lock-free and non-mutating, like every diagnostic read.
+    public enum BackupHealth: Sendable, Equatable {
+        /// No `todos.json.bak` — the normal state before the second write.
+        case absent
+        /// A backup exists; it was written `age` seconds ago.
+        case present(age: TimeInterval)
+    }
+
+    /// A lock-free read of the rolling backup's presence and age (see `BackupHealth`).
+    public func backupHealth() -> BackupHealth {
+        guard
+            let attrs = try? FileManager.default.attributesOfItem(atPath: backupURL.path),
+            let modified = attrs[.modificationDate] as? Date
+        else { return .absent }
+        return .present(age: Date().timeIntervalSince(modified))
     }
 
     /// Whether the store's sidecar lock is currently held by another process —

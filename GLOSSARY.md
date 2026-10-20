@@ -57,7 +57,7 @@ Which todos are in view: `open` (the default), `done`, or `all` (archived ticket
 _Avoid_: view, tab, scope, state
 
 **Store**:
-The single source of truth for todos, shared by the app and agents. All reads and writes go through the store; no other copy is authoritative.
+The single source of truth for todos, shared by the app and agents. All reads and writes go through the store; no other copy is authoritative. Beside the file sits its **rolling backup**, `todos.json.bak` — the one previous good copy, written under the same lock as the write it precedes (ADR 0018). It is a fallback, never a source: nothing reads it but a human recovering the list.
 _Avoid_: database, backend, sync, cache
 
 ### The bikeshed

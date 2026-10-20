@@ -60,7 +60,13 @@ struct LockedDirectory: Sendable {
     /// Write `data` to `url` atomically: same-directory temp file, fsync,
     /// `rename(2)`. On any failure the temp is removed and the error rethrown.
     /// Call only while holding the lock.
-    func atomicWrite(_ data: Data, to url: URL) throws {
+    ///
+    /// `beforeCommit` runs once the new bytes are durable but **before** the
+    /// `rename(2)` — the seam for work that must see the file the write is about
+    /// to replace (the store's rolling backup, ADR 0018). The old file is still
+    /// in place when it runs, and still in place if it throws, so neither failure
+    /// can leave a half-written anything.
+    func atomicWrite(_ data: Data, to url: URL, beforeCommit: () throws -> Void = {}) throws {
         let fm = FileManager.default
         let parent = url.deletingLastPathComponent()
         try fm.createDirectory(at: parent, withIntermediateDirectories: true)
@@ -69,6 +75,7 @@ struct LockedDirectory: Sendable {
         do {
             try data.write(to: tmp, options: [])
             try Self.fsync(tmp)
+            try beforeCommit()
             if Darwin.rename(tmp.path, url.path) != 0 {
                 throw LockedDirectoryError.posix(op: "rename", code: errno)
             }

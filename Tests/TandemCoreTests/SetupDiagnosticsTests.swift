@@ -13,6 +13,7 @@ struct SetupDiagnosticsTests {
     private func facts(
         homeSource: TandemHome.Source = .devBuild,
         storeHealth: Store.Health = .counts(open: 3, done: 2),
+        storeBackup: Store.BackupHealth = .present(age: 300),
         storeLockHeld: Bool = false,
         bikeshedNoteCount: Int = 4,
         bikeshedIsFile: Bool = false,
@@ -30,6 +31,7 @@ struct SetupDiagnosticsTests {
             homeSource: homeSource,
             storePath: "/Users/tester/.tandem-dev/todos.json",
             storeHealth: storeHealth,
+            storeBackup: storeBackup,
             storeLockHeld: storeLockHeld,
             bikeshedPath: "/Users/tester/.tandem-dev/bikeshed",
             bikeshedNoteCount: bikeshedNoteCount,
@@ -49,6 +51,7 @@ struct SetupDiagnosticsTests {
         #expect(report.checks.allSatisfy { $0.ok })
         #expect(report.checks[0].detail.contains("dev build"))
         #expect(report.checks[1].detail.contains("3 open, 2 done"))
+        #expect(report.checks[1].detail.contains("backup 5m old"))
         #expect(report.checks[2].detail.contains("4 note(s)"))
         #expect(report.checks[4].detail.contains("version 0.9.0"))
     }
@@ -65,6 +68,37 @@ struct SetupDiagnosticsTests {
         let report = SetupDiagnostics.report(facts(storeHealth: .unreadable))
         #expect(!report.ok)
         #expect(report.checks.first { $0.name == "store" }?.ok == false)
+    }
+
+    @Test("the store check reports the rolling backup's age, or its absence")
+    func storeDetailReportsTheBackup() {
+        let withBackup = SetupDiagnostics.report(facts(storeBackup: .present(age: 300)))
+        #expect(withBackup.checks[1].detail.contains("backup 5m old"))
+        #expect(withBackup.ok)
+
+        let without = SetupDiagnostics.report(facts(storeBackup: .absent))
+        #expect(without.checks[1].detail.contains("no backup yet"))
+        #expect(without.ok, "a store too young to have a backup is not a failure")
+    }
+
+    @Test("an old backup on a corrupt store is still reported beside the failure")
+    func corruptStoreStillNamesItsBackup() {
+        let report = SetupDiagnostics.report(
+            facts(storeHealth: .unreadable, storeBackup: .present(age: 7_200)))
+        let store = report.checks.first { $0.name == "store" }
+        #expect(store?.ok == false)
+        #expect(store?.detail.contains("backup 2h old") == true)
+    }
+
+    @Test("backup ages read as seconds, minutes, hours, then days")
+    func backupAgeUnits() {
+        #expect(SetupDiagnostics.ageText(0) == "0s")
+        #expect(SetupDiagnostics.ageText(59) == "59s")
+        #expect(SetupDiagnostics.ageText(60) == "1m")
+        #expect(SetupDiagnostics.ageText(3_599) == "59m")
+        #expect(SetupDiagnostics.ageText(3_600) == "1h")
+        #expect(SetupDiagnostics.ageText(86_399) == "23h")
+        #expect(SetupDiagnostics.ageText(86_400) == "1d")
     }
 
     @Test("a held lock fails the report, with a retry hint")
@@ -141,5 +175,22 @@ struct SetupDiagnosticsTests {
         let (store, dir) = tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
         #expect(store.lockIsHeld() == false)
+    }
+
+    @Test("backupHealth: no file is absent, one write is still absent, two writes age it")
+    func storeBackupHealth() throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        #expect(store.backupHealth() == .absent)
+        _ = try store.add("First probe")
+        #expect(store.backupHealth() == .absent, "a first write has no file to roll")
+        _ = try store.add("Second probe")
+
+        guard case .present(let age) = store.backupHealth() else {
+            Issue.record("two writes should leave a backup")
+            return
+        }
+        #expect(age < 60)
     }
 }
