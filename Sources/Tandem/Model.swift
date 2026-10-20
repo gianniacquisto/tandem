@@ -38,6 +38,8 @@ final class TandemModel {
     // and the CLI's `--filter` are views over the same predicate, not two definitions.
     var openTodos: [Todo] { Filter.open.apply(to: todos) }
     var doneTodos: [Todo] { Filter.done.apply(to: todos) }
+    /// The archive: out of every default view, still in the store. The list's fourth state.
+    var archivedTodos: [Todo] { TodoQuery(archived: .only).apply(to: todos) }
 
     private init(store: Store = Store()) {
         self.store = store
@@ -147,6 +149,12 @@ final class TandemModel {
     /// leaves the view and stays in the file.
     func archiveDone() {
         run { try self.store.archiveDone() }
+    }
+
+    /// Sets one ticket's archive flag. Unarchiving is the way back from "Archive done";
+    /// archiving a single ticket is not offered in the GUI yet (bulk is enough).
+    func setArchived(_ id: String, _ archived: Bool) {
+        run { try self.store.set(id, archived: .set(archived)) }
     }
 
     /// GUI-only in v1 — there is no delete verb in the CLI.

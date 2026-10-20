@@ -8,12 +8,38 @@ import TandemCore
 // fills, no drop shadows, native body typography, generous negative space.
 // Every metric comes from LigneTheme.swift — no literals here.
 
-extension Filter {
+/// What the list face is showing.
+///
+/// The first three are the shipped `Filter` values — `open`, `done`, `all` — and are spelled
+/// as the core spells them, so the segmented control and `todo list --filter` cannot drift
+/// (`all` includes archived tickets, exactly as the flag does). `archived` is the fourth
+/// state only the app can ask for: the archive as its own view, which is how an archived
+/// ticket is found again and brought back. There is no fourth `--filter` value by decision
+/// (ADR 0017): an agent reaches the archive through a query, the human through a click.
+enum ListScope: String, CaseIterable, Identifiable {
+    case open
+    case done
+    case all
+    case archived
+
+    var id: String { rawValue }
+
     var displayName: String {
         switch self {
         case .open: return "Open"
         case .done: return "Done"
         case .all: return "All"
+        case .archived: return "Archived"
+        }
+    }
+
+    /// The one view definition: three shipped filters, plus the archive.
+    var query: TodoQuery {
+        switch self {
+        case .open: return Filter.open.query
+        case .done: return Filter.done.query
+        case .all: return Filter.all.query
+        case .archived: return TodoQuery(archived: .only)
         }
     }
 }
@@ -64,31 +90,34 @@ struct LigneCheckbox: View {
 // MARK: segmented filter — soft-wash selection, muted counts, no capsules
 
 struct LigneFilter: View {
-    @Binding var selection: Filter
-    var counts: (open: Int, done: Int)
+    @Binding var selection: ListScope
+    var counts: (open: Int, done: Int, archived: Int)
     var palette: Palette
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(Filter.allCases, id: \.self) { f in
-                segment(f)
+            ForEach(ListScope.allCases) { scope in
+                segment(scope)
             }
         }
-        .frame(width: 240, height: Space.control)
+        .frame(width: 296, height: Space.control)
         .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.paper))
         .clipShape(RoundedRectangle(cornerRadius: Radius.control))
         .overlay(RoundedRectangle(cornerRadius: Radius.control)
             .strokeBorder(palette.line, lineWidth: Line.hairline))
     }
 
-    private func segment(_ f: Filter) -> some View {
-        let selected = f == selection
-        let count = f == .open ? counts.open : f == .done ? counts.done : counts.open + counts.done
+    private func segment(_ scope: ListScope) -> some View {
+        let selected = scope == selection
+        let count = scope == .open ? counts.open
+                  : scope == .done ? counts.done
+                  : scope == .archived ? counts.archived
+                  : counts.open + counts.done + counts.archived
         return Button {
-            withAnimation(Motion.toggle) { selection = f }
+            withAnimation(Motion.toggle) { selection = scope }
         } label: {
             HStack(spacing: 4) {
-                Text(f.displayName)
+                Text(scope.displayName)
                     .font(.system(size: 12.5, weight: selected ? .semibold : .regular))
                     .foregroundStyle(selected ? palette.ink : palette.inkDim)
                 Text("\(count)")
@@ -267,6 +296,9 @@ struct LigneRow: View {
     var onSetLink: (() -> Void)? = nil
     /// Clears this todo's link. `nil` hides the item.
     var onClearLink: (() -> Void)? = nil
+    /// Brings an archived ticket back into the default views. `nil` hides the item; only
+    /// an archived row shows it, so every caller can pass the same closure.
+    var onUnarchive: (() -> Void)? = nil
     /// Called when another row is dropped on this one, with which half. `nil`
     /// leaves the row undraggable.
     var onDropTodo: ((_ draggedID: String, _ edge: DropEdge) -> Void)? = nil
@@ -304,6 +336,18 @@ struct LigneRow: View {
                     .lineLimit(1)
                     .onTapGesture(count: 2, perform: beginEdit)
                     .help("Double-click to edit")
+            }
+
+            // An archived ticket is still in the store; in the views that include the
+            // archive it says so, quietly, so it is never mistaken for live work.
+            if todo.archived {
+                Text("archived")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(palette.inkDim)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .overlay(Capsule().strokeBorder(palette.sand, lineWidth: Line.hairline))
+                    .help("Archived: out of the default views, still in the store")
             }
 
             Spacer(minLength: 8)
@@ -344,6 +388,10 @@ struct LigneRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .contextMenu {
+            if todo.archived, let onUnarchive {
+                Button("Unarchive", action: onUnarchive)
+                Divider()
+            }
             if let link = todo.link {
                 Button("Open note") { onOpenLink(link) }
                 if let onSetLink { Button("Link to note…", action: onSetLink) }
