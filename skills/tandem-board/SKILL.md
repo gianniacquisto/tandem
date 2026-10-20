@@ -67,7 +67,7 @@ Work a design tree in rounds. The frontier is every question whose prerequisites
 A ready ticket is claimed by the agent that takes it: `--status in-progress --assignee <agent-name>`.
 
 - The brief is the ticket **id and description**, nothing more. The child orients from `AGENTS.md` and the bikeshed on its own; restating memory in the brief is how two versions of the truth start.
-- One in-progress ticket at a time on a machine capped at `max_concurrent_agents: 1`; parallel agents on one repo collide in the working tree, not in the store.
+- Dispatch one ticket per claim. The board's one-at-a-time rule is convention, not the runtime: `max_concurrent_agents: 1` in `~/.config/opencode/opencode.json` caps **local** models only (`gianni-desktop`), so a DeepSeek subagent runs alongside a local one. Parallel agents on one repo still collide in the working tree, not in the store.
 - The child branches, builds, verifies, opens a PR, files captures, and ends with one `work` capture.
 - The root verifies the evidence, then `todo complete`. Completion without a PR, a diff, or a recorded answer is a claim, not a completion.
 - **A claim is not a stall.** Before reclaiming an `in-progress` ticket, look for the live child: `opencode api session.list` shows it RUNNING with a `time.updated` seconds old, even when no branch is pushed yet. A local model can hold a claim for half an hour before its first commit. Only reclaim when there is no running session, no branch, and no PR.
