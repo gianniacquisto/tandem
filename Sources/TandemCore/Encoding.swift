@@ -22,6 +22,22 @@ public enum StoreEncoding {
         return try serialize(object)
     }
 
+    /// The `lane add` / `lane rename` result: `{"lanes": [...]}` — the lane list after
+    /// the write, in render order. `delete` adds the count it moved, see below.
+    public static func lanesResult(_ lanes: [String], note: String?) throws -> String {
+        var object: [String: Any] = ["lanes": lanes]
+        if let note { object["note"] = note }
+        return try serialize(object)
+    }
+
+    /// The `lane delete` result: `{"lanes": [...], "moved": <n>}` — the lanes left, and
+    /// how many todos moved to the default area (never deleted).
+    public static func laneDeletionResult(_ deletion: LaneDeletion, note: String?) throws -> String {
+        var object: [String: Any] = ["lanes": deletion.lanes, "moved": deletion.moved]
+        if let note { object["note"] = note }
+        return try serialize(object)
+    }
+
     /// The `archive` result: `{"archived": <n>}`, with a top-level `note` when non-nil.
     /// A bulk operation reports how much it did, not which tickets it touched — the
     /// caller's next `list` has the tickets, and the count keeps the reply one line.

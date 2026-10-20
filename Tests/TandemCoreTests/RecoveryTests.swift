@@ -234,6 +234,23 @@ struct RecoveryTests {
         #expect(obj["note"] == nil)
     }
 
+    @Test("StoreEncoding lane results: the lanes after the write, plus moved on delete")
+    func laneResultEncoding() throws {
+        let added = try json(StoreEncoding.lanesResult(["Tandem", "fleet"], note: nil))
+        #expect(added["lanes"] as? [String] == ["Tandem", "fleet"])
+        #expect(added["note"] == nil)
+
+        let withNote = try json(StoreEncoding.lanesResult([], note: "N"))
+        #expect((withNote["lanes"] as? [Any])?.isEmpty == true)
+        #expect(withNote["note"] as? String == "N")
+
+        let deleted = try json(
+            StoreEncoding.laneDeletionResult(
+                LaneDeletion(lanes: ["fleet"], moved: 3), note: nil))
+        #expect(deleted["lanes"] as? [String] == ["fleet"])
+        #expect(deleted["moved"] as? Int == 3)
+    }
+
     @Test("tandemErrorText renders each domain error actionably")
     func errorTextRendering() throws {
         #expect(tandemErrorText(DomainError.locked).contains("locked"))

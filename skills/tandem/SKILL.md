@@ -1,6 +1,6 @@
 ---
 name: tandem
-description: "Read and write the shared Tandem ticket list, and rename bikeshed notes, from `tandem-cli` on this Mac. Reach for it when the user says to add a todo, asks what's on their list, wants a ticket's status or assignee changed, asks to mark a todo done, or wants a note renamed (reopened under a new name). Also runs a local setup check when the user asks whether Tandem is installed or working. The same tickets a human sees and edits in the Tandem app."
+description: "Read and write the shared Tandem ticket list, manage its cycle lanes, and rename bikeshed notes, from `tandem-cli` on this Mac. Reach for it when the user says to add a todo, asks what's on their list, wants a ticket's status or assignee changed, wants a cycle lane created, renamed, or deleted, asks to mark a todo done, or wants a note renamed (reopened under a new name). Also runs a local setup check when the user asks whether Tandem is installed or working. The same tickets a human sees and edits in the Tandem app."
 ---
 
 # Tandem
@@ -101,6 +101,27 @@ $ tandem-cli todo archive
 {"archived":3}
 ```
 
+## Lanes
+
+A **cycle lane** is the area axis of the ticket model — the list groups by it and the board draws its rows; `--lane ""` (or a null `section`) is the default area. Three verbs manage them, and they are the only CLI verbs that change the lane list itself:
+
+| command | returns |
+| --- | --- |
+| `tandem-cli lane add --name <name>` | `{"lanes": [...]}` |
+| `tandem-cli lane rename --from <name> --to <name>` | `{"lanes": [...]}` |
+| `tandem-cli lane delete --name <name>` | `{"lanes": [...], "moved": <n>}` |
+
+`lanes` is the lane list after the write, in render order, so no follow-up call is needed to learn the names. Names are trimmed; an empty name, a name already in use, and (for rename/delete) an unknown name are domain failures with actionable text. `rename` rewrites the lane list and every ticket in it in one write; renaming to the same name is a no-op. `delete` never deletes tickets — its members fall back to the default area, and `moved` is how many did.
+
+```
+$ tandem-cli lane add --name Tandem
+{"lanes":["Tandem"]}
+$ tandem-cli lane delete --name Tandem
+{"lanes":[],"moved":2}
+```
+
+A lane must exist before `todo add --lane` / `todo move --lane` will accept it, which is what these verbs are for. `lane list` does not exist: `todo list --filter all` shows every lane that has a ticket in its `section`; a lane with no tickets is visible only in the app.
+
 ## Notes
 
 The bikeshed (`~/.tandem/bikeshed/`) is a plain folder of `.md` files, and the file itself is the interface. Create, edit, and delete curated notes with your own file tools; the CLI writes no note content. Three CLI verbs act on notes: `rename`, the one rename path; `capture`, which files a capture; and `stats`, the read-only memory-health readout.
@@ -175,7 +196,7 @@ $ tandem-cli doctor
 
 ## Streams and exit codes
 
-- **stdout** — one JSON object on success. `list` returns `{"todos": [...]}`; `add`, `set`, `move` and `complete` return the todo object; `archive` returns `{"archived": <n>}`. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
+- **stdout** — one JSON object on success. `list` returns `{"todos": [...]}`; `add`, `set`, `move` and `complete` return the todo object; `archive` returns `{"archived": <n>}`; `lane add` and `lane rename` return `{"lanes": [...]}`, `lane delete` returns `{"lanes": [...], "moved": <n>}`. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
 - **stderr** — short, actionable plain text on failure, naming the failed value and the next step. `complete` with an unknown id appends the current open list in the `list` shape:
 
   ```
