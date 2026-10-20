@@ -15,6 +15,8 @@ enum Usage {
       tandem-cli todo move --id <id> [--lane <name>] [--index <number>]
       tandem-cli todo complete --id <id>
       tandem-cli todo archive
+      tandem-cli todo comment add --id <id> [--author <name>] --body <string|->
+      tandem-cli todo comment list --id <id>
       tandem-cli lane add --name <name>
       tandem-cli lane rename --from <name> --to <name>
       tandem-cli lane delete --name <name>
@@ -29,6 +31,7 @@ enum Usage {
       filter    open (default) | done | all
       assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
       origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it
+      author    a name; omitted is the unnamed author
       lane      a lane name, or "" for the default area
       index     0-based within the lane; omitted appends to it
     """

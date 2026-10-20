@@ -19,6 +19,8 @@ public enum DomainError: Error, Sendable, Equatable {
     case emptySelection
     /// `addFromNote` was given a note path that is not bikeshed-root-relative.
     case invalidNotePath(String)
+    /// `append(ticketID:author:body:)` was called with an empty or whitespace-only body.
+    case emptyCommentBody
     /// `list` was called with a filter that is not `open`, `done`, or `all`.
     case invalidFilter(String)
     /// A Status value that is not one of the five (ADR 0017).
@@ -49,6 +51,8 @@ public enum DomainError: Error, Sendable, Equatable {
             return "Nothing to send. Select text in the note — or put the caret on a checkbox line — and try again."
         case .invalidNotePath(let bad):
             return "Note path \"\(bad)\" is not a bikeshed-relative path (e.g. projects/App.md)."
+        case .emptyCommentBody:
+            return "Comment body is empty. Provide a non-empty body and try again."
         case .invalidFilter(let bad):
             return "filter must be one of open, done, all (got \"\(bad)\")."
         case .invalidStatus(let bad):

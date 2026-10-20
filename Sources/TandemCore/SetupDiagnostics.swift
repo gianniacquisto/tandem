@@ -55,6 +55,16 @@ public enum SetupDiagnostics {
         }
     }
 
+    /// The comments directory's state (ADR 0017, amendment 2026-10-20). Absent is
+    /// valid — the first comment creates it — so the check fails only when the
+    /// path is present but unreadable: a file in its place, or a directory that
+    /// cannot be listed.
+    public enum CommentsState: Sendable, Equatable {
+        case absent
+        case readable
+        case unreadable
+    }
+
     /// Raw observations from the machine. Injected as a value so `report(_:)`
     /// stays pure and deterministic under test.
     public struct Facts: Sendable, Equatable {
@@ -69,6 +79,8 @@ public enum SetupDiagnostics {
         public var bikeshedNoteCount: Int
         /// The bikeshed path exists but is a regular file, not a folder.
         public var bikeshedIsFile: Bool
+        public var commentsPath: String
+        public var commentsState: CommentsState
         public var appPresent: Bool
         public var appVersion: String?
         public var appQuarantined: Bool
@@ -80,6 +92,7 @@ public enum SetupDiagnostics {
                     storePath: String, storeHealth: Store.Health,
                     storeBackup: Store.BackupHealth, storeLockHeld: Bool,
                     bikeshedPath: String, bikeshedNoteCount: Int, bikeshedIsFile: Bool,
+                    commentsPath: String, commentsState: CommentsState,
                     appPresent: Bool, appVersion: String?, appQuarantined: Bool,
                     skillHosts: [SkillHost], opencodeListsSkills: Bool) {
             self.homePath = homePath
@@ -91,6 +104,8 @@ public enum SetupDiagnostics {
             self.bikeshedPath = bikeshedPath
             self.bikeshedNoteCount = bikeshedNoteCount
             self.bikeshedIsFile = bikeshedIsFile
+            self.commentsPath = commentsPath
+            self.commentsState = commentsState
             self.appPresent = appPresent
             self.appVersion = appVersion
             self.appQuarantined = appQuarantined
@@ -99,9 +114,9 @@ public enum SetupDiagnostics {
         }
     }
 
-    /// The check order, pinned: the CLI documents and tests it. The first three
+    /// The check order, pinned: the CLI documents and tests it. The first four
     /// can fail; the last three are informational.
-    static let checkNames = ["home", "store", "bikeshed", "lock", "app", "skills"]
+    static let checkNames = ["home", "store", "bikeshed", "comments", "lock", "app", "skills"]
 
     /// Assemble the report from observed `facts`. Pure.
     public static func report(_ facts: Facts) -> Report {
@@ -137,6 +152,19 @@ public enum SetupDiagnostics {
         } else {
             checks.append(Check(name: "bikeshed", ok: true,
                                 detail: "\(facts.bikeshedPath) — \(facts.bikeshedNoteCount) note(s)"))
+        }
+
+        switch facts.commentsState {
+        case .absent:
+            checks.append(Check(name: "comments", ok: true,
+                                detail: "\(facts.commentsPath) — absent (created on first comment)"))
+        case .readable:
+            checks.append(Check(name: "comments", ok: true,
+                                detail: facts.commentsPath))
+        case .unreadable:
+            checks.append(Check(name: "comments", ok: false,
+                                detail: "\(facts.commentsPath) — present but unreadable; "
+                                       + "a directory of comment logs is expected here"))
         }
 
         checks.append(Check(name: "lock", ok: !facts.storeLockHeld,
@@ -199,6 +227,8 @@ public enum SetupDiagnostics {
         let health = store.health()
         let notes = (try? bikeshed.list())?.value ?? []
         let bikeshedIsFile = isFile(bikeshed.directory.path)
+        let commentsPath = store.commentsDirectory.path
+        let commentsState = commentsState(at: commentsPath)
 
         let appURL = URL(fileURLWithPath: appPath)
         let appPresent = FileManager.default.fileExists(atPath: appPath)
@@ -219,6 +249,8 @@ public enum SetupDiagnostics {
             bikeshedPath: bikeshed.directory.path,
             bikeshedNoteCount: noteCount(notes),
             bikeshedIsFile: bikeshedIsFile,
+            commentsPath: commentsPath,
+            commentsState: commentsState,
             appPresent: appPresent,
             appVersion: appVersion,
             appQuarantined: appPresent && hasQuarantine(appPath),
@@ -272,6 +304,21 @@ public enum SetupDiagnostics {
     }
 
     // MARK: - Filesystem helpers
+
+    /// The comments directory's state (see `CommentsState`). Absent is the
+    /// normal early state — the first comment creates it — so only
+    /// present-but-unusable counts: a file in its place, or a directory whose
+    /// contents cannot be read.
+    static func commentsState(at path: String) -> CommentsState {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else {
+            return .absent
+        }
+        if !isDir.boolValue { return .unreadable }
+        return (try? FileManager.default.contentsOfDirectory(atPath: path)) != nil
+            ? .readable
+            : .unreadable
+    }
 
     /// True when `path` exists and is a regular file (not a directory). A
     /// missing path is `false` (an empty bikeshed is a valid setup).

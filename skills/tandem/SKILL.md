@@ -23,7 +23,7 @@ Every write keeps one previous good copy beside it, in `todos.json.bak` — the 
 
 ## Tickets
 
-Six commands under `todo`; each section below is that command's contract. A todo is a **ticket** — the same object a human sees in the Tandem app — and every object these commands return has the same shape:
+Seven commands under `todo` — `list`, `add`, `set`, `move`, `complete`, `archive`, and `comment` (which takes a sub-verb of its own); each section below is that command's contract. A todo is a **ticket** — the same object a human sees in the Tandem app — and every object these commands return has the same shape:
 
 | field | meaning |
 | --- | --- |
@@ -99,6 +99,24 @@ Archive every done ticket in one call: nothing is deleted, the tickets leave the
 ```
 $ tandem-cli todo archive
 {"archived":3}
+```
+
+### `tandem-cli todo comment add --id <string> [--author <name>] --body <string|->`
+
+Append one comment to the ticket's **discussion log** — where agents talk on a ticket after refinement, since the description stays refinement-only. The log is a sidecar file (`~/.tandem/comments/<id>.jsonl`), not a field on the ticket: the app rewrites `todos.json` whole and drops keys it does not know, but it never touches the sidecar, so the conversation survives any edit of the ticket. The body is markdown; `--body -` reads it from stdin, as `--description` does, and an empty body is rejected. `--author` signs the line — your name when you are the assignee or an agent working the ticket; omitted is the unnamed author. An unknown id fails with the current open list, as `complete` does. The log is append-only: there is no edit and no delete verb, so say the thing you mean — a correction is a new comment.
+
+```
+$ printf 'Did you mean X, or was it Y?\n' | tandem-cli todo comment add --id 550e8400-… --author self --body -
+{"at":"2026-10-20T22:31:04Z","author":"ui","body":"Did you mean X, or was it Y?"}
+```
+
+### `tandem-cli todo comment list --id <string>`
+
+The ticket's comments in append order. An unknown id is an empty list, not an error — the log outlives the store's entries, so a deleted ticket keeps its conversation.
+
+```
+$ tandem-cli todo comment list --id 550e8400-…
+{"comments":[{"at":"2026-10-20T22:31:04Z","author":"ui","body":"Did you mean X, or was it Y?"}]}
 ```
 
 ## Lanes
@@ -194,6 +212,7 @@ Returns one JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "d
 | `home` | the resolved state directory (see The store), and why — `TANDEM_HOME` override, shipped app, or dev build | no |
 | `store` | the `todos.json` path, its open/done counts (`absent` = a valid empty store), and the rolling backup beside it — `backup 5m old`, or `no backup yet` until the second write | yes — present but unreadable or corrupt |
 | `bikeshed` | the bikeshed path and its note count | yes — the path is a file, not a folder |
+| `comments` | the comments directory (`~/.tandem/comments`) — `absent` is a valid early state, created on first comment | yes — present but unreadable (a file in its place, or an unlistable directory) |
 | `lock` | whether a writer currently holds the store lock | yes — held by another process |
 | `app` | the installed `/Applications/Tandem.app` version, with the quarantine-strip hint when it is flagged | no |
 | `skills` | whether this skill is found for each agent host, and whether opencode's config lists the repo `skills/` dir | no |
@@ -207,7 +226,7 @@ $ tandem-cli doctor
 
 ## Streams and exit codes
 
-- **stdout** — one JSON object on success. `list` returns `{"todos": [...]}`; `add`, `set`, `move` and `complete` return the todo object; `archive` returns `{"archived": <n>}`; `lane add` and `lane rename` return `{"lanes": [...]}`, `lane delete` returns `{"lanes": [...], "moved": <n>}`. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
+- **stdout** — one JSON object on success. `list` returns `{"todos": [...]}`; `add`, `set`, `move` and `complete` return the todo object; `archive` returns `{"archived": <n>}`; `todo comment add` returns the comment object, `todo comment list` returns `{"comments": [...]}`; `lane add` and `lane rename` return `{"lanes": [...]}`, `lane delete` returns `{"lanes": [...], "moved": <n>}`. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
 - **stderr** — short, actionable plain text on failure, naming the failed value and the next step. `complete` with an unknown id appends the current open list in the `list` shape:
 
   ```

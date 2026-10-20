@@ -69,7 +69,9 @@ public struct Store: Sendable {
 
     /// Take the store lock (translating the primitive's errors into the store's
     /// own vocabulary) and run `body` under it, orphan temps cleaned first.
-    private func withLock<T: Sendable>(_ body: () throws -> T) throws -> T {
+    /// Internal (not private): the comment operations run under the store's own
+    /// lock too — the sidecar append must serialize with every store writer.
+    func withLock<T: Sendable>(_ body: () throws -> T) throws -> T {
         do {
             return try storage.withLock(body)
         } catch LockedDirectoryError.locked {
@@ -111,8 +113,10 @@ public struct Store: Sendable {
     /// already recovered is not double-recovered; if still corrupt, backs the file up and
     /// restarts empty. Returns the contents, when *this* call performed the backup the
     /// backup path, and whether the file it read still carries the legacy `done` mirror
-    /// (the caller writing must then copy it aside first).
-    private func readLocked() throws -> (contents: StoreContents, backupPath: String?, legacyMirror: Bool) {
+    /// (the caller writing must then copy it aside first). Internal (not private):
+    /// `withLockedRead` builds on it for operations that read the store and write
+    /// a sidecar.
+    func readLocked() throws -> (contents: StoreContents, backupPath: String?, legacyMirror: Bool) {
         switch peek() {
         case .absent:
             return (StoreContents(lanes: [], todos: []), nil, false)
@@ -255,6 +259,40 @@ public struct Store: Sendable {
                     try writeLocked(contents)
                 }
                 return (value, note)
+            } catch {
+                if let note {
+                    let underlying: any TandemError = error as? any TandemError
+                        ?? StoreIOError.io("\(error)")
+                    throw RecoveryFailure(underlying: underlying, note: note)
+                }
+                throw error
+            }
+        }
+    }
+
+    /// Run `body` under the store's exclusive lock with the store read under the
+    /// **same** lock (recovery and normalization included). For operations that
+    /// consult the store and write elsewhere — the comment append verifies the
+    /// ticket exists before appending to the sidecar, so check and write are one
+    /// locked act and a ticket deleted in between cannot slip through. `body`
+    /// gets the normalized contents and the recovery note when *this* call
+    /// performed the backup; a throw with a note is wrapped in a
+    /// `RecoveryFailure` like `mutate`, so the note is not lost. Internal (not
+    /// public): the public surface is the `Operations` extension.
+    /// (The closure's parameters carry no labels — function types cannot —
+    /// so the body receives `(contents, note)` positionally: the normalized
+    /// contents, then the recovery note, non-nil only when *this* call
+    /// performed the backup.)
+    func withLockedRead<T: Sendable>(
+        _ body: (StoreContents, String?) throws -> T
+    ) throws -> T {
+        try withLock {
+            let (initial, backup, _) = try self.readLocked()
+            let note = backup.map(Self.recoveryNote)
+            var contents = initial
+            contents.normalize()
+            do {
+                return try body(contents, note)
             } catch {
                 if let note {
                     let underlying: any TandemError = error as? any TandemError
