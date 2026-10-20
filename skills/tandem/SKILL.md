@@ -29,7 +29,7 @@ Six commands under `todo`; each section below is that command's contract. A todo
 | --- | --- |
 | `id` | pass it back to `set`, `move`, `complete` |
 | `title` | one line, trimmed |
-| `status` | `backlog` (default), `refined`, `ready`, `in-progress`, or `done` |
+| `status` | `backlog` (default), `refined`, `ready`, `in-progress`, `in-review`, or `done` |
 | `archived` | true when the ticket is set aside — out of the default views, still in the store |
 | `description` | markdown body, or null; write it from stdin with `todo set --description -` |
 | `assignee` | `human`, an agent's name, or null for unowned |

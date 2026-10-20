@@ -25,7 +25,7 @@ enum Usage {
       tandem-cli --help | -h
 
     Values:
-      status    backlog | refined | ready | in-progress | done
+      status    backlog | refined | ready | in-progress | in-review | done
       filter    open (default) | done | all
       assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
       origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it
