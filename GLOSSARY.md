@@ -22,6 +22,10 @@ _Avoid_: kanban board, swimlane view, board tab (when the view is meant)
 Tandem's presence in the macOS menu bar (top bar): quick glance and quick action on todos.
 _Avoid_: top bar element, status bar, tray, badge
 
+**Quick open**:
+The main window's ⌘K palette: one ranked list over the bikeshed's notes and the store's tickets — a note opens in the editor, a ticket in its sheet. The match is the store's own comparison, so the palette and the list find the same things.
+_Avoid_: command palette, launcher, fuzzy finder, spotlight
+
 ### The domain
 
 **Todo**:

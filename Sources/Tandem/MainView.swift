@@ -28,6 +28,9 @@ import TandemCore
 ///               A dot on the tab says one is waiting, from any other face
 ///   Bikeshed  — the notes face (BikeFace.swift): tree sidebar, the WKWebView
 ///               editor, the backlinks dock
+///   ⌘K        — the quick-open palette over the window: one ranked list of
+///               the notes and the tickets (a note opens in the editor, a
+///               ticket in its sheet; ↑↓ move, ↩ opens, esc dismisses)
 ///
 /// The theme lives in the chrome: flat paper surfaces, uniform 1pt hairlines,
 /// line-drawn controls, illustration only in the empty state (ticket 01 handoff).
@@ -63,6 +66,9 @@ struct MainView: View {
     // The ticket open in the ticket sheet, if any.
     @State private var ticketFor: Todo?
 
+    // The quick-open palette (⌘K): the one keyboard path to a known note or ticket.
+    @State private var quickOpenPresented = false
+
     private var palette: Palette { Palette.forScheme(colorScheme) }
 
     var body: some View {
@@ -97,7 +103,14 @@ struct MainView: View {
         .background(palette.paper)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minWidth: 760, minHeight: 560)
-        .modifier(TandemShortcuts(scope: $scope, focusQuickAdd: $quickAddFocused))
+        .modifier(TandemShortcuts(scope: $scope,
+                                  focusQuickAdd: $quickAddFocused,
+                                  toggleQuickOpen: toggleQuickOpen))
+        .overlay {
+            if quickOpenPresented {
+                quickOpenOverlay
+            }
+        }
         .sheet(item: $linkPickerFor) { todo in
             linkSheet(todo)
         }
@@ -529,6 +542,50 @@ struct MainView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Quick open (⌘K)
+
+    /// The quick-open palette over the window: a wash that dismisses on a click, and
+    /// the ranked list itself. It is an overlay, not a sheet, so opening a ticket from
+    /// it can still raise the ticket sheet.
+    private var quickOpenOverlay: some View {
+        ZStack(alignment: .top) {
+            Rectangle()
+                .fill(palette.paper.opacity(0.9))
+                .onTapGesture { quickOpenPresented = false }
+            QuickOpenPalette(
+                items: quickOpenItems,
+                palette: palette,
+                onOpen: openQuickOpenItem,
+                onDismiss: { quickOpenPresented = false })
+                .padding(.top, 72)
+        }
+    }
+
+    /// The candidates: the bikeshed's notes and the store's tickets. The core does the
+    /// matching and the ranking; this only gathers what there is to rank.
+    private var quickOpenItems: [QuickOpen.Item] {
+        bikeModel.notePaths().map { QuickOpen.Item.note(path: $0) }
+            + model.todos.map { QuickOpen.Item.ticket($0) }
+    }
+
+    /// Opens a quick-open choice: a note in the editor, a ticket in its sheet.
+    private func openQuickOpenItem(_ item: QuickOpen.Item) {
+        quickOpenPresented = false
+        switch item {
+        case .note(let path):
+            // The note opens in the Bikeshed tab, the way a linked note does.
+            tab = .bikeshed
+            bikeModel.open(path)
+        case .ticket(let todo):
+            ticketFor = todo
+        }
+    }
+
+    /// ⌘K: the palette opens, or closes if it is already up.
+    private func toggleQuickOpen() {
+        withAnimation(Motion.toggle) { quickOpenPresented.toggle() }
+    }
+
     // MARK: - Lane actions
 
     /// Whether `key` can move one place towards the start (`by == -1`) or the end (+1).
@@ -609,10 +666,14 @@ struct MainView: View {
 }
 
 /// Settled default UX (map, 2026-10-11): ⌘1/⌘2/⌘3 switch the list's Open/Done/All,
-/// ⌘4 shows the archive, ⌘N focuses quick-add. Registered once, invisible.
+/// ⌘4 shows the archive, ⌘N focuses quick-add, ⌘K opens the quick-open palette.
+/// Registered once, invisible.
 struct TandemShortcuts: ViewModifier {
     @Binding var scope: ListScope
     var focusQuickAdd: FocusState<Bool>.Binding
+    /// Opens (or closes) the quick-open palette — the one keyboard path to a known
+    /// note or ticket, from any tab.
+    var toggleQuickOpen: () -> Void
 
     func body(content: Content) -> some View {
         content.background {
@@ -622,6 +683,7 @@ struct TandemShortcuts: ViewModifier {
                 Button("") { setScope(.all) }.keyboardShortcut("3", modifiers: .command)
                 Button("") { setScope(.archived) }.keyboardShortcut("4", modifiers: .command)
                 Button("") { focusQuickAdd.wrappedValue = true }.keyboardShortcut("n", modifiers: .command)
+                Button("") { toggleQuickOpen() }.keyboardShortcut("k", modifiers: .command)
             }
             .buttonStyle(.plain)
             .hidden()

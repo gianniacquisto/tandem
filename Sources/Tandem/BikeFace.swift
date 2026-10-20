@@ -60,19 +60,6 @@ struct BikeTabControl: View {
     }
 }
 
-/// The display title of a note path: the last component, minus the `.md`.
-fileprivate func noteTitle(_ path: String) -> String {
-    var name = path.split(separator: "/").last.map(String.init) ?? path
-    if name.hasSuffix(".md") { name = String(name.dropLast(3)) }
-    return name
-}
-
-/// The note's folder (the path minus its last component), or "root".
-fileprivate func noteFolder(_ path: String) -> String {
-    if let slash = path.lastIndex(of: "/") { return String(path[..<slash]) }
-    return "root"
-}
-
 struct BikeFaceView: View {
     var model: BikeshedModel
     @Environment(\.colorScheme) private var colorScheme
@@ -157,10 +144,10 @@ struct BikeFaceView: View {
 
     private func titleBar(_ path: String) -> some View {
         HStack(spacing: 8) {
-            Text(noteFolder(path))
+            Text(BikeshedPath.folder(of: path))
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(palette.inkDim)
-            Text(noteTitle(path))
+            Text(BikeshedPath.name(of: path))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(palette.ink)
                 .lineLimit(1)
@@ -271,7 +258,7 @@ struct BikeFaceView: View {
                     Image(systemName: "doc.text")
                         .font(.system(size: 10))
                         .foregroundStyle(palette.accent)
-                    Text(noteTitle(link.path))
+                    Text(BikeshedPath.name(of: link.path))
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundStyle(palette.accent)
                         .lineLimit(1)
@@ -575,7 +562,7 @@ struct BikeTreeView: View {
                                         Image(systemName: "doc.text")
                                             .font(.system(size: 10))
                                             .foregroundStyle(palette.inkDim)
-                                        Text(noteTitle(hit.path))
+                                        Text(BikeshedPath.name(of: hit.path))
                                             .font(.system(size: 12.5, weight: .medium))
                                             .foregroundStyle(palette.ink)
                                             .lineLimit(1)
