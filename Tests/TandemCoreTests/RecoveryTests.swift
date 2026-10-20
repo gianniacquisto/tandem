@@ -111,13 +111,28 @@ struct RecoveryTests {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
-        // No "done" field.
-        let raw = #"{"version":1,"todos":[{"id":"\#(validID)","title":"x","createdAt":"\#(validTS)","completedAt":null}]}"#
+        // No "title" field.
+        let raw = #"{"version":1,"todos":[{"id":"\#(validID)","done":false,"createdAt":"\#(validTS)","completedAt":null}]}"#
         try writeRaw(raw, to: store)
 
         let result = try store.list(.all)
         #expect(result.note != nil, "missing required field should be recovered")
         #expect(!corruptBackups(in: dir).isEmpty)
+    }
+
+    @Test("a file without the legacy done mirror is read, not recovered")
+    func missingMirrorIsValid() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        // The post-migrator shape: status carries done, and `done` is absent.
+        let raw = #"{"version":1,"todos":[{"id":"\#(validID)","title":"x","status":"done","createdAt":"\#(validTS)","completedAt":"\#(validTS)"}]}"#
+        try writeRaw(raw, to: store)
+
+        let result = try store.list(.all)
+        #expect(result.note == nil, "the retired mirror is not a required field")
+        #expect(corruptBackups(in: dir).isEmpty)
+        #expect(result.value.first?.status == .done)
     }
 
     @Test("a mistyped required field is recovered")
@@ -202,6 +217,7 @@ struct RecoveryTests {
         let obj = try json(StoreEncoding.todoResult(todo, note: nil))
         #expect(obj["id"] as? String == todo.id.uuidString)
         #expect(obj["title"] as? String == "thing")
+        // The wire keeps the derived mirror even though the store file no longer writes it.
         #expect(obj["done"] as? Bool == false)
         #expect(obj["createdAt"] is String)
         #expect(obj["completedAt"] is NSNull, "completedAt should be null while open")

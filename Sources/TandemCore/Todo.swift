@@ -7,12 +7,13 @@ import Foundation
 /// and which cycle lane it belongs to (`lane`) — plus what it always had: a title, a
 /// created time, and a completion time (ADR 0017).
 ///
-/// **`done` is a mirror, not a field.** The legacy boolean stays on disk because a v1-era
-/// reader requires it, and a missing required key is indistinguishable from corruption —
-/// the failure that moved a real store aside on 2026-10-17. In memory it is derived from
-/// `status == .done`, so the two cannot disagree. Reading resolves a `done`/`status`
-/// disagreement in favour of `done` (only an older writer can create one, and its click is
-/// a real instruction) and writing persists both, so the file self-heals.
+/// **`done` is derived, not a field.** In memory it is `status == .done`. The store file
+/// no longer carries the legacy boolean — the migrator retired it once the build that
+/// reads a `status`-only file was installed. Reading a file that still has `done` honours
+/// it: only an older writer can make `done` and `status` disagree, and its click is a real
+/// instruction, so `done` wins on read and the next write reconciles `status` (and drops
+/// the key). The CLI's JSON still writes `done`, because that is a wire contract older
+/// than the ticket model; only the store omits it.
 ///
 /// `link` is an optional bikeshed-root-relative path to a note (e.g. `projects/App.md`).
 /// Like `lane`, it is **additive** to schema v1 — absent on a todo that predates it, and
@@ -36,7 +37,7 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
     /// The human (`human`), or an agent's name. `nil` when nobody is on it.
     public var assignee: String?
     /// The cycle lane, or `nil` for the default (unnamed) area, which always renders
-    /// first. Written as `section` on disk — the stored key is the migrator's business.
+    /// first. Written as `section` on disk — the v1 key, which the migrator left in place.
     public var lane: String?
     /// An optional link to a Bikeshed note: a bikeshed-root-relative path like
     /// `projects/App.md`, or `nil` for an unlinked todo. Set in the GUI only ([ADR 0010]).
@@ -100,14 +101,19 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
         self.id = try c.decode(UUID.self, forKey: .id)
         self.title = try c.decode(String.self, forKey: .title)
 
-        // The mirror decides. A ticket written before `status` existed has no such key
-        // and reads as `backlog`; so does a value this build does not recognise — it
-        // cannot know what a later build meant, and flattening one ticket's stage is
+        // The mirror decides when a legacy file carries it; a file written after the
+        // migrator has `status` alone. A ticket written before `status` existed has no
+        // such key and reads as `backlog`; so does a value this build does not recognise
+        // — it cannot know what a later build meant, and flattening one ticket's stage is
         // recoverable where calling the whole file corrupt is not.
-        let legacyDone = try c.decode(Bool.self, forKey: .done)
+        let legacyDone = try c.decodeIfPresent(Bool.self, forKey: .done)
         let storedStatus = try c.decodeIfPresent(String.self, forKey: .status)
         let status = storedStatus.flatMap(Status.init(rawValue:)) ?? .backlog
-        self.status = legacyDone ? .done : (status == .done ? .backlog : status)
+        if let legacyDone {
+            self.status = legacyDone ? .done : (status == .done ? .backlog : status)
+        } else {
+            self.status = status
+        }
 
         // Additive to schema v1: absent reads as the default.
         self.archived = try c.decodeIfPresent(Bool.self, forKey: .archived) ?? false
@@ -136,8 +142,11 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)
         try c.encode(title, forKey: .title)
-        // The mirror, derived: a v1-era reader sees exactly the `done` it understands.
-        try c.encode(done, forKey: .done)
+        // The mirror, derived. The store omits it (the migrator retired the key); the CLI
+        // result encoding uses a plain encoder and keeps it for the documented wire shape.
+        if encoder.userInfo[.omitLegacyDoneMirror] == nil {
+            try c.encode(done, forKey: .done)
+        }
         try c.encode(status.rawValue, forKey: .status)
         try c.encode(archived, forKey: .archived)
         // Every additive field is written explicitly, `null` included, so the file shows
@@ -169,4 +178,11 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
             try c.encodeNil(forKey: .completedAt)
         }
     }
+}
+
+extension CodingUserInfoKey {
+    /// Set on the store's encoder only: its file no longer carries the legacy `done`
+    /// mirror (the migrator). The CLI's result encoding uses a plain encoder, so the
+    /// wire shape keeps the derived boolean.
+    static let omitLegacyDoneMirror = CodingUserInfoKey(rawValue: "tandem.omitLegacyDoneMirror")!
 }

@@ -20,6 +20,10 @@ import Foundation
 /// - **Recovery** — on an invalid file, *under the lock* (so two processes can't
 ///   double-recover), it is renamed to `todos.json.corrupt-<unix-ts>` and the store
 ///   restarts empty. The backup path is surfaced as a note.
+/// - **Migration** — a file that still carries the legacy `done` mirror is copied aside
+///   as `todos.json.pre-migrator-<unix-ts>` on the first write, then rewritten with
+///   `status` alone. Reads never migrate: a read-only store keeps its old shape, and the
+///   decoder keeps honouring it.
 ///
 /// The public surface is the todo operations (see the `Operations` extension); the
 /// locking/file mechanics are the shared `LockedDirectory` primitive (ADR 0001 / 0004),
@@ -70,7 +74,9 @@ public struct Store: Sendable {
 
     private enum Peek {
         case absent
-        case valid(StoreContents)
+        /// A readable store, plus the bytes it was decoded from (the migration check
+        /// needs the raw file; the lock-free readers ignore it).
+        case valid(StoreContents, raw: Data)
         case invalid
     }
 
@@ -86,7 +92,7 @@ public struct Store: Sendable {
             return .invalid
         }
         do {
-            return .valid(try Self.decode(data))
+            return .valid(try Self.decode(data), raw: data)
         } catch {
             return .invalid
         }
@@ -94,14 +100,15 @@ public struct Store: Sendable {
 
     /// Read while holding the exclusive lock. Re-checks under the lock so a process that
     /// already recovered is not double-recovered; if still corrupt, backs the file up and
-    /// restarts empty. Returns the contents and, when *this* call performed the backup, the
-    /// backup path.
-    private func readLocked() throws -> (contents: StoreContents, backupPath: String?) {
+    /// restarts empty. Returns the contents, when *this* call performed the backup the
+    /// backup path, and whether the file it read still carries the legacy `done` mirror
+    /// (the caller writing must then copy it aside first).
+    private func readLocked() throws -> (contents: StoreContents, backupPath: String?, legacyMirror: Bool) {
         switch peek() {
         case .absent:
-            return (StoreContents(lanes: [], todos: []), nil)
-        case .valid(let contents):
-            return (contents, nil)
+            return (StoreContents(lanes: [], todos: []), nil, false)
+        case .valid(let contents, let raw):
+            return (contents, nil, Self.carriesLegacyMirror(raw))
         case .invalid:
             let ts = Int(Date().timeIntervalSince1970)
             var backup = directory.appendingPathComponent("todos.json.corrupt-\(ts)")
@@ -117,7 +124,7 @@ public struct Store: Sendable {
                 // Never silently discard: if we cannot back the corrupt file up, fail loudly.
                 throw StoreIOError.io("could not back up corrupt store: \(error)")
             }
-            return (StoreContents(lanes: [], todos: []), backup.path)
+            return (StoreContents(lanes: [], todos: []), backup.path, false)
         }
     }
 
@@ -151,12 +158,16 @@ public struct Store: Sendable {
     /// it do the opposite — an installed v1-era `tandem-mcp` read a version-2 file,
     /// called it *corrupt*, backed it up and started empty. That happened to a real
     /// store on 2026-10-17. So the writer keeps emitting version 1. Reading still
-    /// accepts 2, so any file written during that window loads.
+    /// accepts 2, so any file written during that window loads. The mirror's retirement
+    /// is not a version bump either: a v1-era reader fails on a missing key whatever the
+    /// version says, and the migrator's gate is reachability, not the file's label.
     private static func encode(_ contents: StoreContents) throws -> Data {
         let envelope = FileEnvelope(version: 1, lanes: contents.lanes, todos: contents.todos)
         let encoder = JSONEncoder()
         // Pretty-printed: the file is intentionally human-legible (spec: Further Notes).
         encoder.outputFormatting = [.prettyPrinted]
+        // The file retires the legacy `done` mirror; the CLI's JSON keeps it.
+        encoder.userInfo[.omitLegacyDoneMirror] = true
         return try encoder.encode(envelope)
     }
 
@@ -181,10 +192,10 @@ public struct Store: Sendable {
         switch peek() {
         case .absent:
             return (StoreContents(lanes: [], todos: []), nil)
-        case .valid(let contents):
+        case .valid(let contents, _):
             return (contents, nil)
         case .invalid:
-            let (contents, backup) = try withLock { try readLocked() }
+            let (contents, backup, _) = try withLock { try readLocked() }
             return (contents, backup.map(Self.recoveryNote))
         }
     }
@@ -193,14 +204,16 @@ public struct Store: Sendable {
     /// (after any recovery, and normalized to the grouped-by-lane invariant) and returns
     /// `(value, changed)`; when `changed` is false no write is performed — but the lock is
     /// still taken and recovery is still checked. The contents are normalized again before
-    /// the write, so every operation leaves the invariant holding. If `body` throws and this
-    /// call performed a recovery, the failure is wrapped in a `RecoveryFailure` so the note
-    /// is not lost. Internal (not public): the public surface is the `Operations` extension.
+    /// the write, so every operation leaves the invariant holding. A first write over a
+    /// file that still carries the legacy `done` mirror copies that file aside first (the
+    /// migrator's safety net). If `body` throws and this call performed a recovery, the
+    /// failure is wrapped in a `RecoveryFailure` so the note is not lost. Internal (not
+    /// public): the public surface is the `Operations` extension.
     func mutate<T: Sendable>(
         _ body: (inout StoreContents) throws -> (value: T, changed: Bool)
     ) throws -> (value: T, note: String?) {
         try withLock {
-            let (initial, backup) = try readLocked()
+            let (initial, backup, legacyMirror) = try readLocked()
             let note = backup.map(Self.recoveryNote)
             var contents = initial
             contents.normalize()
@@ -208,6 +221,7 @@ public struct Store: Sendable {
                 let (value, changed) = try body(&contents)
                 if changed {
                     contents.normalize()
+                    if legacyMirror { try backUpBeforeMigrating() }
                     try writeLocked(contents)
                 }
                 return (value, note)
@@ -220,6 +234,36 @@ public struct Store: Sendable {
                 throw error
             }
         }
+    }
+
+    /// Copy a file that still carries the legacy `done` mirror aside, once, before the
+    /// first write in the retired shape. "A list moved aside, never a list lost": the old
+    /// format stays one `mv` away for a binary that still needs it.
+    private func backUpBeforeMigrating() throws {
+        let ts = Int(Date().timeIntervalSince1970)
+        var backup = directory.appendingPathComponent("todos.json.pre-migrator-\(ts)")
+        var suffix = 1
+        let fm = FileManager.default
+        while fm.fileExists(atPath: backup.path) {
+            backup = directory.appendingPathComponent("todos.json.pre-migrator-\(ts)-\(suffix)")
+            suffix += 1
+        }
+        do {
+            try fm.copyItem(at: fileURL, to: backup)
+        } catch {
+            throw StoreIOError.io("could not back up the store before retiring the done mirror: \(error)")
+        }
+    }
+
+    /// Whether any todo object in the raw file still carries the legacy `done` key.
+    /// Only asked on the write path (under the lock), never on a plain read.
+    private static func carriesLegacyMirror(_ data: Data) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let todos = object["todos"] as? [[String: Any]]
+        else {
+            return false
+        }
+        return todos.contains { $0["done"] != nil }
     }
 
     /// The recovery note text, naming the backup path (spec: result `note`).
@@ -248,7 +292,7 @@ public struct Store: Sendable {
         switch peek() {
         case .absent:
             return .absent
-        case .valid(let contents):
+        case .valid(let contents, _):
             let done = contents.todos.lazy.filter { $0.done }.count
             return .counts(open: contents.todos.count - done, done: done)
         case .invalid:
