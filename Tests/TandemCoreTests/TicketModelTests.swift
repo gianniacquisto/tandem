@@ -82,6 +82,42 @@ struct TicketModelTests {
         #expect(read.done == false)
     }
 
+    @Test("in-review round-trips through the store and the file")
+    func inReviewRoundTrips() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let added = try store.add("Waiting for review", status: .inReview).value
+        #expect(added.status == .inReview)
+        #expect(added.done == false)
+        #expect((try todoObject(store, titled: "Waiting for review")?["status"] as? String) == "in-review")
+
+        // A fresh Store over the same directory reads the same stage.
+        let read = try #require(try Store(directory: dir).list(.all).value.first)
+        #expect(read.status == .inReview)
+        #expect(read.done == false)
+    }
+
+    @Test("an unknown status still decodes as backlog, never as a corrupt file")
+    func unknownStatusReadsAsBacklog() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        // A value from a later build than this one — the compatibility rule.
+        try writeRaw(#"{"version":1,"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"from the future","status":"reviewed","createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#, to: store)
+
+        let todo = try #require(try store.list(.all).value.first)
+        #expect(todo.status == .backlog)
+        #expect(try store.list(.all).note == nil, "an unknown stage is not corruption")
+    }
+
+    @Test("workflow order puts in-review between in-progress and done")
+    func workflowOrder() {
+        #expect(Status.workflow == [.backlog, .refined, .ready, .inProgress, .inReview, .done])
+        #expect(Status.wireValues == ["backlog", "refined", "ready", "in-progress", "in-review", "done"])
+    }
+
     @Test("the on-disk shape keeps version 1 and the section key, and writes every field")
     func onDiskShape() throws {
         let dir = tempDir()

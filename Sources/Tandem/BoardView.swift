@@ -22,6 +22,7 @@ extension Status {
         case .refined: return "Refined"
         case .ready: return "Ready"
         case .inProgress: return "In progress"
+        case .inReview: return "In Review"
         case .done: return "Done"
         }
     }
@@ -145,7 +146,7 @@ struct BoardFace: View {
         }
     }
 
-    /// The five statuses in workflow order, each with how many tickets the whole board has
+    /// The six statuses in workflow order, each with how many tickets the whole board has
     /// in it. The header is fixed: it must stay above the scroll.
     private var columnHeader: some View {
         HStack(spacing: BoardMetrics.gap) {
