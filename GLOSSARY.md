@@ -41,7 +41,7 @@ A todo that has been completed.
 _Avoid_: closed, finished, complete (as a noun)
 
 **Status**:
-A todo's position in the workflow: backlog (the default), refined, ready, in-progress, or done. One axis with five values — done is where the workflow ends, not a flag set beside it.
+A todo's position in the workflow: backlog (the default), refined, ready, in-progress, in-review, or done. One axis with six values — done is where the workflow ends, not a flag set beside it; in-review is a finished piece of work whose PR is waiting for a reader, before it counts as done.
 _Avoid_: state, stage, step
 
 **Archived**:

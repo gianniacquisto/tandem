@@ -27,3 +27,11 @@ The surprising part is the legacy `done` boolean: it neither disappears nor wins
 The precondition above — no binary older than the ticket model may touch the store — was met by installing 0.12.0, the first shipping build carrying Status. The mirror is now **retired from the file**: every write emits `status` alone, and the first write over a file that still carries `done` copies that file aside as `todos.json.pre-migrator-<ts>` before rewriting it. "A list moved aside, never a list lost."
 
 Reading still honours `done` when it is there: the stale-writer rule above is unchanged, the decoder accepts both shapes permanently, and a store only ever read keeps its old file. The CLI's JSON keeps the derived `done` — that wire shape is older than Status, and agents parse it; only the store file drops the key. The envelope stays `version: 1`: a v1-era reader treats a missing required key exactly as it treats an unknown version, so a bump would label the change without protecting anyone. The gate was reachability, and it was met by installing the build, not by labelling the file.
+
+## Amendment, 2026-10-20: a sixth Status, `in-review`
+
+Status gains a sixth value, **`in-review`** (displayed `In Review`), between `in-progress` and `done`. It names the wait the earlier five could not express: the work and its PR exist, a reviewer has not yet read them, and only then does the ticket become `done`. The value sits on the same axis, with the same free-form transitions and the same guarantee that completing a ticket erases the stage it came from.
+
+The compatibility rule is the mirror's rule, one step earlier: an unknown `status` still decodes as `backlog`, so an older build shows an `in-review` ticket in the wrong column rather than calling the file corrupt. Order is therefore release the build carrying the value → install → then let any writer store `in-review`; never write it from a build older than the installed one. The envelope stays `version: 1` — the change is additive, and a bump would label it without protecting anyone.
+
+`reviewed` was the ask's word; `in-review` was chosen because it names the state a ticket is in, the way `in-progress` does. The word is one enum case and one display string if the human prefers theirs.
