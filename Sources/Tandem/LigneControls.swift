@@ -141,6 +141,11 @@ struct LigneQuickAdd: View {
     var onCommit: () -> Void
     var focus: FocusState<Bool>.Binding
     var height: CGFloat = Space.control
+    /// The lane new tickets are filed into, and the lanes to choose from. A `nil`
+    /// `onPickLane` draws no chip: the menu-bar popover files nothing into a lane.
+    var lane: String? = nil
+    var lanes: [String] = []
+    var onPickLane: ((String?) -> Void)? = nil
     @State private var placeholder: Bool = true
 
     var body: some View {
@@ -165,6 +170,12 @@ struct LigneQuickAdd: View {
                     }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Where the next ticket will go: the cached default lane, changed here and
+            // remembered (settings, not the store — the CLI has `--lane`).
+            if let onPickLane {
+                QuickAddLaneChip(lane: lane, lanes: lanes, palette: palette, onPick: onPickLane)
+            }
         }
         .padding(.horizontal, 11)
         .frame(height: height)
@@ -670,4 +681,49 @@ func backupPath(from note: String) -> String? {
     let rest = note[start...]
     guard let end = rest.firstIndex(of: ";") else { return nil }
     return String(rest[..<end])
+}
+
+/// The quick-add's lane chip: the cached default lane, and a menu to change it. Quiet by
+/// design — it is a destination, not a warning — and it never takes the focus from the
+/// field (choosing a lane is a click, then Return files the ticket).
+private struct QuickAddLaneChip: View {
+    var lane: String?
+    var lanes: [String]
+    var palette: Palette
+    var onPick: (String?) -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Menu {
+            Button { onPick(nil) } label: {
+                if lane == nil { Label("No lane", systemImage: "checkmark") } else { Text("No lane") }
+            }
+            if !lanes.isEmpty { Divider() }
+            ForEach(lanes, id: \.self) { name in
+                Button { onPick(name) } label: {
+                    if lane == name { Label(name, systemImage: "checkmark") } else { Text(name) }
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Text(lane ?? "No lane")
+                    .font(.system(size: 11))
+                    .foregroundStyle(hovering ? palette.ink : palette.inkDim)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7.5, weight: .semibold))
+                    .foregroundStyle(palette.inkDim)
+            }
+            .padding(.horizontal, 6)
+            .frame(height: 20)
+            .overlay(Capsule().strokeBorder(palette.line, lineWidth: Line.hairline))
+            .contentShape(Capsule())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("File new tickets into this cycle lane")
+        .onHover { hovering = $0 }
+    }
 }

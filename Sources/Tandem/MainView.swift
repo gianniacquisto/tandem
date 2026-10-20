@@ -147,7 +147,10 @@ struct MainView: View {
         VStack(spacing: 0) {
             LigneQuickAdd(text: $quickAdd, palette: palette,
                           onCommit: commitAdd,
-                          focus: $quickAddFocused)
+                          focus: $quickAddFocused,
+                          lane: model.defaultLane,
+                          lanes: model.lanes,
+                          onPickLane: { model.setDefaultLane($0) })
                 .padding(.horizontal, Space.gutter)
                 .padding(.top, Space.lane)
             HStack(spacing: 12) {
@@ -199,7 +202,7 @@ struct MainView: View {
     private func commitAdd() {
         let title = quickAdd.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
-        withAnimation(Motion.insert) { model.add(title) }
+        withAnimation(Motion.insert) { model.add(title, lane: model.defaultLane) }
         // A new ticket is never archived, so in the archive it would vanish the moment it
         // was created: go where it landed.
         if scope == .archived { scope = .open }

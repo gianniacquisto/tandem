@@ -33,6 +33,11 @@ final class TandemModel {
     /// The most recent operation error, surfaced to the user. Cleared on the next
     /// successful operation/reload.
     private(set) var lastError: String?
+    /// The lane a new ticket is filed into: the human's last choice, cached in the
+    /// settings file (`TandemSettings.defaultLane`). `nil` is the default area. It is a
+    /// cache, not a store field — an agent files with `--lane` — and it is clamped on every
+    /// reload, so a lane that was renamed or deleted simply stops being the cache.
+    private(set) var defaultLane: String?
 
     // The shipped filters, defined once in the core (`Filter.query`): the app's counts
     // and the CLI's `--filter` are views over the same predicate, not two definitions.
@@ -43,6 +48,7 @@ final class TandemModel {
 
     private init(store: Store = Store()) {
         self.store = store
+        self.defaultLane = TandemSettings.defaultLane()
         // Watch the store *directory* (the file is replaced via atomic rename) so an
         // agent writing the store refreshes the UI without a manual reload.
         self.watcher = StoreWatcher(directory: store.directory)
@@ -64,6 +70,7 @@ final class TandemModel {
             let result = try store.list(.all)
             todos = result.value
             lanes = (try? store.lanes().value) ?? []
+            if let lane = defaultLane, !lanes.contains(lane) { setDefaultLane(nil) }
             if let note = result.note { recoveryNote = note }
             lastError = nil
         } catch {
@@ -83,6 +90,14 @@ final class TandemModel {
     }
 
     // MARK: - Lanes and order (GUI-only)
+
+    /// Remembers (or, with `nil`, clears) the lane new tickets are filed into. A failure
+    /// to persist is silent: the next launch falls back to the default area, and a
+    /// settings write must never interrupt filing a ticket.
+    func setDefaultLane(_ lane: String?) {
+        defaultLane = lane
+        try? TandemSettings.setDefaultLane(lane)
+    }
 
     func addLane(_ name: String) {
         run { try self.store.addLane(name) }
