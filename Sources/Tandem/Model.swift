@@ -162,6 +162,27 @@ final class TandemModel {
         run { try self.store.setLink(id, to: link) }
     }
 
+    /// Files a selection from a note as a ticket, linked back to that note (the
+    /// reverse of the todo→note link). The ticket lands on top of the **default
+    /// lane**, in `backlog` — the same place the quick-add files.
+    ///
+    /// Returns the error message when the filing failed, rather than raising a
+    /// banner here: the action belongs to the bikeshed face, so that is where
+    /// the human must see why nothing was filed.
+    @discardableResult
+    func addFromNote(_ selection: String, notePath: String) -> String? {
+        do {
+            let result = try store.addFromNote(selection,
+                                               notePath: notePath,
+                                               lane: defaultLane)
+            if let note = result.note { recoveryNote = note }
+            reload()
+            return nil
+        } catch {
+            return Self.message(for: error)
+        }
+    }
+
     /// Archives every done ticket — "clear done" without the deleting: finished work
     /// leaves the view and stays in the file.
     func archiveDone() {

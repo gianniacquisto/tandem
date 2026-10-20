@@ -37,7 +37,7 @@
 // the bridge.
 
 import { Facet, StateEffect, StateField, EditorState } from "@codemirror/state";
-import { Decoration, EditorView } from "@codemirror/view";
+import { Decoration, EditorView, keymap } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 import { basicSetup } from "codemirror";
 import {
@@ -69,7 +69,7 @@ import {
   toggleTask,
 } from "./widgets.js";
 import { ligneTheme } from "./theme.js";
-import { postDirty, postLinkOpened, postLoaded, postFontSize } from "./bridge.js";
+import { postDirty, postLinkOpened, postLoaded, postFontSize, postSendToTodos } from "./bridge.js";
 import { mountToolbar } from "./toolbar.js";
 
 // -- Fenced code: the curated highlighting set ------------------------------------
@@ -271,6 +271,7 @@ export function editorExtensions() {
     markdown({ base: markdownLanguage, codeLanguages: codeLanguageFor }),
     // Soft-wrap long lines: the pane never scrolls sideways.
     EditorView.lineWrapping,
+    sendToTodosKeymap,
     ...ligneTheme,
     basicSetup,
   ];
@@ -375,6 +376,54 @@ export function checkboxToggleFrom(target) {
   if (typeof marker !== "string" || !/^\d+$/.test(marker)) return null;
   return Number(marker);
 }
+
+// -- The "send to todos" candidate (the text an action would file) ------------------
+//
+// The editor hands the core *text*, and the core decides what a ticket made of
+// that text looks like (title, description, link). The text is the selection
+// when there is one; otherwise the caret's checkbox line, when the caret is on
+// one; otherwise "" — which the core rejects, so the action says "nothing to
+// send" instead of filing an empty ticket.
+//
+// The checkbox line is found through the markdown syntax tree, not a regex:
+// the tree is the editor's own definition of a task item (the same Task /
+// TaskMarker nodes the checkbox widget is built from), so the line the action
+// files is exactly the line the editor draws a checkbox on.
+export function todoCandidateText(state) {
+  const { from, to } = state.selection.main;
+  if (from !== to) return state.doc.sliceString(from, to);
+  const line = taskItemLine(state, from);
+  return line ? line.text : "";
+}
+
+// The line of the task item the position sits in, or null. The deepest
+// matching item wins: a caret in a plain item nested inside a task item still
+// files the task item's line.
+function taskItemLine(state, pos) {
+  let found = null;
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name !== "ListItem") return;
+      if (pos < node.from || pos > node.to) return;
+      if (!node.node.getChild("Task")) return;
+      found = state.doc.lineAt(node.from);
+    },
+  });
+  return found;
+}
+
+// The editor's own shortcut: ⌘⇧T sends the selection (or the caret's
+// checkbox line) to the todos list. The page posts the text; the Swift side
+// files the ticket — the core owns what a ticket made of that text is.
+const sendToTodosKeymap = keymap.of([
+  {
+    key: "Mod-Shift-t",
+    run: (view) => {
+      postSendToTodos(todoCandidateText(view.state));
+      return true;
+    },
+  },
+]);
 
 // -- Bridge: Swift → JS page globals (transaction specs, headless) -------------------
 //
@@ -767,6 +816,11 @@ export function mountEditor(parent, { doc, notes, notePath } = {}) {
     // "New note → type" works without a click into the pane first (the
     // content element holds the DOM focus that keystrokes need).
     window.focusEditor = () => view.focus();
+    // Swift asks for the text a "send to todos" action would file (the
+    // menu item's path). The answer comes back over the same message the
+    // ⌘⇧T shortcut posts, so both triggers file the same ticket.
+    window.requestTodoCandidate = () =>
+      postSendToTodos(todoCandidateText(view.state));
   }
 
   postLoaded(); // the page is ready; Swift then sends setNoteIndex/setDocument

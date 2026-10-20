@@ -24,6 +24,11 @@ final class BikeshedModel {
     private(set) var bikeshed: Bikeshed
     private var watcher: BikeshedWatcher
 
+    /// The todos model — the app's single owner of the store. The bikeshed face
+    /// files tickets through it (the "send to todos" action), so the store has
+    /// exactly one owner, as the app's shape intends.
+    private let todos: TandemModel
+
     // MARK: Tree + selection + search
 
     /// The bikeshed tree (folders first, alphabetical; `.md` notes only).
@@ -83,8 +88,9 @@ final class BikeshedModel {
     private var backlinkDebounce: DispatchWorkItem?
     private var backlinkRun: Task<Void, Never>?
 
-    private init(bikeshed: Bikeshed = Bikeshed()) {
+    private init(bikeshed: Bikeshed = Bikeshed(), todos: TandemModel = .shared) {
         self.bikeshed = bikeshed
+        self.todos = todos
         self.watcher = BikeshedWatcher(directory: bikeshed.directory)
         // The editor host owns the WKWebView and the bridge plumbing (the
         // contract). It is built before `self` is usable (Swift forbids
@@ -605,6 +611,34 @@ final class BikeshedModel {
         } catch {
             apply(error: error)
         }
+    }
+
+    // MARK: - Send to todos (the reverse of the todo→note link)
+
+    /// The editor's "send to todos" action: the text it would file (the
+    /// selection, or the caret's checkbox line) becomes a ticket in the todos
+    /// list, linked back to the open note. **The note is not modified.**
+    ///
+    /// The trigger is the editor's — the ⌘⇧T shortcut posts the text, and the
+    /// menu item asks the page for it — but the filing is one core operation,
+    /// so the two cannot drift. An empty selection is rejected by the core, and
+    /// its message surfaces here, in the face the action was taken in.
+    func sendToTodos(text: String) {
+        guard let path = openPath else {
+            lastError = "Open a note first — a ticket needs the note it came from."
+            return
+        }
+        if let message = todos.addFromNote(text, notePath: path) {
+            lastError = message
+        } else {
+            lastError = nil
+        }
+    }
+
+    /// The menu item's path: ask the page for the text it would file. The page
+    /// answers with the same message the ⌘⇧T shortcut posts.
+    func requestSendToTodos() {
+        editor.requestTodoCandidate()
     }
 
     // MARK: - Autosave (debounced ~1 s; on note switch, window blur, ⌘S)
