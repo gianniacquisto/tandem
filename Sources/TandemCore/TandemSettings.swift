@@ -25,6 +25,9 @@ public enum TandemSettings {
     private static let bikeshedKey = "bikeshedPath"
     /// The key inside `settings.json` holding whether first-run setup finished.
     private static let setupKey = "setupComplete"
+    /// The key inside `settings.json` holding the lane new tickets are filed into: the
+    /// human's last choice, cached so a session of filing does not repeat it.
+    private static let defaultLaneKey = "defaultLane"
     /// The settings file's name, under `TandemHome.directory`.
     private static let fileName = "settings.json"
 
@@ -56,12 +59,47 @@ public enum TandemSettings {
         try setSetupComplete(done, in: TandemHome.directory)
     }
 
+    /// The lane new tickets are filed into, or `nil` for the default (unnamed) area.
+    /// A cache of the human's last choice, not a store field: an agent has `--lane`, and
+    /// a lane that no longer exists is the GUI's to clamp — the settings layer only
+    /// remembers a name.
+    public static func defaultLane() -> String? {
+        defaultLane(in: TandemHome.directory)
+    }
+
+    /// Remember (or, with `nil`, forget) the lane new tickets are filed into. Writes
+    /// `settings.json` atomically under the real `TandemHome.directory`.
+    public static func setDefaultLane(_ lane: String?) throws {
+        try setDefaultLane(lane, in: TandemHome.directory)
+    }
+
     /// The testable seam: `chosenBikeshed()` against an explicit home directory,
     /// so tests never read or write the process's real home.
     static func chosenBikeshed(in home: URL) -> URL? {
         let object = object(in: home)
         guard let path = object[bikeshedKey] as? String, !path.isEmpty else { return nil }
         return URL(fileURLWithPath: path).standardizedFileURL
+    }
+
+    /// The testable seam: `defaultLane()` against an explicit home directory.
+    static func defaultLane(in home: URL) -> String? {
+        guard let name = object(in: home)[defaultLaneKey] as? String else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// The testable seam: `setDefaultLane(_:)` against an explicit home directory. An
+    /// empty or `nil` lane removes the key — absent means the default area, the same
+    /// shape as every other setting that was never set.
+    static func setDefaultLane(_ lane: String?, in home: URL) throws {
+        var settings = object(in: home)
+        let trimmed = lane?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmed, !trimmed.isEmpty {
+            settings[defaultLaneKey] = trimmed
+        } else {
+            settings.removeValue(forKey: defaultLaneKey)
+        }
+        try write(settings, in: home)
     }
 
     /// The testable seam: `setupComplete()` against an explicit home directory.

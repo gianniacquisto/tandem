@@ -141,4 +141,44 @@ struct TandemSettingsTests {
         try Data(#"{"bikeshedPath": "/tmp/Notes"}"#.utf8).write(to: settingsFile(in: home))
         #expect(TandemSettings.setupComplete(in: home) == false)
     }
+
+    // MARK: - the lane new tickets are filed into (the cached default lane)
+
+    @Test("no default lane → new tickets go to the default area")
+    func noDefaultLane() {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        #expect(TandemSettings.defaultLane(in: home) == nil)
+    }
+
+    @Test("the default lane round-trips, trimmed")
+    func defaultLaneRoundTrip() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setDefaultLane("  Board  ", in: home)
+        #expect(TandemSettings.defaultLane(in: home) == "Board")
+    }
+
+    @Test("clearing the default lane removes the key; the other settings stay")
+    func clearingDefaultLane() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setDefaultLane("Board", in: home)
+        try TandemSettings.setSetupComplete(true, in: home)
+        try TandemSettings.setDefaultLane(nil, in: home)
+
+        #expect(TandemSettings.defaultLane(in: home) == nil)
+        #expect(TandemSettings.setupComplete(in: home))
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: settingsFile(in: home)))
+        let object = try #require(json as? [String: Any])
+        #expect(object["defaultLane"] == nil)
+    }
+
+    @Test("an empty or whitespace default lane is the default area, not a lane name")
+    func blankDefaultLaneIsNil() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setDefaultLane("   ", in: home)
+        #expect(TandemSettings.defaultLane(in: home) == nil)
+    }
 }
