@@ -21,14 +21,15 @@ For each project, **route each capture to the narrowest note that owns it** — 
 Route each moment in this order:
 
 1. **Narrowest owner first.** Write it into the narrowest existing note whose topic it belongs to — a subsystem note before the project note.
-2. **Coherent subsystem or topic, no note?** A moment that has found its own vocabulary, decisions, or gotchas ([`CONVENTIONS.md`](CONVENTIONS.md)) **earns that note**: create it with the full skeleton, at the placement CONVENTIONS fixes, and wikilink it from the note that covers it (its project note, or the Index `Topics`).
+2. **Coherent subsystem or topic, no note?** A moment that has found its own vocabulary, decisions, or gotchas ([`CONVENTIONS.md`](CONVENTIONS.md)) **earns that note**: create it with the full skeleton, at the placement CONVENTIONS fixes — flat in the project folder, or in one of its groups when the project is grouped — and wikilink it from the note that covers it (its project note, or the Index `Topics`).
 3. **Overgrown note?** A note whose section has outgrown its target is **split** into the subsystem note it now describes — never appended to past the target.
 4. **A project note stays an overview and index** — current state plus links to its notes; it never becomes a changelog, and subsystem detail lives in the note that owns it.
 
 - **Refresh `Where left off`** from the session's `work` notes: current state and next move.
 - **Add `Threads` bullets** for open `thread` notes — Todo title verbatim plus a one-clause hook — and mark resolved ones.
 - **Create the project note** (full skeleton, `Where left off` first) when the project has none. A concurrent create is the atomic case in [`CONCURRENCY.md`](CONCURRENCY.md).
-- **`Index.md`** — re-derive the project's one-line status and rewrite it **only if the status changed**; adding to `Decisions`/`Gotchas` never churns the Index.
+- **Place the note** where [`CONVENTIONS.md`](CONVENTIONS.md) puts it: `projects/<project>/<group>/<Note>.md` in a grouped project, `projects/<project>/<Note>.md` in a flat one, `topics/<Topic>.md` for a cross-project concept. **Grouping** a project — one level of sub-folders, once it holds more than 7 curated notes — is this pass's call; the notes move with it and their links do not change (`[[Name]]` resolves by basename either way, ADR 0005).
+- **`Index.md`** — re-derive each note's one-line status and rewrite it **only if the status changed**; adding to `Decisions`/`Gotchas` never churns the Index. A grouped note still gets exactly one line, naming the note and not its group.
 - **Link** — every note this pass writes wikilinks out to each existing note it names. A capture carries none; adding links is this pass's job.
 
 Write behind the boundary ([`CONCURRENCY.md`](CONCURRENCY.md)): re-read → minimal patch → write, prune on write. Never invent state the captures do not support.

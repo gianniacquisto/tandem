@@ -16,12 +16,12 @@ The **Bikeshed** — `~/.tandem/bikeshed/` — is a plain folder of `.md` notes.
 - **`projects/`** — one folder per **project**, `projects/<project>/`. `<project>` is the **codebase/product you are working in** (`tandem` today, `code-rank` another day), not the workstream. The folder holds the project's curated notes **and** its hidden saddlebag (`.raw/`), so a project is **always** a folder — from the first record. A folder can hold several curated notes: the Index carries one line per note, so one project can contribute several lines.
 - **`topics/`** — flat, cross-project concepts, `topics/<Topic>.md`.
 
-No nesting below those two, so placement stays predictable — ADR 0004 permits nested folders and this convention spends none (the hidden saddlebag (`.raw/`) is the one deliberate exception, outside the curated tree). Placement is **intermixed**: a curated note lives wherever its topic naturally lives, beside **human notes**. When a human note already covers a topic, extend it — never create a parallel agent note. One concept, one note.
+A project folder's notes sit **flat beside each other** until it holds **more than 7 curated notes**; past that threshold the project may **group** them into **one level** of sub-folders — `projects/<project>/<group>/<Note>.md`, and no deeper. A group name follows the note-name hygiene (no `/`, `#`, `|`; no hidden name). The **threshold** is what keeps placement predictable: below it a project's notes are flat and side by side; above it they are grouped. ADR 0004 permits nested folders, so this convention spends that permission only where the pile asks for it — `topics/` stays flat, and the hidden saddlebag (`.raw/`) remains the one deliberate exception, outside the curated tree. **Which group a note lands in is the consolidation pass's call**: the convention states the shape a project *may* take, not the shape it *must*. Placement is **intermixed**: a curated note lives wherever its topic naturally lives, beside **human notes**. When a human note already covers a topic, extend it — never create a parallel agent note. One concept, one note.
 
 ## Names
 
 - **Title Case** — `Bikeshed`, `Throwaway Branch Workflow` — matching the human notes.
-- **Basename unique bikeshed-wide**: a bare `[[Name]]` needs exactly one case-insensitive filename match.
+- **Basename unique bikeshed-wide**: a bare `[[Name]]` needs exactly one case-insensitive filename match. A group changes a note's **path**, not its **name** — a nested note is linked exactly like a flat one.
 - Keep names free of `/`, `#`, and `|` — the path and wikilink separators — so every name stays one file and writable as a link.
 - **No agent prefix.** There is no agent namespace and no name-based ownership; on a collision you rename *your* note.
 
@@ -51,11 +51,13 @@ Active work lives in the Tandem todos (`tandem-cli todo list`). A project note's
 
 Two tiers below it: the **curated note** (`Where left off` at the top) → **topic notes** via wikilinks. The app's **Backlinks** panel is the one-hop neighbourhood, derived and maintained by nobody.
 
+A **grouped** note still gets exactly one Index line: the line names the note, never its group. A folder is placement, not a level of the Index — the Index stays one line per note however the tree is arranged.
+
 The Index stays honest by being derived, never authored: a note's Index line is **re-derived from that note's `Where left off`**, and the consolidation pass rewrites it in the same run — and only when the status actually changed. That is what keeps the Index from becoming a second source of truth.
 
 ## Granularity and links
 
-A **coherent topic earns its own note**. The test is **topical coherence** — the concept carries its own vocabulary and its own durable decisions and gotchas — *not* how many notes link it yet. A subsystem inside one project qualifies as readily as a cross-project concept; write it down the moment it is coherent, before the links arrive. Placement follows ownership: a concept one project owns lives at `projects/<project>/<Anchor>.md`; a cross-project concept lives at `topics/<Topic>.md`. Creating that note is the consolidation pass's call.
+A **coherent topic earns its own note**. The test is **topical coherence** — the concept carries its own vocabulary and its own durable decisions and gotchas — *not* how many notes link it yet. A subsystem inside one project qualifies as readily as a cross-project concept; write it down the moment it is coherent, before the links arrive. Placement follows ownership: a concept one project owns lives at `projects/<project>/<Anchor>.md` — or `projects/<project>/<group>/<Anchor>.md` in a project that is grouped; a cross-project concept lives at `topics/<Topic>.md`. Creating that note, and the group it lands in, is the consolidation pass's call.
 
 The **project note is the project's overview and index**: it holds the current state, the next move, and links out to its own notes. Subsystem detail lives in the note that owns it, so the project note never accumulates it. One concept, one note.
 
