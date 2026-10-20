@@ -157,6 +157,12 @@ final class TandemModel {
         run { try self.store.set(id, archived: .set(archived)) }
     }
 
+    /// Sets a ticket's body (markdown). Trimming and empty-as-nil are the store's rules;
+    /// the description sheet passes what the human typed.
+    func setDescription(_ id: String, to text: String) {
+        run { try self.store.set(id, description: .set(text)) }
+    }
+
     /// GUI-only in v1 — there is no delete verb in the CLI.
     func delete(_ id: String) {
         run { try self.store.delete(id) }
