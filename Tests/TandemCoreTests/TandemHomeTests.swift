@@ -36,6 +36,34 @@ struct TandemHomeTests {
             == "/Users/tester/.tandem")
     }
 
+    @Test("a CLI reached through a PATH symlink is still the shipped app")
+    func symlinkedInvocationIsTheShippedApp() throws {
+        // The link is how the binary lands on PATH; `Bundle.main` reports it
+        // verbatim, so the `.app` test has to run on the resolved target or the
+        // CLI silently splits onto ~/.tandem-dev (2026-10-20).
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-home-\(UUID().uuidString)")
+        let macos = root.appendingPathComponent("Tandem.app/Contents/MacOS")
+        let bin = root.appendingPathComponent("bin")
+        try FileManager.default.createDirectory(at: macos, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let binary = macos.appendingPathComponent("tandem-cli")
+        #expect(FileManager.default.createFile(atPath: binary.path, contents: Data()))
+        let link = bin.appendingPathComponent("tandem-cli")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: binary)
+
+        #expect(TandemHome.source(environment: [:],
+                                  executablePath: link.path,
+                                  isDebugBuild: false) == .shippedApp)
+        // The build still decides: a debug binary behind the same kind of link
+        // stays on the dev home.
+        #expect(TandemHome.source(environment: [:],
+                                  executablePath: link.path,
+                                  isDebugBuild: true) == .devBuild)
+    }
+
     @Test("a debug build is never the shipped app, even inside a .app bundle")
     func debugBundleIsStillDev() {
         #expect(resolve(exe: "/Applications/Tandem.app/Contents/MacOS/Tandem", debug: true)
