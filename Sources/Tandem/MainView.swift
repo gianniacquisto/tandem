@@ -124,6 +124,21 @@ struct MainView: View {
             WindowManager.shared.openMain = { openWindow(id: "main") }
             showSetupIfNeeded()
         }
+        // The undo toast: one click back from a mis-clicked completion. It floats
+        // over whichever face is showing, because the completion can happen on any
+        // of them (the list, the board, the inbox).
+        .overlay(alignment: .bottom) {
+            Group {
+                if let offer = model.undoOffer {
+                    LigneToast(offer: offer, palette: palette) {
+                        withAnimation(Motion.toggle) { model.undoCompletion() }
+                    }
+                    .padding(.bottom, Space.lane)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(Motion.toggle, value: model.undoOffer)
+        }
     }
 
     /// First launch only (the check runs once per window): raise the setup

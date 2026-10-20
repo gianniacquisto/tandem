@@ -733,3 +733,55 @@ private struct QuickAddLaneChip: View {
         .onHover { hovering = $0 }
     }
 }
+
+// MARK: - undo toast — a brief offer, one undo
+
+/// The toast a completion leaves behind: the ticket's name, and an **Undo**.
+///
+/// Completing a ticket is one click and immediate, and it erases the stage the
+/// ticket came from (ADR 0017) — so a mis-click costs a re-triage, not one click
+/// back. The toast is the way back: it is brief (`CompletionUndo.window` — six
+/// seconds), it offers exactly one undo, and it is not a history.
+///
+/// The clock belongs to the model, not to this view: the offer expires whether or
+/// not a face is drawing it.
+struct LigneToast: View {
+    var offer: CompletionUndo
+    var palette: Palette
+    var onUndo: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 8.5, weight: .bold))
+                .foregroundStyle(palette.paper)
+                .frame(width: 15, height: 15)
+                .background(Circle().fill(palette.moss))
+            Text("Completed “\(offer.title)”")
+                .font(.system(size: 12.5))
+                .foregroundStyle(palette.ink)
+                .lineLimit(1)
+            Spacer(minLength: 10)
+            // The one primary action in the toast: sage is the app's single
+            // primary-action colour, and this is it.
+            Button(action: onUndo) {
+                Text("Undo")
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(hovering ? palette.ink : palette.accent)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .help("Put the ticket back in Backlog")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: Radius.card).fill(palette.parchment))
+        .overlay(RoundedRectangle(cornerRadius: Radius.card)
+            .strokeBorder(palette.line, lineWidth: Line.hairline))
+    }
+}

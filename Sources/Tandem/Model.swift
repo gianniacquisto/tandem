@@ -38,6 +38,15 @@ final class TandemModel {
     /// cache, not a store field — an agent files with `--lane` — and it is clamped on every
     /// reload, so a lane that was renamed or deleted simply stops being the cache.
     private(set) var defaultLane: String?
+    /// The completion this app made that the human can still take back — the toast's
+    /// one undo (ticket 9A9EC9A4). **One at a time, and it expires**: the newest
+    /// completion replaces the last, and the offer runs out after
+    /// `CompletionUndo.window` seconds.
+    ///
+    /// It is raised by the *act* of completing, never by observing one: a completion
+    /// that arrives from outside (the CLI, a hand edit) comes through `reload()`,
+    /// which raises nothing — the toast answers this click, not a change in the file.
+    private(set) var undoOffer: CompletionUndo?
 
     // The shipped filters, defined once in the core (`Filter.query`): the app's counts
     // and the CLI's `--filter` are views over the same predicate, not two definitions.
@@ -128,8 +137,32 @@ final class TandemModel {
 
     /// Complete is idempotent at the store level, so completing an already-done todo
     /// is a no-op.
+    ///
+    /// A completion **this app made** leaves an undo offer behind — the toast that
+    /// puts the ticket back in `backlog` if the click was a mis-click. A completion
+    /// that arrives from elsewhere (the CLI, a hand edit) comes through `reload()`
+    /// instead, and raises no offer.
     func complete(_ id: String) {
-        run { try self.store.complete(id) }
+        // Whether this call is a *transition* to done: completing a ticket that is
+        // already done changes nothing, so there is nothing to take back.
+        let wasDone = todos.first(where: { $0.id.uuidString == id })?.done ?? false
+        guard let completed = run({ try self.store.complete(id) }) else { return }
+        guard !wasDone, completed.status == .done else { return }
+        undoOffer = CompletionUndo(id: completed.id, title: completed.title)
+        scheduleUndoExpiry()
+    }
+
+    /// Takes the completion back: the ticket returns to `backlog` and `completedAt`
+    /// is cleared — the landing a reopen has (ADR 0017). The offer is spent either
+    /// way: one undo, not a history.
+    ///
+    /// A ticket that has moved on since (deleted, reopened, re-staged) is left alone:
+    /// the undo is for the mis-click, not for a later decision.
+    func undoCompletion() {
+        guard let offer = undoOffer else { return }
+        undoOffer = nil
+        guard todos.first(where: { $0.id == offer.id })?.done == true else { return }
+        run { try self.store.undo(offer) }
     }
 
     /// The inverse of `complete` — the checkbox on a done row reopens it. Also
@@ -210,16 +243,32 @@ final class TandemModel {
 
     // MARK: - Internals
 
+    /// The offer runs out after `CompletionUndo.window` seconds — the toast is brief
+    /// by design. The clock is the model's, not the toast's, so an offer raised while
+    /// no face is drawing it still expires. A newer completion replaces the offer,
+    /// and the older timer (which would clear it early) stands down.
+    private func scheduleUndoExpiry() {
+        let offer = undoOffer
+        DispatchQueue.main.asyncAfter(deadline: .now() + CompletionUndo.window) { [weak self] in
+            guard let self, self.undoOffer == offer else { return }
+            self.undoOffer = nil
+        }
+    }
+
     /// Runs a throwing store operation, surfaces any recovery note, and reloads. On
     /// failure, records the error (and, if the failure also recovered a corrupt store,
-    /// the note) so nothing is silently lost.
-    private func run<T: Sendable>(_ op: () throws -> OperationResult<T>) {
+    /// the note) so nothing is silently lost. Returns the operation's value, or `nil`
+    /// when it failed.
+    @discardableResult
+    private func run<T: Sendable>(_ op: () throws -> OperationResult<T>) -> T? {
         do {
             let result = try op()
             if let note = result.note { recoveryNote = note }
             reload()
+            return result.value
         } catch {
             apply(error: error)
+            return nil
         }
     }
 
