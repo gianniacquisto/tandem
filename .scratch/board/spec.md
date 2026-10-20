@@ -141,7 +141,7 @@ The compatibility constraint shapes the whole design: an older Tandem binary mus
 
 ## Out of Scope
 
-- **The board view** — columns by Status, rows by Cycle lane, tickets dragged between columns. The model must land first, and the view still owes a decision: whether the board replaces the list's filter control or sits beside it.
+- **The board view** — columns by Status, rows by Cycle lane, tickets dragged between columns. The model had to land first, and the view owed a decision: whether the board replaces the list's filter control or sits beside it. **Built on 2026-10-20 as a third tab beside the list** — `.scratch/board/board-spec.md`.
 - **The human's inbox** — the view of everything assigned to `human`. It is a view over the query this spec defines, and it wants its own decisions about how a request for a decision is surfaced.
 - **Description editing in the GUI** — where the body is shown, how it is edited, whether it is searched live.
 - **The migrator** — retiring the `done` mirror and renaming the stored `section` key. Its decisions are not made here, and its trigger is the *install* of the shipping build rather than the merge, because an older binary reading the file is the whole hazard (ADR 0017).

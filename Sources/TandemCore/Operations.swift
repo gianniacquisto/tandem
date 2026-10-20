@@ -168,13 +168,60 @@ extension Store {
             }
             try contents.validateLane(lane)
             var moved = contents.todos.remove(at: from)
-            moved.lane = lane
-            let start = contents.blockStart(of: lane)
-            let count = contents.todos.lazy.filter { $0.lane == lane }.count
-            contents.todos.insert(moved, at: start + max(0, min(index, count)))
+            insert(&moved, into: lane, of: &contents, at: index)
             return (moved, true)
         }
         return OperationResult(todo, note: note)
+    }
+
+    // MARK: - place
+
+    /// `place(id, lane:status:at:)`: the board's drag — **one write** that sets the lane and
+    /// the Status together and puts the ticket at a 0-based `index` within the lane
+    /// (`nil` is the default area; clamped, so `Int.max` appends). `move` changes a
+    /// ticket's place and `set` changes its fields; a board drop does both at once, and
+    /// two writes would let a drag land a ticket in a cell yet leave it in the old column
+    /// if the second one failed.
+    ///
+    /// The rules are its two halves', unchanged: an unknown id throws
+    /// `DomainError.unknownID`, an unknown lane is rejected, and `setStatus` stamps or
+    /// clears `completedAt`. A drop that lands the ticket exactly where it already was
+    /// writes nothing. GUI-only — the agent surface keeps `set --status` and `move`.
+    public func place(
+        _ id: String,
+        lane: String?,
+        status: Status,
+        at index: Int = .max
+    ) throws -> OperationResult<Todo> {
+        let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
+            guard let uuid = UUID(uuidString: id),
+                  let from = contents.todos.firstIndex(where: { $0.id == uuid })
+            else {
+                throw DomainError.unknownID(id: id, open: contents.todos.filter { !$0.done })
+            }
+            try contents.validateLane(lane)
+            let before = contents.todos
+            var moved = contents.todos.remove(at: from)
+            moved.setStatus(status)
+            insert(&moved, into: lane, of: &contents, at: index)
+            return (moved, contents.todos != before)
+        }
+        return OperationResult(todo, note: note)
+    }
+
+    /// The one place a lane insertion's arithmetic lives: `index` is 0-based within `lane`
+    /// and clamped into range, so `Int.max` appends. `move` and `place` differ only in what
+    /// they set on the ticket before it goes back in.
+    private func insert(
+        _ todo: inout Todo,
+        into lane: String?,
+        of contents: inout StoreContents,
+        at index: Int
+    ) {
+        todo.lane = lane
+        let start = contents.blockStart(of: lane)
+        let count = contents.todos.lazy.filter { $0.lane == lane }.count
+        contents.todos.insert(todo, at: start + max(0, min(index, count)))
     }
 
     // MARK: - complete
