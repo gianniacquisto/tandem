@@ -127,23 +127,27 @@ extension Store {
 
     // MARK: - add
 
-    /// `add(title, lane, status, assignee)`: the title is trimmed; empty/whitespace-only
+    /// `add(title, lane, status, assignee, origin)`: the title is trimmed; empty/whitespace-only
     /// is rejected with an actionable error. Duplicate titles are allowed. The new todo
     /// lands on the **top of its lane** (`nil` is the default area); a lane that is not a
     /// known lane is rejected. A title alone stays the default — a ticket is never born
     /// archived, and the assignee rule is the same as `set`'s (see `normalizeAssignee`).
+    /// The filer is stamped here and never touched again: `origin` is the one field
+    /// `set` cannot change (ADR 0020).
     public func add(
         _ rawTitle: String,
         lane: String? = nil,
         status: Status = .backlog,
-        assignee: String? = nil
+        assignee: String? = nil,
+        origin: String = "human"
     ) throws -> OperationResult<Todo> {
         let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { throw DomainError.emptyTitle }
         let who = Self.normalizeAssignee(assignee)
+        let filer = Self.normalizeOrigin(origin)
         let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
             try contents.validateLane(lane)
-            var todo = Todo(title: title, assignee: who, lane: lane)
+            var todo = Todo(title: title, assignee: who, origin: filer, lane: lane)
             // Born in a stage: `setStatus` stamps `completedAt` if that stage is done.
             todo.setStatus(status)
             contents.todos.insert(todo, at: contents.blockStart(of: lane))
@@ -258,7 +262,9 @@ extension Store {
     /// must not be empty; a description and an assignee are trimmed, and empty means
     /// cleared; `human` is stored lowercase; `status` stamps or clears `completedAt`. A
     /// call that changes nothing writes nothing. An unknown id throws
-    /// `DomainError.unknownID` carrying the current open list.
+    /// `DomainError.unknownID` carrying the current open list. The settable fields are
+    /// exactly the parameters: `origin` is not among them, because it is written once,
+    /// at add, and never changed (ADR 0020).
     public func set(
         _ id: String,
         title: Edit<String> = .unchanged,
@@ -328,6 +334,19 @@ extension Store {
         guard let raw else { return nil }
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return nil }
+        return name.lowercased() == "human" ? "human" : name
+    }
+
+    /// The origin's spelling rule — the assignee's, except there is no absent value: a
+    /// filer always exists, so `nil` and empty both mean the human (the face that adds
+    /// without naming one is the app, the human's face); the reserved word `human` is
+    /// stored lowercase so it is one name; anything else is an agent's name exactly as
+    /// given. Nothing validates the name — the persona registry that would is out of
+    /// scope, as with `assignee` (ADR 0020).
+    static func normalizeOrigin(_ raw: String?) -> String {
+        guard let raw else { return "human" }
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return "human" }
         return name.lowercased() == "human" ? "human" : name
     }
 

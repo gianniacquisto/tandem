@@ -11,7 +11,9 @@ import TandemCore
 /// The body is markdown as stored — no rendering, so nothing can hide a character an agent
 /// wrote — and Save is the same instruction the CLI's `set` makes, not a parallel write.
 /// Assignee is read-only here: assignment is an agent's instruction, and the inbox is where
-/// the human answers it.
+/// the human answers it. Origin is read-only for the stronger reason: it is stamped at
+/// add and never edited, so the sheet only shows who filed the ticket — "you filed", or
+/// the agent's name — which is how triage starts with "what did I ask for?"
 struct TicketSheet: View {
     var todo: Todo
     var palette: Palette
@@ -84,6 +86,13 @@ struct TicketSheet: View {
                         .foregroundStyle(assignee == TodoQuery.human ? palette.emberDeep
                                                                      : palette.inkDim)
                 }
+                // The filer, read-only (the type will not let a write touch it):
+                // `human` reads as "you", an agent as its name. The agent's filing is
+                // the one worth the colour — it is the signal triage starts from.
+                Text(todo.origin == TodoQuery.human ? "you filed" : "@\(todo.origin) filed")
+                    .font(.system(size: 11))
+                    .foregroundStyle(todo.origin == TodoQuery.human ? palette.inkDim
+                                                                    : palette.emberDeep)
                 Spacer(minLength: 0)
                 if let link = todo.link, let onOpenLink {
                     Button("Open note") { onOpenLink(link) }
