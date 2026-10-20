@@ -8,10 +8,11 @@ import CryptoKit
 /// ADR 0004 and the rename mechanics of ADR 0005:
 ///
 /// - **Identity & naming** — a note is any file ending `.md` (case-
-///   insensitive). Hidden files are ignored everywhere; non-`.md` files are
-///   attachments, reachable only by relative path from a note. The app only
-///   *creates* names free of `#` and `|` (the wikilink grammar's separators);
-///   pre-existing violators on disk are still shown and edited.
+///   insensitive). Hidden files are ignored everywhere — except in the tree,
+///   and only when the human reveals them (`showsHiddenFiles`); non-`.md`
+///   files are attachments, reachable only by relative path from a note. The
+///   app only *creates* names free of `#` and `|` (the wikilink grammar's
+///   separators); pre-existing violators on disk are still shown and edited.
 /// - **Frontmatter** — tolerated, opaque: the core never parses note text.
 /// - **Locking** — app writes take an exclusive `flock` on the sidecar
 ///   lockfile (`<home>/bikeshed.lock`, in Tandem's home and outside the bikeshed
@@ -40,6 +41,16 @@ public struct Bikeshed: Sendable {
     /// The sidecar lockfile, outside the bikeshed (created if missing, never
     /// renamed).
     let lockURL: URL
+    /// Whether the tree reveals the **hidden layer** — the capture saddlebag
+    /// (`projects/<project>/.raw/`) and the consolidation archive
+    /// (`projects/<project>/.raw/.done/`), ADR 0016's `.raw` subtree.
+    ///
+    /// The flag decides what the tree *draws*, never what the curated graph
+    /// *is*: `notePaths()` — the linkable set that search, backlinks, and
+    /// wikilink resolution read — always prunes the hidden layer, in both
+    /// states. A revealed capture is readable, writable, and deletable from the
+    /// tree, and it is still not a link target and never a search hit.
+    public var showsHiddenFiles: Bool
     /// The shared storage mechanics (ADR 0004, reusing ADR 0001): flock + atomic
     /// write + orphan sweep, identical to the store's.
     private let storage: LockedDirectory
@@ -49,20 +60,23 @@ public struct Bikeshed: Sendable {
     /// lockfile stays `<home>/bikeshed.lock` (in Tandem's home, never inside
     /// a chosen user folder), where `<home>` is the real `~/.tandem` from the
     /// shipped app and `~/.tandem-dev` from anything built and run in place
-    /// (see `TandemHome`).
+    /// (see `TandemHome`). The reveal flag starts at the human's persisted
+    /// choice (`TandemSettings.showHiddenFiles()`), off unless they asked for it.
     public init() {
         let home = TandemHome.directory
         self.init(
             directory: TandemSettings.chosenBikeshed() ?? home.appendingPathComponent("bikeshed"),
-            lockURL: home.appendingPathComponent("bikeshed.lock"))
+            lockURL: home.appendingPathComponent("bikeshed.lock"),
+            showsHiddenFiles: TandemSettings.showHiddenFiles())
     }
 
     /// A bikeshed rooted at an explicit directory with an explicit sidecar
     /// lockfile. Used by the default (chosen) path, whose lock lives in
     /// Tandem's home rather than beside an arbitrary user folder.
-    public init(directory: URL, lockURL: URL) {
+    public init(directory: URL, lockURL: URL, showsHiddenFiles: Bool = false) {
         self.directory = directory
         self.lockURL = lockURL
+        self.showsHiddenFiles = showsHiddenFiles
         self.storage = LockedDirectory(
             lockURL: lockURL,
             tempPrefix: ".note-",
@@ -72,11 +86,12 @@ public struct Bikeshed: Sendable {
 
     /// A bikeshed rooted at an explicit directory (used by tests with a temp
     /// dir). The lockfile is the sibling `bikeshed.lock` outside the bikeshed.
-    public init(directory: URL) {
+    public init(directory: URL, showsHiddenFiles: Bool = false) {
         self.init(
             directory: directory,
             lockURL: directory.deletingLastPathComponent()
-                .appendingPathComponent("bikeshed.lock"))
+                .appendingPathComponent("bikeshed.lock"),
+            showsHiddenFiles: showsHiddenFiles)
     }
 
     // MARK: - Locked write primitive
@@ -137,6 +152,15 @@ public struct Bikeshed: Sendable {
         name.hasPrefix(".")
     }
 
+    /// Whether `path` names something inside the hidden layer: any path
+    /// component starts with ".". The hidden layer is the capture saddlebag
+    /// (`.raw/`) and the consolidation archive (`.raw/.done/`). The rule is a
+    /// pure function of the path, so a caller holding a tree can ask the same
+    /// question the walk asks.
+    public static func isHiddenPath(_ path: String) -> Bool {
+        path.split(separator: "/").contains { $0.hasPrefix(".") }
+    }
+
     private static func isNoteName(_ name: String) -> Bool {
         name.lowercased().hasSuffix(".md")
     }
@@ -148,10 +172,16 @@ public struct Bikeshed: Sendable {
     }
 
     /// The nodes of one directory level: folders first, alphabetical within
-    /// each level. Hidden entries are ignored (hidden folders prune their
-    /// whole subtree); non-`.md` files are attachments and stay out of the
-    /// tree. A missing directory is an empty level — never an error.
-    private static func nodes(in dir: URL, relativePath: String) -> [BikeshedNode] {
+    /// each level. Hidden entries are pruned (a hidden folder prunes its whole
+    /// subtree) unless `includeHidden` says otherwise — the reveal flag, which
+    /// draws the capture saddlebag and the consolidation archive with the
+    /// rest. Non-`.md` files are attachments and stay out of the tree. A
+    /// missing directory is an empty level — never an error.
+    private static func nodes(
+        in dir: URL,
+        relativePath: String,
+        includeHidden: Bool
+    ) -> [BikeshedNode] {
         let fm = FileManager.default
         guard
             let entries = try? fm.contentsOfDirectory(
@@ -163,7 +193,7 @@ public struct Bikeshed: Sendable {
         var notes: [BikeshedNode] = []
         for url in entries {
             let name = url.lastPathComponent
-            if isHidden(name) { continue }
+            if isHidden(name), !includeHidden { continue }
             let relative = relativePath.isEmpty ? name : relativePath + "/" + name
             guard
                 let values = try? url.resourceValues(forKeys: [.isDirectoryKey]),
@@ -172,7 +202,8 @@ public struct Bikeshed: Sendable {
             if isDir {
                 folders.append(BikeshedNode(
                     name: name, path: relative, kind: .folder,
-                    children: nodes(in: url, relativePath: relative)))
+                    children: nodes(in: url, relativePath: relative,
+                                    includeHidden: includeHidden)))
             } else if isNoteName(name) {
                 notes.append(BikeshedNode(name: name, path: relative, kind: .note, children: []))
             }
@@ -182,14 +213,17 @@ public struct Bikeshed: Sendable {
         return folders + notes
     }
 
-    /// The full tree, root level (folders first, alphabetical).
+    /// The full tree, root level (folders first, alphabetical). Hidden entries
+    /// are drawn only when `showsHiddenFiles` is on — the reveal flag changes
+    /// what the tree shows, never the curated graph.
     func tree() -> [BikeshedNode] {
-        Self.nodes(in: directory, relativePath: "")
+        Self.nodes(in: directory, relativePath: "", includeHidden: showsHiddenFiles)
     }
 
     /// The bikeshed's note paths (bikeshed-root-relative, original case), recursive.
-    /// Hidden files and non-`.md` attachments are excluded; a missing bikeshed
-    /// folder is an empty set.
+    /// Hidden files and non-`.md` attachments are excluded — always, whatever the
+    /// reveal flag says: this is the linkable set that search, backlinks, and
+    /// wikilink resolution read. A missing bikeshed folder is an empty set.
     func notePaths() -> [String] {
         var paths: [String] = []
         func collect(_ nodes: [BikeshedNode]) {
@@ -198,7 +232,7 @@ public struct Bikeshed: Sendable {
                 collect(node.children)
             }
         }
-        collect(Self.nodes(in: directory, relativePath: ""))
+        collect(Self.nodes(in: directory, relativePath: "", includeHidden: false))
         return paths
     }
 
@@ -233,6 +267,11 @@ public struct Bikeshed: Sendable {
     /// — a hidden note would be created yet never visible), no `#` or `|` in
     /// any component (the wikilink grammar's separators), and the note name
     /// ends in `.md` (case-insensitive). Spaces are allowed.
+    ///
+    /// The hidden-component rule follows the reveal flag: while the hidden
+    /// layer is revealed, a hidden component is a visible folder, so creating
+    /// inside it is allowed — the rationale ("created yet never visible") does
+    /// not hold once it is visible.
     func validateNewName(_ path: String) throws {
         let last = try validateComponents(path)
         guard Self.isNoteName(last) else {
@@ -250,9 +289,9 @@ public struct Bikeshed: Sendable {
     }
 
     /// The shared path hygiene for `validateNewName` / `validateNewFolderName`:
-    /// no empty, `.`, or `..` component, no hidden component, no `#` or `|` in
-    /// any component. Returns the last component so the note rule can add its
-    /// `.md` check on top.
+    /// no empty, `.`, or `..` component, no hidden component (unless the
+    /// hidden layer is revealed), no `#` or `|` in any component. Returns the
+    /// last component so the note rule can add its `.md` check on top.
     private func validateComponents(_ path: String) throws -> String {
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
             .map(String.init)
@@ -261,7 +300,7 @@ public struct Bikeshed: Sendable {
         }
         for component in components
         where component.isEmpty || component == "." || component == ".."
-            || Self.isHidden(component)
+            || (Self.isHidden(component) && !showsHiddenFiles)
             || component.contains("#") || component.contains("|")
         {
             throw BikeshedError.invalidName(name: path)

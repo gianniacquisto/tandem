@@ -40,7 +40,7 @@ A `thread` note usually already has a Todo — the working agent files it the mo
 
 ## Consume — archive, never delete
 
-Move each capture it consumed to `projects/<project>/.raw/.done/<session>/<file>`, mirroring the session folder (`mv`, still hidden). Nothing is lost, and the saddlebag stays stateless — pending is simply "any file under `.raw/` not under `.done/`". The human reads the archive with "show hidden files".
+Move each capture it consumed to `projects/<project>/.raw/.done/<session>/<file>`, mirroring the session folder (`mv`, still hidden). Nothing is lost, and the saddlebag stays stateless — pending is simply "any file under `.raw/` not under `.done/`". The human reads the archive with "Show hidden files" in Tandem's Settings — the app's tree then draws the hidden layer, still outside search, backlinks, and wikilinks.
 
 ## Done when
 

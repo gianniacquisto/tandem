@@ -411,6 +411,24 @@ struct BikeFaceView: View {
 
 // MARK: - sidebar (232 pt): header · in-tree search · tree / results
 
+/// A tooltip that is only there when there is something to say — the tree's
+/// hidden-layer rows carry one, the ordinary rows carry none.
+private struct OptionalHelp: ViewModifier {
+    var text: String?
+
+    func body(content: Content) -> some View {
+        if let text, !text.isEmpty {
+            content.help(text)
+        } else {
+            content
+        }
+    }
+}
+
+/// The tooltip on a revealed hidden entry: what it is, and what it is not.
+/// File-scoped so the tree rows (which are their own views) can carry it.
+private let hiddenLayerHelp = "Hidden layer — outside search, backlinks, and wikilinks."
+
 struct BikeTreeView: View {
     var model: BikeshedModel
     var palette: Palette
@@ -611,7 +629,11 @@ private struct BikeFolderRow: View {
     @State private var targeted = false
 
     var body: some View {
-        Button {
+        // A revealed hidden entry (the capture saddlebag, the consolidation
+        // archive) is drawn dimmed: it is out of the curated graph, and the
+        // human should see that at a glance.
+        let hidden = Bikeshed.isHiddenPath(item.path)
+        return Button {
             model.toggleFolder(item.path)
         } label: {
             HStack(spacing: 5) {
@@ -625,7 +647,7 @@ private struct BikeFolderRow: View {
                     .foregroundStyle(palette.inkDim)
                 Text(item.name)
                     .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(palette.ink)
+                    .foregroundStyle(hidden ? palette.inkDim : palette.ink)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -652,7 +674,10 @@ private struct BikeFolderRow: View {
                 Rectangle().fill(palette.accent).frame(width: 2)
             }
         }
-        .help("Drop a note or folder here to move it into \"\(item.name)\"")
+        // The drop hint and the hidden-layer note share one tooltip.
+        .help(hidden
+              ? hiddenLayerHelp + " Drop a note or folder here to move it into \"\(item.name)\""
+              : "Drop a note or folder here to move it into \"\(item.name)\"")
     }
 }
 
@@ -669,6 +694,10 @@ private struct BikeNoteRow: View {
 
     var body: some View {
         let selected = model.openPath == item.path
+        // A revealed hidden entry (the capture saddlebag, the consolidation
+        // archive) is drawn dimmed: it is out of the curated graph, and the
+        // human should see that at a glance.
+        let hidden = Bikeshed.isHiddenPath(item.path)
         return Button {
             model.open(item.path)
         } label: {
@@ -679,7 +708,8 @@ private struct BikeNoteRow: View {
                                               : palette.inkDim)
                 Text(item.name)
                     .font(.system(size: 12.5))
-                    .foregroundStyle(selected ? palette.paper : palette.ink)
+                    .foregroundStyle(selected ? palette.paper
+                              : (hidden ? palette.inkDim : palette.ink))
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -691,6 +721,7 @@ private struct BikeNoteRow: View {
         }
         .buttonStyle(.plain)
         .padding(.leading, 10 + CGFloat(depth) * 14 + 14)
+        .modifier(OptionalHelp(text: hidden ? hiddenLayerHelp : nil))
         .contextMenu {
             // Renaming a note is also how it moves to another folder (the
             // path is the name); the drag is the way to move a folder.
