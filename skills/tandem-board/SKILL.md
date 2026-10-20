@@ -58,7 +58,7 @@ A ticket that needs a decision from the human is `refined` with `assignee human`
 
 Work a design tree in rounds. The frontier is every question whose prerequisites are settled.
 
-- **Answer from the environment first.** Repo, ADRs, `.scratch/`, the bikeshed, the installed app, the CLI. Finding a fact is the agent's job, never the human's.
+- **Answer from the environment first.** Repo, ADRs, the bikeshed, the installed app, the CLI. Finding a fact is the agent's job, never the human's.
 - Only three things are genuinely the human's: a **preference** (two defensible shapes), a **spend** (time, tokens, money, a release), an **irreversible or outward-facing act** (branch policy, a published API, deleting data).
 - Put the surviving questions in the description with your recommendation and the consequence of each choice. That is the escalation payload; the ticket is the meeting.
 - A question you can answer with evidence is not a question — decide it, write it under **Decided against** when it was contested.

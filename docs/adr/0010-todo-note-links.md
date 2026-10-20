@@ -1,6 +1,6 @@
 # A todo may link to a bikeshed note
 
-The todo store ([ADR 0001](0001-store-protocol.md)) and the bikeshed ([ADR 0004](0004-vault-protocol.md)) are two surfaces of one app that never crossed: a todo is a title and a done state, a note is a file, and `.scratch/bikeshed/spec.md` lists **"note↔todo cross-references"** explicitly out of scope. We decided to reverse that line, narrowly: a todo may carry an optional `link` — a **vault-root-relative path** to a note, like `projects/App.md`, or `null`. The row shows a quiet paperclip that opens the note in the Bikeshed tab; a context menu sets, changes, and clears it. `link` is **additive** to schema v1, so the envelope stays `version: 1`. It is **GUI-only**: there is no CLI verb, exactly like `update` and `move`.
+The todo store ([ADR 0001](0001-store-protocol.md)) and the bikeshed ([ADR 0004](0004-vault-protocol.md)) are two surfaces of one app that never crossed: a todo is a title and a done state, a note is a file, and the bikeshed spec lists **"note↔todo cross-references"** explicitly out of scope. We decided to reverse that line, narrowly: a todo may carry an optional `link` — a **vault-root-relative path** to a note, like `projects/App.md`, or `null`. The row shows a quiet paperclip that opens the note in the Bikeshed tab; a context menu sets, changes, and clears it. `link` is **additive** to schema v1, so the envelope stays `version: 1`. It is **GUI-only**: there is no CLI verb, exactly like `update` and `move`.
 
 ## Why the link is a path, not a name
 
@@ -31,4 +31,6 @@ The todo store ([ADR 0001](0001-store-protocol.md)) and the bikeshed ([ADR 0004]
 - `Todo` gains `link: String?` (Custom Codable, mirroring `section`); `Store.setLink(_:to:)` is the GUI-only operation beside `update`. The store's encoding is untouched — the envelope still writes `version: 1`.
 - A renamed or deleted note leaves the stored path dangling: rename rewriting ([ADR 0005](0005-wikilink-rename-rewriting.md)) covers wikilinks, not todo links, and opening a missing path surfaces the core's error. The link is a pointer taken at the time, not a live reference — repairing it is choosing the note again.
 - `skills/tandem/SKILL.md` documents `link` in the `list`/`add`/`complete` result shape (it may be `null`); no CLI code changes.
-- The out-of-scope line **"note↔todo cross-references"** in `.scratch/bikeshed/spec.md` is reversed in the todo→note direction only; the note→todo direction stays out of scope.
+- The out-of-scope line **"note↔todo cross-references"** in the bikeshed spec is reversed in the todo→note direction only; the note→todo direction stays out of scope.
+
+> **Planning notes.** The tracker documents cited above were retired on 2026-10-21 — the bikeshed is canonical for that prose. They remain in this repo's git history; their ground is in the bikeshed's project notes.

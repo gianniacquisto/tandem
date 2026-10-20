@@ -1,6 +1,6 @@
 # The notes vault is a chosen folder: persisted in settings, switched live
 
-[ADR 0004](0004-vault-protocol.md) fixed the vault as `<home>/bikeshed/` — one folder, right beside the todo store — and `.scratch/bikeshed/spec.md` cut *"Multiple vaults — one fixed folder"* out of scope on purpose. A human already keeps notes in Obsidian vaults, iCloud folders, and Dropbox; Tandem only being useful if the notes live in *its* folder is a real adoption cost. We decided: **the vault is now a folder the human chooses from the app**, persisted so it survives restarts, and **applied live** — no relaunch. The default is unchanged: with no choice made, the vault is still `<home>/bikeshed`. The choice lives in a tiny `<home>/settings.json` (`{"vaultPath": "<absolute path>"}`), sibling of the store and the lockfiles, never inside the vault itself.
+[ADR 0004](0004-vault-protocol.md) fixed the vault as `<home>/bikeshed/` — one folder, right beside the todo store — and the bikeshed spec cut *"Multiple vaults — one fixed folder"* out of scope on purpose. A human already keeps notes in Obsidian vaults, iCloud folders, and Dropbox; Tandem only being useful if the notes live in *its* folder is a real adoption cost. We decided: **the vault is now a folder the human chooses from the app**, persisted so it survives restarts, and **applied live** — no relaunch. The default is unchanged: with no choice made, the vault is still `<home>/bikeshed`. The choice lives in a tiny `<home>/settings.json` (`{"vaultPath": "<absolute path>"}`), sibling of the store and the lockfiles, never inside the vault itself.
 
 ## Why
 
@@ -31,7 +31,9 @@ This is deliberately the small half of "multiple vaults": there is still **one**
 - `Bikeshed.init()` resolves `TandemSettings.chosenVault() ?? <home>/bikeshed`; a new `init(directory:lockURL:)` takes the home-based lock. `init(directory:)` (the tests' explicit-dir initialiser) is unchanged and keeps its sibling lock — existing tests and their temp-dir isolation are untouched.
 - The GUI gains "Choose Bikeshed Vault…" (⌘⇧V) in the File menu, an `NSOpenPanel` folder picker, and `BikeshedModel.switchVault(to:)`.
 - A switch closes the open note (after flushing it) and clears expanded folders — the tree belongs to the vault it came from. The chosen path is what the empty-vault state shows, so an empty chosen folder still reads as intentional.
-- `.scratch/bikeshed/spec.md`'s *"Multiple vaults — one fixed folder"* out-of-scope line is reversed: one vault at a time, but a folder the human chooses.
+- The bikeshed spec's *"Multiple vaults — one fixed folder"* out-of-scope line is reversed: one vault at a time, but a folder the human chooses.
 - `settings.json` is per-home, so a dev build (`~/.tandem-dev`) and the shipped app (`~/.tandem`) keep independent choices — the ADR 0001 dev/prod split holds.
 
-Amends [ADR 0004](0004-vault-protocol.md)'s fixed-vault clause: the lock and the protocol are unchanged, the folder is no longer fixed. Reverses the *"Multiple vaults — one fixed folder"* scope cut in `.scratch/bikeshed/spec.md`.
+Amends [ADR 0004](0004-vault-protocol.md)'s fixed-vault clause: the lock and the protocol are unchanged, the folder is no longer fixed. Reverses the *"Multiple vaults — one fixed folder"* scope cut in the bikeshed spec.
+
+> **Planning notes.** The tracker documents cited above were retired on 2026-10-21 — the bikeshed is canonical for that prose. They remain in this repo's git history; their ground is in the bikeshed's project notes.
