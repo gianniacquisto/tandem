@@ -1,10 +1,12 @@
 # Spec: the ticket model — Status, Archived, Cycle lane, and the agent's ticket surface
 
 Type: spec
-Status: ready-for-agent
+Status: implemented
 Source: `.scratch/board/map.md` (wayfinder) + the grilling of 2026-10-19, ADR [0017](../../docs/adr/0017-the-ticket-model.md), `GLOSSARY.md`
 
 Covers map tickets **1** (the store carries the three axes), **2** (the CLI ticket surface), **3** (the query in the core) and **7** (archive replaces "Clear done"). The board view, the human's inbox, GUI description editing, the migrator, lane selection, and the persona registry are named in *Out of Scope* — each needs decisions this spec does not make.
+
+Built in PR [#38](https://github.com/gianniacquisto/tandem/pull/38), merged 2026-10-19. **The merge is not the install**: the shipping app and the `tandem-cli` on `PATH` still predate it, so until a build carrying it is installed, run the built binary (`.build/debug/tandem-cli`, `TANDEM_HOME` to choose the store) — an older writer drops the fields it does not know, which is why the migrator is gated on the install.
 
 ## Problem Statement
 
