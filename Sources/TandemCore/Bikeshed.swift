@@ -215,6 +215,18 @@ public struct Bikeshed: Sendable {
         BikeshedPath.url(under: directory, for: path)
     }
 
+    /// The bikeshed-root-relative path of a URL inside the bikeshed, in the
+    /// bikeshed's own spelling (the on-disk case) — "" for the root itself.
+    /// The tree's paths are the reference: a move computes the new paths from
+    /// the file set, not from the spelling a caller happened to use.
+    func relativePath(of url: URL) -> String {
+        let root = directory.standardizedFileURL.path
+        let full = url.standardizedFileURL.path
+        if full == root { return "" }
+        guard full.hasPrefix(root + "/") else { return url.lastPathComponent }
+        return String(full.dropFirst(root.count + 1))
+    }
+
     /// The naming rules for a path the app is about to create (create / rename
     /// targets / new write paths): path hygiene (no empty, `.`, or `..`
     /// components), no hidden components (hidden files are ignored everywhere

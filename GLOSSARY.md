@@ -74,6 +74,10 @@ _Avoid_: vault, notebook, notes folder
 A single markdown file in the bikeshed. The filename is the note's identity; renaming a note is renaming the file.
 _Avoid_: document, entry, page
 
+**Move**:
+Changing where a note or a folder sits in the bikeshed — the name stays, the path changes. A move made in the app rewrites the wikilinks that resolve to every note that moved with it, so the references travel with the files. Distinct from a rename, which changes the name itself.
+_Avoid_: mv, relocate, drag (the gesture, not the operation)
+
 **Memory note**:
 A note created by a memory session recording the highlights of work — where the work left off, decisions with one-line rationale, learnings and gotchas, expensive-to-derive facts — written for the next agent session as reader.
 _Avoid_: session log, journal, scratch note

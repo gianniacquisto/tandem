@@ -429,6 +429,9 @@ struct BikeTreeView: View {
     var palette: Palette
     @Binding var query: String
     var onRename: (String) -> Void
+    /// True while a drag hovers the tree's background — the bikeshed root,
+    /// the one destination that is not a folder row.
+    @State private var rootTargeted = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -509,6 +512,14 @@ struct BikeTreeView: View {
             }
             .padding(.vertical, 6)
         }
+        // The tree's background is the bikeshed root: a drop that lands on no
+        // folder moves the dragged note or folder to the root.
+        .dropDestination(for: String.self) { items, _ in
+            guard let path = items.first else { return false }
+            model.move(path, into: "")
+            return true
+        } isTargeted: { rootTargeted = $0 }
+        .background(rootTargeted ? AnyShapeStyle(palette.parchment) : AnyShapeStyle(Color.clear))
     }
 
     /// AnyView: the tree recurses, and `some View` can't name itself.
@@ -517,35 +528,7 @@ struct BikeTreeView: View {
         case .folder:
             return AnyView(
                 Group {
-                    Button {
-                        model.toggleFolder(item.path)
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: model.expandedFolders.contains(item.path)
-                                  ? "chevron.down" : "chevron.right")
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundStyle(palette.inkDim)
-                                .frame(width: 9)
-                            Image(systemName: "folder")
-                                .font(.system(size: 10.5))
-                                .foregroundStyle(palette.inkDim)
-                            Text(item.name)
-                                .font(.system(size: 12.5, weight: .medium))
-                                .foregroundStyle(palette.ink)
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 10 + CGFloat(depth) * 14)
-                    .contextMenu {
-                        Button("New note") { model.createNote(in: item.path) }
-                        Button("New folder") { model.createFolder(in: item.path) }
-                        Button("Delete", role: .destructive) { model.delete(item.path) }
-                    }
+                    BikeFolderRow(model: model, palette: palette, item: item, depth: depth)
                     if model.expandedFolders.contains(item.path) {
                         ForEach(model.treeChildren(of: item.path), id: \.path) { child in
                             node(child, depth: depth + 1)
@@ -554,36 +537,9 @@ struct BikeTreeView: View {
                 }
             )
         case .note:
-            let selected = model.openPath == item.path
             return AnyView(
-                Button {
-                    model.open(item.path)
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "doc.text")
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(selected ? palette.paper.opacity(0.8)
-                                                      : palette.inkDim)
-                        Text(item.name)
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(selected ? palette.paper : palette.ink)
-                            .lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                    .background(selected ? AnyShapeStyle(palette.accent)
-                                         : AnyShapeStyle(Color.clear))
-                }
-                .buttonStyle(.plain)
-                .padding(.leading, 10 + CGFloat(depth) * 14 + 14)
-                .contextMenu {
-                    // Moving a note is the Rename… path change; folder rename
-                    // is out of scope (the core's rename stays notes-only).
-                    Button("Rename…") { onRename(item.path) }
-                    Button("Delete", role: .destructive) { model.delete(item.path) }
-                }
+                BikeNoteRow(model: model, palette: palette, item: item, depth: depth,
+                            onRename: onRename)
             )
         }
     }
@@ -647,5 +603,133 @@ struct BikeTreeView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+// MARK: - Tree rows (drag sources; the folder row is a drop target)
+
+/// A folder row in the tree: the disclosure chevron, the folder icon, the
+/// name. It is the tree's drop target — dropping a note or a folder here
+/// moves it into this folder. The core does the work: it rewrites every
+/// wikilink that resolves to a moved note (a folder move: every note inside
+/// it) and moves the file in one locked transaction; a cycle (a folder into
+/// its own descendant) and a name already taken in the destination are
+/// refused, with the reason shown.
+private struct BikeFolderRow: View {
+    var model: BikeshedModel
+    var palette: Palette
+    var item: BikeshedNode
+    var depth: Int
+    /// True while a drag hovers this row — the drop lands here.
+    @State private var targeted = false
+
+    var body: some View {
+        Button {
+            model.toggleFolder(item.path)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: model.expandedFolders.contains(item.path)
+                      ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(palette.inkDim)
+                    .frame(width: 9)
+                Image(systemName: "folder")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(palette.inkDim)
+                Text(item.name)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(palette.ink)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.leading, 10 + CGFloat(depth) * 14)
+        .contextMenu {
+            Button("New note") { model.createNote(in: item.path) }
+            Button("New folder") { model.createFolder(in: item.path) }
+            Button("Delete", role: .destructive) { model.delete(item.path) }
+        }
+        .draggable(item.path) { BikeDragPreview(name: item.name, palette: palette) }
+        .dropDestination(for: String.self) { items, _ in
+            guard let path = items.first else { return false }
+            model.move(path, into: item.path)
+            return true
+        } isTargeted: { targeted = $0 }
+        .background(targeted ? AnyShapeStyle(palette.parchment) : AnyShapeStyle(Color.clear))
+        .overlay(alignment: .leading) {
+            if targeted {
+                Rectangle().fill(palette.accent).frame(width: 2)
+            }
+        }
+        .help("Drop a note or folder here to move it into \"\(item.name)\"")
+    }
+}
+
+/// A note row in the tree: the note icon and the name, highlighted while the
+/// note is open. It is a drag source — dragging a note onto a folder moves
+/// it there (the core rewrites the links to it); dropping it on the tree's
+/// background moves it to the bikeshed root.
+private struct BikeNoteRow: View {
+    var model: BikeshedModel
+    var palette: Palette
+    var item: BikeshedNode
+    var depth: Int
+    var onRename: (String) -> Void
+
+    var body: some View {
+        let selected = model.openPath == item.path
+        return Button {
+            model.open(item.path)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(selected ? palette.paper.opacity(0.8)
+                                              : palette.inkDim)
+                Text(item.name)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(selected ? palette.paper : palette.ink)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .background(selected ? AnyShapeStyle(palette.accent)
+                                 : AnyShapeStyle(Color.clear))
+        }
+        .buttonStyle(.plain)
+        .padding(.leading, 10 + CGFloat(depth) * 14 + 14)
+        .contextMenu {
+            // Renaming a note is also how it moves to another folder (the
+            // path is the name); the drag is the way to move a folder.
+            Button("Rename…") { onRename(item.path) }
+            Button("Delete", role: .destructive) { model.delete(item.path) }
+        }
+        .draggable(item.path) { BikeDragPreview(name: item.name, palette: palette) }
+    }
+}
+
+/// The drag image for a tree row: the item's name on a small parchment card,
+/// so the drag reads as "this note", not a raw path.
+private struct BikeDragPreview: View {
+    var name: String
+    var palette: Palette
+
+    var body: some View {
+        Text(name)
+            .font(.system(size: 12.5))
+            .foregroundStyle(palette.ink)
+            .lineLimit(1)
+            .frame(maxWidth: 220, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
+            .overlay(RoundedRectangle(cornerRadius: Radius.control)
+                .strokeBorder(palette.line, lineWidth: Line.hairline))
     }
 }
