@@ -57,13 +57,14 @@ func dispatch(_ args: [String]) -> Int32 {
             let result = try Store().list(query)
             return try StoreEncoding.listResult(result.value, note: result.note)
         }
-    case .todoAdd(let title, let status, let assignee, let lane):
+    case .todoAdd(let title, let status, let assignee, let lane, let origin):
         return run {
             let result = try Store().add(
                 title,
                 lane: lane,
                 status: try status.map { try Status.parse(raw: $0) } ?? .backlog,
-                assignee: try resolveAssignee(assignee))
+                assignee: try resolveAssignee(assignee),
+                origin: try resolveOrigin(origin))
             return try StoreEncoding.todoResult(result.value, note: result.note)
         }
     case .todoSet(let id, let title, let status, let assignee, let description):
@@ -179,6 +180,22 @@ func parseIndex(_ raw: String?) throws -> Int {
 /// unowned tickets, and so must not be mistaken for "me".
 func resolveAssignee(_ raw: String?) throws -> String? {
     guard raw == "self" else { return raw }
+    guard let name = ProcessInfo.processInfo.environment["TANDEM_AGENT"],
+          !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+        throw DomainError.agentNameUnset
+    }
+    return name
+}
+
+/// `--origin self` means the agent running this command, the same `$TANDEM_AGENT`
+/// lookup as `--assignee self`. An absent flag means the human: the app, the human's
+/// face, files as human, so the core's default is the human's truth — which is why the
+/// skill tells an agent that files a ticket to pass `self`, not to rely on the default
+/// (ADR 0020). Any other value passes straight through to the core, which owns the
+/// spelling rule.
+func resolveOrigin(_ raw: String?) throws -> String {
+    guard raw == "self" else { return raw ?? "human" }
     guard let name = ProcessInfo.processInfo.environment["TANDEM_AGENT"],
           !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else {

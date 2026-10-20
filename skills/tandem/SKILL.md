@@ -33,6 +33,7 @@ Six commands under `todo`; each section below is that command's contract. A todo
 | `archived` | true when the ticket is set aside — out of the default views, still in the store |
 | `description` | markdown body, or null; write it from stdin with `todo set --description -` |
 | `assignee` | `human`, an agent's name, or null for unowned |
+| `origin` | who filed it — `human` or an agent's name; written at add, never changed |
 | `section` | the **cycle lane**, or null for the default area; the wire keeps its v1 name |
 | `done` | derived from `status == "done"`; kept on the wire for older readers — read `status`, not this |
 | `link` | a bikeshed note path, or null; a human sets it in the app |
@@ -54,16 +55,18 @@ An empty result is a success: `{"todos":[]}`.
 
 ```
 $ tandem-cli todo list --status ready --assignee self
-{"todos":[{"archived":false,"assignee":"ui","completedAt":null,"createdAt":"2026-10-09T14:03:22Z","description":"## Why\n…","done":false,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"section":"Core","status":"ready","title":"Ship the board"}]}
+{"todos":[{"archived":false,"assignee":"ui","completedAt":null,"createdAt":"2026-10-09T14:03:22Z","description":"## Why\n…","done":false,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"origin":"ui","section":"Core","status":"ready","title":"Ship the board"}]}
 ```
 
-### `tandem-cli todo add --title <string> [--status <value>] [--assignee <name|self>] [--lane <name>]`
+### `tandem-cli todo add --title <string> [--status <value>] [--assignee <name|self>] [--lane <name>] [--origin <name|self>]`
 
 Add a ticket to the shared Tandem list (store: ~/.tandem/todos.json), which a human on this Mac shares with you through the Tandem app. The title is required, trimmed, and empty is rejected; duplicate titles are allowed. A title alone lands in `backlog`, unowned, on top of the list's default area. `--assignee self` claims it — `add` never assigns implicitly, because agents routinely file tickets *for* the human (`--assignee human`). A lane must already exist.
 
+`--origin` stamps who filed the ticket, and it is never changed after the add. When you file, pass `--origin self`: an omitted flag means `human`, which is what the app — the human's face — stamps, and a proposal of yours filed under the human's name is exactly the mix-up the field exists to end.
+
 ```
-$ tandem-cli todo add --title "Water the plants" --assignee self
-{"archived":false,"assignee":"ui","completedAt":null,"createdAt":"2026-10-17T09:12:00Z","description":null,"done":false,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"section":null,"status":"backlog","title":"Water the plants"}
+$ tandem-cli todo add --title "Water the plants" --assignee self --origin self
+{"archived":false,"assignee":"ui","completedAt":null,"createdAt":"2026-10-17T09:12:00Z","description":null,"done":false,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"origin":"ui","section":null,"status":"backlog","title":"Water the plants"}
 ```
 
 ### `tandem-cli todo set --id <string> [--title …] [--status …] [--assignee …] [--description …]`
@@ -86,7 +89,7 @@ The short path to `--status done`: idempotent — completing an already-done tic
 
 ```
 $ tandem-cli todo complete --id 550e8400-e29b-41d4-a716-446655440000
-{"archived":false,"assignee":null,"completedAt":"2026-10-17T09:14:37Z","createdAt":"2026-10-09T14:03:22Z","description":null,"done":true,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"section":null,"status":"done","title":"Water the plants"}
+{"archived":false,"assignee":null,"completedAt":"2026-10-17T09:14:37Z","createdAt":"2026-10-09T14:03:22Z","description":null,"done":true,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"origin":"ui","section":null,"status":"done","title":"Water the plants"}
 ```
 
 ### `tandem-cli todo archive`

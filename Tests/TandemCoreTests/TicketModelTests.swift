@@ -2,9 +2,10 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// The ticket model (ADR 0017): Status, Archived, description, assignee, and the legacy
-/// `done` mirror. Proved at the store's external behaviour — what an operation returns and
-/// what the file contains afterwards — never at internal mechanics.
+/// The ticket model (ADR 0017, origin ADR 0020): Status, Archived, description, assignee,
+/// origin, and the legacy `done` mirror. Proved at the store's external behaviour — what
+/// an operation returns and what the file contains afterwards — never at internal
+/// mechanics.
 @Suite("Ticket model")
 struct TicketModelTests {
 
@@ -100,6 +101,7 @@ struct TicketModelTests {
         #expect((todo["archived"] as? Bool) == false)
         #expect(todo["description"] is NSNull)
         #expect(todo["assignee"] is NSNull)
+        #expect((todo["origin"] as? String) == "human", "the filer is never null")
         #expect(todo["section"] is NSNull, "the lane is written under its v1 key")
         #expect(todo["lane"] == nil, "the code's word never reaches the file")
     }
@@ -204,6 +206,93 @@ struct TicketModelTests {
         let object = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
         #expect(object?["done"] as? Bool == true, "agents read done from the wire")
         #expect(object?["status"] as? String == "done")
+    }
+
+    // MARK: - origin
+
+    @Test("a ticket's origin round-trips through the store")
+    func originRoundTrips() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let added = try store.add("Filed by an agent", origin: "blue").value
+        #expect(added.origin == "blue")
+
+        // A fresh Store over the same directory reads the same filer.
+        let read = try #require(try Store(directory: dir).list(.all).value.first)
+        #expect(read.origin == "blue")
+    }
+
+    @Test("an absent origin reads as human, and the next write stamps it")
+    func originAbsentReadsHuman() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        // A file written before the field existed: the whole shape but no `origin` key.
+        try writeRaw(#"{"version":1,"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"predates the field","status":"backlog","archived":false,"description":null,"assignee":null,"section":null,"link":null,"createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#, to: store)
+
+        let old = try #require(try store.list(.all).value.first)
+        #expect(old.origin == "human", "absent reads as the filer every old ticket has")
+        #expect(try todoObject(store, titled: "predates the field")?["origin"] == nil,
+               "a read never writes: the file keeps its old shape")
+
+        // The next write stamps the filer on the pre-existing ticket — a reconciliation,
+        // not a recovery: no file is copied aside.
+        _ = try store.add("another")
+        #expect((try todoObject(store, titled: "predates the field")?["origin"] as? String) == "human")
+        #expect(preMigratorBackups(in: dir).isEmpty)
+    }
+
+    @Test("add stamps its origin, defaulting to human, with the assignee's spelling rules")
+    func addStampsOrigin() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        #expect(try store.add("default").value.origin == "human")
+        #expect(try store.add("empty", origin: "   ").value.origin == "human")
+        #expect(try store.add("reserved", origin: "  HUMAN ").value.origin == "human")
+        // An agent's name is stored as given, not lowercased.
+        #expect(try store.add("named", origin: " Blue Agent ").value.origin == "Blue Agent")
+    }
+
+    @Test("origin is written once, at add: set, move, place, complete and reopen leave it")
+    func originIsImmutable() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        _ = try store.addLane("Core")
+        let added = try store.add("Task", assignee: "core", origin: "blue").value
+
+        var after = try store.set(
+            added.id.uuidString,
+            title: .set("Renamed"),
+            status: .set(.inProgress),
+            assignee: .set("human"),
+            description: .set("Body"),
+            archived: .set(true)).value
+        #expect(after.origin == "blue", "set has no origin to change")
+
+        after = try store.move(added.id.uuidString, toLane: "Core", at: 0).value
+        #expect(after.origin == "blue")
+
+        after = try store.place(added.id.uuidString, lane: "Core", status: .done).value
+        #expect(after.origin == "blue")
+
+        #expect(try store.reopen(added.id.uuidString).value.origin == "blue")
+    }
+
+    @Test("the CLI wire carries origin, present and never null")
+    func wireCarriesOrigin() throws {
+        let filed = Todo(title: "filed", origin: "blue")
+        let human = Todo(title: "filed by a human")
+        for (todo, expected) in [(filed, "blue"), (human, "human")] {
+            let text = try StoreEncoding.todoResult(todo, note: nil)
+            let object = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
+            #expect(object?["origin"] as? String == expected)
+        }
     }
 
     @Test("completing writes status done, completedAt, and no legacy mirror")
@@ -394,6 +483,7 @@ struct TicketModelTests {
         let plain = try store.add("plain").value
         #expect(plain.status == .backlog)
         #expect(plain.assignee == nil)
+        #expect(plain.origin == "human")
         #expect(plain.archived == false)
         #expect(plain.done == false)
 

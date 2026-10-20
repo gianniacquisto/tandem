@@ -11,7 +11,7 @@ enum Command {
     case help
     case doctor
     case todoList(filter: String?, text: String?, status: String?, assignee: String?, lane: String?)
-    case todoAdd(title: String, status: String?, assignee: String?, lane: String?)
+    case todoAdd(title: String, status: String?, assignee: String?, lane: String?, origin: String?)
     case todoSet(
         id: String,
         title: String?,
@@ -75,15 +75,17 @@ private func parseTodo(_ args: [String]) throws -> Command {
             assignee: flags["--assignee"],
             lane: flags["--lane"])
     case "add":
-        try accept(flags, ["--title", "--status", "--assignee", "--lane"])
+        try accept(flags, ["--title", "--status", "--assignee", "--lane", "--origin"])
         // A missing `--title` is not a usage error: it is the empty title the
         // domain rejects (`emptyTitle`), exactly as the MCP server read an
-        // absent argument.
+        // absent argument. An absent `--origin` is `nil` (the core's `human`
+        // default), not the empty string: there is no "no filer" value to reject.
         return .todoAdd(
             title: flags["--title"] ?? "",
             status: flags["--status"],
             assignee: flags["--assignee"],
-            lane: flags["--lane"])
+            lane: flags["--lane"],
+            origin: flags["--origin"])
     case "set":
         try accept(flags, ["--id", "--title", "--status", "--assignee", "--description"])
         // Every field is optional: the ones not named are left alone, in one write.

@@ -52,6 +52,10 @@ _Avoid_: closed, deleted, cleared, hidden
 The named area a todo belongs to: the board's row and the list's grouping. Every todo sits in one lane, or in the unnamed default area, which stays first.
 _Avoid_: section, swimlane, epic, list (Trello's word)
 
+**Origin**:
+Who filed a ticket: `human`, or the name of the agent that filed it. Written once, at add, and never changed; a ticket that predates the field reads as `human`. A different question from the assignee, who is on it — a ticket an agent files *for* the human has both.
+_Avoid_: author, filer, creator
+
 **Filter**:
 Which todos are in view: `open` (the default), `done`, or `all` (archived tickets included). One term for two surfaces: the main window's segmented control and the CLI's `list --filter` argument. The app adds a fourth state only it needs — the archive itself, so an archived ticket can be found and brought back; the CLI has no fourth flag by decision, and reaches the archive with a query.
 _Avoid_: view, tab, scope, state

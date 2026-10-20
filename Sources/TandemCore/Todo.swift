@@ -4,8 +4,8 @@ import Foundation
 ///
 /// A todo carries the ticket shape — where it is in the workflow (`status`), whether it
 /// is set aside (`archived`), what it is about (`description`), who is on it (`assignee`),
-/// and which cycle lane it belongs to (`lane`) — plus what it always had: a title, a
-/// created time, and a completion time (ADR 0017).
+/// who filed it (`origin`), and which cycle lane it belongs to (`lane`) — plus what it
+/// always had: a title, a created time, and a completion time (ADR 0017, ADR 0020).
 ///
 /// **`done` is derived, not a field.** In memory it is `status == .done`. The store file
 /// no longer carries the legacy boolean — the migrator retired it once the build that
@@ -36,6 +36,11 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
     public var description: String?
     /// The human (`human`), or an agent's name. `nil` when nobody is on it.
     public var assignee: String?
+    /// Who filed the ticket: `human`, or the name of the agent that filed it. Written
+    /// once, at add, and never changed — `let`, so the type itself enforces the rule.
+    /// A ticket that predates the field has no key in the file and reads as `human`:
+    /// the human's own list was filed by the human (ADR 0020).
+    public let origin: String
     /// The cycle lane, or `nil` for the default (unnamed) area, which always renders
     /// first. Written as `section` on disk — the v1 key, which the migrator left in place.
     public var lane: String?
@@ -56,6 +61,7 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
         archived: Bool = false,
         description: String? = nil,
         assignee: String? = nil,
+        origin: String = "human",
         lane: String? = nil,
         link: String? = nil,
         createdAt: Date = .now,
@@ -67,6 +73,7 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
         self.archived = archived
         self.description = description
         self.assignee = assignee
+        self.origin = origin
         self.lane = lane
         self.link = link
         self.createdAt = createdAt
@@ -90,7 +97,7 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
     /// The on-disk keys. `lane` is spelled **`section`** on disk and on the wire: the
     /// stored shape is the migrator's business, not this change's (ADR 0017).
     private enum CodingKeys: String, CodingKey {
-        case id, title, done, status, archived, description, assignee, link, createdAt, completedAt
+        case id, title, done, status, archived, description, assignee, origin, link, createdAt, completedAt
         case lane = "section"
     }
 
@@ -119,6 +126,10 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
         self.archived = try c.decodeIfPresent(Bool.self, forKey: .archived) ?? false
         self.description = try c.decodeIfPresent(String.self, forKey: .description)
         self.assignee = try c.decodeIfPresent(String.self, forKey: .assignee)
+        // Additive to schema v1: a file written before the field existed has no key —
+        // as does a key explicitly written `null` — and both read as `human`, the
+        // filer every pre-existing ticket actually has (ADR 0020).
+        self.origin = try c.decodeIfPresent(String.self, forKey: .origin) ?? "human"
         self.lane = try c.decodeIfPresent(String.self, forKey: .lane)
         self.link = try c.decodeIfPresent(String.self, forKey: .link)
 
@@ -161,6 +172,10 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
         } else {
             try c.encodeNil(forKey: .assignee)
         }
+        // Unlike the other additive fields, origin is never `null`: a ticket's filer
+        // is always known, so the first write after the field exists stamps it on
+        // every ticket (ADR 0020).
+        try c.encode(origin, forKey: .origin)
         if let lane {
             try c.encode(lane, forKey: .lane)
         } else {

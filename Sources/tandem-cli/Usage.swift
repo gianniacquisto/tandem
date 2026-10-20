@@ -9,7 +9,7 @@ enum Usage {
       tandem-cli todo list [--filter open|done|all] [--status <value[,value]>]
                            [--assignee <name|self>] [--lane <name>] [--text <string>]
       tandem-cli todo add --title <string> [--status <value>] [--assignee <name|self>]
-                          [--lane <name>]
+                          [--lane <name>] [--origin <name|self>]
       tandem-cli todo set --id <id> [--title <string>] [--status <value>]
                          [--assignee <name|self>] [--description <string|->]
       tandem-cli todo move --id <id> [--lane <name>] [--index <number>]
@@ -25,6 +25,7 @@ enum Usage {
       status    backlog | refined | ready | in-progress | done
       filter    open (default) | done | all
       assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
+      origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it
       lane      a lane name, or "" for the default area
       index     0-based within the lane; omitted appends to it
     """

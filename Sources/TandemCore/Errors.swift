@@ -22,7 +22,7 @@ public enum DomainError: Error, Sendable, Equatable {
     case invalidArchived(String)
     /// `move` was given an index that is not a whole number.
     case invalidIndex(String)
-    /// `--assignee self` was used but the environment names no agent.
+    /// `--assignee self` or `--origin self` was used but the environment names no agent.
     case agentNameUnset
     /// A lane name was empty or whitespace-only.
     case emptyLaneName
@@ -49,7 +49,7 @@ public enum DomainError: Error, Sendable, Equatable {
         case .invalidIndex(let bad):
             return "index must be a whole number (got \"\(bad)\")."
         case .agentNameUnset:
-            return "Cannot resolve --assignee self: set TANDEM_AGENT to this agent's name, or pass --assignee <name>."
+            return "Cannot resolve self: set TANDEM_AGENT to this agent's name, or pass a name instead of self."
         case .emptyLaneName:
             return "Cycle lane name is empty. Provide a non-empty name and try again."
         case .duplicateLane(let name):

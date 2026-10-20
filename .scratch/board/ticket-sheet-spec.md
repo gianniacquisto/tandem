@@ -10,13 +10,13 @@ Every field of a ticket could be changed somewhere — title inline, stage by dr
 
 ## The Decisions
 
-1. **A ticket opens in a sheet: title, Status, lane, body, assignee (read-only).** One place to see what a ticket is and to change any of it. "Openable" means a gesture, not a menu item — the menu item is the fallback for discoverability.
+1. **A ticket opens in a sheet: title, Status, lane, body, assignee (read-only), origin (read-only).** One place to see what a ticket is and to change any of it. "Openable" means a gesture, not a menu item — the menu item is the fallback for discoverability.
 
 2. **Double-click opens — the whole ticket, title included.** One rule on every face: double-click a row or a tile, anywhere, and the ticket sheet opens. Inline rename stays available as the menu's **Rename** item (and, of course, as the sheet's title field); it is no longer bound to double-click, because the title is most of a row and most of a tile, and binding the common gesture to the rare one made "open" a small, hidden target. This reverses an earlier convenience deliberately.
 
 3. **Status and lane are settable here, not only by dragging.** The sheet is the keyboard path the board never had: a person on a narrow window, or one who does not want to drag, can move a ticket's stage and lane with two clicks. Status uses the same five values in workflow order; the lane list is every lane the face can draw, plus "Uncategorized".
 
-4. **Assignee is read-only.** Assignment is an agent's instruction (`--assignee`), and the inbox is where the human answers it. A GUI assignee picker would invite the human to push work onto agents, which is the opposite of the model's direction (ADR 0017, inbox spec).
+4. **Assignee is read-only.** Assignment is an agent's instruction (`--assignee`), and the inbox is where the human answers it. A GUI assignee picker would invite the human to push work onto agents, which is the opposite of the model's direction (ADR 0017, inbox spec). **Origin is read-only for the stronger reason** — it is stamped at add and never changed (ADR 0020) — so the sheet only shows the filer: "you filed", or the agent's name.
 
 5. **Save writes only what changed, in at most two operations.** Title, Status and body travel in one `set`; a changed lane is its own `move` because a lane change also decides the ticket's position in that lane. Opening a ticket, reading it, and pressing Save writes nothing. An empty title cannot be saved (the button is disabled) — the store would reject it anyway.
 
