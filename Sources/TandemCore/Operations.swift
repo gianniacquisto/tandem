@@ -411,6 +411,23 @@ extension Store {
         return OperationResult(todo, note: note)
     }
 
+    // MARK: - undo
+
+    /// `undo(offer)`: take a completion back. The ticket returns to **`backlog`** —
+    /// the only stage a reopen can land in, because completing it erased the stage it
+    /// came from (ADR 0017) — and `completedAt` is cleared.
+    ///
+    /// This is `reopen` under the name the interaction has: the undo of *a
+    /// completion*, not a general reopen. It is idempotent, like `reopen` — a
+    /// ticket that is no longer done is returned unchanged, so an undo that lands
+    /// after the ticket moved on does nothing rather than clobbering it. An
+    /// unknown id throws `DomainError.unknownID` carrying the full current open
+    /// list. GUI-only: the agent face has no undo (an agent's completion is
+    /// deliberate, and `reopen` is its way back).
+    public func undo(_ offer: CompletionUndo) throws -> OperationResult<Todo> {
+        try reopen(offer.id.uuidString)
+    }
+
     // MARK: - archiveDone
 
     /// `archiveDone()`: archives every done ticket in one write and returns how many it

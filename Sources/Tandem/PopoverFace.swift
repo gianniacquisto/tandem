@@ -45,6 +45,21 @@ struct PopoverFaceView: View {
 
             list
                 .padding(.top, 6)
+                // The undo toast, over the list: the popover's checkbox is the
+                // same one-click completion the main window's is, so it leaves the
+                // same offer behind — one click back from a mis-click.
+                .overlay(alignment: .bottom) {
+                    Group {
+                        if let offer = model.undoOffer {
+                            LigneToast(offer: offer, palette: palette) {
+                                withAnimation(Motion.toggle) { model.undoCompletion() }
+                            }
+                            .padding(.bottom, 6)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                    }
+                    .animation(Motion.toggle, value: model.undoOffer)
+                }
 
             Rectangle().fill(palette.sand).frame(height: Line.hairline)
                 .padding(.top, 8)
