@@ -138,6 +138,11 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
             // Informational (the contract): the document change itself
             // arrives via `dirty`, which autosaves — nothing to do here.
             break
+        case "send-to-todos":
+            // The editor's "send to todos" action: the text it would file
+            // (the selection, or the caret's checkbox line). The model files
+            // the ticket — the core owns what a ticket made of that text is.
+            model.sendToTodos(text: obj["text"] as? String ?? "")
         case "font-size":
             // The user's toolbar choice: the page already applied it, so
             // only persist it (as an integer) for the next launch.
@@ -199,6 +204,14 @@ final class EditorHost: NSObject, WKScriptMessageHandler, WKURLSchemeHandler,
     /// thing the human just asked for).
     func focusEditor() {
         send("focusEditor()", arguments: [:])
+    }
+
+    /// `requestTodoCandidate()` — ask the page for the text a "send to todos"
+    /// action would file (the selection, or the caret's checkbox line). The
+    /// page answers over the same `send-to-todos` message the ⌘⇧T shortcut
+    /// posts, so both triggers file the same ticket.
+    func requestTodoCandidate() {
+        send("requestTodoCandidate()", arguments: [:])
     }
 
     private func applyTheme() {

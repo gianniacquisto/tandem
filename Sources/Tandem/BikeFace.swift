@@ -173,6 +173,14 @@ struct BikeFaceView: View {
                     .foregroundStyle(palette.inkDim)
                     .transition(.opacity)
             }
+            // "Send to todos": the selection (or the caret's checkbox line)
+            // becomes a ticket in the todos list, linked to this note. The
+            // note itself is not modified. The shortcut is the editor's own
+            // (⌘⇧T), so it works where the selection is.
+            TextButton(title: "Send to todos", palette: palette) {
+                model.requestSendToTodos()
+            }
+            .help("Send the selection to the todos list (⌘⇧T)")
         }
         .padding(.horizontal, 16)
         .frame(height: 42)
