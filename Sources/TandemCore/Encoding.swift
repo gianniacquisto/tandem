@@ -50,6 +50,35 @@ public enum StoreEncoding {
         return text
     }
 
+    /// The `note stats` result: the memory-health readout as one JSON object —
+    /// `{"bikeshed": …, "projects": […], "totals": {…}}`, keys sorted like every
+    /// other result. Both queue-age timestamps are present as `null` when a
+    /// project has nothing pending or no curated notes, so the shape is fixed
+    /// and a reader never branches on a missing key. The shape is a contract —
+    /// the tandem skill documents it — so it is pinned here beside the others.
+    public static func bikeshedStatsResult(_ stats: BikeshedStats) throws -> String {
+        let projects: [Any] = stats.projects.map { project in
+            let row: [String: Any] = [
+                "project": project.project,
+                "curatedNotes": project.curatedNotes,
+                "rawPending": project.rawPending,
+                "rawArchived": project.rawArchived,
+                "oldestPending": project.oldestPending as Any? ?? NSNull(),
+                "lastConsolidated": project.lastConsolidated as Any? ?? NSNull(),
+            ]
+            return row
+        }
+        return try serialize([
+            "bikeshed": stats.bikeshed,
+            "projects": projects,
+            "totals": [
+                "curatedNotes": stats.totals.curatedNotes,
+                "rawPending": stats.totals.rawPending,
+                "rawArchived": stats.totals.rawArchived,
+            ],
+        ])
+    }
+
     // MARK: - Internals
 
     private static func todoArray(_ todos: [Todo]) throws -> [Any] {
