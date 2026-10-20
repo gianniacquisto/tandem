@@ -39,6 +39,7 @@ struct MainView: View {
     @Environment(TandemModel.self) private var model
     @Environment(BikeshedModel.self) private var bikeModel
     @Environment(SetupPresenter.self) private var setup
+    @Environment(SettingsPresenter.self) private var settings
     @Environment(\.openWindow) private var openWindow
     @Environment(\.colorScheme) private var colorScheme
 
@@ -73,6 +74,7 @@ struct MainView: View {
 
     var body: some View {
         @Bindable var setup = setup
+        @Bindable var settings = settings
         return VStack(spacing: 0) {
             header
             Rectangle().fill(palette.sand).frame(height: Line.hairline)
@@ -131,6 +133,9 @@ struct MainView: View {
                 bikeshedPath: bikeModel.bikeshed.directory.path,
                 onChooseBikeshed: { chooseBikeshed() },
                 onClose: { setup.isPresented = false })
+        }
+        .sheet(isPresented: $settings.isPresented) {
+            SettingsView(model: bikeModel)
         }
         .onAppear {
             // Let the menu bar item's "Open Tandem" focus (or reopen) this window.

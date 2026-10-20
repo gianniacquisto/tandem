@@ -12,6 +12,7 @@ struct TandemApp: App {
                 .environment(TandemModel.shared)
                 .environment(BikeshedModel.shared)
                 .environment(SetupPresenter.shared)
+                .environment(SettingsPresenter.shared)
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 1060, height: 680)
@@ -27,6 +28,11 @@ struct TandemApp: App {
                 Button("Setup…") {
                     SetupPresenter.shared.isPresented = true
                 }
+                // The app's settings surface (the reveal flag).
+                Button("Settings…") {
+                    SettingsPresenter.shared.isPresented = true
+                }
+                .keyboardShortcut(",", modifiers: .command)
             }
         }
     }

@@ -2,12 +2,12 @@ import Foundation
 import Darwin
 
 /// The persisted, human-chosen settings Tandem keeps beside its other state:
-/// the bikeshed and the first-run setup flag, in
-/// `<TandemHome.directory>/settings.json` (ADR 0011). One tiny
-/// `{"bikeshedPath": "<absolute path>", "setupComplete": true}` record,
-/// deliberately separate from the store schema and the bikeshed itself — a
-/// settings file is not domain data, and a new setting is one more key, not a
-/// schema version bump.
+/// the bikeshed, the first-run setup flag, and whether the bikeshed's hidden
+/// layer is revealed, in `<TandemHome.directory>/settings.json` (ADR 0011). One
+/// tiny `{"bikeshedPath": "<absolute path>", "setupComplete": true,
+/// "showHiddenFiles": false}` record, deliberately separate from the store
+/// schema and the bikeshed itself — a settings file is not domain data, and a
+/// new setting is one more key, not a schema version bump.
 ///
 /// A key is **absent when it was never set**, which is the default state:
 /// `chosenBikeshed()` returning `nil` means "wherever the default is"
@@ -28,6 +28,11 @@ public enum TandemSettings {
     /// The key inside `settings.json` holding the lane new tickets are filed into: the
     /// human's last choice, cached so a session of filing does not repeat it.
     private static let defaultLaneKey = "defaultLane"
+    /// The key inside `settings.json` holding whether the bikeshed's hidden layer —
+    /// the capture saddlebag (`.raw/`) and the consolidation archive (`.raw/.done/`)
+    /// — is revealed in the tree. Off by default: the curated layer is the
+    /// reading surface, and the hidden layer is revealed only on request.
+    private static let showHiddenFilesKey = "showHiddenFiles"
     /// The settings file's name, under `TandemHome.directory`.
     private static let fileName = "settings.json"
 
@@ -73,6 +78,21 @@ public enum TandemSettings {
         try setDefaultLane(lane, in: TandemHome.directory)
     }
 
+    /// Whether the bikeshed tree reveals the hidden layer — the capture
+    /// saddlebag (`projects/<project>/.raw/`) and the consolidation archive
+    /// (`projects/<project>/.raw/.done/`). Read from the real
+    /// `TandemHome.directory`; `false` when the flag was never written (the
+    /// default: the curated layer is the reading surface).
+    public static func showHiddenFiles() -> Bool {
+        showHiddenFiles(in: TandemHome.directory)
+    }
+
+    /// Record whether the hidden layer is revealed, writing `settings.json`
+    /// atomically under the real `TandemHome.directory`.
+    public static func setShowHiddenFiles(_ shown: Bool) throws {
+        try setShowHiddenFiles(shown, in: TandemHome.directory)
+    }
+
     /// The testable seam: `chosenBikeshed()` against an explicit home directory,
     /// so tests never read or write the process's real home.
     static func chosenBikeshed(in home: URL) -> URL? {
@@ -105,6 +125,21 @@ public enum TandemSettings {
     /// The testable seam: `setupComplete()` against an explicit home directory.
     static func setupComplete(in home: URL) -> Bool {
         object(in: home)[setupKey] as? Bool ?? false
+    }
+
+    /// The testable seam: `showHiddenFiles()` against an explicit home directory.
+    /// The key absent means the default — the hidden layer stays hidden.
+    static func showHiddenFiles(in home: URL) -> Bool {
+        object(in: home)[showHiddenFilesKey] as? Bool ?? false
+    }
+
+    /// The testable seam: `setShowHiddenFiles(_:)` against an explicit home
+    /// directory. Merges the key onto the existing record (the bikeshed choice
+    /// and the setup flag are preserved), then writes atomically.
+    static func setShowHiddenFiles(_ shown: Bool, in home: URL) throws {
+        var settings = object(in: home)
+        settings[showHiddenFilesKey] = shown
+        try write(settings, in: home)
     }
 
     /// The testable seam: `setChosenBikeshed(_:)` against an explicit home

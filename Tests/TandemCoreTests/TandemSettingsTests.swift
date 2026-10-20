@@ -181,4 +181,59 @@ struct TandemSettingsTests {
         try TandemSettings.setDefaultLane("   ", in: home)
         #expect(TandemSettings.defaultLane(in: home) == nil)
     }
+
+    // MARK: - The hidden layer (the reveal flag)
+
+    @Test("no settings file → the hidden layer stays hidden (the default)")
+    func showHiddenFilesDefaultIsFalse() {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        #expect(TandemSettings.showHiddenFiles(in: home) == false)
+    }
+
+    @Test("the reveal flag round-trips")
+    func showHiddenFilesRoundTrip() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setShowHiddenFiles(true, in: home)
+        #expect(TandemSettings.showHiddenFiles(in: home))
+        try TandemSettings.setShowHiddenFiles(false, in: home)
+        #expect(TandemSettings.showHiddenFiles(in: home) == false)
+    }
+
+    @Test("the on-disk file is valid JSON holding the showHiddenFiles key")
+    func showHiddenFilesFileShape() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setShowHiddenFiles(true, in: home)
+
+        let data = try Data(contentsOf: settingsFile(in: home))
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(json?["showHiddenFiles"] as? Bool == true)
+    }
+
+    @Test("the reveal flag coexists with the other settings")
+    func showHiddenFilesKeepsOtherSettings() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setChosenBikeshed(home.appendingPathComponent("Notes"), in: home)
+        try TandemSettings.setSetupComplete(true, in: home)
+        try TandemSettings.setDefaultLane("Board", in: home)
+        try TandemSettings.setShowHiddenFiles(true, in: home)
+
+        #expect(TandemSettings.chosenBikeshed(in: home)
+                == home.appendingPathComponent("Notes").standardizedFileURL)
+        #expect(TandemSettings.setupComplete(in: home))
+        #expect(TandemSettings.defaultLane(in: home) == "Board")
+        #expect(TandemSettings.showHiddenFiles(in: home))
+    }
+
+    @Test("a corrupt settings file reads as hidden, never a crash")
+    func showHiddenFilesCorruptIsFalse() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try Data("not json at all".utf8).write(to: settingsFile(in: home))
+        #expect(TandemSettings.showHiddenFiles(in: home) == false)
+    }
 }

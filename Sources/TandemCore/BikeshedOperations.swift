@@ -16,9 +16,10 @@ extension Bikeshed {
     // MARK: - list
 
     /// `list()`: the bikeshed tree — nested folders + `.md` notes, folders
-    /// first, alphabetical within each level. Hidden files, non-`.md`
-    /// attachments, and the lockfile (outside the bikeshed) are excluded. A
-    /// missing bikeshed folder is an empty tree, never an error. Lock-free.
+    /// first, alphabetical within each level. Hidden files are excluded unless
+    /// the human revealed them (`showsHiddenFiles`); non-`.md` attachments, and
+    /// the lockfile (outside the bikeshed), are excluded always. A missing
+    /// bikeshed folder is an empty tree, never an error. Lock-free.
     public func list() throws -> OperationResult<[BikeshedNode]> {
         return OperationResult(tree())
     }

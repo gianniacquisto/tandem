@@ -33,6 +33,10 @@ final class BikeshedModel {
 
     /// The bikeshed tree (folders first, alphabetical; `.md` notes only).
     private(set) var tree: [BikeshedNode] = []
+    /// Whether the tree reveals the hidden layer — the capture saddlebag
+    /// (`.raw/`) and the consolidation archive (`.raw/.done/`). Off by default:
+    /// the curated layer is the reading surface. Persisted in `settings.json`.
+    private(set) var showsHiddenFiles: Bool
     /// The note open in the editor (bikeshed-root-relative path), if any.
     private(set) var openPath: String?
     /// Folders currently expanded in the tree.
@@ -91,6 +95,7 @@ final class BikeshedModel {
     private init(bikeshed: Bikeshed = Bikeshed(), todos: TandemModel = .shared) {
         self.bikeshed = bikeshed
         self.todos = todos
+        self.showsHiddenFiles = bikeshed.showsHiddenFiles
         self.watcher = BikeshedWatcher(directory: bikeshed.directory)
         // The editor host owns the WKWebView and the bridge plumbing (the
         // contract). It is built before `self` is usable (Swift forbids
@@ -148,7 +153,8 @@ final class BikeshedModel {
         let home = TandemHome.directory
         bikeshed = Bikeshed(
             directory: url,
-            lockURL: home.appendingPathComponent("bikeshed.lock"))
+            lockURL: home.appendingPathComponent("bikeshed.lock"),
+            showsHiddenFiles: showsHiddenFiles)
         expandedFolders = []
         closeNote(silent: false)
         watcher = BikeshedWatcher(directory: bikeshed.directory)
@@ -160,6 +166,25 @@ final class BikeshedModel {
     }
 
     // MARK: - Tree / derived state
+
+    /// Reveal (or hide) the bikeshed's hidden layer — the capture saddlebag
+    /// and the consolidation archive — in the tree. The choice is persisted
+    /// like every other setting; the tree is redrawn live. The curated graph
+    /// never changes: the hidden layer stays out of search, backlinks, and
+    /// wikilink resolution in both states.
+    func setShowsHiddenFiles(_ shown: Bool) {
+        guard shown != showsHiddenFiles else { return }
+        do {
+            try TandemSettings.setShowHiddenFiles(shown)
+            showsHiddenFiles = shown
+            bikeshed.showsHiddenFiles = shown
+            reloadTree()
+            editor.sendNoteIndex(paths: notePaths())
+            lastError = nil
+        } catch {
+            apply(error: error)
+        }
+    }
 
     /// Re-reads the bikeshed tree lock-free (core read paths can never observe a
     /// partial file) and refreshes the derived path index. Called at startup,
@@ -185,13 +210,17 @@ final class BikeshedModel {
         }
     }
 
-    /// The bikeshed's note paths (bikeshed-root-relative, case as on disk) — the
-    /// `setNoteIndex` payload. Derived from the tree (notes only; attachments
-    /// are never in it — notes only are linkable).
+    /// The bikeshed's linkable note paths (bikeshed-root-relative, case as on
+    /// disk) — the `setNoteIndex` payload. Derived from the tree, minus the
+    /// hidden layer: a revealed capture is drawn and openable, but it is
+    /// never a link target and never a search hit (the core's rule — the
+    /// curated graph is the same in both states).
     func notePaths() -> [String] {
-        Array(pathIndex.values).sorted {
-            ($0.lowercased(), $0) < ($1.lowercased(), $1)
-        }
+        Array(pathIndex.values)
+            .filter { !Bikeshed.isHiddenPath($0) }
+            .sorted {
+                ($0.lowercased(), $0) < ($1.lowercased(), $1)
+            }
     }
 
     func toggleFolder(_ path: String) {
