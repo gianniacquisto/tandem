@@ -64,6 +64,17 @@ struct MainView: View {
                 todosFace
                     .frame(maxWidth: 540)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            } else if tab == .board {
+                BoardFace(model: model,
+                          search: $search,
+                          palette: palette,
+                          focus: $searchFocused,
+                          onOpenLink: openLinkedNote)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .modifier(TodosShortcuts(search: $search,
+                                             focusSearch: $searchFocused,
+                                             hasBanner: false,
+                                             dismissBanners: {}))
             } else {
                 BikeFaceView(model: bikeModel)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -196,19 +207,15 @@ struct MainView: View {
     /// The list grouped for display. With no lanes declared this is a single
     /// unnamed group (the flat list, unchanged); otherwise the default area comes
     /// first, then the declared lanes, then any lane that only appears on a
-    /// todo (a hand edit) so nothing is hidden. Order within a group is the stored
-    /// order.
+    /// todo (a hand edit) so nothing is hidden. The key order is the board's
+    /// (`TodoBoard.orderedKeys`) — both faces group a lane the same way; the order
+    /// *within* a group stays the stored order, which is what a list shows.
     private var groups: [TodoGroup] {
         let visible = visibleTodos
         guard !model.lanes.isEmpty else {
             return [TodoGroup(key: nil, todos: visible)]
         }
-        var keys: [String?] = [nil]
-        for name in model.lanes where !keys.contains(name) { keys.append(name) }
-        for todo in visible where todo.lane != nil && !keys.contains(todo.lane) {
-            keys.append(todo.lane)
-        }
-        return keys.map { key in
+        return TodoBoard.orderedKeys(declared: model.lanes, todos: visible).map { key in
             TodoGroup(key: key, todos: visible.filter { $0.lane == key })
         }
     }

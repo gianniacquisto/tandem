@@ -14,6 +14,7 @@ import TandemCore
 
 enum MainTab: String, CaseIterable, Identifiable {
     case todos = "Todos"
+    case board = "Board"
     case bikeshed = "Bikeshed"
     var id: String { rawValue }
 }
@@ -42,7 +43,7 @@ struct BikeTabControl: View {
                 .buttonStyle(.plain)
             }
         }
-        .frame(width: 190, height: Space.control)
+        .frame(width: 260, height: Space.control)
         .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.paper))
         .clipShape(RoundedRectangle(cornerRadius: Radius.control))
         .overlay(RoundedRectangle(cornerRadius: Radius.control)

@@ -11,8 +11,12 @@ The macOS todo app, usable by both humans and agents on the same machine.
 _Avoid_: "the app", "the todo app" (when ambiguous)
 
 **Main window**:
-Tandem's desktop face: the full todo list for browsing, adding, and editing.
+Tandem's desktop face: the full todo list and the board for browsing, adding, and editing, beside the bikeshed.
 _Avoid_: panel, dashboard, view
+
+**Board**:
+The main window's ticket view: Status columns across, Cycle lanes down, a ticket drawn in the cell where its Status and lane meet. A view of the same todos, not a fourth axis — the list and the board differ in layout, never in data.
+_Avoid_: kanban board, swimlane view, board tab (when the view is meant)
 
 **Menu bar item**:
 Tandem's presence in the macOS menu bar (top bar): quick glance and quick action on todos.

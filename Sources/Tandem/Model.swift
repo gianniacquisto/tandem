@@ -125,6 +125,18 @@ final class TandemModel {
         run { try self.store.update(id, title: title) }
     }
 
+    /// Moves a ticket to a Status — the board's column move and the card menu's stage
+    /// change. One write; the store stamps `completedAt` when the stage is done.
+    func setStatus(_ id: String, to status: Status) {
+        run { try self.store.set(id, status: .set(status)) }
+    }
+
+    /// The board's drag: lane and Status in one write, at a 0-based index within the lane
+    /// (`Int.max` appends). Two writes would let a drop half-land.
+    func place(_ id: String, lane: String?, status: Status, at index: Int = .max) {
+        run { try self.store.place(id, lane: lane, status: status, at: index) }
+    }
+
     /// Points a todo at a Bikeshed note (bikeshed-root-relative path), or clears the link
     /// with `nil`. GUI-only — no CLI verb; the unknown-id error surfaces verbatim.
     func setLink(_ id: String, to link: String?) {

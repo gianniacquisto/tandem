@@ -25,6 +25,7 @@ Settled by grilling, 2026-10-19. The model is decided (this map); the view, the 
 - **One query in the core** — filtering on text, assignee, status, cycle lane, archived is a single predicate parsed in `TandemCore`, so the GUI's filter box and the CLI's flags cannot diverge (the "drag arithmetic lives in the core" rule). `--filter open|done|all` survives as sugar; it is a shipped contract in `skills/tandem/SKILL.md`.
 - **A migrator, gated on the install** — it retires the `done` mirror and may rename the stored `section` key to `lane`. Its precondition is that no binary older than this change can read the store, which is a reachability question, not a code one.
 - **`assignee` stays a plain string** — the persona registry that would define agent identities is pinned below.
+- **The board sits beside the list, as a third tab** (2026-10-20) — columns are the five Statuses in workflow order, rows are the Cycle lanes with empty lanes drawn as drop targets, a drop is one write (`Store.place`), Done draws and Archived does not, and the grouping lives in the core (`TodoBoard`) so the list and the board cannot disagree about a lane. Capture and lane chrome stay on the list. The decisions and their reversal costs are in `.scratch/board/board-spec.md`.
 
 ## Tickets
 
@@ -40,6 +41,9 @@ Chart these here; the live list is the board. (Order is not a sequence — most 
 8. **The migrator** — retires the `done` mirror (and the `section` key, if it moves), gated on the install.
 9. **Cycle lane selection** — a cached default lane for new tickets (the standing todo 34150D95).
 10. **PINNED — assignee identity and personas** — `agent.md`-defined specialists ("UI", "core", "CLI"), each with memory under its own part of the bikeshed, the human as the escalation target. Needs its own wayfinder: it touches the memory protocol, the CLI, and the app. `assignee` is a string until then.
+11. **Archived is reachable in the GUI** — the archived view (the list is the natural home, as an "Archived" state beside Open/Done/All) and the way back: unarchive a ticket. The board excludes archived by decision, so without this an archived ticket has no face at all. `Store.set(id, archived:)` already exists; this is the view.
+
+Built so far: **1, 2, 3, 7** (PR #38) and **4** (the board). The live list is still the board.
 
 ## Out of scope
 
