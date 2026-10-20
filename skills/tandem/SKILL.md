@@ -153,7 +153,7 @@ Every agent session files one ticket for itself, so the board shows what is runn
 
 ## Notes
 
-The bikeshed (`~/.tandem/bikeshed/`) is a plain folder of `.md` files, and the file itself is the interface. Create, edit, and delete curated notes with your own file tools; the CLI writes no note content. Three CLI verbs act on notes: `rename`, the one rename path; `capture`, which files a capture; and `stats`, the read-only memory-health readout.
+The bikeshed (`~/.tandem/bikeshed/`) is a plain folder of `.md` files, and the file itself is the interface. Create, edit, and delete curated notes with your own file tools; the CLI writes no note content. Four CLI verbs act on notes: `rename`, the one rename path; `capture`, which files a capture; `stats`, the read-only memory-health readout; and `links`, the read-only link-graph readout.
 
 ### `tandem-cli note rename --from <path> --to <path>`
 
@@ -200,6 +200,30 @@ Report whether memory is draining: one JSON object, read-only and lock-free (it 
 - `totals` — the sums across every reported project.
 
 A pending count that stays high, or an `oldestPending` far behind, is the queue not draining; a `lastConsolidated` that stopped moving is the curated layer going stale. Both are signals to hand the saddlebag to a consolidation pass.
+
+### `tandem-cli note links`
+
+Report the bikeshed's link graph: the wikilinks that resolve to nothing, and the notes nothing links to. Read-only and lock-free (it writes nothing and takes no lock), one JSON object, no flags.
+
+```json
+{"broken":[{"line":33,"link":"projects/Beta","note":"projects/tandem/Bikeshed.md"}],"counts":{"broken":1,"links":137,"notes":14,"orphans":0},"orphans":["topics/Loose.md"]}
+```
+
+- `broken` — one row per wikilink that resolves to no note: `note` (the note holding it), `link` (the target as written — no `#fragment`, no `|alias`), `line` (the 1-based line number in that note).
+- `orphans` — the paths of the notes with no incoming wikilink.
+- `counts` — `notes` scanned, `links` found, and how many are broken and orphaned.
+
+The rules:
+
+- A link resolves case-insensitively by name — bare `[[Name]]` against the note's basename, qualified `[[folder/Note]]` against its path, with or without a trailing `.md`. A `#fragment` and a `|alias` change the display, never the target.
+- **A duplicated basename is a broken link**, not a silent tie-break: the report lists it like any other.
+- A `[[…]]` inside a code span or a fenced block is literal text, not a link — it is never reported.
+- The hidden saddlebag (`.raw/`) stays out of the graph even when the app reveals it in the tree — a capture's unresolved links are never reported, and a capture is never an orphan.
+- **Orphans exclude the entry points**: `Index.md` at the bikeshed root, and a project's anchor note (`projects/<project>/<project>.md`). Every other note with no incoming link is reported — including a project note whose `Index` line has gone stale.
+
+The same report is on screen: the app's bikeshed sidebar has a **Health** panel listing the same broken links and orphan notes, each clickable through to the note. The command and the panel are the same core call, so they never disagree.
+
+Nothing is repaired for you: a broken link may be an intention, not a mistake. Fix it by editing the note (or by renaming through `note rename`, which rewrites the links that resolve to the renamed note).
 
 ## Setup check
 

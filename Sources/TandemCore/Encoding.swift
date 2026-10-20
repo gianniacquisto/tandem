@@ -113,6 +113,33 @@ public enum StoreEncoding {
         ])
     }
 
+    /// The `note links` result: the bikeshed's link-graph health as one JSON
+    /// object — `{"broken": […], "orphans": […], "counts": {…}}`, keys sorted
+    /// like every other result. `broken` rows carry the holding note, the
+    /// target as written, and the line number; `orphans` is a list of note
+    /// paths. The shape is a contract — the tandem skill documents it — so it
+    /// is pinned here beside the others.
+    public static func bikeshedHealthResult(_ health: BikeshedHealth) throws -> String {
+        let broken: [Any] = health.broken.map { link in
+            let row: [String: Any] = [
+                "note": link.note,
+                "link": link.link,
+                "line": link.line,
+            ]
+            return row
+        }
+        return try serialize([
+            "broken": broken,
+            "orphans": health.orphans,
+            "counts": [
+                "notes": health.counts.notes,
+                "links": health.counts.links,
+                "broken": health.counts.broken,
+                "orphans": health.counts.orphans,
+            ],
+        ])
+    }
+
     // MARK: - Internals
 
     private static func todoArray(_ todos: [Todo]) throws -> [Any] {

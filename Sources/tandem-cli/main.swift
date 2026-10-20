@@ -14,7 +14,7 @@ import TandemCore
 // semantics (`list`, `TodoQuery.parse`, `add`, `set`, `move`, `complete`,
 // `archiveDone`, `append(ticketID:author:body:)`, `list(ticketID:)`,
 // `addLane`, `renameLane`, `deleteLane`, `rename`, `capture`,
-// `stats`) and the encoding (`StoreEncoding`,
+// `stats`, `health`) and the encoding (`StoreEncoding`,
 // `tandemErrorText`) stay in TandemCore, which the single test seam
 // (`TandemCoreTests`) covers. The two things that belong to a process rather
 // than to the domain live here: stdin and the environment.
@@ -153,6 +153,11 @@ func dispatch(_ args: [String]) -> Int32 {
         return run {
             let result = try Bikeshed().stats(project: project)
             return try StoreEncoding.bikeshedStatsResult(result.value)
+        }
+    case .noteLinks:
+        return run {
+            let result = try Bikeshed().health()
+            return try StoreEncoding.bikeshedHealthResult(result.value)
         }
     }
 }

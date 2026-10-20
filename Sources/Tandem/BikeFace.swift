@@ -503,6 +503,12 @@ struct BikeTreeView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // The Health panel (the link-graph report) sits under the tree:
+            // the broken wikilinks and the orphan notes, clickable through
+            // to the note that holds them.
+            Rectangle().fill(palette.sand).frame(height: Line.hairline)
+            BikeHealthPanel(model: model, palette: palette)
         }
     }
 
@@ -749,5 +755,151 @@ private struct BikeDragPreview: View {
             .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
             .overlay(RoundedRectangle(cornerRadius: Radius.control)
                 .strokeBorder(palette.line, lineWidth: Line.hairline))
+    }
+}
+
+// MARK: - Health panel (the link-graph report)
+
+// The Health panel: what the bikeshed's links look like — the wikilinks that
+// resolve to nothing, and the notes nothing links to. It reads the same core
+// call the CLI's `note links` makes (`Bikeshed.health()`), so the panel and
+// the command always report the same set.
+//
+// A row is clickable: it opens the note that holds the broken link (the place
+// the fix goes) or the orphan note itself.
+
+struct BikeHealthPanel: View {
+    var model: BikeshedModel
+    var palette: Palette
+    @State private var collapsed = false
+
+    private var health: BikeshedHealth { model.health }
+    private var issueCount: Int { health.counts.broken + health.counts.orphans }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: issueCount == 0 ? "checkmark.seal" : "exclamationmark.triangle")
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundStyle(issueCount == 0 ? palette.inkDim : palette.ember)
+                Text("Health")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(palette.inkDim)
+                Text(summary)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(palette.inkDim)
+                    .monospacedDigit()
+                Spacer()
+                Button {
+                    withAnimation(Motion.toggle) { collapsed.toggle() }
+                } label: {
+                    Image(systemName: collapsed ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(palette.inkDim)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Broken links and orphan notes")
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 28)
+
+            if !collapsed {
+                Rectangle().fill(palette.sand).frame(height: Line.hairline)
+                rows
+            }
+        }
+    }
+
+    /// The header's count: what is wrong, or "all clear".
+    private var summary: String {
+        if issueCount == 0 { return "all clear" }
+        var parts: [String] = []
+        if health.counts.broken > 0 { parts.append("\(health.counts.broken) broken") }
+        if health.counts.orphans > 0 { parts.append("\(health.counts.orphans) orphan") }
+        return parts.joined(separator: " · ")
+    }
+
+    private var rows: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if issueCount == 0 {
+                    Text("No broken links, no orphan notes.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(palette.inkDim)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                }
+                ForEach(health.broken, id: \.self) { link in
+                    brokenRow(link)
+                }
+                ForEach(health.orphans, id: \.self) { path in
+                    orphanRow(path)
+                }
+            }
+        }
+        .frame(maxHeight: 132)
+    }
+
+    /// A broken link: the note that holds it, the target that resolves to
+    /// nothing, and the line it sits on.
+    private func brokenRow(_ link: BrokenLink) -> some View {
+        Button {
+            model.open(link.note)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "link.badge.plus")
+                    .font(.system(size: 10))
+                    .foregroundStyle(palette.ember)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(BikeshedPath.name(of: link.note))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(palette.ink)
+                        .lineLimit(1)
+                    Text("→ \(link.link) · line \(link.line)")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundStyle(palette.inkDim)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Open \(link.note)")
+    }
+
+    /// An orphan note: nothing links to it.
+    private func orphanRow(_ path: String) -> some View {
+        Button {
+            model.open(path)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 10))
+                    .foregroundStyle(palette.inkDim)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(BikeshedPath.name(of: path))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(palette.ink)
+                        .lineLimit(1)
+                    Text("nothing links here")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundStyle(palette.inkDim)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Open \(path)")
     }
 }

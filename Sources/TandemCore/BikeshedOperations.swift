@@ -443,13 +443,18 @@ private struct NoteIndex {
     }
 }
 
-private extension Bikeshed {
+// The wikilink scanner lives here, and the vault-health report
+// (`BikeshedHealth.swift`) uses the same two internal helpers — the scan
+// (`linkOccurrences`) and the line offsets — so the health report and the
+// rename-rewrite can never drift on what counts as a link. Everything else in
+// this extension is private to the file.
+extension Bikeshed {
 
     /// The link-rewrite pass over the whole bikeshed: in every note, every
     /// wikilink that resolves to a moved note is rewritten to its new
     /// canonical target. Per-file atomic, and it runs *before* the move —
     /// resolution is against the pre-move file set.
-    func applyLinkRewrite(to notes: [String], mapping: [String: String]) throws {
+    private func applyLinkRewrite(to notes: [String], mapping: [String: String]) throws {
         guard !mapping.isEmpty else { return }
         for notePath in notes {
             guard let content = try? readNote(notePath),
@@ -466,7 +471,7 @@ private extension Bikeshed {
     /// The components of a destination folder path, checked for path hygiene
     /// (no empty, `.` or `..` component). The bikeshed root is the empty
     /// path.
-    static func folderComponents(_ path: String) throws -> [String] {
+    private static func folderComponents(_ path: String) throws -> [String] {
         guard !path.isEmpty else { return [] }
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
             .map(String.init)
@@ -479,7 +484,7 @@ private extension Bikeshed {
 
     /// True when `url` is `ancestor` itself or sits inside it — a folder
     /// moved into its own subtree would make the tree cyclic.
-    static func isDescendant(_ url: URL, of ancestor: URL) -> Bool {
+    private static func isDescendant(_ url: URL, of ancestor: URL) -> Bool {
         let child = url.standardizedFileURL.path
         let parent = ancestor.standardizedFileURL.path
         return child == parent || child.hasPrefix(parent + "/")
@@ -511,7 +516,7 @@ private extension Bikeshed {
     /// exemption set. Ranges come from the CommonMark parse
     /// (`CodeBlock` / `InlineCode` `.range`), converted to flat string
     /// indices via per-line byte starts.
-    static func codeRanges(in text: String) -> [Range<String.Index>] {
+    private static func codeRanges(in text: String) -> [Range<String.Index>] {
         let lineStartBytes = lineStartByteOffsets(of: text)
         var ranges: [Range<String.Index>] = []
         func walk(_ node: Markup) {
@@ -538,7 +543,7 @@ private extension Bikeshed {
 
     /// Convert a source range (1-based line + 1-based UTF-8 byte column) to a
     /// flat `String.Index` range. `nil` if the location is out of range.
-    static func flatRange(
+    private static func flatRange(
         _ source: SourceRange,
         lineStartBytes: [Int],
         text: String
@@ -561,7 +566,7 @@ private extension Bikeshed {
     /// closes a `[[`; a newline (or end of text) before the close leaves the
     /// `[[` as literal text; a `[[` immediately preceded by `!` (embed) is
     /// literal text. Returns tokens in document order.
-    static func wikilinkTokens(in text: String) -> [WikilinkToken] {
+    private static func wikilinkTokens(in text: String) -> [WikilinkToken] {
         var tokens: [WikilinkToken] = []
         var i = text.startIndex
         while i < text.endIndex {
@@ -610,7 +615,7 @@ private extension Bikeshed {
     /// The display text for a body search hit: the slice of `text` around
     /// the first match (±40 chars, clamped at the edges), whitespace
     /// collapsed to single spaces, ellipsised where the slice cut the text.
-    static func snippet(around match: Range<String.Index>, in text: String) -> String {
+    private static func snippet(around match: Range<String.Index>, in text: String) -> String {
         let context = 40
         let start = text.index(
             match.lowerBound, offsetBy: -context, limitedBy: text.startIndex) ?? text.startIndex
@@ -624,7 +629,7 @@ private extension Bikeshed {
     }
 
     /// The line of `text` containing `index` (without its newline).
-    static func line(containing index: String.Index, in text: String) -> String {
+    private static func line(containing index: String.Index, in text: String) -> String {
         let start = text[text.startIndex..<index]
             .lastIndex(of: "\n")
             .map { text.index(after: $0) } ?? text.startIndex
@@ -637,7 +642,7 @@ private extension Bikeshed {
     /// post-move file set: the bare basename (`.md` off, on-disk case)
     /// when that basename is unique there, the bikeshed-root-relative path
     /// (`.md` off) when it is not.
-    static func canonicalLinkTarget(for newPath: String, in postMoveNotes: Set<String>) -> String {
+    private static func canonicalLinkTarget(for newPath: String, in postMoveNotes: Set<String>) -> String {
         var bare = (newPath as NSString).lastPathComponent
         if bare.lowercased().hasSuffix(".md") { bare.removeLast(3) }
         let bareLower = bare.lowercased()
@@ -659,7 +664,7 @@ private extension Bikeshed {
     /// frontmatter block are skipped (frontmatter stays opaque, ADR 0004);
     /// the scanner already exempts code, embeds, and unclosed tokens. `nil`
     /// when nothing resolves to a moved note.
-    static func rewriteLinks(
+    private static func rewriteLinks(
         in text: String,
         against notes: [String],
         mapping: [String: String]
@@ -688,7 +693,7 @@ private extension Bikeshed {
     /// The index just past a leading, properly terminated `---` frontmatter
     /// block, or `nil` (no frontmatter, or unterminated — a bare `---`
     /// thematic break is not frontmatter).
-    static func frontmatterEnd(in text: String) -> String.Index? {
+    private static func frontmatterEnd(in text: String) -> String.Index? {
         guard let firstNewline = text.firstIndex(of: "\n"),
               isFrontmatterDelimiter(text[text.startIndex..<firstNewline])
         else { return nil }
