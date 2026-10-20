@@ -16,6 +16,22 @@ import Foundation
 /// and callers strip it first.
 public enum BikeshedPath {
 
+    /// The note's name — its file name without the `.md` extension. A note is any
+    /// file ending `.md` (case-insensitively), so the extension is dropped either
+    /// way.
+    public static func name(of path: String) -> String {
+        var name = path.split(separator: "/").last.map(String.init) ?? path
+        if name.lowercased().hasSuffix(".md") { name = String(name.dropLast(3)) }
+        return name
+    }
+
+    /// The note's folder — the path without its last component, or `root` for a note
+    /// at the bikeshed's top.
+    public static func folder(of path: String) -> String {
+        if let slash = path.lastIndex(of: "/") { return String(path[..<slash]) }
+        return "root"
+    }
+
     /// The bikeshed-root-relative `path` as a file URL under `root`, or `nil` for
     /// a bikeshed escape (see the type's documentation). `root` is standardized so
     /// the result is stable regardless of a trailing slash or redundant

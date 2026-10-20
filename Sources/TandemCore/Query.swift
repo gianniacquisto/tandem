@@ -100,16 +100,14 @@ extension TodoQuery {
         case .named(let name): if todo.lane != name { return false }
         }
         if let needle = normalizedText {
-            let inTitle = todo.title.range(of: needle, options: Self.textOptions) != nil
+            let inTitle = TextMatch.contains(needle, in: todo.title)
             let inDescription = todo.description.map {
-                $0.range(of: needle, options: Self.textOptions) != nil
+                TextMatch.contains(needle, in: $0)
             } ?? false
             if !inTitle && !inDescription { return false }
         }
         return true
     }
-
-    private static let textOptions: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
 
     /// The search text with its edges trimmed. An empty filter box means no text filter,
     /// not "match nothing".
