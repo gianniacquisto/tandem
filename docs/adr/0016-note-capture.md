@@ -2,7 +2,7 @@
 
 [ADR 0009](0009-cli-agent-face.md) fixed the agent surface to `todo list|add|complete` plus **exactly one** notes verb, `rename`, under the rule "verbs are cheap to add and expensive to withdraw". This adds a second: `tandem-cli note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]`, whose body is read from stdin and which prints `{"path": "<bikeshed-root-relative path>"}`. It writes one **raw memory note** into a hidden, per-project capture layer at `projects/<project>/.raw/<session>/<utc>-<kind>-<slug>.md`.
 
-The verb exists to serve the raw-capture protocol (`.scratch/tandem-memory/raw-layer-design.md`, decisions signed off 2026-10-18). Measured, the memory protocol records into only three curated tiers, so every agent amends the same few anchors and sub-agents — which see no protocol and no private, conflict-free place to write — record **nothing** (0 of 70 sub-agent sessions). The fix is a hidden layer of many small, create-only notes written by every agent as work happens, with a consolidation pass as the sole writer of the curated notes. `capture` is that layer's write path.
+The verb exists to serve the raw-capture protocol (the memory skill's raw-layer design, decisions signed off 2026-10-18). Measured, the memory protocol records into only three curated tiers, so every agent amends the same few anchors and sub-agents — which see no protocol and no private, conflict-free place to write — record **nothing** (0 of 70 sub-agent sessions). The fix is a hidden layer of many small, create-only notes written by every agent as work happens, with a consolidation pass as the sole writer of the curated notes. `capture` is that layer's write path.
 
 ## Why `capture` earns a verb where `create` did not
 
@@ -32,3 +32,5 @@ The verb exists to serve the raw-capture protocol (`.scratch/tandem-memory/raw-l
 - The `tandem` skill documents the verb; the raw-capture protocol, the `AGENTS.md` orientation rule, and the consolidation pass are separate text work.
 
 Amends [ADR 0009](0009-cli-agent-face.md) — the `note` namespace is `rename` + `capture`; the rejection of a full notes CLI (`create`/`write`/`delete`) is unchanged.
+
+> **Planning notes.** The tracker documents cited above were retired on 2026-10-21 — the bikeshed is canonical for that prose. They remain in this repo's git history; their ground is in the bikeshed's project notes.
