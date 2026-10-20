@@ -17,12 +17,8 @@ public struct BoardLane: Identifiable, Sendable, Equatable {
         self.cells = cells
     }
 
-    public var id: String { key ?? "\u{0}default" }
+    public var id: String { key ?? "" }
     public var isDefault: Bool { key == nil }
-
-    /// The lane's tickets in workflow order (`backlog` first) — the order the columns
-    /// are drawn in, so this is the row read left to right.
-    public var todos: [Todo] { Status.workflow.flatMap { cells[$0] ?? [] } }
 
     /// The tickets in one column, in stored order.
     public func tickets(_ status: Status) -> [Todo] { cells[status] ?? [] }

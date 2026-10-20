@@ -168,10 +168,7 @@ extension Store {
             }
             try contents.validateLane(lane)
             var moved = contents.todos.remove(at: from)
-            moved.lane = lane
-            let start = contents.blockStart(of: lane)
-            let count = contents.todos.lazy.filter { $0.lane == lane }.count
-            contents.todos.insert(moved, at: start + max(0, min(index, count)))
+            insert(&moved, into: lane, of: &contents, at: index)
             return (moved, true)
         }
         return OperationResult(todo, note: note)
@@ -205,14 +202,26 @@ extension Store {
             try contents.validateLane(lane)
             let before = contents.todos
             var moved = contents.todos.remove(at: from)
-            moved.lane = lane
             moved.setStatus(status)
-            let start = contents.blockStart(of: lane)
-            let count = contents.todos.lazy.filter { $0.lane == lane }.count
-            contents.todos.insert(moved, at: start + max(0, min(index, count)))
+            insert(&moved, into: lane, of: &contents, at: index)
             return (moved, contents.todos != before)
         }
         return OperationResult(todo, note: note)
+    }
+
+    /// The one place a lane insertion's arithmetic lives: `index` is 0-based within `lane`
+    /// and clamped into range, so `Int.max` appends. `move` and `place` differ only in what
+    /// they set on the ticket before it goes back in.
+    private func insert(
+        _ todo: inout Todo,
+        into lane: String?,
+        of contents: inout StoreContents,
+        at index: Int
+    ) {
+        todo.lane = lane
+        let start = contents.blockStart(of: lane)
+        let count = contents.todos.lazy.filter { $0.lane == lane }.count
+        contents.todos.insert(todo, at: start + max(0, min(index, count)))
     }
 
     // MARK: - complete

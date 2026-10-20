@@ -9,11 +9,10 @@ import TandemCore
 // same query, same drag arithmetic — the board draws what the list holds, cut the other
 // way.
 //
-// The grid follows the register of the rest of the app: parchment cards on paper, one
+// The grid follows the register of the rest of the app: parchment tickets on paper, one
 // hairline each, flat washes for a drop target, no shadows. Status and lane are the two
-// axes and nothing else is added to a card but its title, its assignee, and the paperclip
-// of a linked note. The description stays out of the card — it is the ticket's body, and
-// reading it is its own view's job.
+// axes and nothing else is added to a ticket but its title, its assignee, and the
+// paperclip of a linked note. The description stays out of it — the body is map ticket 6.
 
 extension Status {
     /// The column title ("in-progress" is a wire value, not a phrase).
@@ -28,8 +27,19 @@ extension Status {
     }
 }
 
-/// The board's outer frame: the search field (the same `TodoQuery` text the list uses,
-/// narrowed to what the lane rows draw), "Archive done", then the grid.
+/// What every cell and ticket on the board needs: the model it writes through, the theme,
+/// the lanes a ticket can be filed into, and the parent's note opener.
+struct BoardContext {
+    var model: TandemModel
+    var palette: Palette
+    /// Every lane the board can file into — declared lanes plus any a ticket already names
+    /// (the board draws a row for those, so its menu must offer them).
+    var lanes: [String]
+    var onOpenLink: (String) -> Void
+}
+
+/// The board's outer frame: the search field (the same `TodoQuery` text the list uses),
+/// "Archive done", then the grid.
 struct BoardFace: View {
     var model: TandemModel
     @Binding var search: String
@@ -54,6 +64,16 @@ struct BoardFace: View {
         !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// The lanes a ticket can be moved into: the declared ones plus any dangling name
+    /// already on a ticket, in the board's own row order.
+    private var lanes: [String] {
+        TodoBoard.orderedKeys(declared: model.lanes, todos: model.todos).compactMap { $0 }
+    }
+
+    private var context: BoardContext {
+        BoardContext(model: model, palette: palette, lanes: lanes, onOpenLink: onOpenLink)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
@@ -68,15 +88,20 @@ struct BoardFace: View {
             Rectangle().fill(palette.sand).frame(height: Line.hairline)
                 .padding(.top, Space.lane)
 
-            if visible.isEmpty && (searching || model.lanes.isEmpty) {
-                // An empty store draws no grid: a row of empty cells reads as a board
-                // that failed to load. A search with no hits says so instead.
+            if searching && visible.isEmpty {
+                // A search with no hits says so instead of drawing empty columns.
                 LigneEmptyState(palette: palette,
-                                title: searching ? "No matches" : "Nothing on the board",
-                                subtitle: searching
-                                    ? "No ticket title matches your search."
-                                    : "Add a ticket in Todos, or from the CLI.",
-                                hero: !searching)
+                                title: "No matches",
+                                subtitle: "No ticket title or description matches your search.",
+                                hero: false)
+            } else if model.todos.isEmpty {
+                // A store with nothing in it draws no grid: a row of empty cells reads as a
+                // board that failed to load. Lanes without tickets still draw — they are
+                // the targets that make the next drop possible.
+                LigneEmptyState(palette: palette,
+                                title: "Nothing on the board",
+                                subtitle: "Add a ticket in Todos, or from the CLI.",
+                                hero: true)
             } else {
                 board
             }
@@ -137,12 +162,10 @@ struct BoardFace: View {
             }
             HStack(alignment: .top, spacing: BoardMetrics.gap) {
                 ForEach(Status.workflow, id: \.self) { status in
-                    BoardCell(lane: row.key, status: status,
-                              todos: row.tickets(status),
-                              lanes: model.lanes,
-                              palette: palette,
-                              model: model,
-                              onOpenLink: onOpenLink)
+                    BoardCell(lane: row.key,
+                              status: status,
+                              tickets: row.tickets(status),
+                              context: context)
                 }
             }
         }
@@ -151,68 +174,63 @@ struct BoardFace: View {
 
 // MARK: - One column of one lane
 
-/// A cell is one lane × one status: its cards, and the whole cell is a drop target — the
-/// ticket lands in this lane at this stage. Dropping a card on another card reorders
+/// A cell is one lane × one status: its tickets, and the whole cell is a drop target — the
+/// ticket lands in this lane at this stage. Dropping a ticket on another ticket reorders
 /// inside the cell, with the same edge arithmetic the list uses.
 private struct BoardCell: View {
     var lane: String?
     var status: Status
-    var todos: [Todo]
-    var lanes: [String]
-    var palette: Palette
-    var model: TandemModel
-    var onOpenLink: (String) -> Void
+    var tickets: [Todo]
+    var context: BoardContext
 
     @State private var targeted = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: BoardMetrics.cardGap) {
-            ForEach(todos) { todo in
-                BoardCard(todo: todo, palette: palette, model: model, lanes: lanes,
-                          onOpenLink: onOpenLink)
+        VStack(alignment: .leading, spacing: BoardMetrics.ticketGap) {
+            ForEach(tickets) { todo in
+                BoardTicket(todo: todo, context: context)
             }
         }
         .frame(maxWidth: .infinity, minHeight: BoardMetrics.minCellHeight, alignment: .top)
         .padding(BoardMetrics.cellPadding)
         .background(RoundedRectangle(cornerRadius: Radius.control)
-            .fill(targeted ? palette.parchment : Color.clear))
+            .fill(targeted ? context.palette.parchment : Color.clear))
         .overlay(RoundedRectangle(cornerRadius: Radius.control)
-            .strokeBorder(targeted ? palette.accent : Color.clear, lineWidth: Line.hairline))
+            .strokeBorder(targeted ? context.palette.accent : Color.clear, lineWidth: Line.hairline))
         .contentShape(Rectangle())
         .dropDestination(for: String.self) { items, _ in
             guard let id = items.first else { return false }
-            // The end of the lane, unless a card inside the cell claims the drop first.
+            // The end of the lane, unless a ticket inside the cell claims the drop first.
             withAnimation(Motion.toggle) {
-                model.place(id, lane: lane, status: status)
+                context.model.place(id, lane: lane, status: status)
             }
             return true
         } isTargeted: { targeted = $0 }
     }
 }
 
-// MARK: - A card
+// MARK: - A ticket on the board
 
-/// A ticket on the board: its title, who is on it, and whether it is linked. The checkbox
-/// is the one-click completion; the ⋯ menu carries the stage and the lane when dragging
-/// is inconvenient (a keyboard, a narrow window, a long scroll).
-private struct BoardCard: View {
+/// The ticket's tile: its title, who is on it, and whether it is linked. The checkbox is
+/// the one-click completion; the menu carries the stage and the lane when dragging is
+/// inconvenient (a keyboard, a narrow window, a long scroll).
+private struct BoardTicket: View {
     var todo: Todo
-    var palette: Palette
-    var model: TandemModel
-    var lanes: [String]
-    var onOpenLink: (String) -> Void
+    var context: BoardContext
 
     @State private var hovering = false
     @State private var editing = false
     @State private var draft = ""
     @FocusState private var titleFocused: Bool
 
+    private var palette: Palette { context.palette }
+
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             Button {
                 withAnimation(Motion.toggle) {
-                    todo.done ? model.reopen(todo.id.uuidString)
-                               : model.complete(todo.id.uuidString)
+                    todo.done ? context.model.reopen(todo.id.uuidString)
+                               : context.model.complete(todo.id.uuidString)
                 }
             } label: {
                 LigneCheckbox(done: todo.done, palette: palette, size: 14)
@@ -254,7 +272,7 @@ private struct BoardCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if let link = todo.link {
-                Button { onOpenLink(link) } label: {
+                Button { context.onOpenLink(link) } label: {
                     Image(systemName: "paperclip")
                         .font(.system(size: 9))
                         .foregroundStyle(palette.inkDim)
@@ -265,7 +283,7 @@ private struct BoardCard: View {
                 .help("Open note: \(link)")
             }
         }
-        .padding(.horizontal, BoardMetrics.cardPadding)
+        .padding(.horizontal, BoardMetrics.ticketPadding)
         .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.paper))
@@ -289,7 +307,9 @@ private struct BoardCard: View {
         Menu("Status") {
             ForEach(Status.workflow, id: \.self) { status in
                 Button {
-                    withAnimation(Motion.toggle) { model.setStatus(todo.id.uuidString, to: status) }
+                    withAnimation(Motion.toggle) {
+                        context.model.setStatus(todo.id.uuidString, to: status)
+                    }
                 } label: {
                     if todo.status == status {
                         Label(status.displayName, systemImage: "checkmark")
@@ -299,30 +319,34 @@ private struct BoardCard: View {
                 }
             }
         }
-        if !lanes.isEmpty {
+        if !context.lanes.isEmpty {
             Menu("Move to") {
                 laneItem("Uncategorized", target: nil)
                 Divider()
-                ForEach(lanes, id: \.self) { name in laneItem(name, target: name) }
+                ForEach(context.lanes, id: \.self) { name in laneItem(name, target: name) }
             }
         }
         Divider()
         if let link = todo.link {
-            Button("Open note") { onOpenLink(link) }
+            Button("Open note") { context.onOpenLink(link) }
         }
         Button("Edit title", action: beginEdit)
         if todo.done {
-            Button("Reopen") { withAnimation(Motion.toggle) { model.reopen(todo.id.uuidString) } }
+            Button("Reopen") {
+                withAnimation(Motion.toggle) { context.model.reopen(todo.id.uuidString) }
+            }
         }
         Button("Delete", role: .destructive) {
-            withAnimation(Motion.remove) { model.delete(todo.id.uuidString) }
+            withAnimation(Motion.remove) { context.model.delete(todo.id.uuidString) }
         }
     }
 
     @ViewBuilder
     private func laneItem(_ title: String, target: String?) -> some View {
         Button {
-            withAnimation(Motion.toggle) { model.place(todo.id.uuidString, lane: target, status: todo.status) }
+            withAnimation(Motion.toggle) {
+                context.model.place(todo.id.uuidString, lane: target, status: todo.status)
+            }
         } label: {
             if todo.lane == target {
                 Label(title, systemImage: "checkmark")
@@ -358,21 +382,21 @@ private struct BoardCard: View {
         editing = false
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty, trimmed != todo.title {
-            model.update(todo.id.uuidString, title: trimmed)
+            context.model.update(todo.id.uuidString, title: trimmed)
         }
     }
 
-    /// A card dropped on this card: same cell, just before or after it — the arithmetic is
+    /// A ticket dropped on this one: same cell, just before or after it — the arithmetic is
     /// the core's (`TodoOrdering.dropIndex`), the same one the list's drop uses.
     private func drop(_ draggedID: String, at edge: DropEdge) {
         guard let dragged = UUID(uuidString: draggedID),
-              let index = TodoOrdering.dropIndex(in: model.todos,
+              let index = TodoOrdering.dropIndex(in: context.model.todos,
                                                  moving: dragged,
                                                  relativeTo: todo.id,
                                                  after: edge == .after)
         else { return }
         withAnimation(Motion.toggle) {
-            model.place(draggedID, lane: todo.lane, status: todo.status, at: index)
+            context.model.place(draggedID, lane: todo.lane, status: todo.status, at: index)
         }
     }
 }
@@ -383,12 +407,12 @@ private struct BoardCard: View {
 /// LigneTheme: this is what only the board needs).
 private enum BoardMetrics {
     static let gap: CGFloat = 8
-    static let cardGap: CGFloat = 6
-    static let cardPadding: CGFloat = 8
+    static let ticketGap: CGFloat = 6
+    static let ticketPadding: CGFloat = 8
     static let cellPadding: CGFloat = 4
-    /// An empty cell still has to be a target, and its cards have to wrap.
+    /// An empty cell still has to be a target, and its tickets have to wrap.
     static let minCellHeight: CGFloat = 40
-    /// Which half of a card counts as "after" when one is dropped on another. A card is
+    /// Which half of a ticket counts as "after" when one is dropped on another. A tile is
     /// one to three lines tall, so the split is a fixed, forgiving height.
     static let reorderSplit: CGFloat = 18
 }

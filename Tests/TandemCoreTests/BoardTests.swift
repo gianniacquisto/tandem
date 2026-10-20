@@ -37,8 +37,6 @@ struct BoardTests {
         #expect(rows[0].tickets(.backlog).map { $0.title } == ["a", "b"])
         #expect(rows[0].tickets(.ready).map { $0.title } == ["c"])
         #expect(rows[0].tickets(.done).isEmpty)
-        // Workflow order, backlog first — the row read left to right.
-        #expect(rows[0].todos.map { $0.title } == ["a", "b", "c"])
     }
 
     @Test("the default area is the first row, then declared lanes, then a lane only a ticket names")

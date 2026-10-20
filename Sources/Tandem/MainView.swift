@@ -204,17 +204,13 @@ struct MainView: View {
         !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// The list grouped for display. With no lanes declared this is a single
-    /// unnamed group (the flat list, unchanged); otherwise the default area comes
-    /// first, then the declared lanes, then any lane that only appears on a
-    /// todo (a hand edit) so nothing is hidden. The key order is the board's
-    /// (`TodoBoard.orderedKeys`) — both faces group a lane the same way; the order
-    /// *within* a group stays the stored order, which is what a list shows.
+    /// The list grouped for display: the default area first, then the declared lanes, then
+    /// any lane that only appears on a todo (a hand edit) so nothing is hidden. The key
+    /// order is the board's (`TodoBoard.orderedKeys`) — both faces group a lane the same
+    /// way, including the no-lanes-declared case; the order *within* a group stays the
+    /// stored order, which is what a list shows.
     private var groups: [TodoGroup] {
         let visible = visibleTodos
-        guard !model.lanes.isEmpty else {
-            return [TodoGroup(key: nil, todos: visible)]
-        }
         return TodoBoard.orderedKeys(declared: model.lanes, todos: visible).map { key in
             TodoGroup(key: key, todos: visible.filter { $0.lane == key })
         }
