@@ -32,11 +32,11 @@ Six commands under `todo`; each section below is that command's contract. A todo
 | `description` | markdown body, or null; write it from stdin with `todo set --description -` |
 | `assignee` | `human`, an agent's name, or null for unowned |
 | `section` | the **cycle lane**, or null for the default area; the wire keeps its v1 name |
-| `done` | the legacy mirror of `status == "done"` — read `status`, not this |
+| `done` | derived from `status == "done"`; kept on the wire for older readers — read `status`, not this |
 | `link` | a bikeshed note path, or null; a human sets it in the app |
 | `createdAt`, `completedAt` | ISO-8601 UTC; `completedAt` is null unless done |
 
-`done` is still written for the older app's sake, but `status` is the truth. A status change is free-form — any status to any other, backwards included — because the board records what is true, not a process.
+`done` is derived and no longer stored, but it stays on the wire for older readers; `status` is the truth. A status change is free-form — any status to any other, backwards included — because the board records what is true, not a process.
 
 ### `tandem-cli todo list [--filter open|done|all] [--status <value[,value]>] [--assignee <name|self>] [--lane <name>] [--text <string>]`
 

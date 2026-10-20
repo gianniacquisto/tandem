@@ -44,6 +44,13 @@ struct TicketModelTests {
         return todos.first { ($0["title"] as? String) == title }
     }
 
+    /// The migrator's safety copies, oldest first.
+    private func preMigratorBackups(in dir: URL) -> [URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        return names.filter { $0.hasPrefix("todos.json.pre-migrator-") }.sorted()
+            .map { dir.appendingPathComponent($0) }
+    }
+
     // MARK: - The fields, end to end
 
     @Test("a ticket round-trips status, archived, description, assignee and lane")
@@ -88,7 +95,7 @@ struct TicketModelTests {
         #expect(object["sections"] is [Any], "the lane list keeps its v1 key")
 
         let todo = try firstTodoObject(store)
-        #expect((todo["done"] as? Bool) == false)
+        #expect(todo["done"] == nil, "the legacy mirror retired from the file")
         #expect((todo["status"] as? String) == "backlog")
         #expect((todo["archived"] as? Bool) == false)
         #expect(todo["description"] is NSNull)
@@ -121,7 +128,7 @@ struct TicketModelTests {
 
     // MARK: - The legacy done mirror
 
-    @Test("the mirror wins on read: done true with status backlog reads as done, and heals")
+    @Test("the mirror wins on read: done true with status backlog reads as done, and migrates")
     func mirrorDoneWins() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -134,11 +141,23 @@ struct TicketModelTests {
         #expect(todo.done == true)
         #expect(try store.list(.done).value.count == 1)
 
-        // The next write persists the reconciled status: the file self-heals.
+        // Reading never migrates: the file keeps its old shape, and nothing is copied.
+        #expect(try todoObject(store, titled: "finished by the old app")?["done"] as? Bool == true)
+        #expect(preMigratorBackups(in: dir).isEmpty)
+
+        // The next write persists the reconciled status, retires the mirror, and copies
+        // the old file aside first.
         _ = try store.add("another")
         let healed = try todoObject(store, titled: "finished by the old app")
         #expect((healed?["status"] as? String) == "done")
-        #expect((healed?["done"] as? Bool) == true)
+        #expect(healed?["done"] == nil, "the migrated file carries status alone")
+
+        let backups = preMigratorBackups(in: dir)
+        #expect(backups.count == 1)
+        let backedUp = try Data(contentsOf: try #require(backups.first))
+        let object = try JSONSerialization.jsonObject(with: backedUp) as? [String: Any]
+        let first = (object?["todos"] as? [[String: Any]])?.first
+        #expect(first?["done"] as? Bool == true, "the copy keeps the pre-migration shape")
     }
 
     @Test("done false with status done reads as open and reconciles to backlog on the next write")
@@ -157,11 +176,38 @@ struct TicketModelTests {
         _ = try store.add("another")
         let healed = try todoObject(store, titled: "reopened by the old app")
         #expect((healed?["status"] as? String) == "backlog")
-        #expect((healed?["done"] as? Bool) == false)
+        #expect(healed?["done"] == nil)
+        #expect(preMigratorBackups(in: dir).count == 1)
     }
 
-    @Test("completing writes status done and the legacy mirror in the same file")
-    func completeWritesMirror() throws {
+    @Test("a file written after the migrator has no done key and reads from status alone")
+    func postMigratorFileReads() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        try writeRaw(#"{"version":1,"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"finished by the new app","status":"done","archived":false,"description":null,"assignee":null,"section":null,"link":null,"createdAt":"2026-01-01T00:00:00Z","completedAt":"2026-01-02T00:00:00Z"},{"id":"00000000-0000-0000-0000-000000000002","title":"ready by the new app","status":"ready","createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#, to: store)
+
+        let all = try store.list(.all).value
+        #expect(all.first { $0.title == "finished by the new app" }?.status == .done)
+        #expect(all.first { $0.title == "ready by the new app" }?.status == .ready)
+
+        // A write leaves the shape alone and makes no migrator backup: there is nothing old.
+        _ = try store.add("another")
+        #expect(preMigratorBackups(in: dir).isEmpty)
+        #expect(try todoObject(store, titled: "finished by the new app")?["done"] == nil)
+    }
+
+    @Test("the CLI wire keeps the derived done flag even though the file drops it")
+    func wireKeepsDone() throws {
+        let todo = Todo(title: "done", status: .done)
+        let text = try StoreEncoding.todoResult(todo, note: nil)
+        let object = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
+        #expect(object?["done"] as? Bool == true, "agents read done from the wire")
+        #expect(object?["status"] as? String == "done")
+    }
+
+    @Test("completing writes status done, completedAt, and no legacy mirror")
+    func completeWritesStatusOnly() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
@@ -170,7 +216,7 @@ struct TicketModelTests {
         _ = try store.complete(added.id.uuidString)
 
         let object = try firstTodoObject(store)
-        #expect((object["done"] as? Bool) == true)
+        #expect(object["done"] == nil)
         #expect((object["status"] as? String) == "done")
         #expect(object["completedAt"] is String)
     }

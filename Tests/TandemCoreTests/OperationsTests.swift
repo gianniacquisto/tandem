@@ -508,11 +508,11 @@ struct OperationsTests {
             #expect((todo["createdAt"] as? String)?.hasSuffix("Z") == true)
         }
         // The open todo's completedAt and lane are JSON null.
-        let openEntry = todos.first { ($0["done"] as? Bool) == false }
+        let openEntry = todos.first { ($0["status"] as? String) == "backlog" }
         #expect(openEntry?["completedAt"] is NSNull)
         #expect(openEntry?["section"] is NSNull)
         // The done todo's completedAt is a real (non-null) string.
-        let doneEntry = todos.first { ($0["done"] as? Bool) == true }
+        let doneEntry = todos.first { ($0["status"] as? String) == "done" }
         #expect(doneEntry?["completedAt"] is String)
 
         // Decode round-trip: a fresh Store over the same dir sees the same todos,

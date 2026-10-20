@@ -21,3 +21,9 @@ The surprising part is the legacy `done` boolean: it neither disappears nor wins
 - The GUI's "Clear done" stops being a permanent delete and becomes "Archive done". Single-item delete stays destructive.
 - `section` keeps its stored name while the concept is a cycle lane; a key rename rides with the migrator, never before it.
 - Tickets themselves move: this epic's work items are Tandem todos, and the repo keeps only the record — the map, the spec, the ADRs, `GLOSSARY.md`.
+
+## Amendment, 2026-10-20: the mirror retires
+
+The precondition above — no binary older than the ticket model may touch the store — was met by installing 0.12.0, the first shipping build carrying Status. The mirror is now **retired from the file**: every write emits `status` alone, and the first write over a file that still carries `done` copies that file aside as `todos.json.pre-migrator-<ts>` before rewriting it. "A list moved aside, never a list lost."
+
+Reading still honours `done` when it is there: the stale-writer rule above is unchanged, the decoder accepts both shapes permanently, and a store only ever read keeps its old file. The CLI's JSON keeps the derived `done` — that wire shape is older than Status, and agents parse it; only the store file drops the key. The envelope stays `version: 1`: a v1-era reader treats a missing required key exactly as it treats an unknown version, so a bump would label the change without protecting anyone. The gate was reachability, and it was met by installing the build, not by labelling the file.
