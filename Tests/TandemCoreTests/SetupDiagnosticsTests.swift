@@ -17,6 +17,7 @@ struct SetupDiagnosticsTests {
         storeLockHeld: Bool = false,
         bikeshedNoteCount: Int = 4,
         bikeshedIsFile: Bool = false,
+        commentsState: SetupDiagnostics.CommentsState = .absent,
         appPresent: Bool = true,
         appVersion: String? = "0.9.0",
         appQuarantined: Bool = false,
@@ -36,6 +37,8 @@ struct SetupDiagnosticsTests {
             bikeshedPath: "/Users/tester/.tandem-dev/bikeshed",
             bikeshedNoteCount: bikeshedNoteCount,
             bikeshedIsFile: bikeshedIsFile,
+            commentsPath: "/Users/tester/.tandem-dev/comments",
+            commentsState: commentsState,
             appPresent: appPresent,
             appVersion: appVersion,
             appQuarantined: appQuarantined,
@@ -53,7 +56,8 @@ struct SetupDiagnosticsTests {
         #expect(report.checks[1].detail.contains("3 open, 2 done"))
         #expect(report.checks[1].detail.contains("backup 5m old"))
         #expect(report.checks[2].detail.contains("4 note(s)"))
-        #expect(report.checks[4].detail.contains("version 0.9.0"))
+        #expect(report.checks[3].detail.contains("created on first comment"))
+        #expect(report.checks[5].detail.contains("version 0.9.0"))
     }
 
     @Test("an absent store is a valid empty setup, not a failure")
@@ -115,6 +119,26 @@ struct SetupDiagnosticsTests {
         let report = SetupDiagnostics.report(facts(bikeshedIsFile: true))
         #expect(!report.ok)
         #expect(report.checks.first { $0.name == "bikeshed" }?.ok == false)
+    }
+
+    @Test("an absent comments directory is a valid setup, created on first comment")
+    func absentCommentsIsOK() {
+        let report = SetupDiagnostics.report(facts(commentsState: .absent))
+        let comments = report.checks.first { $0.name == "comments" }
+        #expect(report.ok)
+        #expect(comments?.ok == true)
+        #expect(comments?.detail.contains("/Users/tester/.tandem-dev/comments") == true)
+        #expect(comments?.detail.contains("created on first comment") == true)
+    }
+
+    @Test("an unreadable comments path fails the report, naming the directory")
+    func unreadableCommentsFails() {
+        let report = SetupDiagnostics.report(facts(commentsState: .unreadable))
+        let comments = report.checks.first { $0.name == "comments" }
+        #expect(!report.ok)
+        #expect(comments?.ok == false)
+        #expect(comments?.detail.contains("/Users/tester/.tandem-dev/comments") == true)
+        #expect(comments?.detail.contains("unreadable") == true)
     }
 
     @Test("a missing app is informational — not installed, still ok")

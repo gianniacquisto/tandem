@@ -38,6 +38,24 @@ public enum StoreEncoding {
         return try serialize(object)
     }
 
+    /// The `todo comment add` result: the comment object, with a top-level `note`
+    /// when non-nil. Encoded through `Comment`'s custom `Codable`, so the `at`
+    /// date is ISO-8601 UTC exactly as in the sidecar line.
+    public static func commentResult(_ comment: Comment, note: String?) throws -> String {
+        var object = try commentObject(comment)
+        if let note { object["note"] = note }
+        return try serialize(object)
+    }
+
+    /// The `todo comment list` result: `{"comments": [...]}` in append order,
+    /// with a top-level `note` when non-nil. An unknown ticket is a successful
+    /// empty list, not an error — the log outlives the store's entries.
+    public static func commentsResult(_ comments: [Comment], note: String?) throws -> String {
+        var object: [String: Any] = ["comments": try comments.map { try commentObject($0) }]
+        if let note { object["note"] = note }
+        return try serialize(object)
+    }
+
     /// The `archive` result: `{"archived": <n>}`, with a top-level `note` when non-nil.
     /// A bulk operation reports how much it did, not which tickets it touched — the
     /// caller's next `list` has the tickets, and the count keeps the reply one line.
@@ -107,6 +125,15 @@ public enum StoreEncoding {
         let data = try JSONEncoder().encode(todo)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StoreIOError.io("could not encode todo for result")
+        }
+        return object
+    }
+
+    /// A single comment as a JSON-compatible object (see `todoObject`).
+    private static func commentObject(_ comment: Comment) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(comment)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw StoreIOError.io("could not encode comment for result")
         }
         return object
     }

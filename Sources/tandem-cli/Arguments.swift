@@ -3,8 +3,8 @@ import Foundation
 /// The parsed command line: one of the verbs, or a request for the usage text.
 /// Long flags only, and the flags mirror the core argument names exactly
 /// (`--filter`, `--text`, `--status`, `--assignee`, `--lane`, `--title`, `--id`,
-/// `--description`, `--index`, `--from`, `--to`, `--name`, `--kind`, `--project`,
-/// `--session`)
+/// `--description`, `--index`, `--from`, `--to`, `--name`, `--author`, `--body`,
+/// `--kind`, `--project`, `--session`)
 /// — the CLI renames nothing and parses nothing: raw values travel to the core,
 /// which validates them and owns the error text. `doctor` is a setup/diagnostic verb
 /// outside the `todo`/`note` domains (ADR 0014) and takes no flags.
@@ -23,6 +23,8 @@ enum Command {
     case todoMove(id: String, lane: String?, index: String?)
     case todoComplete(id: String)
     case todoArchive
+    case todoCommentAdd(id: String, author: String?, body: String)
+    case todoCommentList(id: String)
     case laneAdd(name: String)
     case laneRename(from: String, to: String)
     case laneDelete(name: String)
@@ -64,12 +66,17 @@ func parseCommand(_ args: [String]) throws -> Command {
 
 // MARK: - todo
 
-/// `todo list|add|set|move|complete|archive` — the six todo verbs (the agent surface).
-/// An absent flag is `nil` (the core's default); a flag with no value is `""`, which the
-/// core rejects or reads as the empty field. That is the one rule every verb below
-/// follows, so no verb repeats a validation the core already owns.
+/// `todo list|add|set|move|complete|archive|comment` — the todo verbs (the agent
+/// surface). An absent flag is `nil` (the core's default); a flag with no value is
+/// `""`, which the core rejects or reads as the empty field. That is the one rule
+/// every verb below follows, so no verb repeats a validation the core already owns.
 private func parseTodo(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
+    // `comment` takes a sub-verb of its own (`add` / `list`), so it parses
+    // before the shared `--flag value` pass.
+    if verb == "comment" {
+        return try parseTodoComment(Array(args.dropFirst()))
+    }
     let flags = try parseFlags(Array(args.dropFirst()))
     switch verb {
     case "list":
@@ -118,6 +125,29 @@ private func parseTodo(_ args: [String]) throws -> Command {
         // Bulk, whole-list: finished work leaves the view, nothing is deleted.
         try accept(flags, [])
         return .todoArchive
+    default:
+        throw UsageError()
+    }
+}
+
+/// `todo comment add|list` — the ticket's discussion log (ADR 0017, amendment
+/// 2026-10-20). `add`'s `--body -` is read from stdin, the precedent `todo set
+/// --description -` set; `main` recognizes the dash, because stdin belongs to
+/// the adapter. A missing `--id` / `--body` is the empty value the core
+/// rejects, not a usage error; `--author` absent is the unnamed author.
+private func parseTodoComment(_ args: [String]) throws -> Command {
+    guard let verb = args.first else { throw UsageError() }
+    let flags = try parseFlags(Array(args.dropFirst()))
+    switch verb {
+    case "add":
+        try accept(flags, ["--id", "--author", "--body"])
+        return .todoCommentAdd(
+            id: flags["--id"] ?? "",
+            author: flags["--author"],
+            body: flags["--body"] ?? "")
+    case "list":
+        try accept(flags, ["--id"])
+        return .todoCommentList(id: flags["--id"] ?? "")
     default:
         throw UsageError()
     }

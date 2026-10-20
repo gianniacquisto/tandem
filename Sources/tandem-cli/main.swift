@@ -12,7 +12,8 @@ import TandemCore
 // This file is the whole adapter: it turns a command line into the core calls
 // and writes their outcome to the right stream. It adds no boundary logic — the
 // semantics (`list`, `TodoQuery.parse`, `add`, `set`, `move`, `complete`,
-// `archiveDone`, `addLane`, `renameLane`, `deleteLane`, `rename`, `capture`,
+// `archiveDone`, `append(ticketID:author:body:)`, `list(ticketID:)`,
+// `addLane`, `renameLane`, `deleteLane`, `rename`, `capture`,
 // `stats`) and the encoding (`StoreEncoding`,
 // `tandemErrorText`) stay in TandemCore, which the single test seam
 // (`TandemCoreTests`) covers. The two things that belong to a process rather
@@ -99,6 +100,22 @@ func dispatch(_ args: [String]) -> Int32 {
         return run {
             let result = try Store().archiveDone()
             return try StoreEncoding.archivedResult(result.value, note: result.note)
+        }
+    case .todoCommentAdd(let id, let author, let body):
+        return run {
+            // `--body -`: the comment is stdin, the precedent `todo set
+            // --description -` set; stdin belongs to the adapter.
+            let text = body == "-" ? try readStandardInput() : body
+            let result = try Store().append(
+                ticketID: id,
+                author: author ?? "",
+                body: text)
+            return try StoreEncoding.commentResult(result.value, note: result.note)
+        }
+    case .todoCommentList(let id):
+        return run {
+            let result = try Store().list(ticketID: id)
+            return try StoreEncoding.commentsResult(result.value, note: result.note)
         }
     case .laneAdd(let name):
         return run {
