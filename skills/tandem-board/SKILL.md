@@ -111,8 +111,8 @@ Then, in one write: keep the answer in the description, reset `assignee`, and se
 
 A lane is where the work lives — one per project, the board's row. Status cuts across every lane.
 
-- `todo add --lane <name>` and `todo move --lane <name>` require the lane to exist; creation, rename, and delete are GUI-only (`Model.addLane`/`renameLane`/`deleteLane`) until the lane-lifecycle ticket lands.
-- An empty lane is not a signal to invent one; ask the human to create it in the app.
+- `todo add --lane <name>` and `todo move --lane <name>` require the lane to exist. The lifecycle is on the CLI: `lane add --name <name>`, `lane rename --from <name> --to <name>`, `lane delete --name <name>` — the same core operations the app's tree calls, so trimming and the empty/duplicate/unknown rejections are one implementation (ADR 0006's amendment). `lane delete` moves members to the default area, never deletes them; reordering rows (`moveLane`) stays GUI-only.
+- An empty lane is not a signal to invent one. Cutting a lane is a decision about how a project is organised, so ask the human before you add one, even though the verb exists.
 - `--lane ""` moves a ticket to the default area, which is where untriaged capture lands.
 
 ## What the board is not
