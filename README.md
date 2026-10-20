@@ -112,7 +112,7 @@ The order of `todos` **is** the list order — new todos land on top, and the or
 
 `section` and `sections` are **additive**: a file from before they existed reads fine, and older builds read this one — they simply ignore the fields. That is also why the envelope version stays `1`; only a change an older reader would *misread* earns a bump.
 
-If the file ever gets corrupted, Tandem moves it to `todos.json.corrupt-<timestamp>` and starts with an empty list.
+If the file ever gets corrupted, Tandem moves it to `todos.json.corrupt-<timestamp>` and starts with an empty list. Beside it, every write also keeps **one previous good copy** in `todos.json.bak` — the state of the file before that write — so an ordinary bad write (a kill mid-rename, a bad edit by hand or by an agent) is one `mv` from recovery: `mv ~/.tandem/todos.json.bak ~/.tandem/todos.json`. There is one generation, no rotation: `todos.json.bak` is the file as it was before the write that replaced it. See [ADR 0018](docs/adr/0018-rolling-store-backup.md).
 
 ## Releasing
 
