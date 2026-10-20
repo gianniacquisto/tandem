@@ -45,7 +45,7 @@ A todo's position in the workflow: backlog (the default), refined, ready, in-pro
 _Avoid_: state, stage, step
 
 **Archived**:
-A todo set aside: out of the default views, still in the store. Any todo can be archived, and archiving a done todo is how a list is cleared without deleting.
+A todo set aside: out of the default views, still in the store. Any todo can be archived, and archiving a done todo is how a list is cleared without deleting. The app's archive view is where one is brought back; the board does not draw archived tickets at all.
 _Avoid_: closed, deleted, cleared, hidden
 
 **Cycle lane**:
@@ -53,7 +53,7 @@ The named area a todo belongs to: the board's row and the list's grouping. Every
 _Avoid_: section, swimlane, epic, list (Trello's word)
 
 **Filter**:
-Which todos are in view: `open` (the default), `done`, or `all`. One term for two surfaces: the main window's segmented control and the CLI's `list --filter` argument.
+Which todos are in view: `open` (the default), `done`, or `all` (archived tickets included). One term for two surfaces: the main window's segmented control and the CLI's `list --filter` argument. The app adds a fourth state only it needs — the archive itself, so an archived ticket can be found and brought back; the CLI has no fourth flag by decision, and reaches the archive with a query.
 _Avoid_: view, tab, scope, state
 
 **Store**:

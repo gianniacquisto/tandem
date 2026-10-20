@@ -3,11 +3,11 @@ import TandemCore
 
 /// The main window in reach B — subtle Ligne Claire (ticket 01 verdict).
 ///
-///   Header    — the "Tandem" wordmark and the Todos/Bikeshed tab control,
-///               closed by a hairline (identical on both tabs)
+///   Header    — the "Tandem" wordmark and the Todos/Board/Bikeshed tab control,
+///               closed by a hairline (identical on every tab)
 ///   Todos     — a centered 540 pt column: flat parchment quick-add
-///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All
-///               with live counts (⌘1/⌘2/⌘3) on a row with "+ Cycle lane" and
+///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All/
+///               Archived with live counts (⌘1–⌘4) on a row with "+ Cycle lane" and
 ///               "Archive done" (disabled when nothing is done), and the
 ///               stored-order list grouped by lane. Only named lanes draw
 ///               a header — the ungrouped todos are just the top of the list.
@@ -18,7 +18,10 @@ import TandemCore
 ///               deleting them.
 ///               Rows: toggling checkbox (check completes, uncheck reopens);
 ///               title edits in place on double-click; hover/right-click delete
-///               (all GUI-only)
+///               (all GUI-only). An archived ticket carries a quiet "archived"
+///               tag wherever a view includes it, and its menu brings it back.
+///   Board     — Status columns, lane rows (BoardView.swift): the same tickets
+///               laid out by where they are in the workflow
 ///   Bikeshed  — the notes face (BikeFace.swift): tree sidebar, the WKWebView
 ///               editor, the backlinks dock
 ///
@@ -33,7 +36,7 @@ struct MainView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var quickAdd = ""
-    @State private var filter: Filter = .open
+    @State private var scope: ListScope = .open
     @State private var search = ""
     @State private var tab: MainTab = .todos
     @FocusState private var quickAddFocused: Bool
@@ -83,7 +86,7 @@ struct MainView: View {
         .background(palette.paper)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minWidth: 760, minHeight: 560)
-        .modifier(TandemShortcuts(filter: $filter, focusQuickAdd: $quickAddFocused))
+        .modifier(TandemShortcuts(scope: $scope, focusQuickAdd: $quickAddFocused))
         .sheet(item: $linkPickerFor) { todo in
             linkSheet(todo)
         }
@@ -135,9 +138,10 @@ struct MainView: View {
                 .padding(.horizontal, Space.gutter)
                 .padding(.top, Space.lane)
             HStack(spacing: 12) {
-                LigneFilter(selection: $filter,
+                LigneFilter(selection: $scope,
                             counts: (open: model.openTodos.count,
-                                     done: model.doneTodos.count),
+                                     done: model.doneTodos.count,
+                                     archived: model.archivedTodos.count),
                             palette: palette)
                 Spacer(minLength: 8)
                 if addingLane {
@@ -156,7 +160,8 @@ struct MainView: View {
             .padding(.top, Space.lane)
             // View-only search: it narrows what is drawn (case- and diacritic-
             // insensitive, over title and description, across every lane and the
-            // current Open/Done/All filter). It never re-sorts or mutates the store.
+            // current Open/Done/All/Archived scope). It never re-sorts or mutates
+            // the store.
             LigneSearchField(text: $search, palette: palette, focus: $searchFocused)
                 .padding(.horizontal, Space.gutter)
                 .padding(.top, Space.lane)
@@ -182,6 +187,9 @@ struct MainView: View {
         let title = quickAdd.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
         withAnimation(Motion.insert) { model.add(title) }
+        // A new ticket is never archived, so in the archive it would vanish the moment it
+        // was created: go where it landed.
+        if scope == .archived { scope = .open }
         quickAdd = ""
         quickAddFocused = true  // keep focus for rapid entry
     }
@@ -193,7 +201,7 @@ struct MainView: View {
     /// matches the title *and the description*, and it never re-sorts or mutates the
     /// store.
     private var visibleTodos: [Todo] {
-        var query = filter.query
+        var query = scope.query
         query.text = search
         return query.apply(to: model.todos)
     }
@@ -229,7 +237,7 @@ struct MainView: View {
                                 subtitle: "No todo title matches your search.",
                                 hero: false)
             } else if visibleTodos.isEmpty && !showsLanes {
-                switch filter {
+                switch scope {
                 case .open:
                     LigneEmptyState(palette: palette, title: "All clear",
                                     subtitle: "Nothing open — add something above.", hero: true)
@@ -239,6 +247,10 @@ struct MainView: View {
                 case .all:
                     LigneEmptyState(palette: palette, title: "The list is empty",
                                     subtitle: "Add your first todo above.", hero: false)
+                case .archived:
+                    LigneEmptyState(palette: palette, title: "The archive is empty",
+                                    subtitle: "Archived todos rest here, out of the way.",
+                                    hero: false)
                 }
             } else {
                 ScrollView {
@@ -276,6 +288,9 @@ struct MainView: View {
                                          onMoveToLane: { moveTodo(todo.id.uuidString, toLane: $0) },
                                          onSetLink: { beginLink(todo) },
                                          onClearLink: { model.setLink(todo.id.uuidString, to: nil) },
+                                         onUnarchive: { withAnimation(Motion.toggle) {
+                                             model.setArchived(todo.id.uuidString, false)
+                                         } },
                                          onDropTodo: { draggedID, edge in
                                              drop(draggedID, onto: todo, edge: edge)
                                          })
@@ -493,18 +508,19 @@ struct MainView: View {
     }
 }
 
-/// Settled default UX (map, 2026-10-11): ⌘1/⌘2/⌘3 switch the Filter,
-/// ⌘N focuses quick-add. Registered once, invisible.
+/// Settled default UX (map, 2026-10-11): ⌘1/⌘2/⌘3 switch the list's Open/Done/All,
+/// ⌘4 shows the archive, ⌘N focuses quick-add. Registered once, invisible.
 struct TandemShortcuts: ViewModifier {
-    @Binding var filter: Filter
+    @Binding var scope: ListScope
     var focusQuickAdd: FocusState<Bool>.Binding
 
     func body(content: Content) -> some View {
         content.background {
             VStack(spacing: 0) {
-                Button("") { setFilter(.open) }.keyboardShortcut("1", modifiers: .command)
-                Button("") { setFilter(.done) }.keyboardShortcut("2", modifiers: .command)
-                Button("") { setFilter(.all) }.keyboardShortcut("3", modifiers: .command)
+                Button("") { setScope(.open) }.keyboardShortcut("1", modifiers: .command)
+                Button("") { setScope(.done) }.keyboardShortcut("2", modifiers: .command)
+                Button("") { setScope(.all) }.keyboardShortcut("3", modifiers: .command)
+                Button("") { setScope(.archived) }.keyboardShortcut("4", modifiers: .command)
                 Button("") { focusQuickAdd.wrappedValue = true }.keyboardShortcut("n", modifiers: .command)
             }
             .buttonStyle(.plain)
@@ -512,8 +528,8 @@ struct TandemShortcuts: ViewModifier {
         }
     }
 
-    private func setFilter(_ f: Filter) {
-        withAnimation(Motion.toggle) { filter = f }
+    private func setScope(_ s: ListScope) {
+        withAnimation(Motion.toggle) { scope = s }
     }
 }
 
