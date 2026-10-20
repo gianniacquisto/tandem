@@ -32,7 +32,7 @@ A ticket's description is where the work is explained — the session that refin
 ## Out of Scope
 
 - **Rendered markdown** — the follow-up named in decision 2.
-- **Editing the title in the sheet** — renaming stays inline, where it already is.
+- **Editing the title in the sheet** — renaming stays inline, where it already is. *(Reversed by the ticket sheet: it carries a title field, because a ticket that opens should be editable in every field; inline rename stays as the quick path.)*
 - **A description-only view or preview pane** — the sheet is the reading surface for now.
 - **History, diffs, or "edited by"** — the store keeps no revision history.
 - **The human's inbox** (ticket 5) — a view, not a field.
