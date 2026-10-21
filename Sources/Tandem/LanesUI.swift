@@ -10,7 +10,7 @@ import TandemCore
 /// list. Named groups draw a header.
 struct TodoGroup: Identifiable {
     var key: String?
-    var todos: [Todo]
+    var todos: [Ticket]
 
     var id: String { key ?? "\u{0}default" }
     var isDefault: Bool { key == nil }

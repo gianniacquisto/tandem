@@ -6,7 +6,7 @@ import Foundation
 /// flags and the app's filter row are two syntaxes over this value, so "the ready
 /// tickets" cannot mean one thing to a human and another to an agent. It is a pure
 /// predicate — it never reorders (the stored order is the order) and it never writes.
-public struct TodoQuery: Sendable, Equatable {
+public struct TicketQuery: Sendable, Equatable {
     /// Free text, matched case- and diacritic-insensitively against the **title and the
     /// description**. `nil` or whitespace-only matches everything.
     public var text: String?
@@ -65,8 +65,8 @@ public struct TodoQuery: Sendable, Equatable {
     /// assigned to `human`, its description carrying the question — so the inbox is a
     /// query, not a second store and not a flag. Defined here, beside the other views, so
     /// "what is waiting for me" means one thing everywhere it is shown.
-    public static var inbox: TodoQuery {
-        TodoQuery(statuses: Set(Status.workflow.filter { $0 != .done }),
+    public static var inbox: TicketQuery {
+        TicketQuery(statuses: Set(Status.workflow.filter { $0 != .done }),
                   assignee: .named(human),
                   archived: .excluded)
     }
@@ -74,15 +74,15 @@ public struct TodoQuery: Sendable, Equatable {
 
 // MARK: - The predicate
 
-extension TodoQuery {
+extension TicketQuery {
 
     /// The tickets in view, in stored order. An empty result is a success, not a failure.
-    public func apply(to todos: [Todo]) -> [Todo] {
+    public func apply(to todos: [Ticket]) -> [Ticket] {
         todos.filter(matches)
     }
 
     /// One ticket against every axis: all of them must hold (the axes are ANDed).
-    func matches(_ todo: Todo) -> Bool {
+    func matches(_ todo: Ticket) -> Bool {
         switch archived {
         case .excluded: if todo.archived { return false }
         case .only: if !todo.archived { return false }
@@ -120,7 +120,7 @@ extension TodoQuery {
 
 // MARK: - The boundary (raw values in)
 
-extension TodoQuery {
+extension TicketQuery {
 
     /// The CLI boundary: raw flag values in, one query out — or a domain error naming
     /// what was wrong and what would have worked. The CLI parses nothing itself, so both
@@ -143,7 +143,7 @@ extension TodoQuery {
         assignee rawAssignee: String? = nil,
         lane rawLane: String? = nil,
         archived includeArchived: Bool = false
-    ) throws -> TodoQuery {
+    ) throws -> TicketQuery {
         guard let filter = Filter.parse(raw: rawFilter) else {
             throw DomainError.invalidFilter(rawFilter ?? "")
         }

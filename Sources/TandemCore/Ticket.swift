@@ -1,8 +1,8 @@
 import Foundation
 
-/// A single todo: the only entity in the domain (GLOSSARY).
+/// A single ticket: the only entity in the domain (GLOSSARY).
 ///
-/// A todo carries the ticket shape — where it is in the workflow (`status`), whether it
+/// A ticket carries the full shape — where it is in the workflow (`status`), whether it
 /// is set aside (`archived`), what it is about (`description`), who is on it (`assignee`),
 /// who filed it (`origin`), and which cycle lane it belongs to (`lane`) — plus what it
 /// always had: a title, a created time, and a completion time (ADR 0017, ADR 0020).
@@ -16,13 +16,13 @@ import Foundation
 /// than the ticket model; only the store omits it.
 ///
 /// `link` is an optional bikeshed-root-relative path to a note (e.g. `projects/App.md`).
-/// Like `lane`, it is **additive** to schema v1 — absent on a todo that predates it, and
+/// Like `lane`, it is **additive** to schema v1 — absent on a ticket that predates it, and
 /// the envelope version does not move ([ADR 0006]).
 ///
 /// The custom `Codable` conformance pins the on-disk and on-the-wire date format to
 /// ISO-8601 UTC (e.g. `2026-10-09T14:03:22Z`) regardless of the encoder/decoder's
 /// configured date strategy — so the store file and the CLI's JSON always agree.
-public struct Todo: Identifiable, Codable, Hashable, Sendable {
+public struct Ticket: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public var title: String
     /// Where the ticket is in the workflow. Transitions are free-form: the value is
@@ -45,7 +45,7 @@ public struct Todo: Identifiable, Codable, Hashable, Sendable {
     /// first. Written as `section` on disk — the v1 key, which the migrator left in place.
     public var lane: String?
     /// An optional link to a Bikeshed note: a bikeshed-root-relative path like
-    /// `projects/App.md`, or `nil` for an unlinked todo. Set in the GUI only ([ADR 0010]).
+    /// `projects/App.md`, or `nil` for an unlinked ticket. Set in the GUI only ([ADR 0010]).
     public var link: String?
     public let createdAt: Date
     public var completedAt: Date?

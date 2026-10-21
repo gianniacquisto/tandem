@@ -2,10 +2,10 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// `setLink` (Operations.swift) and the additive `link` field on `Todo` — a todo may
+/// `setLink` (Operations.swift) and the additive `link` field on `Ticket` — a ticket may
 /// point at a Bikeshed note by bikeshed-root-relative path, GUI-only (ADR 0010).
-@Suite("Todo links")
-struct TodoLinkTests {
+@Suite("Ticket links")
+struct TicketLinkTests {
 
     // MARK: - Helpers
 
@@ -34,7 +34,7 @@ struct TodoLinkTests {
         #expect(persisted?.title == "Ship the bikeshed")
     }
 
-    @Test("an empty or whitespace-only link unlinks the todo")
+    @Test("an empty or whitespace-only link unlinks the ticket")
     func emptyLinkClears() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

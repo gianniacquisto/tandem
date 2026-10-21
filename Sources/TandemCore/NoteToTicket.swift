@@ -1,6 +1,6 @@
 import Foundation
 
-/// The reverse of the todo→note link (ADR 0010): a piece of a note becomes a
+/// The reverse of the ticket→note link (ADR 0010): a piece of a note becomes a
 /// ticket, and the ticket points back at the note it came from.
 ///
 /// One core operation sits behind both of the editor's triggers — the "Send to
@@ -40,7 +40,7 @@ extension Store {
         status: Status = .backlog,
         assignee: String? = nil,
         origin: String = "human"
-    ) throws -> OperationResult<Todo> {
+    ) throws -> OperationResult<Ticket> {
         let selection = rawSelection.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = Self.ticketTitle(from: selection)
         guard !title.isEmpty else { throw DomainError.emptySelection }
@@ -49,9 +49,9 @@ extension Store {
         let who = Self.normalizeAssignee(assignee)
         let filer = Self.normalizeOrigin(origin)
         let description = Self.normalizeDescription(selection)
-        let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
+        let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
             try contents.validateLane(lane)
-            var todo = Todo(title: title,
+            var todo = Ticket(title: title,
                             description: description,
                             assignee: who,
                             origin: filer,

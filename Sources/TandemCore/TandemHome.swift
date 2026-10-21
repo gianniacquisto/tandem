@@ -1,6 +1,6 @@
 import Foundation
 
-/// Where Tandem keeps its state: the todo store, the bikeshed, the lockfiles,
+/// Where Tandem keeps its state: the ticket store, the bikeshed, the lockfiles,
 /// the pid file. **A dev build never touches the real one.**
 ///
 /// The rule: the real `~/.tandem` belongs to the *shipped app* — a release build

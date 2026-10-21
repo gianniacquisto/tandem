@@ -38,12 +38,12 @@ struct BoardContext {
     var lanes: [String]
     var onOpenLink: (String) -> Void
     /// Opens the ticket sheet for a ticket — the face owns the sheet.
-    var onOpenTicket: (Todo) -> Void
+    var onOpenTicket: (Ticket) -> Void
     /// Promotes a ticket to a bikeshed note — the parent owns the bikeshed.
-    var onPromote: (Todo) -> PromotionOutcome
+    var onPromote: (Ticket) -> PromotionOutcome
 }
 
-/// The board's outer frame: the search field (the same `TodoQuery` text the list uses),
+/// The board's outer frame: the search field (the same `TicketQuery` text the list uses),
 /// "Archive done", then the grid.
 struct BoardFace: View {
     var model: TandemModel
@@ -53,21 +53,21 @@ struct BoardFace: View {
     /// Opens the ticket's linked note — the parent owns the tab switch.
     var onOpenLink: (String) -> Void
     /// Promotes a ticket to a bikeshed note — the parent owns the bikeshed.
-    var onPromote: (Todo) -> PromotionOutcome
+    var onPromote: (Ticket) -> PromotionOutcome
 
     /// The ticket open in the ticket sheet, if any.
-    @State private var ticketFor: Todo?
+    @State private var ticketFor: Ticket?
 
     /// The tickets in view: archived ones are out (the board is about work in the way),
-    /// and the search narrows by title and description. One `TodoQuery`, as ever.
-    private var visible: [Todo] {
-        var query = TodoQuery()
+    /// and the search narrows by title and description. One `TicketQuery`, as ever.
+    private var visible: [Ticket] {
+        var query = TicketQuery()
         query.text = search
         return query.apply(to: model.todos)
     }
 
     private var rows: [BoardLane] {
-        TodoBoard.rows(from: visible, lanes: model.lanes)
+        TicketBoard.rows(from: visible, lanes: model.lanes)
     }
 
     private var searching: Bool {
@@ -77,7 +77,7 @@ struct BoardFace: View {
     /// The lanes a ticket can be moved into: the declared ones plus any dangling name
     /// already on a ticket, in the board's own row order.
     private var lanes: [String] {
-        TodoBoard.orderedKeys(declared: model.lanes, todos: model.todos).compactMap { $0 }
+        TicketBoard.orderedKeys(declared: model.lanes, todos: model.todos).compactMap { $0 }
     }
 
     private var context: BoardContext {
@@ -209,7 +209,7 @@ struct BoardFace: View {
 private struct BoardCell: View {
     var lane: String?
     var status: Status
-    var tickets: [Todo]
+    var tickets: [Ticket]
     var context: BoardContext
 
     @State private var targeted = false
@@ -244,7 +244,7 @@ private struct BoardCell: View {
 /// the one-click completion; the menu carries the stage and the lane when dragging is
 /// inconvenient (a keyboard, a narrow window, a long scroll).
 private struct BoardTicket: View {
-    var todo: Todo
+    var todo: Ticket
     var context: BoardContext
 
     @State private var hovering = false
@@ -296,9 +296,9 @@ private struct BoardTicket: View {
                         .lineLimit(1)
                 }
                 if let assignee = todo.assignee {
-                    Text(assignee == TodoQuery.human ? "human" : "@\(assignee)")
+                    Text(assignee == TicketQuery.human ? "human" : "@\(assignee)")
                         .font(.system(size: 10.5))
-                        .foregroundStyle(assignee == TodoQuery.human ? palette.emberDeep
+                        .foregroundStyle(assignee == TicketQuery.human ? palette.emberDeep
                                                                      : palette.inkDim)
                         .lineLimit(1)
                 }
@@ -426,10 +426,10 @@ private struct BoardTicket: View {
     }
 
     /// A ticket dropped on this one: same cell, just before or after it — the arithmetic is
-    /// the core's (`TodoOrdering.dropIndex`), the same one the list's drop uses.
+    /// the core's (`TicketOrdering.dropIndex`), the same one the list's drop uses.
     private func drop(_ draggedID: String, at edge: DropEdge) {
         guard let dragged = UUID(uuidString: draggedID),
-              let index = TodoOrdering.dropIndex(in: context.model.todos,
+              let index = TicketOrdering.dropIndex(in: context.model.todos,
                                                  moving: dragged,
                                                  relativeTo: todo.id,
                                                  after: edge == .after)

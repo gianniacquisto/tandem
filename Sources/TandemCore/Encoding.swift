@@ -9,14 +9,14 @@ import Foundation
 public enum StoreEncoding {
 
     /// The `list` result: `{"todos": [...]}`, with a top-level `note` when non-nil.
-    public static func listResult(_ todos: [Todo], note: String?) throws -> String {
+    public static func listResult(_ todos: [Ticket], note: String?) throws -> String {
         var object: [String: Any] = ["todos": try todoArray(todos)]
         if let note { object["note"] = note }
         return try serialize(object)
     }
 
-    /// The `add` / `complete` result: the todo object, with a top-level `note` when non-nil.
-    public static func todoResult(_ todo: Todo, note: String?) throws -> String {
+    /// The `add` / `complete` result: the ticket object, with a top-level `note` when non-nil.
+    public static func todoResult(_ todo: Ticket, note: String?) throws -> String {
         var object = try todoObject(todo)
         if let note { object["note"] = note }
         return try serialize(object)
@@ -31,7 +31,7 @@ public enum StoreEncoding {
     }
 
     /// The `lane delete` result: `{"lanes": [...], "moved": <n>}` — the lanes left, and
-    /// how many todos moved to the default area (never deleted).
+    /// how many tickets moved to the default area (never deleted).
     public static func laneDeletionResult(_ deletion: LaneDeletion, note: String?) throws -> String {
         var object: [String: Any] = ["lanes": deletion.lanes, "moved": deletion.moved]
         if let note { object["note"] = note }
@@ -67,7 +67,7 @@ public enum StoreEncoding {
 
     /// The open list in the `list` shape — used to render the unknown-id error so the
     /// caller recovers in one turn (spec: tool contract, `complete`).
-    public static func openList(_ todos: [Todo]) throws -> String {
+    public static func openList(_ todos: [Ticket]) throws -> String {
         try serialize(["todos": try todoArray(todos)])
     }
 
@@ -142,13 +142,13 @@ public enum StoreEncoding {
 
     // MARK: - Internals
 
-    private static func todoArray(_ todos: [Todo]) throws -> [Any] {
+    private static func todoArray(_ todos: [Ticket]) throws -> [Any] {
         try todos.map { try todoObject($0) }
     }
 
-    /// A single todo as a JSON-compatible object. Encodes through `Todo`'s custom
+    /// A single ticket as a JSON-compatible object. Encodes through `Ticket`'s custom
     /// `Codable` so dates are ISO-8601 UTC and the id is a string, exactly as on disk.
-    private static func todoObject(_ todo: Todo) throws -> [String: Any] {
+    private static func todoObject(_ todo: Ticket) throws -> [String: Any] {
         let data = try JSONEncoder().encode(todo)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StoreIOError.io("could not encode todo for result")

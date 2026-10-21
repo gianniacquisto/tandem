@@ -108,7 +108,7 @@ struct PopoverFaceView: View {
 /// One popover row: the checkbox completes (the only action — a plain row
 /// click is never destructive), the title is plain text.
 struct PopoverRow: View {
-    var todo: Todo
+    var todo: Ticket
     var palette: Palette
     var onComplete: () -> Void
     @State private var hovering = false

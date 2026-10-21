@@ -10,7 +10,7 @@ The pairing is not symmetrical, and that is fine: a ticket can become a note, an
 
 ## Decision
 
-- **One core operation, `TodoToNote.promote(_:)`** (GUI-only, like `setLink` and `update`; no CLI verb). It writes the bikeshed and the store, and it owns the rules: the ticket stays exactly as it is, the note is new, and the link points at it.
+- **One core operation, `TicketToNote.promote(_:)`** (GUI-only, like `setLink` and `update`; no CLI verb). It writes the bikeshed and the store, and it owns the rules: the ticket stays exactly as it is, the note is new, and the link points at it.
 - **The note is the ticket's title and description**: the title becomes the heading (`# <title>`), the description the body. The ticket's *state* — status, lane, assignee, done-ness — is not written into the note: a note carries prose, not todo state, the same line the note→ticket direction draws.
 - **The note lands at `projects/<lane>/<slug>.md`** — the lane is the project's folder (a ticket in the unnamed default area lands in `projects/uncategorized/`), the title is the name. The slug is lowercase, every run of non-alphanumerics collapsed to a single `-`, trimmed, and capped at 60 characters.
 - **The note is created, never overwritten.** A name already taken — another ticket's note, or a note the human wrote by hand — gets a `-2`, `-3`, … suffix, and the note that was there stays byte-for-byte as it was. The pick and the write happen under the bikeshed lock, so two writers cannot pick the same name.
@@ -31,6 +31,6 @@ The pairing is not symmetrical, and that is fine: a ticket can become a note, an
 ## Consequences
 
 - The store's shape is unchanged: `link` is an existing additive field (ADR 0010), so the envelope stays `version: 1` ([ADR 0006](0006-stored-order-and-sections.md)) and no migration is needed.
-- `TodoToNote` is a new core operation, tested headlessly (creation, the `-2` collision, the refusal, the link round-trip); the GUI has no test target, so the sheet's button is proven by hand.
+- `TicketToNote` is a new core operation, tested headlessly (creation, the `-2` collision, the refusal, the link round-trip); the GUI has no test target, so the sheet's button is proven by hand.
 - The promotion spans two domains — the store and the bikeshed — and one operation spans two locks. The order (note first, link second) and the rollback are the whole of the concurrency story; the refusal is checked twice, before the write and again inside the store's mutation, so a writer that lands a link in between loses the race rather than the note.
 - The note the promotion writes is a **new** file, so the bikeshed's own watcher's tree picks it up as any other note; the sheet keeps its own copy of the new link, because the ticket it was opened with is a snapshot that does not know about it yet.

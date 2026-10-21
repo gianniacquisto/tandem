@@ -1,6 +1,6 @@
 import Foundation
 
-/// The single source of truth for todos (GLOSSARY: Store): one JSON file at
+/// The single source of truth for tickets (GLOSSARY: Store): one JSON file at
 /// `<home>/todos.json` — the real `~/.tandem` for the shipped app, `~/.tandem-dev`
 /// for anything built and run in place (`TandemHome`) — read and written by the GUI
 /// and by `tandem-cli` invocations. Implements the protocol from ADR 0001:
@@ -30,7 +30,7 @@ import Foundation
 ///   previous good copy to fall back on. The first write has no `.bak` (no file yet), and
 ///   a failed write leaves the previous one untouched. Reads write nothing.
 ///
-/// The public surface is the todo operations (see the `Operations` extension); the
+/// The public surface is the ticket operations (see the `Operations` extension); the
 /// locking/file mechanics are the shared `LockedDirectory` primitive (ADR 0001 / 0004),
 /// which the bikeshed uses too.
 public struct Store: Sendable {
@@ -170,15 +170,16 @@ public struct Store: Sendable {
 
     // MARK: - Schema (private)
 
-    /// The envelope. `lanes` and each todo's `lane` are **additive** to schema v1,
+    /// The envelope. `lanes` and each ticket's `lane` are **additive** to schema v1,
     /// which is why the version below does not move.
     private struct FileEnvelope: Codable {
         var version: Int
         /// The ordered lane names. Absent in a v1 file written before lanes existed.
         var lanes: [String]?
-        var todos: [Todo]
+        /// The tickets. The key is spelled **`todos`** on disk — the v1 key, unchanged here.
+        var todos: [Ticket]
 
-        /// `lanes` is spelled **`sections`** on disk, like a todo's `lane` (ADR 0017).
+        /// `lanes` is spelled **`sections`** on disk, like a ticket's `lane` (ADR 0017).
         private enum CodingKeys: String, CodingKey {
             case version, todos
             case lanes = "sections"
@@ -323,7 +324,7 @@ public struct Store: Sendable {
         }
     }
 
-    /// Whether any todo object in the raw file still carries the legacy `done` key.
+    /// Whether any ticket object in the raw file still carries the legacy `done` key.
     /// Only asked on the write path (under the lock), never on a plain read.
     private static func carriesLegacyMirror(_ data: Data) -> Bool {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

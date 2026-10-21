@@ -8,20 +8,20 @@ import Foundation
 /// Keeping it here (rather than in the view) buys two things a view cannot give itself:
 /// it is provable against the real `move` in tests, **and** the two subtle rules live in
 /// one place, next to the operation they feed.
-public enum TodoOrdering {
+public enum TicketOrdering {
 
-    /// The `index` to hand to `Store.move(_:toLane:at:)` so the todo `id` lands
+    /// The `index` to hand to `Store.move(_:toLane:at:)` so the ticket `id` lands
     /// immediately before (`after == false`) or after `anchorID`, **within the anchor's
-    /// own lane**. `nil` when either todo is missing, or when the row was dropped on
+    /// own lane**. `nil` when either ticket is missing, or when the row was dropped on
     /// itself.
     ///
     /// Two rules this encodes:
     /// - the anchor is resolved **by id**, never by its position in a visible list, so a
     ///   filter that hides rows cannot land the drop somewhere else;
-    /// - one is subtracted when the moving todo already sat before the drop point,
-    ///   because `move` removes the todo before it inserts.
+    /// - one is subtracted when the moving ticket already sat before the drop point,
+    ///   because `move` removes the ticket before it inserts.
     public static func dropIndex(
-        in todos: [Todo],
+        in todos: [Ticket],
         moving id: UUID,
         relativeTo anchorID: UUID,
         after: Bool

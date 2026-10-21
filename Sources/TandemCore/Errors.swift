@@ -40,7 +40,7 @@ public enum DomainError: Error, Sendable, Equatable {
     case unknownLane(String)
     /// `complete`/`delete` was called with an id not present in the store. `open` is
     /// the full current open list (in the `list` shape) so the caller recovers in one turn.
-    case unknownID(id: String, open: [Todo])
+    case unknownID(id: String, open: [Ticket])
 
     public var message: String {
         switch self {

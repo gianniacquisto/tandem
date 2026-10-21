@@ -71,7 +71,7 @@ struct ConcurrencyTests {
         let store = Store(directory: dir)
         _ = try store.add("seed")   // ensure the file exists before the race
 
-        struct Envelope: Decodable { let version: Int; let todos: [Todo] }
+        struct Envelope: Decodable { let version: Int; let todos: [Ticket] }
 
         let errors = Box<[Error]>([])
         let writerDone = DispatchGroup()

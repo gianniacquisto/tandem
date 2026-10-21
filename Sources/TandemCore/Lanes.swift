@@ -1,6 +1,6 @@
 import Foundation
 
-/// The outcome of `deleteLane`: how many todos fell back to the default area, and the
+/// The outcome of `deleteLane`: how many tickets fell back to the default area, and the
 /// lane list after the write. One value, so the caller reports the result of the write
 /// it made rather than a second read of the store.
 public struct LaneDeletion: Sendable, Equatable {
@@ -13,9 +13,9 @@ public struct LaneDeletion: Sendable, Equatable {
     }
 }
 
-/// The store's contents: the ordered lane names and the todos, in stored order.
+/// The store's contents: the ordered lane names and the tickets, in stored order.
 ///
-/// **Stored order is the order.** The `todos` array position is authoritative (new todos
+/// **Stored order is the order.** The `todos` array position is authoritative (new tickets
 /// land on top by default); it is never recomputed from `createdAt`. It is also kept
 /// **grouped by lane** — first the default (ungrouped) area, then each lane in the
 /// declared order — so the GUI can walk it once and emit a header whenever the lane
@@ -23,14 +23,14 @@ public struct LaneDeletion: Sendable, Equatable {
 struct StoreContents: Sendable {
     /// Declared lane names, in render order after the default area.
     var lanes: [String]
-    /// Todos in stored order (grouped by lane).
-    var todos: [Todo]
+    /// Tickets in stored order (grouped by lane).
+    var todos: [Ticket]
 
     /// A lane key: `nil` is the default (ungrouped) area, always first.
     typealias Key = String?
 
     /// Every key in render order: the default first, then each declared lane, then any
-    /// name that appears on a todo but is not declared (a hand edit), in first-appearance
+    /// name that appears on a ticket but is not declared (a hand edit), in first-appearance
     /// order — so a hand-edited file loses no grouping.
     var orderedKeys: [Key] {
         var keys: [Key] = [nil]
@@ -42,7 +42,7 @@ struct StoreContents: Sendable {
     }
 
     /// Every name that is safe to file into: each declared lane plus any dangling name
-    /// already on a todo.
+    /// already on a ticket.
     var knownLanes: [String] { orderedKeys.compactMap { $0 } }
 
     /// The index at which `key`'s block begins — the cumulative length of every preceding

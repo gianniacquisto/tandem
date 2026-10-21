@@ -5,7 +5,7 @@ import Testing
 /// The query (ADR 0017): one predicate over the ticket axes, shared by the CLI's flags and
 /// the app's filter row. Proved as a pure function of a ticket list — the cheapest and most
 /// complete seam in the change — never through the binary or the view.
-@Suite("Todo query")
+@Suite("Ticket query")
 struct QueryTests {
 
     private func ticket(
@@ -15,8 +15,8 @@ struct QueryTests {
         description: String? = nil,
         assignee: String? = nil,
         lane: String? = nil
-    ) -> Todo {
-        Todo(
+    ) -> Ticket {
+        Ticket(
             title: title,
             status: status,
             archived: archived,
@@ -26,7 +26,7 @@ struct QueryTests {
     }
 
     /// A board with one ticket per interesting corner, in stored order.
-    private var board: [Todo] {
+    private var board: [Ticket] {
         [
             ticket("capture the idea"),
             ticket("refined work", status: .refined, assignee: "core", lane: "Core"),
@@ -39,7 +39,7 @@ struct QueryTests {
         ]
     }
 
-    private func titles(_ query: TodoQuery) -> [String] {
+    private func titles(_ query: TicketQuery) -> [String] {
         query.apply(to: board).map(\.title)
     }
 
@@ -47,59 +47,59 @@ struct QueryTests {
 
     @Test("the default query hides the archive and nothing else")
     func defaultHidesArchived() {
-        #expect(titles(TodoQuery()) == [
+        #expect(titles(TicketQuery()) == [
             "capture the idea", "refined work", "ready work", "in flight", "finished",
         ])
     }
 
     @Test("the status axis selects exactly the named statuses; empty means every status")
     func statusAxis() {
-        #expect(titles(TodoQuery(statuses: [.ready])) == ["ready work"])
-        #expect(titles(TodoQuery(statuses: [.ready, .inProgress])) == ["ready work", "in flight"])
-        #expect(titles(TodoQuery(statuses: [])) == titles(TodoQuery()))
+        #expect(titles(TicketQuery(statuses: [.ready])) == ["ready work"])
+        #expect(titles(TicketQuery(statuses: [.ready, .inProgress])) == ["ready work", "in flight"])
+        #expect(titles(TicketQuery(statuses: [])) == titles(TicketQuery()))
     }
 
     @Test("the assignee axis selects a name, or the unowned tickets")
     func assigneeAxis() {
-        #expect(titles(TodoQuery(assignee: .named("ui"))) == ["ready work", "in flight"])
-        #expect(titles(TodoQuery(assignee: .unassigned)) == ["capture the idea", "finished"])
-        #expect(titles(TodoQuery(assignee: .any)) == titles(TodoQuery()))
-        #expect(titles(TodoQuery(assignee: .named("nobody"))) == [])
+        #expect(titles(TicketQuery(assignee: .named("ui"))) == ["ready work", "in flight"])
+        #expect(titles(TicketQuery(assignee: .unassigned)) == ["capture the idea", "finished"])
+        #expect(titles(TicketQuery(assignee: .any)) == titles(TicketQuery()))
+        #expect(titles(TicketQuery(assignee: .named("nobody"))) == [])
     }
 
     @Test("the lane axis selects a name, or the unnamed default area")
     func laneAxis() {
-        #expect(titles(TodoQuery(lane: .named("Core"))) == ["refined work", "ready work"])
-        #expect(titles(TodoQuery(lane: .unnamed)) == ["capture the idea"])
-        #expect(titles(TodoQuery(lane: .any)) == titles(TodoQuery()))
+        #expect(titles(TicketQuery(lane: .named("Core"))) == ["refined work", "ready work"])
+        #expect(titles(TicketQuery(lane: .unnamed)) == ["capture the idea"])
+        #expect(titles(TicketQuery(lane: .any)) == titles(TicketQuery()))
     }
 
     @Test("the text axis matches the title and the description")
     func textAxis() {
-        #expect(titles(TodoQuery(text: "FLIGHT")) == ["in flight"])
-        #expect(titles(TodoQuery(text: "flags")) == ["in flight"], "matched inside a description")
-        #expect(titles(TodoQuery(text: "  ")) == titles(TodoQuery()), "an empty box filters nothing")
-        #expect(titles(TodoQuery(text: "nothing here")) == [], "no match is an empty success")
+        #expect(titles(TicketQuery(text: "FLIGHT")) == ["in flight"])
+        #expect(titles(TicketQuery(text: "flags")) == ["in flight"], "matched inside a description")
+        #expect(titles(TicketQuery(text: "  ")) == titles(TicketQuery()), "an empty box filters nothing")
+        #expect(titles(TicketQuery(text: "nothing here")) == [], "no match is an empty success")
     }
 
     @Test("the text axis ignores case and accents")
     func textIgnoresCaseAndAccents() {
         let list = [ticket("Über die Brücke"), ticket("plain")]
-        #expect(TodoQuery(text: "uber").apply(to: list).map(\.title) == ["Über die Brücke"])
-        #expect(TodoQuery(text: "brücke").apply(to: list).map(\.title) == ["Über die Brücke"])
+        #expect(TicketQuery(text: "uber").apply(to: list).map(\.title) == ["Über die Brücke"])
+        #expect(TicketQuery(text: "brücke").apply(to: list).map(\.title) == ["Über die Brücke"])
     }
 
     @Test("the archive axis is three-valued: excluded, included, only")
     func archiveAxis() {
-        #expect(titles(TodoQuery(archived: .included)).count == 7)
-        #expect(titles(TodoQuery(archived: .only)) == [
+        #expect(titles(TicketQuery(archived: .included)).count == 7)
+        #expect(titles(TicketQuery(archived: .only)) == [
             "finished and filed away", "archived but not done",
         ])
     }
 
     @Test("the axes are ANDed, and an empty result is an empty list")
     func axesCombine() {
-        let query = TodoQuery(
+        let query = TicketQuery(
             text: "work",
             statuses: [.ready],
             assignee: .named("ui"),
@@ -107,7 +107,7 @@ struct QueryTests {
         #expect(titles(query) == ["ready work"])
 
         // Every axis holds in the first case; one that cannot hold empties the result.
-        #expect(titles(TodoQuery(statuses: [.ready], lane: .named("CLI"))).isEmpty)
+        #expect(titles(TicketQuery(statuses: [.ready], lane: .named("CLI"))).isEmpty)
     }
 
     // MARK: - The shipped filter (sugar)
@@ -125,7 +125,7 @@ struct QueryTests {
 
     @Test("parse defaults to the shipped open filter")
     func parseDefault() throws {
-        let query = try TodoQuery.parse()
+        let query = try TicketQuery.parse()
         #expect(query.archived == .excluded)
         #expect(query.statuses == Set(Status.workflow.filter { $0 != .done }))
         #expect(query.assignee == .any)
@@ -135,15 +135,15 @@ struct QueryTests {
 
     @Test("parse takes comma-separated statuses — a repeated flag keeps only the last")
     func parseStatuses() throws {
-        #expect(try TodoQuery.parse(status: "ready,in-progress").statuses == [.ready, .inProgress])
-        #expect(try TodoQuery.parse(status: " ready , refined ").statuses == [.ready, .refined])
-        #expect(try TodoQuery.parse(status: "ready").statuses == [.ready])
+        #expect(try TicketQuery.parse(status: "ready,in-progress").statuses == [.ready, .inProgress])
+        #expect(try TicketQuery.parse(status: " ready , refined ").statuses == [.ready, .refined])
+        #expect(try TicketQuery.parse(status: "ready").statuses == [.ready])
     }
 
     @Test("parse rejects an unknown status by name, listing the five")
     func parseInvalidStatus() {
         do {
-            _ = try TodoQuery.parse(status: "ready,blocked")
+            _ = try TicketQuery.parse(status: "ready,blocked")
             Issue.record("Expected invalidStatus to be thrown")
         } catch let error as DomainError {
             guard case .invalidStatus(let bad) = error else {
@@ -161,18 +161,18 @@ struct QueryTests {
 
     @Test("parse treats an empty value as the empty field")
     func parseEmptyValues() throws {
-        #expect(try TodoQuery.parse(assignee: "").assignee == .unassigned)
-        #expect(try TodoQuery.parse(assignee: "ui").assignee == .named("ui"))
-        #expect(try TodoQuery.parse(lane: "").lane == .unnamed)
-        #expect(try TodoQuery.parse(lane: "Core").lane == .named("Core"))
-        #expect(try TodoQuery.parse(text: "  ").normalizedText == nil)
+        #expect(try TicketQuery.parse(assignee: "").assignee == .unassigned)
+        #expect(try TicketQuery.parse(assignee: "ui").assignee == .named("ui"))
+        #expect(try TicketQuery.parse(lane: "").lane == .unnamed)
+        #expect(try TicketQuery.parse(lane: "Core").lane == .named("Core"))
+        #expect(try TicketQuery.parse(text: "  ").normalizedText == nil)
     }
 
     @Test("parse keeps the shipped filter as sugar, and the CLI's filters never carry the archive")
     func parseFilterSugar() throws {
-        #expect(try TodoQuery.parse(filter: "all").archived == .excluded)
-        #expect(try TodoQuery.parse(filter: "done").statuses == [.done])
-        #expect(try TodoQuery.parse(filter: "open").statuses == [.backlog, .refined, .ready, .inProgress, .inReview])
+        #expect(try TicketQuery.parse(filter: "all").archived == .excluded)
+        #expect(try TicketQuery.parse(filter: "done").statuses == [.done])
+        #expect(try TicketQuery.parse(filter: "open").statuses == [.backlog, .refined, .ready, .inProgress, .inReview])
     }
 
     // MARK: - the CLI's archive axis
@@ -180,16 +180,16 @@ struct QueryTests {
     @Test("the CLI's three filters never carry the archive")
     func cliFiltersHideTheArchive() throws {
         for filter in [nil, "open", "done", "all"] {
-            #expect(try TodoQuery.parse(filter: filter).archived == .excluded)
+            #expect(try TicketQuery.parse(filter: filter).archived == .excluded)
         }
-        #expect(titles(try TodoQuery.parse()) == [
+        #expect(titles(try TicketQuery.parse()) == [
             "capture the idea", "refined work", "ready work", "in flight",
         ])
     }
 
     @Test("`--archived` alone is the archive: statuses ignored, the app's Archived segment")
     func archivedAlone() throws {
-        let query = try TodoQuery.parse(archived: true)
+        let query = try TicketQuery.parse(archived: true)
         #expect(query.archived == .only)
         #expect(query.statuses.isEmpty)
         #expect(titles(query) == ["finished and filed away", "archived but not done"])
@@ -197,18 +197,18 @@ struct QueryTests {
 
     @Test("`--archived` named with a filter joins that filter")
     func archivedJoinsTheFilter() throws {
-        let all = try TodoQuery.parse(filter: "all", archived: true)
+        let all = try TicketQuery.parse(filter: "all", archived: true)
         #expect(all.archived == .included)
         #expect(titles(all).count == 7, "every ticket, the archive included")
 
-        let done = try TodoQuery.parse(filter: "done", archived: true)
+        let done = try TicketQuery.parse(filter: "done", archived: true)
         #expect(done.archived == .included)
         #expect(titles(done) == ["finished", "finished and filed away"])
     }
 
     @Test("an explicit status narrows the archive it was named with")
     func archivedWithStatus() throws {
-        let query = try TodoQuery.parse(status: "backlog", archived: true)
+        let query = try TicketQuery.parse(status: "backlog", archived: true)
         #expect(query.statuses == [.backlog])
         #expect(titles(query) == ["archived but not done"])
     }
@@ -224,21 +224,21 @@ struct QueryTests {
             ticket("agent work", status: .ready, assignee: "core"),
             ticket("nobody's", status: .backlog),
         ]
-        #expect(TodoQuery.inbox.apply(to: tickets).map(\.title) == ["asked of the person"])
+        #expect(TicketQuery.inbox.apply(to: tickets).map(\.title) == ["asked of the person"])
     }
 
     @Test("the inbox is empty when nothing is assigned, not an error")
     func emptyInbox() {
-        #expect(TodoQuery.inbox.apply(to: [ticket("agent work", assignee: "ui")]).isEmpty)
+        #expect(TicketQuery.inbox.apply(to: [ticket("agent work", assignee: "ui")]).isEmpty)
     }
 
     @Test("parse rejects a bad filter or status by name")
     func parseBadValues() {
         #expect(throws: DomainError.invalidFilter("bogus")) {
-            _ = try TodoQuery.parse(filter: "bogus")
+            _ = try TicketQuery.parse(filter: "bogus")
         }
         #expect(throws: DomainError.invalidStatus("")) {
-            _ = try TodoQuery.parse(status: "")
+            _ = try TicketQuery.parse(status: "")
         }
     }
 }
