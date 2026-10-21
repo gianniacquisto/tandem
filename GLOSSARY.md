@@ -37,7 +37,7 @@ A Todo carrying the full shape — a description, an assignee, a Status, and a C
 _Avoid_: card, issue, story
 
 **Session ticket**:
-A ticket one agent session files for itself, titled `Session — <project> · <session-id>`, so the board shows what is running and what each session did. It is a ticket, not a log entry: it carries a brief, the board refines it and moves it through the same gates as any other ticket, and a session whose own has ended leaves behind work a successor can pick up. Its description is written once as a brief and appended to with the outcome, never overwritten.
+A ticket one agent session files for itself, titled `Session — <project> · <session-id>`, so the board shows what is running and what each session did. It is a ticket, not a log entry: it carries a brief, the board refines it and moves it through the same gates as any other ticket, and a session that ends leaves behind work a successor can pick up. Its description is written once as a brief and appended to with the outcome, never overwritten.
 _Avoid_: session log, journal, session record
 
 **Open**:
