@@ -27,7 +27,7 @@ struct TicketSheet: View {
     var lanes: [String]
     /// The ticket's discussion, as the sidecar holds it. `.list([])` is a ticket with
     /// no log: no section, no error.
-    var comments: TicketComments = .list([])
+    var comments: CommentRead = .list([])
     /// Called with the sheet's values; the caller writes what changed and dismisses.
     var onSave: (TicketEdits) -> Void
     var onCancel: () -> Void
@@ -50,7 +50,7 @@ struct TicketSheet: View {
     private enum Field { case title, body }
 
     init(todo: Todo, palette: Palette, lanes: [String],
-         comments: TicketComments = .list([]),
+         comments: CommentRead = .list([]),
          onSave: @escaping (TicketEdits) -> Void,
          onCancel: @escaping () -> Void,
          onOpenLink: ((String) -> Void)? = nil,
@@ -82,7 +82,7 @@ struct TicketSheet: View {
     private var showsComments: Bool {
         switch comments {
         case .list(let list): return !list.isEmpty
-        case .failed: return true
+        case .busy, .failed: return true
         }
     }
 
@@ -217,6 +217,14 @@ struct TicketSheet: View {
             switch comments {
             case .list(let list):
                 commentList(list)
+            case .busy(let message):
+                // The store was locked by another process and the read gave up.
+                // Nothing is wrong with the log, so this is not the repair colour:
+                // it is a quiet "try again", and the core's own words.
+                Text(message)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(palette.inkDim)
+                    .fixedSize(horizontal: false, vertical: true)
             case .failed(let message):
                 // The core's own words, which name the damaged file: the log is
                 // append-only, so a bad line is repair, not recovery.
