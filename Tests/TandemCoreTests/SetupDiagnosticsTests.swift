@@ -25,7 +25,7 @@ struct SetupDiagnosticsTests {
             .init(name: "agents", path: "/Users/tester/.agents/skills/tandem", found: true),
             .init(name: "claude", path: "/Users/tester/.claude/skills/tandem", found: false),
         ],
-        opencodeListsSkills: Bool = true
+        opencodeHasSkills: Bool = true
     ) -> SetupDiagnostics.Facts {
         SetupDiagnostics.Facts(
             homePath: "/Users/tester/.tandem-dev",
@@ -43,7 +43,7 @@ struct SetupDiagnosticsTests {
             appVersion: appVersion,
             appQuarantined: appQuarantined,
             skillHosts: skillHosts,
-            opencodeListsSkills: opencodeListsSkills)
+            opencodeHasSkills: opencodeHasSkills)
     }
 
     @Test("a healthy machine passes, with the checks in the pinned order")
