@@ -140,6 +140,14 @@ _Avoid_: user (ambiguous with the OS account), client, owner
 A local AI coding agent (e.g. OpenCode, Claude Code) running as the same OS user on the same Mac, interacting with Tandem through the CLI.
 _Avoid_: bot, client, automation, user
 
+**Reviewer**:
+The role that gates a pull request: it reads the ticket, the diff, the checks and the repo's rules, then either merges a two-way door with low blast radius or hands the change to the human. Dispatched for one PR, it ends with a verdict.
+_Avoid_: approver, critic, merge bot
+
+**Retro**:
+The role that reads one session and files what it finds as backlog tickets — the tickets are the output, the report is a receipt. It never fixes what it finds, because a retro that changes the work cannot report on it honestly.
+_Avoid_: retrospective agent, postmortem, session analyst
+
 **CLI**:
 Tandem's agent-facing interface: a command-line binary, `tandem-cli`, shipped inside the app bundle and reached at its in-bundle path.
 _Avoid_: API (too generic), backend, endpoint

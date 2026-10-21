@@ -6,11 +6,11 @@ This file records the other half — how each host implements that protocol: the
 
 ## OpenCode
 
-**Consolidation agent** — `~/.config/opencode/agents/consolidator.md`, `mode: subagent`. Its permissions hold the pass's invariants: `edit` denied on `*.raw/*` (captures are create-only; consuming one is a `mv`), plus `subagent` and `question` denied (the pass is a non-interactive batch that never dispatches and never asks).
+**Consolidation agent** — `agents/consolidator.md` in this repo, linked to `~/.config/opencode/agents/consolidator.md` by `Scripts/install-agent-host.sh`. `mode: subagent`. Its permissions hold the pass's invariants: `edit` denied on `*.raw/*` (captures are create-only; consuming one is a `mv`), plus `subagent` and `question` denied (the pass is a non-interactive batch that never dispatches and never asks).
 
-**Trigger** — `~/.config/opencode/commands/consolidate.md`, with `agent: consolidator` and `subagent: true`, so `/consolidate` runs the pass in a background child session. Both the agent and the command file **hot-reload**: an edit takes effect without a restart.
+**Trigger** — the `tandem-consolidate` skill in this repo, linked to `~/.config/opencode/skills/tandem-consolidate/`. It dispatches the `consolidator` subagent with a one-line brief and reports the result. A host may also bind a command to the same agent — the binding is the host's business, the skill is the protocol's.
 
-**Registration** — `~/.config/opencode/opencode.json` lists this repo's `AGENTS.md` under `instructions` and its `skills/` directory under `skills`.
+**Registration** — `Scripts/install-agent-host.sh` links this repo's `AGENTS.md` to `~/.config/opencode/AGENTS.md` and each of its `skills/*` to `~/.config/opencode/skills/*`. The host discovers all three by convention, so no `opencode.json` entry is needed — and an entry pointing at the same files would load them twice.
 
 **Child sessions** — the session's instructions reach child sessions as well as the root's, so a working sub-agent needs no restating in its brief. Verified: an `explore` child reported this repo's `## Memory` section.
 
