@@ -21,6 +21,9 @@ public enum DomainError: Error, Sendable, Equatable {
     case invalidNotePath(String)
     /// `append(ticketID:author:body:)` was called with an empty or whitespace-only body.
     case emptyCommentBody
+    /// A `--description -` body was empty or whitespace-only: an empty pipe, not
+    /// a deliberate clear (the store still takes `--description ""`).
+    case emptyDescriptionBody
     /// `list` was called with a filter that is not `open`, `done`, or `all`.
     case invalidFilter(String)
     /// A Status value that is not one of the five (ADR 0017).
@@ -53,6 +56,8 @@ public enum DomainError: Error, Sendable, Equatable {
             return "Note path \"\(bad)\" is not a bikeshed-relative path (e.g. projects/App.md)."
         case .emptyCommentBody:
             return "Comment body is empty. Provide a non-empty body and try again."
+        case .emptyDescriptionBody:
+            return "Description body is empty. Provide a non-empty body on stdin — or pass --description \"\" to clear the description."
         case .invalidFilter(let bad):
             return "filter must be one of open, done, all (got \"\(bad)\")."
         case .invalidStatus(let bad):
