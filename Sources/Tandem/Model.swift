@@ -257,6 +257,28 @@ final class TandemModel {
         run { try self.store.delete(id) }
     }
 
+    // MARK: - Promotion to a note (GUI-only, the mirror of `addFromNote`)
+
+    /// Promotes a ticket to a bikeshed note: the note is made from the ticket's title and
+    /// description, and the ticket's `link` points at it. The ticket keeps its status,
+    /// lane, and place in the list — the board keeps the work item, the note holds the
+    /// prose.
+    ///
+    /// A ticket that already links to a note is refused rather than re-promoted: that
+    /// note is the human's own prose now. The refusal comes back as the outcome, not as
+    /// the app-wide banner — the action belongs to the ticket sheet, so that is where
+    /// the human must see why nothing was written.
+    func promoteToNote(_ id: String, into bikeshed: Bikeshed) -> PromotionOutcome {
+        do {
+            let result = try TodoToNote(store: store, bikeshed: bikeshed).promote(id)
+            reload()
+            return .promoted(path: result.value.path)
+        } catch {
+            if let recovery = error as? RecoveryFailure { recoveryNote = recovery.note }
+            return .refused(message: Self.message(for: error))
+        }
+    }
+
     // MARK: - Dismissals
 
     func dismissRecoveryNote() { recoveryNote = nil }
@@ -304,4 +326,15 @@ final class TandemModel {
         if let tandem = error as? any TandemError { return tandem.message }
         return error.localizedDescription
     }
+}
+
+/// What a promotion did: the note it made, or why it made none. The sheet shows the
+/// message where the button was — a refusal is an answer to "Promote to note", not an
+/// app-wide alarm.
+enum PromotionOutcome {
+    /// The note was created — at this bikeshed-root-relative path, which is now the
+    /// ticket's `link`.
+    case promoted(path: String)
+    /// Nothing was written. The message says why, in the human's words.
+    case refused(message: String)
 }
