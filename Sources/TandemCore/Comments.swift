@@ -83,11 +83,9 @@ extension Store {
         guard !text.isEmpty else { throw DomainError.emptyCommentBody }
         let who = author.trimmingCharacters(in: .whitespacesAndNewlines)
         let (comment, note) = try withLockedRead { contents, note in
-            guard let id = UUID(uuidString: ticketID),
-                  contents.todos.contains(where: { $0.id == id })
-            else {
-                throw DomainError.unknownID(id: ticketID, open: contents.todos.filter { !$0.done })
-            }
+            // The store's one rule for "which ticket is this id?" — the same
+            // answer `complete` gives, from the same place.
+            let id = try Self.requireTicket(ticketID, in: contents.todos).uuid
             // The stored form of the timestamp is whole seconds, so the
             // in-memory value is truncated to the same form: an appended
             // comment equals what `list` reads back.

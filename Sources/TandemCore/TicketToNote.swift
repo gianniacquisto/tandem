@@ -40,12 +40,10 @@ public struct TicketToNote: Sendable {
     /// unknown id throws `DomainError.unknownID`; a ticket that already links
     /// to a note throws `PromotionError.alreadyLinked`.
     public func promote(_ id: String) throws -> OperationResult<PromotedNote> {
-        let listed = try store.list(.all)
-        guard let uuid = UUID(uuidString: id),
-              let todo = listed.value.first(where: { $0.id == uuid })
-        else {
-            throw DomainError.unknownID(id: id, open: listed.value.filter { !$0.done })
-        }
+        // The store's own answer to "which ticket is this id?" — the same
+        // lookup `complete` makes, from the same place.
+        let found = try store.ticket(id: id)
+        let todo = found.value
         // Refuse before anything is written: a ticket that already links to a
         // note keeps that link, and that note.
         if let existing = todo.link {
@@ -60,9 +58,7 @@ public struct TicketToNote: Sendable {
             text: Self.text(title: todo.title, body: todo.description))
         do {
             let (linked, note) = try store.mutate { contents -> (value: Ticket, changed: Bool) in
-                guard let i = contents.todos.firstIndex(where: { $0.id == uuid }) else {
-                    throw DomainError.unknownID(id: id, open: contents.todos.filter { !$0.done })
-                }
+                let i = try Store.requireTicket(id, in: contents.todos).index
                 // The link may have been set since the read above (another
                 // face, an agent): a note is only linked to a ticket that has
                 // no note yet.
@@ -73,7 +69,7 @@ public struct TicketToNote: Sendable {
                 return (contents.todos[i], true)
             }
             return OperationResult(PromotedNote(path: path, todo: linked),
-                                   note: note ?? listed.note)
+                                   note: note ?? found.note)
         } catch {
             // The ticket did not take the link, so the note it was meant for
             // is not wanted either — take it back off the disk.

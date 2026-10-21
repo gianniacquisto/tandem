@@ -128,6 +128,59 @@ struct OperationsTests {
         }
     }
 
+    // MARK: - ticket(id:)
+
+    @Test("ticket(id:) answers the store's own question: which ticket is this id?")
+    func ticketResolvesTheId() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let added = try store.add("Task")
+        let found = try store.ticket(id: added.value.id.uuidString)
+        #expect(found.value.id == added.value.id)
+        #expect(found.value.title == "Task")
+        #expect(found.note == nil)
+
+        // A completed ticket is still on the board, so its id still resolves.
+        _ = try store.complete(added.value.id.uuidString)
+        #expect(try store.ticket(id: added.value.id.uuidString).value.id == added.value.id)
+    }
+
+    @Test("ticket(id:) refuses an id the store does not carry, with the open list")
+    func ticketRefusesAnUnknownId() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let added = try store.add("Task")
+        let unknown = "00000000-0000-0000-0000-000000000000"
+
+        // The same failure `complete` raises, from the one place that decides it.
+        do {
+            _ = try store.ticket(id: unknown)
+            Issue.record("expected the unknown-id failure")
+        } catch let error as DomainError {
+            guard case .unknownID(let id, let open) = error else {
+                Issue.record("expected unknownID, got \(error)")
+                return
+            }
+            #expect(id == unknown)
+            #expect(open.map(\.id) == [added.value.id])
+        }
+
+        // A malformed id is the same failure, not a crash.
+        do {
+            _ = try store.ticket(id: "not-a-uuid")
+            Issue.record("expected the unknown-id failure")
+        } catch let error as DomainError {
+            guard case .unknownID = error else {
+                Issue.record("expected unknownID, got \(error)")
+                return
+            }
+        }
+    }
+
     // MARK: - complete
 
     @Test("complete marks done and sets completedAt")

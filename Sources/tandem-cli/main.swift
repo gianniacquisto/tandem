@@ -187,10 +187,15 @@ func dispatch(_ args: [String]) -> Int32 {
         }
     case .sessionLink(let ticket, let session):
         return run {
-            let result = try Sessions().link(
-                id: try sessionID(session),
-                ticket: try ticketID(ticket))
-            return try StoreEncoding.sessionResult(result.value, note: result.note)
+            // The handle first: a session that names nothing is a failure
+            // before the board is even consulted.
+            let id = try sessionID(session)
+            // The store owns "which ticket is this id?" — the CLI asks it and
+            // links what it gets back. An id the store does not carry is the
+            // store's own `unknownID` failure, open list included.
+            let linked = try Store().ticket(id: ticket)
+            let result = try Sessions().link(id: id, ticket: linked.value.id)
+            return try StoreEncoding.sessionResult(result.value, note: result.note ?? linked.note)
         }
     case .sessionList(let project, let status):
         return run {
@@ -412,20 +417,6 @@ func sessionStatus(_ raw: String?) throws -> SessionStatus? {
         throw DomainError.invalidSessionStatus(raw)
     }
     return status
-}
-
-/// The ticket a `session link` names: the id read as a UUID and found in the
-/// store. An id the store does not carry — malformed, or simply unknown — is
-/// the same `unknownID` failure `ticket complete` raises, open list and all:
-/// a link to a ticket that is not there is a link to nothing.
-func ticketID(_ raw: String) throws -> UUID {
-    let todos = try Store().list(TicketQuery(archived: .included)).value
-    guard let uuid = UUID(uuidString: raw),
-          todos.contains(where: { $0.id == uuid })
-    else {
-        throw DomainError.unknownID(id: raw, open: todos.filter { !$0.done })
-    }
-    return uuid
 }
 
 /// The `note rename` / `note capture` result — `{"path": "<path>"}` — serialized
