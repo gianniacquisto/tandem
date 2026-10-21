@@ -11,7 +11,7 @@ A retro that files nothing is a valid result. A retro that files a ticket nobody
 
 ## Read first
 
-1. **The retro skill** — `~/.config/opencode/skills/retro/SKILL.md`, in full (this repo ships it; the install script links it there). Its categories and its evidence standard are the spine of this pass. It is `disable-model-invocation`, so the skill tool refuses it; read the file. Its step 4 ("present the candidates to the user") is the one step you replace: you file them, below.
+1. **The retro skill** — `~/.config/opencode/skills/retro/SKILL.md`, in full (this repo ships it; the `tandem-setup` skill links it there). Its categories and its evidence standard are the spine of this pass. It is `disable-model-invocation`, so the skill tool refuses it; read the file. Its step 4 ("present the candidates to the user") is the one step you replace: you file them, below.
 2. **The session** — `opencode api session.list` finds the id; `opencode api session.message.list --param sessionID=<id>` returns the transcript, tool calls and outputs included. That transcript is the primary source: a finding without a message in it is a guess. No session named → take the most recently updated session that is not this one, and say which one you took.
 3. **The environment the session worked in** — its repo's `AGENTS.md`, its check command (`package.json`, the build tool, the CI workflow), its `CLAUDE.md`/`CODING_STANDARDS.md` if any, and the bikeshed project note for where the work stands.
 4. **The board** — `tandem-cli todo list --filter all`, every ticket, descriptions skimmed. A finding an open ticket already covers is a duplicate, not a finding.
