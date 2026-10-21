@@ -7,7 +7,7 @@
 
 ![The tandem bike — the app's brand mark and icon](Resources/TandemBike.jpg)
 
-**Tandem is a native macOS board for you and your AI coding agents.** One ticket list, one board by status and lane, an inbox for what the agents owe you, and a notes vault — the bikeshed — that doubles as the agents' memory. Your agent and you share one list: it files tickets you see, and it sees the ones you close. Everything runs on your Mac, in files you can read. No account, no server, no network.
+**Tandem is a native macOS board for you and your AI coding agents.** One ticket list, one board by status and lane, an inbox for what the agents owe you, and the bikeshed — a folder of markdown notes — that doubles as the agents' memory. Your agent and you share one list: it files tickets you see, and it sees the ones you close. Everything runs on your Mac, in files you can read. No account, no server, no network.
 
 ## Install
 
@@ -138,7 +138,7 @@ The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `
 
 `todo` still answers for `ticket`: it is the only verb the installed 0.15.0 build knows, and in the next release it is a deprecated alias that says so on stderr. It goes in the release after that one.
 
-That block is `dev`'s grammar, the branch the next release is cut from. The build installed today — 0.15.0 — spells the verb `todo`, and its `list` has no `--archived`; both arrive with the next release.
+That block is `dev`'s grammar, the branch the next release is cut from — `tandem-cli --help` prints the whole of it. The build installed today — 0.15.0 — spells the verb `todo`, and its `list` has no `--archived`; both arrive with the next release.
 
 ### A session is its own record
 
