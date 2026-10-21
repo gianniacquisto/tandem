@@ -16,9 +16,19 @@
 - **Exit `0` unconditionally (report everything as information).** The value is that a broken store, a held lock, or a bikeshed path that is a file makes the command *fail* — that is what a first-run check is for.
 - **Put the gathering and the pass/fail decision in the executable.** That would be untested boundary logic, exactly what ADR 0009 and the review keep out of the CLI.
 
+> **Amended 2026-10-21:** the ground of this rejection moved — the CLI's own path is now reachable by the test suite, so logic in the executable would be tested, not untested. The decision is unchanged: the core keeps the gathering and the pass/fail rule, and the CLI stays a thin adapter. See the amendment below.
+
 ## Consequences
 
 - The output shape `{"ok": bool, "checks": [{"name", "ok", "detail"}]}` and the **check order** (`home`, `store`, `bikeshed`, `lock`, `app`, `skills`) are a contract, documented verbatim in the `tandem` skill. Renaming a check or reordering is a breaking change to it.
 - Three checks can fail — `store` (present but unreadable/corrupt), `bikeshed` (the path is a file), `lock` (held) — and `ok` is the AND of those. `home`, `app`, and `skills` are informational: a missing app or an uninstalled host is context, not a failure.
 - New read-only core surface: `Store.health()` (counts, or `absent` / `unreadable`, with **no** recovery — a diagnostic never backs up or rewrites), `Store.lockIsHeld()` / `LockedDirectory.isLocked()`, and `TandemHome.Source`, which names which branch of the home rule a process took (the rule itself now derives from it, so the two cannot drift).
 - The README and the skill name the new verb; `docs/releasing.md` is unaffected.
+
+## Amendment, 2026-10-21: the rejection's ground moved, the decision did not
+
+The rejected option above — putting the gathering and the pass/fail decision in the executable — rested on "untested boundary logic". **That ground is now false.** [ADR 0009](0009-cli-agent-face.md)'s amendment of the same date records why: the single test seam now depends on the `tandem-cli` product (`Package.swift`), so the CLI's own path is reachable by the suite — the adapter's functions in process, the built binary end to end. Logic in the executable would now be tested, not untested. The "Why" bullet above is untouched by this: the logic does live in the tested core, and the core is still where it lives.
+
+**What is unchanged.** The decision stands: the core keeps the gathering and the pass/fail rule, and the CLI stays a thin adapter that calls them unchanged. What it now rests on is ADR 0009's boundary rather than the tests' reach. `SetupDiagnostics.gather()` observes the machine and `SetupDiagnostics.report(_:)` is the pure function that turns those facts into the report — the pass/fail rule's one home, covered by `TandemCoreTests` with injected facts. A second home for that rule in the executable would not be an untested one; it would be a second copy of a rule that has one home. And the adapter's own header is explicit about what belongs to the executable — *"the two things that belong to a process rather than to the domain live here: stdin and the environment"* — while the doctor's gathering is impure but is the machine's setup rather than a process's stdin or environment; the facts it observes come from the core (`Store.health()`, `Store.lockIsHeld()`, `TandemHome.Source`).
+
+Nothing about `doctor` changes: the verb, the report shape, the check order and the exit codes are as they were, and this amendment changes no behaviour anywhere.

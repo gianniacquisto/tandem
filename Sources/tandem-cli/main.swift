@@ -14,10 +14,10 @@ import TandemCore
 // semantics (`list`, `TodoQuery.parse`, `add`, `set`, `move`, `complete`,
 // `archiveDone`, `append(ticketID:author:body:)`, `list(ticketID:)`,
 // `addLane`, `renameLane`, `deleteLane`, `rename`, `capture`,
-// `stats`, `health`) and the encoding (`StoreEncoding`,
-// `tandemErrorText`) stay in TandemCore, which the single test seam
-// (`TandemCoreTests`) covers. The two things that belong to a process rather
-// than to the domain live here: stdin and the environment.
+// `stats`, `health`, `DescriptionBody.required`) and the encoding
+// (`StoreEncoding`, `tandemErrorText`) stay in TandemCore, which the single
+// test seam (`TandemCoreTests`) covers. The two things that belong to a
+// process rather than to the domain live here: stdin and the environment.
 //
 // Streams and exit codes (the contract):
 // - success → exactly one JSON object on stdout, one trailing newline, exit 0;
@@ -72,9 +72,10 @@ func dispatch(_ args: [String]) -> Int32 {
     case .todoSet(let id, let title, let status, let assignee, let description):
         return run {
             // `--description -`: the body is stdin, the precedent `note capture` set.
+            // A stdin body must carry text — `descriptionBody` refuses an empty one.
             let body: Edit<String?>
             if let description {
-                body = .set(description == "-" ? try readStandardInput() : description)
+                body = .set(try descriptionBody(description, stdin: readStandardInput))
             } else {
                 body = .unchanged
             }
@@ -240,6 +241,18 @@ func resolveOrigin(_ raw: String?) throws -> String {
         throw DomainError.agentNameUnset
     }
     return name
+}
+
+/// The `--description` body of a `todo set`: the flag's own value, or the text
+/// piped in when the flag is `-`. A stdin body must carry text — an empty pipe,
+/// a failed heredoc and an unset variable all arrive as the same empty body,
+/// and writing it would erase the description silently (ADR 0024) — so it is
+/// refused with `DomainError.emptyDescriptionBody`, the way `todo comment add`
+/// refuses an empty comment body. `--description ""` is the deliberate clear:
+/// it travels through untouched, and the store still takes it.
+func descriptionBody(_ flag: String, stdin: () throws -> String) throws -> String {
+    guard flag == "-" else { return flag }
+    return try DescriptionBody.required(stdin())
 }
 
 /// The body of a `note capture` call: everything on stdin, decoded as UTF-8,

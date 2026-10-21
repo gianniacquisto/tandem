@@ -77,7 +77,7 @@ Change the fields you name in **one write**; everything you do not name is left 
 $ printf '## Why\n\nA long body.\n' | tandem-cli todo set --id 550e8400-… --status refined --description -
 ```
 
-`--assignee ""` clears the owner, `--description ""` clears the body, and `--assignee human` hands the ticket to the human for a decision. Moving to `done` stamps `completedAt`; moving out of it clears the stamp. An empty `--title` is rejected.
+`--assignee ""` clears the owner, `--description ""` clears the body, and `--assignee human` hands the ticket to the human for a decision. Moving to `done` stamps `completedAt`; moving out of it clears the stamp. An empty `--title` is rejected. A `--description -` body that is empty or whitespace-only is rejected too — exit `1`, `Description body is empty…`, and the description is left as it was: an empty pipe is a failed write, not a clear.
 
 ### `tandem-cli todo move --id <string> [--lane <name>] [--index <number>]`
 
@@ -147,7 +147,7 @@ Every agent session files one ticket for itself, so the board shows what is runn
 - **Start** — `todo add --title "Session — <project> · <session-id>" --status in-progress`, then `todo set --id <id> --description -` with a brief: what the session is for and what done looks like. `<project>` is the codebase the session works in, `<session-id>` is `$OPENCODE_SESSION_ID`.
 - **One per session** — check `todo list --text "<session-id>"` first: the id is in the title, so it matches.
 - **End** — `todo set --id <id> --status done --description -`, with the outcome appended below the brief. Read the description, add the outcome under a heading of its own, write it back; the brief is never overwritten. `todo complete --id <id>` closes it without touching the description.
-- **Empty stdin clears the description** — `--description -` takes the body on stdin, and an empty pipe writes an empty body, which the store normalises to nothing: the description is gone, exit 0, no warning. A command that pipes nothing erases the brief. Never run `--description -` without a body, and check what you are piping. When there is no outcome to record, use `todo complete --id <id>`, which leaves the description alone.
+- **An empty stdin is refused** — `--description -` takes the body on stdin, and a body that is empty or whitespace-only is a domain failure: exit `1`, `Description body is empty…`, and the description is left as it was. A command that pipes nothing no longer erases the brief; it fails and says so. Still check what you are piping, and use `--description ""` when you mean to clear the description. When there is no outcome to record, use `todo complete --id <id>`, which leaves the description alone.
 - **Where they live** — the default area, not a lane, so a session ticket never depends on a lane that may not exist. `todo list --text "Session —"` shows the session tickets — the prefix is in the title, and `--text` also reads descriptions, so it is a near-match and not an exact one.
 - **They are work** — a board pass refines and moves them like any other ticket. A ticket whose session is live belongs to that session; one whose session has ended is stale work, and the board picks it up (the rule is in the board skill).
 - **Origin** — when the installed CLI carries `--origin`, file with `--origin self`; an omitted flag stamps the ticket as the human's.

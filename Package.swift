@@ -8,7 +8,9 @@ import PackageDescription
 //                               the Store (ADR 0001), and the todo operations.
 //   - Tandem       (executable) — the SwiftUI GUI app (thin adapter).
 //   - tandem-cli   (executable) — the agent-facing command line (thin adapter, ADR 0009).
-//   - TandemCoreTests — core tests (the single test seam).
+//   - TandemCoreTests — core tests (the single test seam), plus the CLI's own
+//                       path: the `tandem-cli` product is a dependency, so the
+//                       adapter is exercised through the binary SwiftPM built.
 //
 // The GUI and the CLI share exactly one module: TandemCore.
 let package = Package(
@@ -50,10 +52,12 @@ let package = Package(
             name: "tandem-cli",
             dependencies: ["TandemCore"]
         ),
-        // The single test seam: the core module.
+        // The single test seam: the core module, and the CLI adapter — the
+        // `tandem-cli` product is a dependency so the seam can run the binary
+        // SwiftPM built beside the test bundle.
         .testTarget(
             name: "TandemCoreTests",
-            dependencies: ["TandemCore"]
+            dependencies: ["TandemCore", "tandem-cli"]
         )
     ]
 )

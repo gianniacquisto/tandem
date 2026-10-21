@@ -32,7 +32,7 @@ Every session records itself as a ticket, so the board shows what is running and
 
 - **The description is written once and appended to, never overwritten.** It opens as the brief and gains the outcome at the end, under a heading of its own. Read it, add the outcome below it, write it back — the brief is what a board pass or the next session reads first.
 
-- **Empty stdin clears the description.** `--description -` takes the body on stdin, and an empty pipe writes an empty body, which the store normalises to nothing — the description is gone, exit 0, no warning. So a command that pipes nothing is a command that erases the brief. Never run `--description -` without a body, and check what you are piping. When there is no outcome to record, close the ticket with `tandem-cli todo complete --id <ticket-id>`, which leaves the description alone.
+- **An empty stdin is refused.** `--description -` takes the body on stdin, and a body that is empty or whitespace-only is a domain failure: exit 1, "Description body is empty", and the description is left as it was. So a command that pipes nothing no longer erases the brief — it fails and says so. Still check what you are piping, and pass `--description ""` when you mean to clear the description. When there is no outcome to record, close the ticket with `tandem-cli todo complete --id <ticket-id>`, which leaves the description alone.
 
 - **Children file their own.** A sub-agent session is a session; it closes its ticket when it finishes.
 
