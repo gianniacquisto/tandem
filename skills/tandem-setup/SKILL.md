@@ -108,7 +108,7 @@ Remove the entries that point at this checkout, and say which you removed. Leave
 
 ```sh
 opencode api agent.list   # reviewer, retro, consolidator, refine
-opencode api skill.list   # tandem, tandem-memory, tandem-board, tandem-handoff, tandem-consolidate, retro, writing-for-agents
+opencode api skill.list   # grilling, implement-spec, retro, tandem, tandem-board, tandem-consolidate, tandem-handoff, tandem-memory, tandem-setup, to-spec, writing-for-agents
 tandem-cli doctor         # the skills check reads "opencode configured"
 ```
 
