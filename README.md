@@ -53,14 +53,17 @@ tandem-cli note rename --from "Ideas.md" --to "Backlog.md"
 
 `tandem-cli doctor` is a fifth, setup-only command: it prints one JSON report of where your state lives and whether it is healthy (the store, the bikeshed, the lock, the installed app, and the agent skill), and exits `1` if something needs attention. It is the quickest way to check a fresh install.
 
-`tandem-cli --help` prints that syntax and exits `0`. The `tandem` skill, in `skills/tandem/`, teaches an agent those contracts. Agent hosts load it from there:
+`tandem-cli --help` prints that syntax and exits `0`. The `tandem` skill, in `skills/tandem/`, teaches an agent those contracts. The whole agent setup — the skills, the agent prompts and this repo's `AGENTS.md` — is the `tandem-setup` skill: ask your agent to set up Tandem, and it links `skills/*` into `~/.config/opencode/skills/`, `agents/*.md` into `~/.config/opencode/agents/`, and `AGENTS.md` into `~/.config/opencode/AGENTS.md`, all pointing back at this checkout.
+
+Links, not copies: an edit in the repo is an edit the host sees. The setup never overwrites a real file, and it reports what it skipped.
+
+For another host, the same idea: link the skills into that host's skills directory — Claude Code takes them in `~/.claude/skills/`, for instance:
 
 ```sh
-# Claude Code — link the skill into your personal skills directory
 ln -s "$PWD/skills/tandem" ~/.claude/skills/tandem
 ```
 
-For OpenCode, add this repo's `skills/` directory to the `skills` array in `opencode.json`.
+Nothing in this repo names a path on one machine. A clone of it, anywhere, plus the installed app, is the whole setup.
 
 ### The `tandem-memory` skill
 
@@ -75,9 +78,9 @@ This skill is a folder, not a single file, so it installs differently from the o
 | `READ-PROTOCOL.md` | how to orient and find related notes |
 | `CONCURRENCY.md` | two sessions writing the same bikeshed |
 
-Install it one of two ways.
+Install it with the `tandem-setup` skill, which links the whole `skills/` directory into `~/.config/opencode/skills/` — one copy, no re-install when the repo changes.
 
-Point your harness at this repo's `skills/` directory, so there is one copy and no re-install when the repo changes. For OpenCode, add that directory to the `skills` array in `opencode.json` (beside any entries already there):
+Pointing a host at this repo's `skills/` directory works too, and is the same thing by another route:
 
 ```json
 {
@@ -89,7 +92,17 @@ Or copy the whole `tandem-memory/` folder into your harness's skills directory t
 
 ### The `tandem-handoff` skill
 
-`skills/tandem-handoff/` assembles the orient a session does on its own into one self-contained block a human can paste into a new agent session: the open tickets (`tandem-cli todo list --filter open`), the bikeshed `Index.md`, a project's `Where left off` and Threads, and the open tickets assigned to `human`. It is **read-only** — it edits no note and changes no ticket. Give it an optional project name for the full block; with none it prints the Index plus every project's one-line status. The opencode binding is a `/handoff` command.
+`skills/tandem-handoff/` assembles the orient a session does on its own into one self-contained block a human can paste into a new agent session: the open tickets (`tandem-cli todo list --filter open`), the bikeshed `Index.md`, a project's `Where left off` and Threads, and the open tickets assigned to `human`. It is **read-only** — it edits no note and changes no ticket. Give it an optional project name for the full block; with none it prints the Index plus every project's one-line status. Ask for it in words — the skill is model-invocable — or bind a `/handoff` command to it in your host.
+
+### The `agents/` directory
+
+`agents/` holds the agent prompts this project owns — `consolidator.md`, `refine.md`, `retro.md` and `reviewer.md` — one markdown file per agent, each with the frontmatter a host reads: a `description` and a `mode` in all four, a `model` and a `color` in `refine`, `retro` and `reviewer`, and `permissions` in `consolidator`, which has no model or color.
+
+They are the passes that run on Tandem: the consolidator folds the bikeshed's captures into the curated notes, the refine agent grills a `backlog` ticket into a brief a builder can take, the retro reads a session and files what it finds as backlog tickets, the reviewer reads a ticket and a PR and merges the two-way doors. The `tandem-consolidate` skill dispatches the consolidator; this repo ships no host commands, so every pass is reached by asking, or by whatever binding the host adds. See [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
+
+`skills/grilling/`, `skills/implement-spec/`, `skills/retro/`, `skills/to-spec/` and `skills/writing-for-agents/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT) so a clone of this repo is the whole workflow: the retro pass's categories, the note-writing standard, and the refine pass's three procedures all come from here now. `docs/agents/issue-tracker.md` tells them the board is the tracker.
+
+The two builders this workflow also uses — `black` and `blue`, one prompt and two models — and the `terse` style live in the [fleet](https://github.com/gianniacquisto/fleet) repo, not here.
 
 ## The store file
 

@@ -85,8 +85,11 @@ public enum SetupDiagnostics {
         public var appVersion: String?
         public var appQuarantined: Bool
         public var skillHosts: [SkillHost]
-        /// `~/.config/opencode/opencode.json` lists this repo's `skills/` dir.
-        public var opencodeListsSkills: Bool
+        /// Whether the agent host has Tandem's skills: `~/.config/opencode/opencode.json`'s
+        /// `skills` array lists a path containing `tandem/skills` (this repo's skills
+        /// directory), or the host's own skills directory holds the linked `tandem` skill
+        /// — the route the `tandem-setup` skill takes.
+        public var opencodeHasSkills: Bool
 
         public init(homePath: String, homeSource: TandemHome.Source,
                     storePath: String, storeHealth: Store.Health,
@@ -94,7 +97,7 @@ public enum SetupDiagnostics {
                     bikeshedPath: String, bikeshedNoteCount: Int, bikeshedIsFile: Bool,
                     commentsPath: String, commentsState: CommentsState,
                     appPresent: Bool, appVersion: String?, appQuarantined: Bool,
-                    skillHosts: [SkillHost], opencodeListsSkills: Bool) {
+                    skillHosts: [SkillHost], opencodeHasSkills: Bool) {
             self.homePath = homePath
             self.homeSource = homeSource
             self.storePath = storePath
@@ -110,7 +113,7 @@ public enum SetupDiagnostics {
             self.appVersion = appVersion
             self.appQuarantined = appQuarantined
             self.skillHosts = skillHosts
-            self.opencodeListsSkills = opencodeListsSkills
+            self.opencodeHasSkills = opencodeHasSkills
         }
     }
 
@@ -255,7 +258,7 @@ public enum SetupDiagnostics {
             appVersion: appVersion,
             appQuarantined: appPresent && hasQuarantine(appPath),
             skillHosts: skillHosts(),
-            opencodeListsSkills: opencodeListsSkills())
+            opencodeHasSkills: opencodeHasSkills())
     }
 
     /// Recursive count of `nodes`' notes.
@@ -269,7 +272,7 @@ public enum SetupDiagnostics {
         let hosts = facts.skillHosts.map { host in
             "\(host.name) \(host.found ? "found" : "not found")"
         }.joined(separator: ", ")
-        let opencode = facts.opencodeListsSkills
+        let opencode = facts.opencodeHasSkills
             ? "opencode configured"
             : "opencode not configured"
         return "\(hosts); \(opencode) — install: ln -s \"$PWD/skills/tandem\" <host>/tandem"
@@ -291,16 +294,22 @@ public enum SetupDiagnostics {
         }
     }
 
-    /// Whether `~/.config/opencode/opencode.json`'s `skills` array lists a path
-    /// containing `tandem/skills` (this repo's skills directory).
-    private static func opencodeListsSkills() -> Bool {
-        let config = URL(fileURLWithPath: "\(NSHomeDirectory())/.config/opencode/opencode.json")
-        guard
+    /// Whether the agent host has Tandem's skills, by either route: the
+    /// `skills` array in `~/.config/opencode/opencode.json` listing a path
+    /// containing `tandem/skills` (this repo's skills directory), or the host's
+    /// own skills directory holding the linked `tandem` skill — what
+    /// the `tandem-setup` skill makes.
+    private static func opencodeHasSkills() -> Bool {
+        let home = NSHomeDirectory()
+        let config = URL(fileURLWithPath: "\(home)/.config/opencode/opencode.json")
+        if
             let data = try? Data(contentsOf: config),
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let skills = object["skills"] as? [String]
-        else { return false }
-        return skills.contains { $0.contains("tandem/skills") }
+            let skills = object["skills"] as? [String],
+            skills.contains(where: { $0.contains("tandem/skills") })
+        { return true }
+        let linked = URL(fileURLWithPath: "\(home)/.config/opencode/skills/tandem")
+        return FileManager.default.fileExists(atPath: linked.path)
     }
 
     // MARK: - Filesystem helpers
