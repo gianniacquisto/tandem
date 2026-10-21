@@ -91,6 +91,9 @@ A ready ticket is claimed by the agent that takes it: `--status in-progress --as
 - The child branches, builds, verifies, opens a PR, files captures, and ends with one `work` capture.
 - The root verifies the evidence, then `todo complete`. Completion without a PR, a diff, or a recorded answer is a claim, not a completion.
 - **A claim is not a stall.** Before reclaiming an `in-progress` ticket, look for the live child: `opencode api session.list` shows it RUNNING with a `time.updated` seconds old, even when no branch is pushed yet. A local model can hold a claim for half an hour before its first commit. Only reclaim when there is no running session, no branch, and no PR.
+- **A session that landed gets a retro.**
+  - **The rule.** A retro runs on the human's request, and at the end of a session whose work landed — a merged PR or a completed ticket. A session that only read, planned or filed a capture is not retro'd: there is nothing in its transcript to find. The caller dispatches it: the dispatch step, for the session whose work landed, and the human, for a request. One retro per session.
+  - The `retro` agent runs it: the caller names the session, the agent reads the transcript, and each finding that clears the bar — an anchor, a named cost and an owner's next move — becomes a `backlog` ticket in that session's project lane. Zero tickets is a valid result. The same rule is in the fleet's `WORKFLOW.md` (pass 5).
 
 ## Escalate to the human
 
