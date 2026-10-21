@@ -22,7 +22,7 @@ import TandemCore
 /// refinement's output) is not. The sheet draws them oldest first; it never writes
 /// them (ticket `3A44B7FD` is the write half).
 struct TicketSheet: View {
-    var todo: Ticket
+    var ticket: Ticket
     var palette: Palette
     var lanes: [String]
     /// The ticket's discussion, as the sidecar holds it. `.list([])` is a ticket with
@@ -49,13 +49,13 @@ struct TicketSheet: View {
 
     private enum Field { case title, body }
 
-    init(todo: Ticket, palette: Palette, lanes: [String],
+    init(ticket: Ticket, palette: Palette, lanes: [String],
          comments: CommentRead = .list([]),
          onSave: @escaping (TicketEdits) -> Void,
          onCancel: @escaping () -> Void,
          onOpenLink: ((String) -> Void)? = nil,
          onPromote: (() -> PromotionOutcome)? = nil) {
-        self.todo = todo
+        self.ticket = ticket
         self.palette = palette
         self.lanes = lanes
         self.comments = comments
@@ -63,11 +63,11 @@ struct TicketSheet: View {
         self.onCancel = onCancel
         self.onOpenLink = onOpenLink
         self.onPromote = onPromote
-        _title = State(initialValue: todo.title)
-        _status = State(initialValue: todo.status)
-        _lane = State(initialValue: todo.lane)
-        _bodyText = State(initialValue: todo.description ?? "")
-        _link = State(initialValue: todo.link)
+        _title = State(initialValue: ticket.title)
+        _status = State(initialValue: ticket.status)
+        _lane = State(initialValue: ticket.lane)
+        _bodyText = State(initialValue: ticket.description ?? "")
+        _link = State(initialValue: ticket.link)
     }
 
     private var trimmedTitle: String {
@@ -116,7 +116,7 @@ struct TicketSheet: View {
                         choose(name, selected: lane == name) { lane = name }
                     }
                 }
-                if let assignee = todo.assignee {
+                if let assignee = ticket.assignee {
                     Text(assignee == TicketQuery.human ? "human" : "@\(assignee)")
                         .font(.system(size: 11))
                         .foregroundStyle(assignee == TicketQuery.human ? palette.emberDeep
@@ -125,9 +125,9 @@ struct TicketSheet: View {
                 // The filer, read-only (the type will not let a write touch it):
                 // `human` reads as "you", an agent as its name. The agent's filing is
                 // the one worth the colour — it is the signal triage starts from.
-                Text(todo.origin == TicketQuery.human ? "you filed" : "@\(todo.origin) filed")
+                Text(ticket.origin == TicketQuery.human ? "you filed" : "@\(ticket.origin) filed")
                     .font(.system(size: 11))
-                    .foregroundStyle(todo.origin == TicketQuery.human ? palette.inkDim
+                    .foregroundStyle(ticket.origin == TicketQuery.human ? palette.inkDim
                                                                     : palette.emberDeep)
                 Spacer(minLength: 0)
                 if let link {
@@ -199,7 +199,7 @@ struct TicketSheet: View {
         .background(palette.paper)
         .onAppear {
             // A ticket with a body opens for reading it; a terse one opens for writing it.
-            focus = todo.description == nil ? .title : .body
+            focus = ticket.description == nil ? .title : .body
         }
     }
 

@@ -3,18 +3,18 @@ import TandemCore
 
 /// The main window in reach B — subtle Ligne Claire (ticket 01 verdict).
 ///
-///   Header    — the "Tandem" wordmark and the Todos/Board/Bikeshed tab control,
+///   Header    — the "Tandem" wordmark and the Tickets/Board/Bikeshed tab control,
 ///               closed by a hairline (identical on every tab)
-///   Todos     — a centered 540 pt column: flat parchment quick-add
+///   Tickets   — a centered 540 pt column: flat parchment quick-add
 ///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All/
 ///               Archived with live counts (⌘1–⌘4) on a row with "+ Cycle lane" and
 ///               "Archive done" (disabled when nothing is done), and the
 ///               stored-order list grouped by lane. Only named lanes draw
-///               a header — the ungrouped todos are just the top of the list.
+///               a header — the ungrouped tickets are just the top of the list.
 ///               A search field (⌘F) narrows the drawn rows by title and description,
 ///               across every lane; Escape clears it (or dismisses a banner).
 ///               Double-click a name to rename; its ⋯ menu moves the lane up
-///               or down, or deletes it, which ungroups its todos rather than
+///               or down, or deletes it, which ungroups its tickets rather than
 ///               deleting them.
 ///               Rows: toggling checkbox (check completes, uncheck reopens);
 ///               double-click opens the ticket sheet (title, status, lane, body);
@@ -46,7 +46,7 @@ struct MainView: View {
     @State private var quickAdd = ""
     @State private var scope: ListScope = .open
     @State private var search = ""
-    @State private var tab: MainTab = .todos
+    @State private var tab: MainTab = .tickets
     @FocusState private var quickAddFocused: Bool
     @FocusState private var searchFocused: Bool
 
@@ -60,7 +60,7 @@ struct MainView: View {
     @State private var renameDraft = ""
     @FocusState private var laneFocused: Bool
 
-    // The todo being linked to a note, and the picker's filter text.
+    // The ticket being linked to a note, and the picker's filter text.
     @State private var linkPickerFor: Ticket?
     @State private var linkFilter = ""
 
@@ -78,8 +78,8 @@ struct MainView: View {
         return VStack(spacing: 0) {
             header
             Rectangle().fill(palette.sand).frame(height: Line.hairline)
-            if tab == .todos {
-                todosFace
+            if tab == .tickets {
+                ticketsFace
                     .frame(maxWidth: 540)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else if tab == .board {
@@ -90,7 +90,7 @@ struct MainView: View {
                           onOpenLink: openLinkedNote,
                           onPromote: promote)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .modifier(TodosShortcuts(search: $search,
+                    .modifier(TicketsShortcuts(search: $search,
                                              focusSearch: $searchFocused,
                                              hasBanner: false,
                                              dismissBanners: {}))
@@ -114,22 +114,22 @@ struct MainView: View {
                 quickOpenOverlay
             }
         }
-        .sheet(item: $linkPickerFor) { todo in
-            linkSheet(todo)
+        .sheet(item: $linkPickerFor) { ticket in
+            linkSheet(ticket)
         }
-        .sheet(item: $ticketFor) { todo in
+        .sheet(item: $ticketFor) { ticket in
             TicketSheet(
-                todo: todo,
+                ticket: ticket,
                 palette: palette,
                 lanes: model.lanes,
-                comments: model.comments(for: todo.id.uuidString),
+                comments: model.comments(for: ticket.id.uuidString),
                 onSave: { edits in
-                    model.saveTicket(todo.id.uuidString, edits: edits)
+                    model.saveTicket(ticket.id.uuidString, edits: edits)
                     ticketFor = nil
                 },
                 onCancel: { ticketFor = nil },
                 onOpenLink: openLinkedNote,
-                onPromote: { promote(todo) })
+                onPromote: { promote(ticket) })
         }
         .sheet(isPresented: $setup.isPresented) {
             SetupWizardView(
@@ -180,7 +180,7 @@ struct MainView: View {
                 .tracking(0.3)
                 .foregroundStyle(palette.ink)
             BikeTabControl(tab: $tab, palette: palette,
-                       inboxCount: model.inboxTodos.count)
+                       inboxCount: model.inboxTickets.count)
             Spacer()
         }
         .padding(.horizontal, Space.gutter)
@@ -188,9 +188,9 @@ struct MainView: View {
         .padding(.bottom, 12)
     }
 
-    // MARK: - Todos face (the centered 540 pt column)
+    // MARK: - Tickets face (the centered 540 pt column)
 
-    private var todosFace: some View {
+    private var ticketsFace: some View {
         VStack(spacing: 0) {
             LigneQuickAdd(text: $quickAdd, palette: palette,
                           onCommit: commitAdd,
@@ -202,9 +202,9 @@ struct MainView: View {
                 .padding(.top, Space.lane)
             HStack(spacing: 12) {
                 LigneFilter(selection: $scope,
-                            counts: (open: model.openTodos.count,
-                                     done: model.doneTodos.count,
-                                     archived: model.archivedTodos.count),
+                            counts: (open: model.openTickets.count,
+                                     done: model.doneTickets.count,
+                                     archived: model.archivedTickets.count),
                             palette: palette)
                 Spacer(minLength: 8)
                 if addingLane {
@@ -215,7 +215,7 @@ struct MainView: View {
                     TextButton(title: "+ Cycle lane", palette: palette) { beginAddLane() }
                 }
                 TextButton(title: "Archive done", palette: palette,
-                           enabled: !model.doneTodos.isEmpty) {
+                           enabled: !model.doneTickets.isEmpty) {
                     withAnimation(Motion.remove) { model.archiveDone() }
                 }
             }
@@ -234,7 +234,7 @@ struct MainView: View {
                 .padding(.top, Space.lane)
             listArea
         }
-        .modifier(TodosShortcuts(
+        .modifier(TicketsShortcuts(
             search: $search,
             focusSearch: $searchFocused,
             hasBanner: model.recoveryNote != nil || model.lastError != nil,
@@ -263,10 +263,10 @@ struct MainView: View {
     /// `TicketQuery` for both, the same predicate an agent's `list` runs. The search
     /// matches the title *and the description*, and it never re-sorts or mutates the
     /// store.
-    private var visibleTodos: [Ticket] {
+    private var visibleTickets: [Ticket] {
         var query = scope.query
         query.text = search
-        return query.apply(to: model.todos)
+        return query.apply(to: model.tickets)
     }
 
     /// Whether the search field has anything in it. The matching itself — case- and
@@ -276,14 +276,14 @@ struct MainView: View {
     }
 
     /// The list grouped for display: the default area first, then the declared lanes, then
-    /// any lane that only appears on a todo (a hand edit) so nothing is hidden. The key
+    /// any lane that only appears on a ticket (a hand edit) so nothing is hidden. The key
     /// order is the board's (`TicketBoard.orderedKeys`) — both faces group a lane the same
     /// way, including the no-lanes-declared case; the order *within* a group stays the
     /// stored order, which is what a list shows.
-    private var groups: [TodoGroup] {
-        let visible = visibleTodos
+    private var groups: [TicketGroup] {
+        let visible = visibleTickets
         return TicketBoard.orderedKeys(declared: model.lanes, todos: visible).map { key in
-            TodoGroup(key: key, todos: visible.filter { $0.lane == key })
+            TicketGroup(key: key, tickets: visible.filter { $0.lane == key })
         }
     }
 
@@ -292,27 +292,27 @@ struct MainView: View {
 
     private var listArea: some View {
         Group {
-            if queryActive && visibleTodos.isEmpty {
+            if queryActive && visibleTickets.isEmpty {
                 // A search that matched nothing: a quiet empty state, not a wall
                 // of lane headers at 0. Distinct from the true-empty states
                 // below, which are about the store itself being empty.
                 LigneEmptyState(palette: palette, title: "No matches",
-                                subtitle: "No todo title matches your search.",
+                                subtitle: "No ticket title matches your search.",
                                 hero: false)
-            } else if visibleTodos.isEmpty && !showsLanes {
+            } else if visibleTickets.isEmpty && !showsLanes {
                 switch scope {
                 case .open:
                     LigneEmptyState(palette: palette, title: "All clear",
                                     subtitle: "Nothing open — add something above.", hero: true)
                 case .done:
                     LigneEmptyState(palette: palette, title: "Nothing done yet",
-                                    subtitle: "Completed todos rest here.", hero: false)
+                                    subtitle: "Completed tickets rest here.", hero: false)
                 case .all:
                     LigneEmptyState(palette: palette, title: "The list is empty",
-                                    subtitle: "Add your first todo above.", hero: false)
+                                    subtitle: "Add your first ticket above.", hero: false)
                 case .archived:
                     LigneEmptyState(palette: palette, title: "The archive is empty",
-                                    subtitle: "Archived todos rest here, out of the way.",
+                                    subtitle: "Archived tickets rest here, out of the way.",
                                     hero: false)
                 }
             } else {
@@ -325,7 +325,7 @@ struct MainView: View {
                             if let key, showsLanes {
                                 LigneLaneHeader(
                                     title: key,
-                                    count: group.todos.count,
+                                    count: group.tickets.count,
                                     palette: palette,
                                     isRenaming: renamingLane == key,
                                     draft: $renameDraft,
@@ -338,11 +338,11 @@ struct MainView: View {
                                     canMoveDown: canMove(key, by: 1),
                                     onMoveUp: { moveLane(key, by: -1) },
                                     onMoveDown: { moveLane(key, by: 1) },
-                                    onDropIntoLane: { moveTodo($0, toLane: key) })
+                                    onDropIntoLane: { moveTicket($0, toLane: key) })
                             }
-                            ForEach(group.todos) { todo in
-                                ticketRow(todo)
-                                if todo.id != group.todos.last?.id {
+                            ForEach(group.tickets) { ticket in
+                                ticketRow(ticket)
+                                if ticket.id != group.tickets.last?.id {
                                     Rectangle()
                                         .fill(palette.sand)
                                         .frame(height: Line.hairline)
@@ -363,23 +363,23 @@ struct MainView: View {
     /// One ticket row, with every handler the list and the inbox share. The faces differ in
     /// what they show and how they order it, never in what a ticket can do — so the row is
     /// built once, here.
-    private func ticketRow(_ todo: Ticket) -> some View {
-        LigneRow(todo: todo, palette: palette,
-                 onComplete: { withAnimation(Motion.toggle) { model.complete(todo.id.uuidString) } },
-                 onReopen: { withAnimation(Motion.toggle) { model.reopen(todo.id.uuidString) } },
-                 onEdit: { model.update(todo.id.uuidString, title: $0) },
-                 onDelete: { withAnimation(Motion.remove) { model.delete(todo.id.uuidString) } },
+    private func ticketRow(_ ticket: Ticket) -> some View {
+        LigneRow(ticket: ticket, palette: palette,
+                 onComplete: { withAnimation(Motion.toggle) { model.complete(ticket.id.uuidString) } },
+                 onReopen: { withAnimation(Motion.toggle) { model.reopen(ticket.id.uuidString) } },
+                 onEdit: { model.update(ticket.id.uuidString, title: $0) },
+                 onDelete: { withAnimation(Motion.remove) { model.delete(ticket.id.uuidString) } },
                  onOpenLink: { openLinkedNote($0) },
                  lanes: model.lanes,
-                 onMoveToLane: { moveTodo(todo.id.uuidString, toLane: $0) },
-                 onSetLink: { beginLink(todo) },
-                 onClearLink: { model.setLink(todo.id.uuidString, to: nil) },
+                 onMoveToLane: { moveTicket(ticket.id.uuidString, toLane: $0) },
+                 onSetLink: { beginLink(ticket) },
+                 onClearLink: { model.setLink(ticket.id.uuidString, to: nil) },
                  onUnarchive: { withAnimation(Motion.toggle) {
-                     model.setArchived(todo.id.uuidString, false)
+                     model.setArchived(ticket.id.uuidString, false)
                  } },
-                 onOpenTicket: { ticketFor = todo },
-                 onDropTodo: { draggedID, edge in
-                     drop(draggedID, onto: todo, edge: edge)
+                 onOpenTicket: { ticketFor = ticket },
+                 onDropTicket: { draggedID, edge in
+                     drop(draggedID, onto: ticket, edge: edge)
                  })
             .transition(.opacity)
     }
@@ -390,7 +390,7 @@ struct MainView: View {
     /// A query (`TicketQuery.inbox`), not a second store — the row is the list's row, and the
     /// question itself is the ticket's description, read in the description sheet.
     private var inboxFace: some View {
-        let inbox = model.inboxTodos
+        let inbox = model.inboxTickets
         return VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Text("For you")
@@ -415,9 +415,9 @@ struct MainView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(inbox) { todo in
-                            ticketRow(todo)
-                            if todo.id != inbox.last?.id {
+                        ForEach(inbox) { ticket in
+                            ticketRow(ticket)
+                            if ticket.id != inbox.last?.id {
                                 Rectangle()
                                     .fill(palette.sand)
                                     .frame(height: Line.hairline)
@@ -439,7 +439,7 @@ struct MainView: View {
     /// the real `move` — see `OrderingTests`.
     private func drop(_ draggedID: String, onto anchor: Ticket, edge: DropEdge) {
         guard let dragged = UUID(uuidString: draggedID),
-              let index = TicketOrdering.dropIndex(in: model.todos,
+              let index = TicketOrdering.dropIndex(in: model.tickets,
                                                  moving: dragged,
                                                  relativeTo: anchor.id,
                                                  after: edge == .after)
@@ -449,16 +449,16 @@ struct MainView: View {
         }
     }
 
-    /// Files a todo at the top of `lane` (`nil` = the default area). Used by the
+    /// Files a ticket at the top of `lane` (`nil` = the default area). Used by the
     /// header drop and by the row's "Move to" menu — the latter being the way out of
     /// a lane that works at any scroll position.
-    private func moveTodo(_ id: String, toLane lane: String?) {
+    private func moveTicket(_ id: String, toLane lane: String?) {
         withAnimation(Motion.toggle) { model.move(id, toLane: lane, at: 0) }
     }
 
     // MARK: - Note links (GUI-only, ADR 0010)
 
-    /// Opens the todo's linked note: switch to the Bikeshed tab and load it.
+    /// Opens the ticket's linked note: switch to the Bikeshed tab and load it.
     private func openLinkedNote(_ path: String) {
         tab = .bikeshed
         bikeModel.open(path)
@@ -466,20 +466,20 @@ struct MainView: View {
 
     /// Promotes a ticket to a bikeshed note, in the bikeshed this window shows. The
     /// outcome travels back to the sheet, which says what happened.
-    private func promote(_ todo: Ticket) -> PromotionOutcome {
-        model.promoteToNote(todo.id.uuidString, into: bikeModel.bikeshed)
+    private func promote(_ ticket: Ticket) -> PromotionOutcome {
+        model.promoteToNote(ticket.id.uuidString, into: bikeModel.bikeshed)
     }
 
-    /// Opens the note picker for `todo`.
-    private func beginLink(_ todo: Ticket) {
+    /// Opens the note picker for `ticket`.
+    private func beginLink(_ ticket: Ticket) {
         linkFilter = ""
-        linkPickerFor = todo
+        linkPickerFor = ticket
     }
 
     /// The note picker: a filterable list of the bikeshed's note paths. Picking one
-    /// links the todo and dismisses; the picker never reads note content (the core
+    /// links the ticket and dismisses; the picker never reads note content (the core
     /// owns it). Styled like the rename sheet (monospaced field, parchment, hairline).
-    private func linkSheet(_ todo: Ticket) -> some View {
+    private func linkSheet(_ ticket: Ticket) -> some View {
         let paths = bikeModel.notePaths()
         let q = linkFilter.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let shown = q.isEmpty ? paths : paths.filter { $0.lowercased().contains(q) }
@@ -510,7 +510,7 @@ struct MainView: View {
                             .padding(.vertical, 6)
                     } else {
                         ForEach(shown, id: \.self) { path in
-                            linkRow(path, todo: todo)
+                            linkRow(path, ticket: ticket)
                         }
                     }
                 }
@@ -530,14 +530,14 @@ struct MainView: View {
         .frame(width: 420)
     }
 
-    /// One note in the picker; the todo's current link is checkmarked.
-    private func linkRow(_ path: String, todo: Ticket) -> some View {
+    /// One note in the picker; the ticket's current link is checkmarked.
+    private func linkRow(_ path: String, ticket: Ticket) -> some View {
         Button {
-            model.setLink(todo.id.uuidString, to: path)
+            model.setLink(ticket.id.uuidString, to: path)
             linkPickerFor = nil
         } label: {
             HStack(spacing: 6) {
-                if todo.link == path {
+                if ticket.link == path {
                     Image(systemName: "checkmark")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(palette.emberDeep)
@@ -579,7 +579,7 @@ struct MainView: View {
     /// matching and the ranking; this only gathers what there is to rank.
     private var quickOpenItems: [QuickOpen.Item] {
         bikeModel.notePaths().map { QuickOpen.Item.note(path: $0) }
-            + model.todos.map { QuickOpen.Item.ticket($0) }
+            + model.tickets.map { QuickOpen.Item.ticket($0) }
     }
 
     /// Opens a quick-open choice: a note in the editor, a ticket in its sheet.
@@ -590,8 +590,8 @@ struct MainView: View {
             // The note opens in the Bikeshed tab, the way a linked note does.
             tab = .bikeshed
             bikeModel.open(path)
-        case .ticket(let todo):
-            ticketFor = todo
+        case .ticket(let ticket):
+            ticketFor = ticket
         }
     }
 
@@ -709,16 +709,16 @@ struct TandemShortcuts: ViewModifier {
     }
 }
 
-/// Todos-face shortcuts, registered the same invisible-button way as
+/// Tickets-face shortcuts, registered the same invisible-button way as
 /// `TandemShortcuts` (which keeps ⌘1/⌘2/⌘3 and ⌘N — this never steals them):
 ///
 ///   ⌘F      focuses the search field
 ///   Escape  clears a focused, non-empty search; otherwise dismisses a banner
 ///
-/// Scoped to the Todos face so its Escape never contends with the Bikeshed's own
+/// Scoped to the Tickets face so its Escape never contends with the Bikeshed's own
 /// Escape handler. Focus is the system's single first responder, so focusing one
 /// field (`⌘F`) automatically resigns the other (`⌘N` quick-add) and vice versa.
-struct TodosShortcuts: ViewModifier {
+struct TicketsShortcuts: ViewModifier {
     @Binding var search: String
     var focusSearch: FocusState<Bool>.Binding
     /// Whether a banner is actually up — Escape is a no-op otherwise.

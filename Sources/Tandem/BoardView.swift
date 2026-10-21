@@ -4,7 +4,7 @@ import TandemCore
 // The board face: Status columns, cycle-lane rows.
 //
 // It is the third tab, beside the list rather than instead of it (2026-10-20): the list
-// stays the place to capture ("Add a todo…"), name lanes, and read the flat running
+// stays the place to capture ("Add a ticket…"), name lanes, and read the flat running
 // order; the board is where a ticket's *stage* is visible and changeable. Same store,
 // same query, same drag arithmetic — the board draws what the list holds, cut the other
 // way.
@@ -63,7 +63,7 @@ struct BoardFace: View {
     private var visible: [Ticket] {
         var query = TicketQuery()
         query.text = search
-        return query.apply(to: model.todos)
+        return query.apply(to: model.tickets)
     }
 
     private var rows: [BoardLane] {
@@ -77,7 +77,7 @@ struct BoardFace: View {
     /// The lanes a ticket can be moved into: the declared ones plus any dangling name
     /// already on a ticket, in the board's own row order.
     private var lanes: [String] {
-        TicketBoard.orderedKeys(declared: model.lanes, todos: model.todos).compactMap { $0 }
+        TicketBoard.orderedKeys(declared: model.lanes, todos: model.tickets).compactMap { $0 }
     }
 
     private var context: BoardContext {
@@ -94,7 +94,7 @@ struct BoardFace: View {
             HStack(spacing: 12) {
                 LigneSearchField(text: $search, palette: palette, focus: focus)
                 TextButton(title: "Archive done", palette: palette,
-                           enabled: !model.doneTodos.isEmpty) {
+                           enabled: !model.doneTickets.isEmpty) {
                     withAnimation(Motion.remove) { model.archiveDone() }
                 }
             }
@@ -109,31 +109,31 @@ struct BoardFace: View {
                                 title: "No matches",
                                 subtitle: "No ticket title or description matches your search.",
                                 hero: false)
-            } else if model.todos.isEmpty {
+            } else if model.tickets.isEmpty {
                 // A store with nothing in it draws no grid: a row of empty cells reads as a
                 // board that failed to load. Lanes without tickets still draw — they are
                 // the targets that make the next drop possible.
                 LigneEmptyState(palette: palette,
                                 title: "Nothing on the board",
-                                subtitle: "Add a ticket in Todos, or from the CLI.",
+                                subtitle: "Add a ticket in Tickets, or from the CLI.",
                                 hero: true)
             } else {
                 board
             }
         }
-        .sheet(item: $ticketFor) { todo in
+        .sheet(item: $ticketFor) { ticket in
             TicketSheet(
-                todo: todo,
+                ticket: ticket,
                 palette: palette,
                 lanes: lanes,
-                comments: model.comments(for: todo.id.uuidString),
+                comments: model.comments(for: ticket.id.uuidString),
                 onSave: { edits in
-                    model.saveTicket(todo.id.uuidString, edits: edits)
+                    model.saveTicket(ticket.id.uuidString, edits: edits)
                     ticketFor = nil
                 },
                 onCancel: { ticketFor = nil },
                 onOpenLink: onOpenLink,
-                onPromote: { onPromote(todo) })
+                onPromote: { onPromote(ticket) })
         }
     }
 
@@ -216,8 +216,8 @@ private struct BoardCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: BoardMetrics.ticketGap) {
-            ForEach(tickets) { todo in
-                BoardTicket(todo: todo, context: context)
+            ForEach(tickets) { ticket in
+                BoardTicket(ticket: ticket, context: context)
             }
         }
         .frame(maxWidth: .infinity, minHeight: BoardMetrics.minCellHeight, alignment: .top)
@@ -244,7 +244,7 @@ private struct BoardCell: View {
 /// the one-click completion; the menu carries the stage and the lane when dragging is
 /// inconvenient (a keyboard, a narrow window, a long scroll).
 private struct BoardTicket: View {
-    var todo: Ticket
+    var ticket: Ticket
     var context: BoardContext
 
     @State private var hovering = false
@@ -258,16 +258,16 @@ private struct BoardTicket: View {
         HStack(alignment: .top, spacing: 6) {
             Button {
                 withAnimation(Motion.toggle) {
-                    todo.done ? context.model.reopen(todo.id.uuidString)
-                               : context.model.complete(todo.id.uuidString)
+                    ticket.done ? context.model.reopen(ticket.id.uuidString)
+                               : context.model.complete(ticket.id.uuidString)
                 }
             } label: {
-                LigneCheckbox(done: todo.done, palette: palette, size: 14)
+                LigneCheckbox(done: ticket.done, palette: palette, size: 14)
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
-            .help(todo.done ? "Reopen" : "Complete")
+            .help(ticket.done ? "Reopen" : "Complete")
 
             VStack(alignment: .leading, spacing: 2) {
                 if editing {
@@ -282,20 +282,20 @@ private struct BoardTicket: View {
                             if !focused { commitEdit() }
                         }
                 } else {
-                    Text(todo.title)
+                    Text(ticket.title)
                         .font(.system(size: 12.5))
-                        .foregroundStyle(todo.done ? palette.inkDim : palette.ink)
-                        .strikethrough(todo.done, color: palette.inkDim)
+                        .foregroundStyle(ticket.done ? palette.inkDim : palette.ink)
+                        .strikethrough(ticket.done, color: palette.inkDim)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let body = todo.description {
+                if let body = ticket.description {
                     Text(body)
                         .font(.system(size: 10.5))
                         .foregroundStyle(palette.inkDim)
                         .lineLimit(1)
                 }
-                if let assignee = todo.assignee {
+                if let assignee = ticket.assignee {
                     Text(assignee == TicketQuery.human ? "human" : "@\(assignee)")
                         .font(.system(size: 10.5))
                         .foregroundStyle(assignee == TicketQuery.human ? palette.emberDeep
@@ -305,7 +305,7 @@ private struct BoardTicket: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            if let link = todo.link {
+            if let link = ticket.link {
                 Button { context.onOpenLink(link) } label: {
                     Image(systemName: "paperclip")
                         .font(.system(size: 9))
@@ -325,13 +325,13 @@ private struct BoardTicket: View {
             .strokeBorder(hovering ? palette.line : palette.sand, lineWidth: Line.hairline))
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-            if !editing { context.onOpenTicket(todo) }
+            if !editing { context.onOpenTicket(ticket) }
         }
         .onHover { hovering = $0 }
         .contextMenu { menu }
-        .draggable(todo.id.uuidString) { dragPreview }
+        .draggable(ticket.id.uuidString) { dragPreview }
         .dropDestination(for: String.self) { items, location in
-            guard let id = items.first, id != todo.id.uuidString else { return false }
+            guard let id = items.first, id != ticket.id.uuidString else { return false }
             drop(id, at: location.y < BoardMetrics.reorderSplit ? .before : .after)
             return true
         }
@@ -341,16 +341,16 @@ private struct BoardTicket: View {
 
     @ViewBuilder
     private var menu: some View {
-        Button("Open ticket…") { context.onOpenTicket(todo) }
+        Button("Open ticket…") { context.onOpenTicket(ticket) }
         Divider()
         Menu("Status") {
             ForEach(Status.workflow, id: \.self) { status in
                 Button {
                     withAnimation(Motion.toggle) {
-                        context.model.setStatus(todo.id.uuidString, to: status)
+                        context.model.setStatus(ticket.id.uuidString, to: status)
                     }
                 } label: {
-                    if todo.status == status {
+                    if ticket.status == status {
                         Label(status.displayName, systemImage: "checkmark")
                     } else {
                         Text(status.displayName)
@@ -366,17 +366,17 @@ private struct BoardTicket: View {
             }
         }
         Divider()
-        if let link = todo.link {
+        if let link = ticket.link {
             Button("Open note") { context.onOpenLink(link) }
         }
         Button("Rename", action: beginEdit)
-        if todo.done {
+        if ticket.done {
             Button("Reopen") {
-                withAnimation(Motion.toggle) { context.model.reopen(todo.id.uuidString) }
+                withAnimation(Motion.toggle) { context.model.reopen(ticket.id.uuidString) }
             }
         }
         Button("Delete", role: .destructive) {
-            withAnimation(Motion.remove) { context.model.delete(todo.id.uuidString) }
+            withAnimation(Motion.remove) { context.model.delete(ticket.id.uuidString) }
         }
     }
 
@@ -384,10 +384,10 @@ private struct BoardTicket: View {
     private func laneItem(_ title: String, target: String?) -> some View {
         Button {
             withAnimation(Motion.toggle) {
-                context.model.place(todo.id.uuidString, lane: target, status: todo.status)
+                context.model.place(ticket.id.uuidString, lane: target, status: ticket.status)
             }
         } label: {
-            if todo.lane == target {
+            if ticket.lane == target {
                 Label(title, systemImage: "checkmark")
             } else {
                 Text(title)
@@ -396,7 +396,7 @@ private struct BoardTicket: View {
     }
 
     private var dragPreview: some View {
-        Text(todo.title)
+        Text(ticket.title)
             .font(.system(size: 12.5))
             .foregroundStyle(palette.ink)
             .lineLimit(2)
@@ -411,7 +411,7 @@ private struct BoardTicket: View {
     // MARK: edit + drop
 
     private func beginEdit() {
-        draft = todo.title
+        draft = ticket.title
         editing = true
         titleFocused = true
     }
@@ -420,8 +420,8 @@ private struct BoardTicket: View {
         guard editing else { return }
         editing = false
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty, trimmed != todo.title {
-            context.model.update(todo.id.uuidString, title: trimmed)
+        if !trimmed.isEmpty, trimmed != ticket.title {
+            context.model.update(ticket.id.uuidString, title: trimmed)
         }
     }
 
@@ -429,13 +429,13 @@ private struct BoardTicket: View {
     /// the core's (`TicketOrdering.dropIndex`), the same one the list's drop uses.
     private func drop(_ draggedID: String, at edge: DropEdge) {
         guard let dragged = UUID(uuidString: draggedID),
-              let index = TicketOrdering.dropIndex(in: context.model.todos,
+              let index = TicketOrdering.dropIndex(in: context.model.tickets,
                                                  moving: dragged,
-                                                 relativeTo: todo.id,
+                                                 relativeTo: ticket.id,
                                                  after: edge == .after)
         else { return }
         withAnimation(Motion.toggle) {
-            context.model.place(draggedID, lane: todo.lane, status: todo.status, at: index)
+            context.model.place(draggedID, lane: ticket.lane, status: ticket.status, at: index)
         }
     }
 }

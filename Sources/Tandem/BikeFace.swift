@@ -13,7 +13,7 @@ import TandemCore
 // All decisions live in BikeshedModel; this face only draws and forwards.
 
 enum MainTab: String, CaseIterable, Identifiable {
-    case todos = "Todos"
+    case tickets = "Tickets"
     case board = "Board"
     case inbox = "Inbox"
     case bikeshed = "Bikeshed"
@@ -160,14 +160,14 @@ struct BikeFaceView: View {
                     .foregroundStyle(palette.inkDim)
                     .transition(.opacity)
             }
-            // "Send to todos": the selection (or the caret's checkbox line)
-            // becomes a ticket in the todos list, linked to this note. The
+            // "Send to tickets": the selection (or the caret's checkbox line)
+            // becomes a ticket in the tickets list, linked to this note. The
             // note itself is not modified. The shortcut is the editor's own
             // (⌘⇧T), so it works where the selection is.
-            TextButton(title: "Send to todos", palette: palette) {
-                model.requestSendToTodos()
+            TextButton(title: "Send to tickets", palette: palette) {
+                model.requestSendToTickets()
             }
-            .help("Send the selection to the todos list (⌘⇧T)")
+            .help("Send the selection to the tickets list (⌘⇧T)")
         }
         .padding(.horizontal, 16)
         .frame(height: 42)

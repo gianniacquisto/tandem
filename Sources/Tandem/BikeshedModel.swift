@@ -24,10 +24,10 @@ final class BikeshedModel {
     private(set) var bikeshed: Bikeshed
     private var watcher: BikeshedWatcher
 
-    /// The todos model — the app's single owner of the store. The bikeshed face
-    /// files tickets through it (the "send to todos" action), so the store has
+    /// The tickets model — the app's single owner of the store. The bikeshed face
+    /// files tickets through it (the "send to tickets" action), so the store has
     /// exactly one owner, as the app's shape intends.
-    private let todos: TandemModel
+    private let tickets: TandemModel
 
     // MARK: Tree + selection + search
 
@@ -101,9 +101,9 @@ final class BikeshedModel {
     private var healthDebounce: DispatchWorkItem?
     private var healthRun: Task<Void, Never>?
 
-    private init(bikeshed: Bikeshed = Bikeshed(), todos: TandemModel = .shared) {
+    private init(bikeshed: Bikeshed = Bikeshed(), tickets: TandemModel = .shared) {
         self.bikeshed = bikeshed
-        self.todos = todos
+        self.tickets = tickets
         self.showsHiddenFiles = bikeshed.showsHiddenFiles
         self.watcher = BikeshedWatcher(directory: bikeshed.directory)
         // The editor host owns the WKWebView and the bridge plumbing (the
@@ -735,22 +735,22 @@ final class BikeshedModel {
         }
     }
 
-    // MARK: - Send to todos (the reverse of the todo→note link)
+    // MARK: - Send to tickets (the reverse of the ticket→note link)
 
-    /// The editor's "send to todos" action: the text it would file (the
-    /// selection, or the caret's checkbox line) becomes a ticket in the todos
+    /// The editor's "send to tickets" action: the text it would file (the
+    /// selection, or the caret's checkbox line) becomes a ticket in the tickets
     /// list, linked back to the open note. **The note is not modified.**
     ///
     /// The trigger is the editor's — the ⌘⇧T shortcut posts the text, and the
     /// menu item asks the page for it — but the filing is one core operation,
     /// so the two cannot drift. An empty selection is rejected by the core, and
     /// its message surfaces here, in the face the action was taken in.
-    func sendToTodos(text: String) {
+    func sendToTickets(text: String) {
         guard let path = openPath else {
             lastError = "Open a note first — a ticket needs the note it came from."
             return
         }
-        if let message = todos.addFromNote(text, notePath: path) {
+        if let message = tickets.addFromNote(text, notePath: path) {
             lastError = message
         } else {
             lastError = nil
@@ -759,8 +759,8 @@ final class BikeshedModel {
 
     /// The menu item's path: ask the page for the text it would file. The page
     /// answers with the same message the ⌘⇧T shortcut posts.
-    func requestSendToTodos() {
-        editor.requestTodoCandidate()
+    func requestSendToTickets() {
+        editor.requestTicketCandidate()
     }
 
     // MARK: - Autosave (debounced ~1 s; on note switch, window blur, ⌘S)

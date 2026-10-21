@@ -157,7 +157,7 @@ struct LigneQuickAdd: View {
                 .foregroundStyle(focus.wrappedValue ? palette.ember : palette.inkDim)
             ZStack(alignment: .leading) {
                 if placeholder {
-                    Text("Add a todo…")
+                    Text("Add a ticket…")
                         .font(.body)
                         .foregroundStyle(palette.inkDim)
                 }
@@ -193,7 +193,7 @@ struct LigneQuickAdd: View {
 
 // MARK: search — magnifying-glass · plain field, one hairline (the sidebar's in-tree look)
 
-/// The Todos-face search field: a magnifying glass, a plain `TextField` on
+/// The Tickets-face search field: a magnifying glass, a plain `TextField` on
 /// parchment with one `line` hairline, `Radius.control` — visually the same
 /// field as the Bikeshed sidebar's in-tree search. It is a pure view filter:
 /// it narrows what is drawn and never touches the store.
@@ -208,7 +208,7 @@ struct LigneSearchField: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11))
                 .foregroundStyle(palette.inkDim)
-            TextField("Search todos…", text: $text)
+            TextField("Search tickets…", text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12.5))
                 .foregroundStyle(palette.ink)
@@ -220,13 +220,13 @@ struct LigneSearchField: View {
         .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
         .overlay(RoundedRectangle(cornerRadius: Radius.control)
             .strokeBorder(palette.line, lineWidth: Line.hairline))
-        .help("Filter todos by title (⌘F)")
+        .help("Filter tickets by title (⌘F)")
     }
 }
 
 // MARK: row — checkbox · title · hover delete (GUI-only)
 
-/// Which half of a row a dragged todo was dropped on. The row's own height decides
+/// Which half of a row a dragged ticket was dropped on. The row's own height decides
 /// the split, so the caller never sees a coordinate.
 enum DropEdge {
     case before
@@ -267,7 +267,7 @@ struct RowDragAndDrop: ViewModifier {
     }
 
     /// The drag image: the row's title on a small parchment card, so the drag reads
-    /// as "this todo", not a raw string.
+    /// as "this ticket", not a raw string.
     private var preview: some View {
         Text(title)
             .font(.system(size: 12.5))
@@ -283,31 +283,31 @@ struct RowDragAndDrop: ViewModifier {
 }
 
 /// A main-window row. The checkbox is the toggle: checking completes, and
-/// un-checking a done todo reopens it (GUI-only — no reopen in the CLI).
+/// un-checking a done ticket reopens it (GUI-only — no reopen in the CLI).
 /// Double-clicking the row opens the ticket sheet — the whole ticket in one place.
 /// The title edits in place from the menu's Rename item: Return commits, Esc cancels,
 /// and clicking away commits. A plain row click is never destructive. Delete appears on hover and in the context menu — also GUI-only
 /// (agents have no delete in the CLI). Rows drag to reorder and to move
-/// between lanes when the caller passes `onDropTodo`, and the context menu's
+/// between lanes when the caller passes `onDropTicket`, and the context menu's
 /// "Move to" files one into a lane at any scroll position.
-/// A linked todo (`todo.link`) shows a quiet trailing paperclip that opens the note,
+/// A linked ticket (`ticket.link`) shows a quiet trailing paperclip that opens the note,
 /// with "Link to note…" / "Remove link" in the context menu (GUI-only, ADR 0010).
 struct LigneRow: View {
-    var todo: Ticket
+    var ticket: Ticket
     var palette: Palette
     var onComplete: () -> Void
     var onReopen: () -> Void
     var onEdit: (String) -> Void
     var onDelete: () -> Void
-    /// Opens the todo's linked Bikeshed note (its bikeshed-root-relative path). GUI-only.
+    /// Opens the ticket's linked Bikeshed note (its bikeshed-root-relative path). GUI-only.
     var onOpenLink: (String) -> Void
     /// Lane names for the "Move to" menu; empty (the flat case) hides it, since
     /// there is nowhere to move to. GUI-only.
     var lanes: [String] = []
     var onMoveToLane: ((String?) -> Void)? = nil
-    /// Opens the note picker to link this todo to a note. `nil` hides the item.
+    /// Opens the note picker to link this ticket to a note. `nil` hides the item.
     var onSetLink: (() -> Void)? = nil
-    /// Clears this todo's link. `nil` hides the item.
+    /// Clears this ticket's link. `nil` hides the item.
     var onClearLink: (() -> Void)? = nil
     /// Brings an archived ticket back into the default views. `nil` hides the item; only
     /// an archived row shows it, so every caller can pass the same closure.
@@ -318,7 +318,7 @@ struct LigneRow: View {
     var onOpenTicket: (() -> Void)? = nil
     /// Called when another row is dropped on this one, with which half. `nil`
     /// leaves the row undraggable.
-    var onDropTodo: ((_ draggedID: String, _ edge: DropEdge) -> Void)? = nil
+    var onDropTicket: ((_ draggedID: String, _ edge: DropEdge) -> Void)? = nil
     @State private var hovering = false
     @State private var editing = false
     @State private var draft = ""
@@ -326,8 +326,8 @@ struct LigneRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Button(action: todo.done ? onReopen : onComplete) {
-                LigneCheckbox(done: todo.done, palette: palette)
+            Button(action: ticket.done ? onReopen : onComplete) {
+                LigneCheckbox(done: ticket.done, palette: palette)
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.plain)
@@ -351,16 +351,16 @@ struct LigneRow: View {
                                 if !focused { commitEdit() }
                             }
                     } else {
-                        Text(todo.title)
+                        Text(ticket.title)
                             .font(.body)
-                            .foregroundStyle(todo.done ? palette.inkDim : palette.ink)
-                            .strikethrough(todo.done, color: palette.inkDim)
+                            .foregroundStyle(ticket.done ? palette.inkDim : palette.ink)
+                            .strikethrough(ticket.done, color: palette.inkDim)
                             .lineLimit(1)
                     }
 
                     // An archived ticket is still in the store; in the views that include
                     // the archive it says so, quietly, so it is never mistaken for live work.
-                    if todo.archived {
+                    if ticket.archived {
                         Text("archived")
                             .font(.system(size: 9.5))
                             .foregroundStyle(palette.inkDim)
@@ -371,7 +371,7 @@ struct LigneRow: View {
                     }
                     Spacer(minLength: 0)
                 }
-                if !editing, let body = todo.description {
+                if !editing, let body = ticket.description {
                     Text(body)
                         .font(.system(size: 11))
                         .foregroundStyle(palette.inkDim)
@@ -384,9 +384,9 @@ struct LigneRow: View {
 
             Spacer(minLength: 8)
 
-            // The link affordance: a quiet paperclip, drawn only when the todo is
+            // The link affordance: a quiet paperclip, drawn only when the ticket is
             // linked. Clicking it opens the note (the GUI never reads note content).
-            if let link = todo.link {
+            if let link = ticket.link {
                 Button { onOpenLink(link) } label: {
                     Image(systemName: "paperclip")
                         .font(.system(size: 11))
@@ -431,11 +431,11 @@ struct LigneRow: View {
                 Button("Open ticket…", action: onOpenTicket)
                 Divider()
             }
-            if todo.archived, let onUnarchive {
+            if ticket.archived, let onUnarchive {
                 Button("Unarchive", action: onUnarchive)
                 Divider()
             }
-            if let link = todo.link {
+            if let link = ticket.link {
                 Button("Open note") { onOpenLink(link) }
                 if let onSetLink { Button("Link to note…", action: onSetLink) }
                 if let onClearLink { Button("Remove link", action: onClearLink) }
@@ -452,16 +452,16 @@ struct LigneRow: View {
                 }
             }
             Button("Rename", action: beginEdit)
-            if todo.done {
+            if ticket.done {
                 Button("Reopen", action: onReopen)
             }
             Button("Delete", role: .destructive, action: onDelete)
         }
-        .modifier(RowDragAndDrop(payload: todo.id.uuidString, title: todo.title,
-                                 palette: palette, onDrop: onDropTodo))
+        .modifier(RowDragAndDrop(payload: ticket.id.uuidString, title: ticket.title,
+                                 palette: palette, onDrop: onDropTicket))
     }
 
-    /// One "Move to" entry, checkmarked when it is the todo's current lane.
+    /// One "Move to" entry, checkmarked when it is the ticket's current lane.
     /// (`Label` in a menu is what draws the checkmark; a selected `Toggle` would
     /// also work but reads as a switch.)
     @ViewBuilder
@@ -470,7 +470,7 @@ struct LigneRow: View {
         Button {
             action(target)
         } label: {
-            if todo.lane == target {
+            if ticket.lane == target {
                 Label(title, systemImage: "checkmark")
             } else {
                 Text(title)
@@ -481,7 +481,7 @@ struct LigneRow: View {
     // MARK: inline edit
 
     private func beginEdit() {
-        draft = todo.title
+        draft = ticket.title
         editing = true
         titleFocused = true
     }
@@ -493,7 +493,7 @@ struct LigneRow: View {
         guard editing else { return }
         editing = false
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty, trimmed != todo.title { onEdit(trimmed) }
+        if !trimmed.isEmpty, trimmed != ticket.title { onEdit(trimmed) }
     }
 
     /// Esc: leave the title as it was.

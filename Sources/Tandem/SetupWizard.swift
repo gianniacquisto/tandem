@@ -100,7 +100,7 @@ struct SetupWizardView: View {
                  + "just a list and a folder your agent can reach too.")
                 .bodyText(palette)
             VStack(alignment: .leading, spacing: 0) {
-                face(name: "Todos",
+                face(name: "Tickets",
                      detail: "One list you and your agents both read and write.")
                 Rectangle().fill(palette.sand).frame(height: Line.hairline)
                     .padding(.leading, 96)
@@ -168,7 +168,7 @@ struct SetupWizardView: View {
     private var finish_: some View {
         VStack(alignment: .leading, spacing: 14) {
             heading("You're set")
-            Text("The list starts empty on purpose — add your first todo "
+            Text("The list starts empty on purpose — add your first ticket "
                  + "whenever you like, or let your agent file one.")
                 .bodyText(palette)
             Text("You can reopen this setup later from the File menu.")

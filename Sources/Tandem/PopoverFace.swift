@@ -75,7 +75,7 @@ struct PopoverFaceView: View {
 
     @ViewBuilder
     private var list: some View {
-        if model.openTodos.isEmpty {
+        if model.openTickets.isEmpty {
             Text("All clear")
                 .font(.system(size: 12.5))
                 .foregroundStyle(palette.inkDim)
@@ -83,14 +83,14 @@ struct PopoverFaceView: View {
                 .padding(.vertical, 14)
         } else {
             VStack(spacing: 0) {
-                ForEach(model.openTodos.prefix(5)) { todo in
-                    PopoverRow(todo: todo, palette: palette,
-                               onComplete: { withAnimation(Motion.toggle) { model.complete(todo.id.uuidString) } })
+                ForEach(model.openTickets.prefix(5)) { ticket in
+                    PopoverRow(ticket: ticket, palette: palette,
+                               onComplete: { withAnimation(Motion.toggle) { model.complete(ticket.id.uuidString) } })
                         .transition(.opacity)
                 }
-                if model.openTodos.count > 5 {
+                if model.openTickets.count > 5 {
                     Button(action: onOpenApp) {
-                        Text("… \(model.openTodos.count - 5) more")
+                        Text("… \(model.openTickets.count - 5) more")
                             .font(.system(size: 11.5, weight: .medium))
                             .foregroundStyle(palette.emberDeep)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -108,7 +108,7 @@ struct PopoverFaceView: View {
 /// One popover row: the checkbox completes (the only action — a plain row
 /// click is never destructive), the title is plain text.
 struct PopoverRow: View {
-    var todo: Ticket
+    var ticket: Ticket
     var palette: Palette
     var onComplete: () -> Void
     @State private var hovering = false
@@ -116,13 +116,13 @@ struct PopoverRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Button(action: onComplete) {
-                LigneCheckbox(done: todo.done, palette: palette)
+                LigneCheckbox(done: ticket.done, palette: palette)
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
 
-            Text(todo.title)
+            Text(ticket.title)
                 .font(.system(size: 12.5))
                 .foregroundStyle(palette.ink)
                 .lineLimit(1)

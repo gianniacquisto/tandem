@@ -12,7 +12,7 @@ import TandemCore
 /// never forces one (map).
 ///
 /// Popover, top to bottom: bare-bike mark + wordmark header, quick-add field
-/// (Return commits), up to 5 open todos (the checkbox completes — one-way; a
+/// (Return commits), up to 5 open tickets (the checkbox completes — one-way; a
 /// plain row click is never destructive), "… n more" / "All clear", "Open
 /// Tandem". The content observes the shared model, so store changes (e.g. an
 /// agent completing an item) refresh it live.

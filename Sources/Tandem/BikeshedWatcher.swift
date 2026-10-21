@@ -18,7 +18,7 @@ import Darwin
 ///
 /// Self-write dedup (the app's own atomic write re-fires ~0.2 s later) is the
 /// model's job: it recognizes the recorded `WriteRecord.hash`. `StoreWatcher`
-/// stays as-is for the todos store (different lifecycle, different API).
+/// stays as-is for the tickets store (different lifecycle, different API).
 final class BikeshedWatcher {
     /// One coalesced "bikeshed changed" pass: the batch's changed paths
     /// (bikeshed-root-relative, deduped) and whether the stream saw `RootChanged`
