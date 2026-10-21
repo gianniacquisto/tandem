@@ -88,7 +88,7 @@ public enum SetupDiagnostics {
         /// Whether the agent host has Tandem's skills: `~/.config/opencode/opencode.json`'s
         /// `skills` array lists a path containing `tandem/skills` (this repo's skills
         /// directory), or the host's own skills directory holds the linked `tandem` skill
-        /// — the route `Scripts/install-agent-host.sh` takes.
+        /// — the route the `tandem-setup` skill takes.
         public var opencodeHasSkills: Bool
 
         public init(homePath: String, homeSource: TandemHome.Source,
@@ -298,7 +298,7 @@ public enum SetupDiagnostics {
     /// `skills` array in `~/.config/opencode/opencode.json` listing a path
     /// containing `tandem/skills` (this repo's skills directory), or the host's
     /// own skills directory holding the linked `tandem` skill — what
-    /// `Scripts/install-agent-host.sh` makes.
+    /// the `tandem-setup` skill makes.
     private static func opencodeHasSkills() -> Bool {
         let home = NSHomeDirectory()
         let config = URL(fileURLWithPath: "\(home)/.config/opencode/opencode.json")

@@ -53,13 +53,9 @@ tandem-cli note rename --from "Ideas.md" --to "Backlog.md"
 
 `tandem-cli doctor` is a fifth, setup-only command: it prints one JSON report of where your state lives and whether it is healthy (the store, the bikeshed, the lock, the installed app, and the agent skill), and exits `1` if something needs attention. It is the quickest way to check a fresh install.
 
-`tandem-cli --help` prints that syntax and exits `0`. The `tandem` skill, in `skills/tandem/`, teaches an agent those contracts. The whole agent setup — the skills, the agent prompts and this repo's `AGENTS.md` — installs with one command:
+`tandem-cli --help` prints that syntax and exits `0`. The `tandem` skill, in `skills/tandem/`, teaches an agent those contracts. The whole agent setup — the skills, the agent prompts and this repo's `AGENTS.md` — is the `tandem-setup` skill: ask your agent to set up Tandem, and it links `skills/*` into `~/.config/opencode/skills/`, `agents/*.md` into `~/.config/opencode/agents/`, and `AGENTS.md` into `~/.config/opencode/AGENTS.md`, all pointing back at this checkout.
 
-```sh
-Scripts/install-agent-host.sh
-```
-
-It symlinks `skills/*` into `~/.config/opencode/skills/`, `agents/*.md` into `~/.config/opencode/agents/`, and `AGENTS.md` into `~/.config/opencode/AGENTS.md`, all pointing back at this checkout. It is idempotent, never overwrites a real file, and prints what it did.
+Links, not copies: an edit in the repo is an edit the host sees. The setup never overwrites a real file, and it reports what it skipped.
 
 For another host, the same idea: link the skills into that host's skills directory — Claude Code takes them in `~/.claude/skills/`, for instance:
 
@@ -82,7 +78,7 @@ This skill is a folder, not a single file, so it installs differently from the o
 | `READ-PROTOCOL.md` | how to orient and find related notes |
 | `CONCURRENCY.md` | two sessions writing the same bikeshed |
 
-Install it with `Scripts/install-agent-host.sh`, which links the whole `skills/` directory into `~/.config/opencode/skills/` — one copy, no re-install when the repo changes.
+Install it with the `tandem-setup` skill, which links the whole `skills/` directory into `~/.config/opencode/skills/` — one copy, no re-install when the repo changes.
 
 Pointing a host at this repo's `skills/` directory works too, and is the same thing by another route:
 
