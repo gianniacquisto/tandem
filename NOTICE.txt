@@ -43,6 +43,9 @@ https://github.com/apple/swift-cmark.
 This product contains skills vendored from the mattpocock/skills collection.
 
   * skills/retro/SKILL.md
+  * skills/grilling/SKILL.md
+  * skills/to-spec/SKILL.md
+  * skills/implement-spec/SKILL.md
   * skills/writing-for-agents/SKILL.md
   * skills/writing-for-agents/SKILL-MECHANICS.md
 

@@ -148,6 +148,10 @@ _Avoid_: approver, critic, merge bot
 The role that reads one session and files what it finds as backlog tickets — the tickets are the output, the report is a receipt. It never fixes what it finds, because a retro that changes the work cannot report on it honestly.
 _Avoid_: retrospective agent, postmortem, session analyst
 
+**Refiner**:
+The role that turns a backlog ticket into a brief a builder can take: it grills the decision tree, writes the spec, and splits an effort too big for one session into one-session tickets. It owns no code and no design of its own — the ticket is the whole output.
+_Avoid_: spec writer, planner, triage
+
 **CLI**:
 Tandem's agent-facing interface: a command-line binary, `tandem-cli`, shipped inside the app bundle and reached at its in-bundle path.
 _Avoid_: API (too generic), backend, endpoint

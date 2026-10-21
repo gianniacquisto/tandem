@@ -80,6 +80,8 @@ Work a design tree in rounds. The frontier is every question whose prerequisites
 - Put the surviving questions in the description with your recommendation and the consequence of each choice. That is the escalation payload; the ticket is the meeting.
 - A question you can answer with evidence is not a question — decide it, write it under **Decided against** when it was contested.
 
+**A ticket that needs a spec goes to the `refine` agent.** When the work is a design question the environment cannot answer, or an effort bigger than one agent session, dispatch `refine` (`agents/refine.md`): it runs this same grilling, writes the spec in this skill's **Definition of refined** shape, and splits a big spec into one-session tickets. It owns no code and no design of its own — its output is a ticket, like yours.
+
 ## Dispatch
 
 A ready ticket is claimed by the agent that takes it: `--status in-progress --assignee <agent-name>`.
