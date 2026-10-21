@@ -17,20 +17,21 @@ import TandemCore
 /// add and never edited, so the sheet only shows who filed the ticket — "you filed", or
 /// the agent's name — which is how triage starts with "what did I ask for?"
 ///
-/// The comments are the sidecar's log, read for this ticket and nothing else: the
-/// conversation agents have on a ticket after refinement, which the description (the
-/// refinement's output) is not. The sheet draws them oldest first; it never writes
-/// them (ticket `3A44B7FD` is the write half).
+/// The comments are the sidecar's log: the conversation agents have on a ticket after
+/// refinement, which the description (the refinement's output) is not. The sheet draws
+/// them oldest first, and it writes them too — the composer at the foot of the
+/// discussion is the human's own half of the log, appended to the same sidecar the
+/// CLI's `todo comment add` writes.
 struct TicketSheet: View {
     var ticket: Ticket
     var palette: Palette
     var lanes: [String]
-    /// The ticket's discussion, as the sidecar holds it. `.list([])` is a ticket with
-    /// no log: no section, no error.
-    var comments: CommentRead = .list([])
     /// Called with the sheet's values; the caller writes what changed and dismisses.
     var onSave: (TicketEdits) -> Void
     var onCancel: () -> Void
+    /// Posts the human's comment to the ticket's log and hands back how it ended:
+    /// the log as it now reads, or the refusal that kept it as it was.
+    var onComment: (String) -> CommentPostOutcome
     /// Opens a linked note (the window owns the tab switch). `nil` hides the button.
     var onOpenLink: ((String) -> Void)? = nil
     /// Promotes the ticket to a bikeshed note. `nil` hides the button.
@@ -45,6 +46,15 @@ struct TicketSheet: View {
     @State private var link: String?
     /// Why the last promotion did not happen.
     @State private var promoteError: String?
+    /// The ticket's discussion, as the sheet draws it. Seeded from the read; a post
+    /// replaces it with the log as it reads after the append, so the human's own
+    /// comment is in the list at once — the sheet draws the log, not a copy of it.
+    @State private var discussion: CommentRead
+    /// The comment the human is writing. It stays after a refusal, so the comment
+    /// can be fixed and posted again.
+    @State private var commentDraft: String = ""
+    /// Why the last post was refused. The draft stays in the input.
+    @State private var commentError: String? = nil
     @FocusState private var focus: Field?
 
     private enum Field { case title, body }
@@ -53,14 +63,15 @@ struct TicketSheet: View {
          comments: CommentRead = .list([]),
          onSave: @escaping (TicketEdits) -> Void,
          onCancel: @escaping () -> Void,
+         onComment: @escaping (String) -> CommentPostOutcome,
          onOpenLink: ((String) -> Void)? = nil,
          onPromote: (() -> PromotionOutcome)? = nil) {
         self.ticket = ticket
         self.palette = palette
         self.lanes = lanes
-        self.comments = comments
         self.onSave = onSave
         self.onCancel = onCancel
+        self.onComment = onComment
         self.onOpenLink = onOpenLink
         self.onPromote = onPromote
         _title = State(initialValue: ticket.title)
@@ -68,6 +79,7 @@ struct TicketSheet: View {
         _lane = State(initialValue: ticket.lane)
         _bodyText = State(initialValue: ticket.description ?? "")
         _link = State(initialValue: ticket.link)
+        _discussion = State(initialValue: comments)
     }
 
     private var trimmedTitle: String {
@@ -76,19 +88,19 @@ struct TicketSheet: View {
 
     private var canSave: Bool { !trimmedTitle.isEmpty }
 
-    /// Whether the sheet draws a comments section: a log with something in it, or a
-    /// log that could not be read (which says so where the list would be). A ticket
-    /// nobody has commented on draws nothing — an empty box would be noise.
-    private var showsComments: Bool {
-        switch comments {
-        case .list(let list): return !list.isEmpty
-        case .busy, .failed: return true
-        }
+    /// Whether the sheet draws the log itself: a log with something in it. The
+    /// section is always there — the composer is how the human adds a comment, and
+    /// a ticket nobody has commented on still needs one — but an empty log draws
+    /// no list, because an empty box would be noise.
+    private var hasCommentList: Bool {
+        if case .list(let list) = discussion { return !list.isEmpty }
+        return false
     }
 
     /// The sheet grows to make room for the discussion: a fixed height would squeeze
-    /// the description editor to nothing on a ticket that has one.
-    private var sheetHeight: CGFloat { showsComments ? 640 : 500 }
+    /// the description editor to nothing on a ticket that has one. The composer is
+    /// always there; the log above it is what makes the sheet grow.
+    private var sheetHeight: CGFloat { hasCommentList ? 700 : 560 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -172,13 +184,13 @@ struct TicketSheet: View {
                     .strokeBorder(palette.line, lineWidth: Line.hairline))
 
             // The discussion, under the body: the log the CLI's `todo comment add`
-            // appends to. The sheet draws it; it never writes it.
-            if showsComments {
-                commentsSection
-            }
+            // appends to, and the human's own composer at the foot of it.
+            commentsSection
 
             HStack(spacing: 10) {
-                Text("⌘↩ saves · Esc cancels")
+                // The composer takes the shifted one: ⌘↩ is the sheet's Save,
+                // and a comment is not a ticket change.
+                Text("⌘↩ saves · ⌘⇧↩ posts · Esc cancels")
                     .font(.system(size: 10.5))
                     .foregroundStyle(palette.inkDim)
                 Spacer()
@@ -203,20 +215,24 @@ struct TicketSheet: View {
         }
     }
 
-    // MARK: - The discussion (the sidecar's log, read-only)
+    // MARK: - The discussion (the sidecar's log, and the human's composer)
 
-    /// The ticket's comments: a header, and either the log itself or the reason it
-    /// could not be read. The two never share a shape — an empty log is nothing to
-    /// say, a damaged one is something to repair.
+    /// The ticket's comments: a header, either the log itself or the reason it
+    /// could not be read, and the composer the human writes in. The two never
+    /// share a shape — an empty log is nothing to say, a damaged one is something
+    /// to repair — and the composer is under both, because the human's comment is
+    /// the one the app is here to record.
     @ViewBuilder
     private var commentsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Comments — the ticket's discussion log")
                 .font(.system(size: 10.5))
                 .foregroundStyle(palette.inkDim)
-            switch comments {
+            switch discussion {
             case .list(let list):
-                commentList(list)
+                // A ticket nobody has commented on draws no list: an empty box
+                // would be noise. The composer below is not.
+                if !list.isEmpty { commentList(list) }
             case .busy(let message):
                 // The store was locked by another process and the read gave up.
                 // Nothing is wrong with the log, so this is not the repair colour:
@@ -233,26 +249,92 @@ struct TicketSheet: View {
                     .foregroundStyle(palette.emberDeep)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            commentComposer
         }
     }
 
-    /// The log, oldest first, in a scrollable parchment panel.
+    /// The composer's field: the human's own comment, in markdown as stored — no
+    /// rendering, so nothing can hide a character the human wrote.
+    private var commentComposer: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Add a comment — appended to the log, signed as you")
+                .font(.system(size: 10.5))
+                .foregroundStyle(palette.inkDim)
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField("Write a comment…", text: $commentDraft, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(palette.ink)
+                    .lineLimit(1...3)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.control)
+                        .strokeBorder(palette.line, lineWidth: Line.hairline))
+                // Quiet, like the sheet's other chips: the sheet's one loud
+                // action is Save, and a comment is not a ticket change.
+                Button("Post") { post() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(palette.ink)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .overlay(Capsule().strokeBorder(palette.line, lineWidth: Line.hairline))
+                    .contentShape(Capsule())
+                    // ⌘↩ is the sheet's Save; the comment takes the shifted one.
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                    .help("Append this comment to the ticket's log (⌘⇧↩)")
+            }
+            // A refusal says why here, where the Post button was — the sheet
+            // answers the action, it does not raise an alarm. The draft stays
+            // where it was typed, so the comment can be fixed and posted again.
+            if let commentError {
+                Text(commentError)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(palette.emberDeep)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Posts the human's comment to the ticket's log. A refusal keeps the text:
+    /// nothing was written, and the comment can be fixed and posted again.
+    private func post() {
+        switch onComment(commentDraft) {
+        case .posted(let read):
+            discussion = read
+            commentDraft = ""
+            commentError = nil
+        case .refused(let message):
+            commentError = message
+        }
+    }
+
+    /// The log, oldest first, in a scrollable parchment panel. A new comment
+    /// scrolls into view: the log is append-only, so the newest one is the one
+    /// the human just wrote.
     private func commentList(_ list: [Comment]) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(list.enumerated()), id: \.offset) { index, comment in
-                    commentRow(comment)
-                    if index < list.count - 1 {
-                        Rectangle().fill(palette.sand).frame(height: Line.hairline)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(list.enumerated()), id: \.offset) { index, comment in
+                        commentRow(comment)
+                        if index < list.count - 1 {
+                            Rectangle().fill(palette.sand).frame(height: Line.hairline)
+                        }
                     }
                 }
+                .padding(.vertical, 2)
             }
-            .padding(.vertical, 2)
+            .frame(maxHeight: 190)
+            .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
+            .overlay(RoundedRectangle(cornerRadius: Radius.control)
+                .strokeBorder(palette.line, lineWidth: Line.hairline))
+            .onChange(of: list.count) { _, count in
+                guard count > 0 else { return }
+                withAnimation(Motion.toggle) { proxy.scrollTo(count - 1, anchor: .bottom) }
+            }
         }
-        .frame(maxHeight: 190)
-        .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
-        .overlay(RoundedRectangle(cornerRadius: Radius.control)
-            .strokeBorder(palette.line, lineWidth: Line.hairline))
     }
 
     /// One comment: who said it, when, and what they said. The body is markdown as
