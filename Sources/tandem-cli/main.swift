@@ -35,6 +35,12 @@ exit(dispatch(Array(CommandLine.arguments.dropFirst())))
 /// `--help` prints the usage to stdout and exits 0; a parse failure prints it to
 /// stderr and exits 2.
 func dispatch(_ args: [String]) -> Int32 {
+    // The deprecated alias says so, once, on stderr — where no JSON parser is
+    // reading. It is the group token that is deprecated, so the notice is on the
+    // group token: `todo` and `todo list` say the same thing.
+    if args.first == Usage.deprecatedAliasToken {
+        FileHandle.standardError.write(Data((Usage.deprecatedAliasNotice + "\n").utf8))
+    }
     let command: Command
     do {
         command = try parseCommand(args)
@@ -48,7 +54,7 @@ func dispatch(_ args: [String]) -> Int32 {
         return 0
     case .doctor:
         return runDoctor()
-    case .todoList(let filter, let text, let status, let assignee, let lane, let archived):
+    case .ticketList(let filter, let text, let status, let assignee, let lane, let archived):
         return run {
             let query = try TicketQuery.parse(
                 filter: filter,
@@ -60,7 +66,7 @@ func dispatch(_ args: [String]) -> Int32 {
             let result = try Store().list(query)
             return try StoreEncoding.listResult(result.value, note: result.note)
         }
-    case .todoAdd(let title, let status, let assignee, let lane, let origin):
+    case .ticketAdd(let title, let status, let assignee, let lane, let origin):
         return run {
             let result = try Store().add(
                 title,
@@ -68,9 +74,9 @@ func dispatch(_ args: [String]) -> Int32 {
                 status: try status.map { try Status.parse(raw: $0) } ?? .backlog,
                 assignee: try resolveAssignee(assignee),
                 origin: try resolveOrigin(origin))
-            return try StoreEncoding.todoResult(result.value, note: result.note)
+            return try StoreEncoding.ticketResult(result.value, note: result.note)
         }
-    case .todoSet(let id, let title, let status, let assignee, let description):
+    case .ticketSet(let id, let title, let status, let assignee, let description):
         return run {
             // `--description -`: the body is stdin, the precedent `note capture` set.
             // A stdin body must carry text — `descriptionBody` refuses an empty one.
@@ -86,26 +92,26 @@ func dispatch(_ args: [String]) -> Int32 {
                 status: try edit(status) { try Status.parse(raw: $0) },
                 assignee: assignee.map { .set(try resolveAssignee($0)) } ?? .unchanged,
                 description: body)
-            return try StoreEncoding.todoResult(result.value, note: result.note)
+            return try StoreEncoding.ticketResult(result.value, note: result.note)
         }
-    case .todoMove(let id, let lane, let index):
+    case .ticketMove(let id, let lane, let index):
         return run {
             let result = try Store().move(id, toLane: lane, at: try parseIndex(index))
-            return try StoreEncoding.todoResult(result.value, note: result.note)
+            return try StoreEncoding.ticketResult(result.value, note: result.note)
         }
-    case .todoComplete(let id):
+    case .ticketComplete(let id):
         return run {
             let result = try Store().complete(id)
-            return try StoreEncoding.todoResult(result.value, note: result.note)
+            return try StoreEncoding.ticketResult(result.value, note: result.note)
         }
-    case .todoArchive:
+    case .ticketArchive:
         return run {
             let result = try Store().archiveDone()
             return try StoreEncoding.archivedResult(result.value, note: result.note)
         }
-    case .todoCommentAdd(let id, let author, let body):
+    case .ticketCommentAdd(let id, let author, let body):
         return run {
-            // `--body -`: the comment is stdin, the precedent `todo set
+            // `--body -`: the comment is stdin, the precedent `ticket set
             // --description -` set; stdin belongs to the adapter.
             let text = body == "-" ? try readStandardInput() : body
             let result = try Store().append(
@@ -114,7 +120,7 @@ func dispatch(_ args: [String]) -> Int32 {
                 body: text)
             return try StoreEncoding.commentResult(result.value, note: result.note)
         }
-    case .todoCommentList(let id):
+    case .ticketCommentList(let id):
         return run {
             let result = try Store().list(ticketID: id)
             return try StoreEncoding.commentsResult(result.value, note: result.note)
@@ -244,11 +250,11 @@ func resolveOrigin(_ raw: String?) throws -> String {
     return name
 }
 
-/// The `--description` body of a `todo set`: the flag's own value, or the text
+/// The `--description` body of a `ticket set`: the flag's own value, or the text
 /// piped in when the flag is `-`. A stdin body must carry text — an empty pipe,
 /// a failed heredoc and an unset variable all arrive as the same empty body,
 /// and writing it would erase the description silently (ADR 0024) — so it is
-/// refused with `DomainError.emptyDescriptionBody`, the way `todo comment add`
+/// refused with `DomainError.emptyDescriptionBody`, the way `ticket comment add`
 /// refuses an empty comment body. `--description ""` is the deliberate clear:
 /// it travels through untouched, and the store still takes it.
 func descriptionBody(_ flag: String, stdin: () throws -> String) throws -> String {

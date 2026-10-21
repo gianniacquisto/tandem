@@ -47,7 +47,7 @@ public enum DomainError: Error, Sendable, Equatable {
         case .locked:
             return "The Tandem store is locked by another process — please retry."
         case .emptyTitle:
-            return "Title is empty. Provide a non-empty todo title and try again."
+            return "Title is empty. Provide a non-empty ticket title and try again."
         case .emptySelection:
             return "Nothing to send. Select text in the note — or put the caret on a checkbox line — and try again."
         case .invalidNotePath(let bad):
@@ -71,7 +71,7 @@ public enum DomainError: Error, Sendable, Equatable {
         case .unknownLane(let name):
             return "Unknown cycle lane \"\(name)\". Create it first."
         case .unknownID(let id, _):
-            return "Unknown todo id \"\(id)\". Here is the current open list to pick the right one from:"
+            return "Unknown ticket id \"\(id)\". Here is the current open list to pick the right one from:"
         }
     }
 }

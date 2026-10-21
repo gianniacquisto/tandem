@@ -8,16 +8,20 @@ import Foundation
 /// returned text to stdout.
 public enum StoreEncoding {
 
-    /// The `list` result: `{"todos": [...]}`, with a top-level `note` when non-nil.
-    public static func listResult(_ todos: [Ticket], note: String?) throws -> String {
-        var object: [String: Any] = ["todos": try todoArray(todos)]
+    /// The `list` result: `{"tickets": [...], "todos": [...]}`, with a top-level
+    /// `note` when non-nil. The two keys carry **the same array** for one
+    /// release: `ticket` is the new word and `todos` is the one agents parse
+    /// today (D1). The release after next drops the old key (C8).
+    public static func listResult(_ tickets: [Ticket], note: String?) throws -> String {
+        let array = try ticketArray(tickets)
+        var object: [String: Any] = ["tickets": array, "todos": array]
         if let note { object["note"] = note }
         return try serialize(object)
     }
 
     /// The `add` / `complete` result: the ticket object, with a top-level `note` when non-nil.
-    public static func todoResult(_ todo: Ticket, note: String?) throws -> String {
-        var object = try todoObject(todo)
+    public static func ticketResult(_ ticket: Ticket, note: String?) throws -> String {
+        var object = try ticketObject(ticket)
         if let note { object["note"] = note }
         return try serialize(object)
     }
@@ -38,7 +42,7 @@ public enum StoreEncoding {
         return try serialize(object)
     }
 
-    /// The `todo comment add` result: the comment object, with a top-level `note`
+    /// The `ticket comment add` result: the comment object, with a top-level `note`
     /// when non-nil. Encoded through `Comment`'s custom `Codable`, so the `at`
     /// date is ISO-8601 UTC exactly as in the sidecar line.
     public static func commentResult(_ comment: Comment, note: String?) throws -> String {
@@ -47,7 +51,7 @@ public enum StoreEncoding {
         return try serialize(object)
     }
 
-    /// The `todo comment list` result: `{"comments": [...]}` in append order,
+    /// The `ticket comment list` result: `{"comments": [...]}` in append order,
     /// with a top-level `note` when non-nil. An unknown ticket is a successful
     /// empty list, not an error — the log outlives the store's entries.
     public static func commentsResult(_ comments: [Comment], note: String?) throws -> String {
@@ -66,9 +70,11 @@ public enum StoreEncoding {
     }
 
     /// The open list in the `list` shape — used to render the unknown-id error so the
-    /// caller recovers in one turn (spec: tool contract, `complete`).
-    public static func openList(_ todos: [Ticket]) throws -> String {
-        try serialize(["todos": try todoArray(todos)])
+    /// caller recovers in one turn (spec: tool contract, `complete`). It carries the
+    /// same two keys as `listResult`: `tickets` and `todos`, the same array.
+    public static func openList(_ tickets: [Ticket]) throws -> String {
+        let array = try ticketArray(tickets)
+        return try serialize(["tickets": array, "todos": array])
     }
 
     /// The `doctor` result: the setup report as JSON (`{"ok": …, "checks": […]}`),
@@ -142,21 +148,24 @@ public enum StoreEncoding {
 
     // MARK: - Internals
 
-    private static func todoArray(_ todos: [Ticket]) throws -> [Any] {
-        try todos.map { try todoObject($0) }
+    private static func ticketArray(_ tickets: [Ticket]) throws -> [Any] {
+        try tickets.map { try ticketObject($0) }
     }
 
     /// A single ticket as a JSON-compatible object. Encodes through `Ticket`'s custom
     /// `Codable` so dates are ISO-8601 UTC and the id is a string, exactly as on disk.
-    private static func todoObject(_ todo: Ticket) throws -> [String: Any] {
-        let data = try JSONEncoder().encode(todo)
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw StoreIOError.io("could not encode todo for result")
+    /// The ticket's lane rides beside the v1 wire key `section` — same value, both
+    /// spellings — for one release (D1); C8 drops the old one.
+    private static func ticketObject(_ ticket: Ticket) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(ticket)
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw StoreIOError.io("could not encode ticket for result")
         }
+        object["lane"] = object["section"] ?? NSNull()
         return object
     }
 
-    /// A single comment as a JSON-compatible object (see `todoObject`).
+    /// A single comment as a JSON-compatible object (see `ticketObject`).
     private static func commentObject(_ comment: Comment) throws -> [String: Any] {
         let data = try JSONEncoder().encode(comment)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {

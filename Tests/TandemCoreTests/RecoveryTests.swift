@@ -211,10 +211,10 @@ struct RecoveryTests {
         #expect((empty["todos"] as? [Any])?.isEmpty == true)
     }
 
-    @Test("StoreEncoding.todoResult is the ticket object plus optional note")
-    func todoResultEncoding() throws {
+    @Test("StoreEncoding.ticketResult is the ticket object plus optional note")
+    func ticketResultEncoding() throws {
         let todo = Ticket(title: "thing")
-        let obj = try json(StoreEncoding.todoResult(todo, note: nil))
+        let obj = try json(StoreEncoding.ticketResult(todo, note: nil))
         #expect(obj["id"] as? String == todo.id.uuidString)
         #expect(obj["title"] as? String == "thing")
         // The wire keeps the derived mirror even though the store file no longer writes it.
@@ -222,7 +222,7 @@ struct RecoveryTests {
         #expect(obj["createdAt"] is String)
         #expect(obj["completedAt"] is NSNull, "completedAt should be null while open")
         #expect(obj["note"] == nil)
-        let withNote = try json(StoreEncoding.todoResult(todo, note: "N"))
+        let withNote = try json(StoreEncoding.ticketResult(todo, note: "N"))
         #expect(withNote["note"] as? String == "N")
     }
 

@@ -238,7 +238,7 @@ struct TicketModelTests {
     @Test("the CLI wire keeps the derived done flag even though the file drops it")
     func wireKeepsDone() throws {
         let todo = Ticket(title: "done", status: .done)
-        let text = try StoreEncoding.todoResult(todo, note: nil)
+        let text = try StoreEncoding.ticketResult(todo, note: nil)
         let object = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
         #expect(object?["done"] as? Bool == true, "agents read done from the wire")
         #expect(object?["status"] as? String == "done")
@@ -325,7 +325,7 @@ struct TicketModelTests {
         let filed = Ticket(title: "filed", origin: "blue")
         let human = Ticket(title: "filed by a human")
         for (todo, expected) in [(filed, "blue"), (human, "human")] {
-            let text = try StoreEncoding.todoResult(todo, note: nil)
+            let text = try StoreEncoding.ticketResult(todo, note: nil)
             let object = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
             #expect(object?["origin"] as? String == expected)
         }
