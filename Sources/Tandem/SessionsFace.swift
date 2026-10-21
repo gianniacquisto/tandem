@@ -249,7 +249,7 @@ struct SessionsFaceView: View {
     /// Opens a record: the sheet gets the record and the capture notes the
     /// session filed, derived now (read time), not read off the record.
     private func open(_ session: Session) {
-        let notes = SessionNotes.captureNotes(in: bikeModel.bikeshed.directory,
+        let notes = SessionNotes.captureNotes(in: bikeModel.bikeshed,
                                               sessionID: session.id)
         open = OpenSession(session: session, notes: notes)
     }
@@ -281,71 +281,20 @@ enum SessionState {
 
 // MARK: - The capture notes
 
-/// The capture notes a session filed: the `.md` files under
-/// `projects/<project>/.raw/**/<session-id>/` in the bikeshed.
+/// The capture notes a session filed — the paths under
+/// `projects/*/.raw/**/<session-id>/`.
 ///
 /// **The saddlebag folder is the link.** The record carries no list of its
 /// notes, because consolidation moves captures (from `.raw/<id>/` to
 /// `.raw/.done/<id>/`) and a stored path would rot. So the paths are read
-/// from the vault every time a record is opened.
+/// from the vault every time a record is opened — by the core, which owns that
+/// scan (`Bikeshed.sessionNotes(session:)`), so this face and the CLI's
+/// `session show` can never name different notes.
 enum SessionNotes {
 
-    /// The note paths (bikeshed-root-relative) the session filed, in path
-    /// order — which is capture order, because the capture filename starts
-    /// with its UTC stamp.
-    static func captureNotes(in bikeshed: URL, sessionID: String) -> [String] {
-        let fm = FileManager.default
-        let root = bikeshed.standardizedFileURL
-        var found: [String] = []
-
-        func isDirectory(_ url: URL) -> Bool {
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { return false }
-            return isDir.boolValue
-        }
-
-        /// The walk: any folder under `.raw` named after the session, at any
-        /// depth (`.raw/<id>/` for a pending capture, `.raw/.done/<id>/` for
-        /// one already consolidated).
-        func walk(_ dir: URL, depth: Int) {
-            guard depth <= 5 else { return }
-            guard let entries = try? fm.contentsOfDirectory(at: dir,
-                                                            includingPropertiesForKeys: nil)
-            else { return }
-            for entry in entries where isDirectory(entry) {
-                if entry.lastPathComponent == sessionID {
-                    // The session's own saddlebag: every note in it is one the
-                    // session filed.
-                    if let files = try? fm.contentsOfDirectory(at: entry,
-                                                              includingPropertiesForKeys: nil) {
-                        for file in files where file.pathExtension.lowercased() == "md" {
-                            found.append(relativePath(of: file, under: root))
-                        }
-                    }
-                } else {
-                    walk(entry, depth: depth + 1)
-                }
-            }
-        }
-
-        let projects = root.appendingPathComponent("projects")
-        if let projectDirs = try? fm.contentsOfDirectory(at: projects,
-                                                        includingPropertiesForKeys: nil) {
-            for project in projectDirs where isDirectory(project) {
-                let raw = project.appendingPathComponent(".raw")
-                if isDirectory(raw) { walk(raw, depth: 0) }
-            }
-        }
-        return found.sorted()
-    }
-
-    /// The bikeshed-root-relative path of a file inside the bikeshed — the
-    /// spelling the editor and the note links use.
-    private static func relativePath(of url: URL, under root: URL) -> String {
-        let rootPath = root.path
-        let path = url.standardizedFileURL.path
-        guard path.hasPrefix(rootPath + "/") else { return url.lastPathComponent }
-        return String(path.dropFirst(rootPath.count + 1))
+    /// The note paths (bikeshed-root-relative) the session filed.
+    static func captureNotes(in bikeshed: Bikeshed, sessionID: String) -> [String] {
+        (try? bikeshed.sessionNotes(session: sessionID).value) ?? []
     }
 }
 
@@ -400,6 +349,7 @@ struct SessionSheet: View {
                 },
                 onCancel: { ticketFor = nil },
                 onComment: { model.postComment(ticket.id.uuidString, body: $0) },
+                onRefreshComments: { model.comments(for: ticket.id.uuidString) },
                 onOpenLink: onOpenLink,
                 onPromote: { model.promoteToNote(ticket.id.uuidString, into: bikeshed) })
         }
