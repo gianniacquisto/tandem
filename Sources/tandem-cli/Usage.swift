@@ -37,16 +37,24 @@ enum Usage {
       tandem-cli note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]
       tandem-cli note stats [--project <name>]
       tandem-cli note links
+      tandem-cli session start [--project <name>] [--agent <name>] [--session <id>]
+                               [--brief <string|->]
+      tandem-cli session end [--session <id>] [--outcome <value>] [--summary <string|->]
+      tandem-cli session link --ticket <id> [--session <id>]
+      tandem-cli session list [--project <name>] [--status <value>]
+      tandem-cli session show [--session <id>]
       tandem-cli doctor
       tandem-cli --help | -h
 
     Values:
       status    backlog | refined | ready | in-progress | in-review | done
+                running | ended — a session's status, on `session list`
       filter    open (default) | done | all
       assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
       origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it
       author    a name; omitted is the unnamed author
       lane      a lane name, or "" for the default area
       index     0-based within the lane; omitted appends to it
+      outcome   succeeded | failed | interrupted | unknown — how a session ended
     """
 }

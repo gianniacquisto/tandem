@@ -60,6 +60,24 @@ public enum StoreEncoding {
         return try serialize(object)
     }
 
+    /// The `session start` / `end` / `link` / `show` result: the session record,
+    /// with a top-level `note` when non-nil — a second `start` or `end` for a
+    /// record that already exists carries one.
+    public static func sessionResult(_ session: Session, note: String?) throws -> String {
+        var object = try sessionObject(session)
+        if let note { object["note"] = note }
+        return try serialize(object)
+    }
+
+    /// The `session list` result: `{"sessions": [...]}` — the records newest
+    /// `startedAt` first — with a top-level `note` when non-nil. An empty
+    /// result is a successful empty list, never an error.
+    public static func sessionsResult(_ sessions: [Session], note: String?) throws -> String {
+        var object: [String: Any] = ["sessions": try sessions.map { try sessionObject($0) }]
+        if let note { object["note"] = note }
+        return try serialize(object)
+    }
+
     /// The `archive` result: `{"archived": <n>}`, with a top-level `note` when non-nil.
     /// A bulk operation reports how much it did, not which tickets it touched — the
     /// caller's next `list` has the tickets, and the count keeps the reply one line.
@@ -170,6 +188,17 @@ public enum StoreEncoding {
         let data = try JSONEncoder().encode(comment)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StoreIOError.io("could not encode comment for result")
+        }
+        return object
+    }
+
+    /// A single session record as a JSON-compatible object. Encodes through
+    /// `Session`'s custom `Codable`, so the dates are ISO-8601 UTC and every
+    /// key is present — `null` included — exactly as in `sessions.json`.
+    private static func sessionObject(_ session: Session) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(session)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw StoreIOError.io("could not encode session for result")
         }
         return object
     }

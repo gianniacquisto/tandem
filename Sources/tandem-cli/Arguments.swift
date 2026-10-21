@@ -4,10 +4,11 @@ import Foundation
 /// Long flags only, and the flags mirror the core argument names exactly
 /// (`--filter`, `--text`, `--status`, `--assignee`, `--lane`, `--title`, `--id`,
 /// `--description`, `--index`, `--from`, `--to`, `--name`, `--author`, `--body`,
-/// `--kind`, `--project`, `--session`, `--archived`)
+/// `--kind`, `--project`, `--session`, `--archived`, `--brief`, `--outcome`,
+/// `--summary`, `--ticket`)
 /// — the CLI renames nothing and parses nothing: raw values travel to the core,
 /// which validates them and owns the error text. `doctor` is a setup/diagnostic verb
-/// outside the `ticket`/`note` domains (ADR 0014) and takes no flags.
+/// outside the `ticket`/`session`/`note` domains (ADR 0014) and takes no flags.
 enum Command {
     case help
     case doctor
@@ -39,6 +40,11 @@ enum Command {
     case noteCapture(kind: String, project: String?, session: String?)
     case noteStats(project: String?)
     case noteLinks
+    case sessionStart(project: String?, agent: String?, session: String?, brief: String)
+    case sessionEnd(session: String?, outcome: String?, summary: String?)
+    case sessionLink(ticket: String, session: String?)
+    case sessionList(project: String?, status: String?)
+    case sessionShow(session: String?)
 }
 
 /// A usage failure — no arguments, an unknown subcommand, an unknown flag, or a
@@ -49,8 +55,8 @@ struct UsageError: Error {}
 
 /// Parse the arguments after the program name. `--help` / `-h` as the first
 /// argument is the help request; otherwise the first argument names the group
-/// (`ticket` / `note`), the second the verb, and the rest are `--flag value`
-/// pairs validated against that verb.
+/// (`ticket` / `lane` / `note` / `session`), the second the verb, and the rest
+/// are `--flag value` pairs validated against that verb.
 func parseCommand(_ args: [String]) throws -> Command {
     guard let first = args.first else { throw UsageError() }
     switch first {
@@ -69,6 +75,8 @@ func parseCommand(_ args: [String]) throws -> Command {
         return try parseLane(Array(args.dropFirst()))
     case "note":
         return try parseNote(Array(args.dropFirst()))
+    case "session":
+        return try parseSession(Array(args.dropFirst()))
     default:
         throw UsageError()
     }
@@ -223,6 +231,63 @@ private func parseNote(_ args: [String]) throws -> Command {
         // The vault-health readout: the whole bikeshed, no filters.
         try accept(flags, [])
         return .noteLinks
+    default:
+        throw UsageError()
+    }
+}
+
+// MARK: - session
+
+/// `session start|end|link|list|show` — the session record (spec `FC770B8A`): a
+/// record of one agent session's run, kept as an artifact of its own.
+///
+/// **A session is not a ticket.** It has its own file (`sessions.json`) and its
+/// own vocabulary — `running`/`ended`, `succeeded`/`failed`/`interrupted`/
+/// `unknown` — so the flags here never borrow the board's `--status`.
+///
+/// The rule every verb below follows is the CLI's own: an absent flag takes
+/// the default, a present-but-empty one is the empty value the core rejects (or
+/// reads as the empty field). The defaults that need the environment or the
+/// working directory — `--session`, `--agent`, `--project` — are resolved in
+/// `main`, because the environment and the process belong to the adapter.
+private func parseSession(_ args: [String]) throws -> Command {
+    guard let verb = args.first else { throw UsageError() }
+    let flags = try parseFlags(Array(args.dropFirst()))
+    switch verb {
+    case "start":
+        try accept(flags, ["--project", "--agent", "--session", "--brief"])
+        // A missing `--brief` is the empty brief the core refuses
+        // (`emptySessionBrief`), exactly as a missing `--title` is the empty
+        // title. `--brief -` is read from stdin (multi-line text is a quoting
+        // trap); `main` recognizes the dash, because stdin belongs to the
+        // adapter.
+        return .sessionStart(
+            project: flags["--project"],
+            agent: flags["--agent"],
+            session: flags["--session"],
+            brief: flags["--brief"] ?? "")
+    case "end":
+        try accept(flags, ["--session", "--outcome", "--summary"])
+        // `--outcome` absent is `unknown` — the honest answer for a session
+        // that ended without saying how; a value that is not one of the four
+        // is the core's own failure. `--summary -` is stdin, as `--brief -` is.
+        return .sessionEnd(
+            session: flags["--session"],
+            outcome: flags["--outcome"],
+            summary: flags["--summary"])
+    case "link":
+        try accept(flags, ["--ticket", "--session"])
+        // A missing `--ticket` is the empty id the store rejects with the
+        // unknown-id failure, as `ticket complete` does.
+        return .sessionLink(ticket: flags["--ticket"] ?? "", session: flags["--session"])
+    case "list":
+        try accept(flags, ["--project", "--status"])
+        // Absent `--project` reports every project; absent `--status` every
+        // status. A status that is not one of the two is a domain failure.
+        return .sessionList(project: flags["--project"], status: flags["--status"])
+    case "show":
+        try accept(flags, ["--session"])
+        return .sessionShow(session: flags["--session"])
     default:
         throw UsageError()
     }
