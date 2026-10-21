@@ -23,11 +23,18 @@ struct TicketSheet: View {
     var onCancel: () -> Void
     /// Opens a linked note (the window owns the tab switch). `nil` hides the button.
     var onOpenLink: ((String) -> Void)? = nil
+    /// Promotes the ticket to a bikeshed note. `nil` hides the button.
+    var onPromote: (() -> PromotionOutcome)? = nil
 
     @State private var title: String
     @State private var status: Status
     @State private var lane: String?
     @State private var bodyText: String
+    /// The ticket's note link. Seeded from the ticket, then owned by the sheet: a
+    /// promotion writes a new link the open ticket does not know about yet.
+    @State private var link: String?
+    /// Why the last promotion did not happen.
+    @State private var promoteError: String?
     @FocusState private var focus: Field?
 
     private enum Field { case title, body }
@@ -35,17 +42,20 @@ struct TicketSheet: View {
     init(todo: Todo, palette: Palette, lanes: [String],
          onSave: @escaping (TicketEdits) -> Void,
          onCancel: @escaping () -> Void,
-         onOpenLink: ((String) -> Void)? = nil) {
+         onOpenLink: ((String) -> Void)? = nil,
+         onPromote: (() -> PromotionOutcome)? = nil) {
         self.todo = todo
         self.palette = palette
         self.lanes = lanes
         self.onSave = onSave
         self.onCancel = onCancel
         self.onOpenLink = onOpenLink
+        self.onPromote = onPromote
         _title = State(initialValue: todo.title)
         _status = State(initialValue: todo.status)
         _lane = State(initialValue: todo.lane)
         _bodyText = State(initialValue: todo.description ?? "")
+        _link = State(initialValue: todo.link)
     }
 
     private var trimmedTitle: String {
@@ -94,13 +104,30 @@ struct TicketSheet: View {
                     .foregroundStyle(todo.origin == TodoQuery.human ? palette.inkDim
                                                                     : palette.emberDeep)
                 Spacer(minLength: 0)
-                if let link = todo.link, let onOpenLink {
-                    Button("Open note") { onOpenLink(link) }
+                if let link {
+                    if let onOpenLink {
+                        Button("Open note") { onOpenLink(link) }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11))
+                            .foregroundStyle(palette.inkDim)
+                            .help(link)
+                    }
+                } else if onPromote != nil {
+                    Button("Promote to note") { promote() }
                         .buttonStyle(.plain)
                         .font(.system(size: 11))
                         .foregroundStyle(palette.inkDim)
-                        .help(link)
+                        .help("Make a bikeshed note from this ticket and link the two")
                 }
+            }
+
+            // A refusal says why here, where the button was — the sheet answers
+            // the action, it does not raise an alarm.
+            if let promoteError {
+                Text(promoteError)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(palette.emberDeep)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Rectangle().fill(palette.sand).frame(height: Line.hairline)
@@ -141,6 +168,20 @@ struct TicketSheet: View {
         .onAppear {
             // A ticket with a body opens for reading it; a terse one opens for writing it.
             focus = todo.description == nil ? .title : .body
+        }
+    }
+
+    /// Promotes the ticket to a note. On success the sheet now shows "Open note"
+    /// pointing at the new note; on a refusal the sheet stays as it was and says
+    /// why nothing was written.
+    private func promote() {
+        guard let onPromote else { return }
+        switch onPromote() {
+        case .promoted(let path):
+            link = path
+            promoteError = nil
+        case .refused(let message):
+            promoteError = message
         }
     }
 

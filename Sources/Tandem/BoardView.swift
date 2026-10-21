@@ -39,6 +39,8 @@ struct BoardContext {
     var onOpenLink: (String) -> Void
     /// Opens the ticket sheet for a ticket — the face owns the sheet.
     var onOpenTicket: (Todo) -> Void
+    /// Promotes a ticket to a bikeshed note — the parent owns the bikeshed.
+    var onPromote: (Todo) -> PromotionOutcome
 }
 
 /// The board's outer frame: the search field (the same `TodoQuery` text the list uses),
@@ -50,6 +52,8 @@ struct BoardFace: View {
     var focus: FocusState<Bool>.Binding
     /// Opens the ticket's linked note — the parent owns the tab switch.
     var onOpenLink: (String) -> Void
+    /// Promotes a ticket to a bikeshed note — the parent owns the bikeshed.
+    var onPromote: (Todo) -> PromotionOutcome
 
     /// The ticket open in the ticket sheet, if any.
     @State private var ticketFor: Todo?
@@ -81,7 +85,8 @@ struct BoardFace: View {
                      palette: palette,
                      lanes: lanes,
                      onOpenLink: onOpenLink,
-                     onOpenTicket: { ticketFor = $0 })
+                     onOpenTicket: { ticketFor = $0 },
+                     onPromote: onPromote)
     }
 
     var body: some View {
@@ -126,7 +131,8 @@ struct BoardFace: View {
                     ticketFor = nil
                 },
                 onCancel: { ticketFor = nil },
-                onOpenLink: onOpenLink)
+                onOpenLink: onOpenLink,
+                onPromote: { onPromote(todo) })
         }
     }
 

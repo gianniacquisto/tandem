@@ -87,7 +87,8 @@ struct MainView: View {
                           search: $search,
                           palette: palette,
                           focus: $searchFocused,
-                          onOpenLink: openLinkedNote)
+                          onOpenLink: openLinkedNote,
+                          onPromote: promote)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .modifier(TodosShortcuts(search: $search,
                                              focusSearch: $searchFocused,
@@ -126,7 +127,8 @@ struct MainView: View {
                     ticketFor = nil
                 },
                 onCancel: { ticketFor = nil },
-                onOpenLink: openLinkedNote)
+                onOpenLink: openLinkedNote,
+                onPromote: { promote(todo) })
         }
         .sheet(isPresented: $setup.isPresented) {
             SetupWizardView(
@@ -459,6 +461,12 @@ struct MainView: View {
     private func openLinkedNote(_ path: String) {
         tab = .bikeshed
         bikeModel.open(path)
+    }
+
+    /// Promotes a ticket to a bikeshed note, in the bikeshed this window shows. The
+    /// outcome travels back to the sheet, which says what happened.
+    private func promote(_ todo: Todo) -> PromotionOutcome {
+        model.promoteToNote(todo.id.uuidString, into: bikeModel.bikeshed)
     }
 
     /// Opens the note picker for `todo`.
