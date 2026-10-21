@@ -30,14 +30,14 @@ This ADR records where the agent face lives, that it is portable, and that the p
 - **Moving `black` and `blue` as well** — the human excluded them, and the comparison arm is the one thing in the fleet that is not a pass.
 - **Copying the prompts here and leaving the fleet's copies** — two copies of one prompt is two truths; the fleet's become pointers.
 - **Keeping the command files in the repo** — they were wrappers over skills, and a host's own binding is the host's business.
-- **A `prompts/` directory, a subagent registry, or a prompt pack** — three files with frontmatter are already what the host reads.
+- **A `prompts/` directory, a subagent registry, or a prompt pack** — four files with frontmatter are already what the host reads.
 - **The `wayfinder` skill** — it charts a map of decision tickets on a tracker with labels, blocking edges and child issues. The board has none of those three, so a map cannot be expressed on it: the skill is deferred until the board can carry one, and `docs/agents/issue-tracker.md` says so.
 - **Leaving `retro.md`'s stale lines as they were** — a move is the one moment a prompt's contract is read end to end, and the file would have landed contradicting the CLI it drives.
 
 ## Consequences
 
 - **The fleet repo loses two files and keeps its reason.** Its `README.md` and `WORKFLOW.md` name this repo as the home of `consolidator`, `refine`, `retro` and `reviewer`; the fleet's `main` still ships `black`, `blue` and `terse`.
-- **The host still finds the same agents.** `~/.config/opencode/agents/{consolidator,refine,retro,reviewer}.md` become symlinks into this repo's `agents/`, so `opencode api agent.list` finds them all — the three that were on the host before keep their names, models and colours, and `refine` is the one this branch adds.
+- **The host still finds the same agents.** `~/.config/opencode/agents/{consolidator,refine,retro,reviewer}.md` become symlinks into this repo's `agents/`, so `opencode api agent.list` finds them all — the three that were on the host before keep their names, and the two of them that carried a model and a colour (`retro`, `reviewer`) keep those too, while `consolidator` carried neither and still carries neither. `refine` is the one this branch adds, with both.
 - **The working tree is the deployment.** A prompt's live copy is the file in the checkout the symlink points at, so this repo's checkout has to sit on a branch that carries `agents/` and `skills/` — the same trap `terse`'s install script reports as `dangling`.
 - **A second Mac gets the same workflow** with a clone, the app, and one ask: "set up Tandem". The `tandem-setup` skill does the wiring. The `tandem-cli` the prompts call is the app's own binary, so the app has to be on `PATH` — the tap's cask links it.
 - **The store is untouched**: no field, no enum, no migration, no release. Everything this repo reads and writes is unchanged.
