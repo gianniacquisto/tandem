@@ -129,6 +129,7 @@ struct MainView: View {
                 },
                 onCancel: { ticketFor = nil },
                 onComment: { model.postComment(ticket.id.uuidString, body: $0) },
+                onRefreshComments: { model.comments(for: ticket.id.uuidString) },
                 onOpenLink: openLinkedNote,
                 onPromote: { promote(ticket) })
         }

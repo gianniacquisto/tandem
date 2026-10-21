@@ -1,5 +1,7 @@
 import SwiftUI
 import Foundation
+import AppKit
+import Combine
 import TandemCore
 
 /// The whole ticket in one sheet: title, Status, Cycle lane, the body, and the
@@ -32,6 +34,16 @@ struct TicketSheet: View {
     /// Posts the human's comment to the ticket's log and hands back how it ended:
     /// the log as it now reads, or the refusal that kept it as it was.
     var onComment: (String) -> CommentPostOutcome
+    /// Reads the ticket's log again — the sheet's **refresh**.
+    ///
+    /// It is a read of its own, not the write's read-back: the write path takes
+    /// the store's lock once and hands back the record it wrote, and this is
+    /// what puts the rest of the log in front of the human — a comment another
+    /// actor appended while the sheet was open. The read carries its own
+    /// answers, and they belong to the read: a `.busy` leaves the list exactly
+    /// as it was and says the list may be behind, because a read that did not
+    /// happen takes nothing away.
+    var onRefreshComments: () -> CommentRead
     /// Opens a linked note (the window owns the tab switch). `nil` hides the button.
     var onOpenLink: ((String) -> Void)? = nil
     /// Promotes the ticket to a bikeshed note. `nil` hides the button.
@@ -47,13 +59,16 @@ struct TicketSheet: View {
     /// Why the last promotion did not happen.
     @State private var promoteError: String?
     /// The ticket's discussion, as the sheet draws it. Seeded from the read; a post
-    /// adds the comment it wrote to the list, so the human's own comment is in
-    /// the list at once — the sheet draws the log it read, plus what it wrote.
+    /// adds the comment it wrote to the list, and a refresh replaces the list
+    /// with the log as it reads now.
     @State private var discussion: CommentRead
     /// The comments the human has written in this sheet. They are in the log, and
     /// they are drawn even when the log itself could not be read: a comment that
     /// was written is never one the human cannot see.
     @State private var written: [Comment] = []
+    /// Why the last refresh gave no fresh list. The list stays as it was — a
+    /// read that did not happen takes nothing away — and this says so.
+    @State private var refreshNote: RefreshNote? = nil
     /// The comment the human is writing. It stays after a refusal, so the comment
     /// can be fixed and posted again.
     @State private var commentDraft: String = ""
@@ -68,6 +83,7 @@ struct TicketSheet: View {
          onSave: @escaping (TicketEdits) -> Void,
          onCancel: @escaping () -> Void,
          onComment: @escaping (String) -> CommentPostOutcome,
+         onRefreshComments: @escaping () -> CommentRead,
          onOpenLink: ((String) -> Void)? = nil,
          onPromote: (() -> PromotionOutcome)? = nil) {
         self.ticket = ticket
@@ -76,6 +92,7 @@ struct TicketSheet: View {
         self.onSave = onSave
         self.onCancel = onCancel
         self.onComment = onComment
+        self.onRefreshComments = onRefreshComments
         self.onOpenLink = onOpenLink
         self.onPromote = onPromote
         _title = State(initialValue: ticket.title)
@@ -220,6 +237,15 @@ struct TicketSheet: View {
             // A ticket with a body opens for reading it; a terse one opens for writing it.
             focus = ticket.description == nil ? .title : .body
         }
+        // The human comes back to the app from the terminal, where an agent
+        // commented on this ticket. The comments sidecar is its own file under
+        // `<home>/comments/`, and the app's watcher watches the store's
+        // directory — so nothing else would bring that comment in. (A reopen
+        // is a refresh too: the sheet is opened with the log already read.)
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshComments()
+        }
     }
 
     // MARK: - The discussion (the sidecar's log, and the human's composer)
@@ -232,9 +258,30 @@ struct TicketSheet: View {
     @ViewBuilder
     private var commentsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Comments — the ticket's discussion log")
-                .font(.system(size: 10.5))
-                .foregroundStyle(palette.inkDim)
+            HStack(spacing: 8) {
+                Text("Comments — the ticket's discussion log")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(palette.inkDim)
+                Spacer(minLength: 0)
+                // The refresh on demand: the log is read again, and the list is
+                // put back as the file holds it. It is a read of its own, so it
+                // can happen without a write.
+                Button("Refresh") { refreshComments() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(palette.inkDim)
+                    .help("Read the ticket's log again")
+            }
+            // A refresh that did not read the log says so here, beside the list
+            // it is about: the list may be behind, and nothing was lost. When
+            // the discussion is itself a failure, its own message already says
+            // so, and this would only repeat it.
+            if let refreshNote, case .list = discussion {
+                Text(refreshNote.text)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(refreshNote.isRepair ? palette.emberDeep : palette.inkDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             switch discussion {
             case .list(let list):
                 // A ticket nobody has commented on draws no list: an empty box
@@ -322,8 +369,33 @@ struct TicketSheet: View {
             discussion = discussion.appending(comment)
             commentDraft = ""
             commentError = nil
+            // The log is read again, on its own: a separate read, with its own
+            // answers, that puts the rest of the log in front of the human —
+            // a comment another actor appended in the meantime is in the file,
+            // and the human's own is in it too, in the order the sidecar holds.
+            refreshComments()
         case .refused(let message):
             commentError = message
+        }
+    }
+
+    /// Reads the ticket's log again and draws what it holds.
+    ///
+    /// A refresh that reads the log replaces the list with the file's own
+    /// order. A refresh that does **not** read it — the store was busy, or the
+    /// log is damaged — leaves the list exactly as it was and says why: a read
+    /// that did not happen takes nothing away, and the comment the human just
+    /// wrote stays in the list. The draft is never touched: it is the human's
+    /// half of the conversation, and a refresh is not an answer to it.
+    private func refreshComments() {
+        switch onRefreshComments() {
+        case .list(let list):
+            discussion = .list(list)
+            refreshNote = nil
+        case .busy(let message):
+            refreshNote = .busy(message)
+        case .failed(let message):
+            refreshNote = .failed(message)
         }
     }
 
@@ -452,5 +524,33 @@ private extension CommentRead {
     func appending(_ comment: Comment) -> CommentRead {
         if case .list(let list) = self { return .list(list + [comment]) }
         return self
+    }
+}
+
+/// Why a refresh gave no fresh list. A refresh that did not read the log takes
+/// nothing away: the list stays as it was, and this says why.
+private enum RefreshNote {
+    /// The store was locked by another process: the log is fine, the read gave
+    /// up. Nothing is wrong, so the sheet says it quietly.
+    case busy(String)
+    /// The log could not be read — a damaged line, most often. That is a file to
+    /// repair, and the sheet says so in the repair colour.
+    case failed(String)
+
+    /// The line the sheet draws under the comments header.
+    var text: String {
+        switch self {
+        case .busy(let message):
+            return "The list may be behind — the store was busy. \(message)"
+        case .failed(let message):
+            return "The list may be behind — the log could not be read. \(message)"
+        }
+    }
+
+    /// Whether this is a repair (a damaged log) rather than a retry (a busy
+    /// store): the two ask the human for different things.
+    var isRepair: Bool {
+        if case .failed = self { return true }
+        return false
     }
 }
