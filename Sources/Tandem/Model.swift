@@ -257,6 +257,27 @@ final class TandemModel {
         run { try self.store.delete(id) }
     }
 
+    // MARK: - Comments (the sidecar's read half)
+
+    /// The ticket's discussion: the sidecar's log, oldest first — the core's read
+    /// path (`Store.list(ticketID:)`), which is empty for a ticket with no log and
+    /// never an error for one.
+    ///
+    /// A damaged log *is* an error, and it stays one: the log is append-only, so a
+    /// bad line is repair, not recovery. The sheet says so where the conversation
+    /// would have been, rather than showing an empty list that reads as "nobody
+    /// has commented".
+    ///
+    /// The app only reads. Writing the log is the CLI's verb (`todo comment add`),
+    /// and the app's half of it is ticket `3A44B7FD`.
+    func comments(for ticketID: String) -> TicketComments {
+        do {
+            return .list(try store.list(ticketID: ticketID).value)
+        } catch {
+            return .failed(Self.message(for: error))
+        }
+    }
+
     // MARK: - Promotion to a note (GUI-only, the mirror of `addFromNote`)
 
     /// Promotes a ticket to a bikeshed note: the note is made from the ticket's title and
@@ -337,4 +358,18 @@ enum PromotionOutcome {
     case promoted(path: String)
     /// Nothing was written. The message says why, in the human's words.
     case refused(message: String)
+}
+
+/// A ticket's discussion, as the sheet draws it: the sidecar's comments, or why they
+/// could not be read.
+///
+/// The two cases stay apart because they mean different things to the human: an empty
+/// log is nothing to say, while a damaged log is something to repair.
+enum TicketComments {
+    /// The log's comments, in append order (oldest first). Empty when the ticket has
+    /// no log — the common case, and one that draws no section at all.
+    case list([Comment])
+    /// The log could not be read. The message is the core's own — the same words
+    /// the CLI prints for the same failure (`tandemErrorText`).
+    case failed(String)
 }

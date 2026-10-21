@@ -126,6 +126,7 @@ struct BoardFace: View {
                 todo: todo,
                 palette: palette,
                 lanes: lanes,
+                comments: model.comments(for: todo.id.uuidString),
                 onSave: { edits in
                     model.saveTicket(todo.id.uuidString, edits: edits)
                     ticketFor = nil

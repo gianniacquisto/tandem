@@ -191,6 +191,77 @@ struct CommentsTests {
 
 }
 
+/// The app's read path (`Sources/Tandem/Model.swift` → `TicketSheet.swift`):
+/// the core's `Store.list(ticketID:)` is the only call the GUI makes on the
+/// sidecar, and it is the whole of what the ticket sheet draws. The GUI never
+/// writes the log — that is ticket `3A44B7FD`.
+@Suite("The app's read path")
+struct CommentReadPathTests {
+
+    private func tempStore() throws -> (Store, URL) {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-comment-read-tests-\(UUID().uuidString)")
+        return (Store(directory: dir), dir)
+    }
+
+    private func makeTicket(_ store: Store) throws -> Todo {
+        try store.add("A ticket").value
+    }
+
+    private func logFile(_ store: Store, _ id: UUID) -> URL {
+        store.commentsDirectory.appendingPathComponent("\(id.uuidString).jsonl")
+    }
+
+    @Test("the app reads the log in append order — oldest first — with author, time and body")
+    func readsAppendOrder() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+
+        for (author, body) in [("blue", "first"), ("human", "second"), ("", "third")] {
+            _ = try store.append(ticketID: ticket.id.uuidString, author: author, body: body)
+        }
+
+        // The call the app makes, and only this call.
+        let listed = try store.list(ticketID: ticket.id.uuidString).value
+        #expect(listed.map(\.body) == ["first", "second", "third"])
+        #expect(listed.map(\.author) == ["blue", "human", ""])
+        // The times never go backwards: the order the sheet draws is the order the
+        // log was written in.
+        #expect(listed.map(\.at) == listed.map(\.at).sorted())
+    }
+
+    @Test("a ticket with no log reads as no comments, and the read creates nothing")
+    func noLogReadsEmptyAndWritesNothing() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+
+        #expect(try store.list(ticketID: ticket.id.uuidString).value.isEmpty)
+        // A read never creates the sidecar: the directory is made on the first
+        // append, so a reader that made it would leave a ticket looking discussed.
+        #expect(!FileManager.default.fileExists(atPath: store.commentsDirectory.path))
+    }
+
+    @Test("a damaged line is a failure for the sheet to show, not an empty list")
+    func damagedLineIsAFailure() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: "ok")
+        try Data("{not a comment\n".utf8).append(to: logFile(store, ticket.id))
+
+        do {
+            _ = try store.list(ticketID: ticket.id.uuidString)
+            Issue.record("expected a damaged-log failure")
+        } catch let StoreIOError.io(detail) {
+            // The sheet shows this message where the conversation would have been.
+            #expect(detail.contains("damaged line"))
+            #expect(detail.contains(logFile(store, ticket.id).lastPathComponent))
+        }
+    }
+}
+
 /// Append to an existing file (the test's hand-edit of the log).
 private extension Data {
     func append(to url: URL) throws {
