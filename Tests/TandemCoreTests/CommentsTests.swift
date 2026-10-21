@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import TandemCore
@@ -189,6 +190,122 @@ struct CommentsTests {
         }
     }
 
+}
+
+/// The app's read path (`Sources/Tandem/Model.swift` → `TicketSheet.swift`):
+/// `Store.commentRead(ticketID:)` is the only call the GUI makes on the sidecar,
+/// and it is the whole of what the ticket sheet draws — the log, or the reason it
+/// could not be read. The GUI never writes the log — that is ticket `3A44B7FD`.
+///
+/// The mapping lives in the core (`Sources/TandemCore/CommentRead.swift`), so
+/// this suite reaches the mapping the app actually uses. The app has no test
+/// target: what this suite cannot reach is the sheet's *drawing* of each case.
+@Suite("The app's read path")
+struct CommentReadPathTests {
+
+    private func tempStore() throws -> (Store, URL) {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-comment-read-tests-\(UUID().uuidString)")
+        return (Store(directory: dir), dir)
+    }
+
+    private func makeTicket(_ store: Store) throws -> Todo {
+        try store.add("A ticket").value
+    }
+
+    private func logFile(_ store: Store, _ id: UUID) -> URL {
+        store.commentsDirectory.appendingPathComponent("\(id.uuidString).jsonl")
+    }
+
+    @Test("the app reads the log in append order — oldest first — with author, time and body")
+    func readsAppendOrder() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+
+        for (author, body) in [("blue", "first"), ("human", "second"), ("", "third")] {
+            _ = try store.append(ticketID: ticket.id.uuidString, author: author, body: body)
+        }
+
+        // The call the app makes, and only this call.
+        let read = store.commentRead(ticketID: ticket.id.uuidString)
+        guard case .list(let listed) = read else {
+            Issue.record("expected the log, got \(read)")
+            return
+        }
+        #expect(listed.map(\.body) == ["first", "second", "third"])
+        #expect(listed.map(\.author) == ["blue", "human", ""])
+        // The times never go backwards: the order the sheet draws is the order the
+        // log was written in.
+        #expect(listed.map(\.at) == listed.map(\.at).sorted())
+    }
+
+    @Test("a ticket with no log reads as no comments, and the read creates nothing")
+    func noLogReadsEmptyAndWritesNothing() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+
+        let read = store.commentRead(ticketID: ticket.id.uuidString)
+        guard case .list(let listed) = read else {
+            Issue.record("expected an empty log, got \(read)")
+            return
+        }
+        #expect(listed.isEmpty)
+        // A read never creates the sidecar: the directory is made on the first
+        // append, so a reader that made it would leave a ticket looking discussed.
+        #expect(!FileManager.default.fileExists(atPath: store.commentsDirectory.path))
+    }
+
+    @Test("a damaged line is a failure for the sheet to show, not an empty list")
+    func damagedLineIsAFailure() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: "ok")
+        try Data("{not a comment\n".utf8).append(to: logFile(store, ticket.id))
+
+        let read = store.commentRead(ticketID: ticket.id.uuidString)
+        guard case .failed(let message) = read else {
+            Issue.record("expected a damaged-log failure, got \(read)")
+            return
+        }
+        // The sheet shows this message where the conversation would have been.
+        #expect(message.contains("damaged line"))
+        #expect(message.contains(logFile(store, ticket.id).lastPathComponent))
+        // A damaged log is not a busy store: the two ask the human for different
+        // things, and only the busy one is worth a retry.
+        #expect(!message.contains("locked by another process"))
+    }
+
+    @Test("a lock timeout is busy, not a damaged log")
+    func lockTimeoutIsBusyNotDamaged() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: "ok")
+
+        // Hold the store's own lock, the way a CLI append does: the read then
+        // waits out the ~2 s window and gives up on the lock.
+        let fd = open(store.lockURL.path, O_RDWR | O_CREAT, 0o644)
+        #expect(fd >= 0)
+        #expect(flock(fd, LOCK_EX) == 0)
+        defer { close(fd) }
+
+        let read = store.commentRead(ticketID: ticket.id.uuidString)
+        guard case .busy(let message) = read else {
+            Issue.record("expected a busy read, got \(read)")
+            return
+        }
+        // The words say the store is locked, and ask for a retry.
+        #expect(message.contains("locked by another process"))
+        #expect(message.lowercased().contains("retry"))
+        // Nothing about the log is wrong, so nothing asks for a repair: a busy
+        // store must not read as a damaged file.
+        #expect(!message.contains("damaged"))
+        #expect(!message.contains("repair"))
+        #expect(!message.contains(logFile(store, ticket.id).lastPathComponent))
+    }
 }
 
 /// Append to an existing file (the test's hand-edit of the log).

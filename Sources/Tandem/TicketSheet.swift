@@ -1,7 +1,9 @@
 import SwiftUI
+import Foundation
 import TandemCore
 
-/// The whole ticket in one sheet: title, Status, Cycle lane, and the body.
+/// The whole ticket in one sheet: title, Status, Cycle lane, the body, and the
+/// ticket's discussion.
 ///
 /// Opening a ticket is the one gesture that was missing — a row and a tile could be
 /// changed in place, but there was nowhere to *read* one whole or to change its title,
@@ -14,10 +16,18 @@ import TandemCore
 /// the human answers it. Origin is read-only for the stronger reason: it is stamped at
 /// add and never edited, so the sheet only shows who filed the ticket — "you filed", or
 /// the agent's name — which is how triage starts with "what did I ask for?"
+///
+/// The comments are the sidecar's log, read for this ticket and nothing else: the
+/// conversation agents have on a ticket after refinement, which the description (the
+/// refinement's output) is not. The sheet draws them oldest first; it never writes
+/// them (ticket `3A44B7FD` is the write half).
 struct TicketSheet: View {
     var todo: Todo
     var palette: Palette
     var lanes: [String]
+    /// The ticket's discussion, as the sidecar holds it. `.list([])` is a ticket with
+    /// no log: no section, no error.
+    var comments: CommentRead = .list([])
     /// Called with the sheet's values; the caller writes what changed and dismisses.
     var onSave: (TicketEdits) -> Void
     var onCancel: () -> Void
@@ -40,6 +50,7 @@ struct TicketSheet: View {
     private enum Field { case title, body }
 
     init(todo: Todo, palette: Palette, lanes: [String],
+         comments: CommentRead = .list([]),
          onSave: @escaping (TicketEdits) -> Void,
          onCancel: @escaping () -> Void,
          onOpenLink: ((String) -> Void)? = nil,
@@ -47,6 +58,7 @@ struct TicketSheet: View {
         self.todo = todo
         self.palette = palette
         self.lanes = lanes
+        self.comments = comments
         self.onSave = onSave
         self.onCancel = onCancel
         self.onOpenLink = onOpenLink
@@ -63,6 +75,20 @@ struct TicketSheet: View {
     }
 
     private var canSave: Bool { !trimmedTitle.isEmpty }
+
+    /// Whether the sheet draws a comments section: a log with something in it, or a
+    /// log that could not be read (which says so where the list would be). A ticket
+    /// nobody has commented on draws nothing — an empty box would be noise.
+    private var showsComments: Bool {
+        switch comments {
+        case .list(let list): return !list.isEmpty
+        case .busy, .failed: return true
+        }
+    }
+
+    /// The sheet grows to make room for the discussion: a fixed height would squeeze
+    /// the description editor to nothing on a ticket that has one.
+    private var sheetHeight: CGFloat { showsComments ? 640 : 500 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -145,6 +171,12 @@ struct TicketSheet: View {
                 .overlay(RoundedRectangle(cornerRadius: Radius.control)
                     .strokeBorder(palette.line, lineWidth: Line.hairline))
 
+            // The discussion, under the body: the log the CLI's `todo comment add`
+            // appends to. The sheet draws it; it never writes it.
+            if showsComments {
+                commentsSection
+            }
+
             HStack(spacing: 10) {
                 Text("⌘↩ saves · Esc cancels")
                     .font(.system(size: 10.5))
@@ -163,12 +195,92 @@ struct TicketSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 580, height: 500)
+        .frame(width: 580, height: sheetHeight)
         .background(palette.paper)
         .onAppear {
             // A ticket with a body opens for reading it; a terse one opens for writing it.
             focus = todo.description == nil ? .title : .body
         }
+    }
+
+    // MARK: - The discussion (the sidecar's log, read-only)
+
+    /// The ticket's comments: a header, and either the log itself or the reason it
+    /// could not be read. The two never share a shape — an empty log is nothing to
+    /// say, a damaged one is something to repair.
+    @ViewBuilder
+    private var commentsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Comments — the ticket's discussion log")
+                .font(.system(size: 10.5))
+                .foregroundStyle(palette.inkDim)
+            switch comments {
+            case .list(let list):
+                commentList(list)
+            case .busy(let message):
+                // The store was locked by another process and the read gave up.
+                // Nothing is wrong with the log, so this is not the repair colour:
+                // it is a quiet "try again", and the core's own words.
+                Text(message)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(palette.inkDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            case .failed(let message):
+                // The core's own words, which name the damaged file: the log is
+                // append-only, so a bad line is repair, not recovery.
+                Text(message)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(palette.emberDeep)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// The log, oldest first, in a scrollable parchment panel.
+    private func commentList(_ list: [Comment]) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(list.enumerated()), id: \.offset) { index, comment in
+                    commentRow(comment)
+                    if index < list.count - 1 {
+                        Rectangle().fill(palette.sand).frame(height: Line.hairline)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .frame(maxHeight: 190)
+        .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
+        .overlay(RoundedRectangle(cornerRadius: Radius.control)
+            .strokeBorder(palette.line, lineWidth: Line.hairline))
+    }
+
+    /// One comment: who said it, when, and what they said. The body is markdown as
+    /// stored, like the description — no rendering, so nothing can hide a character
+    /// an agent wrote.
+    private func commentRow(_ comment: Comment) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                // An unnamed author is the empty string, and it says so rather than
+                // leaving a gap where a name would be.
+                Text(comment.author.isEmpty ? "anonymous" : comment.author)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(comment.author.isEmpty ? palette.inkDim : palette.ink)
+                Text(comment.at.formatted(
+                    .dateTime.year().month(.abbreviated).day().hour().minute()))
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(palette.inkDim)
+                Spacer(minLength: 0)
+            }
+            Text(comment.body)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Promotes the ticket to a note. On success the sheet now shows "Open note"

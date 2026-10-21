@@ -257,6 +257,28 @@ final class TandemModel {
         run { try self.store.delete(id) }
     }
 
+    // MARK: - Comments (the sidecar's read half)
+
+    /// The ticket's discussion: the sidecar's log, oldest first — the core's read
+    /// path (`Store.commentRead(ticketID:)`), which is empty for a ticket with no
+    /// log and never an error for one.
+    ///
+    /// A damaged log *is* an error, and it stays one: the log is append-only, so a
+    /// bad line is repair, not recovery. The sheet says so where the conversation
+    /// would have been, rather than showing an empty list that reads as "nobody
+    /// has commented".
+    ///
+    /// A store locked by another process is a third thing again: the read waited
+    /// out the lock and gave up, the log is untouched, and the sheet says "busy —
+    /// try again" rather than "repair this file". The mapping lives in the core
+    /// (`Sources/TandemCore/CommentRead.swift`) so the test seam can reach it.
+    ///
+    /// The app only reads. Writing the log is the CLI's verb (`todo comment add`),
+    /// and the app's half of it is ticket `3A44B7FD`.
+    func comments(for ticketID: String) -> CommentRead {
+        store.commentRead(ticketID: ticketID)
+    }
+
     // MARK: - Promotion to a note (GUI-only, the mirror of `addFromNote`)
 
     /// Promotes a ticket to a bikeshed note: the note is made from the ticket's title and
