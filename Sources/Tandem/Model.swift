@@ -3,7 +3,7 @@ import Observation
 import TandemCore
 
 /// The single shared app model: a thin, observable adapter over `TandemCore.Store`
-/// (ADR 0001). All todo semantics live in the store; this class only bridges them to
+/// (ADR 0001). All ticket semantics live in the store; this class only bridges them to
 /// the UI.
 ///
 /// One instance is shared by both faces — the SwiftUI main window (which tracks it via
@@ -21,9 +21,9 @@ final class TandemModel {
     private let store: Store
     private let watcher: StoreWatcher
 
-    /// All todos in stored order (the order the human arranged — new todos land on top;
+    /// All tickets in stored order (the order the human arranged — new tickets land on top;
     /// never re-sorted here).
-    private(set) var todos: [Ticket] = []
+    private(set) var tickets: [Ticket] = []
     /// The declared lane names, in render order. The default (ungrouped) area at the
     /// top of the list is implicit and unnamed, so it is not in here.
     private(set) var lanes: [String] = []
@@ -51,12 +51,12 @@ final class TandemModel {
     // The shipped filters, defined once in the core (`Filter.query`): the app's counts
     // and the CLI's `--filter` are views over the same predicate, not two definitions —
     // the archive excepted, where the CLI asks for it by name (ADR 0017, 2026-10-21).
-    var openTodos: [Ticket] { Filter.open.apply(to: todos) }
-    var doneTodos: [Ticket] { Filter.done.apply(to: todos) }
+    var openTickets: [Ticket] { Filter.open.apply(to: tickets) }
+    var doneTickets: [Ticket] { Filter.done.apply(to: tickets) }
     /// The archive: out of every default view, still in the store. The list's fourth state.
-    var archivedTodos: [Ticket] { TicketQuery(archived: .only).apply(to: todos) }
+    var archivedTickets: [Ticket] { TicketQuery(archived: .only).apply(to: tickets) }
     /// What is waiting for the person: the tickets agents assigned to `human`.
-    var inboxTodos: [Ticket] { TicketQuery.inbox.apply(to: todos) }
+    var inboxTickets: [Ticket] { TicketQuery.inbox.apply(to: tickets) }
 
     private init(store: Store = Store()) {
         self.store = store
@@ -80,7 +80,7 @@ final class TandemModel {
     func reload() {
         do {
             let result = try store.list(.all)
-            todos = result.value
+            tickets = result.value
             lanes = (try? store.lanes().value) ?? []
             if let lane = defaultLane, !lanes.contains(lane) { setDefaultLane(nil) }
             if let note = result.note { recoveryNote = note }
@@ -96,7 +96,7 @@ final class TandemModel {
         run { try self.store.add(rawTitle) }
     }
 
-    /// Adds a todo on top of `lane` (`nil` = the default area).
+    /// Adds a ticket on top of `lane` (`nil` = the default area).
     func add(_ rawTitle: String, lane: String?) {
         run { try self.store.add(rawTitle, lane: lane) }
     }
@@ -119,24 +119,24 @@ final class TandemModel {
         run { try self.store.renameLane(from, to: to) }
     }
 
-    /// Deleting a lane moves its todos to the default area — it never deletes them.
+    /// Deleting a lane moves its tickets to the default area — it never deletes them.
     func deleteLane(_ name: String) {
         run { try self.store.deleteLane(name) }
     }
 
     /// Reorders the lanes. `index` is 0-based and clamped; the groups (and the order
-    /// of todos inside them) travel whole.
+    /// of tickets inside them) travel whole.
     func moveLane(_ name: String, to index: Int) {
         run { try self.store.moveLane(name, to: index) }
     }
 
-    /// Reorders: moves a todo to `index` (0-based) within `lane` (`nil` = the default
+    /// Reorders: moves a ticket to `index` (0-based) within `lane` (`nil` = the default
     /// area), moving it between lanes when needed.
     func move(_ id: String, toLane lane: String?, at index: Int) {
         run { try self.store.move(id, toLane: lane, at: index) }
     }
 
-    /// Complete is idempotent at the store level, so completing an already-done todo
+    /// Complete is idempotent at the store level, so completing an already-done ticket
     /// is a no-op.
     ///
     /// A completion **this app made** leaves an undo offer behind — the toast that
@@ -146,7 +146,7 @@ final class TandemModel {
     func complete(_ id: String) {
         // Whether this call is a *transition* to done: completing a ticket that is
         // already done changes nothing, so there is nothing to take back.
-        let wasDone = todos.first(where: { $0.id.uuidString == id })?.done ?? false
+        let wasDone = tickets.first(where: { $0.id.uuidString == id })?.done ?? false
         guard let completed = run({ try self.store.complete(id) }) else { return }
         guard !wasDone, completed.status == .done else { return }
         undoOffer = CompletionUndo(id: completed.id, title: completed.title)
@@ -162,17 +162,17 @@ final class TandemModel {
     func undoCompletion() {
         guard let offer = undoOffer else { return }
         undoOffer = nil
-        guard todos.first(where: { $0.id == offer.id })?.done == true else { return }
+        guard tickets.first(where: { $0.id == offer.id })?.done == true else { return }
         run { try self.store.undo(offer) }
     }
 
     /// The inverse of `complete` — the checkbox on a done row reopens it. Also
-    /// idempotent: reopening an already-open todo is a no-op.
+    /// idempotent: reopening an already-open ticket is a no-op.
     func reopen(_ id: String) {
         run { try self.store.reopen(id) }
     }
 
-    /// Rewrites a todo's title (inline edit). GUI-only — no CLI verb; the empty-title
+    /// Rewrites a ticket's title (inline edit). GUI-only — no CLI verb; the empty-title
     /// and unknown-id errors surface verbatim.
     func update(_ id: String, title: String) {
         run { try self.store.update(id, title: title) }
@@ -190,14 +190,14 @@ final class TandemModel {
         run { try self.store.place(id, lane: lane, status: status, at: index) }
     }
 
-    /// Points a todo at a Bikeshed note (bikeshed-root-relative path), or clears the link
+    /// Points a ticket at a Bikeshed note (bikeshed-root-relative path), or clears the link
     /// with `nil`. GUI-only — no CLI verb; the unknown-id error surfaces verbatim.
     func setLink(_ id: String, to link: String?) {
         run { try self.store.setLink(id, to: link) }
     }
 
     /// Files a selection from a note as a ticket, linked back to that note (the
-    /// reverse of the todo→note link). The ticket lands on top of the **default
+    /// reverse of the ticket→note link). The ticket lands on top of the **default
     /// lane**, in `backlog` — the same place the quick-add files.
     ///
     /// Returns the error message when the filing failed, rather than raising a
@@ -234,7 +234,7 @@ final class TandemModel {
     /// changing a lane also decides where in the lane the ticket lands. A sheet that was
     /// opened, read, and saved writes nothing.
     func saveTicket(_ id: String, edits: TicketEdits) {
-        guard let stored = todos.first(where: { $0.id.uuidString == id }) else { return }
+        guard let stored = tickets.first(where: { $0.id.uuidString == id }) else { return }
         let trimmedBody = edits.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let titleChanged = edits.title != stored.title
         let bodyChanged = (stored.description ?? "") != trimmedBody

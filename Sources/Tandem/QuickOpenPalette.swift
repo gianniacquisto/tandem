@@ -144,9 +144,9 @@ struct QuickOpenPalette: View {
         switch item {
         case .note(let path):
             return BikeshedPath.folder(of: path)
-        case .ticket(let todo):
-            guard let lane = todo.lane else { return todo.status.displayName }
-            return "\(todo.status.displayName) · \(lane)"
+        case .ticket(let ticket):
+            guard let lane = ticket.lane else { return ticket.status.displayName }
+            return "\(ticket.status.displayName) · \(lane)"
         }
     }
 

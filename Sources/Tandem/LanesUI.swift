@@ -5,12 +5,12 @@ import TandemCore
 // for naming one. Same register as the rest of the Ligne Claire controls — one
 // hairline, flat fills, no capsules.
 
-/// One rendered group in the Todos list. `key == nil` is the default (ungrouped)
+/// One rendered group in the Tickets list. `key == nil` is the default (ungrouped)
 /// area: it always comes first and gets **no header** — it is just the top of the
 /// list. Named groups draw a header.
-struct TodoGroup: Identifiable {
+struct TicketGroup: Identifiable {
     var key: String?
-    var todos: [Ticket]
+    var tickets: [Ticket]
 
     var id: String { key ?? "\u{0}default" }
     var isDefault: Bool { key == nil }
@@ -20,7 +20,7 @@ struct TodoGroup: Identifiable {
 
 /// One lane's header. There is no header for the default (ungrouped) area — that
 /// area is just the top of the list. A lane can be renamed, moved up or down, and
-/// deleted (deleting one only ungroups its todos). The header is also a drop target:
+/// deleted (deleting one only ungroups its tickets). The header is also a drop target:
 /// dropping a row here moves it to the top of the lane.
 struct LigneLaneHeader: View {
     var title: String

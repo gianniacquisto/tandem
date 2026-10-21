@@ -816,10 +816,14 @@ export function mountEditor(parent, { doc, notes, notePath } = {}) {
     // "New note → type" works without a click into the pane first (the
     // content element holds the DOM focus that keystrokes need).
     window.focusEditor = () => view.focus();
-    // Swift asks for the text a "send to todos" action would file (the
+    // Swift asks for the text a "send to tickets" action would file (the
     // menu item's path). The answer comes back over the same message the
     // ⌘⇧T shortcut posts, so both triggers file the same ticket.
-    window.requestTodoCandidate = () =>
+    //
+    // The global's name is the app's side of the bridge, and it follows the
+    // app's word: the page is asked for a *ticket* candidate. The message
+    // itself — `send-to-todos` — is the page's own and stays as it is.
+    window.requestTicketCandidate = () =>
       postSendToTodos(todoCandidateText(view.state));
   }
 
