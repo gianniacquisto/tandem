@@ -58,7 +58,7 @@ A ticket that needs a decision from the human is `refined` with `assignee human`
 
 A session ticket is work, not a log entry. Every session files one for itself (the convention is in `AGENTS.md`), and the board moves it like any other ticket — so a session that died mid-flight leaves behind a brief someone can build from, not a row nobody can pick up.
 
-The session id in the title — `Session — <project> · <session-id>` — is the handle that settles which case this is. `opencode api session.list` lists the sessions on this machine, each with a `time.updated`; a session updated seconds ago is live.
+The session id in the title — `Session — <project> · <session-id>` — is the handle that settles which case this is. `opencode api session.list` lists the sessions on this machine. A session is **live** when its `outcome` is `null` **and** its `time.updated` is seconds old; a finished session carries an `outcome` of `succeeded` or `failed`, and a session that died without recording one still shows a stale `time.updated`.
 
 - **The session is live** — the ticket belongs to that session. Leave it alone: it is claimed, and the claim is not a stall (see the dispatch section). Do not refine it, do not re-dispatch it.
 - **The session has ended** — the ticket is stale work. Refine it and move it: grill the brief against what the session actually did (its captures, its PR, its branch, the repo and the bikeshed), then set the status the gates call for. If the outcome already exists, complete it. If work remains, `refined` → `ready` and dispatch it to a successor.
