@@ -206,8 +206,14 @@ func dispatch(_ args: [String]) -> Int32 {
         }
     case .sessionShow(let session):
         return run {
-            let result = try Sessions().show(id: try sessionID(session))
-            return try StoreEncoding.sessionResult(result.value, note: result.note)
+            let id = try sessionID(session)
+            let result = try Sessions().show(id: id)
+            // The notes a session wrote are derived from the files — the
+            // capture folder is the session id — so the record and its notes
+            // cannot drift apart. The record's own `tickets` are the other
+            // half of what the session carried.
+            let notes = try Bikeshed().sessionNotes(session: id).value
+            return try StoreEncoding.sessionDetailResult(result.value, notes: notes, note: result.note)
         }
     }
 }

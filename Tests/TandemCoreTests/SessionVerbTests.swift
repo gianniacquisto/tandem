@@ -222,6 +222,27 @@ struct SessionVerbTests {
         #expect(unknown.error.contains("Unknown session id"))
     }
 
+    @Test("`session show` names the notes the session wrote, and only those")
+    func showNamesTheNotes() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+        let captured = try run(home: home, ["note", "capture", "--kind", "work", "--project", "tandem", "--session", sessionID], stdin: "# A note\n")
+        #expect(captured.code == 0)
+        let path = try #require(try cli.object(from: captured.output)["path"] as? String)
+
+        let shown = try run(home: home, ["session", "show", "--session", sessionID])
+        #expect(shown.code == 0)
+        let notes = try #require(try cli.object(from: shown.output)["notes"] as? [String])
+        #expect(notes == [path], "the capture the session wrote is named")
+
+        // Another session's capture is not this session's note.
+        _ = try run(home: home, ["note", "capture", "--kind", "work", "--project", "tandem", "--session", "ses_other"], stdin: "# Another\n")
+        let again = try run(home: home, ["session", "show", "--session", sessionID])
+        #expect(try #require(try cli.object(from: again.output)["notes"] as? [String]) == [path])
+    }
+
     // MARK: - The defaults
 
     @Test("a session id is the host's, and an unset one is a failure that names it")

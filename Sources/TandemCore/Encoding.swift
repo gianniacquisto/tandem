@@ -78,6 +78,25 @@ public enum StoreEncoding {
         return try serialize(object)
     }
 
+    /// The `session show` result: the record, the **notes** it wrote, and the
+    /// **tickets** it carried — the last two are the record's own `tickets` and
+    /// the note paths derived from the capture files (the umbrella's
+    /// "`session show` names the notes and the linked tickets").
+    ///
+    /// The notes are a derived list, never a stored one: consolidation moves
+    /// the captures it consumes, so a stored path would be stale by design
+    /// within a day.
+    public static func sessionDetailResult(
+        _ session: Session,
+        notes: [String],
+        note: String?
+    ) throws -> String {
+        var object = try sessionObject(session)
+        object["notes"] = notes
+        if let note { object["note"] = note }
+        return try serialize(object)
+    }
+
     /// The `archive` result: `{"archived": <n>}`, with a top-level `note` when non-nil.
     /// A bulk operation reports how much it did, not which tickets it touched — the
     /// caller's next `list` has the tickets, and the count keeps the reply one line.
