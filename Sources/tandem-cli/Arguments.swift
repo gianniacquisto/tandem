@@ -7,11 +7,11 @@ import Foundation
 /// `--kind`, `--project`, `--session`, `--archived`)
 /// — the CLI renames nothing and parses nothing: raw values travel to the core,
 /// which validates them and owns the error text. `doctor` is a setup/diagnostic verb
-/// outside the `todo`/`note` domains (ADR 0014) and takes no flags.
+/// outside the `ticket`/`note` domains (ADR 0014) and takes no flags.
 enum Command {
     case help
     case doctor
-    case todoList(
+    case ticketList(
         filter: String?,
         text: String?,
         status: String?,
@@ -19,19 +19,19 @@ enum Command {
         lane: String?,
         archived: Bool
     )
-    case todoAdd(title: String, status: String?, assignee: String?, lane: String?, origin: String?)
-    case todoSet(
+    case ticketAdd(title: String, status: String?, assignee: String?, lane: String?, origin: String?)
+    case ticketSet(
         id: String,
         title: String?,
         status: String?,
         assignee: String?,
         description: String?
     )
-    case todoMove(id: String, lane: String?, index: String?)
-    case todoComplete(id: String)
-    case todoArchive
-    case todoCommentAdd(id: String, author: String?, body: String)
-    case todoCommentList(id: String)
+    case ticketMove(id: String, lane: String?, index: String?)
+    case ticketComplete(id: String)
+    case ticketArchive
+    case ticketCommentAdd(id: String, author: String?, body: String)
+    case ticketCommentList(id: String)
     case laneAdd(name: String)
     case laneRename(from: String, to: String)
     case laneDelete(name: String)
@@ -49,7 +49,7 @@ struct UsageError: Error {}
 
 /// Parse the arguments after the program name. `--help` / `-h` as the first
 /// argument is the help request; otherwise the first argument names the group
-/// (`todo` / `note`), the second the verb, and the rest are `--flag value`
+/// (`ticket` / `note`), the second the verb, and the rest are `--flag value`
 /// pairs validated against that verb.
 func parseCommand(_ args: [String]) throws -> Command {
     guard let first = args.first else { throw UsageError() }
@@ -61,8 +61,10 @@ func parseCommand(_ args: [String]) throws -> Command {
         // argument is a usage failure.
         guard args.count == 1 else { throw UsageError() }
         return .doctor
-    case "todo":
-        return try parseTodo(Array(args.dropFirst()))
+    case "ticket", Usage.deprecatedAliasToken:
+        // `ticket` is the verb (D1). `todo` is the deprecated alias: the same
+        // parse, the same answer, and one line on stderr (see `main`).
+        return try parseTicket(Array(args.dropFirst()))
     case "lane":
         return try parseLane(Array(args.dropFirst()))
     case "note":
@@ -72,18 +74,19 @@ func parseCommand(_ args: [String]) throws -> Command {
     }
 }
 
-// MARK: - todo
+// MARK: - ticket
 
-/// `todo list|add|set|move|complete|archive|comment` — the todo verbs (the agent
-/// surface). An absent flag is `nil` (the core's default); a flag with no value is
-/// `""`, which the core rejects or reads as the empty field. That is the one rule
-/// every verb below follows, so no verb repeats a validation the core already owns.
-private func parseTodo(_ args: [String]) throws -> Command {
+/// `ticket list|add|set|move|complete|archive|comment` — the ticket verbs (the
+/// agent surface). An absent flag is `nil` (the core's default); a flag with no
+/// value is `""`, which the core rejects or reads as the empty field. That is
+/// the one rule every verb below follows, so no verb repeats a validation the
+/// core already owns.
+private func parseTicket(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
     // `comment` takes a sub-verb of its own (`add` / `list`), so it parses
     // before the shared `--flag value` pass.
     if verb == "comment" {
-        return try parseTodoComment(Array(args.dropFirst()))
+        return try parseTicketComment(Array(args.dropFirst()))
     }
     let flags = try parseFlags(Array(args.dropFirst()))
     switch verb {
@@ -91,7 +94,7 @@ private func parseTodo(_ args: [String]) throws -> Command {
         try accept(flags, ["--filter", "--text", "--status", "--assignee", "--lane", "--archived"])
         // `--archived` is a switch: the archive axis of the query, the one flag that
         // takes no value.
-        return .todoList(
+        return .ticketList(
             filter: flags["--filter"],
             text: flags["--text"],
             status: flags["--status"],
@@ -104,7 +107,7 @@ private func parseTodo(_ args: [String]) throws -> Command {
         // domain rejects (`emptyTitle`), exactly as the MCP server read an
         // absent argument. An absent `--origin` is `nil` (the core's `human`
         // default), not the empty string: there is no "no filer" value to reject.
-        return .todoAdd(
+        return .ticketAdd(
             title: flags["--title"] ?? "",
             status: flags["--status"],
             assignee: flags["--assignee"],
@@ -115,7 +118,7 @@ private func parseTodo(_ args: [String]) throws -> Command {
         // Every field is optional: the ones not named are left alone, in one write.
         // `--description -` is read from stdin (multi-line markdown is a quoting trap);
         // `main` recognizes the dash, because stdin belongs to the adapter.
-        return .todoSet(
+        return .ticketSet(
             id: flags["--id"] ?? "",
             title: flags["--title"],
             status: flags["--status"],
@@ -123,7 +126,7 @@ private func parseTodo(_ args: [String]) throws -> Command {
             description: flags["--description"])
     case "move":
         try accept(flags, ["--id", "--lane", "--index"])
-        return .todoMove(
+        return .ticketMove(
             id: flags["--id"] ?? "",
             lane: flags["--lane"],
             index: flags["--index"])
@@ -131,34 +134,34 @@ private func parseTodo(_ args: [String]) throws -> Command {
         try accept(flags, ["--id"])
         // A missing `--id` is likewise the empty id whose `unknownID` error
         // carries the open list.
-        return .todoComplete(id: flags["--id"] ?? "")
+        return .ticketComplete(id: flags["--id"] ?? "")
     case "archive":
         // Bulk, whole-list: finished work leaves the view, nothing is deleted.
         try accept(flags, [])
-        return .todoArchive
+        return .ticketArchive
     default:
         throw UsageError()
     }
 }
 
-/// `todo comment add|list` — the ticket's discussion log (ADR 0017, amendment
-/// 2026-10-20). `add`'s `--body -` is read from stdin, the precedent `todo set
-/// --description -` set; `main` recognizes the dash, because stdin belongs to
-/// the adapter. A missing `--id` / `--body` is the empty value the core
-/// rejects, not a usage error; `--author` absent is the unnamed author.
-private func parseTodoComment(_ args: [String]) throws -> Command {
+/// `ticket comment add|list` — the ticket's discussion log (ADR 0017, amendment
+/// 2026-10-20). `add`'s `--body -` is read from stdin, the precedent
+/// `ticket set --description -` set; `main` recognizes the dash, because stdin
+/// belongs to the adapter. A missing `--id` / `--body` is the empty value the
+/// core rejects, not a usage error; `--author` absent is the unnamed author.
+private func parseTicketComment(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
     let flags = try parseFlags(Array(args.dropFirst()))
     switch verb {
     case "add":
         try accept(flags, ["--id", "--author", "--body"])
-        return .todoCommentAdd(
+        return .ticketCommentAdd(
             id: flags["--id"] ?? "",
             author: flags["--author"],
             body: flags["--body"] ?? "")
     case "list":
         try accept(flags, ["--id"])
-        return .todoCommentList(id: flags["--id"] ?? "")
+        return .ticketCommentList(id: flags["--id"] ?? "")
     default:
         throw UsageError()
     }
@@ -228,7 +231,7 @@ private func parseNote(_ args: [String]) throws -> Command {
 // MARK: - Flags
 
 /// The flags that take no value: a switch, there or not there. `--archived` is the
-/// only one — the archive axis of `todo list`. Every other flag takes a value, so
+/// only one — the archive axis of `ticket list`. Every other flag takes a value, so
 /// `--archived` never swallows the token after it.
 private let switchFlags: Set<String> = ["--archived"]
 
