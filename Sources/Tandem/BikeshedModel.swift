@@ -78,6 +78,13 @@ final class BikeshedModel {
 
     private(set) var backlinks: [Backlink] = []
 
+    // MARK: Health (the link-graph report; recomputed off-main, like backlinks)
+
+    /// The bikeshed's link-graph health: the wikilinks that resolve to
+    /// nothing and the notes nothing links to. The same core call the CLI's
+    /// `note links` makes, so the panel and the command can never disagree.
+    private(set) var health: BikeshedHealth = .empty
+
     // MARK: Editor (the webview lives here — persistent across tab switches)
 
     let editor: EditorHost
@@ -91,6 +98,8 @@ final class BikeshedModel {
     private var searchRun: Task<Void, Never>?
     private var backlinkDebounce: DispatchWorkItem?
     private var backlinkRun: Task<Void, Never>?
+    private var healthDebounce: DispatchWorkItem?
+    private var healthRun: Task<Void, Never>?
 
     private init(bikeshed: Bikeshed = Bikeshed(), todos: TandemModel = .shared) {
         self.bikeshed = bikeshed
@@ -126,6 +135,8 @@ final class BikeshedModel {
         searchRun?.cancel()
         backlinkDebounce?.cancel()
         backlinkRun?.cancel()
+        healthDebounce?.cancel()
+        healthRun?.cancel()
     }
     // (Tasks capture `self` weakly; a deallocated model leaves them no-ops.)
 
@@ -201,6 +212,7 @@ final class BikeshedModel {
         if let open = openPath, pathIndex[open.lowercased()] == nil {
             if !isDirty { closeNote(silent: true) }
         }
+        refreshHealth()
     }
 
     private static func indexPaths(_ nodes: [BikeshedNode], into index: inout [String: String]) {
@@ -308,6 +320,32 @@ final class BikeshedModel {
                 // must not overwrite a fresher one.
                 guard let self, self.openPath == open else { return }
                 self.backlinks = rows
+            }
+        }
+    }
+
+    // MARK: - Health (derived; off-main; the same bikeshed-wide scan the
+    // backlinks path makes, so it is debounced longer — a health report is
+    // not a live view, and a typing burst must not cost a scan per keystroke)
+
+    /// Recompute the link-graph report (broken links, orphan notes). Debounced
+    /// and off-main: the scan reads every note, so it never runs on the UI
+    /// thread.
+    func refreshHealth() {
+        healthDebounce?.cancel()
+        healthRun?.cancel()
+        let item = DispatchWorkItem { [weak self] in self?.runHealth() }
+        healthDebounce = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: item)
+    }
+
+    private func runHealth() {
+        let bikeshed = self.bikeshed
+        healthRun = Task.detached(priority: .utility) { [weak self] in
+            let report = (try? bikeshed.health())?.value ?? .empty
+            guard !Task.isCancelled else { return }   // superseded by a newer pass
+            DispatchQueue.main.async {
+                self?.health = report
             }
         }
     }

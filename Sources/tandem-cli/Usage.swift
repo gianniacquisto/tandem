@@ -23,6 +23,7 @@ enum Usage {
       tandem-cli note rename --from <path> --to <path>
       tandem-cli note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]
       tandem-cli note stats [--project <name>]
+      tandem-cli note links
       tandem-cli doctor
       tandem-cli --help | -h
 
