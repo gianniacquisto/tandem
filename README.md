@@ -76,6 +76,7 @@ The app and the agent read and write the same store, and the app watches it: a t
 | A first-run setup wizard | v0.10.0 |
 | The store — one JSON file, watched live, editable by hand | v0.1.0 |
 | The rolling backup `todos.json.bak` — the one previous good copy | v0.15.0 |
+| The session record — an agent session's own artifact, in `sessions.json` | unreleased |
 | A dev build that keeps its own state in `~/.tandem-dev`, so it can never touch yours | v0.9.0 |
 
 Every picture below, and every word of the app's own copy in it, is `dev`'s — the branch the next release is cut from. The build installed today says `Todos` where this says `Tickets`, and `Send to todos` where this says `Send to tickets`.
@@ -124,14 +125,24 @@ tandem-cli note rename --from <path> --to <path>
 tandem-cli note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]
 tandem-cli note stats [--project <name>]
 tandem-cli note links
+tandem-cli session start [--project <name>] [--agent <name>] [--session <id>]
+                         [--brief <string|->]
+tandem-cli session end [--session <id>] [--outcome <value>] [--summary <string|->]
+tandem-cli session link --ticket <id> [--session <id>]
+tandem-cli session list [--project <name>] [--status <value>]
+tandem-cli session show [--session <id>]
 tandem-cli doctor
 ```
 
-The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `done`; a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first.
+The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `done`; a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status.
 
 `todo` still answers for `ticket`: it is the only verb the installed 0.15.0 build knows, and in the next release it is a deprecated alias that says so on stderr. It goes in the release after that one.
 
 That block is `dev`'s grammar, the branch the next release is cut from. The build installed today — 0.15.0 — spells the verb `todo`, and its `list` has no `--archived`; both arrive with the next release.
+
+### A session is its own record
+
+Not a ticket: `session start` opens a record of one agent session's run — the project it works in, the agent's name, the brief it was given — `session end` stamps how it ended and what it did, `session link` ties the record to a ticket, and `session list` and `session show` read the record back. The record keeps its own file, `sessions.json`, beside the store, and is created once, stamped once and linked to — there is no edit and no delete.
 
 ### The skills
 
@@ -204,7 +215,7 @@ If the file ever gets corrupted, Tandem moves it to `todos.json.corrupt-<timesta
 - **Not a team tool yet.** One Mac, one store. There is no shared board and no realtime collaboration; the bikeshed is not shareable either.
 - **Not cross-platform.** macOS 27 or later, on Apple silicon.
 - **Not a tracker with edges.** The board has no labels, no blocking edges and no child tickets — see [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
-- **Not settled on its nouns.** The domain and the CLI say *ticket*; the store still writes `todo` — `todos.json`, the `todos` array, the `section` key — and reads the renamed keys beside them.
+- **Not settled on its nouns.** The domain and the CLI say *ticket* — the CLI's list answers under both `tickets` and `todos` — and the store still writes `todo`: `todos.json`, the `todos` array, the `section` key. It reads the renamed keys beside them.
 
 ## How to contribute
 
