@@ -96,11 +96,11 @@ Or copy the whole `tandem-memory/` folder into your harness's skills directory t
 
 ### The `agents/` directory
 
-`agents/` holds the agent prompts this project owns — `reviewer.md`, `retro.md` and `consolidator.md` — one markdown file per agent, each with the frontmatter a host reads (a `description`, a `mode`, a `model`).
+`agents/` holds the agent prompts this project owns — `consolidator.md`, `refine.md`, `retro.md` and `reviewer.md` — one markdown file per agent, each with the frontmatter a host reads (a `description`, a `mode`, a `model`).
 
-They are the passes that run on Tandem: the reviewer reads a ticket and a PR and merges the two-way doors, the retro reads a session and files what it finds as backlog tickets, the consolidator folds the bikeshed's captures into the curated notes, the refine agent grills a `backlog` ticket into a brief a builder can take. The `tandem-consolidate` skill dispatches the consolidator; this repo ships no host commands, so every pass is reached by asking, or by whatever binding the host adds. See [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
+They are the passes that run on Tandem: the consolidator folds the bikeshed's captures into the curated notes, the refine agent grills a `backlog` ticket into a brief a builder can take, the retro reads a session and files what it finds as backlog tickets, the reviewer reads a ticket and a PR and merges the two-way doors. The `tandem-consolidate` skill dispatches the consolidator; this repo ships no host commands, so every pass is reached by asking, or by whatever binding the host adds. See [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
 
-`skills/retro/`, `skills/writing-for-agents/`, `skills/grilling/`, `skills/to-spec/` and `skills/implement-spec/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT) so a clone of this repo is the whole workflow: the retro pass's categories, the note-writing standard, and the refine pass's three procedures all come from here now. `docs/agents/issue-tracker.md` tells them the board is the tracker.
+`skills/grilling/`, `skills/implement-spec/`, `skills/retro/`, `skills/to-spec/` and `skills/writing-for-agents/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT) so a clone of this repo is the whole workflow: the retro pass's categories, the note-writing standard, and the refine pass's three procedures all come from here now. `docs/agents/issue-tracker.md` tells them the board is the tracker.
 
 The two builders this workflow also uses — `black` and `blue`, one prompt and two models — and the `terse` style live in the [fleet](https://github.com/gianniacquisto/fleet) repo, not here.
 

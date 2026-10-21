@@ -42,6 +42,6 @@ Session tickets live in the default area, so they never depend on a lane that ma
 
 ## Agents
 
-This repo owns the agent prompts in `agents/` — `reviewer.md`, `retro.md`, `consolidator.md` — and the procedures in `skills/` that a session runs. They are the passes that run on Tandem, and the contracts they state are the ones this repo ships: the CLI in `Sources/tandem-cli/`, the skill in `skills/tandem/`, the bikeshed protocol in `skills/tandem-memory/`. A prompt that names a contract states the current one — see [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
+This repo owns the agent prompts in `agents/` — `consolidator.md`, `refine.md`, `retro.md`, `reviewer.md` — and the procedures in `skills/` that a session runs. They are the passes that run on Tandem, and the contracts they state are the ones this repo ships: the CLI in `Sources/tandem-cli/`, the skill in `skills/tandem/`, the bikeshed protocol in `skills/tandem-memory/`. A prompt that names a contract states the current one — see [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
 
 The `tandem-setup` skill wires all of it into an agent host: the skills, the agent prompts and this repo's `AGENTS.md`, linked rather than copied. Nothing here names a path on one machine: a clone of this repo, anywhere, plus the app, is the whole setup.

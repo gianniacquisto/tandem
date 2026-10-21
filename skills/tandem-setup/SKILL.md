@@ -41,7 +41,7 @@ For another host, link the skills where that host reads them, and ask the human 
 
 ## Link
 
-The three links, for OpenCode. Each one is idempotent and none of them overwrites a real file.
+The three kinds of link, for OpenCode: every skill, every agent prompt, and this repo's `AGENTS.md`. Each link is idempotent and none of them overwrites a real file.
 
 ```sh
 host="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
@@ -107,7 +107,7 @@ Remove the entries that point at this checkout, and say which you removed. Leave
 ## Verify
 
 ```sh
-opencode api agent.list   # reviewer, retro, consolidator, refine
+opencode api agent.list   # consolidator, refine, retro, reviewer
 opencode api skill.list   # grilling, implement-spec, retro, tandem, tandem-board, tandem-consolidate, tandem-handoff, tandem-memory, tandem-setup, to-spec, writing-for-agents
 tandem-cli doctor         # the skills check reads "opencode configured"
 ```
