@@ -21,6 +21,17 @@ public enum DomainError: Error, Sendable, Equatable {
     case invalidNotePath(String)
     /// `append(ticketID:author:body:)` was called with an empty or whitespace-only body.
     case emptyCommentBody
+    /// `start` was called with an empty or whitespace-only brief — there is no
+    /// session to record.
+    case emptySessionBrief
+    /// A session id was empty or whitespace-only. A record with no handle is a
+    /// record nothing can find, and the core is the one place a caller cannot
+    /// slip past — a guard in the CLI is a courtesy on top of this one.
+    case emptySessionID
+    /// `end`/`link`/`show` was called with a session id the sessions file does
+    /// not carry. `known` is the ids it does carry, so the caller recovers in one
+    /// turn.
+    case unknownSession(id: String, known: [String])
     /// A `--description -` body was empty or whitespace-only: an empty pipe, not
     /// a deliberate clear (the store still takes `--description ""`).
     case emptyDescriptionBody
@@ -54,6 +65,15 @@ public enum DomainError: Error, Sendable, Equatable {
             return "Note path \"\(bad)\" is not a bikeshed-relative path (e.g. projects/App.md)."
         case .emptyCommentBody:
             return "Comment body is empty. Provide a non-empty body and try again."
+        case .emptySessionBrief:
+            return "Session brief is empty. Provide a non-empty brief — what the session is for and what done looks like — and try again."
+        case .emptySessionID:
+            return "Session id is empty. Provide a non-empty session id — the handle a session is known by — and try again."
+        case .unknownSession(let id, let known):
+            guard !known.isEmpty else {
+                return "Unknown session id \"\(id)\". No session is recorded yet."
+            }
+            return "Unknown session id \"\(id)\". Here are the recorded sessions to pick the right one from: \(known.joined(separator: ", "))."
         case .emptyDescriptionBody:
             return "Description body is empty. Provide a non-empty body on stdin — or pass --description \"\" to clear the description."
         case .invalidFilter(let bad):

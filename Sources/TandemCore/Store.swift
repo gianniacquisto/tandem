@@ -475,9 +475,10 @@ public struct Store: Sendable {
     }
 }
 
-/// A domain failure that also triggered corrupt-store recovery. Carries the underlying
-/// failure (for its message and, for `unknownID`, the open list) plus the recovery note,
-/// so a caller that both fails and recovers still learns that its prior model is void.
+/// A domain failure that also triggered corrupt-file recovery — the store's
+/// `todos.json` or the sessions file. Carries the underlying failure (for its
+/// message and, for `unknownID`, the open list) plus the recovery note, so a
+/// caller that both fails and recovers still learns that its prior model is void.
 public struct RecoveryFailure: Error, Sendable {
     public let underlying: any TandemError
     public let note: String
