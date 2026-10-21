@@ -96,9 +96,20 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
 
     /// The on-disk keys. `lane` is spelled **`section`** on disk and on the wire: the
     /// stored shape is the migrator's business, not this change's (ADR 0017).
+    ///
+    /// **The reader takes both names; the writer still emits v1.** The renamed `lane`
+    /// key is decoded *beside* the v1 `section` one, and the renamed name wins when a
+    /// file carries both — a hand edit is not an error, and the next write makes the
+    /// file one shape. The writer is untouched: it still writes `section`, so the file
+    /// this build produces is the file an installed 0.15.0 reader expects. **Only a
+    /// writer moves the names; the reader tolerates both forever**, the same shape as
+    /// the `done` mirror's decoding half.
     private enum CodingKeys: String, CodingKey {
         case id, title, done, status, archived, description, assignee, origin, link, createdAt, completedAt
+        /// The v1 key for the lane — still what the writer emits.
         case lane = "section"
+        /// The renamed key, read beside the v1 one. The writer emits neither yet.
+        case renamedLane = "lane"
     }
 
     public init(from decoder: Decoder) throws {
@@ -130,7 +141,11 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
         // as does a key explicitly written `null` — and both read as `human`, the
         // filer every pre-existing ticket actually has (ADR 0020).
         self.origin = try c.decodeIfPresent(String.self, forKey: .origin) ?? "human"
-        self.lane = try c.decodeIfPresent(String.self, forKey: .lane)
+        // The lane is read under either name — the renamed one wins when a file carries
+        // both. The writer still emits the v1 `section` key.
+        let laneFromRenamedKey = try c.decodeIfPresent(String.self, forKey: .renamedLane)
+        let laneFromV1Key = try c.decodeIfPresent(String.self, forKey: .lane)
+        self.lane = laneFromRenamedKey ?? laneFromV1Key
         self.link = try c.decodeIfPresent(String.self, forKey: .link)
 
         let createdRaw = try c.decode(String.self, forKey: .createdAt)

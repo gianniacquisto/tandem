@@ -29,6 +29,14 @@ import Foundation
 ///   ADR 0018), so an ordinary bad write — a kill mid-rename, a bad regex — leaves one
 ///   previous good copy to fall back on. The first write has no `.bak` (no file yet), and
 ///   a failed write leaves the previous one untouched. Reads write nothing.
+/// - **Two names, one shape** — the decoder reads the renamed keys (`tickets`, `lanes`,
+///   and a ticket's `lane`) *beside* the v1 ones (`todos`, `sections`, `section`), and
+///   the renamed name wins when a file carries both. The writer still emits v1, so this
+///   build's file is the file an installed 0.15.0 reader expects — that reader looks the
+///   array up by name and calls a file without `todos` **corrupt**, moving it to
+///   `todos.json.corrupt-<ts>` and restarting empty (ADR 0006's incident). **Only a
+///   writer moves the names; the reader tolerates both forever**, the same shape as the
+///   `done` mirror's decoding half.
 ///
 /// The public surface is the ticket operations (see the `Operations` extension); the
 /// locking/file mechanics are the shared `LockedDirectory` primitive (ADR 0001 / 0004),
@@ -172,6 +180,17 @@ public struct Store: Sendable {
 
     /// The envelope. `lanes` and each ticket's `lane` are **additive** to schema v1,
     /// which is why the version below does not move.
+    ///
+    /// **The reader takes both names; the writer still emits v1.** The renamed keys
+    /// (`tickets`, `lanes`) are decoded *beside* the v1 ones (`todos`, `sections`), and
+    /// the renamed name wins when a file carries both — a hand edit is not an error, and
+    /// the next write makes the file one shape. The writer is untouched: it still writes
+    /// `todos` / `sections`, so the file this build produces is the file an installed
+    /// 0.15.0 reader expects. That reader looks the array up by name, and a file without
+    /// `todos` is **corrupt** to it: it moves the file to `todos.json.corrupt-<ts>` and
+    /// restarts empty (ADR 0006's incident). So the order is fixed — **only a writer
+    /// moves the names**, and this reader keeps tolerating both forever, the same shape
+    /// as the `done` mirror's decoding half.
     private struct FileEnvelope: Codable {
         var version: Int
         /// The ordered lane names. Absent in a v1 file written before lanes existed.
@@ -180,9 +199,58 @@ public struct Store: Sendable {
         var todos: [Ticket]
 
         /// `lanes` is spelled **`sections`** on disk, like a ticket's `lane` (ADR 0017).
+        /// The renamed keys are read beside them; the writer emits none of them.
         private enum CodingKeys: String, CodingKey {
             case version, todos
             case lanes = "sections"
+            /// The renamed array key, read beside `todos`.
+            case tickets
+            /// The renamed lane-list key, read beside `sections`.
+            case renamedLanes = "lanes"
+        }
+
+        /// The memberwise initializer, written out because the custom `init(from:)`
+        /// below suppresses the compiler's.
+        init(version: Int, lanes: [String]?, todos: [Ticket]) {
+            self.version = version
+            self.lanes = lanes
+            self.todos = todos
+        }
+
+        /// Decode the renamed names beside the v1 ones, the renamed name winning when a
+        /// file carries both. A file that carries **neither** array key is invalid: this
+        /// decode throws, so the store's recovery path backs the file up and restarts
+        /// empty — never a silent empty list, which is the failure the recovery path
+        /// exists to prevent.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.version = try c.decode(Int.self, forKey: .version)
+            if let renamed = try c.decodeIfPresent([Ticket].self, forKey: .tickets) {
+                self.todos = renamed
+            } else {
+                // Absent on both: `keyNotFound` → the file is invalid → recovery.
+                self.todos = try c.decode([Ticket].self, forKey: .todos)
+            }
+            // The lane list is additive: absent in a file written before lanes existed,
+            // and it reads as no lanes either way.
+            if let renamed = try c.decodeIfPresent([String].self, forKey: .renamedLanes) {
+                self.lanes = renamed
+            } else {
+                self.lanes = try c.decodeIfPresent([String].self, forKey: .lanes)
+            }
+        }
+
+        /// The writer, spelled out: **v1 keys only** — `version`, `sections`, `todos`.
+        /// It is hand-written rather than synthesized because the decoder's key set
+        /// carries the renamed names too, and a synthesized encoder cannot have a
+        /// `CodingKeys` case that no property matches. Same keys, same order, same
+        /// values as the synthesized encoder produced before the rename — the file
+        /// this build writes is the file today's build writes.
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(version, forKey: .version)
+            try c.encodeIfPresent(lanes, forKey: .lanes)
+            try c.encode(todos, forKey: .todos)
         }
     }
 
@@ -195,6 +263,11 @@ public struct Store: Sendable {
     /// accepts 2, so any file written during that window loads. The mirror's retirement
     /// is not a version bump either: a v1-era reader fails on a missing key whatever the
     /// version says, and the migrator's gate is reachability, not the file's label.
+    ///
+    /// **The writer still emits the v1 keys** — `todos`, `sections`, `section` — even
+    /// though the reader now takes the renamed ones too. Flipping the writer is its own
+    /// change, gated on the build that reads both being installed; until then this
+    /// build's file is byte-for-byte the file today's build writes.
     private static func encode(_ contents: StoreContents) throws -> Data {
         let envelope = FileEnvelope(version: 1, lanes: contents.lanes, todos: contents.todos)
         let encoder = JSONEncoder()
@@ -209,7 +282,8 @@ public struct Store: Sendable {
         // Lenient read: unknown extra fields are ignored (forward-compat); a missing or
         // mistyped required field throws (invalid file → recovery). Version 1 is the
         // current shape (with the additive lanes fields); 2 is tolerated for files
-        // written during the window when the version was mistakenly bumped.
+        // written during the window when the version was mistakenly bumped. The array
+        // and the lane names are read under either name — the renamed one or the v1 one.
         let envelope = try JSONDecoder().decode(FileEnvelope.self, from: data)
         guard envelope.version == 1 || envelope.version == 2 else {
             throw CorruptStore.unsupportedVersion(envelope.version)
@@ -325,14 +399,18 @@ public struct Store: Sendable {
     }
 
     /// Whether any ticket object in the raw file still carries the legacy `done` key.
-    /// Only asked on the write path (under the lock), never on a plain read.
+    /// Only asked on the write path (under the lock), never on a plain read. The array
+    /// is looked up under either name — the renamed one or the v1 one — so a file in the
+    /// renamed shape gets the same safety copy before its `done` keys are dropped.
     private static func carriesLegacyMirror(_ data: Data) -> Bool {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let todos = object["todos"] as? [[String: Any]]
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
             return false
         }
-        return todos.contains { $0["done"] != nil }
+        let tickets = (object["tickets"] as? [[String: Any]])
+            ?? (object["todos"] as? [[String: Any]])
+            ?? []
+        return tickets.contains { $0["done"] != nil }
     }
 
     /// The recovery note text, naming the backup path (spec: result `note`).
