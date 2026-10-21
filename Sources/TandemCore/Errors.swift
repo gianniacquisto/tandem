@@ -32,6 +32,18 @@ public enum DomainError: Error, Sendable, Equatable {
     /// not carry. `known` is the ids it does carry, so the caller recovers in one
     /// turn.
     case unknownSession(id: String, known: [String])
+    /// A session status that is not `running` or `ended`. The board's `Status`
+    /// is a different vocabulary, and so is its own failure.
+    case invalidSessionStatus(String)
+    /// A session outcome that is not `succeeded`, `failed`, `interrupted` or
+    /// `unknown`.
+    case invalidSessionOutcome(String)
+    /// No session id was given and the environment names none: the record
+    /// would have no handle, and a record nothing can find is not a record.
+    case sessionIDUnset
+    /// A `--summary -` body was empty or whitespace-only: an empty pipe, not
+    /// a session that ended without saying anything.
+    case emptySessionSummary
     /// A `--description -` body was empty or whitespace-only: an empty pipe, not
     /// a deliberate clear (the store still takes `--description ""`).
     case emptyDescriptionBody
@@ -74,6 +86,14 @@ public enum DomainError: Error, Sendable, Equatable {
                 return "Unknown session id \"\(id)\". No session is recorded yet."
             }
             return "Unknown session id \"\(id)\". Here are the recorded sessions to pick the right one from: \(known.joined(separator: ", "))."
+        case .invalidSessionStatus(let bad):
+            return "session status must be one of \(SessionStatus.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
+        case .invalidSessionOutcome(let bad):
+            return "outcome must be one of \(SessionOutcome.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
+        case .sessionIDUnset:
+            return "Cannot resolve the session id: set OPENCODE_SESSION_ID to this session's id, or pass --session <id>."
+        case .emptySessionSummary:
+            return "Session summary is empty. Provide a non-empty summary on stdin — or omit --summary to end the session without one."
         case .emptyDescriptionBody:
             return "Description body is empty. Provide a non-empty body on stdin — or pass --description \"\" to clear the description."
         case .invalidFilter(let bad):

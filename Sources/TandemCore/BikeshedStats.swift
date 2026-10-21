@@ -66,11 +66,13 @@ extension Bikeshed {
             totals: totals))
     }
 
-    // MARK: - Project discovery (private)
+    // MARK: - Project discovery (internal)
 
     /// Every project folder: a visible directory directly under `projects/`,
     /// alphabetical. A missing `projects/` folder is an empty list.
-    private func projectFolders() -> [(name: String, url: URL)] {
+    ///
+    /// Internal, not private: the session-notes scan walks the same tree.
+    func projectFolders() -> [(name: String, url: URL)] {
         let fm = FileManager.default
         let root = directory.appendingPathComponent("projects")
         let entries = (try? fm.contentsOfDirectory(
@@ -114,13 +116,16 @@ extension Bikeshed {
             lastConsolidated: last.map(Timestamp.encode))
     }
 
-    // MARK: - Filesystem helpers (private)
+    // MARK: - Filesystem helpers (internal)
 
     /// The regular files under `dir` (recursively when asked). A missing
     /// directory is an empty list. Hidden entries are skipped when
     /// `pruningHidden` (a hidden folder prunes its whole subtree, matching the
     /// bikeshed's own rule that hidden files are ignored).
-    private func files(under dir: URL, recursive: Bool, pruningHidden: Bool) -> [URL] {
+    ///
+    /// Internal, not private: the session-notes scan walks the same tree, with
+    /// `pruningHidden` off so the archive under `.raw/.done/` is in view.
+    func files(under dir: URL, recursive: Bool, pruningHidden: Bool) -> [URL] {
         let fm = FileManager.default
         guard
             let entries = try? fm.contentsOfDirectory(

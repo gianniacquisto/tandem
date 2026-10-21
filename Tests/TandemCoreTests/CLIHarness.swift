@@ -26,11 +26,27 @@ struct CLIHarness {
     }
 
     /// Run the CLI against a throwaway home, with `stdin` piped in.
-    func run(home: URL, _ arguments: [String], stdin: String = "") throws -> Result {
+    ///
+    /// `overrides` replaces the inherited environment, one variable at a time; a
+    /// `nil` value **removes** a variable, so a test can drive the "the host
+    /// exports no session id" case.
+    func run(
+        home: URL,
+        _ arguments: [String],
+        stdin: String = "",
+        environment overrides: [String: String?] = [:]
+    ) throws -> Result {
         let process = Process()
         process.executableURL = url
         process.arguments = arguments
         var environment = ProcessInfo.processInfo.environment
+        for (key, value) in overrides {
+            if let value {
+                environment[key] = value
+            } else {
+                environment.removeValue(forKey: key)
+            }
+        }
         environment["TANDEM_HOME"] = home.path
         process.environment = environment
         let input = Pipe()

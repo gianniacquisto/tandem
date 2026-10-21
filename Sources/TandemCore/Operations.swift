@@ -158,6 +158,60 @@ extension Store {
         return OperationResult(todo, note: note)
     }
 
+    // MARK: - Id resolution
+
+    /// The store's one rule for "which ticket is this id?": the id parsed as a
+    /// UUID, and that ticket's index in `todos` — `nil` when the id is
+    /// malformed or the store does not carry it.
+    ///
+    /// **One spelling, so it cannot drift.** Every id-taking operation —
+    /// `move`, `place`, `complete`, `set`, `setLink`, `reopen`, `delete`, the
+    /// comment append, the note promotion — resolves through here, and so does
+    /// a caller that only wants to know whether a ticket is on the board
+    /// (`ticket(id:)`). The rule used to be written out at each site, and a
+    /// second copy of it in the CLI was a third: one question, one answer.
+    static func resolveTicket(_ raw: String, in todos: [Ticket]) -> (uuid: UUID, index: Int)? {
+        guard let uuid = UUID(uuidString: raw),
+              let index = todos.firstIndex(where: { $0.id == uuid })
+        else {
+            return nil
+        }
+        return (uuid, index)
+    }
+
+    /// The ticket a raw id names, or the unknown-id failure — the shape every
+    /// id-taking operation raises, carrying the open list the caller recovers
+    /// from in one turn.
+    static func requireTicket(_ raw: String, in todos: [Ticket]) throws -> (uuid: UUID, index: Int) {
+        guard let found = resolveTicket(raw, in: todos) else {
+            throw DomainError.unknownID(id: raw, open: todos.filter { !$0.done })
+        }
+        return found
+    }
+
+    /// `ticket(id:)`: the ticket a raw id names — the store's own answer to
+    /// "which ticket is this id?", for a caller that only wants to know whether
+    /// a ticket is on the board.
+    ///
+    /// A **lock-free read**, like `todo list`: the caller is asking a question
+    /// about the board, not changing it, so the store is read without taking
+    /// the write lock. An id the store does not carry throws
+    /// `DomainError.unknownID` with the current open list — the same failure
+    /// `complete` and `set` raise, from the one place that decides it.
+    public func ticket(id raw: String) throws -> OperationResult<Ticket> {
+        let (contents, note) = try readAll()
+        do {
+            let found = try Self.requireTicket(raw, in: contents.todos)
+            return OperationResult(contents.todos[found.index], note: note)
+        } catch {
+            // A read that recovered a corrupt file says so, even when it fails.
+            guard let note else { throw error }
+            let underlying: any TandemError = error as? any TandemError
+                ?? StoreIOError.io("\(error)")
+            throw RecoveryFailure(underlying: underlying, note: note)
+        }
+    }
+
     // MARK: - move
 
     /// `move(id, toLane:at:)`: place a ticket at a 0-based `index` within `toLane`
@@ -167,11 +221,7 @@ extension Store {
     /// `lane` is rejected. The agent's `todo move` and the GUI's drag both land here.
     public func move(_ id: String, toLane lane: String?, at index: Int) throws -> OperationResult<Ticket> {
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            guard let uuid = UUID(uuidString: id),
-                  let from = contents.todos.firstIndex(where: { $0.id == uuid })
-            else {
-                throw DomainError.unknownID(id: id, open: contents.todos.filter { !$0.done })
-            }
+            let from = try Self.requireTicket(id, in: contents.todos).index
             try contents.validateLane(lane)
             var moved = contents.todos.remove(at: from)
             insert(&moved, into: lane, of: &contents, at: index)
@@ -200,11 +250,7 @@ extension Store {
         at index: Int = .max
     ) throws -> OperationResult<Ticket> {
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            guard let uuid = UUID(uuidString: id),
-                  let from = contents.todos.firstIndex(where: { $0.id == uuid })
-            else {
-                throw DomainError.unknownID(id: id, open: contents.todos.filter { !$0.done })
-            }
+            let from = try Self.requireTicket(id, in: contents.todos).index
             try contents.validateLane(lane)
             let before = contents.todos
             var moved = contents.todos.remove(at: from)
@@ -238,11 +284,7 @@ extension Store {
     /// is `reopen`. The stored order is never changed.
     public func complete(_ id: String) throws -> OperationResult<Ticket> {
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            guard let uuid = UUID(uuidString: id),
-                  let i = contents.todos.firstIndex(where: { $0.id == uuid })
-            else {
-                throw DomainError.unknownID(id: id, open: contents.todos.filter { !$0.done })
-            }
+            let i = try Self.requireTicket(id, in: contents.todos).index
             var changed = false
             if contents.todos[i].status != .done {
                 contents.todos[i].setStatus(.done)
@@ -286,11 +328,7 @@ extension Store {
         let newDescription = description.isSet ? Self.normalizeDescription(description.newValue ?? nil) : nil
 
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            guard let uuid = UUID(uuidString: id),
-                  let i = contents.todos.firstIndex(where: { $0.id == uuid })
-            else {
-                throw DomainError.unknownID(id: id, open: contents.todos.filter { !$0.done })
-            }
+            let i = try Self.requireTicket(id, in: contents.todos).index
             var todo = contents.todos[i]
             var changed = false
             if let newTitle, todo.title != newTitle {
@@ -374,11 +412,7 @@ extension Store {
         let trimmed = rawLink?.trimmingCharacters(in: .whitespacesAndNewlines)
         let link = (trimmed?.isEmpty ?? true) ? nil : trimmed
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            guard let uuid = UUID(uuidString: id),
-                  let i = contents.todos.firstIndex(where: { $0.id == uuid })
-            else {
-                throw DomainError.unknownID(id: id, open: contents.todos.filter { !$0.done })
-            }
+            let i = try Self.requireTicket(id, in: contents.todos).index
             let changed = contents.todos[i].link != link
             if changed { contents.todos[i].link = link }
             return (contents.todos[i], changed)
@@ -396,11 +430,7 @@ extension Store {
     /// `DomainError.unknownID` carrying the full current open list.
     public func reopen(_ id: String) throws -> OperationResult<Ticket> {
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            guard let uuid = UUID(uuidString: id),
-                  let i = contents.todos.firstIndex(where: { $0.id == uuid })
-            else {
-                throw DomainError.unknownID(id: id, open: contents.todos.filter { !$0.done })
-            }
+            let i = try Self.requireTicket(id, in: contents.todos).index
             var changed = false
             if contents.todos[i].status == .done {
                 contents.todos[i].setStatus(.backlog)
@@ -454,11 +484,7 @@ extension Store {
     /// An unknown id throws `DomainError.unknownID` (with the open list).
     public func delete(_ id: String) throws -> OperationResult<Void> {
         let (_, note) = try mutate { contents -> (value: Void, changed: Bool) in
-            guard let uuid = UUID(uuidString: id),
-                  let i = contents.todos.firstIndex(where: { $0.id == uuid })
-            else {
-                throw DomainError.unknownID(id: id, open: contents.todos.filter { !$0.done })
-            }
+            let i = try Self.requireTicket(id, in: contents.todos).index
             contents.todos.remove(at: i)
             return ((), true)
         }

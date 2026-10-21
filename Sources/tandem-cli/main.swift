@@ -14,9 +14,10 @@ import TandemCore
 // semantics (`list`, `TicketQuery.parse`, `add`, `set`, `move`, `complete`,
 // `archiveDone`, `append(ticketID:author:body:)`, `list(ticketID:)`,
 // `addLane`, `renameLane`, `deleteLane`, `rename`, `capture`,
-// `stats`, `health`, `DescriptionBody.required`) and the encoding
-// (`StoreEncoding`, `tandemErrorText`) stay in TandemCore, which the single
-// test seam (`TandemCoreTests`) covers. The two things that belong to a
+// `stats`, `health`, `DescriptionBody.required`, `Sessions.start`,
+// `Sessions.end`, `Sessions.link`, `Sessions.list`, `Sessions.show`) and the
+// encoding (`StoreEncoding`, `tandemErrorText`) stay in TandemCore, which the
+// single test seam (`TandemCoreTests`) covers. The two things that belong to a
 // process rather than to the domain live here: stdin and the environment.
 //
 // Streams and exit codes (the contract):
@@ -167,6 +168,53 @@ func dispatch(_ args: [String]) -> Int32 {
             let result = try Bikeshed().health()
             return try StoreEncoding.bikeshedHealthResult(result.value)
         }
+    case .sessionStart(let project, let agent, let session, let brief):
+        return run {
+            let result = try Sessions().start(
+                id: try sessionID(session),
+                project: project ?? captureProjectDefault(),
+                agent: sessionAgent(agent),
+                brief: try sessionBrief(brief))
+            return try StoreEncoding.sessionResult(result.value, note: result.note)
+        }
+    case .sessionEnd(let session, let outcome, let summary):
+        return run {
+            let result = try Sessions().end(
+                id: try sessionID(session),
+                outcome: try sessionOutcome(outcome),
+                summary: try sessionSummary(summary))
+            return try StoreEncoding.sessionResult(result.value, note: result.note)
+        }
+    case .sessionLink(let ticket, let session):
+        return run {
+            // The handle first: a session that names nothing is a failure
+            // before the board is even consulted.
+            let id = try sessionID(session)
+            // The store owns "which ticket is this id?" — the CLI asks it and
+            // links what it gets back. An id the store does not carry is the
+            // store's own `unknownID` failure, open list included.
+            let linked = try Store().ticket(id: ticket)
+            let result = try Sessions().link(id: id, ticket: linked.value.id)
+            return try StoreEncoding.sessionResult(result.value, note: result.note ?? linked.note)
+        }
+    case .sessionList(let project, let status):
+        return run {
+            let result = try Sessions().list(
+                project: project,
+                status: try sessionStatus(status))
+            return try StoreEncoding.sessionsResult(result.value, note: result.note)
+        }
+    case .sessionShow(let session):
+        return run {
+            let id = try sessionID(session)
+            let result = try Sessions().show(id: id)
+            // The notes a session wrote are derived from the files — the
+            // capture folder is the session id — so the record and its notes
+            // cannot drift apart. The record's own `tickets` are the other
+            // half of what the session carried.
+            let notes = try Bikeshed().sessionNotes(session: id).value
+            return try StoreEncoding.sessionDetailResult(result.value, notes: notes, note: result.note)
+        }
     }
 }
 
@@ -289,6 +337,92 @@ func captureSessionDefault() -> String {
         return session
     }
     return String(UUID().uuidString.prefix(8)).lowercased()
+}
+
+// MARK: - session
+
+/// A session record's handle: the `--session` value when the flag is there,
+/// else `$OPENCODE_SESSION_ID` — the host's id for the session it is running.
+///
+/// **The fallback is the environment's, never an invented one.** A capture may
+/// carry a generated token because a note is filed by path; a session record is
+/// found by its handle, so a made-up id is a record nothing can look up again.
+/// An unset variable is a domain failure naming it, and the core's
+/// `emptySessionID` stays the backstop for a present-but-empty value.
+func sessionID(_ raw: String?) throws -> String {
+    guard let raw else { return try sessionIDDefault() }
+    return raw
+}
+
+/// `$OPENCODE_SESSION_ID`, the one place a session's handle comes from when
+/// the caller does not name it.
+func sessionIDDefault() throws -> String {
+    guard let id = ProcessInfo.processInfo.environment["OPENCODE_SESSION_ID"],
+          !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+        throw DomainError.sessionIDUnset
+    }
+    return id
+}
+
+/// A session's agent: the `--agent` value when the flag is there, else
+/// `$TANDEM_AGENT` — nobody (`nil`) when the environment names no agent. The
+/// core trims the name and reads an empty one as no agent.
+func sessionAgent(_ raw: String?) -> String? {
+    guard let raw else {
+        return ProcessInfo.processInfo.environment["TANDEM_AGENT"]
+    }
+    return raw
+}
+
+/// A session's brief: the flag's own value, or the text piped in when the flag
+/// is `-`. A stdin body must carry text — an empty pipe, a failed heredoc and
+/// an unset variable all arrive as the same empty body, and a brief is what
+/// the record is *for* — so it is refused with the core's own
+/// `emptySessionBrief` rather than filed as no brief at all.
+func sessionBrief(_ raw: String) throws -> String {
+    guard raw == "-" else { return raw }
+    let body = try readStandardInput()
+    guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        throw DomainError.emptySessionBrief
+    }
+    return body
+}
+
+/// A session's summary: absent is no summary, and a `--summary -` body that
+/// carries no text is refused — the same empty-pipe rule `--description -`
+/// follows (ADR 0024). The summary is optional in the core (an empty one is
+/// simply no summary); the *stdin path* is where an empty body is a failed
+/// write rather than a deliberate silence.
+func sessionSummary(_ raw: String?) throws -> String? {
+    guard let raw else { return nil }
+    guard raw == "-" else { return raw }
+    let body = try readStandardInput()
+    guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        throw DomainError.emptySessionSummary
+    }
+    return body
+}
+
+/// How a session ended: absent is `unknown` — the honest answer for a session
+/// that ended without saying how — and a value that is not one of the four is
+/// the core's own failure, naming them.
+func sessionOutcome(_ raw: String?) throws -> SessionOutcome {
+    guard let raw else { return .unknown }
+    guard let outcome = SessionOutcome(rawValue: raw) else {
+        throw DomainError.invalidSessionOutcome(raw)
+    }
+    return outcome
+}
+
+/// The status a list is filtered by: absent is every status, and a value that
+/// is not one of the two is the core's own failure, naming them.
+func sessionStatus(_ raw: String?) throws -> SessionStatus? {
+    guard let raw else { return nil }
+    guard let status = SessionStatus(rawValue: raw) else {
+        throw DomainError.invalidSessionStatus(raw)
+    }
+    return status
 }
 
 /// The `note rename` / `note capture` result — `{"path": "<path>"}` — serialized
