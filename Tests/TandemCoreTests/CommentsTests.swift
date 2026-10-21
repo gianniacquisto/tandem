@@ -308,6 +308,129 @@ struct CommentReadPathTests {
     }
 }
 
+/// The app's write path (`Sources/Tandem/Model.swift` → `Store.commentWrite`):
+/// the human's comment is appended to the sidecar, with the human as the author,
+/// and the log reads it back at once. This is the call the ticket sheet's
+/// composer makes — the same sidecar the CLI's `todo comment add` writes.
+///
+/// The path lives in the core (`Sources/TandemCore/CommentWrite.swift`), so this
+/// suite reaches the path the app actually uses. The app has no test target:
+/// what this suite cannot reach is the sheet's drawing of it.
+@Suite("The app's write path")
+struct CommentWritePathTests {
+
+    private func tempStore() throws -> (Store, URL) {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-comment-write-tests-\(UUID().uuidString)")
+        return (Store(directory: dir), dir)
+    }
+
+    private func makeTicket(_ store: Store) throws -> Ticket {
+        try store.add("A ticket").value
+    }
+
+    private func logFile(_ store: Store, _ id: UUID) -> URL {
+        store.commentsDirectory.appendingPathComponent("\(id.uuidString).jsonl")
+    }
+
+    @Test("the human's comment lands in the sidecar, and the app's read shows it at once")
+    func theHumansCommentLands() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+
+        // The call the app makes, and only this call.
+        let written = try store.commentWrite(ticketID: ticket.id.uuidString,
+                                             body: "the human's own note")
+        #expect(written.note == nil)
+
+        // The sidecar is the one log: the file `todo comment list` reads.
+        let raw = try String(contentsOf: logFile(store, ticket.id), encoding: .utf8)
+        #expect(raw.hasSuffix("\n"))
+        #expect(raw.split(separator: "\n").count == 1) // one line, one trailing newline
+        #expect(raw.contains("\"author\":\"human\""))
+        #expect(raw.contains("the human's own note"))
+
+        // The app's read: the comment is in the list at once.
+        guard case .list(let listed) = written.value else {
+            Issue.record("expected the log, got \(written.value)")
+            return
+        }
+        #expect(listed.map(\.body) == ["the human's own note"])
+        #expect(listed.map(\.author) == ["human"])
+
+        // The CLI's read: the same comment, out of the same log.
+        let cli = try store.list(ticketID: ticket.id.uuidString).value
+        #expect(cli.map(\.body) == ["the human's own note"])
+        #expect(cli.map(\.author) == ["human"])
+    }
+
+    @Test("an empty body is refused with the core's words, and nothing is written")
+    func emptyBodyIsRefused() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+
+        for body in ["", "   ", "\n  \n"] {
+            do {
+                _ = try store.commentWrite(ticketID: ticket.id.uuidString, body: body)
+                Issue.record("expected emptyCommentBody for body \(body.debugDescription)")
+            } catch let error as DomainError {
+                // The domain failure, not a usage one — the same one the CLI
+                // refuses an empty body with.
+                #expect(error == .emptyCommentBody)
+                // The message the app shows where the composer was.
+                #expect(error.message.contains("empty"))
+            }
+        }
+        // Nothing was written: not the log, and not even its directory — a
+        // refusal never leaves a ticket looking discussed.
+        #expect(!FileManager.default.fileExists(atPath: store.commentsDirectory.path))
+        #expect(try store.list(ticketID: ticket.id.uuidString).value.isEmpty)
+    }
+
+    @Test("the human's comment joins the log in order, after the agent's")
+    func theHumansCommentJoinsTheLogInOrder() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+
+        // An agent's comment first, written the CLI's way.
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: "did you mean X?")
+        // Then the human's, written the app's way.
+        let written = try store.commentWrite(ticketID: ticket.id.uuidString, body: "yes, X it is")
+
+        guard case .list(let listed) = written.value else {
+            Issue.record("expected the log, got \(written.value)")
+            return
+        }
+        #expect(listed.map(\.body) == ["did you mean X?", "yes, X it is"])
+        #expect(listed.map(\.author) == ["blue", "human"])
+    }
+
+    @Test("the CLI's `todo comment list` shows the comment the app wrote — one log")
+    func theCLIReadsWhatTheAppWrote() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-comment-cli-tests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let cli = CLIHarness()
+
+        // A ticket, filed through the CLI.
+        let id = try cli.addTicket(home: home, title: "A ticket")
+        #expect(!id.isEmpty)
+
+        // The app's write path, against the same home.
+        let store = Store(directory: home)
+        _ = try store.commentWrite(ticketID: id, body: "the human's own note")
+
+        // The CLI's read: the same comment, out of the same sidecar.
+        let comments = try cli.comments(home: home, id: id)
+        #expect(comments.count == 1)
+        #expect(comments.first?["body"] as? String == "the human's own note")
+        #expect(comments.first?["author"] as? String == "human")
+    }
+}
+
 /// Append to an existing file (the test's hand-edit of the log).
 private extension Data {
     func append(to url: URL) throws {

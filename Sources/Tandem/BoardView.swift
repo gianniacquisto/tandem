@@ -132,6 +132,7 @@ struct BoardFace: View {
                     ticketFor = nil
                 },
                 onCancel: { ticketFor = nil },
+                onComment: { model.postComment(ticket.id.uuidString, body: $0) },
                 onOpenLink: onOpenLink,
                 onPromote: { onPromote(ticket) })
         }

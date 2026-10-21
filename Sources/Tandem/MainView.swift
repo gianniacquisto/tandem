@@ -128,6 +128,7 @@ struct MainView: View {
                     ticketFor = nil
                 },
                 onCancel: { ticketFor = nil },
+                onComment: { model.postComment(ticket.id.uuidString, body: $0) },
                 onOpenLink: openLinkedNote,
                 onPromote: { promote(ticket) })
         }

@@ -258,7 +258,7 @@ final class TandemModel {
         run { try self.store.delete(id) }
     }
 
-    // MARK: - Comments (the sidecar's read half)
+    // MARK: - Comments (the sidecar)
 
     /// The ticket's discussion: the sidecar's log, oldest first — the core's read
     /// path (`Store.commentRead(ticketID:)`), which is empty for a ticket with no
@@ -273,11 +273,31 @@ final class TandemModel {
     /// out the lock and gave up, the log is untouched, and the sheet says "busy —
     /// try again" rather than "repair this file". The mapping lives in the core
     /// (`Sources/TandemCore/CommentRead.swift`) so the test seam can reach it.
-    ///
-    /// The app only reads. Writing the log is the CLI's verb (`todo comment add`),
-    /// and the app's half of it is ticket `3A44B7FD`.
     func comments(for ticketID: String) -> CommentRead {
         store.commentRead(ticketID: ticketID)
+    }
+
+    /// Posts the human's comment to the ticket's log — the app's write path, the
+    /// same sidecar the CLI's `todo comment add` writes, with the human as the
+    /// author.
+    ///
+    /// An empty body is refused by the core (`DomainError.emptyCommentBody`), the
+    /// way the CLI refuses it, and nothing is written: the human's own text stays
+    /// in the input, so it can be fixed and posted again. The refusal comes back
+    /// as the outcome, not as the app-wide banner — the comment belongs to the
+    /// ticket sheet, so that is where the human must see why nothing was written.
+    ///
+    /// On success the log comes back whole, so the sheet draws the log itself and
+    /// the comment is there at once.
+    func postComment(_ ticketID: String, body: String) -> CommentPostOutcome {
+        do {
+            let result = try store.commentWrite(ticketID: ticketID, body: body)
+            if let note = result.note { recoveryNote = note }
+            return .posted(result.value)
+        } catch {
+            if let recovery = error as? RecoveryFailure { recoveryNote = recovery.note }
+            return .refused(message: Self.message(for: error))
+        }
     }
 
     // MARK: - Promotion to a note (GUI-only, the mirror of `addFromNote`)
@@ -359,5 +379,15 @@ enum PromotionOutcome {
     /// ticket's `link`.
     case promoted(path: String)
     /// Nothing was written. The message says why, in the human's words.
+    case refused(message: String)
+}
+
+/// What posting a comment did: it landed in the ticket's log, and the log now reads
+/// like this — or nothing was written, and this is why.
+enum CommentPostOutcome {
+    /// The comment was appended. The log, as it now reads, is the list the sheet
+    /// draws.
+    case posted(CommentRead)
+    /// Nothing was written. The message says why, in the core's words.
     case refused(message: String)
 }
