@@ -322,4 +322,80 @@ struct OrderAndLanesTests {
         #expect(try store.lanes().value == ["Solo"])
         #expect(try store.list(.all).note == nil, "a version-2 file is not corrupt")
     }
+
+    // MARK: - The renamed keys, read beside the v1 ones
+
+    /// The store's contents as read from a hand-written file, in a directory of its own.
+    private func contents(_ raw: String) throws -> StoreContents {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        try writeRaw(raw, to: store)
+        return try store.readAll().contents
+    }
+
+    /// The store file as a JSON object, for asserting the on-disk shape.
+    private func fileObject(_ store: Store) throws -> [String: Any] {
+        let data = try Data(contentsOf: store.fileURL)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw StoreIOError.io("test fixture is not a JSON object")
+        }
+        return object
+    }
+
+    /// The same ticket in the renamed shape and in the v1 shape — one test, two literals.
+    private let renamedShape = #"{"version":1,"lanes":["Work"],"tickets":[{"id":"00000000-0000-0000-0000-000000000001","title":"w","status":"backlog","archived":false,"description":null,"assignee":null,"origin":"human","lane":"Work","link":null,"createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#
+    private let v1Shape = #"{"version":1,"sections":["Work"],"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"w","status":"backlog","archived":false,"description":null,"assignee":null,"origin":"human","section":"Work","link":null,"createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#
+
+    @Test("the renamed keys read beside the v1 ones: a renamed file and its v1 twin agree")
+    func renamedShapeReadsBesideV1() throws {
+        let renamed = try contents(renamedShape)
+        let v1 = try contents(v1Shape)
+
+        // The same contents, whichever name the file carries.
+        #expect(renamed.lanes == v1.lanes)
+        #expect(renamed.todos == v1.todos)
+        #expect(renamed.lanes == ["Work"])
+        #expect(renamed.todos.first?.lane == "Work")
+    }
+
+    @Test("a file carrying both key sets reads the renamed one (a hand edit is not an error)")
+    func bothKeySetsReadTheRenamedOne() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        try writeRaw(#"{"version":1,"sections":["Old"],"lanes":["New"],"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"old","status":"backlog","section":"Old","createdAt":"2026-01-01T00:00:00Z","completedAt":null}],"tickets":[{"id":"00000000-0000-0000-0000-000000000001","title":"new","status":"backlog","lane":"New","createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#, to: store)
+
+        let all = try store.list(.all)
+        #expect(all.note == nil, "a file carrying both key sets is not corrupt")
+        #expect(all.value.map(\.title) == ["new"])
+        #expect(all.value.first?.lane == "New")
+        #expect(try store.lanes().value == ["New"])
+    }
+
+    @Test("a write over a renamed-shape file still emits the v1 keys")
+    func writeOverRenamedShapeEmitsV1() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        try writeRaw(renamedShape, to: store)
+
+        _ = try store.add("new", lane: "Work")
+
+        // The writer is not flipped yet: the file it writes is the file an installed
+        // 0.15.0 reader expects, and that reader looks the array up by name.
+        let object = try fileObject(store)
+        #expect(object["todos"] is [Any], "the writer still emits the v1 array key")
+        #expect(object["tickets"] == nil, "the writer must not emit the renamed key yet")
+        #expect(object["sections"] is [Any], "the writer still emits the v1 lane key")
+        #expect(object["lanes"] == nil, "the writer must not emit the renamed lane key")
+        #expect((object["version"] as? Int) == 1)
+
+        let tickets = try #require(object["todos"] as? [[String: Any]])
+        #expect(tickets.allSatisfy { $0["lane"] == nil },
+                "the writer must not emit the renamed per-ticket key")
+        #expect(tickets.contains { $0["section"] as? String == "Work" },
+                "the lane survives the round trip under the v1 key")
+        #expect(try store.list(.all).value.count == 2)
+    }
 }

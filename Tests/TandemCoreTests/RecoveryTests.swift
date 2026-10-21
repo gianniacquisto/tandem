@@ -93,6 +93,20 @@ struct RecoveryTests {
         #expect(corruptBackups(in: dir).isEmpty, "no backup should exist for a valid file")
     }
 
+    @Test("a file with neither array key is recovered, never read as an empty list")
+    func neitherArrayKeyRecovered() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        // Neither `todos` nor `tickets`: the array is required, so the file is invalid.
+        try writeRaw(#"{"version":1}"#, to: store)
+
+        let result = try store.list(.all)
+        #expect(result.note != nil, "a file with neither array key is invalid")
+        #expect(result.value.isEmpty, "the store restarts empty")
+        #expect(!corruptBackups(in: dir).isEmpty, "the invalid file was backed up")
+    }
+
     @Test("an unknown version is recovered")
     func unknownVersionRecovered() throws {
         let dir = tempDir()
