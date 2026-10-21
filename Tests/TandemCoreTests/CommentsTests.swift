@@ -310,8 +310,8 @@ struct CommentReadPathTests {
 
 /// The app's write path (`Sources/Tandem/Model.swift` → `Store.commentWrite`):
 /// the human's comment is appended to the sidecar, with the human as the author,
-/// and the log reads it back at once. This is the call the ticket sheet's
-/// composer makes — the same sidecar the CLI's `todo comment add` writes.
+/// and the write hands back the record it wrote. This is the call the ticket
+/// sheet's composer makes — the same sidecar the CLI's `todo comment add` writes.
 ///
 /// The path lives in the core (`Sources/TandemCore/CommentWrite.swift`), so this
 /// suite reaches the path the app actually uses. The app has no test target:
@@ -333,7 +333,7 @@ struct CommentWritePathTests {
         store.commentsDirectory.appendingPathComponent("\(id.uuidString).jsonl")
     }
 
-    @Test("the human's comment lands in the sidecar, and the app's read shows it at once")
+    @Test("the human's comment lands in the sidecar, and the write hands back the record")
     func theHumansCommentLands() throws {
         let (store, dir) = try tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -344,6 +344,11 @@ struct CommentWritePathTests {
                                              body: "the human's own note")
         #expect(written.note == nil)
 
+        // The record that was written: the human is the author, and the body is
+        // the human's own text.
+        #expect(written.value.author == "human")
+        #expect(written.value.body == "the human's own note")
+
         // The sidecar is the one log: the file `todo comment list` reads.
         let raw = try String(contentsOf: logFile(store, ticket.id), encoding: .utf8)
         #expect(raw.hasSuffix("\n"))
@@ -352,12 +357,14 @@ struct CommentWritePathTests {
         #expect(raw.contains("the human's own note"))
 
         // The app's read: the comment is in the list at once.
-        guard case .list(let listed) = written.value else {
-            Issue.record("expected the log, got \(written.value)")
+        guard case .list(let listed) = store.commentRead(ticketID: ticket.id.uuidString) else {
+            Issue.record("expected the log")
             return
         }
         #expect(listed.map(\.body) == ["the human's own note"])
         #expect(listed.map(\.author) == ["human"])
+        // And the record the write handed back is the one the log holds.
+        #expect(listed.first?.at == written.value.at)
 
         // The CLI's read: the same comment, out of the same log.
         let cli = try store.list(ticketID: ticket.id.uuidString).value
@@ -399,13 +406,83 @@ struct CommentWritePathTests {
         _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: "did you mean X?")
         // Then the human's, written the app's way.
         let written = try store.commentWrite(ticketID: ticket.id.uuidString, body: "yes, X it is")
+        #expect(written.value.body == "yes, X it is")
+        #expect(written.value.author == "human")
 
-        guard case .list(let listed) = written.value else {
-            Issue.record("expected the log, got \(written.value)")
-            return
-        }
+        // The order is the log's order: the app's comment is last.
+        let listed = try store.list(ticketID: ticket.id.uuidString).value
         #expect(listed.map(\.body) == ["did you mean X?", "yes, X it is"])
         #expect(listed.map(\.author) == ["blue", "human"])
+    }
+
+    @Test("the write path takes the lock once — the record comes back, not a busy store")
+    func theWritePathTakesTheLockOnce() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+        let log = logFile(store, ticket.id)
+
+        // Another holder of the store's own lock — a CLI append, or the app's own
+        // read path. It holds the lock with its own fd, which contends through
+        // the same flock as another process's would (the repo's own convention:
+        // `ConcurrencyTests`).
+        //
+        // It holds the lock long enough for the write path to queue behind it,
+        // then lets the write in, and takes the lock again the moment the
+        // write's log file appears — which is while the append still holds it,
+        // so the second holder is queued first and is handed the lock the
+        // moment the append releases it. A *second* lock acquisition by the
+        // write path would then wait out the whole window and come back
+        // "busy" — for a comment that was written.
+        let holder = DispatchGroup()
+        let hasLock = DispatchSemaphore(value: 0)
+        holder.enter()
+        DispatchQueue.global().async {
+            defer { holder.leave() }
+            let fd = open(store.lockURL.path, O_RDWR | O_CREAT, 0o644)
+            guard fd >= 0 else { hasLock.signal(); return }
+            guard flock(fd, LOCK_EX) == 0 else { close(fd); hasLock.signal(); return }
+            hasLock.signal()
+            usleep(300_000)                 // 300 ms: the write path waits here
+            close(fd)                       // and comes in
+            // The write's log file appears: the append has created it, and it
+            // still holds the lock. Take the lock again, and keep it.
+            let deadline = Date().addingTimeInterval(10)
+            while !FileManager.default.fileExists(atPath: log.path), Date() < deadline {
+                usleep(50)
+            }
+            guard FileManager.default.fileExists(atPath: log.path) else { return }
+            let second = open(store.lockURL.path, O_RDWR | O_CREAT, 0o644)
+            guard second >= 0 else { return }
+            _ = flock(second, LOCK_EX)      // granted when the append releases
+            usleep(2_500_000)               // the full wait window
+            close(second)
+        }
+        #expect(hasLock.wait(timeout: .now() + 15) == .success, "the holder never took the lock")
+
+        // The write path: one lock, one answer. The record that was written
+        // comes back — not "busy", and not a lost draft.
+        let written = try store.commentWrite(ticketID: ticket.id.uuidString,
+                                             body: "the human's own note")
+        #expect(written.value.author == "human")
+        #expect(written.value.body == "the human's own note")
+
+        // The comment is in the log: nothing was lost. (The log is read from
+        // the file — the store's lock is held by the holder for the whole
+        // window, and the read path is the one that waits it out.)
+        let raw = try String(contentsOf: log, encoding: .utf8)
+        #expect(raw.contains("\"author\":\"human\""))
+        #expect(raw.contains("the human's own note"))
+
+        // And the read path, under the same contention, still says busy —
+        // which is the answer the write path no longer gives.
+        let read = store.commentRead(ticketID: ticket.id.uuidString)
+        guard case .busy(let message) = read else {
+            Issue.record("expected a busy read, got \(read)")
+            return
+        }
+        #expect(message.contains("locked by another process"))
+        #expect(message.lowercased().contains("retry"))
     }
 
     @Test("the CLI's `todo comment list` shows the comment the app wrote — one log")

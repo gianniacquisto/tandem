@@ -47,9 +47,13 @@ struct TicketSheet: View {
     /// Why the last promotion did not happen.
     @State private var promoteError: String?
     /// The ticket's discussion, as the sheet draws it. Seeded from the read; a post
-    /// replaces it with the log as it reads after the append, so the human's own
-    /// comment is in the list at once — the sheet draws the log, not a copy of it.
+    /// adds the comment it wrote to the list, so the human's own comment is in
+    /// the list at once — the sheet draws the log it read, plus what it wrote.
     @State private var discussion: CommentRead
+    /// The comments the human has written in this sheet. They are in the log, and
+    /// they are drawn even when the log itself could not be read: a comment that
+    /// was written is never one the human cannot see.
+    @State private var written: [Comment] = []
     /// The comment the human is writing. It stays after a refusal, so the comment
     /// can be fixed and posted again.
     @State private var commentDraft: String = ""
@@ -93,8 +97,11 @@ struct TicketSheet: View {
     /// a ticket nobody has commented on still needs one — but an empty log draws
     /// no list, because an empty box would be noise.
     private var hasCommentList: Bool {
-        if case .list(let list) = discussion { return !list.isEmpty }
-        return false
+        switch discussion {
+        case .list(let list): return !list.isEmpty
+        // A log that could not be read still carries what the human wrote here.
+        case .busy, .failed: return !written.isEmpty
+        }
     }
 
     /// The sheet grows to make room for the discussion: a fixed height would squeeze
@@ -241,6 +248,9 @@ struct TicketSheet: View {
                     .font(.system(size: 11.5))
                     .foregroundStyle(palette.inkDim)
                     .fixedSize(horizontal: false, vertical: true)
+                // The human's own comments are in the log and are drawn anyway:
+                // a comment that was written is never one the human cannot see.
+                if !written.isEmpty { commentList(written) }
             case .failed(let message):
                 // The core's own words, which name the damaged file: the log is
                 // append-only, so a bad line is repair, not recovery.
@@ -248,6 +258,7 @@ struct TicketSheet: View {
                     .font(.system(size: 11.5))
                     .foregroundStyle(palette.emberDeep)
                     .fixedSize(horizontal: false, vertical: true)
+                if !written.isEmpty { commentList(written) }
             }
             commentComposer
         }
@@ -301,8 +312,14 @@ struct TicketSheet: View {
     /// nothing was written, and the comment can be fixed and posted again.
     private func post() {
         switch onComment(commentDraft) {
-        case .posted(let read):
-            discussion = read
+        case .posted(let comment):
+            // The write path hands back the record it wrote — one lock, one
+            // answer. The sheet draws that record with the log it has: the
+            // human's own comment is in the list at once. The log is not read
+            // back here — a second lock is how a comment that was written came
+            // to be reported as "busy".
+            written.append(comment)
+            discussion = discussion.appending(comment)
             commentDraft = ""
             commentError = nil
         case .refused(let message):
@@ -426,4 +443,14 @@ struct TicketEdits {
     var description: String
     var status: Status
     var lane: String?
+}
+
+/// The log with one more comment on it: what the sheet draws after the human's
+/// comment was written. A log that could not be read stays as it was — the read
+/// path's own answer, which the sheet's own comments are drawn beside.
+private extension CommentRead {
+    func appending(_ comment: Comment) -> CommentRead {
+        if case .list(let list) = self { return .list(list + [comment]) }
+        return self
+    }
 }

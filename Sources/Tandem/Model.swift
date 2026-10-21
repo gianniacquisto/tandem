@@ -287,8 +287,11 @@ final class TandemModel {
     /// as the outcome, not as the app-wide banner — the comment belongs to the
     /// ticket sheet, so that is where the human must see why nothing was written.
     ///
-    /// On success the log comes back whole, so the sheet draws the log itself and
-    /// the comment is there at once.
+    /// On success the outcome carries the record that was written — the comment
+    /// itself, from the append that wrote it. The log is not read back: the
+    /// write path takes the store's lock once, so a comment that **was** written
+    /// is never handed back as "busy" (the sheet's own read path reads the log,
+    /// with its own `.busy` and `.failed`).
     func postComment(_ ticketID: String, body: String) -> CommentPostOutcome {
         do {
             let result = try store.commentWrite(ticketID: ticketID, body: body)
@@ -382,12 +385,13 @@ enum PromotionOutcome {
     case refused(message: String)
 }
 
-/// What posting a comment did: it landed in the ticket's log, and the log now reads
-/// like this — or nothing was written, and this is why.
+/// What posting a comment did: it landed in the ticket's log — and here is the
+/// record that was written — or nothing was written, and this is why.
 enum CommentPostOutcome {
-    /// The comment was appended. The log, as it now reads, is the list the sheet
-    /// draws.
-    case posted(CommentRead)
+    /// The comment was appended. The record is the one the write made: the sheet
+    /// draws it with the log it has, and the human's comment is in the list at
+    /// once.
+    case posted(Comment)
     /// Nothing was written. The message says why, in the core's words.
     case refused(message: String)
 }
