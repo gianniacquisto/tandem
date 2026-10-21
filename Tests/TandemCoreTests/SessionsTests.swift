@@ -139,6 +139,56 @@ struct SessionsTests {
         #expect(try sessions.list().value.isEmpty)
     }
 
+    @Test("an empty or whitespace-only session id is refused, and nothing is written")
+    func emptySessionIDRefused() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        for id in ["", "   ", "\n  \n"] {
+            do {
+                _ = try sessions.start(id: id, project: "tandem", brief: "Build the core.")
+                Issue.record("expected emptySessionID for id \(id.debugDescription)")
+            } catch DomainError.emptySessionID {
+                // The domain failure, not a usage one.
+            }
+        }
+        #expect(!FileManager.default.fileExists(atPath: file(dir).path))
+        #expect(try sessions.list().value.isEmpty)
+
+        // The other id-taking operations refuse it too, rather than reporting
+        // an empty id as an unknown session.
+        do {
+            _ = try sessions.show(id: "")
+            Issue.record("expected emptySessionID")
+        } catch DomainError.emptySessionID {
+        }
+        do {
+            _ = try sessions.end(id: "  ", outcome: .succeeded)
+            Issue.record("expected emptySessionID")
+        } catch DomainError.emptySessionID {
+        }
+        do {
+            _ = try sessions.link(id: "", ticket: UUID())
+            Issue.record("expected emptySessionID")
+        } catch DomainError.emptySessionID {
+        }
+    }
+
+    @Test("the session id is trimmed, and the trimmed id is the one stored")
+    func sessionIDIsTrimmed() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let started = try sessions.start(id: "  ses_1  ", project: "tandem", brief: "Build it.")
+        #expect(started.value.id == "ses_1")
+        // The same id, however it is spelled, reaches the same record.
+        #expect(try sessions.show(id: " ses_1 ").value.id == "ses_1")
+        // And a second start under the padded spelling is the same record.
+        let again = try sessions.start(id: " ses_1 ", project: "tandem", brief: "Build it.")
+        #expect(again.note == "session ses_1 already recorded")
+        #expect(try sessions.list().value.count == 1)
+    }
+
     // MARK: - end
 
     @Test("end stamps the record once; a second end keeps the first outcome and summary")

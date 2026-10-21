@@ -99,14 +99,31 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        // Required fields: a missing or mistyped value throws, which the sessions
-        // file treats as an invalid file (moved aside, list restarts empty) —
-        // never silently discarded.
+        // Required fields: a missing value, or one of the wrong type, throws —
+        // which the sessions file treats as an invalid file (moved aside, list
+        // restarts empty) — never silently discarded. The `status` is required
+        // too, but an unrecognised *word* is its own case, and its rule is
+        // written below.
         self.id = try c.decode(String.self, forKey: .id)
         self.project = try c.decode(String.self, forKey: .project)
         self.brief = try c.decode(String.self, forKey: .brief)
         self.tickets = try c.decode([UUID].self, forKey: .tickets)
 
+        // **The status is strict, and that is a deliberate divergence from the
+        // store's own rule.** `Ticket`'s decoder flattens a status it does not
+        // recognise to `backlog` and keeps the file — with six workflow stages,
+        // "least progressed" is a safe guess, and flattening one ticket's stage
+        // is recoverable where calling the whole file corrupt is not (see
+        // `Ticket`'s decoder). A session has two states and **no safe default
+        // between them**: `running` would report a finished session as live, and
+        // `ended` would report a live one as finished — and the state is what
+        // `end` stamps against, so a wrong one is written back. An unrecognised
+        // status therefore makes the file invalid: it is moved aside
+        // (`sessions.json.corrupt-<ts>`) and the list restarts empty.
+        //
+        // **The price, on the record:** a later build that adds a `SessionStatus`
+        // case makes an older build move the whole file aside. The store's rule
+        // buys forward-compatibility that a session's *state* cannot.
         let storedStatus = try c.decode(String.self, forKey: .status)
         guard let status = SessionStatus(rawValue: storedStatus) else {
             throw StoreIOError.io("a session carries an unknown status \"\(storedStatus)\"")
@@ -120,8 +137,9 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
             // An outcome this build does not recognise reads as `unknown` — the
             // honest answer for "how did it end" — rather than costing the whole
             // file: flattening one record's outcome is recoverable where calling
-            // the file corrupt is not (the store's own rule for a status it
-            // cannot read).
+            // the file corrupt is not (the store's own treatment of a value it
+            // cannot read). **The status above is not treated that way**, and
+            // the reason is written there.
             self.outcome = SessionOutcome(rawValue: storedOutcome) ?? .unknown
         } else {
             self.outcome = nil
@@ -180,6 +198,11 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
 /// The board's `Status` is **not** reused here: `backlog`…`done` are the
 /// board's vocabulary, and a session is not work on a board. `interrupted` is
 /// an *outcome*, not a state.
+///
+/// **There is no third state to fall back on**, and that is why the file's
+/// decoder treats an unrecognised status as invalid rather than defaulting it
+/// (see `Session`'s decoder for the divergence from the store's own rule, and
+/// the price it carries).
 public enum SessionStatus: String, Sendable, CaseIterable, Hashable {
     /// The session is still running — it carries no outcome.
     case running
@@ -269,9 +292,11 @@ public struct Sessions: Sendable {
 
     /// `start(id:project:agent:brief:)`: record a session, once.
     ///
-    /// The brief is trimmed; an empty result is refused
-    /// (`DomainError.emptySessionBrief`) before anything is written. The agent's
-    /// name is trimmed too, and an empty result is no agent (`nil`).
+    /// The id is trimmed, and an empty result is refused
+    /// (`DomainError.emptySessionID`) — a record with no handle is a record
+    /// nothing can find. The brief is trimmed too, and an empty result is
+    /// refused (`DomainError.emptySessionBrief`) before anything is written.
+    /// The agent's name is trimmed, and an empty result is no agent (`nil`).
     ///
     /// A record with the same id already in the file is **returned unchanged**,
     /// with a note — whatever its status: a session that has ended is not
@@ -283,16 +308,17 @@ public struct Sessions: Sendable {
         agent: String? = nil,
         brief: String
     ) throws -> OperationResult<Session> {
+        let handle = try Self.handle(id)
         let text = brief.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw DomainError.emptySessionBrief }
         let who = agent?.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = (who?.isEmpty == false) ? who : nil
         let (session, note) = try mutate { sessions in
-            if let existing = sessions.first(where: { $0.id == id }) {
-                return (existing, false, "session \(id) already recorded")
+            if let existing = sessions.first(where: { $0.id == handle }) {
+                return (existing, false, "session \(handle) already recorded")
             }
             let session = Session(
-                id: id,
+                id: handle,
                 project: project,
                 agent: name,
                 brief: text,
@@ -309,21 +335,22 @@ public struct Sessions: Sendable {
     /// summary is trimmed, and an empty result is no summary (`nil`). A record
     /// that has already ended is **returned unchanged** — the first outcome and
     /// the first summary stand, with a note — so a second `end` cannot restate
-    /// how a session ended. An id the file does not carry is
-    /// `DomainError.unknownSession`.
+    /// how a session ended. An empty id is `DomainError.emptySessionID`; an id
+    /// the file does not carry is `DomainError.unknownSession`.
     public func end(
         id: String,
         outcome: SessionOutcome,
         summary: String? = nil
     ) throws -> OperationResult<Session> {
+        let handle = try Self.handle(id)
         let text = summary?.trimmingCharacters(in: .whitespacesAndNewlines)
         let said = (text?.isEmpty == false) ? text : nil
         let (session, note) = try mutate { sessions in
-            guard let index = sessions.firstIndex(where: { $0.id == id }) else {
-                throw DomainError.unknownSession(id: id, known: sessions.map(\.id))
+            guard let index = sessions.firstIndex(where: { $0.id == handle }) else {
+                throw DomainError.unknownSession(id: handle, known: sessions.map(\.id))
             }
             guard sessions[index].status == .running else {
-                return (sessions[index], false, "session \(id) already ended")
+                return (sessions[index], false, "session \(handle) already ended")
             }
             var record = sessions[index]
             record.end(outcome: outcome, summary: said, at: Self.now())
@@ -336,12 +363,14 @@ public struct Sessions: Sendable {
     /// `link(id:ticket:)`: record that a session carried a ticket.
     ///
     /// The ticket is appended once — a ticket already linked is not linked
-    /// twice — and the link order is the order the links were made in. An id
-    /// the file does not carry is `DomainError.unknownSession`.
+    /// twice — and the link order is the order the links were made in. An empty
+    /// id is `DomainError.emptySessionID`; an id the file does not carry is
+    /// `DomainError.unknownSession`.
     public func link(id: String, ticket: UUID) throws -> OperationResult<Session> {
+        let handle = try Self.handle(id)
         let (session, note) = try mutate { sessions in
-            guard let index = sessions.firstIndex(where: { $0.id == id }) else {
-                throw DomainError.unknownSession(id: id, known: sessions.map(\.id))
+            guard let index = sessions.firstIndex(where: { $0.id == handle }) else {
+                throw DomainError.unknownSession(id: handle, known: sessions.map(\.id))
             }
             guard !sessions[index].tickets.contains(ticket) else {
                 return (sessions[index], false, nil)
@@ -372,11 +401,13 @@ public struct Sessions: Sendable {
     }
 
     /// `show(id:)`: one record, or `DomainError.unknownSession` — carrying the
-    /// ids the file does hold, so the caller recovers in one turn.
+    /// ids the file does hold, so the caller recovers in one turn. An empty id
+    /// is `DomainError.emptySessionID`.
     public func show(id: String) throws -> OperationResult<Session> {
+        let handle = try Self.handle(id)
         let (sessions, note) = try readAll()
-        guard let session = sessions.first(where: { $0.id == id }) else {
-            throw unknownSession(id, known: sessions.map(\.id), note: note)
+        guard let session = sessions.first(where: { $0.id == handle }) else {
+            throw unknownSession(handle, known: sessions.map(\.id), note: note)
         }
         return OperationResult(session, note: note)
     }
@@ -531,6 +562,16 @@ public struct Sessions: Sendable {
     }
 
     // MARK: - Helpers (private)
+
+    /// The session's handle, trimmed. An empty result is a domain failure: a
+    /// record with no handle is a record nothing can find, and the core is the
+    /// one place a later caller cannot slip past — a guard in the CLI is a
+    /// courtesy on top of this one.
+    private static func handle(_ id: String) throws -> String {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw DomainError.emptySessionID }
+        return trimmed
+    }
 
     /// The recovery note for an invalid sessions file. The store's recovery note
     /// (`Store.recoveryNote`) in this file's own nouns: the store's
