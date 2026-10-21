@@ -126,7 +126,7 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
         // buys forward-compatibility that a session's *state* cannot.
         let storedStatus = try c.decode(String.self, forKey: .status)
         guard let status = SessionStatus(rawValue: storedStatus) else {
-            throw StoreIOError.io("a session carries an unknown status \"\(storedStatus)\"")
+            throw CorruptSessions.unknownStatus(storedStatus)
         }
         self.status = status
 
@@ -147,13 +147,13 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
 
         let startedRaw = try c.decode(String.self, forKey: .startedAt)
         guard let startedAt = Timestamp.decode(startedRaw) else {
-            throw StoreIOError.io("a session carries an unreadable timestamp \"\(startedRaw)\"")
+            throw CorruptSessions.invalidTimestamp(field: "startedAt", value: startedRaw)
         }
         self.startedAt = startedAt
 
         if let endedRaw = try c.decodeIfPresent(String.self, forKey: .endedAt) {
             guard let endedAt = Timestamp.decode(endedRaw) else {
-                throw StoreIOError.io("a session carries an unreadable timestamp \"\(endedRaw)\"")
+                throw CorruptSessions.invalidTimestamp(field: "endedAt", value: endedRaw)
             }
             self.endedAt = endedAt
         } else {
@@ -252,6 +252,14 @@ public enum SessionOutcome: String, Sendable, CaseIterable, Hashable {
 /// - **Recovery** — an invalid file is renamed to `sessions.json.corrupt-<unix-ts>`
 ///   under the lock and the list restarts empty, with a note naming the file
 ///   that was kept.
+///
+/// **Its own errors, too.** The file's decode failures are its own internal
+/// signal (`CorruptSessions`, the sessions file's counterpart to the store's
+/// `CorruptStore`) — never surfaced, exactly like the store's. A file that
+/// cannot be moved aside is a contract failure that names `sessions.json` and
+/// what the human has to do about it (`DomainError.corruptSessionsFile`). The
+/// store's `StoreIOError` is the store's: it is user-facing prose about
+/// `todos.json`, and the sessions file is not `todos.json`.
 ///
 /// **No rolling backup.** A record is recoverable from the transcript and the
 /// saddlebag; `todos.json.bak` exists to protect hand-written work, and this
@@ -482,8 +490,14 @@ public struct Sessions: Sendable {
             do {
                 try fm.moveItem(at: fileURL, to: backup)
             } catch {
-                // Never silently discard: if the invalid file cannot be kept, fail loudly.
-                throw StoreIOError.io("could not back up the corrupt sessions file: \(error)")
+                // Never silently discard: if the invalid file cannot be kept, fail
+                // loudly — **in the sessions file's own words**. The store's
+                // `StoreIOError` would report this as a store failure, and the
+                // store is not what is broken: `todos.json` is fine, and this
+                // file is the one the human has to look for.
+                throw DomainError.corruptSessionsFile(
+                    path: fileURL.path,
+                    detail: (error as NSError).localizedDescription)
             }
             return ([], backup.path)
         }
@@ -556,7 +570,7 @@ public struct Sessions: Sendable {
     private static func decode(_ data: Data) throws -> [Session] {
         let envelope = try JSONDecoder().decode(FileEnvelope.self, from: data)
         guard envelope.version == 1 else {
-            throw StoreIOError.io("the sessions file carries version \(envelope.version); this build reads version 1")
+            throw CorruptSessions.unsupportedVersion(envelope.version)
         }
         return envelope.sessions
     }

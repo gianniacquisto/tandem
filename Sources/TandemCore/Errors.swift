@@ -32,6 +32,12 @@ public enum DomainError: Error, Sendable, Equatable {
     /// not carry. `known` is the ids it does carry, so the caller recovers in one
     /// turn.
     case unknownSession(id: String, known: [String])
+    /// The sessions file (`sessions.json`) is corrupt and could not be moved
+    /// aside, so it stays where it is and the session list cannot be read
+    /// until it is gone. **The store is untouched**: `todos.json` is fine, and
+    /// this failure is about the sessions file, not about the store — so it
+    /// never wears the store's error vocabulary.
+    case corruptSessionsFile(path: String, detail: String)
     /// A session status that is not `running` or `ended`. The board's `Status`
     /// is a different vocabulary, and so is its own failure.
     case invalidSessionStatus(String)
@@ -86,6 +92,8 @@ public enum DomainError: Error, Sendable, Equatable {
                 return "Unknown session id \"\(id)\". No session is recorded yet."
             }
             return "Unknown session id \"\(id)\". Here are the recorded sessions to pick the right one from: \(known.joined(separator: ", "))."
+        case .corruptSessionsFile(let path, let detail):
+            return "The sessions file at \(path) is corrupt and could not be moved aside (\(detail)). Move it aside yourself and try again — the session list then starts empty."
         case .invalidSessionStatus(let bad):
             return "session status must be one of \(SessionStatus.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
         case .invalidSessionOutcome(let bad):
@@ -142,5 +150,25 @@ extension StoreIOError: TandemError {}
 /// never surfaced to a caller directly.
 enum CorruptStore: Error, Sendable {
     case invalidTimestamp(field: String, value: String)
+    case unsupportedVersion(Int)
+}
+
+/// Internal decode-failure signal for the **sessions file** — the sessions file's
+/// counterpart to `CorruptStore`: same shape, same rule. Thrown while parsing
+/// `sessions.json`, caught by the file's own `peek`, and treated as corrupt → the
+/// file is moved aside and the list restarts empty. Never surfaced to a caller
+/// directly.
+///
+/// **It is not the store's type, and it is not the store's file.** The store's
+/// `CorruptStore` carries the store's decode failures; this one carries the
+/// sessions file's, so a reader of the code can tell which file was refused. The
+/// store's type is not widened to cover both files.
+enum CorruptSessions: Error, Sendable {
+    /// A record's `status` is not a word this build knows. A session has two
+    /// states and no safe default between them, so the file is invalid.
+    case unknownStatus(String)
+    /// A timestamp the file carries cannot be read.
+    case invalidTimestamp(field: String, value: String)
+    /// The envelope's `version` is not one this build reads.
     case unsupportedVersion(Int)
 }
