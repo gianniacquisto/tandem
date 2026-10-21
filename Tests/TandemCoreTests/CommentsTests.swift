@@ -508,6 +508,112 @@ struct CommentWritePathTests {
     }
 }
 
+/// The sheet's **refresh** (`Sources/Tandem/TicketSheet.swift` →
+/// `Model.comments(for:)` → `Store.commentRead(ticketID:)`): the read that is
+/// not the write's read-back.
+///
+/// The write path takes the store's lock once and hands back the record it
+/// wrote, so the sheet's list is the log as of opening plus what that sheet
+/// wrote — a comment another actor appended in between stays invisible until
+/// the sheet reads the log again. This suite reaches the core behaviour that
+/// refresh is built on: a read of its own, which sees another actor's comment,
+/// and which takes nothing away when it does not happen.
+///
+/// The sheet's *drawing* of each case is the human's visual pass (the app has
+/// no test target); what this suite cannot reach is what the sheet does with
+/// the answer.
+@Suite("The sheet's refresh")
+struct CommentRefreshTests {
+
+    private func tempStore() throws -> (Store, URL) {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-comment-refresh-tests-\(UUID().uuidString)")
+        return (Store(directory: dir), dir)
+    }
+
+    private func makeTicket(_ store: Store) throws -> Ticket {
+        try store.add("A ticket").value
+    }
+
+    private func logFile(_ store: Store, _ id: UUID) -> URL {
+        store.commentsDirectory.appendingPathComponent("\(id.uuidString).jsonl")
+    }
+
+    @Test("the refresh sees a comment another actor appended while the sheet was open")
+    func theRefreshSeesAnotherActorsComment() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+
+        // The sheet opens: the log as it reads now — nobody has said anything.
+        guard case .list(let opened) = store.commentRead(ticketID: ticket.id.uuidString) else {
+            Issue.record("expected the log")
+            return
+        }
+        #expect(opened.isEmpty)
+
+        // The human posts, through the app's write path — one lock, one answer.
+        let written = try store.commentWrite(ticketID: ticket.id.uuidString,
+                                             body: "the human's own note")
+        // And an agent comments from the terminal, through the CLI's own path:
+        // the same file, the same log.
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: "did you mean X?")
+
+        // The refresh: a read of its own, with no write of its own to hang on.
+        guard case .list(let refreshed) = store.commentRead(ticketID: ticket.id.uuidString) else {
+            Issue.record("expected the log")
+            return
+        }
+        // The agent's comment is in the list — it was invisible until the sheet
+        // read the log again — and the human's own is in it too, in the order
+        // the sidecar holds.
+        #expect(refreshed.map(\.body) == ["the human's own note", "did you mean X?"])
+        #expect(refreshed.map(\.author) == ["human", "blue"])
+        // The human's own comment is the record the write handed back — the
+        // same one, in the log.
+        #expect(refreshed.first?.at == written.value.at)
+    }
+
+    @Test("a refresh that answers busy leaves the log — and so the sheet's list — as it was")
+    func aBusyRefreshTakesNothingAway() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+        let log = logFile(store, ticket.id)
+
+        // The human posts, and the sheet's list has that comment in it.
+        let written = try store.commentWrite(ticketID: ticket.id.uuidString,
+                                             body: "the human's own note")
+        let before = try String(contentsOf: log, encoding: .utf8)
+
+        // Another process holds the store's lock — a CLI write, say. The
+        // refresh waits out the window and gives up.
+        let fd = open(store.lockURL.path, O_RDWR | O_CREAT, 0o644)
+        #expect(fd >= 0)
+        #expect(flock(fd, LOCK_EX) == 0)
+        defer { close(fd) }
+
+        let read = store.commentRead(ticketID: ticket.id.uuidString)
+        guard case .busy(let message) = read else {
+            Issue.record("expected a busy read, got \(read)")
+            return
+        }
+        // The words ask for a retry, not a repair: nothing is wrong with the log.
+        #expect(message.contains("locked by another process"))
+        #expect(message.lowercased().contains("retry"))
+        #expect(!message.contains("damaged"))
+
+        // The refresh took nothing away: the log is byte for byte what it was,
+        // so the sheet's list — which holds the human's comment — stays as it
+        // was, and the comment the human posted is still in it.
+        #expect(try String(contentsOf: log, encoding: .utf8) == before)
+        #expect(before.contains("\"author\":\"human\""))
+        #expect(before.contains("the human's own note"))
+        // And the record the write handed back is still the one the log holds.
+        #expect(written.value.body == "the human's own note")
+    }
+}
+
 /// Append to an existing file (the test's hand-edit of the log).
 private extension Data {
     func append(to url: URL) throws {
