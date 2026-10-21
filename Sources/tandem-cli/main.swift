@@ -48,14 +48,15 @@ func dispatch(_ args: [String]) -> Int32 {
         return 0
     case .doctor:
         return runDoctor()
-    case .todoList(let filter, let text, let status, let assignee, let lane):
+    case .todoList(let filter, let text, let status, let assignee, let lane, let archived):
         return run {
             let query = try TodoQuery.parse(
                 filter: filter,
                 text: text,
                 status: status,
                 assignee: try resolveAssignee(assignee),
-                lane: lane)
+                lane: lane,
+                archived: archived)
             let result = try Store().list(query)
             return try StoreEncoding.listResult(result.value, note: result.note)
         }

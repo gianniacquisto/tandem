@@ -168,12 +168,49 @@ struct QueryTests {
         #expect(try TodoQuery.parse(text: "  ").normalizedText == nil)
     }
 
-    @Test("parse keeps the shipped filter as sugar, and an explicit axis overrides it")
+    @Test("parse keeps the shipped filter as sugar, and the CLI's filters never carry the archive")
     func parseFilterSugar() throws {
-        #expect(try TodoQuery.parse(filter: "all").archived == .included)
-        #expect(try TodoQuery.parse(filter: "all", archived: "excluded").archived == .excluded)
+        #expect(try TodoQuery.parse(filter: "all").archived == .excluded)
         #expect(try TodoQuery.parse(filter: "done").statuses == [.done])
         #expect(try TodoQuery.parse(filter: "open").statuses == [.backlog, .refined, .ready, .inProgress, .inReview])
+    }
+
+    // MARK: - the CLI's archive axis
+
+    @Test("the CLI's three filters never carry the archive")
+    func cliFiltersHideTheArchive() throws {
+        for filter in [nil, "open", "done", "all"] {
+            #expect(try TodoQuery.parse(filter: filter).archived == .excluded)
+        }
+        #expect(titles(try TodoQuery.parse()) == [
+            "capture the idea", "refined work", "ready work", "in flight",
+        ])
+    }
+
+    @Test("`--archived` alone is the archive: statuses ignored, the app's Archived segment")
+    func archivedAlone() throws {
+        let query = try TodoQuery.parse(archived: true)
+        #expect(query.archived == .only)
+        #expect(query.statuses.isEmpty)
+        #expect(titles(query) == ["finished and filed away", "archived but not done"])
+    }
+
+    @Test("`--archived` named with a filter joins that filter")
+    func archivedJoinsTheFilter() throws {
+        let all = try TodoQuery.parse(filter: "all", archived: true)
+        #expect(all.archived == .included)
+        #expect(titles(all).count == 7, "every ticket, the archive included")
+
+        let done = try TodoQuery.parse(filter: "done", archived: true)
+        #expect(done.archived == .included)
+        #expect(titles(done) == ["finished", "finished and filed away"])
+    }
+
+    @Test("an explicit status narrows the archive it was named with")
+    func archivedWithStatus() throws {
+        let query = try TodoQuery.parse(status: "backlog", archived: true)
+        #expect(query.statuses == [.backlog])
+        #expect(titles(query) == ["archived but not done"])
     }
 
     // MARK: - the human's inbox
@@ -195,13 +232,10 @@ struct QueryTests {
         #expect(TodoQuery.inbox.apply(to: [ticket("agent work", assignee: "ui")]).isEmpty)
     }
 
-    @Test("parse rejects a bad filter, status, or archive value by name")
+    @Test("parse rejects a bad filter or status by name")
     func parseBadValues() {
         #expect(throws: DomainError.invalidFilter("bogus")) {
             _ = try TodoQuery.parse(filter: "bogus")
-        }
-        #expect(throws: DomainError.invalidArchived("maybe")) {
-            _ = try TodoQuery.parse(archived: "maybe")
         }
         #expect(throws: DomainError.invalidStatus("")) {
             _ = try TodoQuery.parse(status: "")
