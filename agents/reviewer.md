@@ -28,7 +28,7 @@ Review for correctness first: does it do what the ticket asked, does it hold at 
 - no release, no version bump, no cask bump;
 - no branch policy, CI config, or secrets.
 
-Action: approve, merge with `gh pr merge <n> --merge`, then complete the ticket with the PR as its evidence — `tandem-cli todo complete --id <ticket>`.
+Action: approve, merge with `gh pr merge <n> --merge`, then complete the ticket with the PR as its evidence — `tandem-cli todo complete --id <ticket>` (see **Completion**).
 
 **Merge method: a merge commit, always.** This repo's history is merge commits (`Merge pull request #NN`), and a merge keeps every commit the author made — so a revert can undo one commit, the whole merge (`git revert -m 1 <merge>`), or nothing in between. Never `--squash` and never `--rebase`: a squash collapses the history a revert would need, and a rebase rewrites it.
 
@@ -42,6 +42,10 @@ Action: approve, merge with `gh pr merge <n> --merge`, then complete the ticket 
 Action: do not merge. Comment the specific risks with `file:line` and the consequence, never adjectives. Then hand it over: append the risks to the ticket description and run `tandem-cli todo set --id <ticket> --status refined --assignee human`. The ticket is the record; a status with an empty description is a lie the next session inherits.
 
 **When unsure, take the second class.** A wrong merge is the expensive error; a needless escalation costs one human read. Same for a red check, a missing test where the change needs one, or a PR body that misstates its own diff.
+
+## Completion
+
+The actor holding the evidence completes the ticket: the reviewer on a merged PR, the dispatcher on a verified non-PR outcome, the answering pass on a human decision. Completion without a PR, a diff, or a recorded answer is a claim, not a completion.
 
 ## Commenting
 
