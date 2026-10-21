@@ -1,7 +1,7 @@
 import Foundation
 
-/// Promoting a todo into a bikeshed note — the reverse of `Store.addFromNote`
-/// (the note → todo direction).
+/// Promoting a ticket into a bikeshed note — the reverse of `Store.addFromNote`
+/// (the note → ticket direction).
 ///
 /// One operation, so the app and any future agent-facing surface behave
 /// identically: the note is created from the ticket's title and description,
@@ -19,7 +19,7 @@ import Foundation
 /// their own locks — so the order is fixed: the note is written first and the
 /// link set second. A failed link write takes the note back off the disk, so a
 /// promotion either lands whole or not at all.
-public struct TodoToNote: Sendable {
+public struct TicketToNote: Sendable {
 
     /// The store the ticket lives in.
     public let store: Store
@@ -59,7 +59,7 @@ public struct TodoToNote: Sendable {
             path: Self.path(lane: todo.lane, title: todo.title),
             text: Self.text(title: todo.title, body: todo.description))
         do {
-            let (linked, note) = try store.mutate { contents -> (value: Todo, changed: Bool) in
+            let (linked, note) = try store.mutate { contents -> (value: Ticket, changed: Bool) in
                 guard let i = contents.todos.firstIndex(where: { $0.id == uuid }) else {
                     throw DomainError.unknownID(id: id, open: contents.todos.filter { !$0.done })
                 }
@@ -95,7 +95,7 @@ public struct TodoToNote: Sendable {
     /// The note's text: the title as the heading, the description as the body.
     /// A ticket with no description gets a note with the heading alone — the
     /// prose starts there. The ticket's own state is not written into the note
-    /// (a note carries prose, not todo state).
+    /// (a note carries prose, not ticket state).
     static func text(title: String, body: String?) -> String {
         let heading = "# " + title.replacingOccurrences(of: "\n", with: " ")
         guard let body, !body.isEmpty else { return heading + "\n" }
@@ -123,9 +123,9 @@ public struct PromotedNote: Sendable, Equatable {
     public let path: String
     /// The ticket after the promotion: same title, description, status, and
     /// lane; only the `link` is new.
-    public let todo: Todo
+    public let todo: Ticket
 
-    public init(path: String, todo: Todo) {
+    public init(path: String, todo: Ticket) {
         self.path = path
         self.todo = todo
     }

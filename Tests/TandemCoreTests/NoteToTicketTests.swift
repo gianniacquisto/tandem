@@ -2,15 +2,15 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// `addFromNote` (NoteToTodo.swift) — the reverse of the todo→note link: a
+/// `addFromNote` (NoteToTicket.swift) — the reverse of the ticket→note link: a
 /// selection in a note becomes a ticket, and the ticket points back at the note.
 ///
 /// The rules under test: the title is the selection's first line (trimmed, and
 /// without a checkbox's syntax), the description is the selection, the link is
 /// the note's bikeshed-relative path, an empty selection is rejected, and the
 /// note itself is never touched.
-@Suite("Note to todo")
-struct NoteToTodoTests {
+@Suite("Note to ticket")
+struct NoteToTicketTests {
 
     // MARK: - Helpers
 

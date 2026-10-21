@@ -61,11 +61,11 @@ struct MainView: View {
     @FocusState private var laneFocused: Bool
 
     // The todo being linked to a note, and the picker's filter text.
-    @State private var linkPickerFor: Todo?
+    @State private var linkPickerFor: Ticket?
     @State private var linkFilter = ""
 
     // The ticket open in the ticket sheet, if any.
-    @State private var ticketFor: Todo?
+    @State private var ticketFor: Ticket?
 
     // The quick-open palette (⌘K): the one keyboard path to a known note or ticket.
     @State private var quickOpenPresented = false
@@ -260,29 +260,29 @@ struct MainView: View {
     // MARK: - List
 
     /// The tickets in view: the shipped filter, narrowed by the search field — one
-    /// `TodoQuery` for both, the same predicate an agent's `list` runs. The search
+    /// `TicketQuery` for both, the same predicate an agent's `list` runs. The search
     /// matches the title *and the description*, and it never re-sorts or mutates the
     /// store.
-    private var visibleTodos: [Todo] {
+    private var visibleTodos: [Ticket] {
         var query = scope.query
         query.text = search
         return query.apply(to: model.todos)
     }
 
     /// Whether the search field has anything in it. The matching itself — case- and
-    /// diacritic-insensitive, over title and description — belongs to `TodoQuery`.
+    /// diacritic-insensitive, over title and description — belongs to `TicketQuery`.
     private var queryActive: Bool {
         !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// The list grouped for display: the default area first, then the declared lanes, then
     /// any lane that only appears on a todo (a hand edit) so nothing is hidden. The key
-    /// order is the board's (`TodoBoard.orderedKeys`) — both faces group a lane the same
+    /// order is the board's (`TicketBoard.orderedKeys`) — both faces group a lane the same
     /// way, including the no-lanes-declared case; the order *within* a group stays the
     /// stored order, which is what a list shows.
     private var groups: [TodoGroup] {
         let visible = visibleTodos
-        return TodoBoard.orderedKeys(declared: model.lanes, todos: visible).map { key in
+        return TicketBoard.orderedKeys(declared: model.lanes, todos: visible).map { key in
             TodoGroup(key: key, todos: visible.filter { $0.lane == key })
         }
     }
@@ -363,7 +363,7 @@ struct MainView: View {
     /// One ticket row, with every handler the list and the inbox share. The faces differ in
     /// what they show and how they order it, never in what a ticket can do — so the row is
     /// built once, here.
-    private func ticketRow(_ todo: Todo) -> some View {
+    private func ticketRow(_ todo: Ticket) -> some View {
         LigneRow(todo: todo, palette: palette,
                  onComplete: { withAnimation(Motion.toggle) { model.complete(todo.id.uuidString) } },
                  onReopen: { withAnimation(Motion.toggle) { model.reopen(todo.id.uuidString) } },
@@ -387,7 +387,7 @@ struct MainView: View {
     // MARK: - Inbox face
 
     /// The human's inbox: the tickets an agent assigned to `human` to ask for a decision.
-    /// A query (`TodoQuery.inbox`), not a second store — the row is the list's row, and the
+    /// A query (`TicketQuery.inbox`), not a second store — the row is the list's row, and the
     /// question itself is the ticket's description, read in the description sheet.
     private var inboxFace: some View {
         let inbox = model.inboxTodos
@@ -435,11 +435,11 @@ struct MainView: View {
     // MARK: - Drag and drop
 
     /// Drop of `draggedID` onto the row showing `anchor`, on the given half. The
-    /// arithmetic lives in the core (`TodoOrdering.dropIndex`) so it is provable against
+    /// arithmetic lives in the core (`TicketOrdering.dropIndex`) so it is provable against
     /// the real `move` — see `OrderingTests`.
-    private func drop(_ draggedID: String, onto anchor: Todo, edge: DropEdge) {
+    private func drop(_ draggedID: String, onto anchor: Ticket, edge: DropEdge) {
         guard let dragged = UUID(uuidString: draggedID),
-              let index = TodoOrdering.dropIndex(in: model.todos,
+              let index = TicketOrdering.dropIndex(in: model.todos,
                                                  moving: dragged,
                                                  relativeTo: anchor.id,
                                                  after: edge == .after)
@@ -466,12 +466,12 @@ struct MainView: View {
 
     /// Promotes a ticket to a bikeshed note, in the bikeshed this window shows. The
     /// outcome travels back to the sheet, which says what happened.
-    private func promote(_ todo: Todo) -> PromotionOutcome {
+    private func promote(_ todo: Ticket) -> PromotionOutcome {
         model.promoteToNote(todo.id.uuidString, into: bikeModel.bikeshed)
     }
 
     /// Opens the note picker for `todo`.
-    private func beginLink(_ todo: Todo) {
+    private func beginLink(_ todo: Ticket) {
         linkFilter = ""
         linkPickerFor = todo
     }
@@ -479,7 +479,7 @@ struct MainView: View {
     /// The note picker: a filterable list of the bikeshed's note paths. Picking one
     /// links the todo and dismisses; the picker never reads note content (the core
     /// owns it). Styled like the rename sheet (monospaced field, parchment, hairline).
-    private func linkSheet(_ todo: Todo) -> some View {
+    private func linkSheet(_ todo: Ticket) -> some View {
         let paths = bikeModel.notePaths()
         let q = linkFilter.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let shown = q.isEmpty ? paths : paths.filter { $0.lowercased().contains(q) }
@@ -531,7 +531,7 @@ struct MainView: View {
     }
 
     /// One note in the picker; the todo's current link is checkmarked.
-    private func linkRow(_ path: String, todo: Todo) -> some View {
+    private func linkRow(_ path: String, todo: Ticket) -> some View {
         Button {
             model.setLink(todo.id.uuidString, to: path)
             linkPickerFor = nil

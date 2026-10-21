@@ -23,7 +23,7 @@ final class TandemModel {
 
     /// All todos in stored order (the order the human arranged — new todos land on top;
     /// never re-sorted here).
-    private(set) var todos: [Todo] = []
+    private(set) var todos: [Ticket] = []
     /// The declared lane names, in render order. The default (ungrouped) area at the
     /// top of the list is implicit and unnamed, so it is not in here.
     private(set) var lanes: [String] = []
@@ -51,12 +51,12 @@ final class TandemModel {
     // The shipped filters, defined once in the core (`Filter.query`): the app's counts
     // and the CLI's `--filter` are views over the same predicate, not two definitions —
     // the archive excepted, where the CLI asks for it by name (ADR 0017, 2026-10-21).
-    var openTodos: [Todo] { Filter.open.apply(to: todos) }
-    var doneTodos: [Todo] { Filter.done.apply(to: todos) }
+    var openTodos: [Ticket] { Filter.open.apply(to: todos) }
+    var doneTodos: [Ticket] { Filter.done.apply(to: todos) }
     /// The archive: out of every default view, still in the store. The list's fourth state.
-    var archivedTodos: [Todo] { TodoQuery(archived: .only).apply(to: todos) }
+    var archivedTodos: [Ticket] { TicketQuery(archived: .only).apply(to: todos) }
     /// What is waiting for the person: the tickets agents assigned to `human`.
-    var inboxTodos: [Todo] { TodoQuery.inbox.apply(to: todos) }
+    var inboxTodos: [Ticket] { TicketQuery.inbox.apply(to: todos) }
 
     private init(store: Store = Store()) {
         self.store = store
@@ -293,7 +293,7 @@ final class TandemModel {
     /// the human must see why nothing was written.
     func promoteToNote(_ id: String, into bikeshed: Bikeshed) -> PromotionOutcome {
         do {
-            let result = try TodoToNote(store: store, bikeshed: bikeshed).promote(id)
+            let result = try TicketToNote(store: store, bikeshed: bikeshed).promote(id)
             reload()
             return .promoted(path: result.value.path)
         } catch {

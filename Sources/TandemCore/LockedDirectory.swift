@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 
 /// The file-storage mechanics shared by Tandem's two sidecar-locked domains —
-/// the todo `Store` (ADR 0001) and the notes `Bikeshed` (ADR 0004): an
+/// the ticket `Store` (ADR 0001) and the notes `Bikeshed` (ADR 0004): an
 /// exclusive `flock` on a sidecar lockfile with bounded retry, atomic
 /// same-directory temp-file + fsync + `rename(2)` writes, and orphan temp
 /// cleanup under the lock.

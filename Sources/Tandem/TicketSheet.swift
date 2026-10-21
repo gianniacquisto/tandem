@@ -22,7 +22,7 @@ import TandemCore
 /// refinement's output) is not. The sheet draws them oldest first; it never writes
 /// them (ticket `3A44B7FD` is the write half).
 struct TicketSheet: View {
-    var todo: Todo
+    var todo: Ticket
     var palette: Palette
     var lanes: [String]
     /// The ticket's discussion, as the sidecar holds it. `.list([])` is a ticket with
@@ -49,7 +49,7 @@ struct TicketSheet: View {
 
     private enum Field { case title, body }
 
-    init(todo: Todo, palette: Palette, lanes: [String],
+    init(todo: Ticket, palette: Palette, lanes: [String],
          comments: CommentRead = .list([]),
          onSave: @escaping (TicketEdits) -> Void,
          onCancel: @escaping () -> Void,
@@ -117,17 +117,17 @@ struct TicketSheet: View {
                     }
                 }
                 if let assignee = todo.assignee {
-                    Text(assignee == TodoQuery.human ? "human" : "@\(assignee)")
+                    Text(assignee == TicketQuery.human ? "human" : "@\(assignee)")
                         .font(.system(size: 11))
-                        .foregroundStyle(assignee == TodoQuery.human ? palette.emberDeep
+                        .foregroundStyle(assignee == TicketQuery.human ? palette.emberDeep
                                                                      : palette.inkDim)
                 }
                 // The filer, read-only (the type will not let a write touch it):
                 // `human` reads as "you", an agent as its name. The agent's filing is
                 // the one worth the colour — it is the signal triage starts from.
-                Text(todo.origin == TodoQuery.human ? "you filed" : "@\(todo.origin) filed")
+                Text(todo.origin == TicketQuery.human ? "you filed" : "@\(todo.origin) filed")
                     .font(.system(size: 11))
-                    .foregroundStyle(todo.origin == TodoQuery.human ? palette.inkDim
+                    .foregroundStyle(todo.origin == TicketQuery.human ? palette.inkDim
                                                                     : palette.emberDeep)
                 Spacer(minLength: 0)
                 if let link {

@@ -198,7 +198,7 @@ struct RecoveryTests {
 
     @Test("StoreEncoding.listResult shape, note present only when non-nil")
     func listResultEncoding() throws {
-        let todo = Todo(title: "one")
+        let todo = Ticket(title: "one")
         // No note → no note key.
         let noNote = try json(StoreEncoding.listResult([todo], note: nil))
         #expect((noNote["todos"] as? [Any])?.count == 1)
@@ -211,9 +211,9 @@ struct RecoveryTests {
         #expect((empty["todos"] as? [Any])?.isEmpty == true)
     }
 
-    @Test("StoreEncoding.todoResult is the todo object plus optional note")
+    @Test("StoreEncoding.todoResult is the ticket object plus optional note")
     func todoResultEncoding() throws {
-        let todo = Todo(title: "thing")
+        let todo = Ticket(title: "thing")
         let obj = try json(StoreEncoding.todoResult(todo, note: nil))
         #expect(obj["id"] as? String == todo.id.uuidString)
         #expect(obj["title"] as? String == "thing")
@@ -228,7 +228,7 @@ struct RecoveryTests {
 
     @Test("StoreEncoding.openList is the list shape")
     func openListEncoding() throws {
-        let todo = Todo(title: "open one")
+        let todo = Ticket(title: "open one")
         let obj = try json(StoreEncoding.openList([todo]))
         #expect((obj["todos"] as? [Any])?.count == 1)
         #expect(obj["note"] == nil)
@@ -257,7 +257,7 @@ struct RecoveryTests {
         #expect(tandemErrorText(DomainError.emptyTitle).contains("Title is empty"))
         #expect(tandemErrorText(DomainError.invalidFilter("bogus")).contains("bogus"))
 
-        let open = [Todo(title: "the open one")]
+        let open = [Ticket(title: "the open one")]
         let unknown = tandemErrorText(DomainError.unknownID(id: "x", open: open))
         #expect(unknown.contains("x"))
         #expect(unknown.contains("the open one"), "unknownID text should carry the open list")

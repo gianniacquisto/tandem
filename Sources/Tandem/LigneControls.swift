@@ -36,12 +36,12 @@ enum ListScope: String, CaseIterable, Identifiable {
     }
 
     /// The one view definition: three shipped filters, plus the archive.
-    var query: TodoQuery {
+    var query: TicketQuery {
         switch self {
         case .open: return Filter.open.query
         case .done: return Filter.done.query
         case .all: return Filter.all.query
-        case .archived: return TodoQuery(archived: .only)
+        case .archived: return TicketQuery(archived: .only)
         }
     }
 }
@@ -293,7 +293,7 @@ struct RowDragAndDrop: ViewModifier {
 /// A linked todo (`todo.link`) shows a quiet trailing paperclip that opens the note,
 /// with "Link to note…" / "Remove link" in the context menu (GUI-only, ADR 0010).
 struct LigneRow: View {
-    var todo: Todo
+    var todo: Ticket
     var palette: Palette
     var onComplete: () -> Void
     var onReopen: () -> Void

@@ -15,7 +15,7 @@ struct OperationsTests {
 
     // MARK: - add
 
-    @Test("add trims whitespace and returns a fresh todo")
+    @Test("add trims whitespace and returns a fresh ticket")
     func addTrimsWhitespace() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -145,7 +145,7 @@ struct OperationsTests {
         #expect(completed.value.completedAt != nil)
     }
 
-    @Test("complete is idempotent: second call returns the same todo, completedAt unchanged")
+    @Test("complete is idempotent: second call returns the same ticket, completedAt unchanged")
     func completeIsIdempotent() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -161,7 +161,7 @@ struct OperationsTests {
         let persisted = try store.list(.all).value.first { $0.id == added.value.id }
         #expect(persisted?.completedAt != nil)
 
-        // Second call: same todo, no throw, and `completedAt` is unchanged —
+        // Second call: same ticket, no throw, and `completedAt` is unchanged —
         // it must equal the persisted value, not a freshly stamped time.
         let second = try store.complete(added.value.id.uuidString)
         #expect(second.value.id == first.value.id)
@@ -207,8 +207,8 @@ struct OperationsTests {
         }
     }
 
-    @Test("add puts each new todo on top; completing does not reorder (.all)")
-    func newTodosLandOnTop() throws {
+    @Test("add puts each new ticket on top; completing does not reorder (.all)")
+    func newTicketsLandOnTop() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
@@ -217,7 +217,7 @@ struct OperationsTests {
         let second = try store.add("second").value.id
         let third = try store.add("third").value.id
 
-        // New todos rise to the top.
+        // New tickets rise to the top.
         #expect(try store.list(.all).value.map(\.id) == [third, second, first])
 
         // Completing the middle one must not reorder the list.
@@ -322,7 +322,7 @@ struct OperationsTests {
         #expect(persisted?.completedAt == nil)
     }
 
-    @Test("reopen is idempotent: an already-open todo is returned unchanged")
+    @Test("reopen is idempotent: an already-open ticket is returned unchanged")
     func reopenIsIdempotent() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -378,7 +378,7 @@ struct OperationsTests {
 
     // MARK: - archiveDone
 
-    @Test("archiveDone archives every done todo — nothing is removed — and reports the count")
+    @Test("archiveDone archives every done ticket — nothing is removed — and reports the count")
     func archiveDoneArchives() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -402,7 +402,7 @@ struct OperationsTests {
         #expect(try store.list(.done).value.isEmpty)
     }
 
-    @Test("archiveDone with nothing done archives nothing and leaves open todos intact")
+    @Test("archiveDone with nothing done archives nothing and leaves open tickets intact")
     func archiveDoneNone() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -434,7 +434,7 @@ struct OperationsTests {
 
     // MARK: - delete
 
-    @Test("delete removes a single todo, open or done")
+    @Test("delete removes a single ticket, open or done")
     func deleteRemoves() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -507,15 +507,15 @@ struct OperationsTests {
         for todo in todos {
             #expect((todo["createdAt"] as? String)?.hasSuffix("Z") == true)
         }
-        // The open todo's completedAt and lane are JSON null.
+        // The open ticket's completedAt and lane are JSON null.
         let openEntry = todos.first { ($0["status"] as? String) == "backlog" }
         #expect(openEntry?["completedAt"] is NSNull)
         #expect(openEntry?["section"] is NSNull)
-        // The done todo's completedAt is a real (non-null) string.
+        // The done ticket's completedAt is a real (non-null) string.
         let doneEntry = todos.first { ($0["status"] as? String) == "done" }
         #expect(doneEntry?["completedAt"] is String)
 
-        // Decode round-trip: a fresh Store over the same dir sees the same todos,
+        // Decode round-trip: a fresh Store over the same dir sees the same tickets,
         // newest on top (the stored order is the order).
         let fresh = Store(directory: dir)
         let all = try fresh.list(.all).value

@@ -11,7 +11,7 @@ import TandemCore
 //
 // This file is the whole adapter: it turns a command line into the core calls
 // and writes their outcome to the right stream. It adds no boundary logic — the
-// semantics (`list`, `TodoQuery.parse`, `add`, `set`, `move`, `complete`,
+// semantics (`list`, `TicketQuery.parse`, `add`, `set`, `move`, `complete`,
 // `archiveDone`, `append(ticketID:author:body:)`, `list(ticketID:)`,
 // `addLane`, `renameLane`, `deleteLane`, `rename`, `capture`,
 // `stats`, `health`, `DescriptionBody.required`) and the encoding
@@ -50,7 +50,7 @@ func dispatch(_ args: [String]) -> Int32 {
         return runDoctor()
     case .todoList(let filter, let text, let status, let assignee, let lane, let archived):
         return run {
-            let query = try TodoQuery.parse(
+            let query = try TicketQuery.parse(
                 filter: filter,
                 text: text,
                 status: status,

@@ -2,15 +2,15 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// Promoting a ticket to a bikeshed note (`TodoToNote`) — the note is made from
+/// Promoting a ticket to a bikeshed note (`TicketToNote`) — the note is made from
 /// the ticket's title and description, the ticket's `link` points at it, and
 /// nothing else about the ticket changes. The note is created, never
 /// overwritten; a ticket that already links to a note is refused.
 ///
 /// Every test runs against temp dirs — a store and a bikeshed side by side
 /// under one unique parent, so the bikeshed's sibling lockfile is never shared.
-@Suite("Todo → note promotion")
-struct TodoToNoteTests {
+@Suite("Ticket → note promotion")
+struct TicketToNoteTests {
 
     // MARK: - Fixture
 
@@ -39,7 +39,7 @@ struct TodoToNoteTests {
 
     /// The promotion under test.
     private func promote(_ f: Fixture, _ id: String) throws -> OperationResult<PromotedNote> {
-        try TodoToNote(store: f.store, bikeshed: f.bikeshed).promote(id)
+        try TicketToNote(store: f.store, bikeshed: f.bikeshed).promote(id)
     }
 
     /// Writes a file straight into the bikeshed, bypassing the core — the way a

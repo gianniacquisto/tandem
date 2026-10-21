@@ -1,12 +1,12 @@
 import Foundation
 
-/// Contract-level todo operations (spec: "Operations (core)"). These are the only
+/// Contract-level ticket operations (spec: "Operations (core)"). These are the only
 /// public surface the GUI and the CLI use; they define the shared semantics so
 /// both faces behave identically. The CLI adds only encoding; the GUI adds only
 /// presentation.
 ///
-/// Ordering: the **stored order** is authoritative — the position of a todo in `todos.json`
-/// is its position in the list, and `add` puts a new todo on **top** by default. Order is
+/// Ordering: the **stored order** is authoritative — the position of a ticket in `todos.json`
+/// is its position in the list, and `add` puts a new ticket on **top** by default. Order is
 /// never recomputed from `createdAt`. Lanes group the list; the array is kept grouped by
 /// lane (default first, then each declared lane) so a reader can walk it straight
 /// through (see `StoreContents`).
@@ -14,24 +14,24 @@ extension Store {
 
     // MARK: - list
 
-    /// `list(query)`: the tickets in view, in **stored order**. `TodoQuery` is the one
+    /// `list(query)`: the tickets in view, in **stored order**. `TicketQuery` is the one
     /// filter definition both faces use, so "the ready tickets" means one thing
     /// everywhere. An empty result is a successful empty list, never an error.
     /// Display *sorting* is a UI concern and never happens here.
-    public func list(_ query: TodoQuery) throws -> OperationResult<[Todo]> {
+    public func list(_ query: TicketQuery) throws -> OperationResult<[Ticket]> {
         let (contents, note) = try readAll()
         return OperationResult(query.apply(to: contents.todos), note: note)
     }
 
-    /// `list(filter)`: the shipped three-value filter, kept as sugar over `TodoQuery`
+    /// `list(filter)`: the shipped three-value filter, kept as sugar over `TicketQuery`
     /// (ADR 0017 — `--filter open|done|all` is a documented contract). Defaults to `.open`.
-    public func list(_ filter: Filter = .open) throws -> OperationResult<[Todo]> {
+    public func list(_ filter: Filter = .open) throws -> OperationResult<[Ticket]> {
         try list(filter.query)
     }
 
     /// `list` with the raw wire filter string (the CLI boundary). `nil` (argument absent)
     /// means the default `.open`; any unrecognized value is `DomainError.invalidFilter`.
-    public func list(rawFilter raw: String?) throws -> OperationResult<[Todo]> {
+    public func list(rawFilter raw: String?) throws -> OperationResult<[Ticket]> {
         guard let filter = Filter.parse(raw: raw) else {
             throw DomainError.invalidFilter(raw ?? "")
         }
@@ -41,7 +41,7 @@ extension Store {
     // MARK: - lanes (both faces: the app's tree and the CLI's `lane` verbs)
 
     /// The lane names in render order (the default area is implicit and unnamed).
-    /// Includes any name that appears only on a todo (a hand edit), so the GUI can draw it.
+    /// Includes any name that appears only on a ticket (a hand edit), so the GUI can draw it.
     public func lanes() throws -> OperationResult<[String]> {
         let (contents, note) = try readAll()
         return OperationResult(contents.knownLanes, note: note)
@@ -64,7 +64,7 @@ extension Store {
     }
 
     /// `renameLane(from, to)`: rename a lane in place — the lane list and every
-    /// todo that belongs to it, in one write. An unknown `from`, an empty `to`, or a `to`
+    /// ticket that belongs to it, in one write. An unknown `from`, an empty `to`, or a `to`
     /// already in use is rejected. Renaming to the same name is a no-op. Returns the lane
     /// list after the write.
     public func renameLane(_ rawFrom: String, to rawTo: String) throws -> OperationResult<[String]> {
@@ -88,9 +88,9 @@ extension Store {
         return OperationResult(lanes, note: note)
     }
 
-    /// `deleteLane(name)`: remove a lane and move its todos to the default area —
-    /// **a lane is never a way to delete todos**. An unknown name is rejected. Returns
-    /// how many todos moved, plus the lane list after the write.
+    /// `deleteLane(name)`: remove a lane and move its tickets to the default area —
+    /// **a lane is never a way to delete tickets**. An unknown name is rejected. Returns
+    /// how many tickets moved, plus the lane list after the write.
     public func deleteLane(_ rawName: String) throws -> OperationResult<LaneDeletion> {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         let (deletion, note) = try mutate { contents -> (value: LaneDeletion, changed: Bool) in
@@ -111,7 +111,7 @@ extension Store {
     /// `moveLane(name, to:)`: reorder the declared lanes. `index` is 0-based in the
     /// lane list and is clamped (so `Int.max` moves it to the end). An unknown name is
     /// rejected. Only the lane list changes — the groups travel whole, so the order of
-    /// todos *within* every lane is untouched. Returns the new lane order.
+    /// tickets *within* every lane is untouched. Returns the new lane order.
     /// GUI-only.
     public func moveLane(_ rawName: String, to index: Int) throws -> OperationResult<[String]> {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -130,7 +130,7 @@ extension Store {
     // MARK: - add
 
     /// `add(title, lane, status, assignee, origin)`: the title is trimmed; empty/whitespace-only
-    /// is rejected with an actionable error. Duplicate titles are allowed. The new todo
+    /// is rejected with an actionable error. Duplicate titles are allowed. The new ticket
     /// lands on the **top of its lane** (`nil` is the default area); a lane that is not a
     /// known lane is rejected. A title alone stays the default — a ticket is never born
     /// archived, and the assignee rule is the same as `set`'s (see `normalizeAssignee`).
@@ -142,14 +142,14 @@ extension Store {
         status: Status = .backlog,
         assignee: String? = nil,
         origin: String = "human"
-    ) throws -> OperationResult<Todo> {
+    ) throws -> OperationResult<Ticket> {
         let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { throw DomainError.emptyTitle }
         let who = Self.normalizeAssignee(assignee)
         let filer = Self.normalizeOrigin(origin)
-        let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
+        let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
             try contents.validateLane(lane)
-            var todo = Todo(title: title, assignee: who, origin: filer, lane: lane)
+            var todo = Ticket(title: title, assignee: who, origin: filer, lane: lane)
             // Born in a stage: `setStatus` stamps `completedAt` if that stage is done.
             todo.setStatus(status)
             contents.todos.insert(todo, at: contents.blockStart(of: lane))
@@ -160,13 +160,13 @@ extension Store {
 
     // MARK: - move
 
-    /// `move(id, toLane:at:)`: place a todo at a 0-based `index` within `toLane`
+    /// `move(id, toLane:at:)`: place a ticket at a 0-based `index` within `toLane`
     /// (`nil` is the default area), moving it between lanes when needed. `index` is
     /// clamped into range, so `Int.max` appends. Covers both reorder-in-place and
     /// move-between-lanes. An unknown id throws `DomainError.unknownID`; an unknown
     /// `lane` is rejected. The agent's `todo move` and the GUI's drag both land here.
-    public func move(_ id: String, toLane lane: String?, at index: Int) throws -> OperationResult<Todo> {
-        let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
+    public func move(_ id: String, toLane lane: String?, at index: Int) throws -> OperationResult<Ticket> {
+        let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
             guard let uuid = UUID(uuidString: id),
                   let from = contents.todos.firstIndex(where: { $0.id == uuid })
             else {
@@ -198,8 +198,8 @@ extension Store {
         lane: String?,
         status: Status,
         at index: Int = .max
-    ) throws -> OperationResult<Todo> {
-        let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
+    ) throws -> OperationResult<Ticket> {
+        let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
             guard let uuid = UUID(uuidString: id),
                   let from = contents.todos.firstIndex(where: { $0.id == uuid })
             else {
@@ -219,7 +219,7 @@ extension Store {
     /// and clamped into range, so `Int.max` appends. `move` and `place` differ only in what
     /// they set on the ticket before it goes back in.
     private func insert(
-        _ todo: inout Todo,
+        _ todo: inout Ticket,
         into lane: String?,
         of contents: inout StoreContents,
         at index: Int
@@ -232,12 +232,12 @@ extension Store {
 
     // MARK: - complete
 
-    /// `complete(id)`: idempotent — an already-done todo is returned unchanged, no error.
+    /// `complete(id)`: idempotent — an already-done ticket is returned unchanged, no error.
     /// On a transition to done, `completedAt` is set to the current UTC time. An unknown
     /// id throws `DomainError.unknownID` carrying the full current open list. The inverse
     /// is `reopen`. The stored order is never changed.
-    public func complete(_ id: String) throws -> OperationResult<Todo> {
-        let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
+    public func complete(_ id: String) throws -> OperationResult<Ticket> {
+        let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
             guard let uuid = UUID(uuidString: id),
                   let i = contents.todos.firstIndex(where: { $0.id == uuid })
             else {
@@ -274,7 +274,7 @@ extension Store {
         assignee: Edit<String?> = .unchanged,
         description: Edit<String?> = .unchanged,
         archived: Edit<Bool> = .unchanged
-    ) throws -> OperationResult<Todo> {
+    ) throws -> OperationResult<Ticket> {
         // Validated before the write, so a bad value never reaches the store.
         var newTitle: String?
         if let raw = title.newValue {
@@ -285,7 +285,7 @@ extension Store {
         let newAssignee = assignee.isSet ? Self.normalizeAssignee(assignee.newValue ?? nil) : nil
         let newDescription = description.isSet ? Self.normalizeDescription(description.newValue ?? nil) : nil
 
-        let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
+        let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
             guard let uuid = UUID(uuidString: id),
                   let i = contents.todos.firstIndex(where: { $0.id == uuid })
             else {
@@ -319,10 +319,10 @@ extension Store {
         return OperationResult(todo, note: note)
     }
 
-    /// `update(id, title)`: rewrites a todo's title in place — the GUI's inline rename,
+    /// `update(id, title)`: rewrites a ticket's title in place — the GUI's inline rename,
     /// the same instruction as `set(id, title:)`. Kept because renaming is the one field
     /// edit the list does on every double-click.
-    public func update(_ id: String, title rawTitle: String) throws -> OperationResult<Todo> {
+    public func update(_ id: String, title rawTitle: String) throws -> OperationResult<Ticket> {
         try set(id, title: .set(rawTitle))
     }
 
@@ -362,7 +362,7 @@ extension Store {
 
     // MARK: - setLink (GUI-only — no CLI verb)
 
-    /// `setLink(id, to:)`: points a todo at a Bikeshed note (a bikeshed-root-relative path
+    /// `setLink(id, to:)`: points a ticket at a Bikeshed note (a bikeshed-root-relative path
     /// like `projects/App.md`), or clears the link with `nil`. The link is trimmed; an
     /// empty/whitespace-only value unlinks. GUI-only: no CLI verb links notes — the agent
     /// surface stays tickets, and a note is the human's connection (ADR 0010). An
@@ -370,10 +370,10 @@ extension Store {
     /// `title`, `done`, `completedAt` and the lane are untouched, and the stored order
     /// is never changed. An unknown id throws `DomainError.unknownID` carrying the full
     /// current open list.
-    public func setLink(_ id: String, to rawLink: String?) throws -> OperationResult<Todo> {
+    public func setLink(_ id: String, to rawLink: String?) throws -> OperationResult<Ticket> {
         let trimmed = rawLink?.trimmingCharacters(in: .whitespacesAndNewlines)
         let link = (trimmed?.isEmpty ?? true) ? nil : trimmed
-        let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
+        let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
             guard let uuid = UUID(uuidString: id),
                   let i = contents.todos.firstIndex(where: { $0.id == uuid })
             else {
@@ -394,8 +394,8 @@ extension Store {
     /// stage to restore (ADR 0017). A caller that means a particular stage sets it — a
     /// status is just another field. `completedAt` is cleared. An unknown id throws
     /// `DomainError.unknownID` carrying the full current open list.
-    public func reopen(_ id: String) throws -> OperationResult<Todo> {
-        let (todo, note) = try mutate { contents -> (value: Todo, changed: Bool) in
+    public func reopen(_ id: String) throws -> OperationResult<Ticket> {
+        let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
             guard let uuid = UUID(uuidString: id),
                   let i = contents.todos.firstIndex(where: { $0.id == uuid })
             else {
@@ -424,7 +424,7 @@ extension Store {
     /// unknown id throws `DomainError.unknownID` carrying the full current open
     /// list. GUI-only: the agent face has no undo (an agent's completion is
     /// deliberate, and `reopen` is its way back).
-    public func undo(_ offer: CompletionUndo) throws -> OperationResult<Todo> {
+    public func undo(_ offer: CompletionUndo) throws -> OperationResult<Ticket> {
         try reopen(offer.id.uuidString)
     }
 
@@ -450,7 +450,7 @@ extension Store {
 
     // MARK: - delete
 
-    /// `delete(id)`: removes a single todo. GUI-only — the CLI has no delete verb.
+    /// `delete(id)`: removes a single ticket. GUI-only — the CLI has no delete verb.
     /// An unknown id throws `DomainError.unknownID` (with the open list).
     public func delete(_ id: String) throws -> OperationResult<Void> {
         let (_, note) = try mutate { contents -> (value: Void, changed: Bool) in

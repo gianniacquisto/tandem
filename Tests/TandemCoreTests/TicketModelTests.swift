@@ -29,8 +29,8 @@ struct TicketModelTests {
         return object
     }
 
-    /// The first todo object in the store file, as written.
-    private func firstTodoObject(_ store: Store) throws -> [String: Any] {
+    /// The first ticket object in the store file, as written.
+    private func firstTicketObject(_ store: Store) throws -> [String: Any] {
         guard let todos = try fileObject(store)["todos"] as? [[String: Any]],
               let first = todos.first
         else {
@@ -39,7 +39,7 @@ struct TicketModelTests {
         return first
     }
 
-    /// The on-disk object for the todo with this title.
+    /// The on-disk object for the ticket with this title.
     private func todoObject(_ store: Store, titled title: String) throws -> [String: Any]? {
         let todos = try fileObject(store)["todos"] as? [[String: Any]] ?? []
         return todos.first { ($0["title"] as? String) == title }
@@ -131,7 +131,7 @@ struct TicketModelTests {
         #expect((object["version"] as? Int) == 1)
         #expect(object["sections"] is [Any], "the lane list keeps its v1 key")
 
-        let todo = try firstTodoObject(store)
+        let todo = try firstTicketObject(store)
         #expect(todo["done"] == nil, "the legacy mirror retired from the file")
         #expect((todo["status"] as? String) == "backlog")
         #expect((todo["archived"] as? Bool) == false)
@@ -237,7 +237,7 @@ struct TicketModelTests {
 
     @Test("the CLI wire keeps the derived done flag even though the file drops it")
     func wireKeepsDone() throws {
-        let todo = Todo(title: "done", status: .done)
+        let todo = Ticket(title: "done", status: .done)
         let text = try StoreEncoding.todoResult(todo, note: nil)
         let object = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
         #expect(object?["done"] as? Bool == true, "agents read done from the wire")
@@ -322,8 +322,8 @@ struct TicketModelTests {
 
     @Test("the CLI wire carries origin, present and never null")
     func wireCarriesOrigin() throws {
-        let filed = Todo(title: "filed", origin: "blue")
-        let human = Todo(title: "filed by a human")
+        let filed = Ticket(title: "filed", origin: "blue")
+        let human = Ticket(title: "filed by a human")
         for (todo, expected) in [(filed, "blue"), (human, "human")] {
             let text = try StoreEncoding.todoResult(todo, note: nil)
             let object = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
@@ -340,7 +340,7 @@ struct TicketModelTests {
         let added = try store.add("Task").value
         _ = try store.complete(added.id.uuidString)
 
-        let object = try firstTodoObject(store)
+        let object = try firstTicketObject(store)
         #expect(object["done"] == nil)
         #expect((object["status"] as? String) == "done")
         #expect(object["completedAt"] is String)

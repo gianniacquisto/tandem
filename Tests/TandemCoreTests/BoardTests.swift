@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// The board: the core's half of it. Two seams — `TodoBoard.rows` (pure grouping, so the
+/// The board: the core's half of it. Two seams — `TicketBoard.rows` (pure grouping, so the
 /// board and the list cannot disagree about what a lane holds) and `Store.place` (the
 /// drop, one write for lane and Status together, proved against the real store).
 @Suite("Board")
@@ -22,17 +22,17 @@ struct BoardTests {
 
     @Test("every declared lane draws a row, even with no tickets in it")
     func emptyRows() {
-        let rows = TodoBoard.rows(from: [], lanes: ["Board", "Memory"])
+        let rows = TicketBoard.rows(from: [], lanes: ["Board", "Memory"])
         #expect(rows.map(\.key) == [nil, "Board", "Memory"])
         #expect(rows.allSatisfy { $0.count == 0 })
     }
 
     @Test("a row is its lane split by Status, in stored order inside each column")
     func cellsKeepStoredOrder() {
-        let a = Todo(title: "a", status: .backlog, lane: nil)
-        let b = Todo(title: "b", status: .backlog, lane: nil)
-        let c = Todo(title: "c", status: .ready, lane: nil)
-        let rows = TodoBoard.rows(from: [a, b, c], lanes: [])
+        let a = Ticket(title: "a", status: .backlog, lane: nil)
+        let b = Ticket(title: "b", status: .backlog, lane: nil)
+        let c = Ticket(title: "c", status: .ready, lane: nil)
+        let rows = TicketBoard.rows(from: [a, b, c], lanes: [])
         #expect(rows.count == 1)
         #expect(rows[0].tickets(.backlog).map { $0.title } == ["a", "b"])
         #expect(rows[0].tickets(.ready).map { $0.title } == ["c"])
@@ -41,22 +41,22 @@ struct BoardTests {
 
     @Test("the default area is the first row, then declared lanes, then a lane only a ticket names")
     func laneOrder() {
-        let handEdited = Todo(title: "hand edited", lane: "Stray")
-        let filed = Todo(title: "filed", lane: "Board")
-        let loose = Todo(title: "loose")
-        let rows = TodoBoard.rows(from: [loose, filed, handEdited], lanes: ["Board", "Memory"])
+        let handEdited = Ticket(title: "hand edited", lane: "Stray")
+        let filed = Ticket(title: "filed", lane: "Board")
+        let loose = Ticket(title: "loose")
+        let rows = TicketBoard.rows(from: [loose, filed, handEdited], lanes: ["Board", "Memory"])
         #expect(rows.map(\.key) == [nil, "Board", "Memory", "Stray"])
         #expect(rows[3].tickets(.backlog).map { $0.title } == ["hand edited"])
     }
 
     @Test("archived tickets are the caller's decision, not the board's")
     func archivedIsTheCallersDecision() {
-        let open = Todo(title: "open")
-        var archived = Todo(title: "archived", status: .done)
+        let open = Ticket(title: "open")
+        var archived = Ticket(title: "archived", status: .done)
         archived.archived = true
-        let all = TodoBoard.rows(from: [open, archived], lanes: [])
+        let all = TicketBoard.rows(from: [open, archived], lanes: [])
         #expect(all[0].count == 2)
-        let visible = TodoBoard.rows(from: TodoQuery().apply(to: [open, archived]), lanes: [])
+        let visible = TicketBoard.rows(from: TicketQuery().apply(to: [open, archived]), lanes: [])
         #expect(visible[0].tickets(.done).isEmpty)
         #expect(visible[0].count == 1)
     }
@@ -92,7 +92,7 @@ struct BoardTests {
 
         // The file agrees, and the board draws the ticket in the in-review cell.
         let reread = try #require(try Store(directory: dir).list(.all).value.first)
-        let rows = TodoBoard.rows(from: [reread], lanes: [])
+        let rows = TicketBoard.rows(from: [reread], lanes: [])
         #expect(rows[0].tickets(.inReview).map { $0.title } == ["waiting for a reader"])
         #expect(rows[0].tickets(.inProgress).isEmpty)
         #expect(rows[0].tickets(.done).isEmpty)

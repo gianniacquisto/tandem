@@ -121,7 +121,7 @@ struct OrderAndLanesTests {
         }
     }
 
-    @Test("renameLane rewrites the lane list and every todo that belongs to it")
+    @Test("renameLane rewrites the lane list and every ticket that belongs to it")
     func renameLane() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -146,7 +146,7 @@ struct OrderAndLanesTests {
         #expect(throws: DomainError.duplicateLane("Home")) { _ = try store.renameLane("Job", to: "Home") }
     }
 
-    @Test("deleteLane moves its todos to the default area and never deletes them")
+    @Test("deleteLane moves its tickets to the default area and never deletes them")
     func deleteLaneMovesToDefault() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -170,7 +170,7 @@ struct OrderAndLanesTests {
         #expect(throws: DomainError.unknownLane("Work")) { _ = try store.deleteLane("Work") }
     }
 
-    @Test("move places a todo at a 0-based index within another lane")
+    @Test("move places a ticket at a 0-based index within another lane")
     func moveBetweenLanes() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -242,8 +242,8 @@ struct OrderAndLanesTests {
         }
     }
 
-    @Test("moving a lane carries its todos, and the default area stays first")
-    func moveLaneKeepsTodos() throws {
+    @Test("moving a lane carries its tickets, and the default area stays first")
+    func moveLaneKeepsTickets() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
@@ -279,7 +279,7 @@ struct OrderAndLanesTests {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
-        // Hand-written file with the Work todo before the default one.
+        // Hand-written file with the Work ticket before the default one.
         try writeRaw(#"{"version":1,"sections":["Work"],"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"w","done":false,"section":"Work","createdAt":"2026-01-01T00:00:00Z","completedAt":null},{"id":"00000000-0000-0000-0000-000000000002","title":"d","done":false,"section":null,"createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#, to: store)
 
         // Any write re-establishes the invariant: default group first.

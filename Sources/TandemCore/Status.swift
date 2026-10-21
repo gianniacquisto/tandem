@@ -29,7 +29,7 @@ public enum Status: String, Sendable, CaseIterable, Hashable {
 
     /// The domain boundary: the value, or the error that names what was given and lists
     /// the six that would have worked. A *file* is a different edge — it reads an
-    /// unrecognised status as `backlog` instead (see `Todo`'s decoder), because nobody
+    /// unrecognised status as `backlog` instead (see `Ticket`'s decoder), because nobody
     /// can retry a file.
     public static func parse(raw: String) throws -> Status {
         guard let status = Status(rawValue: raw) else {

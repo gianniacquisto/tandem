@@ -13,7 +13,7 @@ import Foundation
 /// 1. **Archived tickets are out.** An archived ticket is set aside (GLOSSARY:
 ///    Archived); the palette reaches live work, not the archive.
 /// 2. **The match is a substring**, case- and diacritic-insensitive — the store's own
-///    comparison (`TextMatch`, the same one `TodoQuery` uses), not a second one. A
+///    comparison (`TextMatch`, the same one `TicketQuery` uses), not a second one. A
 ///    ticket is matched on its title, a note on its path.
 /// 3. **Open before done.** A done ticket sorts below every open ticket and every
 ///    note, but it stays reachable: a finished ticket is still a thing to read.
@@ -25,7 +25,7 @@ import Foundation
 ///    always gives the same list.
 ///
 /// An empty query matches everything, the way an empty filter box is no filter in
-/// `TodoQuery` — the palette then lists everything it can open, ranked by the same
+/// `TicketQuery` — the palette then lists everything it can open, ranked by the same
 /// rules.
 public enum QuickOpen {
 
@@ -39,7 +39,7 @@ public enum QuickOpen {
         case note(path: String)
 
         /// A ticket from the store.
-        case ticket(Todo)
+        case ticket(Ticket)
 
         /// A stable identity for the row: a note is its path, a ticket its id.
         public var id: String {

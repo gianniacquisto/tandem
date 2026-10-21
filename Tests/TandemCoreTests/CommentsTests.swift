@@ -16,7 +16,7 @@ struct CommentsTests {
         return (Store(directory: dir), dir)
     }
 
-    private func makeTicket(_ store: Store, _ title: String = "A ticket") throws -> Todo {
+    private func makeTicket(_ store: Store, _ title: String = "A ticket") throws -> Ticket {
         try store.add(title).value
     }
 
@@ -209,7 +209,7 @@ struct CommentReadPathTests {
         return (Store(directory: dir), dir)
     }
 
-    private func makeTicket(_ store: Store) throws -> Todo {
+    private func makeTicket(_ store: Store) throws -> Ticket {
         try store.add("A ticket").value
     }
 

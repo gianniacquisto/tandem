@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// The drag arithmetic: `TodoOrdering.dropIndex` must produce the index that makes the
+/// The drag arithmetic: `TicketOrdering.dropIndex` must produce the index that makes the
 /// real `Store.move` land the row where the human dropped it. Each test asserts the
 /// *resulting order* after an actual `move`, so the math is pinned to the operation it
 /// feeds rather than to itself.
@@ -25,7 +25,7 @@ struct OrderingTests {
         guard let movingID = all.first(where: { $0.title == moving })?.id,
               let anchorID = all.first(where: { $0.title == anchor })?.id
         else { return false }
-        guard let index = TodoOrdering.dropIndex(in: all, moving: movingID,
+        guard let index = TicketOrdering.dropIndex(in: all, moving: movingID,
                                                 relativeTo: anchorID, after: after) else { return false }
         let lane = all.first { $0.id == anchorID }?.lane
         _ = try store.move(movingID.uuidString, toLane: lane, at: index)
@@ -34,7 +34,7 @@ struct OrderingTests {
 
     // MARK: - within a lane
 
-    @Test("dropping on a row's lower half moves the todo just past it")
+    @Test("dropping on a row's lower half moves the ticket just past it")
     func moveDown() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -46,7 +46,7 @@ struct OrderingTests {
         #expect(try titles(store) == ["b", "c", "a"])
     }
 
-    @Test("dropping on a row's upper half moves the todo just above it")
+    @Test("dropping on a row's upper half moves the ticket just above it")
     func moveUp() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -66,13 +66,13 @@ struct OrderingTests {
 
         let all = try store.list(.all).value
         let id = all[0].id
-        #expect(TodoOrdering.dropIndex(in: all, moving: id, relativeTo: id, after: true) == nil)
+        #expect(TicketOrdering.dropIndex(in: all, moving: id, relativeTo: id, after: true) == nil)
         #expect(try titles(store) == ["a", "b"])
     }
 
     // MARK: - across lanes
 
-    @Test("dropping a default todo onto a lane row files it into that lane")
+    @Test("dropping a default ticket onto a lane row files it into that lane")
     func moveIntoLane() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -89,7 +89,7 @@ struct OrderingTests {
         #expect(all.map(\.lane) == ["Work", "Work", "Work"])
     }
 
-    @Test("dropping a lane todo onto a default row returns it to the default area")
+    @Test("dropping a lane ticket onto a default row returns it to the default area")
     func moveOutOfLane() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -108,7 +108,7 @@ struct OrderingTests {
 
     // MARK: - the hidden-row case
 
-    @Test("a done todo hidden by the Open filter still anchors the drop correctly")
+    @Test("a done ticket hidden by the Open filter still anchors the drop correctly")
     func hiddenRowsDoNotSkewTheDrop() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
