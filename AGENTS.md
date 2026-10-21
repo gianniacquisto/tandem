@@ -30,7 +30,9 @@ Every session records itself as a ticket, so the board shows what is running and
 
 - **Close it at session end**, before your final reply: `tandem-cli todo set --id <ticket-id> --status done --description -`. The ticket id is the `id` `todo add` returned; find it again with `todo list --text "<session-id>"`. A session that resumes reopens it: `tandem-cli todo set --id <ticket-id> --status in-progress`.
 
-- **The description is written once and appended to, never overwritten.** It opens as the brief and gains the outcome at the end, under a heading of its own. Read it, add the outcome below it, write it back — the brief is what a board pass or the next session reads first. Empty stdin clears the description, so never write one with an empty body: when there is no outcome to record, close the ticket with `todo complete --id <ticket-id>`.
+- **The description is written once and appended to, never overwritten.** It opens as the brief and gains the outcome at the end, under a heading of its own. Read it, add the outcome below it, write it back — the brief is what a board pass or the next session reads first.
+
+- **Empty stdin clears the description.** `--description -` takes the body on stdin, and an empty pipe writes an empty body, which the store normalises to nothing — the description is gone, exit 0, no warning. So a command that pipes nothing is a command that erases the brief. Never run `--description -` without a body, and check what you are piping. When there is no outcome to record, close the ticket with `tandem-cli todo complete --id <ticket-id>`, which leaves the description alone.
 
 - **Children file their own.** A sub-agent session is a session; it closes its ticket when it finishes.
 
