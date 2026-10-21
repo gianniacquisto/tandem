@@ -61,7 +61,7 @@ Scripts/install-agent-host.sh
 
 It symlinks `skills/*` into `~/.config/opencode/skills/`, `agents/*.md` into `~/.config/opencode/agents/`, and `AGENTS.md` into `~/.config/opencode/AGENTS.md`, all pointing back at this checkout. It is idempotent, never overwrites a real file, and prints what it did.
 
-For another host, the same three links are the whole contract — Claude Code takes the skills in `~/.claude/skills/`, for instance:
+For another host, the same idea: link the skills into that host's skills directory — Claude Code takes them in `~/.claude/skills/`, for instance:
 
 ```sh
 ln -s "$PWD/skills/tandem" ~/.claude/skills/tandem
