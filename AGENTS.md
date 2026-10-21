@@ -34,6 +34,6 @@ Every session records itself as a ticket, so the board shows what is running and
 
 - **Children file their own.** A sub-agent session is a session; it closes its ticket when it finishes.
 
-- **A board pass moves a session ticket like any other.** It refines the brief, and it dispatches or completes it. Two rules distinguish a live session from a dead one, and the session id in the title is what settles both: `opencode api session.list` shows each session's `outcome` and `time.updated` — a session is live when its `outcome` is `null` and it was updated seconds ago. A ticket whose session is live belongs to that session — leave it alone. A ticket whose session has ended is stale work: refine it and move it, so a dead session's work does not die with it. The board skill has the full rule.
+- **A board pass moves a session ticket like any other.** It refines the brief, and it dispatches or completes it. Two rules distinguish a live session from a dead one, and the session id in the title is what settles both: `opencode api session.list` shows each session's `outcome` and `time.updated`. A session is live when it was updated seconds ago; a finished one carries an `outcome` of `succeeded` or `failed`. A ticket whose session is live belongs to that session — leave it alone. A ticket whose session has ended is stale work: refine it and move it, so a dead session's work does not die with it. The board skill has the full rule.
 
 Session tickets live in the default area, so they never depend on a lane that may not exist.

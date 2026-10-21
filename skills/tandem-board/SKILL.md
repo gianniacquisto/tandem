@@ -58,10 +58,14 @@ A ticket that needs a decision from the human is `refined` with `assignee human`
 
 A session ticket is work, not a log entry. Every session files one for itself (the convention is in `AGENTS.md`), and the board moves it like any other ticket — so a session that died mid-flight leaves behind a brief someone can build from, not a row nobody can pick up.
 
-The session id in the title — `Session — <project> · <session-id>` — is the handle that settles which case this is. `opencode api session.list` lists the sessions on this machine. A session is **live** when its `outcome` is `null` **and** its `time.updated` is seconds old; a finished session carries an `outcome` of `succeeded` or `failed`, and a session that died without recording one still shows a stale `time.updated`.
+The session id in the title — `Session — <project> · <session-id>` — is the handle that settles which case this is. `opencode api session.list` lists the sessions on this machine, each with an `outcome` and a `time.updated`:
 
 - **The session is live** — the ticket belongs to that session. Leave it alone: it is claimed, and the claim is not a stall (see the dispatch section). Do not refine it, do not re-dispatch it.
 - **The session has ended** — the ticket is stale work. Refine it and move it: grill the brief against what the session actually did (its captures, its PR, its branch, the repo and the bikeshed), then set the status the gates call for. If the outcome already exists, complete it. If work remains, `refined` → `ready` and dispatch it to a successor.
+
+Two signals, and both are needed. A finished session carries an `outcome` of `succeeded` or `failed`. A session that died without recording one still shows `outcome: null`, so `null` alone proves nothing — a live session also shows `null`. What separates them is `time.updated`: a live session was updated seconds ago, a dead one long ago.
+
+Apply the **claim is not a stall** rule before treating a ticket as stale: a quiet session is not a dead one. Look for the running child, the branch and the PR, and only call a session ended when there is no sign of life. When in doubt, leave the ticket alone — a ticket nobody picked up is still on the board, and a ticket stolen from a live session is work done twice.
 
 Read the brief before the transcript: it is what the session set out to do, and the transcript shows what it did. A brief that never got written (a session that died before writing one) is raw material — reconstruct it from the transcript, the captures and the board, and say in the description that you reconstructed it.
 
