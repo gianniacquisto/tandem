@@ -191,6 +191,44 @@ struct RecoveryTests {
         #expect(result.value.first?.title == "hello")
     }
 
+    @Test("the store's own corrupt path says what it says today")
+    func storeCorruptPathUnchanged() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        try writeRaw("this is not json", to: store)
+
+        // The note: the store's own words, naming the backup it kept.
+        let result = try store.list(.all)
+        let note = try #require(result.note)
+        let backups = corruptBackups(in: dir)
+        #expect(backups.count == 1)
+        let kept = dir.appendingPathComponent(backups[0]).path
+        #expect(note == "Previous store was corrupt and backed up to \(kept); the store restarted empty.")
+    }
+
+    @Test("a store file that cannot be backed up still fails as a store error")
+    func storeBackupFailureStillAStoreError() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path) }
+        let store = Store(directory: dir)
+        // The lockfile first: it must exist before the directory is closed to
+        // writes, or the lock itself would be what fails.
+        _ = try store.add("a ticket")
+        try writeRaw("this is not json", to: store)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+
+        do {
+            _ = try store.list(.all)
+            Issue.record("expected the store's own error")
+        } catch {
+            let text = tandemErrorText(error)
+            #expect(text.contains("Tandem store error"))
+            #expect(text.contains("could not back up corrupt store"))
+        }
+    }
+
     @Test("lenient read preserves all known fields alongside unknown ones")
     func lenientReadPreservesKnownFields() throws {
         let dir = tempDir()

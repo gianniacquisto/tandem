@@ -454,4 +454,96 @@ struct SessionsTests {
         #expect(note.contains(kept[0]))
         #expect(!FileManager.default.fileExists(atPath: file(dir).path))
     }
+
+    // MARK: - The file's own errors
+
+    @Test("a corrupt sessions file that cannot be moved aside fails in the sessions file's own words")
+    func corruptFileThatCannotBeMovedAsideFails() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path) }
+        // The lockfile first: it must exist before the directory is closed to
+        // writes, or the lock itself would be what fails.
+        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
+        try Data("{not a sessions file\n".utf8).write(to: file(dir))
+        // Read-only directory: the corrupt file cannot be renamed aside, so the
+        // recovery fails and the file stays where it is.
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+
+        do {
+            _ = try sessions.list()
+            Issue.record("expected corruptSessionsFile")
+        } catch let DomainError.corruptSessionsFile(path, detail) {
+            #expect(path == file(dir).path)
+            #expect(!detail.isEmpty)
+        }
+
+        // The failure the human sees names the sessions file, and never calls
+        // it a store error: the store is `todos.json`, and it is fine.
+        let text = tandemErrorText(DomainError.corruptSessionsFile(
+            path: file(dir).path, detail: "Permission denied"))
+        #expect(text.contains("sessions.json"))
+        #expect(text.contains(file(dir).path))
+        #expect(!text.contains("Tandem store error"))
+    }
+
+    @Test("the sessions file's decode failures are its own signal, not the store's")
+    func decodeFailuresAreTheSessionsFileOwnSignal() throws {
+        let decoder = JSONDecoder()
+
+        // A status this build does not know: the file is invalid, and the
+        // signal says so in the sessions file's own nouns.
+        let unknownStatus = """
+        {"id":"ses_1","project":"tandem","agent":null,"brief":"b","summary":null,
+         "status":"halfway","outcome":null,"tickets":[],
+         "startedAt":"2026-10-03T10:00:00Z","endedAt":null}
+        """
+        do {
+            _ = try decoder.decode(Session.self, from: Data(unknownStatus.utf8))
+            Issue.record("expected the sessions file's own decode signal")
+        } catch let error as CorruptSessions {
+            guard case .unknownStatus(let status) = error else {
+                Issue.record("expected unknownStatus, got \(error)")
+                return
+            }
+            #expect(status == "halfway")
+        } catch {
+            Issue.record("expected CorruptSessions, got \(error)")
+        }
+
+        // An unreadable timestamp: the same signal, a different case.
+        let badTimestamp = """
+        {"id":"ses_1","project":"tandem","agent":null,"brief":"b","summary":null,
+         "status":"running","outcome":null,"tickets":[],
+         "startedAt":"not-a-date","endedAt":null}
+        """
+        do {
+            _ = try decoder.decode(Session.self, from: Data(badTimestamp.utf8))
+            Issue.record("expected the sessions file's own decode signal")
+        } catch let error as CorruptSessions {
+            guard case .invalidTimestamp(let field, let value) = error else {
+                Issue.record("expected invalidTimestamp, got \(error)")
+                return
+            }
+            #expect(field == "startedAt")
+            #expect(value == "not-a-date")
+        } catch {
+            Issue.record("expected CorruptSessions, got \(error)")
+        }
+    }
+
+    @Test("a version this build does not read invalidates the file")
+    func unknownVersionInvalidatesTheFile() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data(#"{"version":2,"sessions":[]}"#.utf8).write(to: file(dir))
+
+        let listed = try sessions.list()
+        #expect(listed.value.isEmpty)
+        #expect(listed.note != nil)
+        let kept = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("sessions.json.corrupt-") }
+        #expect(kept.count == 1)
+    }
 }
