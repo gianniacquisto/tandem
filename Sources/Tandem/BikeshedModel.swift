@@ -209,10 +209,26 @@ final class BikeshedModel {
         // A note that vanished from disk (agent delete/rename) is closed —
         // unless the buffer still holds unsaved edits, which are kept (the
         // next autosave re-creates the path; a disk hiccup never loses words).
-        if let open = openPath, pathIndex[open.lowercased()] == nil {
+        //
+        // The question is asked of the **disk**, not of the tree: a note in the
+        // hidden layer — a capture in the saddlebag — is on disk but never in
+        // the tree's index unless the human revealed the hidden layer, and the
+        // Sessions face opens exactly those notes.
+        if let open = openPath, pathIndex[open.lowercased()] == nil, !noteExists(open) {
             if !isDirty { closeNote(silent: true) }
         }
         refreshHealth()
+    }
+
+    /// Whether the note is still on disk. The tree's index answers this for a
+    /// visible note; a note in the hidden layer is never in the index, so the
+    /// disk is what decides.
+    private func noteExists(_ path: String) -> Bool {
+        guard let url = fileURL(for: path) else { return false }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
+        else { return false }
+        return !isDir.boolValue
     }
 
     private static func indexPaths(_ nodes: [BikeshedNode], into index: inout [String: String]) {
