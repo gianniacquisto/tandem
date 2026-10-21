@@ -8,6 +8,10 @@ import Foundation
 /// This is **sugar over `TodoQuery`** (ADR 0017), not a second filter: the three shipped
 /// cases are spelled once, here, in terms of the query's axes, so the segmented control
 /// and a query an agent writes cannot drift apart.
+///
+/// One axis parts between the faces: the archive. `all` here is everything, the archive
+/// included — the app's `All`. The CLI's `all` is the same set with the archive out, and
+/// its `--archived` puts the archive in view (ADR 0017, 2026-10-21).
 public enum Filter: String, Sendable, CaseIterable {
     case open
     case done
@@ -21,8 +25,9 @@ public enum Filter: String, Sendable, CaseIterable {
     }
 
     /// The query this filter stands for: `open` is every Status but done, `done` is done,
-    /// and `all` is everything — archived tickets included, which is how the archive is
-    /// reached with the shipped flag.
+    /// and `all` is everything — archived tickets included. That is the app's `All`; the
+    /// CLI's `all` is the same set with the archive out, and `--archived` is how an agent
+    /// asks for the archive (ADR 0017, 2026-10-21).
     public var query: TodoQuery {
         switch self {
         case .open:

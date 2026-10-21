@@ -41,15 +41,16 @@ Seven commands under `todo` — `list`, `add`, `set`, `move`, `complete`, `archi
 
 `done` is derived and no longer stored, but it stays on the wire for older readers; `status` is the truth. A status change is free-form — any status to any other, backwards included — because the board records what is true, not a process.
 
-### `tandem-cli todo list [--filter open|done|all] [--status <value[,value]>] [--assignee <name|self>] [--lane <name>] [--text <string>]`
+### `tandem-cli todo list [--filter open|done|all] [--status <value[,value]>] [--assignee <name|self>] [--lane <name>] [--text <string>] [--archived]`
 
 List the tickets in view, in the list's stored order (the order the human arranged; new tickets land on top). Every filter is optional, and they combine:
 
-- `--filter` — `open` (default: not done, not archived), `done`, or `all` (everything, the archive included).
+- `--filter` — `open` (default: not done, not archived), `done`, or `all` (every ticket, the archive excluded). The CLI's filters never carry the archive; the app's `All` still does.
 - `--status` — one or more comma-separated values, e.g. `--status ready,in-progress`. A repeated flag keeps only its last value, which is why the axis is comma-separated.
 - `--assignee` — an exact name, `self` for your own (`$TANDEM_AGENT`), or `""` for the unowned tickets.
 - `--lane` — a cycle lane name, or `""` for the default area.
 - `--text` — a case- and accent-insensitive substring of the title **or the description**.
+- `--archived` — put the archive in view. It takes no value. On its own it is the archive: the archived tickets, statuses ignored, exactly the app's Archived segment. Named with a filter, the archive joins that filter — `--filter all --archived` is every ticket, the archived ones included.
 
 An empty result is a success: `{"todos":[]}`.
 
@@ -94,7 +95,7 @@ $ tandem-cli todo complete --id 550e8400-e29b-41d4-a716-446655440000
 
 ### `tandem-cli todo archive`
 
-Archive every done ticket in one call: nothing is deleted, the tickets leave the default views (and `--filter all` still shows them). Returns how many it archived; a second call returns 0.
+Archive every done ticket in one call: nothing is deleted, the tickets leave the default views (and `--archived` still shows them). Returns how many it archived; a second call returns 0.
 
 ```
 $ tandem-cli todo archive
@@ -138,7 +139,7 @@ $ tandem-cli lane delete --name Tandem
 {"lanes":[],"moved":2}
 ```
 
-A lane must exist before `todo add --lane` / `todo move --lane` will accept it, which is what these verbs are for. `lane list` does not exist: `todo list --filter all` shows every lane that has a ticket in its `section`; a lane with no tickets is visible only in the app.
+A lane must exist before `todo add --lane` / `todo move --lane` will accept it, which is what these verbs are for. `lane list` does not exist: `todo list --filter all --archived` shows every lane that has a ticket in its `section`; a lane with no tickets is visible only in the app.
 
 ## Session tickets
 

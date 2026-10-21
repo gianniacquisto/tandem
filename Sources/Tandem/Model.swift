@@ -49,7 +49,8 @@ final class TandemModel {
     private(set) var undoOffer: CompletionUndo?
 
     // The shipped filters, defined once in the core (`Filter.query`): the app's counts
-    // and the CLI's `--filter` are views over the same predicate, not two definitions.
+    // and the CLI's `--filter` are views over the same predicate, not two definitions —
+    // the archive excepted, where the CLI asks for it by name (ADR 0017, 2026-10-21).
     var openTodos: [Todo] { Filter.open.apply(to: todos) }
     var doneTodos: [Todo] { Filter.done.apply(to: todos) }
     /// The archive: out of every default view, still in the store. The list's fourth state.

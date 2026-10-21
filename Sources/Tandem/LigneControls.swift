@@ -11,11 +11,13 @@ import TandemCore
 /// What the list face is showing.
 ///
 /// The first three are the shipped `Filter` values — `open`, `done`, `all` — and are spelled
-/// as the core spells them, so the segmented control and `todo list --filter` cannot drift
-/// (`all` includes archived tickets, exactly as the flag does). `archived` is the fourth
-/// state only the app can ask for: the archive as its own view, which is how an archived
-/// ticket is found again and brought back. There is no fourth `--filter` value by decision
-/// (ADR 0017): an agent reaches the archive through a query, the human through a click.
+/// as the core spells them, so the segmented control and `todo list --filter` name the same
+/// three. They part on the archive alone: this `All` includes archived tickets, the CLI's
+/// `all` does not, and the CLI asks for the archive by name (ADR 0017, 2026-10-21).
+/// `archived` is the fourth state only the app can ask for: the archive as its own view,
+/// which is how an archived ticket is found again and brought back. There is no fourth
+/// `--filter` value by decision (ADR 0017): an agent reaches the archive through a query,
+/// the human through a click.
 enum ListScope: String, CaseIterable, Identifiable {
     case open
     case done

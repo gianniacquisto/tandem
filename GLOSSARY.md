@@ -65,7 +65,7 @@ Who filed a ticket: `human`, or the name of the agent that filed it. Written onc
 _Avoid_: author, filer, creator
 
 **Filter**:
-Which todos are in view: `open` (the default), `done`, or `all` (archived tickets included). One term for two surfaces: the main window's segmented control and the CLI's `list --filter` argument. The app adds a fourth state only it needs — the archive itself, so an archived ticket can be found and brought back; the CLI has no fourth flag by decision, and reaches the archive with a query.
+Which todos are in view: `open` (the default), `done`, or `all`. One term for two surfaces: the main window's segmented control and the CLI's `list --filter` argument — and they part on the archive: the app's `All` shows it, the CLI's `all` does not. The app adds a fourth state only it needs — the archive itself, so an archived ticket can be found and brought back; the CLI has no fourth filter value, and reaches the archive with `--archived`: on its own that is the archive, and named with a filter it joins it.
 _Avoid_: view, tab, scope, state
 
 **Store**:

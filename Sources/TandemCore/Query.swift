@@ -128,23 +128,42 @@ extension TodoQuery {
     ///
     /// `filter` is the shipped `open|done|all` contract kept as sugar over the axes; an
     /// explicitly named axis overrides the part of the sugar it names.
+    ///
+    /// **The CLI's filters never carry the archive.** `all` is every ticket *not*
+    /// archived — the app's `All` still shows the archive, because `Filter` is one enum
+    /// under two faces and the app has an Archived segment of its own. The archive is
+    /// reached by asking for it: `archived` puts it in view. Named with a filter, the
+    /// archive joins that filter — `all` plus the archive is every ticket. Named alone,
+    /// the archive is the view: the archived tickets, statuses ignored, the app's
+    /// Archived segment.
     public static func parse(
         filter rawFilter: String? = nil,
         text: String? = nil,
         status rawStatus: String? = nil,
         assignee rawAssignee: String? = nil,
         lane rawLane: String? = nil,
-        archived rawArchived: String? = nil
+        archived includeArchived: Bool = false
     ) throws -> TodoQuery {
         guard let filter = Filter.parse(raw: rawFilter) else {
             throw DomainError.invalidFilter(rawFilter ?? "")
         }
         var query = filter.query
+        // The CLI's filters never carry the archive; `Filter.all` still does, for the app.
+        query.archived = .excluded
+        if includeArchived {
+            if rawFilter == nil {
+                // The archive alone — the app's Archived segment: statuses ignored.
+                query.statuses = []
+                query.archived = .only
+            } else {
+                // Named with a filter, the archive joins that filter.
+                query.archived = .included
+            }
+        }
         if let text { query.text = text }
         if let rawStatus { query.statuses = try parseStatuses(rawStatus) }
         if let rawAssignee { query.assignee = parseAssignee(rawAssignee) }
         if let rawLane { query.lane = parseLane(rawLane) }
-        if let rawArchived { query.archived = try parseArchived(rawArchived) }
         return query
     }
 
@@ -173,12 +192,5 @@ extension TodoQuery {
     static func parseLane(_ raw: String) -> Lane {
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? .unnamed : .named(name)
-    }
-
-    static func parseArchived(_ raw: String) throws -> Archived {
-        guard let value = Archived(rawValue: raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            throw DomainError.invalidArchived(raw)
-        }
-        return value
     }
 }

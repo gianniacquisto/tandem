@@ -28,8 +28,6 @@ public enum DomainError: Error, Sendable, Equatable {
     case invalidFilter(String)
     /// A Status value that is not one of the five (ADR 0017).
     case invalidStatus(String)
-    /// An archive value that is not `excluded`, `included`, or `only`.
-    case invalidArchived(String)
     /// `move` was given an index that is not a whole number.
     case invalidIndex(String)
     /// `--assignee self` or `--origin self` was used but the environment names no agent.
@@ -62,8 +60,6 @@ public enum DomainError: Error, Sendable, Equatable {
             return "filter must be one of open, done, all (got \"\(bad)\")."
         case .invalidStatus(let bad):
             return "status must be one of \(Status.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
-        case .invalidArchived(let bad):
-            return "archived must be one of excluded, included, only (got \"\(bad)\")."
         case .invalidIndex(let bad):
             return "index must be a whole number (got \"\(bad)\")."
         case .agentNameUnset:

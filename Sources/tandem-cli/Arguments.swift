@@ -4,14 +4,21 @@ import Foundation
 /// Long flags only, and the flags mirror the core argument names exactly
 /// (`--filter`, `--text`, `--status`, `--assignee`, `--lane`, `--title`, `--id`,
 /// `--description`, `--index`, `--from`, `--to`, `--name`, `--author`, `--body`,
-/// `--kind`, `--project`, `--session`)
+/// `--kind`, `--project`, `--session`, `--archived`)
 /// — the CLI renames nothing and parses nothing: raw values travel to the core,
 /// which validates them and owns the error text. `doctor` is a setup/diagnostic verb
 /// outside the `todo`/`note` domains (ADR 0014) and takes no flags.
 enum Command {
     case help
     case doctor
-    case todoList(filter: String?, text: String?, status: String?, assignee: String?, lane: String?)
+    case todoList(
+        filter: String?,
+        text: String?,
+        status: String?,
+        assignee: String?,
+        lane: String?,
+        archived: Bool
+    )
     case todoAdd(title: String, status: String?, assignee: String?, lane: String?, origin: String?)
     case todoSet(
         id: String,
@@ -81,13 +88,16 @@ private func parseTodo(_ args: [String]) throws -> Command {
     let flags = try parseFlags(Array(args.dropFirst()))
     switch verb {
     case "list":
-        try accept(flags, ["--filter", "--text", "--status", "--assignee", "--lane"])
+        try accept(flags, ["--filter", "--text", "--status", "--assignee", "--lane", "--archived"])
+        // `--archived` is a switch: the archive axis of the query, the one flag that
+        // takes no value.
         return .todoList(
             filter: flags["--filter"],
             text: flags["--text"],
             status: flags["--status"],
             assignee: flags["--assignee"],
-            lane: flags["--lane"])
+            lane: flags["--lane"],
+            archived: flags["--archived"] != nil)
     case "add":
         try accept(flags, ["--title", "--status", "--assignee", "--lane", "--origin"])
         // A missing `--title` is not a usage error: it is the empty title the
@@ -217,18 +227,27 @@ private func parseNote(_ args: [String]) throws -> Command {
 
 // MARK: - Flags
 
+/// The flags that take no value: a switch, there or not there. `--archived` is the
+/// only one — the archive axis of `todo list`. Every other flag takes a value, so
+/// `--archived` never swallows the token after it.
+private let switchFlags: Set<String> = ["--archived"]
+
 /// Parse `tokens` as `--flag value` pairs. A flag's value is the next token
 /// when one exists and `""` when the flag is last: a missing value is the
 /// domain's to reject, not a usage error — the retired MCP server read an absent
-/// argument the same way. An unknown flag or a bare token where a flag is
-/// expected is a usage error; a repeated flag keeps its last value.
+/// argument the same way. A switch takes no value at all. An unknown flag or a bare
+/// token where a flag is expected is a usage error; a repeated flag keeps its last
+/// value.
 private func parseFlags(_ tokens: [String]) throws -> [String: String] {
     var values: [String: String] = [:]
     var i = 0
     while i < tokens.count {
         let flag = tokens[i]
         guard flag.hasPrefix("--") else { throw UsageError() }
-        if i + 1 < tokens.count {
+        if switchFlags.contains(flag) {
+            values[flag] = ""
+            i += 1
+        } else if i + 1 < tokens.count {
             values[flag] = tokens[i + 1]
             i += 2
         } else {
