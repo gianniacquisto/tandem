@@ -1,14 +1,24 @@
 name: Release
 
-# The repo's first CI (spec "Release pipeline", ADR 0003). A tag v* push (or a
-# manual dispatch) on a GitHub-hosted macOS 27 runner (`xcode-27`) runs the
-# build-and-verify stages and then publishes the GitHub release; pull-request
-# runs run the same build-and-verify stages and upload the artifact, never
-# publishing. The stages are the test seam (spec "Testing Decisions"): the run
-# fails if the test suite fails, the build fails, the signature does not
-# verify, the Info.plist version does not match the tag, the in-bundle CLI
-# fails its --help / no-argument exit-code assertions, or the zip does not
-# contain an intact app.
+# The repo's first CI. A tag v* push (or a manual dispatch) on a GitHub-hosted
+# macOS 27 runner (`xcode-27`) builds and verifies the artifact and then
+# publishes the GitHub release; pull-request runs do the same build-and-verify
+# work and upload the artifact, never publishing. The contract is this file
+# and `docs/releasing.md`; ADR 0003 owns the distribution model it serves (one
+# prebuilt cask, its artifact built by CI on each tag).
+#
+# The stages are the test seam: the run fails if the test suite fails, the
+# build fails, the signature does not verify, the Info.plist version does not
+# match the tag, the in-bundle CLI fails its --help / no-argument exit-code
+# assertions, or the zip does not contain an intact app.
+#
+# The work is split in three: `test` (the gates) and `build` (the artifact) run
+# in parallel, each on its own runner, and `release` aggregates them. The
+# aggregator keeps the name `release` for one reason: `dev` and `main` require
+# a status check by that name, and a required check that never reports blocks
+# every merge — so the split renames nothing, the branch protection is
+# untouched, and the merge still waits for both halves, because the aggregator
+# publishes only when both are green.
 
 on:
   push:
@@ -16,12 +26,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Least privilege by default: the two heavy jobs only read the repo. The
+# publish step needs `contents: write`, and only the `release` job gets it.
 permissions:
-  contents: write # needed by the publish step (gh release); PR runs never reach it
+  contents: read
 
 jobs:
-  release:
-    # The floor is macOS 27 (Apple silicon); the build needs SDK 27.
+  test:
+    # The gates. The floor is macOS 27 (Apple silicon); the build needs SDK 27.
     # `xcode-27` is the GitHub-hosted public-preview image: macOS 27.0.1 /
     # Xcode 27 / macosx27.0 SDK / Node 24 — the target toolchain, no self-hosted
     # runner to keep online. `macos-27` is NOT a hosted label (Homebrew's
@@ -29,20 +41,12 @@ jobs:
     # images ship Xcode 26 / SDK 26, so they cannot build a `.macOS(.v27)`
     # package. The few-core preview runner needs the serialized test gate below.
     runs-on: xcode-27
-    timeout-minutes: 60
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - name: Check out the source
         uses: actions/checkout@v4
-
-      - name: Resolve the version
-        run: |
-          # Tag runs: the version is the tag with the leading v stripped.
-          # PR / dispatch runs: a fixed dev version (never published).
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-          else
-            echo "version=0.0.0" >> "$GITHUB_ENV"
-          fi
 
       - name: "Gate: run the package test suite"
         run: |
@@ -58,10 +62,11 @@ jobs:
 
       - name: "Gate: editor bundle tests + reproducible build"
         run: |
-          # The editor bundle is committed prebuilt (spec: Editor — Packaging):
-          # its tests run on the pinned deps, and the committed bytes must be
-          # exactly what the pinned inputs regenerate — a non-empty diff after
-          # the rebuild is a manual edit or a source/lockfile drift.
+          # The editor bundle is committed prebuilt (`Editor/build.mjs` states
+          # the rule: the pinned inputs must regenerate the committed bytes
+          # exactly): its tests run on the pinned deps, and the committed bytes
+          # must be exactly what the pinned inputs regenerate — a non-empty diff
+          # after the rebuild is a manual edit or a source/lockfile drift.
           cd Editor
           npm ci
           # `node --test` with no path (auto-discovery): the hosted image's Node
@@ -72,6 +77,29 @@ jobs:
           npm run build
           cd ..
           git diff --exit-code -- Sources/Tandem/Resources/Editor
+
+  build:
+    # The artifact. The same runner and the same floor as the gates, and the
+    # same build as before the split: both products in release configuration,
+    # the bundle assembled and verified, the zip uploaded. The aggregator
+    # rebuilds nothing, so the published bytes are the bytes this job verified.
+    runs-on: xcode-27
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Resolve the version
+        run: |
+          # Tag runs: the version is the tag with the leading v stripped.
+          # PR / dispatch runs: a fixed dev version (never published).
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "version=0.0.0" >> "$GITHUB_ENV"
+          fi
 
       - name: Build both products (release configuration)
         run: |
@@ -165,6 +193,62 @@ jobs:
           path: |
             dist/Tandem-${{ env.version }}.zip
             dist/SHA256SUMS
+
+  release:
+    # The aggregator, and the name the branch protection requires. It runs
+    # after both halves, so the merge still waits for the gates and for the
+    # build: a release is still published only from a run whose tests passed.
+    #
+    # `!cancelled()` (GitHub's own pattern for "run me whatever the
+    # dependencies did") rather than the default `success()`: a job skipped
+    # because a dependency failed reports "Success" to the branch protection
+    # (skipped is a passing status), so the required check would read as green
+    # on a red test run. This job runs instead, and the step below turns a red
+    # half into a red `release` — the check the protection watches fails, as
+    # it did before the split.
+    needs: [test, build]
+    if: ${{ !cancelled() }}
+    runs-on: xcode-27
+    timeout-minutes: 15
+    permissions:
+      contents: write # needed by the publish step (gh release); no other job has it
+    steps:
+      - name: "Verify: both halves are green"
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          if [[ "$TEST_RESULT" != "success" || "$BUILD_RESULT" != "success" ]]; then
+            echo "::error::the release aggregator needs both halves green (test: $TEST_RESULT, build: $BUILD_RESULT)"
+            exit 1
+          fi
+
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Resolve the version
+        run: |
+          # The same rule as the build job: the artifact is named after the
+          # version, and the two jobs must agree on which artifact to hand over.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "version=0.0.0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Download the artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Tandem-${{ env.version }}
+          path: dist
+
+      - name: "Verify: the downloaded zip matches SHA256SUMS"
+        run: |
+          # The handoff between the two jobs is the only new thing in the
+          # pipeline, so it is checked: the checksum the build job wrote must be
+          # the checksum of the bytes the aggregator is about to publish.
+          cd dist
+          shasum -a 256 -c SHA256SUMS
 
       - name: Publish the GitHub release (tag runs only)
         if: startsWith(github.ref, 'refs/tags/v')
