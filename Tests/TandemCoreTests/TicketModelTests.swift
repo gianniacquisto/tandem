@@ -260,12 +260,12 @@ struct TicketModelTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
 
-        let added = try store.add("Filed by an agent", origin: "blue").value
-        #expect(added.origin == "blue")
+        let added = try store.add("Filed by an agent", origin: "builder").value
+        #expect(added.origin == "builder")
 
         // A fresh Store over the same directory reads the same filer.
         let read = try #require(try Store(directory: dir).list(.all).value.first)
-        #expect(read.origin == "blue")
+        #expect(read.origin == "builder")
     }
 
     @Test("an absent origin reads as human, and the next write stamps it")
@@ -308,7 +308,7 @@ struct TicketModelTests {
         let store = Store(directory: dir)
 
         _ = try store.addLane("Core")
-        let added = try store.add("Task", assignee: "core", origin: "blue").value
+        let added = try store.add("Task", assignee: "core", origin: "builder").value
 
         var after = try store.set(
             added.id.uuidString,
@@ -317,22 +317,22 @@ struct TicketModelTests {
             assignee: .set("human"),
             description: .set("Body"),
             archived: .set(true)).value
-        #expect(after.origin == "blue", "set has no origin to change")
+        #expect(after.origin == "builder", "set has no origin to change")
 
         after = try store.move(added.id.uuidString, toLane: "Core", at: 0).value
-        #expect(after.origin == "blue")
+        #expect(after.origin == "builder")
 
         after = try store.place(added.id.uuidString, lane: "Core", status: .done).value
-        #expect(after.origin == "blue")
+        #expect(after.origin == "builder")
 
-        #expect(try store.reopen(added.id.uuidString).value.origin == "blue")
+        #expect(try store.reopen(added.id.uuidString).value.origin == "builder")
     }
 
     @Test("the CLI wire carries origin, present and never null")
     func wireCarriesOrigin() throws {
-        let filed = Ticket(title: "filed", origin: "blue")
+        let filed = Ticket(title: "filed", origin: "builder")
         let human = Ticket(title: "filed by a human")
-        for (todo, expected) in [(filed, "blue"), (human, "human")] {
+        for (todo, expected) in [(filed, "builder"), (human, "human")] {
             let text = try StoreEncoding.ticketResult(todo, note: nil)
             let object = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
             #expect(object?["origin"] as? String == expected)

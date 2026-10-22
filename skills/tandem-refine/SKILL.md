@@ -1,0 +1,14 @@
+---
+name: tandem-refine
+description: "Dispatch the refiner to shape a backlog ticket into a buildable brief — the front door for a refine session, where the human wants to spend time refining rather than building. Reach for it when the user says to refine, spec, or shape a ticket, or asks what needs refining."
+---
+
+# Tandem refine
+
+A refine session shapes tickets and builds nothing. This door dispatches the `refiner` subagent (`agents/refiner.md`) — so the human can pick a different model for the slow interview than for the build.
+
+1. Show the candidates — `tandem-cli ticket list --filter open --status backlog`, plus `refined` tickets with open questions or `--assignee human` — with your pick.
+2. Dispatch `refiner` with the ticket id. One ticket per dispatch.
+3. Relay the refiner's one-line report; hand any open human decision straight to the human.
+
+Done when: every refined ticket's description carries the brief shape, and no open question the human has not answered remains.

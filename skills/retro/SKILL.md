@@ -1,46 +1,46 @@
 ---
 name: retro
-description: "Conduct a retrospective on a coding session."
-disable-model-invocation: true
+description: "Run a retrospective on a coding session and file what it finds as backlog tickets in the Retro lane. Human-invoked: reach for it when the user asks for a retro or a retrospective, or asks what a session should have done differently."
 ---
 
-> Vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (`skills/engineering/retro`, MIT, © 2026 Matt Pocock) so a clone of this repo is the whole workflow. It is ours to adapt from here.
+Derived from the `retro` skill in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `NOTICE.txt`), adapted: the output is tickets on the board, not a report to the user.
 
-The user has asked for a **retrospective**. You are suggesting improvements to the coding agent's **environment** to improve future runs.
+You suggest improvements to the coding agent's **environment** — the files, skills, checks and tools it works with — not to the code it wrote. You produce no code and no design; a ticket is the whole output. A retro that files nothing is a valid result; one that files a ticket nobody can act on is not.
 
-## Steps
+## Read
 
-1. Call the Skill tool with `writing-for-agents` for the writing style guide.
+1. Load `writing-for-agents` for the writing style.
+2. **The session** — `opencode api session.list` finds the id; `opencode api session.message.list --param sessionID=<id> --param limit=200` returns the transcript, tool calls included, and there is no pagination. The transcript is the primary source: a finding without a message in it is a guess. No session named → the most recently updated session that is not this one, and say which you took. A session longer than the cap: say so rather than presenting a tail as the whole.
+3. **The environment** — the repo's `AGENTS.md`, its check command, and the board (`tandem-cli ticket list --filter all`). A finding an open ticket already covers is a duplicate, not a finding.
 
-2. Read the primary sources for the session the user specifies. This may mean searching through session logs on this machine. If the user doesn't specify a session, default to the current one.
+## Categories
 
-3. Look for candidates for improvement in these categories.
+- **Navigation** — hard-to-find files, hidden dependencies, a missing pointer.
+- **Automated checks** — a mistake a check could have caught. Read the repo's own check command first: a check that exists but sits unwired is the finding, and a repo with no guardrail at all is itself a finding.
+- **Coding standards** — a rule for the reviewer to enforce; a mechanical violation deserves a deterministic check over a written rule.
+- **Tool economy** — expensive tool calls that could be streamlined.
+- **No-ops** — steering instructions that change nothing.
+- **Information access** — information the agent never had.
 
-- **Navigation**: how easy was it for the agent to find the right files? Are there hidden dependencies between files? Would a **navigation pointer** make it easier? _Use when_ the session took a long time to find a piece of information.
-- **Automated checks**: are there automated checks that could catch errors the agent made? Linting, typing, tests, filesystem linters? Read the repo's own check command first (its `package.json`/build-tool `lint`/`check` scripts, its CI workflow), so a check that already exists but sits unwired or silently broken is the finding, not a reinvention. A repo with no **guardrail** (no pre-commit hook and no CI job running its lint/typecheck/test command) is itself a finding: an un-linted repo is a standing missed opportunity, not a neutral default. _Use when_ the agent made a mistake an automated check could have caught, or the repo has no guardrail at all.
-- **Coding standards**: should the **reviewer agent** be given a new rule to enforce? Should an existing rule be removed or clarified? Classify the violation first: a **mechanical** one (a fixed syntactic pattern, a banned API, an import shape, a file-location rule) gets a deterministic check, full stop: a custom rule in the repo's own linter, a new pre-commit hook, or a new CI job, whichever the repo's language and existing guardrail make cheapest. Default to building the check over writing the rule. Reserve `CODING_STANDARDS.md` for genuine **judgement calls** (cross-file consistency, "matches the surrounding style," anything no guardrail could ever substitute for). _Use when_ the reviewer agent failed to catch a mistake.
-- **Global AGENTS.md**: are there any steering instructions that should be moved to coding standards (or automated checks) instead? _Use when_ the AGENTS.md file is particularly large - in the repo OR the user's global scope.
-- **Tool economy**: did the agent make expensive tool calls that could be streamlined? Is there any custom tooling (CLI's, MCP's) that is particularly token-inefficient? _Use when_ the agent made an expensive tool call.
-- **No-ops**: look for instructions in steering files that don't modify the agent's behavior. _Use when_ the steering files are large and unwieldy.
-- **Information access**: look for opportunities to increase the agent's access to information. Teeing dev server logs, readonly access to third-party services. _Use when_ a crucial piece of information was not available to the agent.
+## The bar
 
-4. Present these candidates to the user, in order of severity.
+A finding becomes a ticket only with all three: an **anchor** (a `file:line`, an exact command, or a message that shows the cost), a **named cost**, and an **owner's next move**. Not filed: generic advice, a preference with no cost, a restatement of an existing rule, a duplicate, your own run. More than five tickets usually means the bar was lowered — pick the clearest costs and say what you dropped.
 
-## Reference
+## File
 
-### Implementation vs Review
+```sh
+tandem-cli ticket list --filter all --text "<title words>"   # dedupe first
+tandem-cli lane add --name Retro                              # only when filing and the lane is missing
+printf '%s' "$body" | tandem-cli ticket add --title "Retro: <one sentence, specific enough to disagree with>" \
+  --status backlog --origin retro --lane Retro --description -
+```
 
-Remember that all work goes through two stages: implementation and review. The implementation agent has the most **context pressure**. They are responsible for exploration, writing code, and debugging failures.
+`--origin retro`, never assigned. The body is a **capture**, not a brief: `Filed by retro (<session id>).`, then **Why** (the anchor and the cost), **What**, **Done when** (only if the session makes it visible). No options, no recommendation. Never edit the code the session touched — a retro that fixes what it finds cannot report honestly on it.
 
-The review agent has the least context pressure - it receives a diff, so no exploration needed. It often does not need to write code or debug.
+## Report
 
-This means that the review agent should be responsible for imposing coding standards, not the implementation agent.
+```
+RETRO: <session id> — <n> filed, <m> skipped — <the finding that matters most>
+```
 
-### Files
-
-You have access to several files in the repo:
-
-- `CLAUDE.md`/`AGENTS.md`: these files are pushed to the context window of any agent working in this repo. They should be used incredibly sparingly, usually only for **navigation pointers** to other files.
-- `CODING_STANDARDS.md`: this file is read during review, not implementation. Add **navigation pointers** to docs folders if the standards file gets more than 1,000 lines long.
-- Docs: use docs as references files, pointed to by other files. Look for existing docs before writing new ones.
-- Skills: use skills for docs (since their description goes into the agent's context window), or for user-invoked commands. Follow the advice in the `writing-for-agents` skill.
+Then the ticket list, one line each, and each skipped candidate with its reason. No questions to the caller, no offer to fix.
