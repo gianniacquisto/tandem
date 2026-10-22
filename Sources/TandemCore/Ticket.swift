@@ -42,7 +42,8 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
     /// the human's own list was filed by the human (ADR 0020).
     public let origin: String
     /// The cycle lane, or `nil` for the default (unnamed) area, which always renders
-    /// first. Written as `section` on disk — the v1 key, which the migrator left in place.
+    /// first. Written as `lane` on disk; a file still under the v1 key `section` is read
+    /// fine and copied aside before the write that retires it.
     public var lane: String?
     /// An optional link to a Bikeshed note: a bikeshed-root-relative path like
     /// `projects/App.md`, or `nil` for an unlinked ticket. Set in the GUI only ([ADR 0010]).
@@ -94,21 +95,22 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
 
     // MARK: - Custom Codable (ISO-8601 UTC dates, strict on required fields)
 
-    /// The on-disk keys. `lane` is spelled **`section`** on disk and on the wire: the
-    /// stored shape is the migrator's business, not this change's (ADR 0017).
+    /// The on-disk keys. `lane` is spelled **`lane`** on disk and on the wire: the v1
+    /// key `section` is read beside it and kept forever.
     ///
-    /// **The reader takes both names; the writer still emits v1.** The renamed `lane`
+    /// **The reader takes both names; the writer emits the renamed one.** The `lane`
     /// key is decoded *beside* the v1 `section` one, and the renamed name wins when a
     /// file carries both — a hand edit is not an error, and the next write makes the
-    /// file one shape. The writer is untouched: it still writes `section`, so the file
-    /// this build produces is the file an installed 0.15.0 reader expects. **Only a
-    /// writer moves the names; the reader tolerates both forever**, the same shape as
-    /// the `done` mirror's decoding half.
+    /// file one shape. The writer emits `lane` alone, and the first write over a file
+    /// still under `section` copies that file aside as `todos.json.pre-rename-<ts>`
+    /// first. The reader tolerates both forever — a `.bak`, a restored file or a hand
+    /// edit can be v1-named forever — the same shape as the `done` mirror's decoding
+    /// half. The flip was gated on the both-reading build being installed.
     private enum CodingKeys: String, CodingKey {
         case id, title, done, status, archived, description, assignee, origin, link, createdAt, completedAt
-        /// The v1 key for the lane — still what the writer emits.
+        /// The v1 key for the lane — read beside `lane` and kept forever.
         case lane = "section"
-        /// The renamed key, read beside the v1 one. The writer emits neither yet.
+        /// The renamed key, what the writer emits.
         case renamedLane = "lane"
     }
 
@@ -142,7 +144,7 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
         // filer every pre-existing ticket actually has (ADR 0020).
         self.origin = try c.decodeIfPresent(String.self, forKey: .origin) ?? "human"
         // The lane is read under either name — the renamed one wins when a file carries
-        // both. The writer still emits the v1 `section` key.
+        // both. The writer emits the renamed `lane` key.
         let laneFromRenamedKey = try c.decodeIfPresent(String.self, forKey: .renamedLane)
         let laneFromV1Key = try c.decodeIfPresent(String.self, forKey: .lane)
         self.lane = laneFromRenamedKey ?? laneFromV1Key
@@ -192,9 +194,9 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
         // every ticket (ADR 0020).
         try c.encode(origin, forKey: .origin)
         if let lane {
-            try c.encode(lane, forKey: .lane)
+            try c.encode(lane, forKey: .renamedLane)
         } else {
-            try c.encodeNil(forKey: .lane)
+            try c.encodeNil(forKey: .renamedLane)
         }
         if let link {
             try c.encode(link, forKey: .link)

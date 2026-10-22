@@ -545,10 +545,11 @@ struct OperationsTests {
         // reading this file (ADR 0006 — bumping it once wiped a real store).
         #expect((obj?["version"] as? Int) == 1)
         // No lanes declared yet, and the field is written as an empty array.
-        #expect((obj?["sections"] as? [String])?.isEmpty == true)
+        #expect((obj?["lanes"] as? [String])?.isEmpty == true)
+        #expect(obj?["sections"] == nil, "the v1 lane key is gone from the writer")
 
-        guard let todos = obj?["todos"] as? [[String: Any]] else {
-            Issue.record("`todos` is not a JSON array of objects")
+        guard let todos = obj?["tickets"] as? [[String: Any]] else {
+            Issue.record("`tickets` is not a JSON array of objects")
             return
         }
         #expect(todos.count == 2)
@@ -563,7 +564,7 @@ struct OperationsTests {
         // The open ticket's completedAt and lane are JSON null.
         let openEntry = todos.first { ($0["status"] as? String) == "backlog" }
         #expect(openEntry?["completedAt"] is NSNull)
-        #expect(openEntry?["section"] is NSNull)
+        #expect(openEntry?["lane"] is NSNull)
         // The done ticket's completedAt is a real (non-null) string.
         let doneEntry = todos.first { ($0["status"] as? String) == "done" }
         #expect(doneEntry?["completedAt"] is String)

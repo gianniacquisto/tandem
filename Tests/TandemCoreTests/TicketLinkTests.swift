@@ -123,7 +123,7 @@ struct TicketLinkTests {
             let text = try String(contentsOf: fileURL, encoding: .utf8)
             let obj = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
             #expect((obj?["version"] as? Int) == 1)
-            return (obj?["todos"] as? [[String: Any]])?.first
+            return (obj?["tickets"] as? [[String: Any]])?.first
         }
 
         // Link present: a real string.

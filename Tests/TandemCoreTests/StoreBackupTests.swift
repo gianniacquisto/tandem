@@ -32,8 +32,14 @@ struct StoreBackupTests {
     private func titles(in url: URL) throws -> [String] {
         guard
             let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url))
-                as? [String: Any],
-            let todos = object["todos"] as? [[String: Any]]
+                as? [String: Any]
+        else {
+            throw StoreIOError.io("test fixture is not a store file: \(url.path)")
+        }
+        // The writer emits the renamed `tickets` key; a backup of a pre-handover file
+        // carries the v1 `todos` one.
+        guard let todos = (object["tickets"] as? [[String: Any]])
+            ?? (object["todos"] as? [[String: Any]])
         else {
             throw StoreIOError.io("test fixture is not a store file: \(url.path)")
         }

@@ -29,11 +29,18 @@ struct TicketModelTests {
         return object
     }
 
+    /// The ticket objects in the store file, under either array name — the writer emits
+    /// the renamed `tickets` key, and a hand-written v1 fixture carries `todos`.
+    private func fileTickets(_ store: Store) throws -> [[String: Any]] {
+        let object = try fileObject(store)
+        return (object["tickets"] as? [[String: Any]])
+            ?? (object["todos"] as? [[String: Any]])
+            ?? []
+    }
+
     /// The first ticket object in the store file, as written.
     private func firstTicketObject(_ store: Store) throws -> [String: Any] {
-        guard let todos = try fileObject(store)["todos"] as? [[String: Any]],
-              let first = todos.first
-        else {
+        guard let first = try fileTickets(store).first else {
             throw StoreIOError.io("test fixture has no todos")
         }
         return first
@@ -41,8 +48,7 @@ struct TicketModelTests {
 
     /// The on-disk object for the ticket with this title.
     private func todoObject(_ store: Store, titled title: String) throws -> [String: Any]? {
-        let todos = try fileObject(store)["todos"] as? [[String: Any]] ?? []
-        return todos.first { ($0["title"] as? String) == title }
+        try fileTickets(store).first { ($0["title"] as? String) == title }
     }
 
     /// The migrator's safety copies, oldest first.
@@ -119,7 +125,7 @@ struct TicketModelTests {
         #expect(Status.wireValues == ["backlog", "refined", "ready", "in-progress", "in-review", "done"])
     }
 
-    @Test("the on-disk shape keeps version 1 and the section key, and writes every field")
+    @Test("the on-disk shape keeps version 1, writes the renamed keys, and writes every field")
     func onDiskShape() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -129,7 +135,9 @@ struct TicketModelTests {
 
         let object = try fileObject(store)
         #expect((object["version"] as? Int) == 1)
-        #expect(object["sections"] is [Any], "the lane list keeps its v1 key")
+        #expect(object["lanes"] is [Any], "the lane list is written under the renamed key")
+        #expect(object["todos"] == nil, "the v1 array key is gone from the writer")
+        #expect(object["sections"] == nil, "the v1 lane key is gone from the writer")
 
         let todo = try firstTicketObject(store)
         #expect(todo["done"] == nil, "the legacy mirror retired from the file")
@@ -138,8 +146,8 @@ struct TicketModelTests {
         #expect(todo["description"] is NSNull)
         #expect(todo["assignee"] is NSNull)
         #expect((todo["origin"] as? String) == "human", "the filer is never null")
-        #expect(todo["section"] is NSNull, "the lane is written under its v1 key")
-        #expect(todo["lane"] == nil, "the code's word never reaches the file")
+        #expect(todo["lane"] is NSNull, "the lane is written under the renamed key")
+        #expect(todo["section"] == nil, "the v1 lane key is gone from the writer")
     }
 
     @Test("a file written before the ticket fields existed reads as backlog and unassigned")
