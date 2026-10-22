@@ -3,8 +3,8 @@ import TandemCore
 
 /// The main window in reach B — subtle Ligne Claire (ticket 01 verdict).
 ///
-///   Header    — the "Tandem" wordmark and the Tickets/Board/Bikeshed tab control,
-///               closed by a hairline (identical on every tab)
+///   Header    — the "Tandem" wordmark and the Tickets/Board/Inbox/Sessions/
+///               Bikeshed tab control, closed by a hairline (identical on every tab)
 ///   Tickets   — a centered 540 pt column: flat parchment quick-add
 ///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All/
 ///               Archived with live counts (⌘1–⌘4) on a row with "+ Cycle lane" and
@@ -26,6 +26,10 @@ import TandemCore
 ///   Inbox     — the tickets agents assigned to `human`: the escalation lane, drawn
 ///               with the list's own rows (the description sheet holds the question).
 ///               A dot on the tab says one is waiting, from any other face
+///   Sessions  — the session records (SessionsFace.swift): the artifacts agent
+///               sessions leave behind in `sessions.json`, grouped by project.
+///               Read-only, and in the record's own words (`running`, `ended`);
+///               a row opens the record's sheet — its brief, its notes, its tickets
 ///   Bikeshed  — the notes face (BikeFace.swift): tree sidebar, the WKWebView
 ///               editor, the backlinks dock
 ///   ⌘K        — the quick-open palette over the window: one ranked list of
@@ -96,6 +100,16 @@ struct MainView: View {
                                              dismissBanners: {}))
             } else if tab == .inbox {
                 inboxFace
+                    .frame(maxWidth: 540)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            } else if tab == .sessions {
+                // The session records (spec `FC770B8A`): read-only, and the
+                // face's own vocabulary — `running` and `ended`, never the
+                // board's `backlog` and `done`.
+                SessionsFaceView(model: model,
+                                 bikeModel: bikeModel,
+                                 palette: palette,
+                                 onOpenLink: openLinkedNote)
                     .frame(maxWidth: 540)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
