@@ -68,7 +68,7 @@ The pass never invents progress and never judges a ticket's quality. It reports 
 
 ## Where the output lands
 
-**The board** — the ticket's comment log: the sidecar `<home>/comments/<ticket-id>.jsonl`, where `<home>` is `~/.tandem`, or `$TANDEM_HOME` on a throwaway home. The app's ticket sheet draws it and `tandem-cli ticket comment list --id <id>` returns it. One comment per `in-progress` ticket; nothing else in the ticket is touched.
+**The board** — the ticket's comment log: the sidecar `<home>/comments/<ticket-id>.jsonl`, where `<home>` is `~/.tandem` for the shipped app, `~/.tandem-dev` for a from-source build, or `$TANDEM_HOME` when that is set — `tandem-cli doctor`'s `home` check names the one in force. The app's ticket sheet draws it and `tandem-cli ticket comment list --id <id>` returns it. One comment per `in-progress` ticket; nothing else in the ticket is touched.
 
 **During a sprint** — one more comment, on the sprint ticket (`Sprint <n> — <lane>`, per `skills/tandem-sprint/`), reporting the batch: how many of the batch landed, which ticket is at the head, and the ready set — how many are `ready` and which one comes first in stored order.
 
