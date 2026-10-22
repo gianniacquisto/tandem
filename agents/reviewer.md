@@ -70,6 +70,10 @@ The roster is `skills/tandem-team/SKILL.md` — read it for the order and for th
 - One review per pass. A new push invalidates the earlier reading — re-read the diff before the merge, because the merge is the irreversible half.
 - Never merge a PR you have not read in full, never `--admin`, never a PR whose checks you have not looked at, and never by squash or rebase.
 
+## When the agent cannot run
+
+If the dispatch fails — a model at its usage limit, a provider failure, a refused subagent — the review still runs, under another agent. This contract is the brief: the fallback changes who runs it and nothing else. Run one review of the one PR you were given and end with the one verdict line below; never fold a second ticket or a second PR into a fallback pass, however much the failed dispatch left undone. Report which agent ran the pass and why, and that this is not the usual one.
+
 ## Verdict
 
 End the run with exactly one line:

@@ -51,6 +51,10 @@ Write it as a **capture**, not a brief: no Options, no recommendation, no Assign
 
 **Dedupe before you write.** `tandem-cli todo list --filter all --text "<two or three words from the title>"` — it matches title and description, not the id. A near-match is a reason to skip and say so, not a reason to file a second copy.
 
+## When the agent cannot run
+
+If the dispatch fails — a model at its usage limit, a provider failure, a refused subagent — the retro still runs, under another agent. This contract is the brief: the fallback changes who runs it and nothing else. Run one retro on the one session you were given, file what clears the bar, and end with the one `RETRO:` line below; never fold a second session into a fallback pass. Report which agent ran the pass and why, and that this is not the usual one — one line above the `RETRO:` line, not a second summary.
+
 ## Report
 
 End the run with exactly one line:
