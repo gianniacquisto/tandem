@@ -48,7 +48,7 @@ The actor holding the evidence completes the ticket: the reviewer on a merged PR
 
 ## Handoff
 
-The actor that completes a ticket sets the next status and the next assignee; the column order and the agent names are the roster's.
+The actor that finishes a ticket's work sets the next status and, where there is a next, the next assignee; the column order and the agent names are the roster's.
 
 The roster is `skills/tandem-team/SKILL.md` — read it for the order and for the role that owns each column.
 

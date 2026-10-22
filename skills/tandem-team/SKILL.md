@@ -32,8 +32,8 @@ Agents that fill no role: `explore` (read-only repo search — a tool the passes
 | --- | --- |
 | `backlog` | `dispatch` — triage shapes it. |
 | `refined` | `dispatch` — triage marks it `ready`; `human` holds it when the decision is theirs; `refine` writes the spec when a ticket is too big for one session. |
-| `ready` | `dispatch` — it claims the ticket and hands it to the builder. |
-| `in-progress` | `build` — the builder claims it and works it. |
+| `ready` | `dispatch` — it claims the ticket and assigns the builder. |
+| `in-progress` | `build` — the builder works the ticket the dispatcher claimed. |
 | `in-review` | `reviewer` — the review gate merges it or escalates it. |
 | `done` | the actor holding the evidence — the ticket rests here; there is no next assignee. |
 

@@ -40,6 +40,10 @@ Every session records itself as a ticket, so the board shows what is running and
 
 Session tickets live in the default area, so they never depend on a lane that may not exist.
 
+## The handoff
+
+A session that finishes a ticket's work hands it on, instead of leaving the next move to a later pass. The rule is in `agents/reviewer.md` (`## Handoff`) and `skills/tandem-board/SKILL.md` (the dispatch step); the column order and the agent names it reads are the roster's — `skills/tandem-team/SKILL.md`.
+
 ## Agents
 
 This repo owns the agent prompts in `agents/` — `consolidator.md`, `refine.md`, `retro.md`, `reviewer.md` — and the procedures in `skills/` that a session runs. They are the passes that run on Tandem, and the contracts they state are the ones this repo ships: the CLI in `Sources/tandem-cli/`, the skill in `skills/tandem/`, the bikeshed protocol in `skills/tandem-memory/`. A prompt that names a contract states the current one — see [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
