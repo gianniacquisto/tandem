@@ -546,4 +546,106 @@ struct SessionsTests {
             .filter { $0.hasPrefix("sessions.json.corrupt-") }
         #expect(kept.count == 1)
     }
+
+    // MARK: - The file's own I/O failures
+
+    @Test("a home whose sessions file cannot be locked fails in the sessions file's own words")
+    func lockFailureNamesTheSessionsFile() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path) }
+        // A directory that cannot be written: the lockfile cannot be created,
+        // so the lock fails before the file is ever touched.
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+
+        do {
+            _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
+            Issue.record("expected the sessions file's own lock failure")
+        } catch let DomainError.sessionsFileIO(path, op, detail) {
+            #expect(path == file(dir).path)
+            #expect(op == "open lockfile")
+            #expect(detail.contains("13"))
+        }
+
+        // The failure the human sees names the sessions file and the operation,
+        // and never calls it a store error: the store is `todos.json`, and it
+        // is fine.
+        let text = tandemErrorText(DomainError.sessionsFileIO(
+            path: file(dir).path, op: "open lockfile", detail: "13: Permission denied"))
+        #expect(text.contains("sessions.json"))
+        #expect(text.contains(file(dir).path))
+        #expect(text.contains("open lockfile"))
+        #expect(!text.contains("Tandem store"))
+    }
+
+    @Test("a sessions file locked by another process fails in the sessions file's own words")
+    func lockContentionNamesTheSessionsFile() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // The lockfile first: it must exist before another process holds it.
+        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
+        let lockPath = dir.appendingPathComponent("sessions.lock")
+        let fd = open(lockPath.path, O_RDWR | O_CREAT, 0o644)
+        #expect(fd >= 0)
+        #expect(flock(fd, LOCK_EX) == 0)
+        defer { close(fd) }
+
+        do {
+            _ = try sessions.start(id: "ses_2", project: "tandem", brief: "Read the fleet.")
+            Issue.record("expected the sessions file's own lock failure")
+        } catch let DomainError.sessionsFileLocked(path) {
+            #expect(path == file(dir).path)
+        }
+
+        let text = tandemErrorText(DomainError.sessionsFileLocked(path: file(dir).path))
+        #expect(text.contains("sessions.json"))
+        #expect(text.contains(file(dir).path))
+        #expect(!text.contains("Tandem store"))
+    }
+
+    @Test("a write that cannot happen fails in the sessions file's own words")
+    func writeFailureNamesTheSessionsFile() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // A directory where the file should be: the atomic write's `rename`
+        // cannot land on it, so the write fails where the file is named.
+        try FileManager.default.createDirectory(at: file(dir), withIntermediateDirectories: true)
+
+        do {
+            _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
+            Issue.record("expected the sessions file's own write failure")
+        } catch let DomainError.sessionsFileIO(path, op, detail) {
+            #expect(path == file(dir).path)
+            #expect(op == "rename")
+            #expect(!detail.isEmpty)
+        }
+
+        let text = tandemErrorText(DomainError.sessionsFileIO(
+            path: file(dir).path, op: "rename", detail: "21: Is a directory"))
+        #expect(text.contains("sessions.json"))
+        #expect(text.contains(file(dir).path))
+        #expect(text.contains("rename"))
+        #expect(!text.contains("Tandem store"))
+    }
+
+    @Test("the store's own lock failure still wears the store's vocabulary")
+    func storeLockFailureUnchanged() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-store-lock-tests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+
+        // The store's file is `todos.json`, and its failures say so: this
+        // ticket is about the file that is not the store.
+        do {
+            _ = try Store(directory: dir).add("a ticket")
+            Issue.record("expected the store's own lock failure")
+        } catch {
+            let text = tandemErrorText(error)
+            #expect(text.contains("Tandem store I/O failed during open lockfile"))
+        }
+    }
 }

@@ -38,6 +38,16 @@ public enum DomainError: Error, Sendable, Equatable {
     /// this failure is about the sessions file, not about the store — so it
     /// never wears the store's error vocabulary.
     case corruptSessionsFile(path: String, detail: String)
+    /// A POSIX call on the sessions file's own storage failed: the lockfile
+    /// could not be opened, or the file could not be written. `op` names the
+    /// operation (`open lockfile`, `fsync`, `rename`, …) and `detail` says what
+    /// the OS said. **The store is untouched**: `todos.json` is fine, and this
+    /// failure is about the sessions file, not about the store — so it never
+    /// wears the store's error vocabulary.
+    case sessionsFileIO(path: String, op: String, detail: String)
+    /// The sessions file's lock (`sessions.lock`) is held by another process,
+    /// so the read-modify-write could not start. The next step is to retry.
+    case sessionsFileLocked(path: String)
     /// A session status that is not `running` or `ended`. The board's `Status`
     /// is a different vocabulary, and so is its own failure.
     case invalidSessionStatus(String)
@@ -94,6 +104,10 @@ public enum DomainError: Error, Sendable, Equatable {
             return "Unknown session id \"\(id)\". Here are the recorded sessions to pick the right one from: \(known.joined(separator: ", "))."
         case .corruptSessionsFile(let path, let detail):
             return "The sessions file at \(path) is corrupt and could not be moved aside (\(detail)). Move it aside yourself and try again — the session list then starts empty."
+        case .sessionsFileIO(let path, let op, let detail):
+            return "The sessions file at \(path) failed during \(op) (\(detail)). Check that the home directory is writable and has free space, then try again."
+        case .sessionsFileLocked(let path):
+            return "The sessions file at \(path) is locked by another process — please retry."
         case .invalidSessionStatus(let bad):
             return "session status must be one of \(SessionStatus.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
         case .invalidSessionOutcome(let bad):

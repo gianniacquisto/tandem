@@ -257,7 +257,10 @@ public enum SessionOutcome: String, Sendable, CaseIterable, Hashable {
 /// signal (`CorruptSessions`, the sessions file's counterpart to the store's
 /// `CorruptStore`) — never surfaced, exactly like the store's. A file that
 /// cannot be moved aside is a contract failure that names `sessions.json` and
-/// what the human has to do about it (`DomainError.corruptSessionsFile`). The
+/// what the human has to do about it (`DomainError.corruptSessionsFile`). A
+/// lock that cannot be taken, and a write that cannot happen, are the same
+/// kind of failure — `DomainError.sessionsFileLocked` and
+/// `DomainError.sessionsFileIO`, both naming the file and the operation. The
 /// store's `StoreIOError` is the store's: it is user-facing prose about
 /// `todos.json`, and the sessions file is not `todos.json`.
 ///
@@ -437,15 +440,20 @@ public struct Sessions: Sendable {
     }
 
     /// Take the sessions lock (translating the primitive's errors into the
-    /// core's own vocabulary) and run `body` under it, orphan temps cleaned
-    /// first.
+    /// sessions file's own vocabulary) and run `body` under it, orphan temps
+    /// cleaned first.
+    ///
+    /// **The store's vocabulary is not the file's.** A lock that cannot be
+    /// taken is a failure of *this* file's lock (`sessions.lock`), and the
+    /// human is told which file it was — the store (`todos.json`) is fine.
     private func withLock<T: Sendable>(_ body: () throws -> T) throws -> T {
         do {
             return try storage.withLock(body)
         } catch LockedDirectoryError.locked {
-            throw DomainError.locked
+            throw DomainError.sessionsFileLocked(path: fileURL.path)
         } catch LockedDirectoryError.posix(let op, let code) {
-            throw StoreIOError.posix(op: op, code: code)
+            throw DomainError.sessionsFileIO(
+                path: fileURL.path, op: op, detail: Self.posixDetail(code))
         }
     }
 
@@ -539,8 +547,14 @@ public struct Sessions: Sendable {
                 return (value, recovery ?? note)
             } catch {
                 if let recovery {
+                    // The failure is the sessions file's, whatever it is: the
+                    // store's `StoreIOError` would name a file that is not
+                    // broken.
                     let underlying: any TandemError = error as? any TandemError
-                        ?? StoreIOError.io("\(error)")
+                        ?? DomainError.sessionsFileIO(
+                            path: fileURL.path,
+                            op: "update",
+                            detail: (error as NSError).localizedDescription)
                     throw RecoveryFailure(underlying: underlying, note: recovery)
                 }
                 throw error
@@ -549,9 +563,26 @@ public struct Sessions: Sendable {
     }
 
     /// Write the file atomically — temp, fsync, `rename` — via the shared
-    /// storage primitive. Call only while holding the lock.
+    /// storage primitive, translating the primitive's failures into the
+    /// sessions file's own vocabulary. Call only while holding the lock.
+    ///
+    /// **The failure is this file's, not the store's.** A write that cannot
+    /// happen — a full disk, a read-only home, a `rename` that will not land —
+    /// says so in the sessions file's words, naming the file the human has to
+    /// look for. The store (`todos.json`) is a different file and it is fine.
     private func writeLocked(_ sessions: [Session]) throws {
-        try storage.atomicWrite(try Self.encode(sessions), to: fileURL)
+        do {
+            try storage.atomicWrite(try Self.encode(sessions), to: fileURL)
+        } catch LockedDirectoryError.posix(let op, let code) {
+            throw DomainError.sessionsFileIO(
+                path: fileURL.path, op: op, detail: Self.posixDetail(code))
+        } catch {
+            // The primitive's POSIX failures are not the only ones: the write
+            // can fail inside Foundation (a full disk, a read-only directory)
+            // with an `NSError`. Both are this file's failure.
+            throw DomainError.sessionsFileIO(
+                path: fileURL.path, op: "write", detail: (error as NSError).localizedDescription)
+        }
     }
 
     // MARK: - Schema (private)
@@ -585,6 +616,12 @@ public struct Sessions: Sendable {
         let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw DomainError.emptySessionID }
         return trimmed
+    }
+
+    /// The OS's own words for a POSIX failure: the code and `strerror`'s
+    /// description, in the shape the store's own I/O errors use.
+    private static func posixDetail(_ code: Int32) -> String {
+        "\(code): \(String(cString: strerror(code)))"
     }
 
     /// The recovery note for an invalid sessions file. The store's recovery note
