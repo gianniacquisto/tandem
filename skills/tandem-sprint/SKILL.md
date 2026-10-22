@@ -55,6 +55,22 @@ In batch order:
 
 **One at a time, never in parallel.** Nine simultaneous branches on this repo collided at merge time on 2026-10-20 — `BikeFace.swift` alone was touched by six of them. Velocity is tickets per sprint, not concurrency. A ticket that escalates does not stop the sprint; the close names it.
 
+**Budget the turns.** A turn re-reads the whole window, so a session's bill is its turn count times its context — the same rule the terse style states (`terse/TERSE.md`, Budget). One turn per dispatch, with the calls it needs in it: gather every fact the brief needs in one message — a turn that needs three facts fetches three facts in one message, and a loop over a list is one call, not N. Watch it drift: calls per turn is countable from the host's store, `~/.local/share/opencode/opencode.db` — read-only:
+
+```sh
+sqlite3 "file:$HOME/.local/share/opencode/opencode.db?mode=ro" '
+WITH turns AS (SELECT session_id, COUNT(*) n FROM session_message
+               WHERE type="assistant" GROUP BY session_id),
+     calls AS (SELECT m.session_id, COUNT(*) n FROM session_message m,
+               json_each(json_extract(m.data,"$.content")) je
+               WHERE m.type="assistant" AND json_extract(je.value,"$.type")="tool"
+               GROUP BY m.session_id)
+SELECT ROUND(1.0*COALESCE(c.n,0)/t.n,2) FROM turns t
+LEFT JOIN calls c ON c.session_id=t.session_id WHERE t.session_id="<session-id>";'
+```
+
+Below three means the next dispatch briefs the batch's shape — the reads named, the repeats cut — before it claims.
+
 ## 5. Human answers
 
 A decision ticket's body is the channel — there is no comment field for it. The human answers in the app, from the CLI (`ticket set --description -` with the answer appended), or in chat to an agent, who appends it. The answer is its own block:
