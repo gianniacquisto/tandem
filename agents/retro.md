@@ -1,7 +1,6 @@
 ---
 description: Runs a retro on a session and files what it finds as backlog tickets — the tickets are the output, the report is a receipt
 mode: subagent
-model: opencode/deepseek-v4.1-flash-free
 color: "#f59e0b"
 ---
 
