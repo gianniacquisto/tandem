@@ -96,7 +96,7 @@ Or copy the whole `tandem-memory/` folder into your harness's skills directory t
 
 ### The `agents/` directory
 
-`agents/` holds the agent prompts this project owns — `consolidator.md`, `refine.md`, `retro.md` and `reviewer.md` — one markdown file per agent, each with the frontmatter a host reads: a `description` and a `mode` in all four, a `model` and a `color` in `refine`, `retro` and `reviewer`, and `permissions` in `consolidator`, which has no model or color.
+`agents/` holds the agent prompts this project owns — `consolidator.md`, `refine.md`, `retro.md` and `reviewer.md` — one markdown file per agent, each with the frontmatter a host reads: a `description` and a `mode` in all four, a `color` in `refine`, `retro` and `reviewer`, and `permissions` in `consolidator`, which has no color. **No agent pins a model** — all four inherit the host's default, so one provider's usage limit can never stop a pass (see [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md)'s amendment of 2026-10-22).
 
 They are the passes that run on Tandem: the consolidator folds the bikeshed's captures into the curated notes, the refine agent grills a `backlog` ticket into a brief a builder can take, the retro reads a session and files what it finds as backlog tickets, the reviewer reads a ticket and a PR and merges the two-way doors. The `tandem-consolidate` skill dispatches the consolidator; this repo ships no host commands, so every pass is reached by asking, or by whatever binding the host adds. See [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
 

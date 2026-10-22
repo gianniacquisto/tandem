@@ -34,6 +34,8 @@ This ADR records where the agent face lives, that it is portable, and that the p
 - **The `wayfinder` skill** — it charts a map of decision tickets on a tracker with labels, blocking edges and child issues. The board has none of those three, so a map cannot be expressed on it: the skill is deferred until the board can carry one, and `docs/agents/issue-tracker.md` says so.
 - **Leaving `retro.md`'s stale lines as they were** — a move is the one moment a prompt's contract is read end to end, and the file would have landed contradicting the CLI it drives.
 
+> **Amended 2026-10-22:** the four prompts no longer pin a model. The human's decision: **agents should not pin any models** — a pin is a dependency on one provider's quota and one model id, and a quota-limited free tier stopped the review gate twice in one day. All four now inherit the host's default model. The decision above is unchanged. See the amendment below.
+
 ## Consequences
 
 - **The fleet repo loses two files and keeps its reason.** Its `README.md` and `WORKFLOW.md` name this repo as the home of `consolidator`, `refine`, `retro` and `reviewer`; the fleet's `main` still ships `black`, `blue` and `terse`.
@@ -41,3 +43,13 @@ This ADR records where the agent face lives, that it is portable, and that the p
 - **The working tree is the deployment.** A prompt's live copy is the file in the checkout the symlink points at, so this repo's checkout has to sit on a branch that carries `agents/` and `skills/` — the same trap `terse`'s install script reports as `dangling`.
 - **A second Mac gets the same workflow** with a clone, the app, and one ask: "set up Tandem". The `tandem-setup` skill does the wiring. The `tandem-cli` the prompts call is the app's own binary, so the app has to be on `PATH` — the tap's cask links it.
 - **The store is untouched**: no field, no enum, no migration, no release. Everything this repo reads and writes is unchanged.
+
+## Amendment, 2026-10-22: no agent pins a model
+
+**The change.** `agents/refine.md`, `agents/retro.md` and `agents/reviewer.md` no longer carry a `model:` line. `agents/consolidator.md` never did. All four prompts inherit the host's default model.
+
+**Why.** On 2026-10-22 the review gate could not run: `opencode/deepseek-v4.1-flash-free` returned "Free usage limit reached" on two consecutive dispatches — the reviews of PR #96 and PR #97 — so the board's merge gate was unavailable and both PRs sat unread until the gate's contract was run under a different agent by hand. It was the second time that free tier stopped the gate; the README review pass the same day "ran under a different agent, because the configured `opencode/deepseek-v4.1-flash-free` is rate-limited". The one agent that pinned nothing, `consolidator`, never hit the quota.
+
+**What the consequence above now reads.** The bullet "the two of them that carried a model and a colour (`retro`, `reviewer`) keep those too" no longer holds — no agent carries a model. Its other half is unchanged: the host still finds the same four agents by name, through the same symlinks, in the same checkout. So is the decision this ADR records: where the agent face lives, that a prompt's home is the project that owns its job, and that the passes are skills.
+
+**The trade-off.** The gate's reasoning model is now the host's choice, and it moves when the host's configuration moves — the repo records nowhere which model decided which merge. The human accepted that in exchange for the repo carrying no dependency on one provider's usage limit. The fleet's own pair, `black` and `blue`, keep their models: there the model is the identity, not a dependency.

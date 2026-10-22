@@ -1,7 +1,6 @@
 ---
 description: Reviews a PR against its ticket and the repo's conventions, then merges only a two-way door with low blast radius
 mode: subagent
-model: opencode/deepseek-v4.1-flash-free
 color: "#8b5cf6"
 ---
 

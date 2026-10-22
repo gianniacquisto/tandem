@@ -1,7 +1,6 @@
 ---
 description: Refines a Tandem ticket into a buildable brief — grills the decision tree, writes the spec, and files the tickets that implement it
 mode: subagent
-model: opencode/deepseek-v4.1-flash-free
 color: "#10b981"
 ---
 
