@@ -5,260 +5,119 @@ description: "Read and write the shared Tandem ticket list, manage its cycle lan
 
 # Tandem
 
-`tandem-cli` is Tandem's agent-facing interface on this Mac: the binary the app bundles so an agent can read and write the same shared todo list and notes a human uses in the Tandem app. It is the agent's only interface to the list — there is no server to configure and no handshake.
-
-The binary lives inside the app bundle:
-
-```
-/Applications/Tandem.app/Contents/MacOS/tandem-cli
-```
-
-That path is stable across upgrades. `tandem-cli --help` prints the syntax and exits `0`.
+`tandem-cli` is Tandem's agent-facing interface on this Mac — the binary the app bundles (`/Applications/Tandem.app/Contents/MacOS/tandem-cli`, stable across upgrades), so an agent reads and writes the same list and notes a human uses in the app. `tandem-cli --help` prints the syntax and exits `0`.
 
 ## The store
 
-`tandem-cli` reads and writes the same file the app does: `~/.tandem/todos.json`, the human's real list. A from-source build (`swift run tandem-cli`) writes `~/.tandem-dev/todos.json` instead, so development can never reach the real list. Notes live under the same home — `~/.tandem/bikeshed/`, or `~/.tandem-dev/bikeshed/` from source.
-
-Every write keeps one previous good copy beside it, in `todos.json.bak` — the file as it was before that write. If a write goes wrong, `mv ~/.tandem/todos.json.bak ~/.tandem/todos.json` is the one-command recovery; the app reloads it on its own.
+`~/.tandem/todos.json`, the human's real list. A from-source build (`swift run tandem-cli`) writes `~/.tandem-dev/` instead, so development can never reach the real list; notes live beside it (`~/.tandem/bikeshed/`, `~/.tandem-dev/bikeshed/` from source). Every write keeps one previous good copy beside it — `todos.json.bak` — and `mv ~/.tandem/todos.json.bak ~/.tandem/todos.json` is the one-command recovery; the app reloads it on its own.
 
 ## Tickets
 
-Seven commands under `todo` — `list`, `add`, `set`, `move`, `complete`, `archive`, and `comment` (which takes a sub-verb of its own); each section below is that command's contract. A todo is a **ticket** — the same object a human sees in the Tandem app — and every object these commands return has the same shape:
+Six verbs under `ticket` — `list`, `add`, `set`, `move`, `complete`, `archive` — plus `comment` with sub-verbs of its own. Every object they return has the same shape:
 
 | field | meaning |
 | --- | --- |
 | `id` | pass it back to `set`, `move`, `complete` |
 | `title` | one line, trimmed |
-| `status` | `backlog` (default), `refined`, `ready`, `in-progress`, `in-review`, or `done` |
-| `archived` | true when the ticket is set aside — out of the default views, still in the store |
-| `description` | markdown body, or null; write it from stdin with `todo set --description -` |
+| `status` | `backlog` (default), `refined`, `ready`, `in-progress`, `in-review`, `done` |
+| `archived` | true when set aside — out of the default views, still in the store |
+| `description` | markdown body, or null; write from stdin with `ticket set --description -` |
 | `assignee` | `human`, an agent's name, or null for unowned |
-| `origin` | who filed it — `human` or an agent's name; written at add, never changed |
+| `origin` | who filed it — written at add, never changed |
 | `section` | the **cycle lane**, or null for the default area; the wire keeps its v1 name |
-| `done` | derived from `status == "done"`; kept on the wire for older readers — read `status`, not this |
+| `done` | derived from `status == "done"`, kept on the wire for older readers — read `status`, not this |
 | `link` | a bikeshed note path, or null; a human sets it in the app |
 | `createdAt`, `completedAt` | ISO-8601 UTC; `completedAt` is null unless done |
 
-`done` is derived and no longer stored, but it stays on the wire for older readers; `status` is the truth. A status change is free-form — any status to any other, backwards included — because the board records what is true, not a process.
+`status` is the truth, and a change is free-form — any status to any other, backwards included — because the board records what is true, not a process.
 
-### `tandem-cli todo list [--filter open|done|all] [--status <value[,value]>] [--assignee <name|self>] [--lane <name>] [--text <string>] [--archived]`
+### `ticket list [--filter open|done|all] [--status <v[,v]>] [--assignee <name|self>] [--lane <name>] [--text <string>] [--archived]`
 
-List the tickets in view, in the list's stored order (the order the human arranged; new tickets land on top). Every filter is optional, and they combine:
+The tickets in view, in stored order (the order the human arranged; new tickets land on top). Every filter is optional and they combine:
 
-- `--filter` — `open` (default: not done, not archived), `done`, or `all` (every ticket, the archive excluded). The CLI's filters never carry the archive; the app's `All` still does.
-- `--status` — one or more comma-separated values, e.g. `--status ready,in-progress`. A repeated flag keeps only its last value, which is why the axis is comma-separated.
-- `--assignee` — an exact name, `self` for your own (`$TANDEM_AGENT`), or `""` for the unowned tickets.
+- `--filter` — `open` (default: not done, not archived), `done`, or `all` (every ticket, the archive excluded). The CLI's filters never carry the archive.
+- `--status` — comma-separated values, e.g. `--status ready,in-progress`; a repeated flag keeps only its last value.
+- `--assignee` — an exact name, `self` for your own (`$TANDEM_AGENT`), or `""` for the unowned.
 - `--lane` — a cycle lane name, or `""` for the default area.
 - `--text` — a case- and accent-insensitive substring of the title **or the description**.
-- `--archived` — put the archive in view. It takes no value. On its own it is the archive: the archived tickets, statuses ignored, exactly the app's Archived segment. Named with a filter, the archive joins that filter — `--filter all --archived` is every ticket, the archived ones included.
+- `--archived` — no value. Alone it is the archive; with a filter, the archive joins it.
 
-An empty result is a success: `{"todos":[]}`.
+An empty result is a success: `{"tickets":[]}`.
 
-```
-$ tandem-cli todo list --status ready --assignee self
-{"todos":[{"archived":false,"assignee":"ui","completedAt":null,"createdAt":"2026-10-09T14:03:22Z","description":"## Why\n…","done":false,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"origin":"ui","section":"Core","status":"ready","title":"Ship the board"}]}
-```
+### `ticket add --title <string> [--status <value>] [--assignee <name|self>] [--lane <name>] [--origin <name|self>]`
 
-### `tandem-cli todo add --title <string> [--status <value>] [--assignee <name|self>] [--lane <name>] [--origin <name|self>]`
+Title required, trimmed, empty rejected; duplicates allowed. A title alone lands `backlog`, unowned, on top of the default area. `--assignee self` claims it — `add` never assigns implicitly, because agents routinely file tickets *for* the human (`--assignee human`). A lane must already exist. `--origin` stamps who filed it, never changed after: pass `--origin self` when you file — an omitted flag means `human`, the app's own stamp, and your proposal filed under the human's name is the exact mix-up the field ends.
 
-Add a ticket to the shared Tandem list (store: ~/.tandem/todos.json), which a human on this Mac shares with you through the Tandem app. The title is required, trimmed, and empty is rejected; duplicate titles are allowed. A title alone lands in `backlog`, unowned, on top of the list's default area. `--assignee self` claims it — `add` never assigns implicitly, because agents routinely file tickets *for* the human (`--assignee human`). A lane must already exist.
+### `ticket set --id <id> [--title …] [--status …] [--assignee …] [--description …]`
 
-`--origin` stamps who filed the ticket, and it is never changed after the add. When you file, pass `--origin self`: an omitted flag means `human`, which is what the app — the human's face — stamps, and a proposal of yours filed under the human's name is exactly the mix-up the field exists to end.
+Change the fields you name in **one write**; everything unnamed is left alone. `--description -` reads the body from stdin, which is how multi-line markdown lands intact. `--assignee ""` clears the owner, `--description ""` clears the body, `--assignee human` hands the ticket to the human. Moving to `done` stamps `completedAt`; moving out clears it. An empty `--title` is rejected, and an empty or whitespace-only `--description -` body is rejected too — exit `1`, `Description body is empty…`, the description left as it was: an empty pipe is a failed write, not a clear.
 
-```
-$ tandem-cli todo add --title "Water the plants" --assignee self --origin self
-{"archived":false,"assignee":"ui","completedAt":null,"createdAt":"2026-10-17T09:12:00Z","description":null,"done":false,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"origin":"ui","section":null,"status":"backlog","title":"Water the plants"}
-```
+### `ticket move --id <id> [--lane <name>] [--index <number>]`
 
-### `tandem-cli todo set --id <string> [--title …] [--status …] [--assignee …] [--description …]`
+Move between lanes and/or within one. `--index` is 0-based inside the target lane; omit to append. `--lane ""` moves to the default area; the lane must exist.
 
-Change the fields you name in **one write**; everything you do not name is left alone. `--description -` reads the body from stdin, which is how multi-line markdown lands intact:
+### `ticket complete --id <id>`
 
-```
-$ printf '## Why\n\nA long body.\n' | tandem-cli todo set --id 550e8400-… --status refined --description -
-```
+The short path to `--status done`: idempotent, and an unknown id's error carries the current open list. No `reopen` verb — `ticket set --id … --status backlog` is the reopen.
 
-`--assignee ""` clears the owner, `--description ""` clears the body, and `--assignee human` hands the ticket to the human for a decision. Moving to `done` stamps `completedAt`; moving out of it clears the stamp. An empty `--title` is rejected. A `--description -` body that is empty or whitespace-only is rejected too — exit `1`, `Description body is empty…`, and the description is left as it was: an empty pipe is a failed write, not a clear.
+### `ticket archive`
 
-### `tandem-cli todo move --id <string> [--lane <name>] [--index <number>]`
+Archive every done ticket in one call: nothing is deleted, they leave the default views (`--archived` still shows them). Returns `{"archived": <n>}`; a second call returns 0.
 
-Move a ticket between cycle lanes and/or within one. `--index` is 0-based inside the target lane; omit it to append, which leaves the order above it untouched. `--lane ""` moves it to the default area; the lane must already exist.
+### `ticket comment add --id <id> [--author <name>] --body <string|->` / `ticket comment list --id <id>`
 
-### `tandem-cli todo complete --id <string>`
-
-The short path to `--status done`: idempotent — completing an already-done ticket returns it unchanged — and an unknown id's error carries the current open list so you can pick the right one. There is no `reopen` verb: `todo set --id … --status backlog` is the reopen.
-
-```
-$ tandem-cli todo complete --id 550e8400-e29b-41d4-a716-446655440000
-{"archived":false,"assignee":null,"completedAt":"2026-10-17T09:14:37Z","createdAt":"2026-10-09T14:03:22Z","description":null,"done":true,"id":"550e8400-e29b-41d4-a716-446655440000","link":null,"origin":"ui","section":null,"status":"done","title":"Water the plants"}
-```
-
-### `tandem-cli todo archive`
-
-Archive every done ticket in one call: nothing is deleted, the tickets leave the default views (and `--archived` still shows them). Returns how many it archived; a second call returns 0.
-
-```
-$ tandem-cli todo archive
-{"archived":3}
-```
-
-### `tandem-cli todo comment add --id <string> [--author <name>] --body <string|->`
-
-Append one comment to the ticket's **discussion log** — where agents talk on a ticket after refinement, since the description stays refinement-only. The log is a sidecar file (`~/.tandem/comments/<id>.jsonl`), not a field on the ticket: the app rewrites `todos.json` whole and drops keys it does not know, but it never touches the sidecar, so the conversation survives any edit of the ticket. The body is markdown; `--body -` reads it from stdin, as `--description` does, and an empty body is rejected. **`--author` signs the line with the name you write — `self` is not expanded for it.** Only `--assignee` and `--origin` expand `self` to `$TANDEM_AGENT`; write the role out, and the roster says which roles exist (`skills/tandem-team/SKILL.md`). Omitted is the unnamed author `""` — a gap in the record, not a style choice. An unknown id fails with the current open list, as `complete` does. The log is append-only: there is no edit and no delete verb, so say the thing you mean — a correction is a new comment.
-
-```
-$ printf 'Did you mean X, or was it Y?\n' | tandem-cli todo comment add --id 550e8400-… --author reviewer --body -
-{"at":"2026-10-22T10:11:49Z","author":"reviewer","body":"Did you mean X, or was it Y?"}
-```
-
-### `tandem-cli todo comment list --id <string>`
-
-The ticket's comments in append order. An unknown id is an empty list, not an error — the log outlives the store's entries, so a deleted ticket keeps its conversation.
-
-```
-$ tandem-cli todo comment list --id 550e8400-…
-{"comments":[{"at":"2026-10-20T22:31:04Z","author":"ui","body":"Did you mean X, or was it Y?"}]}
-```
+Append to / list the ticket's **discussion log** — where agents talk after refinement, since the description stays refinement-only. The log is a sidecar (`~/.tandem/comments/<id>.jsonl`), not a ticket field, so it survives any edit of the ticket. `--body -` reads from stdin; an empty body is rejected. **`--author` signs the line with the name you write — `self` is not expanded for it** (only `--assignee` and `--origin` expand `self`); write the role out (`skills/tandem-team/SKILL.md`), and never omit it: an unnamed author is a gap in the record. Append-only — no edit, no delete; a correction is a new comment. `comment list` returns comments in append order; an unknown id is an empty list, because the log outlives the store's entries.
 
 ## Lanes
 
-A **cycle lane** is the area axis of the ticket model — the list groups by it and the board draws its rows; `--lane ""` (or a null `section`) is the default area. Three verbs manage them, and they are the only CLI verbs that change the lane list itself:
+A **cycle lane** is the area axis — the list groups by it, the board draws its rows; `--lane ""` (or null `section`) is the default area:
 
 | command | returns |
 | --- | --- |
-| `tandem-cli lane add --name <name>` | `{"lanes": [...]}` |
-| `tandem-cli lane rename --from <name> --to <name>` | `{"lanes": [...]}` |
-| `tandem-cli lane delete --name <name>` | `{"lanes": [...], "moved": <n>}` |
+| `lane add --name <name>` | `{"lanes": [...]}` |
+| `lane rename --from <a> --to <b>` | `{"lanes": [...]}` |
+| `lane delete --name <name>` | `{"lanes": [...], "moved": <n>}` |
 
-`lanes` is the lane list after the write, in render order, so no follow-up call is needed to learn the names. Names are trimmed; an empty name, a name already in use, and (for rename/delete) an unknown name are domain failures with actionable text. `rename` rewrites the lane list and every ticket in it in one write; renaming to the same name is a no-op. `delete` never deletes tickets — its members fall back to the default area, and `moved` is how many did.
-
-```
-$ tandem-cli lane add --name Tandem
-{"lanes":["Tandem"]}
-$ tandem-cli lane delete --name Tandem
-{"lanes":[],"moved":2}
-```
-
-A lane must exist before `todo add --lane` / `todo move --lane` will accept it, which is what these verbs are for. `lane list` does not exist: `todo list --filter all --archived` shows every lane that has a ticket in its `section`; a lane with no tickets is visible only in the app.
+`lanes` is the list after the write, in render order. Names are trimmed; empty, duplicate, and unknown names are domain failures. `rename` rewrites the lane list and every ticket in it in one write; `delete` never deletes tickets — members fall back to the default area, `moved` is how many. A lane must exist before `ticket add/move --lane` accepts it; there is no `lane list` verb — `ticket list --filter all --archived` shows every lane that holds a ticket.
 
 ## Session tickets
 
-Every agent session files one ticket for itself, so the board shows what is running and what each session did. The convention lives in `AGENTS.md`; this is the CLI's side of it.
+Every agent session files one ticket for itself — the convention lives in `AGENTS.md`; this is the CLI's side.
 
-- **Start** — `todo add --title "Session — <project> · <session-id>" --status in-progress`, then `todo set --id <id> --description -` with a brief: what the session is for and what done looks like. `<project>` is the codebase the session works in, `<session-id>` is `$OPENCODE_SESSION_ID`.
-- **One per session** — check `todo list --filter all --text "Session — <project> · <session-id>"` first: that is the ticket's own title, so it matches that ticket and not a description that quotes the session id. `--filter all` because the default `open` filter cannot see a ticket this session already closed.
-- **End** — `todo set --id <id> --status done --description -`, with the outcome appended below the brief. Read the description, add the outcome under a heading of its own, write it back; the brief is never overwritten. `todo complete --id <id>` closes it without touching the description.
-- **An empty stdin is refused** — `--description -` takes the body on stdin, and a body that is empty or whitespace-only is a domain failure: exit `1`, `Description body is empty…`, and the description is left as it was. A command that pipes nothing no longer erases the brief; it fails and says so. Still check what you are piping, and use `--description ""` when you mean to clear the description. When there is no outcome to record, use `todo complete --id <id>`, which leaves the description alone.
-- **Where they live** — the default area, not a lane, so a session ticket never depends on a lane that may not exist. `todo list --text "Session —"` shows the session tickets — the prefix is in the title, and `--text` also reads descriptions, so it is a near-match and not an exact one.
-- **They are work** — a board pass refines and moves them like any other ticket. A ticket whose session is live belongs to that session; one whose session has ended is stale work, and the board picks it up (the rule is in the board skill).
-- **Origin** — when the installed CLI carries `--origin`, file with `--origin self`; an omitted flag stamps the ticket as the human's.
+- **Start** — `ticket add --title "Session — <project> · <session-id>" --status in-progress`, then `ticket set --id <id> --description -` with the brief. `<session-id>` is `$OPENCODE_SESSION_ID`.
+- **One per session** — check `ticket list --filter all --text "Session — <project> · <session-id>"` first; `--filter all` because the default filter cannot see a ticket this session already closed.
+- **End** — append the outcome below the brief and `ticket set --id <id> --status done --description -`; with no outcome, `ticket complete --id <id>`, which leaves the description alone. The empty-stdin refusal above protects the brief.
+- **Where they live** — the default area, not a lane, so a session ticket never depends on a lane that may not exist.
+- **They are work** — a sprint's triage refines and moves them like any other ticket: a live session owns its ticket, a dead session's ticket is stale work the next triage picks up.
 
 ## Notes
 
-The bikeshed (`~/.tandem/bikeshed/`) is a plain folder of `.md` files, and the file itself is the interface. Create, edit, and delete curated notes with your own file tools; the CLI writes no note content. Four CLI verbs act on notes: `rename`, the one rename path; `capture`, which files a capture; `stats`, the read-only memory-health readout; and `links`, the read-only link-graph readout.
+The bikeshed (`~/.tandem/bikeshed/`) is a plain folder of `.md` files, and the file itself is the interface — create, edit, and delete curated notes with your own file tools; the CLI writes no note content. Four CLI verbs act on notes: `rename`, `capture`, `stats`, and `links`.
 
-### `tandem-cli note rename --from <path> --to <path>`
+### `note rename --from <path> --to <path>`
 
-Rename a bikeshed note (both paths bikeshed-root-relative, `.md` included):
+Both paths bikeshed-root-relative, `.md` included. Rewrites every wikilink that resolves to the note — bare, qualified, aliased, `#fragment` — in every note including itself, in one locked transaction. Rename through the CLI only: a raw `mv` breaks every wikilink silently, and nothing repairs them but re-running the rename.
 
-```
-$ tandem-cli note rename --from "Ideas.md" --to "Backlog.md"
-{"path":"Backlog.md"}
-```
+### `note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]`
 
-It rewrites every wikilink that resolves to the note — bare, qualified, aliased, and `#fragment` forms, in every note including itself — in one locked transaction. Rename through the CLI only: a raw `mv` moves the file but leaves every wikilink pointing at the old name silently broken, and nothing repairs them but re-running the rename through the CLI.
+File one **capture** — a small, create-only record of a moment that would be lost when the session ends. Body from **stdin** (UTF-8; empty allowed). It lands at `projects/<project>/.raw/<session>/<utc>-<kind>-<slug>.md`; the slug comes from the body's first line, same-second same-slug notes get a `-2`, `-3`… suffix. `--project` defaults to the working directory's last path component; `--session` to `$OPENCODE_SESSION_ID`, else a generated token. The saddlebag is **hidden**: captures never appear in search, backlinks, or wikilink resolution, and carry no `[[wikilinks]]` — file as you work, and the consolidation pass promotes them into the curated notes. An unknown `--kind`, or a `--project`/`--session` that is not one folder name, is a domain failure.
 
-### `tandem-cli note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]`
+A note filename may not contain `/`, `#`, `|`, or a leading dot, and must end `.md` — `#` and `|` are the wikilink grammar's separators, so such a name can never be resolved (ADR 0004). The rule constrains what is *created*; pre-existing violators still show and edit.
 
-File one **capture** — a small, create-only record of a moment that would be lost when the session ends — into the project's hidden saddlebag. The body is read from **stdin** (all of it, UTF-8; empty is allowed):
+### `note stats [--project <name>]`
 
-```
-$ printf '# Caret not placed\n\nThe editor opened without focus.\n' | tandem-cli note capture --kind gotcha
-{"path":"projects/tandem/.raw/ses_eafd…/20261018T140211Z-gotcha-caret-not-placed.md"}
-```
+Whether memory is draining — one JSON object, read-only and lock-free. Per project: `curatedNotes`, `rawPending` / `rawArchived` (captures pending under `.raw/`, consumed under `.raw/.done/`), `oldestPending`, `lastConsolidated` (the newest curated-note mtime); plus `totals`. A high `rawPending` or a stale `lastConsolidated` is the queue not draining — the signal to hand the saddlebag to a consolidation pass (`skills/tandem-consolidate/`).
 
-- `--kind` (required): one of `decision`, `gotcha`, `fact`, `work`, `thread` — the curated section the consolidation pass folds it into.
-- `--project` (optional): the project folder; defaults to the working directory's last path component (`…/projects/tandem` → `tandem`).
-- `--session` (optional): defaults to `$OPENCODE_SESSION_ID`, else a short generated token.
+### `note links`
 
-The note lands at `projects/<project>/.raw/<session>/<utc>-<kind>-<slug>.md`, where `<utc>` is a UTC timestamp, `<kind>` is the kind, and `<slug>` comes from the body's first line; a same-second, same-slug note gets a `-2`, `-3`, … suffix rather than overwriting. The saddlebag is **hidden**: captures never appear in search, backlinks, or wikilink resolution, and they should contain no `[[wikilinks]]` — file captures as you work, and let the consolidation pass promote them into the curated notes. The app's tree hides them too, unless the human turns on **Show hidden files** in Tandem's Settings (a view change only: the graph stays out of the hidden layer either way). An unknown `--kind`, or a `--project`/`--session` that is not one folder name, is a domain failure (exit `1`).
-
-A note filename may not contain `/`, `#`, `|`, or a leading dot, and must end `.md`. `#` and `|` are the wikilink grammar's separators, so a note whose name contains either can never be resolved by a wikilink (ADR 0004). Pre-existing violators are still shown and edited — the rule constrains what is *created*.
-
-### `tandem-cli note stats [--project <name>]`
-
-Report whether memory is draining: one JSON object, read-only and lock-free (it writes nothing and takes no lock). It is the one command that deliberately looks *inside* the hidden saddlebag.
-
-```json
-{"bikeshed":"/Users/you/.tandem/bikeshed","projects":[{"curatedNotes":6,"lastConsolidated":"2026-10-18T21:10:00Z","oldestPending":null,"project":"tandem","rawArchived":15,"rawPending":0}],"totals":{"curatedNotes":6,"rawArchived":15,"rawPending":0}}
-```
-
-- `bikeshed` — the resolved bikeshed root, absolute.
-- `projects` — one row per project folder, alphabetical; `--project <name>` narrows it to one folder (a name that matches none is an empty list, not an error).
-- `curatedNotes` — `.md` notes under `projects/<project>/`, the hidden saddlebag pruned.
-- `rawPending` / `rawArchived` — captures pending under `projects/<project>/.raw/`, and consumed ones under `projects/<project>/.raw/.done/`.
-- `oldestPending` — the oldest pending capture's UTC time (the queue's age), or `null` when nothing is pending.
-- `lastConsolidated` — the newest curated-note mtime, or `null` when the project has no curated notes.
-- `totals` — the sums across every reported project.
-
-A pending count that stays high, or an `oldestPending` far behind, is the queue not draining; a `lastConsolidated` that stopped moving is the curated layer going stale. Both are signals to hand the saddlebag to a consolidation pass.
-
-### `tandem-cli note links`
-
-Report the bikeshed's link graph: the wikilinks that resolve to nothing, and the notes nothing links to. Read-only and lock-free (it writes nothing and takes no lock), one JSON object, no flags.
-
-```json
-{"broken":[{"line":33,"link":"projects/Beta","note":"projects/tandem/Bikeshed.md"}],"counts":{"broken":1,"links":137,"notes":14,"orphans":0},"orphans":["topics/Loose.md"]}
-```
-
-- `broken` — one row per wikilink that resolves to no note: `note` (the note holding it), `link` (the target as written — no `#fragment`, no `|alias`), `line` (the 1-based line number in that note).
-- `orphans` — the paths of the notes with no incoming wikilink.
-- `counts` — `notes` scanned, `links` found, and how many are broken and orphaned.
-
-The rules:
-
-- A link resolves case-insensitively by name — bare `[[Name]]` against the note's basename, qualified `[[folder/Note]]` against its path, with or without a trailing `.md`. A `#fragment` and a `|alias` change the display, never the target.
-- **A duplicated basename is a broken link**, not a silent tie-break: the report lists it like any other.
-- A `[[…]]` inside a code span or a fenced block is literal text, not a link — it is never reported.
-- The hidden saddlebag (`.raw/`) stays out of the graph even when the app reveals it in the tree — a capture's unresolved links are never reported, and a capture is never an orphan.
-- **Orphans exclude the entry points**: `Index.md` at the bikeshed root, and a project's anchor note (`projects/<project>/<project>.md`). Every other note with no incoming link is reported — including a project note whose `Index` line has gone stale.
-
-The same report is on screen: the app's bikeshed sidebar has a **Health** panel listing the same broken links and orphan notes, each clickable through to the note. The command and the panel are the same core call, so they never disagree.
-
-Nothing is repaired for you: a broken link may be an intention, not a mistake. Fix it by editing the note (or by renaming through `note rename`, which rewrites the links that resolve to the renamed note).
+The link graph — `broken` (wikilinks that resolve to nothing: `note`, `link` as written, 1-based `line`), `orphans` (notes with no incoming link), and `counts`. Read-only and lock-free. Rules: a link resolves case-insensitively by name — bare `[[Name]]` or qualified `[[folder/Note]]`, trailing `.md` optional; `#fragment` and `|alias` change the display, never the target; a duplicated basename is a broken link, not a tie-break; `[[…]]` inside code spans or fenced blocks is literal text; the hidden saddlebag stays out of the graph; orphans exclude the entry points (`Index.md`, and a project's anchor note `projects/<project>/<project>.md`). The app's bikeshed **Health** panel reports the same graph. Nothing is repaired for you — a broken link may be an intention; fix by editing the note or renaming through `note rename`.
 
 ## Setup check
 
-`tandem-cli doctor` reports where this machine's Tandem state lives and whether it is healthy — the first-run check for a human or an agent setting Tandem up. It is a setup/diagnostic verb, not part of the `todo` / `note` domains, and takes no arguments.
-
-Returns one JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "detail": "..."}]}`. The checks, in this order:
-
-| name | what it reports | can fail |
-| --- | --- | --- |
-| `home` | the resolved state directory (see The store), and why — `TANDEM_HOME` override, shipped app, or dev build | no |
-| `store` | the `todos.json` path, its open/done counts (`absent` = a valid empty store), and the rolling backup beside it — `backup 5m old`, or `no backup yet` until the second write | yes — present but unreadable or corrupt |
-| `bikeshed` | the bikeshed path and its note count | yes — the path is a file, not a folder |
-| `comments` | the comments directory (`~/.tandem/comments`) — `absent` is a valid early state, created on first comment | yes — present but unreadable (a file in its place, or an unlistable directory) |
-| `lock` | whether a writer currently holds the store lock | yes — held by another process |
-| `app` | the installed `/Applications/Tandem.app` version, with the quarantine-strip hint when it is flagged | no |
-| `skills` | whether this skill is found for each agent host, and whether opencode's config lists the repo `skills/` dir | no |
-
-`ok` is true when no failing-capable check failed. Exit `0` when `ok` is true and `1` when it is false (each failing check's next step is echoed to stderr); `2` on a usage error. A missing app or an uninstalled agent host are informational, not failures.
-
-```
-$ tandem-cli doctor
-{"checks":[{"detail":"/Users/you/.tandem-dev (dev build)","name":"home","ok":true},{"detail":"/Users/you/.tandem-dev/todos.json — 3 open, 2 done; backup 5m old","name":"store","ok":true}, …],"ok":true}
-```
+`tandem-cli doctor` — where this machine's Tandem state lives and whether it is healthy. One JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "detail": "..."}]}`. The checks, in order — `home` (the resolved state directory and why: `TANDEM_HOME` override, shipped app, or dev build), `store` (the `todos.json` path, open/done counts, the rolling backup), `bikeshed`, `comments` (`absent` is a valid early state), `lock`, `app` (the installed version, with the quarantine-strip hint), `skills` (whether this skill is found for each agent host). The first four can fail; a missing app or uninstalled host is informational, not failure. Exit `0` healthy, `1` not, `2` usage error.
 
 ## Streams and exit codes
 
-- **stdout** — one JSON object on success. `list` returns `{"todos": [...]}`; `add`, `set`, `move` and `complete` return the todo object; `archive` returns `{"archived": <n>}`; `todo comment add` returns the comment object, `todo comment list` returns `{"comments": [...]}`; `lane add` and `lane rename` return `{"lanes": [...]}`, `lane delete` returns `{"lanes": [...], "moved": <n>}`. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
-- **stderr** — short, actionable plain text on failure, naming the failed value and the next step. `complete` with an unknown id appends the current open list in the `list` shape:
-
-  ```
-  $ tandem-cli todo complete --id does-not-exist
-  Unknown todo id "does-not-exist". Here is the current open list to pick the right one from:
-  {"todos":[…]}
-  ```
-
-- **exit** — `0` success; `1` domain failure (the shared list rejected the call — an empty title, an unknown id, a locked store); `2` usage failure: no arguments, an unknown subcommand, or an unknown flag. A *missing flag value* is deliberately not a usage failure — `todo add` with no `--title` is the empty title the domain rejects, exit `1`. Retry only when the text says the store is locked.
+- **stdout** — one JSON object on success. `list` → `{"tickets": [...]}`; `add`, `set`, `move`, `complete` → the ticket object; `archive` → `{"archived": <n>}`; `comment add` → the comment; `comment list` → `{"comments": [...]}`; `lane add`/`rename` → `{"lanes": [...]}`, `lane delete` → `{"lanes": [...], "moved": <n>}`. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
+- **stderr** — short, actionable plain text on failure, naming the failed value and the next step; `complete` with an unknown id appends the current open list in the `list` shape.
+- **exit** — `0` success; `1` domain failure (empty title, unknown id, locked store); `2` usage failure (no arguments, unknown subcommand or flag). A missing flag value is deliberately a domain failure, not usage — `add` with no `--title` is the empty title the domain rejects. Retry only when the text says the store is locked.
