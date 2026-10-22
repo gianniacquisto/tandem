@@ -19,7 +19,7 @@ extension Status {
     var displayName: String {
         switch self {
         case .backlog: return "Backlog"
-        case .refined: return "Refined"
+        case .refined: return "To refine"
         case .ready: return "Ready"
         case .inProgress: return "In progress"
         case .inReview: return "In Review"
