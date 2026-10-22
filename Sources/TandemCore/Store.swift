@@ -24,6 +24,12 @@ import Foundation
 ///   as `todos.json.pre-migrator-<unix-ts>` on the first write, then rewritten with
 ///   `status` alone. Reads never migrate: a read-only store keeps its old shape, and the
 ///   decoder keeps honouring it.
+/// - **Pre-rename copy** — a file that still carries the v1 names (`todos`, `sections`,
+///   `section`) is copied aside as `todos.json.pre-rename-<unix-ts>` on the first write
+///   in the renamed shape, with the migrator's exact rules: under the lock, the bytes as
+///   they were, old keys and all, colliding names suffixed, and a copy that cannot be
+///   taken fails the write. The rename is one-way and one generation: after that write
+///   the file carries the renamed keys, and no later write copies it again.
 /// - **Rolling backup** — each write first copies the file it is about to replace to
 ///   `todos.json.bak` (one generation, same temp + fsync + `rename` under the same lock,
 ///   ADR 0018), so an ordinary bad write — a kill mid-rename, a bad regex — leaves one
@@ -31,12 +37,14 @@ import Foundation
 ///   a failed write leaves the previous one untouched. Reads write nothing.
 /// - **Two names, one shape** — the decoder reads the renamed keys (`tickets`, `lanes`,
 ///   and a ticket's `lane`) *beside* the v1 ones (`todos`, `sections`, `section`), and
-///   the renamed name wins when a file carries both. The writer still emits v1, so this
-///   build's file is the file an installed 0.15.0 reader expects — that reader looks the
-///   array up by name and calls a file without `todos` **corrupt**, moving it to
-///   `todos.json.corrupt-<ts>` and restarting empty (ADR 0006's incident). **Only a
-///   writer moves the names; the reader tolerates both forever**, the same shape as the
-///   `done` mirror's decoding half.
+///   the renamed name wins when a file carries both. **The writer emits the renamed keys
+///   alone**, and its first write over a v1-named file copies that file aside as
+///   `todos.json.pre-rename-<ts>` first (the bullet above). The reader keeps tolerating
+///   both shapes forever — a `.bak`, a restored file or a hand edit can be v1-named
+///   forever — the same shape as the `done` mirror's decoding half. The flip was gated
+///   on the both-reading build being installed: a 0.15.0-era reader looks the array up
+///   by name and calls a file without `todos` **corrupt**, moving it to
+///   `todos.json.corrupt-<ts>` and restarting empty (ADR 0006's incident).
 ///
 /// The public surface is the ticket operations (see the `Operations` extension); the
 /// locking/file mechanics are the shared `LockedDirectory` primitive (ADR 0001 / 0004),
@@ -121,15 +129,20 @@ public struct Store: Sendable {
     /// already recovered is not double-recovered; if still corrupt, backs the file up and
     /// restarts empty. Returns the contents, when *this* call performed the backup the
     /// backup path, and whether the file it read still carries the legacy `done` mirror
-    /// (the caller writing must then copy it aside first). Internal (not private):
-    /// `withLockedRead` builds on it for operations that read the store and write
-    /// a sidecar.
-    func readLocked() throws -> (contents: StoreContents, backupPath: String?, legacyMirror: Bool) {
+    /// or the v1 names — the caller writing must then copy it aside first, under the
+    /// matching marker. Internal (not private): `withLockedRead` builds on it for
+    /// operations that read the store and write a sidecar.
+    func readLocked() throws -> (
+        contents: StoreContents,
+        backupPath: String?,
+        legacyMirror: Bool,
+        v1Names: Bool
+    ) {
         switch peek() {
         case .absent:
-            return (StoreContents(lanes: [], todos: []), nil, false)
+            return (StoreContents(lanes: [], todos: []), nil, false, false)
         case .valid(let contents, let raw):
-            return (contents, nil, Self.carriesLegacyMirror(raw))
+            return (contents, nil, Self.carriesLegacyMirror(raw), Self.carriesV1Names(raw))
         case .invalid:
             let ts = Int(Date().timeIntervalSince1970)
             var backup = directory.appendingPathComponent("todos.json.corrupt-\(ts)")
@@ -145,7 +158,7 @@ public struct Store: Sendable {
                 // Never silently discard: if we cannot back the corrupt file up, fail loudly.
                 throw StoreIOError.io("could not back up corrupt store: \(error)")
             }
-            return (StoreContents(lanes: [], todos: []), backup.path, false)
+            return (StoreContents(lanes: [], todos: []), backup.path, false, false)
         }
     }
 
@@ -181,31 +194,32 @@ public struct Store: Sendable {
     /// The envelope. `lanes` and each ticket's `lane` are **additive** to schema v1,
     /// which is why the version below does not move.
     ///
-    /// **The reader takes both names; the writer still emits v1.** The renamed keys
-    /// (`tickets`, `lanes`) are decoded *beside* the v1 ones (`todos`, `sections`), and
-    /// the renamed name wins when a file carries both — a hand edit is not an error, and
-    /// the next write makes the file one shape. The writer is untouched: it still writes
-    /// `todos` / `sections`, so the file this build produces is the file an installed
-    /// 0.15.0 reader expects. That reader looks the array up by name, and a file without
-    /// `todos` is **corrupt** to it: it moves the file to `todos.json.corrupt-<ts>` and
-    /// restarts empty (ADR 0006's incident). So the order is fixed — **only a writer
-    /// moves the names**, and this reader keeps tolerating both forever, the same shape
-    /// as the `done` mirror's decoding half.
+    /// **The reader takes both names; the writer emits the renamed ones.** The renamed
+    /// keys (`tickets`, `lanes`) are decoded *beside* the v1 ones (`todos`, `sections`),
+    /// and the renamed name wins when a file carries both — a hand edit is not an error,
+    /// and the next write makes the file one shape. The writer emits the renamed keys
+    /// alone, and the first write over a v1-named file copies that file aside as
+    /// `todos.json.pre-rename-<ts>` first. The reader keeps tolerating both shapes
+    /// forever — a `.bak`, a restored file or a hand edit can be v1-named forever — the
+    /// same shape as the `done` mirror's decoding half. The flip was gated on the
+    /// both-reading build being installed, because a 0.15.0-era reader looks the array
+    /// up by name, and a file without `todos` is **corrupt** to it: it moves the file to
+    /// `todos.json.corrupt-<ts>` and restarts empty (ADR 0006's incident).
     private struct FileEnvelope: Codable {
         var version: Int
         /// The ordered lane names. Absent in a v1 file written before lanes existed.
         var lanes: [String]?
-        /// The tickets. The key is spelled **`todos`** on disk — the v1 key, unchanged here.
+        /// The tickets. Written under the renamed key **`tickets`**; the v1 key
+        /// `todos` is read beside it and kept forever.
         var todos: [Ticket]
 
-        /// `lanes` is spelled **`sections`** on disk, like a ticket's `lane` (ADR 0017).
-        /// The renamed keys are read beside them; the writer emits none of them.
         private enum CodingKeys: String, CodingKey {
             case version, todos
+            /// The v1 lane-list key, read beside `lanes` and kept forever (ADR 0017).
             case lanes = "sections"
-            /// The renamed array key, read beside `todos`.
+            /// The renamed array key, what the writer emits.
             case tickets
-            /// The renamed lane-list key, read beside `sections`.
+            /// The renamed lane-list key, read beside `sections`; what the writer emits.
             case renamedLanes = "lanes"
         }
 
@@ -240,17 +254,15 @@ public struct Store: Sendable {
             }
         }
 
-        /// The writer, spelled out: **v1 keys only** — `version`, `sections`, `todos`.
-        /// It is hand-written rather than synthesized because the decoder's key set
-        /// carries the renamed names too, and a synthesized encoder cannot have a
-        /// `CodingKeys` case that no property matches. Same keys, same order, same
-        /// values as the synthesized encoder produced before the rename — the file
-        /// this build writes is the file today's build writes.
+        /// The writer, spelled out: **the renamed keys** — `version`, `lanes`,
+        /// `tickets`, in that legible order. It is hand-written rather than synthesized
+        /// because the decoder's key set carries the v1 names too, and a synthesized
+        /// encoder cannot have a `CodingKeys` case that no property matches.
         func encode(to encoder: Encoder) throws {
             var c = encoder.container(keyedBy: CodingKeys.self)
             try c.encode(version, forKey: .version)
-            try c.encodeIfPresent(lanes, forKey: .lanes)
-            try c.encode(todos, forKey: .todos)
+            try c.encodeIfPresent(lanes, forKey: .renamedLanes)
+            try c.encode(todos, forKey: .tickets)
         }
     }
 
@@ -264,10 +276,12 @@ public struct Store: Sendable {
     /// is not a version bump either: a v1-era reader fails on a missing key whatever the
     /// version says, and the migrator's gate is reachability, not the file's label.
     ///
-    /// **The writer still emits the v1 keys** — `todos`, `sections`, `section` — even
-    /// though the reader now takes the renamed ones too. Flipping the writer is its own
-    /// change, gated on the build that reads both being installed; until then this
-    /// build's file is byte-for-byte the file today's build writes.
+    /// **The writer emits the renamed keys** — `tickets`, `lanes`, and a ticket's
+    /// `lane` — the flip this change is. It was gated on the build that reads both
+    /// shapes being installed (a v1-era reader calls a `todos`-less file corrupt and
+    /// restarts empty, ADR 0006's incident), and the first write over a v1-named file
+    /// copies that file aside as `todos.json.pre-rename-<ts>` before it retires the old
+    /// names. The decoder keeps both shapes forever.
     private static func encode(_ contents: StoreContents) throws -> Data {
         let envelope = FileEnvelope(version: 1, lanes: contents.lanes, todos: contents.todos)
         let encoder = JSONEncoder()
@@ -303,7 +317,7 @@ public struct Store: Sendable {
         case .valid(let contents, _):
             return (contents, nil)
         case .invalid:
-            let (contents, backup, _) = try withLock { try readLocked() }
+            let (contents, backup, _, _) = try withLock { try readLocked() }
             return (contents, backup.map(Self.recoveryNote))
         }
     }
@@ -314,15 +328,17 @@ public struct Store: Sendable {
     /// still taken and recovery is still checked. The contents are normalized again before
     /// the write, so every operation leaves the invariant holding. A first write over a
     /// file that still carries the legacy `done` mirror copies that file aside first (the
-    /// migrator's safety net), and every write rolls the file it replaces to
-    /// `todos.json.bak`. If `body` throws and this call performed a recovery, the
-    /// failure is wrapped in a `RecoveryFailure` so the note is not lost. Internal (not
-    /// public): the public surface is the `Operations` extension.
+    /// migrator's safety net), a first write in the renamed shape over a file that still
+    /// carries the v1 names copies it aside as `todos.json.pre-rename-<ts>`, and every
+    /// write rolls the file it replaces to `todos.json.bak`. If `body` throws and this
+    /// call performed a recovery, the failure is wrapped in a `RecoveryFailure` so the
+    /// note is not lost. Internal (not public): the public surface is the
+    /// `Operations` extension.
     func mutate<T: Sendable>(
         _ body: (inout StoreContents) throws -> (value: T, changed: Bool)
     ) throws -> (value: T, note: String?) {
         try withLock {
-            let (initial, backup, legacyMirror) = try readLocked()
+            let (initial, backup, legacyMirror, v1Names) = try readLocked()
             let note = backup.map(Self.recoveryNote)
             var contents = initial
             contents.normalize()
@@ -330,7 +346,12 @@ public struct Store: Sendable {
                 let (value, changed) = try body(&contents)
                 if changed {
                     contents.normalize()
-                    if legacyMirror { try backUpBeforeMigrating() }
+                    if legacyMirror {
+                        try copyStoreAside(marker: "pre-migrator", reason: "retiring the done mirror")
+                    }
+                    if v1Names {
+                        try copyStoreAside(marker: "pre-rename", reason: "renaming its keys")
+                    }
                     try writeLocked(contents)
                 }
                 return (value, note)
@@ -362,7 +383,7 @@ public struct Store: Sendable {
         _ body: (StoreContents, String?) throws -> T
     ) throws -> T {
         try withLock {
-            let (initial, backup, _) = try self.readLocked()
+            let (initial, backup, _, _) = try self.readLocked()
             let note = backup.map(Self.recoveryNote)
             var contents = initial
             contents.normalize()
@@ -379,22 +400,26 @@ public struct Store: Sendable {
         }
     }
 
-    /// Copy a file that still carries the legacy `done` mirror aside, once, before the
-    /// first write in the retired shape. "A list moved aside, never a list lost": the old
-    /// format stays one `mv` away for a binary that still needs it.
-    private func backUpBeforeMigrating() throws {
+    /// Copy the store file aside, once, before the first write that retires a shape —
+    /// under the migrator's marker when the file still carries the `done` mirror, under
+    /// the rename's marker when it still carries the v1 names. "A list moved aside, never
+    /// a list lost": the old shape stays one `mv` away for a binary that still needs it,
+    /// the bytes as they were and old keys and all. The name is `todos.json.<marker>-<unix-ts>`,
+    /// colliding names suffixed. A copy that cannot be taken fails the write rather than
+    /// being skipped — the retirement must not outpace its evidence.
+    private func copyStoreAside(marker: String, reason: String) throws {
         let ts = Int(Date().timeIntervalSince1970)
-        var backup = directory.appendingPathComponent("todos.json.pre-migrator-\(ts)")
+        var backup = directory.appendingPathComponent("todos.json.\(marker)-\(ts)")
         var suffix = 1
         let fm = FileManager.default
         while fm.fileExists(atPath: backup.path) {
-            backup = directory.appendingPathComponent("todos.json.pre-migrator-\(ts)-\(suffix)")
+            backup = directory.appendingPathComponent("todos.json.\(marker)-\(ts)-\(suffix)")
             suffix += 1
         }
         do {
             try fm.copyItem(at: fileURL, to: backup)
         } catch {
-            throw StoreIOError.io("could not back up the store before retiring the done mirror: \(error)")
+            throw StoreIOError.io("could not copy the store aside before \(reason): \(error)")
         }
     }
 
@@ -411,6 +436,26 @@ public struct Store: Sendable {
             ?? (object["todos"] as? [[String: Any]])
             ?? []
         return tickets.contains { $0["done"] != nil }
+    }
+
+    /// Whether the raw file still carries any v1 name — `todos` for the array, `sections`
+    /// for the lane list, or `section` on a ticket for its lane. Only asked on the write
+    /// path (under the lock), never on a plain read. The names are looked up beside their
+    /// renamed twins — the writer now emits the renamed ones, and a file carrying a v1
+    /// one, however it got there, is the one whose first renamed write takes the
+    /// `pre-rename` copy.
+    private static func carriesV1Names(_ data: Data) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return false
+        }
+        if object["todos"] != nil || object["sections"] != nil {
+            return true
+        }
+        let tickets = (object["tickets"] as? [[String: Any]])
+            ?? (object["todos"] as? [[String: Any]])
+            ?? []
+        return tickets.contains { $0["section"] != nil }
     }
 
     /// The recovery note text, naming the backup path (spec: result `note`).

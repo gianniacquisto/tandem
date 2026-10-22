@@ -198,7 +198,7 @@ public enum StoreEncoding {
         guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StoreIOError.io("could not encode ticket for result")
         }
-        object["lane"] = object["section"] ?? NSNull()
+        object["section"] = object["lane"] ?? NSNull()
         return object
     }
 

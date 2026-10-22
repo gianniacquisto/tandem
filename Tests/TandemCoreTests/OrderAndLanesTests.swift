@@ -306,7 +306,7 @@ struct OrderAndLanesTests {
         _ = try store.add("new")
         let obj = try JSONSerialization.jsonObject(with: Data(contentsOf: store.fileURL)) as? [String: Any]
         #expect((obj?["version"] as? Int) == 1)
-        #expect(obj?["sections"] is [Any])
+        #expect(obj?["lanes"] is [Any])
     }
 
     @Test("a version-2 file (written during the window the version was bumped) still reads")
@@ -373,8 +373,79 @@ struct OrderAndLanesTests {
         #expect(try store.lanes().value == ["New"])
     }
 
-    @Test("a write over a renamed-shape file still emits the v1 keys")
-    func writeOverRenamedShapeEmitsV1() throws {
+    // MARK: - The writer's flip: the renamed keys, and the pre-rename copy
+
+    /// The `todos.json.pre-rename-<ts>` copies in a store directory, oldest first.
+    private func preRenameCopies(in dir: URL) -> [URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        return names.filter { $0.hasPrefix("todos.json.pre-rename-") }.sorted()
+            .map { dir.appendingPathComponent($0) }
+    }
+
+    /// The `todos.json.pre-migrator-<ts>` copies in a store directory, oldest first.
+    private func preMigratorCopies(in dir: URL) -> [URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        return names.filter { $0.hasPrefix("todos.json.pre-migrator-") }.sorted()
+            .map { dir.appendingPathComponent($0) }
+    }
+
+    /// A v1-named store: two tickets, one in a lane, the shape the installed 0.15.0
+    /// writer leaves behind.
+    private let v1HandoverShape = #"{"version":1,"sections":["Work"],"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"kept","status":"backlog","section":"Work","createdAt":"2026-01-01T00:00:00Z","completedAt":null},{"id":"00000000-0000-0000-0000-000000000002","title":"default","status":"ready","section":null,"createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#
+
+    @Test("the first write over a v1-named file takes both copies, byte-equal to the pre-write file")
+    func firstWriteOverV1ShapeCopiesFileAside() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        try writeRaw(v1HandoverShape, to: store)
+        let before = try Data(contentsOf: store.fileURL)
+
+        _ = try store.add("new")
+
+        // The file is one shape now: the renamed keys, the v1 ones gone.
+        let object = try fileObject(store)
+        #expect((object["version"] as? Int) == 1)
+        #expect(object["tickets"] is [Any], "the writer emits the renamed array key")
+        #expect(object["lanes"] is [Any], "the writer emits the renamed lane key")
+        #expect(object["todos"] == nil, "the v1 array key is gone")
+        #expect(object["sections"] == nil, "the v1 lane key is gone")
+
+        let tickets = try #require(object["tickets"] as? [[String: Any]])
+        #expect(tickets.count == 3)
+        #expect(tickets.allSatisfy { $0["section"] == nil }, "the v1 per-ticket key is gone")
+        #expect(tickets.contains { $0["lane"] as? String == "Work" },
+                "the lane survives the round trip under the renamed key")
+
+        // Both copies, one write: the pre-rename snapshot and the rolling .bak, each
+        // byte-equal to the file as it was before the write.
+        let copies = preRenameCopies(in: dir)
+        #expect(copies.count == 1, "the handover takes exactly one pre-rename copy")
+        #expect(try Data(contentsOf: try #require(copies.first)) == before)
+        #expect(try Data(contentsOf: store.backupURL) == before,
+                "the .bak is the state before the write, the one-command recovery")
+    }
+
+    @Test("the handover is one generation: a second write takes no second copy and re-rolls the .bak")
+    func secondWriteTakesNoSecondCopy() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        try writeRaw(v1HandoverShape, to: store)
+
+        _ = try store.add("new")
+        let afterFirst = try Data(contentsOf: store.fileURL)
+        #expect(preRenameCopies(in: dir).count == 1)
+
+        _ = try store.add("one more")
+
+        #expect(preRenameCopies(in: dir).count == 1, "no second pre-rename copy")
+        #expect(try Data(contentsOf: store.backupURL) == afterFirst,
+                "the .bak is replaced, not rotated")
+    }
+
+    @Test("a write over a renamed-shape file emits the renamed keys and takes no copy")
+    func writeOverRenamedShapeKeepsRenamed() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
@@ -382,20 +453,40 @@ struct OrderAndLanesTests {
 
         _ = try store.add("new", lane: "Work")
 
-        // The writer is not flipped yet: the file it writes is the file an installed
-        // 0.15.0 reader expects, and that reader looks the array up by name.
         let object = try fileObject(store)
-        #expect(object["todos"] is [Any], "the writer still emits the v1 array key")
-        #expect(object["tickets"] == nil, "the writer must not emit the renamed key yet")
-        #expect(object["sections"] is [Any], "the writer still emits the v1 lane key")
-        #expect(object["lanes"] == nil, "the writer must not emit the renamed lane key")
         #expect((object["version"] as? Int) == 1)
+        #expect(object["tickets"] is [Any], "the writer emits the renamed array key")
+        #expect(object["lanes"] is [Any], "the writer emits the renamed lane key")
+        #expect(object["todos"] == nil, "the writer does not emit the v1 array key")
+        #expect(object["sections"] == nil, "the writer does not emit the v1 lane key")
 
-        let tickets = try #require(object["todos"] as? [[String: Any]])
-        #expect(tickets.allSatisfy { $0["lane"] == nil },
-                "the writer must not emit the renamed per-ticket key")
-        #expect(tickets.contains { $0["section"] as? String == "Work" },
-                "the lane survives the round trip under the v1 key")
+        let tickets = try #require(object["tickets"] as? [[String: Any]])
+        #expect(tickets.allSatisfy { $0["section"] == nil },
+                "the writer does not emit the v1 per-ticket key")
+        #expect(tickets.contains { $0["lane"] as? String == "Work" },
+                "the lane survives the round trip under the renamed key")
         #expect(try store.list(.all).value.count == 2)
+        #expect(preRenameCopies(in: dir).isEmpty,
+                "a file that carries no v1 name gets no safety copy")
+    }
+
+    @Test("a v1-named file that also carries the done mirror takes both copies, one write")
+    func v1FileWithMirrorTakesBothCopies() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        // The oldest possible shape: v1 names and the legacy mirror at once.
+        try writeRaw(#"{"version":1,"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"old","done":true,"status":"backlog","createdAt":"2026-01-01T00:00:00Z","completedAt":"2026-01-02T00:00:00Z"}]}"#, to: store)
+        let before = try Data(contentsOf: store.fileURL)
+
+        _ = try store.add("new")
+
+        // Both safety copies, each byte-equal to the pre-write file.
+        let migrator = preMigratorCopies(in: dir)
+        #expect(migrator.count == 1)
+        #expect(try Data(contentsOf: try #require(migrator.first)) == before)
+        let rename = preRenameCopies(in: dir)
+        #expect(rename.count == 1)
+        #expect(try Data(contentsOf: try #require(rename.first)) == before)
     }
 }
