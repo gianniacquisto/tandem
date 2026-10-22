@@ -53,3 +53,20 @@ This ADR records where the agent face lives, that it is portable, and that the p
 **What the consequence above now reads.** The bullet "the two of them that carried a model and a colour (`retro`, `reviewer`) keep those too" no longer holds — no agent carries a model. Its other half is unchanged: the host still finds the same four agents by name, through the same symlinks, in the same checkout. So is the decision this ADR records: where the agent face lives, that a prompt's home is the project that owns its job, and that the passes are skills.
 
 **The trade-off.** The gate's reasoning model is now the host's choice, and it moves when the host's configuration moves — the repo records nowhere which model decided which merge. The human accepted that in exchange for the repo carrying no dependency on one provider's usage limit. The fleet's own pair, `black` and `blue`, keep their models: there the model is the identity, not a dependency.
+
+## Amendment, 2026-10-22: the fleet is retired, so `black`, `blue` and `terse` live here
+
+**The change.** The human's answer to ticket `4B419A55` — "get rid of fleet and everything goes in tandem" — folds the rest of the fleet repo into this one. Tandem PR #109 moved `terse/` (7 files) and `black.md`/`blue.md` (now `agents/black.md` and `agents/blue.md`) here; fleet PR #29 deleted the fleet repo's eleven tracked files. The fleet's `main` now tracks nothing, and the repo is archive-ready; archiving it is ticket `50687D4B`, a human act.
+
+**Why.** The 2026-10-21 split kept `black`, `blue` and `terse` in the fleet because they are not Tandem's passes. What changed is not that judgement but its cost: after the four passes moved here, nine of the fourteen tickets ever filed in the `fleet` lane were the fleet's own documents re-syncing to Tandem's rules — a mirror with no live reader on this Mac, drifting from the rules it copied. One repo is cheaper than a mirror of one repo.
+
+**What the text above now reads.**
+
+- The decision bullet "The fleet repo keeps the pair that is not Tandem's — `black` and `blue`" no longer holds: this repo keeps them, at `agents/black.md` and `agents/blue.md`. The rest of that bullet stands — one prompt, two models, a comparison arm rather than a pass.
+- The "Decided against" item "Moving `black` and `blue` as well" is reversed by the human's later answer. The reason recorded there — that the human excluded them — is the reason that no longer applies.
+- The consequence "the fleet's `main` still ships `black`, `blue` and `terse`" is false: it ships nothing. The mirrors the fleet's `README.md` and `WORKFLOW.md` described are in that repo's history, not on its branch.
+- The first amendment's closing line, "The fleet's own pair, `black` and `blue`, keep their models", still holds where they are now: `agents/black.md` and `agents/blue.md` carry a `model:` each, because there the model is the identity.
+
+**The trap this move closed.** `terse/opencode/plugin/index.ts` resolved its style from a hardcoded `~/projects/fleet/terse/TERSE.md` and swallowed the read error, so a deleted checkout would have injected nothing, silently, in every session. It now resolves the style beside itself — `realpathSync` of its own file, two levels up — which reads `~/projects/tandem/terse/TERSE.md` through the host's symlink and survives the next move. Verified by a read after the move, not assumed: the three host symlinks (`plugins/terse`, `terse.sh`, `commands/terse.md`) resolve under this checkout, and the style file is found, 1264 bytes.
+
+**The trade-off.** `terse` is a host-facing tool in the app's repo: a style that every session loads, shipped from the tree that ships the app. The boundary ADR 0026 drew — a prompt's home is the project that owns its job — is now the only thing keeping the personal toolkit from growing here; nothing structural does.
