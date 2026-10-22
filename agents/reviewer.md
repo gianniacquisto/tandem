@@ -46,6 +46,12 @@ Action: do not merge. Comment the specific risks with `file:line` and the conseq
 
 The actor holding the evidence completes the ticket: the reviewer on a merged PR, the dispatcher on a verified non-PR outcome, the answering pass on a human decision. Completion without a PR, a diff, or a recorded answer is a claim, not a completion.
 
+## Handoff
+
+The actor that finishes a ticket's work sets the next status and, where there is a next, the next assignee; the column order and the agent names are the roster's.
+
+The roster is `skills/tandem-team/SKILL.md` — read it for the order and for the role that owns each column.
+
 ## Commenting
 
 - Approve, nothing to add: `gh pr review <n> --approve`.
