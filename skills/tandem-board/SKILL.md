@@ -86,6 +86,7 @@ Work a design tree in rounds. The frontier is every question whose prerequisites
 
 A ready ticket is claimed by the agent that takes it: `--status in-progress --assignee <agent-name>`.
 
+- The assignee names are the roster's — `skills/tandem-team/SKILL.md`.
 - The brief is the ticket **id and description**, nothing more. The child orients from `AGENTS.md` and the bikeshed on its own; restating memory in the brief is how two versions of the truth start.
 - Dispatch one ticket per claim. The board's one-at-a-time rule is convention, not the runtime: a host's `max_concurrent_agents: 1` in `~/.config/opencode/opencode.json` caps **local** models only — the provider behind the cap is the one running on the machine — so a hosted-model subagent runs alongside a local one. Parallel agents on one repo still collide in the working tree, not in the store.
 - The child branches, builds, verifies, opens a PR, files captures, and ends with one `work` capture.
