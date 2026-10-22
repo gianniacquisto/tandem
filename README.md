@@ -63,7 +63,7 @@ The app and the agent read and write the same store, and the app watches it: a t
 | The archive — a fourth state, and the way back | v0.12.0 |
 | The ticket sheet — double-click a ticket to edit it whole | v0.12.0 |
 | The comment log — a ticket's discussion, appended to and never rewritten | v0.15.0 |
-| A comment composer in the ticket sheet, so a human can answer in the app | unreleased |
+| A comment composer in the ticket sheet, so a human can answer in the app | v0.16.0 |
 | Quick open (⌘K) — one ranked list over the notes and the tickets | v0.15.0 |
 | An undo toast: one click back from a mis-clicked completion | v0.15.0 |
 | The bikeshed — a folder of markdown notes, watched live | v0.6.0 |
@@ -72,11 +72,11 @@ The app and the agent read and write the same store, and the app watches it: a t
 | The health report — broken links, orphan notes | v0.15.0 |
 | The hidden layer — the saddlebag of captures, revealed on request | v0.15.0 |
 | The note↔ticket bridge — "Send to tickets", "Promote to note" | v0.15.0 |
-| The face says tickets — the tab, the search field, the button | unreleased |
+| The face says tickets — the tab, the search field, the button | v0.16.0 |
 | A first-run setup wizard | v0.10.0 |
 | The store — one JSON file, watched live, editable by hand | v0.1.0 |
 | The rolling backup `todos.json.bak` — the one previous good copy | v0.15.0 |
-| The session record — an agent session's own artifact, in `sessions.json` | unreleased |
+| The session record — an agent session's own artifact, in `sessions.json` | v0.16.0 |
 | A dev build that keeps its own state in `~/.tandem-dev`, so it can never touch yours | v0.9.0 |
 
 Every picture below, and every word of the app's own copy in it, is `dev`'s — the branch the next release is cut from. The build installed today says `Todos` where this says `Tickets`, and `Send to todos` where this says `Send to tickets`.
@@ -152,8 +152,8 @@ Not a ticket: `session start` opens a record of one agent session's run — the 
 | `tandem-memory` | the bikeshed as the agent's memory: orient from the Hub, record captures as you work, consolidate into the curated notes on request | v0.6.0, the capture-and-consolidation protocol in v0.11.0 |
 | `tandem-board` | the six gates a ticket passes through, triage, dispatch and escalation | v0.15.0 |
 | `tandem-handoff` | a paste-ready briefing for a cold session | v0.15.0 |
-| `tandem-setup` | installs the whole agent face on a host | unreleased |
-| `tandem-consolidate` | dispatches the consolidator pass | unreleased |
+| `tandem-setup` | installs the whole agent face on a host | v0.16.0 |
+| `tandem-consolidate` | dispatches the consolidator pass | v0.16.0 |
 
 `skills/grilling/`, `skills/implement-spec/`, `skills/retro/`, `skills/to-spec/` and `skills/writing-for-agents/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), so a clone of this repo is the whole workflow.
 
