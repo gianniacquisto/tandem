@@ -104,11 +104,11 @@ $ tandem-cli todo archive
 
 ### `tandem-cli todo comment add --id <string> [--author <name>] --body <string|->`
 
-Append one comment to the ticket's **discussion log** — where agents talk on a ticket after refinement, since the description stays refinement-only. The log is a sidecar file (`~/.tandem/comments/<id>.jsonl`), not a field on the ticket: the app rewrites `todos.json` whole and drops keys it does not know, but it never touches the sidecar, so the conversation survives any edit of the ticket. The body is markdown; `--body -` reads it from stdin, as `--description` does, and an empty body is rejected. `--author` signs the line — your name when you are the assignee or an agent working the ticket; omitted is the unnamed author. An unknown id fails with the current open list, as `complete` does. The log is append-only: there is no edit and no delete verb, so say the thing you mean — a correction is a new comment.
+Append one comment to the ticket's **discussion log** — where agents talk on a ticket after refinement, since the description stays refinement-only. The log is a sidecar file (`~/.tandem/comments/<id>.jsonl`), not a field on the ticket: the app rewrites `todos.json` whole and drops keys it does not know, but it never touches the sidecar, so the conversation survives any edit of the ticket. The body is markdown; `--body -` reads it from stdin, as `--description` does, and an empty body is rejected. **`--author` signs the line with the name you write — `self` is not expanded for it.** Only `--assignee` and `--origin` expand `self` to `$TANDEM_AGENT`; write the role out, and the roster says which roles exist (`skills/tandem-team/SKILL.md`). Omitted is the unnamed author `""` — a gap in the record, not a style choice. An unknown id fails with the current open list, as `complete` does. The log is append-only: there is no edit and no delete verb, so say the thing you mean — a correction is a new comment.
 
 ```
-$ printf 'Did you mean X, or was it Y?\n' | tandem-cli todo comment add --id 550e8400-… --author self --body -
-{"at":"2026-10-20T22:31:04Z","author":"ui","body":"Did you mean X, or was it Y?"}
+$ printf 'Did you mean X, or was it Y?\n' | tandem-cli todo comment add --id 550e8400-… --author reviewer --body -
+{"at":"2026-10-22T10:11:49Z","author":"reviewer","body":"Did you mean X, or was it Y?"}
 ```
 
 ### `tandem-cli todo comment list --id <string>`
