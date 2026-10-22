@@ -150,7 +150,7 @@ A ticket that escalates to the human does not stop the sprint: it leaves the bat
 
 In this order.
 
-1. **The final standup** — the standup pass posts its batch comment on the sprint ticket. The human's answer set the standup's trigger: on the human's request, with a sprint's close as its one automatic caller — so the close calls it. (`skills/tandem-standup/` — not built yet; ticket `64BD463D` builds it. Until it lands, the sprint session writes the batch comment itself, authored `standup`.)
+1. **The final standup** — the standup pass posts its batch comment on the sprint ticket. The human's answer set the standup's trigger: on the human's request, with a sprint's close as its one automatic caller — so the close calls it. (`skills/tandem-standup/` — the standup pass. Its step 4 posts the batch comment on the sprint ticket, and its **Where the output lands** says what that comment carries. The sprint session does not write that comment itself.)
 2. **One retro per session the sprint spawned that carries no `## Retro` marker** — the standing rule applied as a catch-up; the rule and the marker are the board skill's (**Dispatch**). A child whose PR merged was already retro'd by the dispatch step. The sprint session's own retro is its own. To check a session:
 
    ```sh
