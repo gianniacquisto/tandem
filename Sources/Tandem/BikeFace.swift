@@ -16,6 +16,10 @@ enum MainTab: String, CaseIterable, Identifiable {
     case tickets = "Tickets"
     case board = "Board"
     case inbox = "Inbox"
+    /// The session records — the artifacts an agent session leaves behind
+    /// (`sessions.json`), read-only, and the place a session's record is read
+    /// now that the sessions left the board (spec `FC770B8A`).
+    case sessions = "Sessions"
     case bikeshed = "Bikeshed"
     var id: String { rawValue }
 }
@@ -52,7 +56,7 @@ struct BikeTabControl: View {
                 .buttonStyle(.plain)
             }
         }
-        .frame(width: 340, height: Space.control)
+        .frame(width: 420, height: Space.control)
         .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.paper))
         .clipShape(RoundedRectangle(cornerRadius: Radius.control))
         .overlay(RoundedRectangle(cornerRadius: Radius.control)
