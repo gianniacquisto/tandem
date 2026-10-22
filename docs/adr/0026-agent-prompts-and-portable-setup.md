@@ -70,3 +70,11 @@ This ADR records where the agent face lives, that it is portable, and that the p
 **The trap this move closed.** `terse/opencode/plugin/index.ts` resolved its style from a hardcoded `~/projects/fleet/terse/TERSE.md` and swallowed the read error, so a deleted checkout would have injected nothing, silently, in every session. It now resolves the style beside itself — `realpathSync` of its own file, two levels up — which reads `~/projects/tandem/terse/TERSE.md` through the host's symlink and survives the next move. Verified by a read after the move, not assumed: the three host symlinks (`plugins/terse`, `terse.sh`, `commands/terse.md`) resolve under this checkout, and the style file is found, 1264 bytes.
 
 **The trade-off.** `terse` is a host-facing tool in the app's repo: a style that every session loads, shipped from the tree that ships the app. The boundary ADR 0026 drew — a prompt's home is the project that owns its job — is now the only thing keeping the personal toolkit from growing here; nothing structural does.
+
+## Amendment, 2026-10-23: the comparison arm is retired, and every agent is a noun
+
+**The change.** `agents/black.md` and `agents/blue.md` are deleted — one prompt and two models that outlived the comparison they existed to run. The same pass renamed `agents/refine.md` to `agents/refiner.md` (agents are nouns — `builder`, `refiner`, `reviewer`, `consolidator` — verbs are skills), deleted `agents/retro.md` (the retro is a skill the human or session runs, filing to the Retro lane), and added `agents/builder.md`, the build half of dispatch, which previously had no prompt and so could carry no contract. All four inherit the host's default model, per the amendment above.
+
+**Why.** The terse pass the human asked for: the two builders were the fleet's comparison arm with no fleet left to compare against, the roster named roles no agent filled, and a terse opinionated workflow needs one agent per role it names.
+
+**Consequences.** The host symlinks for the deleted prompts are removed and replaced by `refiner` and `builder`; `terse/` is untouched. The decision bullet "a prompt's home is the project that owns its job" is unchanged, and now describes four files instead of four.

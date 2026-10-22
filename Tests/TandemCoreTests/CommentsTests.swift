@@ -34,9 +34,9 @@ struct CommentsTests {
         #expect(!fm.fileExists(atPath: store.commentsDirectory.path))
 
         let result = try store.append(ticketID: ticket.id.uuidString,
-                                      author: "blue", body: "did you mean X?")
+                                      author: "builder", body: "did you mean X?")
         let comment = result.value
-        #expect(comment.author == "blue")
+        #expect(comment.author == "builder")
         #expect(comment.body == "did you mean X?")
         #expect(result.note == nil)
 
@@ -59,7 +59,7 @@ struct CommentsTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let ticket = try makeTicket(store)
         for body in ["first", "second", "third"] {
-            _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: body)
+            _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: body)
         }
         let listed = try store.list(ticketID: ticket.id.uuidString).value
         #expect(listed.map(\.body) == ["first", "second", "third"])
@@ -73,7 +73,7 @@ struct CommentsTests {
 
         for body in ["", "   ", "\n  \n"] {
             do {
-                _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: body)
+                _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: body)
                 Issue.record("expected emptyCommentBody for body \(body.debugDescription)")
             } catch DomainError.emptyCommentBody {
                 // The domain failure, not a usage one.
@@ -92,7 +92,7 @@ struct CommentsTests {
         let unknown = "00000000-0000-0000-0000-000000000000"
 
         do {
-            _ = try store.append(ticketID: unknown, author: "blue", body: "hello")
+            _ = try store.append(ticketID: unknown, author: "builder", body: "hello")
             Issue.record("expected unknownID")
         } catch let DomainError.unknownID(id, open) {
             #expect(id == unknown)
@@ -100,7 +100,7 @@ struct CommentsTests {
         }
         // A non-UUID id is unknown too.
         do {
-            _ = try store.append(ticketID: "not a uuid", author: "blue", body: "hello")
+            _ = try store.append(ticketID: "not a uuid", author: "builder", body: "hello")
             Issue.record("expected unknownID")
         } catch is DomainError {
         }
@@ -124,7 +124,7 @@ struct CommentsTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let ticket = try makeTicket(store)
         _ = try store.append(ticketID: ticket.id.uuidString,
-                             author: "blue", body: "asked mid-build")
+                             author: "builder", body: "asked mid-build")
 
         _ = try store.set(ticket.id.uuidString, title: .set("A renamed ticket"))
         _ = try store.complete(ticket.id.uuidString)
@@ -140,8 +140,8 @@ struct CommentsTests {
         let ticket = try makeTicket(store)
 
         let trimmed = try store.append(ticketID: ticket.id.uuidString,
-                                       author: "  blue  ", body: "signed").value
-        #expect(trimmed.author == "blue")
+                                       author: "  builder  ", body: "signed").value
+        #expect(trimmed.author == "builder")
         let unnamed = try store.append(ticketID: ticket.id.uuidString,
                                        author: "", body: "anonymous").value
         #expect(unnamed.author == "")
@@ -154,7 +154,7 @@ struct CommentsTests {
         let ticket = try makeTicket(store)
 
         let comment = try store.append(ticketID: ticket.id.uuidString,
-                                       author: "blue",
+                                       author: "builder",
                                        body: "\n  did you mean X?\n\n").value
         #expect(comment.body == "did you mean X?")
     }
@@ -164,7 +164,7 @@ struct CommentsTests {
         let (store, dir) = try tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
         let ticket = try makeTicket(store)
-        _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: "hi")
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "hi")
 
         let listed = try store.list(ticketID: ticket.id.uuidString.lowercased()).value
         #expect(listed.map(\.body) == ["hi"])
@@ -177,7 +177,7 @@ struct CommentsTests {
         let (store, dir) = try tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
         let ticket = try makeTicket(store)
-        _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: "ok")
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "ok")
 
         let url = logFile(store, ticket.id)
         try Data("{not a comment\n".utf8).append(to: url)
@@ -223,7 +223,7 @@ struct CommentReadPathTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let ticket = try makeTicket(store)
 
-        for (author, body) in [("blue", "first"), ("human", "second"), ("", "third")] {
+        for (author, body) in [("builder", "first"), ("human", "second"), ("", "third")] {
             _ = try store.append(ticketID: ticket.id.uuidString, author: author, body: body)
         }
 
@@ -234,7 +234,7 @@ struct CommentReadPathTests {
             return
         }
         #expect(listed.map(\.body) == ["first", "second", "third"])
-        #expect(listed.map(\.author) == ["blue", "human", ""])
+        #expect(listed.map(\.author) == ["builder", "human", ""])
         // The times never go backwards: the order the sheet draws is the order the
         // log was written in.
         #expect(listed.map(\.at) == listed.map(\.at).sorted())
@@ -262,7 +262,7 @@ struct CommentReadPathTests {
         let (store, dir) = try tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
         let ticket = try makeTicket(store)
-        _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: "ok")
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "ok")
         try Data("{not a comment\n".utf8).append(to: logFile(store, ticket.id))
 
         let read = store.commentRead(ticketID: ticket.id.uuidString)
@@ -283,7 +283,7 @@ struct CommentReadPathTests {
         let (store, dir) = try tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
         let ticket = try makeTicket(store)
-        _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: "ok")
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "ok")
 
         // Hold the store's own lock, the way a CLI append does: the read then
         // waits out the ~2 s window and gives up on the lock.
@@ -403,7 +403,7 @@ struct CommentWritePathTests {
         let ticket = try makeTicket(store)
 
         // An agent's comment first, written the CLI's way.
-        _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: "did you mean X?")
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "did you mean X?")
         // Then the human's, written the app's way.
         let written = try store.commentWrite(ticketID: ticket.id.uuidString, body: "yes, X it is")
         #expect(written.value.body == "yes, X it is")
@@ -412,7 +412,7 @@ struct CommentWritePathTests {
         // The order is the log's order: the app's comment is last.
         let listed = try store.list(ticketID: ticket.id.uuidString).value
         #expect(listed.map(\.body) == ["did you mean X?", "yes, X it is"])
-        #expect(listed.map(\.author) == ["blue", "human"])
+        #expect(listed.map(\.author) == ["builder", "human"])
     }
 
     @Test("the write path takes the lock once — the record comes back, not a busy store")
@@ -557,7 +557,7 @@ struct CommentRefreshTests {
                                              body: "the human's own note")
         // And an agent comments from the terminal, through the CLI's own path:
         // the same file, the same log.
-        _ = try store.append(ticketID: ticket.id.uuidString, author: "blue", body: "did you mean X?")
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "did you mean X?")
 
         // The refresh: a read of its own, with no write of its own to hang on.
         guard case .list(let refreshed) = store.commentRead(ticketID: ticket.id.uuidString) else {
@@ -568,7 +568,7 @@ struct CommentRefreshTests {
         // read the log again — and the human's own is in it too, in the order
         // the sidecar holds.
         #expect(refreshed.map(\.body) == ["the human's own note", "did you mean X?"])
-        #expect(refreshed.map(\.author) == ["human", "blue"])
+        #expect(refreshed.map(\.author) == ["human", "builder"])
         // The human's own comment is the record the write handed back — the
         // same one, in the log.
         #expect(refreshed.first?.at == written.value.at)

@@ -30,3 +30,13 @@ The roster is the other half. The roles are named across four prompts, a dozen s
 - **One vocabulary, one home.** The name rule — a role's name in `--assignee` when it owns a ticket and in `--author` when it speaks on one — turns on a measured fact: `--author` takes a name and never expands `self`, while `--assignee` and `--origin` do. A comment with an empty author is a defect in the record, not a style choice.
 - **The two ceremony skills are sibling tickets.** `skills/tandem-standup/` (ticket `64BD463D`) and `skills/tandem-sprint/` (ticket `5E3F8DE6`) are built — the standup as `25dfb2e`, the sprint as `990e177`, both on 2026-10-22; the roster points at the two files.
 - **The number.** 0029 is the next free number: 0027 is claimed by `CEB105DA` and 0028 by `FE0140EB`, and no open pull request adds an ADR. The repo's rule settles a collision — the older ticket keeps the number and the newer branch renumbers on its own branch — so a branch that lands a 0029 first sends this one to 0030.
+
+## Amendment, 2026-10-23: the ceremony set is a sprint, a roster, and a retro
+
+**The change.** `skills/tandem-sprint/` is the SDLC's single entry point — orient, triage, batch, per-ticket build and review, close — and absorbs the board skill's gates and dispatch (`skills/tandem-board/` deleted; the brief shape is now the refiner's contract, the dispatch is the sprint's). `skills/tandem-standup/` is deleted: the sprint ticket's `## Run` sections and the per-ticket comments already record the round, and the minutes rule lives in the roster. `skills/tandem-handoff/` is deleted: "hand me the next sprint" is the handoff.
+
+**The retro leaves the cycle.** The retro is a human-invoked skill (`skills/retro/`, adapted from the vendored one) that files `backlog` tickets into the Retro lane. Sprint's close is close, not a retro catch-up: the `## Retro` marker and the catch-up step are gone, and nothing is retro'd automatically.
+
+**Why.** The human's call: a clear, opinionated SDLC — sprint as kickoff, refine as its own deliberate mode with its own model choice, retro on human request only. Six passes and three ceremonies had become twelve skills and four agents; the terse pass cut the ones no one was reaching for.
+
+**Consequences.** The ceremony set is now: roster, sprint, retro. The store, the CLI and the app are still untouched — no field, no verb, no surface, no migration. The roster's `standup` and `sprint` role rows are redefined: `sprint` is the session's own agent running the skill, `standup` is gone.

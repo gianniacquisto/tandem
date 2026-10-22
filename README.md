@@ -150,19 +150,19 @@ Not a ticket: `session start` opens a record of one agent session's run — the 
 | --- | --- | --- |
 | `tandem` | the CLI contract an agent reads before it touches the store | v0.9.0 |
 | `tandem-memory` | the bikeshed as the agent's memory: orient from the Hub, record captures as you work, consolidate into the curated notes on request | v0.6.0, the capture-and-consolidation protocol in v0.11.0 |
-| `tandem-board` | the six gates a ticket passes through, triage, dispatch and escalation | v0.15.0 |
-| `tandem-handoff` | a paste-ready briefing for a cold session | v0.15.0 |
+| `tandem-sprint` | the SDLC kickoff: orient, triage, batch, and drive each ticket through build and review to merge | v0.15.0 |
+| `tandem-refine` | dispatches the refiner to shape a backlog ticket into a buildable brief | v0.16.0 |
 | `tandem-setup` | installs the whole agent face on a host | v0.16.0 |
 | `tandem-consolidate` | dispatches the consolidator pass | v0.16.0 |
 
-`skills/grilling/`, `skills/implement-spec/`, `skills/retro/`, `skills/to-spec/` and `skills/writing-for-agents/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), so a clone of this repo is the whole workflow.
+`skills/grilling/`, `skills/implement-spec/`, `skills/to-spec/` and `skills/writing-for-agents/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), so a clone of this repo is the whole workflow; `skills/retro/` is adapted from the same collection, its output filed as tickets on the board.
 
 ### Setting a host up
 
 Ask your agent to set up Tandem — the `tandem-setup` skill does the whole thing:
 
 - links every skill in `skills/` into the host's skills directory — `~/.config/opencode/skills/` for OpenCode, `~/.claude/skills/` for Claude Code;
-- links the agent prompts in `agents/` — `consolidator.md`, `refine.md`, `retro.md` and `reviewer.md` — into `~/.config/opencode/agents/`;
+- links the agent prompts in `agents/` — `builder.md`, `consolidator.md`, `refiner.md` and `reviewer.md` — into `~/.config/opencode/agents/`;
 - links this repo's `AGENTS.md` into `~/.config/opencode/AGENTS.md`;
 - checks that `tandem-cli` is on PATH;
 - reports what it linked, what it skipped and why, and what is left over in the host's own config.
@@ -224,7 +224,7 @@ The tracker is the **Tandem board**, not GitHub issues — see [docs/agents/issu
 - **Branch off `dev`.** `dev` takes merges; `main` is the release line, and its head is always the latest release tag ([ADR 0019](docs/adr/0019-integration-branch.md)). Pull requests target `dev`.
 - **Run the gates.** `swift test` for the core suite, and in `Editor/`: `npm ci && node --test`. The committed editor bundle is prebuilt, and CI checks that the committed bytes are exactly what the pinned inputs regenerate.
 - **Use the project's words.** [GLOSSARY.md](GLOSSARY.md) is the vocabulary; the ADRs are the decisions. Respect the ADRs in the area your change touches, and amend one in the same pull request when you change what it decided.
-- **Keep the ticket whole.** A ticket's description is written once as the brief and appended to with the outcome, never overwritten. The shape of that brief is the board skill's: `skills/tandem-board/SKILL.md`.
+- **Keep the ticket whole.** A ticket's description is written once as the brief and appended to with the outcome, never overwritten. The shape of that brief is the refiner's: `agents/refiner.md`.
 
 ## Releasing
 
