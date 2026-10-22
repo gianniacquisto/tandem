@@ -39,8 +39,7 @@ Take the batch before anything moves it. One comment per batch ticket naming the
 The sprint ticket's description is **written once and appended to**: `## The batch` first (ids and titles in stored order, the session that opened it), then a `## Run — <date>` per landing, then `## Close`. An append is read → add → write back:
 
 ```sh
-current=$(tandem-cli ticket list --filter all --lane "$lane" \
-  | jq -r --arg id "$sprint" '.tickets[] | select(.id == $id) | .description // ""')
+current=$(tandem-cli ticket show --id "$sprint" | jq -r '.description // ""')
 printf '%s\n\n%s\n' "$current" "$section" | tandem-cli ticket set --id "$sprint" --description -
 ```
 
@@ -49,11 +48,27 @@ printf '%s\n\n%s\n' "$current" "$section" | tandem-cli ticket set --id "$sprint"
 In batch order:
 
 1. **Claim** — `tandem-cli ticket set --id <id> --status in-progress --assignee builder`.
-2. **Build** — dispatch the `builder` subagent (`agents/builder.md`) with the ticket id and description, nothing more. It branches `board/<slug>`, builds, verifies, opens the PR with its `## Merge Danger` claim, and files its captures.
+2. **Build** — dispatch the `builder` subagent (`agents/builder.md`) with the ticket id and its description — `tandem-cli ticket show --id <id>`, since `list` rows are summaries without the body. It branches `board/<slug>`, builds, verifies, opens the PR with its `## Merge Danger` claim, and files its captures.
 3. **Review** — dispatch the `reviewer` subagent (`agents/reviewer.md`) with the ticket id and PR. It merges a two-way/low door and completes the ticket; a one-way door is escalated to the human and **leaves the batch**.
 4. **Record** — append `## Run — <date>`: the ticket, what landed, the PR.
 
 **One at a time, never in parallel.** Nine simultaneous branches on this repo collided at merge time on 2026-10-20 — `BikeFace.swift` alone was touched by six of them. Velocity is tickets per sprint, not concurrency. A ticket that escalates does not stop the sprint; the close names it.
+
+**Budget the turns.** A turn re-reads the whole window, so a session's bill is its turn count times its context — the same rule the terse style states (`terse/TERSE.md`, Budget). One turn per dispatch, with the calls it needs in it: gather every fact the brief needs in one message — a turn that needs three facts fetches three facts in one message, and a loop over a list is one call, not N. Watch it drift: calls per turn is countable from the host's store, `~/.local/share/opencode/opencode.db` — read-only:
+
+```sh
+sqlite3 "file:$HOME/.local/share/opencode/opencode.db?mode=ro" '
+WITH turns AS (SELECT session_id, COUNT(*) n FROM session_message
+               WHERE type="assistant" GROUP BY session_id),
+     calls AS (SELECT m.session_id, COUNT(*) n FROM session_message m,
+               json_each(json_extract(m.data,"$.content")) je
+               WHERE m.type="assistant" AND json_extract(je.value,"$.type")="tool"
+               GROUP BY m.session_id)
+SELECT ROUND(1.0*COALESCE(c.n,0)/t.n,2) FROM turns t
+LEFT JOIN calls c ON c.session_id=t.session_id WHERE t.session_id="<session-id>";'
+```
+
+Below three means the next dispatch briefs the batch's shape — the reads named, the repeats cut — before it claims.
 
 ## 5. Human answers
 

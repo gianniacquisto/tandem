@@ -26,7 +26,7 @@ Every session records itself as a ticket, so the board shows what is running and
 
 - **One ticket per session.** Check `ticket list --filter all --text "Session — <project> · <session-id>"` first; file nothing if one exists.
 
-- **Close it at session end**, before your final reply: read the description, append the outcome below the brief, write it back — `ticket set --id <ticket-id> --status done --description -`. The description is written once and appended to, never overwritten. With no outcome to record, `ticket complete --id <ticket-id>`, which leaves the description alone.
+- **Close it at session end**, before your final reply: read the description (`tandem-cli ticket show --id <ticket-id>` — a ticket id finds it whole, no `--text` and no `jq`; `ticket list` returns summaries without descriptions), append the outcome below the brief, write it back — `ticket set --id <ticket-id> --status done --description -`. The description is written once and appended to, never overwritten. With no outcome to record, `ticket complete --id <ticket-id>`, which leaves the description alone.
 
 - **An empty stdin is refused.** `--description -` takes the body on stdin, and an empty or whitespace-only body is a domain failure: exit 1, the description left as it was. Pass `--description ""` when you mean to clear it. A session that resumes reopens its ticket: `ticket set --id <id> --status in-progress`.
 

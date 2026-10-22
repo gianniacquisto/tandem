@@ -23,6 +23,12 @@ Compress delivery, never substance. The reader is an engineer who wants the answ
 - Numbers, versions, `file:line`.
 - Real uncertainty — one clause, not padding.
 
+## Budget
+
+- A turn re-reads the window; a session's bill is its turn count times its context. The turn count is the lever you control.
+- Independent calls share one turn: a turn that needs three facts fetches three facts in one message, and a loop over a list is one call, not N.
+- Don't fetch what you already hold, and don't re-read what a previous turn answered.
+
 ## Write normally
 
 - Destructive or irreversible actions, and security warnings.

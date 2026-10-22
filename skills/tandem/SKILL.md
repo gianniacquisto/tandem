@@ -13,7 +13,7 @@ description: "Read and write the shared Tandem ticket list, manage its cycle lan
 
 ## Tickets
 
-Six verbs under `ticket` — `list`, `add`, `set`, `move`, `complete`, `archive` — plus `comment` with sub-verbs of its own. Every object they return has the same shape:
+Seven verbs under `ticket` — `list`, `show`, `add`, `set`, `move`, `complete`, `archive` — plus `comment` with sub-verbs of its own. Every object they return has the same shape:
 
 | field | meaning |
 | --- | --- |
@@ -21,7 +21,7 @@ Six verbs under `ticket` — `list`, `add`, `set`, `move`, `complete`, `archive`
 | `title` | one line, trimmed |
 | `status` | `backlog` (default), `refined`, `ready`, `in-progress`, `in-review`, `done` |
 | `archived` | true when set aside — out of the default views, still in the store |
-| `description` | markdown body, or null; write from stdin with `ticket set --description -` |
+| `description` | markdown body, or null; write from stdin with `ticket set --description -`, read it back whole with `ticket show --id` |
 | `assignee` | `human`, an agent's name, or null for unowned |
 | `origin` | who filed it — written at add, never changed |
 | `section` | the **cycle lane**, or null for the default area; the wire keeps its v1 name |
@@ -30,6 +30,8 @@ Six verbs under `ticket` — `list`, `add`, `set`, `move`, `complete`, `archive`
 | `createdAt`, `completedAt` | ISO-8601 UTC; `completedAt` is null unless done |
 
 `status` is the truth, and a change is free-form — any status to any other, backwards included — because the board records what is true, not a process.
+
+`list` returns these objects as **summaries**: every field except `description`, which becomes `descriptionLength` (its character count, `0` when there is none). `show`, `add`, `set`, `move` and `complete` return the whole object.
 
 ### `ticket list [--filter open|done|all] [--status <v[,v]>] [--assignee <name|self>] [--lane <name>] [--text <string>] [--archived]`
 
@@ -43,6 +45,12 @@ The tickets in view, in stored order (the order the human arranged; new tickets 
 - `--archived` — no value. Alone it is the archive; with a filter, the archive joins it.
 
 An empty result is a success: `{"tickets":[]}`.
+
+A board read should not carry every ticket's body, so the rows are summaries — `--text` still matches descriptions (the filtering happens before the summary), and a row that looks interesting is read whole with `show`.
+
+### `ticket show --id <id>`
+
+One ticket, **whole** — the only read that carries the description, and the only lookup that takes an id (`--text` matches title and description, never the id). An unknown id is a domain failure whose error carries the current open list.
 
 ### `ticket add --title <string> [--status <value>] [--assignee <name|self>] [--lane <name>] [--origin <name|self>]`
 
@@ -118,6 +126,6 @@ The link graph — `broken` (wikilinks that resolve to nothing: `note`, `link` a
 
 ## Streams and exit codes
 
-- **stdout** — one JSON object on success. `list` → `{"tickets": [...]}`; `add`, `set`, `move`, `complete` → the ticket object; `archive` → `{"archived": <n>}`; `comment add` → the comment; `comment list` → `{"comments": [...]}`; `lane add`/`rename` → `{"lanes": [...]}`, `lane delete` → `{"lanes": [...], "moved": <n>}`. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
-- **stderr** — short, actionable plain text on failure, naming the failed value and the next step; `complete` with an unknown id appends the current open list in the `list` shape.
+- **stdout** — one JSON object on success. `list` → `{"tickets": [...]}`, summary rows (no `description`, its `descriptionLength` instead); `show` → the whole ticket object; `add`, `set`, `move`, `complete` → the ticket object; `archive` → `{"archived": <n>}`; `comment add` → the comment; `comment list` → `{"comments": [...]}`; `lane add`/`rename` → `{"lanes": [...]}`, `lane delete` → `{"lanes": [...], "moved": <n>}`. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
+- **stderr** — short, actionable plain text on failure, naming the failed value and the next step; `complete` and `show` with an unknown id append the current open list in the `list` shape (summaries).
 - **exit** — `0` success; `1` domain failure (empty title, unknown id, locked store); `2` usage failure (no arguments, unknown subcommand or flag). A missing flag value is deliberately a domain failure, not usage — `add` with no `--title` is the empty title the domain rejects. Retry only when the text says the store is locked.

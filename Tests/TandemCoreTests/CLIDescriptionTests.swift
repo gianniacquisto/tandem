@@ -64,13 +64,11 @@ struct CLIDescriptionTests {
     /// The CLI this suite exercises.
     private let cli = CLIHarness()
 
-    /// A ticket's description, read back through the CLI's own list.
+    /// A ticket's description, read back through the CLI's own `show` — the
+    /// whole-ticket read, since `list` returns summaries without the body.
     private func description(of id: String, home: URL) throws -> String? {
-        let result = try cli.run(home: home, ["todo", "list", "--filter", "all"])
+        let result = try cli.run(home: home, ["ticket", "show", "--id", id])
         #expect(result.code == 0)
-        guard let todos = try cli.object(from: result.output)["todos"] as? [[String: Any]],
-              let todo = todos.first(where: { $0["id"] as? String == id })
-        else { return nil }
-        return todo["description"] as? String
+        return try cli.object(from: result.output)["description"] as? String
     }
 }
