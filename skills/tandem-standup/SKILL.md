@@ -70,7 +70,7 @@ The pass never invents progress and never judges a ticket's quality. It reports 
 
 **The board** — the ticket's comment log: the sidecar `<home>/comments/<ticket-id>.jsonl`, where `<home>` is `~/.tandem`, or `$TANDEM_HOME` on a throwaway home. The app's ticket sheet draws it and `tandem-cli ticket comment list --id <id>` returns it. One comment per `in-progress` ticket; nothing else in the ticket is touched.
 
-**During a sprint** — one more comment, on the sprint ticket (`Sprint <n> — <lane>`, per `skills/tandem-sprint/` — ticket `5E3F8DE6` builds it), reporting the batch: how many of the batch landed, which ticket is at the head, and the ready set — how many are `ready` and which one comes first in stored order.
+**During a sprint** — one more comment, on the sprint ticket (`Sprint <n> — <lane>`, per `skills/tandem-sprint/`), reporting the batch: how many of the batch landed, which ticket is at the head, and the ready set — how many are `ready` and which one comes first in stored order.
 
 **With no sprint open** — the ready set is reported to the caller in the pass's own report, and is not posted. There is no ticket a board-wide ready report belongs to, and the board's `ready` column already shows it.
 
