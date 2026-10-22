@@ -31,15 +31,15 @@ Action: approve, merge with `gh pr merge <n> --merge`, then complete the ticket 
 
 **Merge method: a merge commit, always.** This repo's history is merge commits (`Merge pull request #NN`), and a merge keeps every commit the author made — so a revert can undo one commit, the whole merge (`git revert -m 1 <merge>`), or nothing in between. Never `--squash` and never `--rebase`: a squash collapses the history a revert would need, and a rebase rewrites it.
 
-**Before the merge: the branch must be current.** `dev`'s protection is `required_status_checks.strict` with `enforce_admins` on, so a branch behind its base cannot merge — and `--auto` does not satisfy that, because it waits for requirements a stale branch never meets. Every merge to `dev` moves the base for every open PR, so a stale branch is routine. Update it and wait for the new head:
+**Before the merge: `release` green on the head sha.** `dev` requires the `release` check and is **not** `strict`, so a branch behind its base merges on its own green check — no update step is owed. `main` is still strict, and that is deliberate: it is the release branch, and a promotion is cut fresh from `dev`. Update a branch only when the base has moved through the files it touches: a green check on a base the branch never saw is evidence about a different merge.
 
 ```sh
-gh api -X PUT repos/<owner>/<repo>/pulls/<n>/update-branch
-gh pr view <n> --json headRefOid -q .headRefOid   # the new head; wait for `release` on it (Read first, step 3)
+gh api -X PUT repos/<owner>/<repo>/pulls/<n>/update-branch   # only when the base moved through these files
+gh pr view <n> --json headRefOid -q .headRefOid              # the new head; wait for `release` on it (Read first, step 3)
 gh pr merge <n> --merge
 ```
 
-Never `--admin` (see **Commenting**); it bypasses the rule the strict check exists to enforce.
+Never `--admin` (see **Commenting**); it bypasses the check the protection exists to enforce.
 
 **One-way / destructive / high blast radius** — anything a revert does not undo, or anything that reaches past this repo:
 
