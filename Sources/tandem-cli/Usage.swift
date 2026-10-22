@@ -18,6 +18,7 @@ enum Usage {
       tandem-cli ticket list [--filter open|done|all] [--status <value[,value]>]
                               [--assignee <name|self>] [--lane <name>] [--text <string>]
                               [--archived]
+      tandem-cli ticket show --id <id>
       tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
                              [--lane <name>] [--origin <name|self>]
       tandem-cli ticket set --id <id> [--title <string>] [--status <value>]

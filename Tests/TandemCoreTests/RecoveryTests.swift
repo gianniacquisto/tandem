@@ -250,11 +250,20 @@ struct RecoveryTests {
 
     @Test("StoreEncoding.listResult shape, note present only when non-nil")
     func listResultEncoding() throws {
-        let todo = Ticket(title: "one")
+        let todo = Ticket(title: "one", description: "the body")
         // No note → no note key.
         let noNote = try json(StoreEncoding.listResult([todo], note: nil))
         #expect((noNote["todos"] as? [Any])?.count == 1)
         #expect(noNote["note"] == nil, "note key must be absent when note is nil")
+        // Summary rows: no description key, its length instead.
+        let row = try #require((noNote["todos"] as? [[String: Any]])?.first)
+        #expect(row["description"] == nil, "list rows are summaries, not whole tickets")
+        #expect(row["descriptionLength"] as? Int == "the body".count)
+        #expect(row["title"] as? String == "one")
+        // No description → length 0, the key still there (the shape never varies by row).
+        let bare = try json(StoreEncoding.listResult([Ticket(title: "bare")], note: nil))
+        let bareRow = try #require((bare["todos"] as? [[String: Any]])?.first)
+        #expect(bareRow["descriptionLength"] as? Int == 0)
         // With note → top-level note.
         let withNote = try json(StoreEncoding.listResult([todo], note: "NOTE"))
         #expect(withNote["note"] as? String == "NOTE")
@@ -280,10 +289,14 @@ struct RecoveryTests {
 
     @Test("StoreEncoding.openList is the list shape")
     func openListEncoding() throws {
-        let todo = Ticket(title: "open one")
+        let todo = Ticket(title: "open one", description: "a body")
         let obj = try json(StoreEncoding.openList([todo]))
         #expect((obj["todos"] as? [Any])?.count == 1)
         #expect(obj["note"] == nil)
+        // Summarized like the list: the recovery needs the id and the title.
+        let row = try #require((obj["todos"] as? [[String: Any]])?.first)
+        #expect(row["description"] == nil)
+        #expect(row["descriptionLength"] as? Int == "a body".count)
     }
 
     @Test("StoreEncoding lane results: the lanes after the write, plus moved on delete")

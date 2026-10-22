@@ -12,8 +12,19 @@ public enum StoreEncoding {
     /// `note` when non-nil. The two keys carry **the same array** for one
     /// release: `ticket` is the new word and `todos` is the one agents parse
     /// today (D1). The release after next drops the old key (C8).
+    ///
+    /// The rows are **summaries**, not whole tickets: a board is read many times
+    /// more often than one ticket is read in full, and the description is the
+    /// payload — a several-hundred-ticket board with descriptions was close to a
+    /// megabyte of JSON per read, most of it never looked at. Every other field
+    /// stays, and the description becomes `descriptionLength` (`0` when there is
+    /// none, so the shape never varies by row); the one ticket's full body is
+    /// `ticket show --id`'s answer, and `--text` still matches descriptions
+    /// before the projection. `add`/`set`/`complete` results stay whole — the
+    /// caller just wrote that ticket, and the schema-verbatim object is its
+    /// receipt.
     public static func listResult(_ tickets: [Ticket], note: String?) throws -> String {
-        let array = try ticketArray(tickets)
+        let array = try tickets.map { try ticketSummaryObject($0) }
         var object: [String: Any] = ["tickets": array, "todos": array]
         if let note { object["note"] = note }
         return try serialize(object)
@@ -108,9 +119,12 @@ public enum StoreEncoding {
 
     /// The open list in the `list` shape — used to render the unknown-id error so the
     /// caller recovers in one turn (spec: tool contract, `complete`). It carries the
-    /// same two keys as `listResult`: `tickets` and `todos`, the same array.
+    /// same two keys as `listResult`: `tickets` and `todos`, the same array —
+    /// **summaries**, like the list: recovery needs the id and the title, and an
+    /// error that dumped every description was the same megabyte read the list
+    /// itself was.
     public static func openList(_ tickets: [Ticket]) throws -> String {
-        let array = try ticketArray(tickets)
+        let array = try tickets.map { try ticketSummaryObject($0) }
         return try serialize(["tickets": array, "todos": array])
     }
 
@@ -185,8 +199,17 @@ public enum StoreEncoding {
 
     // MARK: - Internals
 
-    private static func ticketArray(_ tickets: [Ticket]) throws -> [Any] {
-        try tickets.map { try ticketObject($0) }
+    /// A single ticket as a **summary** object: the ticket's wire shape with the
+    /// description — the one field that scales with the writing — replaced by
+    /// its character count, `0` when there is no description. Everything else
+    /// rides through `ticketObject` unchanged, so a summary row and a whole
+    /// ticket cannot disagree about the fields they share. The length is derived,
+    /// like `done`: never stored, only projected.
+    private static func ticketSummaryObject(_ ticket: Ticket) throws -> [String: Any] {
+        var object = try ticketObject(ticket)
+        object["descriptionLength"] = (object["description"] as? String)?.count ?? 0
+        object.removeValue(forKey: "description")
+        return object
     }
 
     /// A single ticket as a JSON-compatible object. Encodes through `Ticket`'s custom

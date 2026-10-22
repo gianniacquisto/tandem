@@ -20,6 +20,7 @@ enum Command {
         lane: String?,
         archived: Bool
     )
+    case ticketShow(id: String)
     case ticketAdd(title: String, status: String?, assignee: String?, lane: String?, origin: String?)
     case ticketSet(
         id: String,
@@ -84,7 +85,7 @@ func parseCommand(_ args: [String]) throws -> Command {
 
 // MARK: - ticket
 
-/// `ticket list|add|set|move|complete|archive|comment` — the ticket verbs (the
+/// `ticket list|show|add|set|move|complete|archive|comment` — the ticket verbs (the
 /// agent surface). An absent flag is `nil` (the core's default); a flag with no
 /// value is `""`, which the core rejects or reads as the empty field. That is
 /// the one rule every verb below follows, so no verb repeats a validation the
@@ -109,6 +110,11 @@ private func parseTicket(_ args: [String]) throws -> Command {
             assignee: flags["--assignee"],
             lane: flags["--lane"],
             archived: flags["--archived"] != nil)
+    case "show":
+        try accept(flags, ["--id"])
+        // One ticket by id, whole. A missing `--id` is the empty id whose
+        // `unknownID` error carries the open list, as `complete` does.
+        return .ticketShow(id: flags["--id"] ?? "")
     case "add":
         try accept(flags, ["--title", "--status", "--assignee", "--lane", "--origin"])
         // A missing `--title` is not a usage error: it is the empty title the
