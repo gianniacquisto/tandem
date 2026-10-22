@@ -8,7 +8,7 @@ You are the review gate for one PR. The caller gives you a ticket id and a PR (n
 
 ## Read
 
-1. **The ticket** — `tandem-cli ticket list --filter all --text "<title words>"` (`--text` matches title and description, not the id). The description is the brief. A PR that does something else than the ticket asks is a finding, not a style question.
+1. **The ticket** — `tandem-cli ticket show --id <ticket>` — the whole ticket, description included; a ticket id is enough to find it. (`ticket list --text` matches title and description, not the id, and its rows are summaries without descriptions anyway.) The description is the brief. A PR that does something else than the ticket asks is a finding, not a style question.
 2. **The diff** — `gh pr diff <n>`, in full. The body says what the author believes they did; the diff says what they did.
 3. **The checks** — bind to the head sha (`gh pr view <n> --json headRefOid -q .headRefOid`), not the branch; the newest run for that sha must be `completed`/`success`. `gh pr checks <n>` reports `no checks reported` right after a push — timing, not a verdict. Green is evidence; a missing run is neither.
 4. **The rules** — `AGENTS.md`, `docs/adr/`, `GLOSSARY.md`, the README sections the change touches. Cite `file:line`; if a file does not exist, say so — never invent a convention.

@@ -63,6 +63,55 @@ struct TicketVerbTests {
         #expect(first["lane"] as? String == first["section"] as? String)
     }
 
+    // MARK: - `show`: one ticket by id, whole
+
+    @Test("`show --id` returns the whole ticket — description included, where the list is summaries")
+    func showReturnsTheWholeTicket() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let added = try run(home: home, ["ticket", "add", "--title", "A ticket"])
+        let id = try #require((try json(added.output)["id"] as? String))
+        let body = "## The brief\n\nmulti-line markdown"
+        let set = try run(home: home, ["ticket", "set", "--id", id, "--description", body])
+        #expect(set.code == 0)
+
+        // The list row is a summary: no description, its length instead.
+        let listed = try run(home: home, ["ticket", "list", "--filter", "all"])
+        let row = try #require((try json(listed.output)["tickets"] as? [[String: Any]])?.first)
+        #expect(row["description"] == nil)
+        #expect(row["descriptionLength"] as? Int == body.count)
+
+        // The show answer is the whole ticket, schema-verbatim like `add`'s.
+        let shown = try run(home: home, ["ticket", "show", "--id", id])
+        #expect(shown.code == 0)
+        let ticket = try json(shown.output)
+        #expect(ticket["id"] as? String == id)
+        #expect(ticket["description"] as? String == body)
+        #expect(ticket["descriptionLength"] == nil, "the whole ticket has no summary key")
+    }
+
+    @Test("`show` with an unknown or missing id is the domain failure, open list attached")
+    func showUnknownIDIsADomainFailure() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try run(home: home, ["ticket", "add", "--title", "On the board"])
+
+        let unknown = try run(home: home, ["ticket", "show", "--id", "00000000-0000-0000-0000-000000000000"])
+        #expect(unknown.code == 1)
+        #expect(unknown.error.contains("Unknown ticket id"))
+        // The open list rides on stderr, summarized like the list.
+        let list = try #require(unknown.error.split(separator: "\n").last)
+        let object = try json(String(list))
+        let row = try #require((object["tickets"] as? [[String: Any]])?.first)
+        #expect(row["title"] as? String == "On the board")
+        #expect(row["description"] == nil)
+
+        let missing = try run(home: home, ["ticket", "show"])
+        #expect(missing.code == 1, "a missing --id is the empty id, a domain failure, not usage")
+    }
+
     // MARK: - The alias, end to end
 
     @Test("`todo` answers like `ticket`, says so once on stderr, and exits 0")
@@ -89,6 +138,7 @@ struct TicketVerbTests {
         let help = try run(home: home, ["--help"])
         #expect(help.code == 0)
         #expect(help.output.contains("tandem-cli ticket list"))
+        #expect(help.output.contains("tandem-cli ticket show --id"))
         #expect(help.output.contains("tandem-cli ticket comment add"))
         #expect(help.output.contains("todo is a deprecated alias, removed in the release after this one"))
     }

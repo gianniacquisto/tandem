@@ -39,8 +39,7 @@ Take the batch before anything moves it. One comment per batch ticket naming the
 The sprint ticket's description is **written once and appended to**: `## The batch` first (ids and titles in stored order, the session that opened it), then a `## Run — <date>` per landing, then `## Close`. An append is read → add → write back:
 
 ```sh
-current=$(tandem-cli ticket list --filter all --lane "$lane" \
-  | jq -r --arg id "$sprint" '.tickets[] | select(.id == $id) | .description // ""')
+current=$(tandem-cli ticket show --id "$sprint" | jq -r '.description // ""')
 printf '%s\n\n%s\n' "$current" "$section" | tandem-cli ticket set --id "$sprint" --description -
 ```
 
@@ -49,7 +48,7 @@ printf '%s\n\n%s\n' "$current" "$section" | tandem-cli ticket set --id "$sprint"
 In batch order:
 
 1. **Claim** — `tandem-cli ticket set --id <id> --status in-progress --assignee builder`.
-2. **Build** — dispatch the `builder` subagent (`agents/builder.md`) with the ticket id and description, nothing more. It branches `board/<slug>`, builds, verifies, opens the PR with its `## Merge Danger` claim, and files its captures.
+2. **Build** — dispatch the `builder` subagent (`agents/builder.md`) with the ticket id and its description — `tandem-cli ticket show --id <id>`, since `list` rows are summaries without the body. It branches `board/<slug>`, builds, verifies, opens the PR with its `## Merge Danger` claim, and files its captures.
 3. **Review** — dispatch the `reviewer` subagent (`agents/reviewer.md`) with the ticket id and PR. It merges a two-way/low door and completes the ticket; a one-way door is escalated to the human and **leaves the batch**.
 4. **Record** — append `## Run — <date>`: the ticket, what landed, the PR.
 

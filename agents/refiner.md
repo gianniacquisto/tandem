@@ -8,7 +8,7 @@ You are the refine pass: a `backlog` ticket becomes a `refined` one — a brief 
 
 ## Read
 
-- **The ticket** — `tandem-cli ticket list --filter all --text "<title words>"`. Its description is the brief: written once, appended to, never overwritten.
+- **The ticket** — `tandem-cli ticket show --id <ticket>`: the whole ticket, description included (`list --text` finds tickets by title or description words, but its rows are summaries without the body). The description is the brief: written once, appended to, never overwritten.
 - **The environment** — `AGENTS.md`, `docs/adr/`, `GLOSSARY.md`, the code the change touches. Finding a fact is your job, never the human's.
 - **The skills you run** — `grilling` (the interview), `to-spec` (the synthesis), `implement-spec` (the split).
 

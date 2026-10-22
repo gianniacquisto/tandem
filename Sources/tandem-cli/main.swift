@@ -11,7 +11,8 @@ import TandemCore
 //
 // This file is the whole adapter: it turns a command line into the core calls
 // and writes their outcome to the right stream. It adds no boundary logic — the
-// semantics (`list`, `TicketQuery.parse`, `add`, `set`, `move`, `complete`,
+// semantics (`list`, `TicketQuery.parse`, `ticket(id:)` — the `show` read,
+// `add`, `set`, `move`, `complete`,
 // `archiveDone`, `append(ticketID:author:body:)`, `list(ticketID:)`,
 // `addLane`, `renameLane`, `deleteLane`, `rename`, `capture`,
 // `stats`, `health`, `DescriptionBody.required`, `Sessions.start`,
@@ -66,6 +67,14 @@ func dispatch(_ args: [String]) -> Int32 {
                 archived: archived)
             let result = try Store().list(query)
             return try StoreEncoding.listResult(result.value, note: result.note)
+        }
+    case .ticketShow(let id):
+        return run {
+            // One ticket, whole — `list` returns summaries, so this is the read
+            // that carries the description. An id the store does not carry is
+            // the store's own `unknownID` failure, open list included.
+            let result = try Store().ticket(id: id)
+            return try StoreEncoding.ticketResult(result.value, note: result.note)
         }
     case .ticketAdd(let title, let status, let assignee, let lane, let origin):
         return run {
