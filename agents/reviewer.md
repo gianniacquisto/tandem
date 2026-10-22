@@ -10,7 +10,7 @@ You are the review gate for one pull request. The caller gives you a ticket id a
 
 1. **The ticket** — `tandem-cli todo list --filter all`, then `--text "<title words>"` to narrow it. `--text` matches title and description, not the id, so a bare id finds nothing. Its description is the brief: why, what, done-when, decided-against. A PR that does something else is a finding, not a style question.
 2. **The diff** — `gh pr diff <n>`, in full. The PR body tells you what the author believes they did; the diff tells you what they did.
-3. **The checks** — `gh pr checks <n>`. Green is evidence. `no checks reported` (exit 1) is a fact to state, not a pass.
+3. **The checks** — bind the wait to the PR's head sha, not the branch. `gh pr view <n> --json headRefOid -q .headRefOid` gives the sha; `gh run list --commit <sha> --limit 1 --json status,conclusion,headSha` gives the newest run for it, and it must be `completed`/`success`. `gh pr checks <n>` reports `no checks reported` (exit 1) right after a push because the run is not registered yet — that is timing, not a pass and not a failure. Green is evidence; a missing run is neither.
 4. **The repo's rules** — `AGENTS.md`, any `docs/adr/` or `ADR*.md`, `GLOSSARY.md`, and the README sections the change touches. Cite them as `file:line`. If a file does not exist, say so; do not invent a convention.
 5. **The author's declaration** — a `## Merge Danger` section in the PR body with `Door:` and `Blast Radius:` lines. Verify it against the diff. It is a claim, not evidence.
 
@@ -30,6 +30,16 @@ Review for correctness first: does it do what the ticket asked, does it hold at 
 Action: approve, merge with `gh pr merge <n> --merge`, then complete the ticket with the PR as its evidence — `tandem-cli todo complete --id <ticket>` (see **Completion**).
 
 **Merge method: a merge commit, always.** This repo's history is merge commits (`Merge pull request #NN`), and a merge keeps every commit the author made — so a revert can undo one commit, the whole merge (`git revert -m 1 <merge>`), or nothing in between. Never `--squash` and never `--rebase`: a squash collapses the history a revert would need, and a rebase rewrites it.
+
+**Before the merge: the branch must be current.** `dev`'s protection is `required_status_checks.strict` with `enforce_admins` on, so a branch behind its base cannot merge — and `--auto` does not satisfy that, because it waits for requirements a stale branch never meets. Every merge to `dev` moves the base for every open PR, so a stale branch is routine. Update it and wait for the new head:
+
+```sh
+gh api -X PUT repos/<owner>/<repo>/pulls/<n>/update-branch
+gh pr view <n> --json headRefOid -q .headRefOid   # the new head; wait for `release` on it (Read first, step 3)
+gh pr merge <n> --merge
+```
+
+Never `--admin` (see **Commenting**); it bypasses the rule the strict check exists to enforce.
 
 **One-way / destructive / high blast radius** — anything a revert does not undo, or anything that reaches past this repo:
 
