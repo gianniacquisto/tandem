@@ -112,7 +112,16 @@ opencode api skill.list   # grilling, implement-spec, retro, tandem, tandem-boar
 tandem-cli doctor         # the skills check reads "opencode configured"
 ```
 
-A host that has not picked the change up yet needs a new session, not a restart of anything.
+A change to a skill or to `AGENTS.md` is picked up by a new session. A change to an agent prompt in `agents/*.md` is read when the server starts, so it is live only after the host restarts — a new session alone does not serve it.
+
+`opencode api agent.list` reports what the server read when it started, not what the checkout holds now. To tell whether a merged change to an agent prompt is live, compare the server's answer with the file:
+
+```sh
+opencode api agent.list                    # what the server read at its last start
+sed -n '1,6p' "$repo/agents/reviewer.md"   # what the checkout holds now
+```
+
+If the server still shows the old frontmatter — an old `description:`, or a `model:` line the file no longer carries — the change is merged and on disk but not live: restart the host, then read `opencode api agent.list` again.
 
 ## Report
 
