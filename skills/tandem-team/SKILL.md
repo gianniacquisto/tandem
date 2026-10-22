@@ -12,18 +12,19 @@ One page, four things: who fills which role, what to write when a role speaks, w
 | Role | The agent that fills it | The pass it owns |
 | --- | --- | --- |
 | `human` | — the human | the decision gate: a preference, a spend, an irreversible or outward-facing act; the release. No prompt: the human is the decision, not a pass. |
+| `capture` | the session's own agent | the session's own record: the session ticket at the start, the note captures as the work happens. The rule lives in the host's instructions, not in a prompt of its own. `AGENTS.md` (Sessions), `skills/tandem-memory/` |
 | `dispatch` | the session's own agent | triage (`backlog` → `refined` → `ready`) and dispatch — claim the ticket, then hand the builder its id and description. `skills/tandem-board/` |
 | `refine` | the `refine` subagent | the spec pass: a ticket too big or too undecided for one session becomes a spec and one-session tickets. `agents/refine.md` |
-| `build` | the `general` subagent, one per ticket — or a primary session run as `build`, `black` or `blue` | the build half of dispatch: branch, build, verify, PR, captures. No prompt of its own. |
+| `build` | the `general` subagent, one per ticket — or a primary session run as `build`, `black` or `blue`; the two builders are not linked on this Mac | the build half of dispatch: branch, build, verify, PR, captures. No prompt of its own. |
 | `reviewer` | the `reviewer` subagent | the review gate: merge a two-way door with low blast radius, escalate a one-way one. `agents/reviewer.md` |
 | `standup` | the session's own agent | the standup: the status round, posted to the tickets' comments. `skills/tandem-standup/` — not built yet; ticket `64BD463D` builds it. |
 | `sprint` | the session's own agent | the sprint cycle: selection, the run, the close, the next session. `skills/tandem-sprint/` — not built yet; ticket `5E3F8DE6` builds it. |
 | `retro` | the `retro` subagent | the retro: one session in, `backlog` tickets out; the report is a receipt. `agents/retro.md` |
 | `consolidator` | the `consolidator` subagent | consolidation: the sole writer of the curated bikeshed notes, on request. `agents/consolidator.md`, dispatched by `skills/tandem-consolidate/` |
 
-The table is an inventory of roles, not of prompts: `human` and `build` own none, and the two ceremony rows name skills that are not built yet — each of the four says where its gap is filled.
+The table is an inventory of roles, not of prompts: `human`, `capture` and `build` own no prompt of their own, and the two ceremony rows name skills that are not built yet — each of the five says where its gap is filled.
 
-Agents that fill no role: `explore` (read-only repo search — a tool the passes reach for, not a pass), `plan` (the host's read-only planner), and `black`/`blue` (primary builders, not linked on this Mac; a session running as one fills `build`).
+Agents that fill no role: `explore` (read-only repo search — a tool the passes reach for, not a pass), `plan` (the host's read-only planner), and `black`/`blue` (primary builders; a session running as one fills `build`).
 
 ## The name rule
 
@@ -53,6 +54,7 @@ Each ceremony is a procedure. The pointer is the instruction; the procedure live
 
 | Ceremony | Where it lives |
 | --- | --- |
+| Capture — the session ticket and the note captures | `AGENTS.md` (Sessions), `skills/tandem-memory/` |
 | The standup — the status round | `skills/tandem-standup/` — not built yet; ticket `64BD463D` builds it. |
 | The sprint cycle — selection, the run, the close, the next session | `skills/tandem-sprint/` — not built yet; ticket `5E3F8DE6` builds it. |
 | Triage, dispatch, escalation | `skills/tandem-board/` |

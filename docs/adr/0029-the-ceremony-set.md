@@ -10,7 +10,7 @@ The roster is the other half. The roles are named across four prompts, a dozen s
 
 ## Decision
 
-- **The ceremony set exists** — a roster, a standup, a sprint cycle, and the ticket comment log as the minutes. The roster is one page, `skills/tandem-team/SKILL.md`, and every other pass points at it instead of restating it.
+- **The ceremony set exists** — a roster, a standup, a sprint cycle, and the ticket comment log as the minutes. The roster is one page, `skills/tandem-team/SKILL.md`, and no other pass restates it: the board skill points at it, and the standup and sprint skills will when they are built.
 - **The sprint's batch is a ticket, not a field.** A `Sprint <n> — <lane>` ticket carries the batch in its description. The store gains nothing — no schema change, no migration — and the board shows the batch where the work lives, in the lane.
 - **The standup reports and the dispatcher claims.** The `ready` set has one claimant, the board skill's dispatch, and one reporter, the standup. They are different roles on purpose, so a ticket is never picked up twice and the status round never claims anything.
 - **No new agent per ceremony.** A ceremony is a procedure the session's own agent runs — a skill, not a prompt. A prompt would add a config and a model choice without adding behaviour behind it, and the personas answer (`C4C590ED`) is still open.
