@@ -26,6 +26,17 @@ The table is an inventory of roles, not of prompts: `human`, `capture` and `buil
 
 Agents that fill no role: `explore` (read-only repo search — a tool the passes reach for, not a pass), `plan` (the host's read-only planner), and `black`/`blue` (primary builders; a session running as one fills `build`).
 
+**The columns.** The board's order, and the role that owns each column — what the handoff rule reads. The order is the board's own: `skills/tandem-board/SKILL.md`'s gate table.
+
+| Column | The role that owns it |
+| --- | --- |
+| `backlog` | `dispatch` — triage shapes it. |
+| `refined` | `dispatch` — triage marks it `ready`; `human` holds it when the decision is theirs; `refine` writes the spec when a ticket is too big for one session. |
+| `ready` | `dispatch` — it claims the ticket and hands it to the builder. |
+| `in-progress` | `build` — the builder claims it and works it. |
+| `in-review` | `reviewer` — the review gate merges it or escalates it. |
+| `done` | the actor holding the evidence — the ticket rests here; there is no next assignee. |
+
 ## The name rule
 
 One vocabulary, two fields. A role's name is what goes in `--assignee` when the role owns a ticket, and in `--author` when the role speaks on one.
