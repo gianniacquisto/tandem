@@ -497,35 +497,61 @@ func usageModel(_ raw: String?) -> String? {
 /// The one `usage` comment the CLI posts on every ticket a session carried:
 /// author `usage`, one plain-integer line naming the session id, the model and
 /// the counts plus the cost —
-/// `Tokens ses_xxx · z-ai/glm-5.3-flash · 12345 in · 4567 out · 89012 cache read · 1234 cache write · 567 reasoning · $0.42`.
-/// A piece the harness did not report is left out of the line, never a zero
-/// dressed up as a count.
+/// `Usage — ses_xxx · z-ai/glm-5.3-flash`, then one line per reported piece:
+/// `input 238,171`, `output 22,294`, `cache read 5,346,816`, `cache write 0`,
+/// `reasoning 21,021`, `cost $0.22`. A piece the harness did not report is
+/// left out entirely, never a zero dressed up as a count; a piece it reported
+/// as zero stays. Plain text throughout — the comment sheet draws the body as
+/// stored, so markdown decoration would read as literal characters.
 ///
 /// The author constant is namespaced on a type, **not a top-level `let`**:
 /// main.swift runs `exit(dispatch(…))` before the bottom-of-file top-level
 /// lets initialize, so a global read from inside `dispatch` reads an
 /// uninitialized String — a segfault, not a wrong word.
 enum UsageComment {
-    /// The author every usage comment carries.
+    /// The fallback author when the record carries no agent — an unnamed
+    /// author is a gap in the record, and `usage` at least says what the
+    /// line is.
     static let author = "usage"
+
+    /// The comment's author: the record's agent — the pass name the session
+    /// started with — falling back to `usage` when the record carries none.
+    static func author(for session: Session) -> String {
+        session.agent ?? author
+    }
 }
 
 func usageCommentBody(for session: Session) -> String {
-    var parts: [String] = []
+    // The counts arrive unformatted (opencode stores `5346816`), and a bare
+    // integer that size is hard to read — group them. en_US, not the process
+    // locale: the board's readers are agents and humans across locales, and
+    // the number must parse back the same everywhere.
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.locale = Locale(identifier: "en_US")
+
+    var lines: [String] = []
+    var header = "Usage — \(session.id)"
     if let model = session.model {
-        parts.append(model)
+        header += " · \(model)"
+    }
+    lines.append(header)
+    func metric(_ name: String, _ value: Int?) {
+        guard let value else { return }
+        let grouped = formatter.string(from: NSNumber(value: value)) ?? String(value)
+        lines.append("\(name) \(grouped)")
     }
     if let tokens = session.tokens {
-        if let input = tokens.input { parts.append("\(input) in") }
-        if let output = tokens.output { parts.append("\(output) out") }
-        if let cacheRead = tokens.cacheRead { parts.append("\(cacheRead) cache read") }
-        if let cacheWrite = tokens.cacheWrite { parts.append("\(cacheWrite) cache write") }
-        if let reasoning = tokens.reasoning { parts.append("\(reasoning) reasoning") }
+        metric("input", tokens.input)
+        metric("output", tokens.output)
+        metric("cache read", tokens.cacheRead)
+        metric("cache write", tokens.cacheWrite)
+        metric("reasoning", tokens.reasoning)
     }
     if let cost = session.cost {
-        parts.append(String(format: "$%.2f", cost))
+        lines.append("cost " + String(format: "$%.2f", cost))
     }
-    return "Tokens \(session.id)" + (parts.isEmpty ? "" : " · " + parts.joined(separator: " · "))
+    return lines.joined(separator: "\n")
 }
 
 /// Post the usage comment on every ticket the ended record links, through the
@@ -540,7 +566,7 @@ func postUsageComments(for session: Session) throws {
     for ticket in session.tickets {
         try store.append(
             ticketID: ticket.uuidString,
-            author: UsageComment.author,
+            author: UsageComment.author(for: session),
             body: usageCommentBody(for: session))
     }
 }
