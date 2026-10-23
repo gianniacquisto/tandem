@@ -16,7 +16,7 @@ struct OrderAndLanesTests {
     /// Write a raw store file by hand (migration / hand-edit fixtures).
     private func writeRaw(_ text: String, to store: Store) throws {
         try FileManager.default.createDirectory(at: store.directory, withIntermediateDirectories: true)
-        try text.write(to: store.fileURL, atomically: false, encoding: .utf8)
+        try text.write(to: store.storeFileURL, atomically: false, encoding: .utf8)
     }
 
     private func titles(_ store: Store) throws -> [String] {
@@ -304,7 +304,7 @@ struct OrderAndLanesTests {
         // A write adds the additive fields but must NOT bump the envelope version —
         // a v1-era reader has to keep reading this file (ADR 0006).
         _ = try store.add("new")
-        let obj = try JSONSerialization.jsonObject(with: Data(contentsOf: store.fileURL)) as? [String: Any]
+        let obj = try JSONSerialization.jsonObject(with: Data(contentsOf: store.storeFileURL)) as? [String: Any]
         #expect((obj?["version"] as? Int) == 1)
         #expect(obj?["lanes"] is [Any])
     }
@@ -336,7 +336,7 @@ struct OrderAndLanesTests {
 
     /// The store file as a JSON object, for asserting the on-disk shape.
     private func fileObject(_ store: Store) throws -> [String: Any] {
-        let data = try Data(contentsOf: store.fileURL)
+        let data = try Data(contentsOf: store.storeFileURL)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StoreIOError.io("test fixture is not a JSON object")
         }
@@ -399,7 +399,7 @@ struct OrderAndLanesTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
         try writeRaw(v1HandoverShape, to: store)
-        let before = try Data(contentsOf: store.fileURL)
+        let before = try Data(contentsOf: store.storeFileURL)
 
         _ = try store.add("new")
 
@@ -434,7 +434,7 @@ struct OrderAndLanesTests {
         try writeRaw(v1HandoverShape, to: store)
 
         _ = try store.add("new")
-        let afterFirst = try Data(contentsOf: store.fileURL)
+        let afterFirst = try Data(contentsOf: store.storeFileURL)
         #expect(preRenameCopies(in: dir).count == 1)
 
         _ = try store.add("one more")
@@ -477,7 +477,7 @@ struct OrderAndLanesTests {
         let store = Store(directory: dir)
         // The oldest possible shape: v1 names and the legacy mirror at once.
         try writeRaw(#"{"version":1,"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"old","done":true,"status":"backlog","createdAt":"2026-01-01T00:00:00Z","completedAt":"2026-01-02T00:00:00Z"}]}"#, to: store)
-        let before = try Data(contentsOf: store.fileURL)
+        let before = try Data(contentsOf: store.storeFileURL)
 
         _ = try store.add("new")
 

@@ -245,7 +245,7 @@ public enum SetupDiagnostics {
                 environment: ProcessInfo.processInfo.environment,
                 executablePath: TandemHome.executablePath,
                 isDebugBuild: TandemHome.isDebugBuild),
-            storePath: store.directory.appendingPathComponent("todos.json").path,
+            storePath: store.storeFileURL.path,
             storeHealth: health,
             storeBackup: store.backupHealth(),
             storeLockHeld: store.lockIsHeld(),

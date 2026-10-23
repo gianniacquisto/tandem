@@ -539,7 +539,7 @@ struct OperationsTests {
         _ = try store.complete(done.value.id.uuidString)
 
         // Read the raw file straight off disk.
-        let text = try String(contentsOf: store.fileURL, encoding: .utf8)
+        let text = try String(contentsOf: store.storeFileURL, encoding: .utf8)
         let obj = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
         // Additive fields must NOT move the version: a v1-era reader has to keep
         // reading this file (ADR 0006 — bumping it once wiped a real store).
