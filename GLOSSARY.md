@@ -36,9 +36,9 @@ _Avoid_: task, item, to-do (hyphenated)
 A Todo carrying the full shape — a description, an assignee, a Status, and a Cycle lane. The board's unit of work; not a second entity, since the store's word for it stays Todo.
 _Avoid_: card, issue, story
 
-**Session ticket**:
-A ticket one agent session files for itself, titled `Session — <project> · <session-id>`, so the board shows what is running and what each session did. It is a ticket, not a log entry: it carries a brief, the board refines it and moves it through the same gates as any other ticket, and a session that ends leaves behind work a successor can pick up. Its description is written once as a brief and appended to with the outcome, never overwritten.
-_Avoid_: session log, journal, session record
+**Session**:
+A record of one agent session — its brief, its outcome, and the tickets and notes it carried — with its own file (`sessions.json`) and its own two states (`running`, `ended`); the CLI's five verbs are `session start/link/end/list/show`. Not a ticket, and not on the board.
+_Avoid_: session log, journal
 
 **Open**:
 A todo that has not yet been completed.
@@ -149,7 +149,7 @@ The role that reads one session and files what it finds as backlog tickets — t
 _Avoid_: retrospective agent, postmortem, session analyst
 
 **Refiner**:
-The role that turns a backlog ticket into a brief a builder can take: it grills the decision tree, writes the spec, and splits an effort too big for one session into one-session tickets. It owns no code and no design of its own — the ticket is the whole output.
+The role that turns a backlog ticket into a brief a builder can take: it grills the decision tree, writes the spec, and splits an effort too big for one session into tickets that each fit one session. It owns no code and no design of its own — the ticket is the whole output.
 _Avoid_: spec writer, planner, triage
 
 **CLI**:
