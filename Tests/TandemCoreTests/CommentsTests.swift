@@ -436,12 +436,13 @@ struct CommentWritePathTests {
         // "busy" — for a comment that was written.
         let holder = DispatchGroup()
         let hasLock = DispatchSemaphore(value: 0)
+        let relocked = DispatchSemaphore(value: 0)
         holder.enter()
         DispatchQueue.global().async {
             defer { holder.leave() }
             let fd = open(store.lockURL.path, O_RDWR | O_CREAT, 0o644)
-            guard fd >= 0 else { hasLock.signal(); return }
-            guard flock(fd, LOCK_EX) == 0 else { close(fd); hasLock.signal(); return }
+            guard fd >= 0 else { hasLock.signal(); relocked.signal(); return }
+            guard flock(fd, LOCK_EX) == 0 else { close(fd); hasLock.signal(); relocked.signal(); return }
             hasLock.signal()
             usleep(300_000)                 // 300 ms: the write path waits here
             close(fd)                       // and comes in
@@ -451,10 +452,15 @@ struct CommentWritePathTests {
             while !FileManager.default.fileExists(atPath: log.path), Date() < deadline {
                 usleep(50)
             }
-            guard FileManager.default.fileExists(atPath: log.path) else { return }
+            guard FileManager.default.fileExists(atPath: log.path) else { relocked.signal(); return }
             let second = open(store.lockURL.path, O_RDWR | O_CREAT, 0o644)
-            guard second >= 0 else { return }
+            guard second >= 0 else { relocked.signal(); return }
             _ = flock(second, LOCK_EX)      // granted when the append releases
+            // The holder holds the lock again from here. The test must not
+            // start its read until this has happened — a read that runs
+            // before the second flock is granted wins the lock and reads
+            // the list, which is the race this test once lost in CI.
+            relocked.signal()
             usleep(2_500_000)               // the full wait window
             close(second)
         }
@@ -475,7 +481,11 @@ struct CommentWritePathTests {
         #expect(raw.contains("the human's own note"))
 
         // And the read path, under the same contention, still says busy —
-        // which is the answer the write path no longer gives.
+        // which is the answer the write path no longer gives. The holder
+        // signals once its second flock is granted, so this read runs with
+        // the lock genuinely held; without that wait the read could win the
+        // lock first and come back a list.
+        #expect(relocked.wait(timeout: .now() + 15) == .success, "the holder never retook the lock")
         let read = store.commentRead(ticketID: ticket.id.uuidString)
         guard case .busy(let message) = read else {
             Issue.record("expected a busy read, got \(read)")
