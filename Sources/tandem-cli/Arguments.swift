@@ -234,7 +234,7 @@ private func parseNote(_ args: [String]) throws -> Command {
         // that folder name (no match is an empty list, not an error).
         return .noteStats(project: flags["--project"])
     case "links":
-        // The vault-health readout: the whole bikeshed, no filters.
+        // The health readout: the whole bikeshed, no filters.
         try accept(flags, [])
         return .noteLinks
     default:

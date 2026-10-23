@@ -287,7 +287,7 @@ enum SessionState {
 /// **The saddlebag folder is the link.** The record carries no list of its
 /// notes, because consolidation moves captures (from `.raw/<id>/` to
 /// `.raw/.done/<id>/`) and a stored path would rot. So the paths are read
-/// from the vault every time a record is opened — by the core, which owns that
+/// from the bikeshed every time a record is opened — by the core, which owns that
 /// scan (`Bikeshed.sessionNotes(session:)`), so this face and the CLI's
 /// `session show` can never name different notes.
 enum SessionNotes {
