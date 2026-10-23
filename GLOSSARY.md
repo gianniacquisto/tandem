@@ -1,25 +1,25 @@
 # Tandem
 
-A native macOS todo app shared by humans and agents on the same machine.
+A native macOS ticket board shared by humans and agents on the same machine.
 
 ## Language
 
 ### The app
 
 **Tandem**:
-The macOS todo app, usable by both humans and agents on the same machine.
-_Avoid_: "the app", "the todo app" (when ambiguous)
+The macOS ticket board, usable by both humans and agents on the same machine.
+_Avoid_: "the app", "the todo app"
 
 **Main window**:
-Tandem's desktop face: the full todo list and the board for browsing, adding, and editing, beside the bikeshed.
+Tandem's desktop face: the full ticket list and the board for browsing, adding, and editing, beside the bikeshed.
 _Avoid_: panel, dashboard, view
 
 **Board**:
-The main window's ticket view: Status columns across, Cycle lanes down, a ticket drawn in the cell where its Status and lane meet. A view of the same todos, not a fourth axis — the list and the board differ in layout, never in data.
+The main window's ticket view: Status columns across, Cycle lanes down, a ticket drawn in the cell where its Status and lane meet. A view of the same tickets, not a fourth axis — the list and the board differ in layout, never in data.
 _Avoid_: kanban board, swimlane view, board tab (when the view is meant)
 
 **Menu bar item**:
-Tandem's presence in the macOS menu bar (top bar): quick glance and quick action on todos.
+Tandem's presence in the macOS menu bar (top bar): quick glance and quick action on tickets.
 _Avoid_: top bar element, status bar, tray, badge
 
 **Quick open**:
@@ -28,36 +28,32 @@ _Avoid_: command palette, launcher, fuzzy finder, spotlight
 
 ### The domain
 
-**Todo**:
-A single item in the shared list — the only entity in the todo domain, and the word the store and the CLI use for it.
-_Avoid_: task, item, to-do (hyphenated)
-
 **Ticket**:
-A Todo carrying the full shape — a description, an assignee, a Status, and a Cycle lane. The board's unit of work; not a second entity, since the store's word for it stays Todo.
-_Avoid_: card, issue, story
+The only entity in the domain — the word the store, the CLI and the board use for it. "Todo" was the word until ADR 0030; it survives only as the CLI's deprecated alias, retired with the old wire keys.
+_Avoid_: task, item, to-do (hyphenated), todo (the old word), card, issue, story
 
 **Session**:
 A record of one agent session — its brief, its outcome, and the tickets and notes it carried — with its own file (`sessions.json`) and its own two states (`running`, `ended`); the CLI's five verbs are `session start/link/end/list/show`. Not a ticket, and not on the board.
 _Avoid_: session log, journal
 
 **Open**:
-A todo that has not yet been completed.
+A ticket that has not yet been completed.
 _Avoid_: pending, active
 
 **Done**:
-A todo that has been completed.
+A ticket that has been completed.
 _Avoid_: closed, finished, complete (as a noun)
 
 **Status**:
-A todo's position in the workflow: backlog (the default), refined, ready, in-progress, in-review, or done. One axis with six values — done is where the workflow ends, not a flag set beside it; in-review is a finished piece of work whose PR is waiting for a reader, before it counts as done.
+A ticket's position in the workflow: backlog (the default), refined, ready, in-progress, in-review, or done. One axis with six values — done is where the workflow ends, not a flag set beside it; in-review is a finished piece of work whose PR is waiting for a reader, before it counts as done.
 _Avoid_: state, stage, step
 
 **Archived**:
-A todo set aside: out of the default views, still in the store. Any todo can be archived, and archiving a done todo is how a list is cleared without deleting. The app's archive view is where one is brought back; the board does not draw archived tickets at all.
+A ticket set aside: out of the default views, still in the store. Any ticket can be archived, and archiving a done ticket is how a list is cleared without deleting. The app's archive view is where one is brought back; the board does not draw archived tickets at all.
 _Avoid_: closed, deleted, cleared, hidden
 
 **Cycle lane**:
-The named area a todo belongs to: the board's row and the list's grouping. Every todo sits in one lane, or in the unnamed default area, which stays first.
+The named area a ticket belongs to: the board's row and the list's grouping. Every ticket sits in one lane, or in the unnamed default area, which stays first.
 _Avoid_: section, swimlane, epic, list (Trello's word)
 
 **Origin**:
@@ -65,11 +61,11 @@ Who filed a ticket: `human`, or the name of the agent that filed it. Written onc
 _Avoid_: author, filer, creator
 
 **Filter**:
-Which todos are in view: `open` (the default), `done`, or `all`. One term for two surfaces: the main window's segmented control and the CLI's `list --filter` argument — and they part on the archive: the app's `All` shows it, the CLI's `all` does not. The app adds a fourth state only it needs — the archive itself, so an archived ticket can be found and brought back; the CLI has no fourth filter value, and reaches the archive with `--archived`: on its own that is the archive, and named with a filter it joins it.
+Which tickets are in view: `open` (the default), `done`, or `all`. One term for two surfaces: the main window's segmented control and the CLI's `list --filter` argument — and they part on the archive: the app's `All` shows it, the CLI's `all` does not. The app adds a fourth state only it needs — the archive itself, so an archived ticket can be found and brought back; the CLI has no fourth filter value, and reaches the archive with `--archived`: on its own that is the archive, and named with a filter it joins it.
 _Avoid_: view, tab, scope, state
 
 **Store**:
-The single source of truth for todos, shared by the app and agents. All reads and writes go through the store; no other copy is authoritative. Beside the file sits its **rolling backup**, `todos.json.bak` — the one previous good copy, written under the same lock as the write it precedes (ADR 0018). It is a fallback, never a source: nothing reads it but a human recovering the list.
+The single source of truth for tickets, shared by the app and agents. All reads and writes go through the store; no other copy is authoritative. Beside the file sits its **rolling backup**, `todos.json.bak` — the one previous good copy, written under the same lock as the write it precedes (ADR 0018). It is a fallback, never a source: nothing reads it but a human recovering the list. The store file is still named `todos.json`; the rename to `tickets.json` is ADR 0030's last step.
 _Avoid_: database, backend, sync, cache
 
 ### The bikeshed
