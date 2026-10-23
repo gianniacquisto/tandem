@@ -42,7 +42,17 @@ enum Command {
     case noteStats(project: String?)
     case noteLinks
     case sessionStart(project: String?, agent: String?, session: String?, brief: String)
-    case sessionEnd(session: String?, outcome: String?, summary: String?)
+    case sessionEnd(
+        session: String?,
+        outcome: String?,
+        summary: String?,
+        tokensInput: String?,
+        tokensOutput: String?,
+        tokensReasoning: String?,
+        tokensCacheRead: String?,
+        tokensCacheWrite: String?,
+        cost: String?,
+        model: String?)
     case sessionLink(ticket: String, session: String?)
     case sessionList(project: String?, status: String?)
     case sessionShow(session: String?)
@@ -273,14 +283,30 @@ private func parseSession(_ args: [String]) throws -> Command {
             session: flags["--session"],
             brief: flags["--brief"] ?? "")
     case "end":
-        try accept(flags, ["--session", "--outcome", "--summary"])
+        // The usage flags (spec `F68948C0`): absent is absent on the record —
+        // today's behaviour, unchanged. `--model` is a string; the six number
+        // flags are parsed in `main`, where a bad value is a domain failure
+        // naming the flag.
+        try accept(flags, [
+            "--session", "--outcome", "--summary",
+            "--tokens-input", "--tokens-output", "--tokens-reasoning",
+            "--tokens-cache-read", "--tokens-cache-write",
+            "--cost", "--model",
+        ])
         // `--outcome` absent is `unknown` — the honest answer for a session
         // that ended without saying how; a value that is not one of the four
         // is the core's own failure. `--summary -` is stdin, as `--brief -` is.
         return .sessionEnd(
             session: flags["--session"],
             outcome: flags["--outcome"],
-            summary: flags["--summary"])
+            summary: flags["--summary"],
+            tokensInput: flags["--tokens-input"],
+            tokensOutput: flags["--tokens-output"],
+            tokensReasoning: flags["--tokens-reasoning"],
+            tokensCacheRead: flags["--tokens-cache-read"],
+            tokensCacheWrite: flags["--tokens-cache-write"],
+            cost: flags["--cost"],
+            model: flags["--model"])
     case "link":
         try accept(flags, ["--ticket", "--session"])
         // A missing `--ticket` is the empty id the store rejects with the

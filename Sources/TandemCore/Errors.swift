@@ -95,6 +95,10 @@ public enum DomainError: Error, Sendable, Equatable {
     /// A `--summary -` body was empty or whitespace-only: an empty pipe, not
     /// a session that ended without saying anything.
     case emptySessionSummary
+    /// A usage flag (`--tokens-input`, `--cost`, …) was given a value that is
+    /// not the kind of number it asks for, or a negative one — a count and a
+    /// cost are never negative (spec `F68948C0`).
+    case invalidUsageFlag(flag: String, value: String)
     /// A `--description -` body was empty or whitespace-only: an empty pipe, not
     /// a deliberate clear (the store still takes `--description ""`).
     case emptyDescriptionBody
@@ -168,6 +172,8 @@ public enum DomainError: Error, Sendable, Equatable {
             return "Cannot resolve the session id: set OPENCODE_SESSION_ID to this session's id, or pass --session <id>."
         case .emptySessionSummary:
             return "Session summary is empty. Provide a non-empty summary on stdin — or omit --summary to end the session without one."
+        case .invalidUsageFlag(let flag, let value):
+            return "--\(flag) must be a non-negative number (got \"\(value)\")."
         case .emptyDescriptionBody:
             return "Description body is empty. Provide a non-empty body on stdin — or pass --description \"\" to clear the description."
         case .invalidFilter(let bad):
