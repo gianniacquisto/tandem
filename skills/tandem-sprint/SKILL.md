@@ -83,7 +83,9 @@ Then in one write: keep the answer, reset `assignee`, set the status the answer 
 
 ## 6. Close
 
-Append `## Close` — what landed, what slipped, what waits on the human — then `tandem-cli ticket complete --id "$sprint"`. Write the close before completing: a done sprint with an empty close is a lie the next session inherits. The report names `Sprint <n+1>` as the next step, opened in a **new** session — never this one.
+Append `## Close` — what landed, what slipped, what waits on the human — then `tandem-cli ticket complete --id "$sprint"`. Write the close before completing: a done sprint with an empty close is a lie the next session inherits. The close is the session's final act: nothing is dispatched after it begins, so no child session can spend the turn budget the close needs. The report names `Sprint <n+1>` as the next step, opened in a **new** session — never this one.
+
+**A dead sprint is stale work.** An `in-progress` ticket titled `Sprint <n> — <lane>` whose opening session — the one named in its `## The batch` — has ended (`opencode api session.list`: an `outcome` **and** a stale `time.updated`, both signals needed and neither exact alone, per ADR 0024) died before it could write `## Close`, and nothing on the board separates it from a sprint still running. The next sprint's triage closes it **from what the board shows**: append a `## Close` that names the recorded `## Run` entries and any escalations left with the human, says it was written by triage from the board, then `ticket complete`. It writes nothing the dead session did not leave on the board. A sprint whose session is live is left alone — the "a claim is not a stall" rule governs the borderline.
 
 ## The board
 
