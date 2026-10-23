@@ -43,7 +43,12 @@ struct TicketSheet: View {
     /// answers, and they belong to the read: a `.busy` leaves the list exactly
     /// as it was and says the list may be behind, because a read that did not
     /// happen takes nothing away.
-    var onRefreshComments: () -> CommentRead
+    ///
+    /// It runs off the main thread — the read takes the store's `flock`, and a
+    /// CLI write holding the lock must not hold the sheet's main thread for
+    /// the core's ~2 s window. The sheet awaits the answer and draws it when
+    /// it lands; a slow read is a state the sheet can draw, not a freeze.
+    var onRefreshComments: () async -> CommentRead
     /// Opens a linked note (the window owns the tab switch). `nil` hides the button.
     var onOpenLink: ((String) -> Void)? = nil
     /// Promotes the ticket to a bikeshed note. `nil` hides the button.
@@ -79,11 +84,10 @@ struct TicketSheet: View {
     private enum Field { case title, body }
 
     init(ticket: Ticket, palette: Palette, lanes: [String],
-         comments: CommentRead = .list([]),
          onSave: @escaping (TicketEdits) -> Void,
          onCancel: @escaping () -> Void,
          onComment: @escaping (String) -> CommentPostOutcome,
-         onRefreshComments: @escaping () -> CommentRead,
+         onRefreshComments: @escaping () async -> CommentRead,
          onOpenLink: ((String) -> Void)? = nil,
          onPromote: (() -> PromotionOutcome)? = nil) {
         self.ticket = ticket
@@ -100,7 +104,11 @@ struct TicketSheet: View {
         _lane = State(initialValue: ticket.lane)
         _bodyText = State(initialValue: ticket.description ?? "")
         _link = State(initialValue: ticket.link)
-        _discussion = State(initialValue: comments)
+        // The seed read no longer happens here: the sheet reads the log itself,
+        // once, when it appears (`readSeed`), on the background hop the read
+        // closure gives it. It starts empty — an empty log draws no list — and
+        // the answer lands on the main actor when the read returns.
+        _discussion = State(initialValue: .list([]))
     }
 
     private var trimmedTitle: String {
@@ -237,14 +245,23 @@ struct TicketSheet: View {
             // A ticket with a body opens for reading it; a terse one opens for writing it.
             focus = ticket.description == nil ? .title : .body
         }
+        // The seed: the log is read **once**, when the sheet opens — not on
+        // every re-render. It is a read like any other, so it takes the
+        // background hop the read closure gives it and the sheet draws what
+        // lands: the log, or the busy/failure state that says why it did not.
+        // A reopen is a seed again — a fresh sheet, one fresh read.
+        .task {
+            await refreshComments()
+        }
         // The human comes back to the app from the terminal, where an agent
         // commented on this ticket. The comments sidecar is its own file under
         // `<home>/comments/`, and the app's watcher watches the store's
-        // directory — so nothing else would bring that comment in. (A reopen
-        // is a refresh too: the sheet is opened with the log already read.)
+        // directory — so nothing else would bring that comment in. The read is
+        // the sheet's own background one: a locked store costs the main
+        // thread nothing, and the answer lands when it lands.
         .onReceive(NotificationCenter.default.publisher(
             for: NSApplication.didBecomeActiveNotification)) { _ in
-            refreshComments()
+            Task { await refreshComments() }
         }
     }
 
@@ -265,8 +282,9 @@ struct TicketSheet: View {
                 Spacer(minLength: 0)
                 // The refresh on demand: the log is read again, and the list is
                 // put back as the file holds it. It is a read of its own, so it
-                // can happen without a write.
-                Button("Refresh") { refreshComments() }
+                // can happen without a write — and it takes the background hop,
+                // like every read the sheet makes.
+                Button("Refresh") { Task { await refreshComments() } }
                     .buttonStyle(.plain)
                     .font(.system(size: 11))
                     .foregroundStyle(palette.inkDim)
@@ -373,7 +391,7 @@ struct TicketSheet: View {
             // answers, that puts the rest of the log in front of the human —
             // a comment another actor appended in the meantime is in the file,
             // and the human's own is in it too, in the order the sidecar holds.
-            refreshComments()
+            Task { await refreshComments() }
         case .refused(let message):
             commentError = message
         }
@@ -381,14 +399,18 @@ struct TicketSheet: View {
 
     /// Reads the ticket's log again and draws what it holds.
     ///
+    /// The read takes the background hop the read closure gives it — the store's
+    /// `flock` is never the main thread's wait — and the sheet is updated when
+    /// the answer arrives.
+    ///
     /// A refresh that reads the log replaces the list with the file's own
     /// order. A refresh that does **not** read it — the store was busy, or the
     /// log is damaged — leaves the list exactly as it was and says why: a read
     /// that did not happen takes nothing away, and the comment the human just
     /// wrote stays in the list. The draft is never touched: it is the human's
     /// half of the conversation, and a refresh is not an answer to it.
-    private func refreshComments() {
-        switch onRefreshComments() {
+    private func refreshComments() async {
+        switch await onRefreshComments() {
         case .list(let list):
             discussion = .list(list)
             refreshNote = nil
