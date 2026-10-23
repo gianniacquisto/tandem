@@ -5,6 +5,20 @@ process (`NSApp.windows` → the key window → `cacheDisplay(in:to:)` → PNG) 
 `screencapture` has no Screen Recording permission on this Mac, so the app
 photographs itself instead.
 
+The tool is `Scripts/shot.sh` (with the small Objective-C rig it compiles and
+injects, `Scripts/shot.m`), and the script is the rule. No session hand-builds
+a rig; a picture is one command each:
+
+    TANDEM_HOME=Fixtures/screenshots/Home Scripts/shot.sh list
+    # pick a window id from the list, then:
+    TANDEM_HOME=Fixtures/screenshots/Home Scripts/shot.sh <window-id> docs/screenshots/<file>.png
+
+`list` shows the running app's windows (id, size, title). The script refuses to
+run when `TANDEM_HOME` is unset or does not resolve to a home under the repo's
+own fixtures (`Fixtures/`) — never `~/.tandem`, never `~/.tandem-dev` — and it
+refuses to photograph an app whose own environment is not pointed at that same
+fixture home. A refusal exits non-zero and writes nothing.
+
 | file | what it shows |
 | --- | --- |
 | `tickets-tab.png` | the main window's **Tickets** tab: the quick-add, the Open/Done/All/Archived counts, the search field and the lane-grouped list |
