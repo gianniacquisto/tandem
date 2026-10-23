@@ -71,7 +71,7 @@ struct TicketLinkTests {
 
         let added = try store.add("Task")
         _ = try store.setLink(added.value.id.uuidString, to: "Ideas.md")
-        let fileURL = store.directory.appendingPathComponent("todos.json")
+        let fileURL = store.storeFileURL
         let before = try FileManager.default.attributesOfItem(atPath: fileURL.path)[.modificationDate] as? Date
         #expect(before != nil)
 
@@ -118,7 +118,7 @@ struct TicketLinkTests {
         let added = try store.add("Task")
         _ = try store.setLink(added.value.id.uuidString, to: "Ideas.md")
 
-        let fileURL = store.directory.appendingPathComponent("todos.json")
+        let fileURL = store.storeFileURL
         func readEntry() throws -> [String: Any]? {
             let text = try String(contentsOf: fileURL, encoding: .utf8)
             let obj = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]

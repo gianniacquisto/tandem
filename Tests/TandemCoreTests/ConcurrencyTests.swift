@@ -90,7 +90,7 @@ struct ConcurrencyTests {
         var reads = 0
         for _ in 0..<2000 {
             reads += 1
-            if let data = try? Data(contentsOf: store.fileURL) {
+            if let data = try? Data(contentsOf: store.storeFileURL) {
                 do { _ = try JSONDecoder().decode(Envelope.self, from: data) }
                 catch { errors[] = errors[] + [error] }
             }

@@ -17,12 +17,12 @@ struct TicketModelTests {
     /// Write a raw store file by hand (older-file and hand-edit fixtures).
     private func writeRaw(_ text: String, to store: Store) throws {
         try FileManager.default.createDirectory(at: store.directory, withIntermediateDirectories: true)
-        try text.write(to: store.fileURL, atomically: false, encoding: .utf8)
+        try text.write(to: store.storeFileURL, atomically: false, encoding: .utf8)
     }
 
     /// The store file as a JSON object, for asserting the on-disk shape.
     private func fileObject(_ store: Store) throws -> [String: Any] {
-        let data = try Data(contentsOf: store.fileURL)
+        let data = try Data(contentsOf: store.storeFileURL)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StoreIOError.io("test fixture is not a JSON object")
         }
