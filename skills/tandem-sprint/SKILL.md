@@ -49,7 +49,7 @@ In batch order:
 
 1. **Claim** — `tandem-cli ticket set --id <id> --status in-progress --assignee builder`.
 2. **Build** — dispatch the `builder` subagent (`agents/builder.md`) with the ticket id and its description — `tandem-cli ticket show --id <id>`, since `list` rows are summaries without the body. It branches `board/<slug>`, builds, verifies, opens the PR with its `## Merge Danger` claim, and files its captures.
-3. **Review** — dispatch the `reviewer` subagent (`agents/reviewer.md`) with the ticket id and PR. It merges a two-way/low door and completes the ticket; a one-way door is escalated to the human and **leaves the batch**.
+3. **Review** — dispatch the `reviewer` subagent (`agents/reviewer.md`) with the ticket id and PR. It merges a two-way/low door and completes the ticket; a one-way door is escalated to the human and **leaves the batch**. An `escalated` report is accepted only after you read the ticket yourself (`tandem-cli ticket show --id <id>`): status `refined` and assignee `human` mean handed over; anything else is a failed gate — re-dispatch the reviewer, or do the handover in this session and say so in the `## Run` note.
 4. **Record** — append `## Run — <date>`: the ticket, what landed, the PR.
 
 **One at a time, never in parallel.** Nine simultaneous branches on this repo collided at merge time on 2026-10-20 — `BikeFace.swift` alone was touched by six of them. Velocity is tickets per sprint, not concurrency. A ticket that escalates does not stop the sprint; the close names it.
