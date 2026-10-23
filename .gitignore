@@ -4,3 +4,7 @@
 DerivedData/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
+
+# Fixture homes are scratch state: created on demand, never committed.
+/Fixtures/*
+!/Fixtures/README.md
