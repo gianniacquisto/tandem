@@ -27,6 +27,10 @@ Tickets keep their own conventions: a ticket's description is written once and a
 
 The actor that finishes a ticket's work sets the next status and, where there is a next, the next assignee — instead of leaving the next move to a later pass. The names are the roster's: `skills/tandem-team/SKILL.md`. The builder hands to `in-review`; the reviewer completes on merge or escalates to `human`; the sprint session dispatches and records.
 
+## Git
+
+Prefer merges over rebases, and avoid force pushes and other destructive git actions unless absolutely necessary — when a force push is unavoidable, `--force-with-lease`, never bare `--force`. This applies to sub-agents too.
+
 ## Agents
 
 The prompts for the passes live in `agents/` — `builder`, `consolidator`, `refiner`, `reviewer`, one markdown file each, named as nouns — and the procedures they run in `skills/`. A prompt that names a contract states the current one; see [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md). `skills/tandem-setup/` wires it all into an agent host: the skills, the agent prompts and this `AGENTS.md`, linked rather than copied. Nothing here names a path on one machine: a clone of this repo, anywhere, plus the app, is the whole setup.
