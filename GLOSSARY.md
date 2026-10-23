@@ -141,7 +141,7 @@ The role that gates a pull request: it reads the ticket, the diff, the checks an
 _Avoid_: approver, critic, merge bot
 
 **Retro**:
-The role that reads one session and files what it finds as backlog tickets — the tickets are the output, the report is a receipt. It never fixes what it finds, because a retro that changes the work cannot report on it honestly.
+The role that reads one session and files what it finds as backlog tickets — the tickets are the output, the report is a receipt. It runs at every sprint close, on the sprint session's own transcript, and is still invocable alone on a session the human names. It never fixes what it finds, because a retro that changes the work cannot report on it honestly.
 _Avoid_: retrospective agent, postmortem, session analyst
 
 **Refiner**:
