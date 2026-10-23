@@ -43,7 +43,8 @@ esac
 
 row=$(sqlite3 -readonly -separator "$(printf '\t')" "$DB" \
     "SELECT tokens_input, tokens_output, tokens_reasoning,
-            tokens_cache_read, tokens_cache_write, cost, model
+            tokens_cache_read, tokens_cache_write, cost,
+            COALESCE(json_extract(model, '\$.id'), model)
      FROM session_v2 WHERE id = '$SESSION' LIMIT 1;") \
     || fail "sqlite3 could not read $DB."
 [ -n "$row" ] || fail "no session row for $SESSION in $DB."
