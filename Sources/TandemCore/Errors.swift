@@ -48,6 +48,41 @@ public enum DomainError: Error, Sendable, Equatable {
     /// The sessions file's lock (`sessions.lock`) is held by another process,
     /// so the read-modify-write could not start. The next step is to retry.
     case sessionsFileLocked(path: String)
+    /// The sprints file (`sprints.json`) is corrupt and could not be moved
+    /// aside, so it stays where it is and the sprint list cannot be read
+    /// until it is gone. **The store and the sessions file are untouched**:
+    /// `todos.json` and `sessions.json` are fine, and this failure is about
+    /// the sprints file, not about them — so it never wears their error
+    /// vocabulary.
+    case corruptSprintsFile(path: String, detail: String)
+    /// A POSIX call on the sprints file's own storage failed: the lockfile
+    /// could not be opened, or the file could not be written. `op` names the
+    /// operation (`open lockfile`, `fsync`, `rename`, …) and `detail` says what
+    /// the OS said. **The store and the sessions file are untouched**:
+    /// `todos.json` and `sessions.json` are fine, and this failure is about
+    /// the sprints file, not about them — so it never wears their error
+    /// vocabulary.
+    case sprintsFileIO(path: String, op: String, detail: String)
+    /// The sprints file's lock (`sprints.lock`) is held by another process,
+    /// so the read-modify-write could not start. The next step is to retry.
+    case sprintsFileLocked(path: String)
+    /// `run`/`close` was called with an empty or whitespace-only note body —
+    /// an empty pipe, not a landing without words. (`close` that names *no*
+    /// note at all is spelled `nil`, and closes with the stamp alone.)
+    case emptySprintNote
+    /// `ticket` was called with a ticket id the store does not carry — the id
+    /// is not on the board. The batch takes only ids the board holds; a ticket
+    /// deleted *after* the write is not this failure, it reads "not on the
+    /// board".
+    case unknownTicketID(String)
+    /// `show`/`ticket`/`run`/`close` was called with a (lane, number) the
+    /// sprints file does not carry. `known` is the numbers the lane *does*
+    /// hold, so the caller recovers in one turn. The pair is the identity —
+    /// there is no UUID to misspell.
+    case unknownSprint(lane: String, number: Int, known: [Int])
+    /// A sprint mode that is not `serial` or `parallel`. The board's `Status`
+    /// is a different vocabulary, and so is its own failure.
+    case invalidSprintMode(String)
     /// A session status that is not `running` or `ended`. The board's `Status`
     /// is a different vocabulary, and so is its own failure.
     case invalidSessionStatus(String)
@@ -108,6 +143,23 @@ public enum DomainError: Error, Sendable, Equatable {
             return "The sessions file at \(path) failed during \(op) (\(detail)). Check that the home directory is writable and has free space, then try again."
         case .sessionsFileLocked(let path):
             return "The sessions file at \(path) is locked by another process — please retry."
+        case .corruptSprintsFile(let path, let detail):
+            return "The sprints file at \(path) is corrupt and could not be moved aside (\(detail)). Move it aside yourself and try again — the sprint list then starts empty."
+        case .sprintsFileIO(let path, let op, let detail):
+            return "The sprints file at \(path) failed during \(op) (\(detail)). Check that the home directory is writable and has free space, then try again."
+        case .sprintsFileLocked(let path):
+            return "The sprints file at \(path) is locked by another process — please retry."
+        case .emptySprintNote:
+            return "Sprint note is empty. Provide a non-empty note and try again."
+        case .unknownTicketID(let id):
+            return "Unknown ticket id \"\(id)\" — it is not on the board. Add the ticket to the board first, or check the id, and try again."
+        case .unknownSprint(let lane, let number, let known):
+            guard !known.isEmpty else {
+                return "Unknown sprint \"Sprint \(number) — \(lane)\". No sprint is recorded in lane \"\(lane)\" yet."
+            }
+            return "Unknown sprint \"Sprint \(number) — \(lane)\". Here are the sprints lane \"\(lane)\" holds: \(known.map(String.init).joined(separator: ", "))."
+        case .invalidSprintMode(let bad):
+            return "mode must be one of \(SprintMode.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
         case .invalidSessionStatus(let bad):
             return "session status must be one of \(SessionStatus.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
         case .invalidSessionOutcome(let bad):
@@ -181,6 +233,30 @@ enum CorruptSessions: Error, Sendable {
     /// A record's `status` is not a word this build knows. A session has two
     /// states and no safe default between them, so the file is invalid.
     case unknownStatus(String)
+    /// A timestamp the file carries cannot be read.
+    case invalidTimestamp(field: String, value: String)
+    /// The envelope's `version` is not one this build reads.
+    case unsupportedVersion(Int)
+}
+
+/// Internal decode-failure signal for the **sprints file** — the sprints file's
+/// counterpart to `CorruptSessions`: same shape, same rule. Thrown while
+/// parsing `sprints.json`, caught by the file's own `peek`, and treated as
+/// corrupt → the file is moved aside and the list restarts empty. Never
+/// surfaced to a caller directly.
+///
+/// **It is not the sessions file's type, and it is not the sessions file's
+/// file.** The sessions file's `CorruptSessions` carries the sessions file's
+/// decode failures; this one carries the sprints file's, so a reader of the
+/// code can tell which file was refused. The sessions file's type is not
+/// widened to cover both files.
+enum CorruptSprints: Error, Sendable {
+    /// A record's `status` is not a word this build knows. A sprint has two
+    /// states and no safe default between them, so the file is invalid.
+    case unknownStatus(String)
+    /// A record's `mode` is not a word this build knows. A sprint has two
+    /// modes and no safe default between them, so the file is invalid.
+    case unknownMode(String)
     /// A timestamp the file carries cannot be read.
     case invalidTimestamp(field: String, value: String)
     /// The envelope's `version` is not one this build reads.
