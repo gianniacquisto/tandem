@@ -13,26 +13,15 @@ The full protocol is in the skill: `SKILL.md`, `WRITE-PROTOCOL.md`, `CONSOLIDATI
 
 ## Sessions
 
-Every session records itself as a ticket, so the board shows what is running and what each session did.
+A session is a record, not a ticket (ADR 0027): one record per session, keyed by `$OPENCODE_SESSION_ID`, in its own file — `sessions.json` at Tandem's home — and never a ticket on the board. The CLI's five verbs are `session start`, `session link`, `session end`, `session list` and `session show`; the two states are `running` and `ended`.
 
-- **File it at session start**, with a brief — what this session is for and what done looks like:
+- **Start** — `tandem-cli session start --brief -`, the brief on stdin: what this session is for and what done looks like. `<project>` defaults to the working directory's last path component; `--agent` names the pass when the session tells you one.
+- **Carry tickets** — `tandem-cli session link --ticket <id>` for each ticket the session carries. A child session is a session: it starts its own record and links what it carries.
+- **End** — before your final reply: `tandem-cli session end --outcome <succeeded|failed|interrupted|unknown> --summary -`, one line on what landed.
+- **A session that dies leaves a `running` record and nothing to reclaim.** The board holds only work, so no pass reclaims the rows of a dead session — what the session carried, its record's `tickets` names.
+- **Stale work is still work.** A ticket claimed by a session that has ended is picked up by the next sprint's triage; the live-vs-ended rule and the dispatch live in `skills/tandem-sprint/SKILL.md`.
 
-  ```sh
-  tandem-cli ticket add --title "Session — <project> · <session-id>" --status in-progress [--assignee <agent>]
-  tandem-cli ticket set --id <ticket-id> --description -
-  ```
-
-  `<project>` is the codebase the session works in, `<session-id>` is `$OPENCODE_SESSION_ID`, and `<agent>` is your agent's name when the session tells you — omit the flag when it does not.
-
-- **One ticket per session.** Check `ticket list --filter all --text "Session — <project> · <session-id>"` first; file nothing if one exists.
-
-- **Close it at session end**, before your final reply: read the description (`tandem-cli ticket show --id <ticket-id>` — a ticket id finds it whole, no `--text` and no `jq`; `ticket list` returns summaries without descriptions), append the outcome below the brief, write it back — `ticket set --id <ticket-id> --status done --description -`. The description is written once and appended to, never overwritten. With no outcome to record, `ticket complete --id <ticket-id>`, which leaves the description alone.
-
-- **An empty stdin is refused.** `--description -` takes the body on stdin, and an empty or whitespace-only body is a domain failure: exit 1, the description left as it was. Pass `--description ""` when you mean to clear it. A session that resumes reopens its ticket: `ticket set --id <id> --status in-progress`.
-
-- **Children file their own.** A sub-agent session is a session; it closes its ticket when it finishes.
-
-- **Stale work is work.** A ticket whose session has ended is picked up by the next sprint's triage; the live-vs-ended rule and the dispatch live in `skills/tandem-sprint/SKILL.md`.
+Tickets keep their own conventions: a ticket's description is written once and appended to, never overwritten. `--description -` takes the body on stdin, and an empty or whitespace-only body is a domain failure: exit 1, the description left as it was. Pass `--description ""` when you mean to clear it. A session that resumes reopens its carried tickets: `ticket set --id <id> --status in-progress`.
 
 ## Handoff
 

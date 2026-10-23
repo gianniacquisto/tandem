@@ -1,5 +1,7 @@
 # Session tickets are work, not records: the board refines and moves them like any other ticket
 
+**Superseded by [ADR 0027](0027-session-records.md)** (2026-10-21).
+
 A session ticket is the one kind of ticket the board refused to look at. `skills/tandem-board/SKILL.md` skipped every title beginning `Session —`, and `AGENTS.md` called them "records, not work" — so they never passed the refined gate, never got dispatched, and a board pass could not see that one of them had died mid-flight. The cost was already on the board: three `Session —` tickets sitting `in-progress`, one with no description at all, none of them reachable by the workflow meant to move work. A dead session's work died with it, because the ticket recording the session was the one thing the board would not pick up.
 
 ## Decision

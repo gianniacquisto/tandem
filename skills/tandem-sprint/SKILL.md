@@ -11,7 +11,7 @@ The roles are the roster's (`skills/tandem-team/SKILL.md`): the session runs the
 
 ## 1. Orient
 
-File the session ticket (`AGENTS.md`), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's curated note, the open threads.
+Start the session record (`AGENTS.md` — `session start`, `session link --ticket` for what this sprint carries), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's curated note, the open threads.
 
 ## 2. Triage
 
@@ -93,7 +93,7 @@ Then in one write: keep the answer, reset `assignee`, set the status the answer 
 
 Append `## Close` — what landed, what slipped, what waits on the human — then `tandem-cli ticket complete --id "$sprint"`. Write the close before completing: a done sprint with an empty close is a lie the next session inherits. The close is the session's final act: nothing is dispatched after it begins, so no child session can spend the turn budget the close needs. The report names `Sprint <n+1>` as the next step, opened in a **new** session — never this one.
 
-**A dead sprint is stale work.** An `in-progress` ticket titled `Sprint <n> — <lane>` whose opening session — the one named in its `## The batch` — has ended (`opencode api session.list`: an `outcome` **and** a stale `time.updated`, both signals needed and neither exact alone, per ADR 0024) died before it could write `## Close`, and nothing on the board separates it from a sprint still running. The next sprint's triage closes it **from what the board shows**: append a `## Close` that names the recorded `## Run` entries and any escalations left with the human, says it was written by triage from the board, then `ticket complete`. It writes nothing the dead session did not leave on the board. A sprint whose session is live is left alone — the "a claim is not a stall" rule governs the borderline.
+**A dead sprint is stale work.** An `in-progress` ticket titled `Sprint <n> — <lane>` whose opening session — the one named in its `## The batch` — has ended (its session record says `ended` — `tandem-cli session show --session <id>`, the record's two states are `running` and `ended`; when the record still says `running`, the host's session list settles it: an `outcome` **and** a stale `time.updated`, both signals needed and neither exact alone) died before it could write `## Close`, and nothing on the board separates it from a sprint still running. The next sprint's triage closes it **from what the board shows**: append a `## Close` that names the recorded `## Run` entries and any escalations left with the human, says it was written by triage from the board, then `ticket complete`. It writes nothing the dead session did not leave on the board. A sprint whose session is live is left alone — the "a claim is not a stall" rule governs the borderline.
 
 ## The board
 
