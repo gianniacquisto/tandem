@@ -45,20 +45,20 @@ printf '%s\n\n%s\n' "$current" "$section" | tandem-cli ticket set --id "$sprint"
 
 ## 4. Run
 
-The human in the session picks the mode before the first dispatch — **one at a time** (the default) or **in parallel** — and the answer goes in the sprint description, one line under `## The batch`: `Mode: parallel (human choice)`. The incident below is why serial is the default.
+The human in the session picks the mode before the first dispatch — **one at a time** (the default) or **in parallel** — and the answer goes in the sprint description, one line under `## The batch`: `Mode: parallel (human choice)`.
 
 Per ticket:
 
 1. **Claim** — `tandem-cli ticket set --id <id> --status in-progress --assignee builder`.
-2. **Build** — dispatch the `builder` subagent (`agents/builder.md`) with the ticket id and its description — `tandem-cli ticket show --id <id>`, since `list` rows are summaries without the body. It branches `board/<slug>`, builds, verifies, opens the PR with its `## Merge Danger` claim, and files its captures.
+2. **Build** — dispatch the `builder` subagent (`agents/builder.md`) with the ticket id and its description — `tandem-cli ticket show --id <id>`, since `list` rows are summaries without the body. The build runs in the builder's own git worktree, branched fresh from `origin/dev` — serial or parallel alike, so no two builders ever share a working tree and the host's checkout stays on `dev` until the merges land. The builder verifies, opens the PR with its `## Merge Danger` claim, and files its captures.
 3. **Review** — dispatch the `reviewer` subagent (`agents/reviewer.md`) with the ticket id and PR. It merges a two-way/low door and completes the ticket; a one-way door is escalated to the human and **leaves the batch**. An `escalated` report is accepted only after you read the ticket yourself (`tandem-cli ticket show --id <id>`): status `refined` and assignee `human` mean handed over; anything else is a failed gate — re-dispatch the reviewer, or do the handover in this session and say so in the `## Run` note.
 4. **Record** — append `## Run — <date>`: the ticket, what landed, the PR.
 
 **One at a time** — the default — runs the per-ticket list above end to end before the next claim.
 
-**In parallel** — the human's call — dispatches every batch ticket's build at once, each on its own branch; as each build lands, its reviewer goes in batch order. Reviews still gate every merge; parallel changes what builds at once, never what merges unreviewed.
+**In parallel** — the human's call — dispatches every batch ticket's build at once, each in its own worktree on its own branch; as each build lands, its reviewer goes in batch order. Reviews still gate every merge; parallel changes what builds at once, never what merges unreviewed.
 
-**Why serial is the default.** Nine simultaneous branches on this repo collided at merge time on 2026-10-20 — `BikeFace.swift` alone was touched by six of them. Velocity is tickets per sprint, not concurrency. A ticket that escalates does not stop the sprint; the close names it.
+**Why serial is the default.** The 2026-10-20 collision — nine branches sharing one checkout of this repo, `BikeFace.swift` alone touched by six — is what builds look like without worktree isolation; it stands as history, the failure isolation ends. With every build in its own worktree, merge safety no longer argues for serial: the default rests on turn budget and simplicity — one dispatch at a time keeps each turn's cost legible. Velocity is tickets per sprint, not concurrency. A ticket that escalates does not stop the sprint; the close names it.
 
 **Budget the turns.** A turn re-reads the whole window, so a session's bill is its turn count times its context — the same rule the terse style states (`terse/TERSE.md`, Budget). One turn per dispatch, with the calls it needs in it: gather every fact the brief needs in one message — a turn that needs three facts fetches three facts in one message, and a loop over a list is one call, not N. Watch it drift: calls per turn is countable from the host's store, `~/.local/share/opencode/opencode.db` — read-only:
 
