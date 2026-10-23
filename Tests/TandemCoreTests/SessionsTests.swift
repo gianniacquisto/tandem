@@ -629,6 +629,53 @@ struct SessionsTests {
         #expect(!text.contains("Tandem store"))
     }
 
+    @Test("a write that fails after a recovery is this file's failure, with the recovery note kept")
+    func writeFailureAfterRecoveryNamesTheSessionsFile() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // A corrupt file, so the call that fails is also the call that
+        // recovers: the move-aside is the production path, only the write is
+        // injected. The injected failure is the one the primitive raises for
+        // real when the disk fills — a Foundation `NSError`, not a
+        // `TandemError`.
+        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
+        try Data("{not a sessions file\n".utf8).write(to: file(dir))
+        let failing = Sessions(directory: dir) { _, _ in
+            throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteOutOfSpaceError)
+        }
+
+        var thrown: (any Error)?
+        do {
+            _ = try failing.start(id: "ses_2", project: "tandem", brief: "Build the core.")
+            Issue.record("expected the sessions file's own write failure")
+        } catch {
+            thrown = error
+        }
+        // The failure is wrapped so the recovery note survives, and what it
+        // wraps is the sessions file's own I/O failure — the raw Foundation
+        // error and the store's `StoreIOError` are both wrong here.
+        let wrapped = try #require(thrown as? RecoveryFailure)
+        guard case let DomainError.sessionsFileIO(path, op, _) = wrapped.underlying else {
+            Issue.record("expected sessionsFileIO, got \(wrapped.underlying)")
+            return
+        }
+        #expect(path == file(dir).path)
+        #expect(op == "write")
+
+        // The recovery really happened, and the surfaced text names the
+        // sessions file and keeps the note — and never calls it a store error.
+        let kept = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("sessions.json.corrupt-") }
+        #expect(kept.count == 1)
+        let text = tandemErrorText(wrapped)
+        #expect(text.contains("sessions file"))
+        #expect(text.contains(file(dir).path))
+        #expect(text.contains("failed during write"))
+        #expect(text.contains(kept[0]))
+        #expect(text.contains("restarted empty"))
+        #expect(!text.contains("Tandem store"))
+    }
+
     @Test("the store's own lock failure still wears the store's vocabulary")
     func storeLockFailureUnchanged() throws {
         let dir = FileManager.default.temporaryDirectory
