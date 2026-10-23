@@ -23,7 +23,7 @@ struct RecoveryTests {
     }
 
     private func writeRaw(_ text: String, to store: Store) throws {
-        try text.write(to: store.fileURL, atomically: false, encoding: .utf8)
+        try text.write(to: store.storeFileURL, atomically: false, encoding: .utf8)
     }
 
     /// Backup filenames present in the store dir (`todos.json.corrupt-*`).

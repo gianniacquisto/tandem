@@ -1,9 +1,10 @@
 import Foundation
 
 /// The single source of truth for tickets (GLOSSARY: Store): one JSON file at
-/// `<home>/todos.json` — the real `~/.tandem` for the shipped app, `~/.tandem-dev`
-/// for anything built and run in place (`TandemHome`) — read and written by the GUI
-/// and by `tandem-cli` invocations. Implements the protocol from ADR 0001:
+/// `<home>/tickets.json` or the legacy `<home>/todos.json` — the real `~/.tandem` for
+/// the shipped app, `~/.tandem-dev` for anything built and run in place (`TandemHome`) —
+/// read and written by the GUI and by `tandem-cli` invocations. Implements the protocol
+/// from ADR 0001:
 ///
 /// - **Locking** — writers take an exclusive `flock` on the sidecar lockfile
 ///   (`<home>/tandem.lock`, never renamed), held across the whole
@@ -18,33 +19,44 @@ import Foundation
 /// - **Lenient read, strict write** — unknown extra fields are ignored; a missing or
 ///   mistyped required field invalidates the whole file.
 /// - **Recovery** — on an invalid file, *under the lock* (so two processes can't
-///   double-recover), it is renamed to `todos.json.corrupt-<unix-ts>` and the store
-///   restarts empty. The backup path is surfaced as a note.
+///   double-recover), it is renamed to `<store>.corrupt-<unix-ts>` and the store
+///   restarts empty. The backup path is surfaced as a note. Artifacts are named for
+///   the file they were taken from (`todos.json.corrupt-<ts>` for a corrupt
+///   pre-rename file, `tickets.json.corrupt-<ts>` for a post-rename one).
 /// - **Migration** — a file that still carries the legacy `done` mirror is copied aside
-///   as `todos.json.pre-migrator-<unix-ts>` on the first write, then rewritten with
+///   as `<store>.pre-migrator-<unix-ts>` on the first write, then rewritten with
 ///   `status` alone. Reads never migrate: a read-only store keeps its old shape, and the
 ///   decoder keeps honouring it.
 /// - **Pre-rename copy** — a file that still carries the v1 names (`todos`, `sections`,
-///   `section`) is copied aside as `todos.json.pre-rename-<unix-ts>` on the first write
+///   `section`) is copied aside as `<store>.pre-rename-<unix-ts>` on the first write
 ///   in the renamed shape, with the migrator's exact rules: under the lock, the bytes as
 ///   they were, old keys and all, colliding names suffixed, and a copy that cannot be
 ///   taken fails the write. The rename is one-way and one generation: after that write
 ///   the file carries the renamed keys, and no later write copies it again.
 /// - **Rolling backup** — each write first copies the file it is about to replace to
-///   `todos.json.bak` (one generation, same temp + fsync + `rename` under the same lock,
+///   `<store>.bak` (one generation, same temp + fsync + `rename` under the same lock,
 ///   ADR 0018), so an ordinary bad write — a kill mid-rename, a bad regex — leaves one
 ///   previous good copy to fall back on. The first write has no `.bak` (no file yet), and
 ///   a failed write leaves the previous one untouched. Reads write nothing.
+/// - **Two names, one file** — the store resolves to **`tickets.json`** when it is
+///   present (a regular file), else to the legacy **`todos.json`** when *that* is
+///   present, else it is absent. *Present* means a regular file: a directory, a broken
+///   link or an unreadable path at `tickets.json` is **invalid** — the corrupt path
+///   fires, and the old name is never a fall-through for a broken new one. Reads read
+///   both names forever (a hand-restored `.pre-rename` copy, a `.corrupt-` fixture and
+///   a rolled-back store all load); **the writer writes back to the name it read from**,
+///   and a fresh home (neither present) writes `todos.json`. Reads never move anything:
+///   the handover to `tickets.json` is an ordinary write's job, not a read's.
 /// - **Two names, one shape** — the decoder reads the renamed keys (`tickets`, `lanes`,
 ///   and a ticket's `lane`) *beside* the v1 ones (`todos`, `sections`, `section`), and
 ///   the renamed name wins when a file carries both. **The writer emits the renamed keys
 ///   alone**, and its first write over a v1-named file copies that file aside as
-///   `todos.json.pre-rename-<ts>` first (the bullet above). The reader keeps tolerating
+///   `<store>.pre-rename-<ts>` first (the bullet above). The reader keeps tolerating
 ///   both shapes forever — a `.bak`, a restored file or a hand edit can be v1-named
 ///   forever — the same shape as the `done` mirror's decoding half. The flip was gated
 ///   on the both-reading build being installed: a 0.15.0-era reader looks the array up
 ///   by name and calls a file without `todos` **corrupt**, moving it to
-///   `todos.json.corrupt-<ts>` and restarting empty (ADR 0006's incident).
+///   `<store>.corrupt-<ts>` and restarting empty (ADR 0006's incident).
 ///
 /// The public surface is the ticket operations (see the `Operations` extension); the
 /// locking/file mechanics are the shared `LockedDirectory` primitive (ADR 0001 / 0004),
@@ -53,11 +65,23 @@ public struct Store: Sendable {
     /// The store's directory (created on first write). Public so the GUI can watch it
     /// for external changes (FSEvents); the GUI never writes it directly.
     public let directory: URL
-    /// The data file.
+    /// The store file's new name: `<home>/tickets.json`.
     let fileURL: URL
+    /// The store file's legacy name: `<home>/todos.json`.
+    let legacyFileURL: URL
+    /// The file the store resolves to — the resolution rule: `tickets.json` present
+    /// (a regular file or not: a broken new path is invalid, never a fall-through) →
+    /// that is the store; else `todos.json` present → that is the store; else
+    /// `todos.json`, the path a first write would create. Public for `doctor`.
+    public var storeFileURL: URL {
+        Self.lstatOf(fileURL.path) == nil ? legacyFileURL : fileURL
+    }
     /// The rolling backup of the file the last write replaced — the one previous
     /// good copy. Not written by reads, and not on the first write (ADR 0018).
-    let backupURL: URL
+    /// Follows the store: `<store>.bak`.
+    var backupURL: URL {
+        URL(fileURLWithPath: storeFileURL.path + ".bak")
+    }
     /// The sidecar lockfile (created if missing, never renamed).
     let lockURL: URL
     /// The shared storage mechanics (ADR 0001): flock + atomic write + orphan
@@ -73,14 +97,21 @@ public struct Store: Sendable {
     /// A store rooted at an explicit directory (used by tests with a temp dir).
     public init(directory: URL) {
         self.directory = directory
-        self.fileURL = directory.appendingPathComponent("todos.json")
-        self.backupURL = directory.appendingPathComponent("todos.json.bak")
+        self.fileURL = directory.appendingPathComponent("tickets.json")
+        self.legacyFileURL = directory.appendingPathComponent("todos.json")
         self.lockURL = directory.appendingPathComponent("tandem.lock")
         self.storage = LockedDirectory(
             lockURL: self.lockURL,
             tempPrefix: ".todos-",
             cleanRoot: directory,
             cleanRecursively: false)
+    }
+
+    /// The path's `lstat` mode, or `nil` when nothing exists there. `lstat` does not
+    /// follow symlinks, so a broken link still counts as present-but-invalid.
+    private static func lstatOf(_ path: String) -> mode_t? {
+        var sb = stat()
+        return lstat(path, &sb) == 0 ? sb.st_mode : nil
     }
 
     /// Take the store lock (translating the primitive's errors into the store's
@@ -108,14 +139,15 @@ public struct Store: Sendable {
     }
 
     /// A lock-free read of the current file state. Distinguishes "no file yet" (a valid
-    /// empty store) from "file present but corrupt" (needs recovery).
+    /// empty store) from "file present but corrupt" (needs recovery). Present means a
+    /// regular file — a directory, a broken link or an unreadable path is invalid, never
+    /// absent and never a fall-through to the other name.
     private func peek() -> Peek {
-        let fm = FileManager.default
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: fileURL.path, isDirectory: &isDir), !isDir.boolValue else {
+        let url = storeFileURL
+        guard let mode = Self.lstatOf(url.path) else {
             return .absent
         }
-        guard let data = try? Data(contentsOf: fileURL) else {
+        guard mode & S_IFMT == S_IFREG, let data = try? Data(contentsOf: url) else {
             return .invalid
         }
         do {
@@ -145,15 +177,16 @@ public struct Store: Sendable {
             return (contents, nil, Self.carriesLegacyMirror(raw), Self.carriesV1Names(raw))
         case .invalid:
             let ts = Int(Date().timeIntervalSince1970)
-            var backup = directory.appendingPathComponent("todos.json.corrupt-\(ts)")
+            let prefix = storeFileURL.lastPathComponent
+            var backup = directory.appendingPathComponent("\(prefix).corrupt-\(ts)")
             var suffix = 1
             let fm = FileManager.default
             while fm.fileExists(atPath: backup.path) {
-                backup = directory.appendingPathComponent("todos.json.corrupt-\(ts)-\(suffix)")
+                backup = directory.appendingPathComponent("\(prefix).corrupt-\(ts)-\(suffix)")
                 suffix += 1
             }
             do {
-                try fm.moveItem(at: fileURL, to: backup)
+                try fm.moveItem(at: storeFileURL, to: backup)
             } catch {
                 // Never silently discard: if we cannot back the corrupt file up, fail loudly.
                 throw StoreIOError.io("could not back up corrupt store: \(error)")
@@ -167,10 +200,10 @@ public struct Store: Sendable {
     /// write replaces just before the commit (see `backUpCurrentFile`).
     private func writeLocked(_ contents: StoreContents) throws {
         let data = try Self.encode(contents)
-        try storage.atomicWrite(data, to: fileURL) { try backUpCurrentFile() }
+        try storage.atomicWrite(data, to: storeFileURL) { try backUpCurrentFile() }
     }
 
-    /// Roll the file this write is about to replace to `todos.json.bak` — **one
+    /// Roll the file this write is about to replace to `<store>.bak` — **one
     /// generation**, the state before the write. Runs under the lock, from inside the
     /// atomic write (new bytes durable, `rename` not yet done), so the backup is itself
     /// temp + fsync + `rename` and no failure mode leaves it half-written or stale-wrong:
@@ -178,9 +211,9 @@ public struct Store: Sendable {
     /// roll — the first write writes no backup. A backup we cannot take fails the write
     /// rather than going unrecorded (the `backUpBeforeMigrating` rule).
     private func backUpCurrentFile() throws {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
-        guard let data = try? Data(contentsOf: fileURL) else {
-            throw StoreIOError.io("could not read \(fileURL.path) to roll its backup")
+        guard FileManager.default.fileExists(atPath: storeFileURL.path) else { return }
+        guard let data = try? Data(contentsOf: storeFileURL) else {
+            throw StoreIOError.io("could not read \(storeFileURL.path) to roll its backup")
         }
         do {
             try storage.atomicWrite(data, to: backupURL)
@@ -404,20 +437,21 @@ public struct Store: Sendable {
     /// under the migrator's marker when the file still carries the `done` mirror, under
     /// the rename's marker when it still carries the v1 names. "A list moved aside, never
     /// a list lost": the old shape stays one `mv` away for a binary that still needs it,
-    /// the bytes as they were and old keys and all. The name is `todos.json.<marker>-<unix-ts>`,
+    /// the bytes as they were and old keys and all. The name is `<store>.<marker>-<unix-ts>`,
     /// colliding names suffixed. A copy that cannot be taken fails the write rather than
     /// being skipped — the retirement must not outpace its evidence.
     private func copyStoreAside(marker: String, reason: String) throws {
         let ts = Int(Date().timeIntervalSince1970)
-        var backup = directory.appendingPathComponent("todos.json.\(marker)-\(ts)")
+        let prefix = storeFileURL.lastPathComponent
+        var backup = directory.appendingPathComponent("\(prefix).\(marker)-\(ts)")
         var suffix = 1
         let fm = FileManager.default
         while fm.fileExists(atPath: backup.path) {
-            backup = directory.appendingPathComponent("todos.json.\(marker)-\(ts)-\(suffix)")
+            backup = directory.appendingPathComponent("\(prefix).\(marker)-\(ts)-\(suffix)")
             suffix += 1
         }
         do {
-            try fm.copyItem(at: fileURL, to: backup)
+            try fm.copyItem(at: storeFileURL, to: backup)
         } catch {
             throw StoreIOError.io("could not copy the store aside before \(reason): \(error)")
         }

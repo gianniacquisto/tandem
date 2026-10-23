@@ -190,7 +190,7 @@ struct SetupDiagnosticsTests {
         _ = try store.add("Doctor probe")
         #expect(store.health() == .counts(open: 1, done: 0))
 
-        try Data("not json".utf8).write(to: dir.appendingPathComponent("todos.json"))
+        try Data("not json".utf8).write(to: store.storeFileURL)
         #expect(store.health() == .unreadable)
     }
 

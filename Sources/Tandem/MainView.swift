@@ -136,14 +136,13 @@ struct MainView: View {
                 ticket: ticket,
                 palette: palette,
                 lanes: model.lanes,
-                comments: model.comments(for: ticket.id.uuidString),
                 onSave: { edits in
                     model.saveTicket(ticket.id.uuidString, edits: edits)
                     ticketFor = nil
                 },
                 onCancel: { ticketFor = nil },
                 onComment: { model.postComment(ticket.id.uuidString, body: $0) },
-                onRefreshComments: { model.comments(for: ticket.id.uuidString) },
+                onRefreshComments: { await model.comments(for: ticket.id.uuidString) },
                 onOpenLink: openLinkedNote,
                 onPromote: { promote(ticket) })
         }
