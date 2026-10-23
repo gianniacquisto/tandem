@@ -10,7 +10,7 @@ At the start of a session, before reading or editing project files:
 2. **Match the task to a project line** — that line's wikilink is the project's **curated note**, under `projects/<project>/`. A project is always a folder holding its curated notes and a hidden saddlebag (`.raw/`).
 3. **Read the note** — `Where left off` in full; `Decisions`, `Gotchas`, `Facts` scanned by heading and pulled only when the task touches them.
 4. **Follow the note's wikilinks outward** only as the task needs them.
-5. **Check the Tandem todos** (`tandem-cli todo list`) for the open threads.
+5. **Check Tandem's open tickets** (`tandem-cli ticket list`) for the open threads.
 
 **Stop** as soon as you can state the project's **current state**, its **next move**, and which **threads are open**. Topic notes and human root notes are read on demand — see Retrieval — never at orientation.
 
@@ -41,7 +41,7 @@ A broken `[[wikilink]]` — its note was renamed **outside the app**, or deleted
 A read is trusted for the life of the session; unprompted re-reading is wasted context. Two triggers re-read a note:
 
 - **Immediately before amending** it — the write boundary; the collision rule is in [`CONCURRENCY.md`](CONCURRENCY.md).
-- On an **observed external change** — the app reports a change, another session's todo appears, the human edits a note.
+- On an **observed external change** — the app reports a change, another session's ticket appears, the human edits a note.
 
 No polling. Your own writes are authoritative for your own state.
 

@@ -54,7 +54,7 @@ One ticket, **whole** — the only read that carries the description, and the on
 
 ### `ticket add --title <string> [--status <value>] [--assignee <name|self>] [--lane <name>] [--origin <name|self>]`
 
-Title required, trimmed, empty rejected; duplicates allowed. A title alone lands `backlog`, unowned, on top of the default area. `--assignee self` claims it — `add` never assigns implicitly, because agents routinely file tickets *for* the human (`--assignee human`). A lane must already exist. `--origin` stamps who filed it, never changed after: pass `--origin self` when you file — an omitted flag means `human`, the app's own stamp, and your proposal filed under the human's name is the exact mix-up the field ends.
+Title required, trimmed, empty rejected; duplicates allowed. A title alone lands `backlog`, unowned, on top of the default area. `--assignee self` claims it — `add` never assigns implicitly, because agents routinely file tickets *for* the human (`--assignee human`). A lane must already exist. `--origin` stamps who filed it, never changed after: pass `--origin self` when you file — an omitted flag means `human`, the app's own stamp, and your proposal filed under the human's name is the exact mix-up the field ends. When the host exports no `TANDEM_AGENT`, `self` has nothing to resolve to and the add fails: pass your own agent name instead, e.g. `--origin general`.
 
 ### `ticket set --id <id> [--title …] [--status …] [--assignee …] [--description …]`
 
@@ -88,15 +88,36 @@ A **cycle lane** is the area axis — the list groups by it, the board draws its
 
 `lanes` is the list after the write, in render order. Names are trimmed; empty, duplicate, and unknown names are domain failures. `rename` rewrites the lane list and every ticket in it in one write; `delete` never deletes tickets — members fall back to the default area, `moved` is how many. A lane must exist before `ticket add/move --lane` accepts it; there is no `lane list` verb — `ticket list --filter all --archived` shows every lane that holds a ticket.
 
-## Session tickets
+## Sessions
 
-Every agent session files one ticket for itself — the convention lives in `AGENTS.md`; this is the CLI's side.
+A session is a record, not a ticket (ADR 0027): one record per agent session, stored in `sessions.json` at Tandem's home — never a ticket, never on the board. Five verbs, two states (`running`, `ended`):
 
-- **Start** — `ticket add --title "Session — <project> · <session-id>" --status in-progress`, then `ticket set --id <id> --description -` with the brief. `<session-id>` is `$OPENCODE_SESSION_ID`.
-- **One per session** — check `ticket list --filter all --text "Session — <project> · <session-id>"` first; `--filter all` because the default filter cannot see a ticket this session already closed.
-- **End** — append the outcome below the brief and `ticket set --id <id> --status done --description -`; with no outcome, `ticket complete --id <id>`, which leaves the description alone. The empty-stdin refusal above protects the brief.
-- **Where they live** — the default area, not a lane, so a session ticket never depends on a lane that may not exist.
-- **They are work** — a sprint's triage refines and moves them like any other ticket: a live session owns its ticket, a dead session's ticket is stale work the next triage picks up.
+| command | returns |
+| --- | --- |
+| `session start [--project <name>] [--agent <name>] [--session <id>] [--brief <string\|->]` | the session record |
+| `session link --ticket <id> [--session <id>]` | the session record |
+| `session end [--session <id>] [--outcome <value>] [--summary <string\|->]` | the session record |
+| `session list [--project <name>] [--status <value>]` | `{"sessions": [...]}` |
+| `session show [--session <id>]` | the session record |
+
+- **Defaults** — `--project` is the working directory's last path component; `--agent` is `$TANDEM_AGENT`; `--session` is `$OPENCODE_SESSION_ID`, else a generated token.
+- **Two states** — `running` from `start` to `end`; `ended` carries `endedAt`, `outcome` (`succeeded | failed | interrupted | unknown`), and `summary`. A session that dies leaves a `running` record.
+- **The ticket link is stored** — `link --ticket` appends the ticket id to the record's `tickets`; the record, not the ticket, holds the link.
+- **The note link is derived** — `note capture --session <id>` files the capture under `projects/<project>/.raw/<session>/`, and `show` lists those paths as `notes`. There is no linking verb for notes, and `list` rows omit the field.
+- **`--brief` and `--summary` take stdin** like `--description`: `-` reads stdin, and an empty body is a domain failure — omit the flag to leave the field unset. An unknown `--outcome` or `--status` is a domain failure.
+- **Re-`start` on a recorded id** returns the record unchanged with a `note` — nothing is overwritten.
+
+One session, start to end (`ses_demo2` against a scratch home):
+
+```sh
+$ export OPENCODE_SESSION_ID="ses_demo2"
+$ tandem-cli session start --project tandem --agent builder --brief "Docs pass: write the session record documents"
+{"agent":"builder","brief":"Docs pass: write the session record documents","endedAt":null,"id":"ses_demo2","outcome":null,"project":"tandem","startedAt":"2026-10-23T12:33:55Z","status":"running","summary":null,"tickets":[]}
+$ tandem-cli session link --ticket 9879916B-2F32-4999-AEEC-A963DA951DFF
+{"agent":"builder","brief":"Docs pass: write the session record documents","endedAt":null,"id":"ses_demo2","outcome":null,"project":"tandem","startedAt":"2026-10-23T12:33:55Z","status":"running","summary":null,"tickets":["9879916B-2F32-4999-AEEC-A963DA951DFF"]}
+$ tandem-cli session end --outcome succeeded --summary "Documents landed on the PR"
+{"agent":"builder","brief":"Docs pass: write the session record documents","endedAt":"2026-10-23T12:33:55Z","id":"ses_demo2","outcome":"succeeded","project":"tandem","startedAt":"2026-10-23T12:33:55Z","status":"ended","summary":"Documents landed on the PR","tickets":["9879916B-2F32-4999-AEEC-A963DA951DFF"]}
+```
 
 ## Notes
 

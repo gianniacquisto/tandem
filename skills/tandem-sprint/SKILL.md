@@ -5,15 +5,17 @@ description: "The SDLC kickoff — one skill that runs the whole cycle: orient, 
 
 # Tandem sprint
 
-A sprint is the unit of work: a batch of `ready` tickets driven through build → review → merge — one at a time unless the human in the session chooses parallel — recorded on one sprint ticket. Every coding session is a sprint — a batch of one is valid.
+A sprint is the unit of work: a batch of `ready` tickets driven through build → review → merge — one at a time unless the human in the session chooses parallel — recorded on one sprint ticket. Every coding session is a sprint — a batch of one is valid. A sprint covers **exactly one project — the session's own**: work in another project is another session, run in that project's directory, on that project's lane.
 
 The roles are the roster's (`skills/tandem-team/SKILL.md`): the session runs the sprint, the `refiner` shapes tickets, the `builder` builds, the `reviewer` gates the merge, the human answers what only a human can.
 
 ## 1. Orient
 
-File the session ticket (`AGENTS.md`), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's curated note, the open threads.
+Start the session record (`AGENTS.md` — `session start`, `session link --ticket` for what this sprint carries), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's curated note, the open threads.
 
 ## 2. Triage
+
+**The lane is derived, never guessed.** The project is the basename of the directory the session runs in — and a worktree names its project: the `-wt-<slug>` suffix (e.g. `~/projects/tandem-wt-sprint`) strips to `tandem`. Outside a git repo the basename stands on its own. Match that name **case-insensitively** against the existing lane names — discover them with `tandem-cli ticket list --filter all --archived`, reading the `lane` values — and from then on every `--lane` carries the lane's **stored spelling**: the CLI's lane filter is an exact, case-sensitive match. **No matching lane** → ask the human: `lane add` is a human call. Until it is answered, no sprint opens; the session still files its own session ticket in the default area per `AGENTS.md`.
 
 Fill `ready` before you draw from it — `tandem-cli ticket list --filter open --lane <lane> --status backlog,refined,ready`:
 
@@ -51,8 +53,10 @@ Per ticket:
 
 1. **Claim** — `tandem-cli ticket set --id <id> --status in-progress --assignee builder`.
 2. **Build** — dispatch the `builder` subagent (`agents/builder.md`) with the ticket id and its description — `tandem-cli ticket show --id <id>`, since `list` rows are summaries without the body. The build runs in the builder's own git worktree, branched fresh from `origin/dev` — serial or parallel alike, so no two builders ever share a working tree and the host's checkout stays on `dev` until the merges land. The builder verifies, opens the PR with its `## Merge Danger` claim, and files its captures.
-3. **Review** — dispatch the `reviewer` subagent (`agents/reviewer.md`) with the ticket id and PR. It merges a two-way/low door and completes the ticket; a one-way door is escalated to the human and **leaves the batch**. An `escalated` report is accepted only after you read the ticket yourself (`tandem-cli ticket show --id <id>`): status `refined` and assignee `human` mean handed over; anything else is a failed gate — re-dispatch the reviewer, or do the handover in this session and say so in the `## Run` note.
+3. **Review** — first check the branch against its base: `git rev-list --left-right --count origin/dev...origin/<branch>`. A branch that went stale while the gate queued would cost the pass its whole read before it learns it cannot merge; behind, bring the branch up to date (`gh pr update-branch <n>`) and name the new base head in the brief. A rebase can auto-merge the symbol the base renamed away (`todo.` / `todo.id` against the `Ticket` rename, for one) — before the push, grep the rebased diff for it (`git diff origin/dev...HEAD | grep <old-symbol>`) and stop before the push if it finds one, naming the line. Then dispatch the `reviewer` subagent (`agents/reviewer.md`) with the ticket id and PR. It merges a two-way/low door and completes the ticket; a one-way door is escalated to the human and **leaves the batch**. An `escalated` report is accepted only after you read the ticket yourself (`tandem-cli ticket show --id <id>`): status `refined` and assignee `human` mean handed over; anything else is a failed gate — re-dispatch the reviewer, or do the handover in this session and say so in the `## Run` note.
 4. **Record** — append `## Run — <date>`: the ticket, what landed, the PR.
+
+**The gate brief carries only what the gate cannot look up.** The contract's path (`agents/reviewer.md`), the ticket id, the PR number, the base branch, and the pre-flight the gate needs — whether the branch is behind its base. At most one clause may name what is not the gate's to judge; nothing more. A PR that has been gated before is not re-briefed with a history of its passes: what each earlier pass established goes on the PR as a review comment (`gh pr comment`), and the brief points at it in one line — "earlier passes are on the PR; read the head on its own." The verdict comes from the gate's own reading of the head, never from the brief's summary of what earlier passes found — a brief that retells prior passes anchors the fresh reading it asks for, and its cost is paid again on every re-gate.
 
 **One at a time** — the default — runs the per-ticket list above end to end before the next claim.
 
@@ -85,13 +89,13 @@ A decision ticket's body is the channel — there is no comment field for it. Th
 B — <what was chosen, and any condition>
 ```
 
-Then in one write: keep the answer, reset `assignee`, set the status the answer opens — `ready` if buildable, `backlog` if it needs re-refining, `done` if settled. Every pass starts with `ticket list --assignee human`: a human ticket never goes back to an agent unread.
+Then in one write: keep the answer, reset `assignee`, set the status the answer opens — `ready` if buildable, `backlog` if it needs re-refining, `done` if settled. Every pass starts with `ticket list --assignee human`: a human ticket never goes back to an agent unread. The read is whole-board on purpose — an answer left unread is a worse failure than a read that spans lanes — but acting on another lane's ticket belongs to that project's own sprint.
 
 ## 6. Close
 
 Append `## Close` — what landed, what slipped, what waits on the human — then `tandem-cli ticket complete --id "$sprint"`. Write the close before completing: a done sprint with an empty close is a lie the next session inherits. The close is the session's final act: nothing is dispatched after it begins, so no child session can spend the turn budget the close needs. The report names `Sprint <n+1>` as the next step, opened in a **new** session — never this one.
 
-**A dead sprint is stale work.** An `in-progress` ticket titled `Sprint <n> — <lane>` whose opening session — the one named in its `## The batch` — has ended (`opencode api session.list`: an `outcome` **and** a stale `time.updated`, both signals needed and neither exact alone, per ADR 0024) died before it could write `## Close`, and nothing on the board separates it from a sprint still running. The next sprint's triage closes it **from what the board shows**: append a `## Close` that names the recorded `## Run` entries and any escalations left with the human, says it was written by triage from the board, then `ticket complete`. It writes nothing the dead session did not leave on the board. A sprint whose session is live is left alone — the "a claim is not a stall" rule governs the borderline.
+**A dead sprint is stale work.** An `in-progress` ticket titled `Sprint <n> — <lane>` whose opening session — the one named in its `## The batch` — has ended (its session record says `ended` — `tandem-cli session show --session <id>`, the record's two states are `running` and `ended`; when the record still says `running`, the host's session list settles it: an `outcome` **and** a stale `time.updated`, both signals needed and neither exact alone) died before it could write `## Close`, and nothing on the board separates it from a sprint still running. The next sprint's triage closes it **from what the board shows**: append a `## Close` that names the recorded `## Run` entries and any escalations left with the human, says it was written by triage from the board, then `ticket complete`. It writes nothing the dead session did not leave on the board. A sprint whose session is live is left alone — the "a claim is not a stall" rule governs the borderline.
 
 ## The board
 

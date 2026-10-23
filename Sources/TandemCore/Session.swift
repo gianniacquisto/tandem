@@ -278,6 +278,11 @@ public struct Sessions: Sendable {
     /// The shared storage mechanics (ADR 0001): flock + atomic write + orphan
     /// sweep, identical to the store's.
     private let storage: LockedDirectory
+    /// The atomic write, as one seam: production always calls the shared
+    /// primitive; a test injects a write that fails, so a write failure after
+    /// a real recovery can be exercised — the lock, the read and the
+    /// move-aside stay the production code path.
+    private let atomicWrite: @Sendable (Data, URL) throws -> Void
 
     /// The default sessions file: the real `~/.tandem` from the shipped app,
     /// `~/.tandem-dev` from anything built and run in place (see `TandemHome`).
@@ -287,16 +292,23 @@ public struct Sessions: Sendable {
 
     /// A sessions file rooted at an explicit directory (used by tests with a
     /// temp dir). The file is `<directory>/sessions.json` and the lockfile its
-    /// sibling `<directory>/sessions.lock`.
-    public init(directory: URL) {
+    /// sibling `<directory>/sessions.lock`. `atomicWrite` replaces the shared
+    /// primitive's write alone — the seam a test uses to fail the write after
+    /// a real recovery.
+    public init(
+        directory: URL,
+        atomicWrite: (@Sendable (Data, URL) throws -> Void)? = nil
+    ) {
         self.directory = directory
         self.fileURL = directory.appendingPathComponent("sessions.json")
         self.lockURL = directory.appendingPathComponent("sessions.lock")
-        self.storage = LockedDirectory(
+        let storage = LockedDirectory(
             lockURL: self.lockURL,
             tempPrefix: ".sessions-",
             cleanRoot: directory,
             cleanRecursively: false)
+        self.storage = storage
+        self.atomicWrite = atomicWrite ?? { try storage.atomicWrite($0, to: $1) }
     }
 
     // MARK: - Operations
@@ -572,7 +584,7 @@ public struct Sessions: Sendable {
     /// look for. The store (`todos.json`) is a different file and it is fine.
     private func writeLocked(_ sessions: [Session]) throws {
         do {
-            try storage.atomicWrite(try Self.encode(sessions), to: fileURL)
+            try atomicWrite(try Self.encode(sessions), fileURL)
         } catch LockedDirectoryError.posix(let op, let code) {
             throw DomainError.sessionsFileIO(
                 path: fileURL.path, op: op, detail: Self.posixDetail(code))

@@ -46,7 +46,7 @@ Capture filenames are the exception: they are the verb's `<utc>-<kind>-<slug>`, 
 
 ## Threads
 
-Active work lives in the Tandem todos (`tandem-cli todo list`). A project note's Threads section names the threads that belong to it.
+Active work lives in the Tandem's open tickets (`tandem-cli ticket list`). A project note's Threads section names the threads that belong to it.
 ```
 
 Two tiers below it: the **curated note** (`Where left off` at the top) → **topic notes** via wikilinks. The app's **Backlinks** panel is the one-hop neighbourhood, derived and maintained by nobody.

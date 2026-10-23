@@ -79,7 +79,7 @@ The app and the agent read and write the same store, and the app watches it: a t
 | The session record — an agent session's own artifact, in `sessions.json` | v0.16.0 |
 | A dev build that keeps its own state in `~/.tandem-dev`, so it can never touch yours | v0.9.0 |
 
-Every picture below, and every word of the app's own copy in it, is `dev`'s — the branch the next release is cut from. The build installed today says `Todos` where this says `Tickets`, and `Send to todos` where this says `Send to tickets`.
+Every picture below, and every word of the app's own copy in it, is `dev`'s — the branch the next release is cut from. An installed build can lag `dev` by a release.
 
 The board: the same tickets, laid out by where they are in the workflow.
 
@@ -119,6 +119,9 @@ tandem-cli ticket complete --id <id>
 tandem-cli ticket archive
 tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
 tandem-cli ticket comment list --id <id>
+
+todo is a deprecated alias, removed in the release after this one
+
 tandem-cli lane add --name <name>
 tandem-cli lane rename --from <name> --to <name>
 tandem-cli lane delete --name <name>
@@ -137,9 +140,9 @@ tandem-cli doctor
 
 The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `done`; a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status.
 
-`todo` still answers for `ticket`: it is the only verb the installed 0.15.0 build knows, and in the next release it is a deprecated alias that says so on stderr. It goes in the release after that one.
+`todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 
-That block is `dev`'s grammar, the branch the next release is cut from — `tandem-cli --help` prints the whole of it. The build installed today — 0.15.0 — spells the verb `todo`, and its `list` has no `--archived`; both arrive with the next release.
+That block is `dev`'s grammar, the branch the next release is cut from — `tandem-cli --help` prints the whole of it.
 
 ### A session is its own record
 
@@ -180,13 +183,13 @@ ln -s "$PWD/skills/tandem" ~/.claude/skills/tandem
 
 ## The store
 
-`~/.tandem/todos.json` is a plain JSON file you can edit by hand. The app watches it, so the list updates live whenever anything changes it — including an agent.
+`~/.tandem/todos.json` is a plain JSON file you can edit by hand. The app watches it, so the list updates live whenever anything changes it — including an agent. The file keeps the `todos.json` name until its rename to `tickets.json` lands ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)); the keys inside it are the renamed ones:
 
 ```json
 {
   "version": 1,
-  "sections": ["Tandem"],
-  "todos": [
+  "lanes": ["Tandem"],
+  "tickets": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "Water the plants",
@@ -195,7 +198,7 @@ ln -s "$PWD/skills/tandem" ~/.claude/skills/tandem
       "description": null,
       "assignee": null,
       "origin": "human",
-      "section": "Tandem",
+      "lane": "Tandem",
       "link": null,
       "createdAt": "2026-10-09T14:03:22Z",
       "completedAt": null
@@ -204,7 +207,7 @@ ln -s "$PWD/skills/tandem" ~/.claude/skills/tandem
 }
 ```
 
-The order of `todos` **is** the list order — new tickets land on top, and the order is never recomputed from `createdAt`, so you can rearrange the file by hand. Each ticket's `section` names one of the `sections`; `null` is the default (ungrouped) area, which always comes first. See [ADR 0001](docs/adr/0001-store-protocol.md) for the file protocol and [ADR 0006](docs/adr/0006-stored-order-and-sections.md) for order and sections.
+The order of `tickets` **is** the list order — new tickets land on top, and the order is never recomputed from `createdAt`, so you can rearrange the file by hand. Each ticket's `lane` names one of the `lanes`; `null` is the default (ungrouped) area, which always comes first. The decoder also reads the pre-rename spellings (`todos`/`sections`/`section`), so a file from before the rename reads fine. See [ADR 0001](docs/adr/0001-store-protocol.md) for the file protocol, [ADR 0006](docs/adr/0006-stored-order-and-sections.md) for order and lanes, and [ADR 0030](docs/adr/0030-one-entity-the-ticket.md) for the rename.
 
 Every field but `id`, `title` and `createdAt` is additive: a file from before one existed reads fine, and older builds read this one — they simply ignore the fields. That is also why the envelope version stays `1`; only a change an older reader would *misread* earns a bump.
 
@@ -216,13 +219,14 @@ If the file ever gets corrupted, Tandem moves it to `todos.json.corrupt-<timesta
 - **Not a team tool yet.** One Mac, one store. There is no shared board and no realtime collaboration; the bikeshed is not shareable either.
 - **Not cross-platform.** macOS 27 or later, on Apple silicon.
 - **Not a tracker with edges.** The board has no labels, no blocking edges and no child tickets — see [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
-- **Not settled on its nouns.** The domain and the CLI say *ticket* — the CLI's list answers under both `tickets` and `todos` — and the store still writes `todo`: `todos.json`, the `todos` array, the `section` key. It reads the renamed keys beside them.
+- **Not settled on its nouns — one word left to move.** The domain, the CLI, the app and the store's keys say *ticket*; the store's file is still `todos.json`, and its rename to `tickets.json` is the rename's last step ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)).
 
 ## How to contribute
 
 The tracker is the **Tandem board**, not GitHub issues — see [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 
 - **Branch off `dev`.** `dev` takes merges; `main` is the release line, and its head is always the latest release tag ([ADR 0019](docs/adr/0019-integration-branch.md)). Pull requests target `dev`.
+- **Merge, don't rewrite.** Prefer merge commits over rebases, and avoid force pushes and other destructive git actions unless absolutely necessary — when a force push is unavoidable, `--force-with-lease`, never bare `--force`.
 - **Run the gates.** `swift test` for the core suite, and in `Editor/`: `npm ci && node --test`. The committed editor bundle is prebuilt, and CI checks that the committed bytes are exactly what the pinned inputs regenerate.
 - **Use the project's words.** [GLOSSARY.md](GLOSSARY.md) is the vocabulary; the ADRs are the decisions. Respect the ADRs in the area your change touches, and amend one in the same pull request when you change what it decided.
 - **Keep the ticket whole.** A ticket's description is written once as the brief and appended to with the outcome, never overwritten. The shape of that brief is the refiner's: `agents/refiner.md`.

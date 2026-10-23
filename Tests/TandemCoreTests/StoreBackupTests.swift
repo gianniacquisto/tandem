@@ -22,7 +22,7 @@ struct StoreBackupTests {
 
     /// The titles in the store file itself (not the backup).
     private func fileTitles(_ store: Store) throws -> [String] {
-        try titles(in: store.fileURL)
+        try titles(in: store.storeFileURL)
     }
 
     private func backupTitles(_ store: Store) throws -> [String] {
@@ -112,7 +112,7 @@ struct StoreBackupTests {
         let store = Store(directory: dir)
 
         let first = try store.add("one")
-        let beforeSecondWrite = try Data(contentsOf: store.fileURL)
+        let beforeSecondWrite = try Data(contentsOf: store.storeFileURL)
         _ = try store.complete(first.value.id.uuidString)
 
         #expect(try Data(contentsOf: store.backupURL) == beforeSecondWrite,
@@ -131,7 +131,7 @@ struct StoreBackupTests {
 
         _ = try store.add("one")
         _ = try store.add("two")
-        let storeBytes = try Data(contentsOf: store.fileURL)
+        let storeBytes = try Data(contentsOf: store.storeFileURL)
         let backupBefore = try Data(contentsOf: store.backupURL)
 
         // An unknown id fails inside the mutation, before any write.
@@ -139,7 +139,7 @@ struct StoreBackupTests {
             _ = try store.complete("00000000-0000-0000-0000-000000000001")
         }
 
-        #expect(try Data(contentsOf: store.fileURL) == storeBytes)
+        #expect(try Data(contentsOf: store.storeFileURL) == storeBytes)
         #expect(try Data(contentsOf: store.backupURL) == backupBefore,
                 "a failed write must not touch the previous .bak")
     }
@@ -152,7 +152,7 @@ struct StoreBackupTests {
 
         _ = try store.add("one")
         _ = try store.add("two")
-        let storeBytes = try Data(contentsOf: store.fileURL)
+        let storeBytes = try Data(contentsOf: store.storeFileURL)
 
         // A directory where the backup belongs: rolling it fails after the new bytes
         // are durable, so the whole write must be abandoned before the commit.
@@ -163,7 +163,7 @@ struct StoreBackupTests {
             _ = try store.add("three")
         }
 
-        #expect(try Data(contentsOf: store.fileURL) == storeBytes,
+        #expect(try Data(contentsOf: store.storeFileURL) == storeBytes,
                 "the store file must be untouched by the failed write")
         var isDir: ObjCBool = false
         #expect(FileManager.default.fileExists(atPath: store.backupURL.path, isDirectory: &isDir))

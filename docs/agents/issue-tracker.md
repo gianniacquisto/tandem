@@ -7,14 +7,14 @@ The tracker for this project is the **Tandem board** — the shared list in `~/.
 One ticket, one subject, one piece of work. It is a row on the board, not an issue on a remote.
 
 ```sh
-tandem-cli todo add --title "<title>" --status <status> --lane "<project>"
-tandem-cli todo list --filter all
-tandem-cli todo list --filter all --text "<words from the title or description>"
+tandem-cli ticket add --title "<title>" --status <status> --lane "<project>"
+tandem-cli ticket list --filter all
+tandem-cli ticket list --filter all --text "<words from the title or description>"
 ```
 
 - **A ticket is identified by its id**, and the board is read by title and description, not by id: `--text` matches the title and the description. A bare id finds nothing.
 - **The lane is the project.** `--lane "<project>"` puts a ticket in a project's lane; `--lane ""` is the default area, and it always comes first. A lane must exist before a ticket can name it.
-- **The description is the brief**, and it is written once and appended to, never overwritten. It opens as the brief and gains the outcome at the end, under a heading of its own. The board skill owns the shape of a brief: `skills/tandem-board/SKILL.md`.
+- **The description is the brief**, and it is written once and appended to, never overwritten. It opens as the brief and gains the outcome at the end, under a heading of its own. The refiner owns the shape of a brief: `agents/refiner.md`.
 
 ## Statuses
 
@@ -30,17 +30,17 @@ The canonical triage roles are statuses and assignees here, not labels:
 | `needs-info` | `--status backlog`, the open questions in the description |
 | `ready-for-agent` | `--status ready` |
 | `ready-for-human` | `--status refined --assignee human` |
-| `wontfix` | `--status done`, the reason under **Decided against**; `tandem-cli todo archive` sweeps the done pool |
+| `wontfix` | `--status done`, the reason under **Decided against**; `tandem-cli ticket archive` sweeps the done pool |
 
-There is no label vocabulary to set up, and no label to create: a ticket's state is its status and its assignee, and both are set with `tandem-cli todo set`.
+There is no label vocabulary to set up, and no label to create: a ticket's state is its status and its assignee, and both are set with `tandem-cli ticket set`.
 
 ## Conversation
 
 Comments, not issue comments:
 
 ```sh
-tandem-cli todo comment add --id <id> --body -
-tandem-cli todo comment list --id <id>
+tandem-cli ticket comment add --id <id> --body -
+tandem-cli ticket comment list --id <id>
 ```
 
 A comment is how a question is put to a human inside a ticket; a ticket's description is how a brief is written. An empty body is a domain failure, not an empty comment.
@@ -50,7 +50,7 @@ A comment is how a question is put to a human inside a ticket; a ticket's descri
 Work closes when the evidence exists: a merged PR, a changed file, or a recorded answer.
 
 ```sh
-tandem-cli todo complete --id <id>
+tandem-cli ticket complete --id <id>
 ```
 
 A ticket moves to `in-review` when its PR is open, green, and waiting for a reader. The review gate is the `reviewer` agent in this repo, not a review skill.
