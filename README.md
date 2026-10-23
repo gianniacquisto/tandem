@@ -159,7 +159,7 @@ Not a ticket: `session start` opens a record of one agent session's run — the 
 | `tandem-setup` | installs the whole agent face on a host | v0.16.0 |
 | `tandem-consolidate` | dispatches the consolidator pass | v0.16.0 |
 
-`skills/grilling/`, `skills/implement-spec/`, `skills/to-spec/` and `skills/writing-for-agents/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), so a clone of this repo is the whole workflow; `skills/retro/` is adapted from the same collection, its output filed as tickets on the board.
+`skills/grilling/`, `skills/tdd/` and `skills/writing-for-agents/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), so a clone of this repo is the whole workflow; `skills/retro/` is adapted from the same collection, its output filed as tickets on the board.
 
 ### Setting a host up
 
@@ -218,12 +218,12 @@ If the file ever gets corrupted, Tandem moves it to `todos.json.corrupt-<timesta
 - **Not a service.** No account, no server, no sync, no network. The state is a JSON file and a folder of notes in your home directory.
 - **Not a team tool yet.** One Mac, one store. There is no shared board and no realtime collaboration; the bikeshed is not shareable either.
 - **Not cross-platform.** macOS 27 or later, on Apple silicon.
-- **Not a tracker with edges.** The board has no labels, no blocking edges and no child tickets — see [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+- **Not a tracker with edges.** The board has no labels, no blocking edges and no child tickets — see [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
 - **Not settled on its nouns — one word left to move.** The domain, the CLI, the app and the store's keys say *ticket*; the store's file is still `todos.json`, and its rename to `tickets.json` is the rename's last step ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)).
 
 ## How to contribute
 
-The tracker is the **Tandem board**, not GitHub issues — see [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+The tracker is the **Tandem board**, not GitHub issues — the tracker contract is the `tandem` skill (`skills/tandem/SKILL.md`).
 
 - **Branch off `dev`.** `dev` takes merges; `main` is the release line, and its head is always the latest release tag ([ADR 0019](docs/adr/0019-integration-branch.md)). Pull requests target `dev`.
 - **Merge, don't rewrite.** Prefer merge commits over rebases, and avoid force pushes and other destructive git actions unless absolutely necessary — when a force push is unavoidable, `--force-with-lease`, never bare `--force`.
