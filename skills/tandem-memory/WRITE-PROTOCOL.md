@@ -21,7 +21,7 @@ The verb owns the kinds, the body shape (`# <short title>` then 1–3 lines), an
 
 **Floor: one `work` note at session end** (or when context nears exhaustion) — what was done and where it left off. That is a sub-agent's minimum deliverable before it returns.
 
-**Threads stay immediate**: `tandem-cli todo add --title "…"` runs the moment a thread opens — the Todos are the authoritative live list — with a `thread` capture for the context a title cannot carry. Closing one: `tandem-cli todo complete --id <id>`, plus a `thread` note.
+**Threads stay immediate**: `tandem-cli ticket add --title "…"` runs the moment a thread opens — the ticket list is the authoritative live list — with a `thread` capture for the context a title cannot carry. Closing one: `tandem-cli ticket complete --id <id>`, plus a `thread` note.
 
 ## Qualification gate — what you'd lose when the session ends
 

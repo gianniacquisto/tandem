@@ -26,7 +26,7 @@ Route each moment in this order:
 4. **A project note stays an overview and index** — current state plus links to its notes; it never becomes a changelog, and subsystem detail lives in the note that owns it.
 
 - **Refresh `Where left off`** from the session's `work` notes: current state and next move.
-- **Add `Threads` bullets** for open `thread` notes — Todo title verbatim plus a one-clause hook — and mark resolved ones.
+- **Add `Threads` bullets** for open `thread` notes — Ticket title verbatim plus a one-clause hook — and mark resolved ones.
 - **Create the project note** (full skeleton, `Where left off` first) when the project has none. A concurrent create is the atomic case in [`CONCURRENCY.md`](CONCURRENCY.md).
 - **Place the note** where [`CONVENTIONS.md`](CONVENTIONS.md) puts it: `projects/<project>/<group>/<Note>.md` in a grouped project, `projects/<project>/<Note>.md` in a flat one, `topics/<Topic>.md` for a cross-project concept. **Grouping** a project — one level of sub-folders, once it holds more than 7 curated notes — is this pass's call; the notes move with it and their links do not change (`[[Name]]` resolves by basename either way, ADR 0005).
 - **`Index.md`** — re-derive each note's one-line status and rewrite it **only if the status changed**; adding to `Decisions`/`Gotchas` never churns the Index. A grouped note still gets exactly one line, naming the note and not its group.
@@ -34,9 +34,9 @@ Route each moment in this order:
 
 Write behind the boundary ([`CONCURRENCY.md`](CONCURRENCY.md)): re-read → minimal patch → write, prune on write. Never invent state the captures do not support.
 
-## Dedupe threads against todos
+## Dedupe threads against tickets
 
-A `thread` note usually already has a Todo — the working agent files it the moment the thread opens. **Do not create a second one**: run `tandem-cli todo list` first, match by title, and write the Threads bullet against the existing Todo. Only a `thread` with no matching Todo earns a new one (`tandem-cli todo add`).
+A `thread` note usually already has a Ticket — the working agent files it the moment the thread opens. **Do not create a second one**: run `tandem-cli ticket list` first, match by title, and write the Threads bullet against the existing Ticket. Only a `thread` with no matching Ticket earns a new one (`tandem-cli ticket add`).
 
 ## Consume — archive, never delete
 
