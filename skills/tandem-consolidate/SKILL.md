@@ -15,6 +15,8 @@ So this skill does not consolidate anything itself. It **dispatches** the `conso
 
 ## What to do
 
+**Pick the mode before any dispatch** — if the human asks for more than one consolidation pass, the human in the session chooses: **serial** (the default, one pass at a time) or **parallel**. Caution: the curated notes have exactly one writer at a time and passes consume the same raw queue, so parallel passes risk write races.
+
 1. **Dispatch the `consolidator` subagent** — one task, one brief, nothing else:
 
    > Run one consolidation pass over the whole pending raw queue, then report what you folded, where, and what you archived.

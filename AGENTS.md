@@ -17,7 +17,7 @@ A session is a record, not a ticket (ADR 0027): one record per session, keyed by
 
 - **Start** — `tandem-cli session start --brief -`, the brief on stdin: what this session is for and what done looks like. `<project>` defaults to the working directory's last path component; `--agent` names the pass when the session tells you one.
 - **Carry tickets** — `tandem-cli session link --ticket <id>` for each ticket the session carries. A child session is a session: it starts its own record and links what it carries.
-- **End** — before your final reply: `tandem-cli session end --outcome <succeeded|failed|interrupted|unknown> --summary -`, one line on what landed.
+- **End** — before your final reply: `tandem-cli session end --outcome <succeeded|failed|interrupted|unknown> --summary -`, one line on what landed. On this host, end through the usage wrapper instead: `Scripts/usage-report.sh --outcome <…>` (summary on stdin) — it reads the session's tokens, cost and model from opencode's database, reports them on the record, and the CLI posts one `usage` comment on every ticket the session linked. When the wrapper reports no row (exit 1), fall back to the plain `session end`.
 - **A session that dies leaves a `running` record and nothing to reclaim.** The board holds only work, so no pass reclaims the rows of a dead session — what the session carried, its record's `tickets` names.
 - **Stale work is still work.** A ticket claimed by a session that has ended is picked up by the next sprint's triage; the live-vs-ended rule and the dispatch live in `skills/tandem-sprint/SKILL.md`.
 

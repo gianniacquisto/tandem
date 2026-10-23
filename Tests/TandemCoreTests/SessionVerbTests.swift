@@ -168,6 +168,139 @@ struct SessionVerbTests {
         #expect(empty.error.contains("Session summary is empty"))
     }
 
+    // MARK: - usage
+
+    /// The usage flags, as the opencode adapter passes them.
+    private let usageFlags = [
+        "--tokens-input", "12345",
+        "--tokens-output", "4567",
+        "--tokens-reasoning", "567",
+        "--tokens-cache-read", "89012",
+        "--tokens-cache-write", "1234",
+        "--cost", "0.42",
+        "--model", "z-ai/glm-5.3-flash",
+    ]
+
+    @Test("`session end` with the usage flags stores the usage on the record")
+    func endStoresTheUsage() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+        let ended = try run(home: home, ["session", "end", "--outcome", "succeeded", "--summary", "spec filed"] + usageFlags)
+        #expect(ended.code == 0)
+
+        let shown = try run(home: home, ["session", "show"])
+        #expect(shown.code == 0)
+        let record = try cli.object(from: shown.output)
+        let tokens = try #require(record["tokens"] as? [String: Any])
+        #expect(tokens["input"] as? Int == 12345)
+        #expect(tokens["output"] as? Int == 4567)
+        #expect(tokens["reasoning"] as? Int == 567)
+        #expect(tokens["cacheRead"] as? Int == 89012)
+        #expect(tokens["cacheWrite"] as? Int == 1234)
+        #expect(record["cost"] as? Double == 0.42)
+        #expect(record["model"] as? String == "z-ai/glm-5.3-flash")
+    }
+
+    @Test("absent usage flags leave the record without usage — today's behaviour")
+    func endWithoutUsageStoresNone() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+        let ended = try run(home: home, ["session", "end", "--outcome", "succeeded", "--summary", "spec filed"])
+        #expect(ended.code == 0)
+
+        let shown = try run(home: home, ["session", "show"])
+        let record = try cli.object(from: shown.output)
+        #expect(record["tokens"] == nil, "no usage flags, no tokens key")
+        #expect(record["cost"] == nil)
+        #expect(record["model"] == nil)
+    }
+
+    @Test("`session end` with usage posts one `usage` comment on every ticket the record links")
+    func endPostsUsageCommentsOnLinkedTickets() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let first = try cli.addTicket(home: home, title: "First carried")
+        let second = try cli.addTicket(home: home, title: "Second carried")
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+        _ = try run(home: home, ["session", "link", "--ticket", first])
+        _ = try run(home: home, ["session", "link", "--ticket", second])
+
+        let ended = try run(home: home, ["session", "end", "--outcome", "succeeded", "--summary", "spec filed"] + usageFlags)
+        #expect(ended.code == 0)
+
+        for ticket in [first, second] {
+            let listed = try run(home: home, ["ticket", "comment", "list", "--id", ticket])
+            #expect(listed.code == 0)
+            let comments = try #require(try cli.object(from: listed.output)["comments"] as? [[String: Any]])
+            #expect(comments.count == 1, "exactly one comment on \(ticket)")
+            #expect(comments.first?["author"] as? String == "usage")
+            let body = try #require(comments.first?["body"] as? String)
+            #expect(body.contains(sessionID), "the body names the session")
+            #expect(body.contains("z-ai/glm-5.3-flash"), "the body names the model")
+            #expect(body.contains("12345 in"))
+            #expect(body.contains("4567 out"))
+            #expect(body.contains("89012 cache read"))
+            #expect(body.contains("1234 cache write"))
+            #expect(body.contains("567 reasoning"))
+            #expect(body.contains("$0.42"), "the body names the cost")
+        }
+    }
+
+    @Test("`session end` with usage and no linked tickets stores the usage and posts nothing")
+    func endWithUsageAndNoTicketsPostsNothing() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+        let ended = try run(home: home, ["session", "end", "--outcome", "succeeded", "--summary", "spec filed"] + usageFlags)
+        #expect(ended.code == 0)
+
+        let shown = try run(home: home, ["session", "show"])
+        #expect(try cli.object(from: shown.output)["model"] as? String == "z-ai/glm-5.3-flash",
+                "the usage is stored even with nothing to comment on")
+    }
+
+    @Test("`session end` stamps once, so the usage comment cannot double-post")
+    func endStampsOnceSoTheCommentCannotDoublePost() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let ticket = try cli.addTicket(home: home, title: "Carried")
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+        _ = try run(home: home, ["session", "link", "--ticket", ticket])
+
+        _ = try run(home: home, ["session", "end", "--outcome", "succeeded", "--summary", "spec filed"] + usageFlags)
+        let again = try run(home: home, ["session", "end", "--outcome", "failed", "--summary", "second try"] + usageFlags)
+        #expect(again.code == 0)
+        #expect(try cli.object(from: again.output)["note"] as? String == "session \(sessionID) already ended")
+
+        let listed = try run(home: home, ["ticket", "comment", "list", "--id", ticket])
+        let comments = try #require(try cli.object(from: listed.output)["comments"] as? [[String: Any]])
+        #expect(comments.count == 1, "the second end posted nothing")
+    }
+
+    @Test("a usage flag that is not a number is a domain failure naming the flag")
+    func aBadUsageValueIsADomainFailure() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+
+        let bad = try run(home: home, ["session", "end", "--outcome", "succeeded", "--tokens-input", "abc"])
+        #expect(bad.code == 1)
+        #expect(bad.error.contains("--tokens-input"))
+        #expect(bad.error.contains("abc"))
+
+        let negative = try run(home: home, ["session", "end", "--outcome", "succeeded", "--cost", "-1"])
+        #expect(negative.code == 1)
+        #expect(negative.error.contains("--cost"))
+    }
+
     // MARK: - list and show
 
     @Test("`session list` lists the records newest first, and filters by status")

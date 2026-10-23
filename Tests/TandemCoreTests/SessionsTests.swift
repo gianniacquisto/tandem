@@ -219,6 +219,126 @@ struct SessionsTests {
         #expect(shown.status == .ended)
     }
 
+    // MARK: - usage
+
+    /// The usage a reported session carries — the five counts as opencode's
+    /// row holds them, the cost in dollars, the model that spent them.
+    private func usage(
+        input: Int = 12345,
+        output: Int = 4567,
+        reasoning: Int = 567,
+        cacheRead: Int = 89012,
+        cacheWrite: Int = 1234,
+        cost: Double = 0.42,
+        model: String = "z-ai/glm-5.3-flash"
+    ) -> (tokens: SessionTokens, cost: Double, model: String) {
+        (SessionTokens(
+            input: input, output: output, reasoning: reasoning,
+            cacheRead: cacheRead, cacheWrite: cacheWrite), cost, model)
+    }
+
+    @Test("end writes the usage once, beside the outcome; a second end cannot restate it")
+    func endWritesTheUsageOnce() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
+        let reported = usage()
+
+        let ended = try sessions.end(
+            id: "ses_1", outcome: .succeeded, summary: "Built it.",
+            tokens: reported.tokens, cost: reported.cost, model: reported.model)
+        #expect(ended.value.tokens == reported.tokens)
+        #expect(ended.value.cost == reported.cost)
+        #expect(ended.value.model == reported.model)
+
+        // The first usage is the fact, like the first outcome.
+        let other = usage(input: 1, output: 2, reasoning: 3, cacheRead: 4, cacheWrite: 5,
+                          cost: 9.99, model: "other/model")
+        let again = try sessions.end(
+            id: "ses_1", outcome: .failed, summary: "Again.",
+            tokens: other.tokens, cost: other.cost, model: other.model)
+        #expect(again.value.tokens == reported.tokens)
+        #expect(again.value.cost == reported.cost)
+        #expect(again.value.model == reported.model)
+        #expect(again.note == "session ses_1 already ended")
+    }
+
+    @Test("a record ended without usage carries none, and the file omits the keys")
+    func absentUsageIsAbsentOnTheWire() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
+        _ = try sessions.end(id: "ses_1", outcome: .succeeded, summary: "Built it.")
+
+        let shown = try sessions.show(id: "ses_1").value
+        #expect(shown.tokens == nil)
+        #expect(shown.cost == nil)
+        #expect(shown.model == nil)
+
+        // Omitted on the wire — the file shows the shape a record carries,
+        // and a record without usage carries none of the three keys.
+        let raw = try Data(contentsOf: file(dir))
+        let object = try #require(JSONSerialization.jsonObject(with: raw) as? [String: Any])
+        let records = try #require(object["sessions"] as? [[String: Any]])
+        let record = try #require(records.first)
+        #expect(record["tokens"] == nil)
+        #expect(record["cost"] == nil)
+        #expect(record["model"] == nil)
+    }
+
+    @Test("the usage survives the round trip through the file")
+    func usageSurvivesTheFile() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let reported = usage()
+        try writeFile(dir, [
+            record(id: "ses_1", project: "tandem", status: "ended",
+                   outcome: "succeeded", startedAt: "2026-10-23T10:00:00Z",
+                   endedAt: "2026-10-23T11:00:00Z",
+                   extra: [
+                       "tokens": [
+                           "input": reported.tokens.input,
+                           "output": reported.tokens.output,
+                           "reasoning": reported.tokens.reasoning,
+                           "cacheRead": reported.tokens.cacheRead,
+                           "cacheWrite": reported.tokens.cacheWrite,
+                       ],
+                       "cost": reported.cost,
+                       "model": reported.model,
+                   ]),
+        ])
+
+        let shown = try sessions.show(id: "ses_1").value
+        #expect(shown.tokens == reported.tokens)
+        #expect(shown.cost == reported.cost)
+        #expect(shown.model == reported.model)
+    }
+
+    @Test("onStamp runs once, and only when the stamp lands")
+    func onStampRunsOncePerStamp() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
+        var stamped: [Session] = []
+
+        let reported = usage()
+        _ = try sessions.end(
+            id: "ses_1", outcome: .succeeded, summary: "Built it.",
+            tokens: reported.tokens, cost: reported.cost, model: reported.model,
+            onStamp: { stamped.append($0) })
+        #expect(stamped.count == 1)
+        #expect(stamped.first?.id == "ses_1")
+        #expect(stamped.first?.status == .ended)
+
+        // The second end stamps nothing, so it calls nothing — the hook cannot
+        // post twice.
+        _ = try sessions.end(
+            id: "ses_1", outcome: .failed, summary: "Again.",
+            tokens: reported.tokens, cost: reported.cost, model: reported.model,
+            onStamp: { stamped.append($0) })
+        #expect(stamped.count == 1)
+    }
+
     // MARK: - link
 
     @Test("link appends a ticket once, and keeps the link order")

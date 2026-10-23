@@ -78,3 +78,16 @@ This ADR records where the agent face lives, that it is portable, and that the p
 **Why.** The terse pass the human asked for: the two builders were the fleet's comparison arm with no fleet left to compare against, the roster named roles no agent filled, and a terse opinionated workflow needs one agent per role it names.
 
 **Consequences.** The host symlinks for the deleted prompts are removed and replaced by `refiner` and `builder`; `terse/` is untouched. The decision bullet "a prompt's home is the project that owns its job" is unchanged, and now describes four files instead of four.
+
+## Amendment, 2026-10-23: `to-spec` and `implement-spec` are retired, `tdd` is vendored, and `docs/agents/issue-tracker.md` goes with them
+
+**The change.** The human's answer to ticket `A897E8EC` approves retiring `skills/to-spec/` and `skills/implement-spec/`, both vendored from mattpocock/skills: `to-spec` had no route in the cycle, and `implement-spec` could not run as written — it called skills never vendored here and named a route that does not exist — while its durable shape already lives in `agents/refiner.md` step 3 and `skills/tandem-sprint/SKILL.md`. In their place, `skills/engineering/tdd` is vendored from the same collection as `skills/tdd/` — `SKILL.md`, `tests.md`, `mocking.md`, as-is with the vendored-from header; its upstream cross-references to `code-review` and `codebase-design` name skills not vendored here and stand unedited. `docs/agents/issue-tracker.md` is retired with them: it told vendored skills that expect a tracker how to speak to this board, and after the retirement its only remaining audience were `grilling` (which writes no tickets) and `retro` (which speaks the board natively). The coverage the human required came with the approval: `agents/refiner.md` step 2 carries the what-the-tests-are step, and `agents/builder.md` step 3 is test-first, naming `tdd`.
+
+**Why.** Vendored-but-unused is the debt being paid — `NOTICE.txt` and `README.md` carry the inventory cost of every file under `skills/` — and two skills whose procedure no pass runs are inventory without a reader.
+
+**What the text above now reads.**
+
+- The decision bullet "The workflow's third-party skills are vendored here" lists `skills/grilling/`, `skills/tdd/`, `skills/retro/` and `skills/writing-for-agents/` — `implement-spec` and `to-spec` are gone, `tdd` is new — and its last sentence, "`docs/agents/issue-tracker.md` tells the vendored skills that the tracker here is the board", no longer holds: the doc is retired, and the tracker contract lives in `skills/tandem/SKILL.md`. The rest of the bullet stands.
+- The "Decided against" item on the `wayfinder` skill still holds, but its clause "`docs/agents/issue-tracker.md` says so" does not: the statement that the board has no labels, no blocking edges and no child tickets is carried by this ADR and the README, not by a retired doc.
+
+**The trade-off.** The refiner's brief shape now owns what `to-spec` sketched, and the builder's step 3 owns the loop `implement-spec` named; the vendored `tdd` skill is the shared vocabulary both draw on. Two upstream cross-references in `tdd/SKILL.md` point at skills this repo deliberately does not vendor — per the rule that vendored MIT text is not edited, they stand.

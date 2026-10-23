@@ -44,6 +44,15 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
     public let startedAt: Date
     /// When it ended, UTC. Stamped once, by `end`.
     public var endedAt: Date?
+    /// The token counts the session spent, reported once by `end` — `nil`
+    /// until reported, and never restated after. `nil` members are the counts
+    /// the harness did not report.
+    public var tokens: SessionTokens?
+    /// What the session cost, in dollars — the harness's own number, reported
+    /// once by `end`.
+    public var cost: Double?
+    /// The model that spent the tokens, reported once by `end`.
+    public var model: String?
 
     public init(
         id: String,
@@ -55,7 +64,10 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
         outcome: SessionOutcome? = nil,
         tickets: [UUID] = [],
         startedAt: Date = .now,
-        endedAt: Date? = nil
+        endedAt: Date? = nil,
+        tokens: SessionTokens? = nil,
+        cost: Double? = nil,
+        model: String? = nil
     ) {
         self.id = id
         self.project = project
@@ -67,17 +79,30 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
         self.tickets = tickets
         self.startedAt = startedAt
         self.endedAt = endedAt
+        self.tokens = tokens
+        self.cost = cost
+        self.model = model
     }
 
-    /// Stamp the record as ended: the outcome, the end time, the summary and
-    /// the status change together, **once**. A record that has already ended is
-    /// left alone — the first outcome is the fact, and a second `end` cannot
-    /// restate it.
-    public mutating func end(outcome: SessionOutcome, summary: String?, at now: Date = .now) {
+    /// Stamp the record as ended: the outcome, the end time, the summary — and
+    /// the usage, when the harness reported one — change together, **once**. A
+    /// record that has already ended is left alone — the first outcome is the
+    /// fact, and a second `end` cannot restate it (nor its usage).
+    public mutating func end(
+        outcome: SessionOutcome,
+        summary: String?,
+        tokens: SessionTokens? = nil,
+        cost: Double? = nil,
+        model: String? = nil,
+        at now: Date = .now
+    ) {
         guard status == .running else { return }
         self.outcome = outcome
         self.endedAt = now
         self.summary = summary
+        self.tokens = tokens
+        self.cost = cost
+        self.model = model
         self.status = .ended
     }
 
@@ -95,6 +120,7 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
     /// varies from one session to the next.
     private enum CodingKeys: String, CodingKey {
         case id, project, agent, brief, summary, status, outcome, tickets, startedAt, endedAt
+        case tokens, cost, model
     }
 
     public init(from decoder: Decoder) throws {
@@ -145,6 +171,13 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
             self.outcome = nil
         }
 
+        // The usage: absent reads as absent, and the three are written
+        // together by `end` — a record that carries one carries what its
+        // harness reported, nothing invented.
+        self.tokens = try c.decodeIfPresent(SessionTokens.self, forKey: .tokens)
+        self.cost = try c.decodeIfPresent(Double.self, forKey: .cost)
+        self.model = try c.decodeIfPresent(String.self, forKey: .model)
+
         let startedRaw = try c.decode(String.self, forKey: .startedAt)
         guard let startedAt = Timestamp.decode(startedRaw) else {
             throw CorruptSessions.invalidTimestamp(field: "startedAt", value: startedRaw)
@@ -189,6 +222,77 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
         } else {
             try c.encodeNil(forKey: .endedAt)
         }
+        // The usage is the one deliberate divergence from the "every key, null
+        // included" style above: **omitted when absent**, per the usage spec —
+        // a record without usage is the shape every record written before the
+        // field existed has, and a triple of nulls would dress absence up as
+        // a reported zero.
+        if let tokens {
+            try c.encode(tokens, forKey: .tokens)
+        }
+        if let cost {
+            try c.encode(cost, forKey: .cost)
+        }
+        if let model {
+            try c.encode(model, forKey: .model)
+        }
+    }
+}
+
+/// The token counts one session spent, as the reporting harness holds them
+/// (spec `F68948C0`): five integers, each the count its own flag names.
+///
+/// A member the harness did not report is `nil` — absent on the wire, never a
+/// zero dressed up as a count — so a partial report stays partial, and the
+/// record shows exactly what was reported.
+public struct SessionTokens: Sendable, Equatable, Codable {
+    /// Prompt tokens in.
+    public var input: Int?
+    /// Completion tokens out.
+    public var output: Int?
+    /// Reasoning tokens, where the model spends them separately.
+    public var reasoning: Int?
+    /// Cache reads.
+    public var cacheRead: Int?
+    /// Cache writes.
+    public var cacheWrite: Int?
+
+    public init(
+        input: Int? = nil,
+        output: Int? = nil,
+        reasoning: Int? = nil,
+        cacheRead: Int? = nil,
+        cacheWrite: Int? = nil
+    ) {
+        self.input = input
+        self.output = output
+        self.reasoning = reasoning
+        self.cacheRead = cacheRead
+        self.cacheWrite = cacheWrite
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case input, output, reasoning, cacheRead, cacheWrite
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.input = try c.decodeIfPresent(Int.self, forKey: .input)
+        self.output = try c.decodeIfPresent(Int.self, forKey: .output)
+        self.reasoning = try c.decodeIfPresent(Int.self, forKey: .reasoning)
+        self.cacheRead = try c.decodeIfPresent(Int.self, forKey: .cacheRead)
+        self.cacheWrite = try c.decodeIfPresent(Int.self, forKey: .cacheWrite)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        // Absent counts are omitted, not nulled — the same rule the record's
+        // own usage keys follow.
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        if let input { try c.encode(input, forKey: .input) }
+        if let output { try c.encode(output, forKey: .output) }
+        if let reasoning { try c.encode(reasoning, forKey: .reasoning) }
+        if let cacheRead { try c.encode(cacheRead, forKey: .cacheRead) }
+        if let cacheWrite { try c.encode(cacheWrite, forKey: .cacheWrite) }
     }
 }
 
@@ -352,22 +456,40 @@ public struct Sessions: Sendable {
         return OperationResult(session, note: note)
     }
 
-    /// `end(id:outcome:summary:)`: stamp a session as ended, **once**.
+    /// `end(id:outcome:summary:tokens:cost:model:onStamp:)`: stamp a session as
+    /// ended, **once**.
     ///
-    /// The outcome, the end time and the summary are written together; the
-    /// summary is trimmed, and an empty result is no summary (`nil`). A record
-    /// that has already ended is **returned unchanged** — the first outcome and
-    /// the first summary stand, with a note — so a second `end` cannot restate
-    /// how a session ended. An empty id is `DomainError.emptySessionID`; an id
-    /// the file does not carry is `DomainError.unknownSession`.
+    /// The outcome, the end time, the summary and the usage are written
+    /// together; the summary is trimmed, and an empty result is no summary
+    /// (`nil`). The usage — the token counts, the cost and the model the
+    /// harness reported — is written beside the outcome and is as immutable
+    /// as it: a record that has already ended is **returned unchanged** — the
+    /// first outcome and the first usage stand, with a note — so a second
+    /// `end` cannot restate how a session ended nor what it spent. An empty id
+    /// is `DomainError.emptySessionID`; an id the file does not carry is
+    /// `DomainError.unknownSession`.
+    ///
+    /// `onStamp` is the one hook a caller can use to act on the stamp itself —
+    /// the usage comment the CLI posts on the linked tickets (`spec
+    /// F68948C0`). It runs **after** the write has landed, receives the ended
+    /// record, and runs **only when this call stamped**: a second `end` — the
+    /// rule that keeps the outcome immutable — is the same rule that keeps the
+    /// comment from double-posting. A throwing hook fails the call after the
+    /// stamp; the record is ended, and a retry is safe, because the retry
+    /// stamps nothing and so calls nothing.
     public func end(
         id: String,
         outcome: SessionOutcome,
-        summary: String? = nil
+        summary: String? = nil,
+        tokens: SessionTokens? = nil,
+        cost: Double? = nil,
+        model: String? = nil,
+        onStamp: ((Session) throws -> Void)? = nil
     ) throws -> OperationResult<Session> {
         let handle = try Self.handle(id)
         let text = summary?.trimmingCharacters(in: .whitespacesAndNewlines)
         let said = (text?.isEmpty == false) ? text : nil
+        var stamped = false
         let (session, note) = try mutate { sessions in
             guard let index = sessions.firstIndex(where: { $0.id == handle }) else {
                 throw DomainError.unknownSession(id: handle, known: sessions.map(\.id))
@@ -376,9 +498,15 @@ public struct Sessions: Sendable {
                 return (sessions[index], false, "session \(handle) already ended")
             }
             var record = sessions[index]
-            record.end(outcome: outcome, summary: said, at: Self.now())
+            record.end(
+                outcome: outcome, summary: said,
+                tokens: tokens, cost: cost, model: model, at: Self.now())
             sessions[index] = record
+            stamped = true
             return (record, true, nil)
+        }
+        if stamped, let onStamp {
+            try onStamp(session)
         }
         return OperationResult(session, note: note)
     }
