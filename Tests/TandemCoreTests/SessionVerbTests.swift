@@ -219,14 +219,14 @@ struct SessionVerbTests {
         #expect(record["model"] == nil)
     }
 
-    @Test("`session end` with usage posts one `usage` comment on every ticket the record links")
+    @Test("`session end` with usage posts one comment, under the record's agent, on every ticket the record links")
     func endPostsUsageCommentsOnLinkedTickets() throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
 
         let first = try cli.addTicket(home: home, title: "First carried")
         let second = try cli.addTicket(home: home, title: "Second carried")
-        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--agent", "builder", "--brief", "spec the sessions work"])
         _ = try run(home: home, ["session", "link", "--ticket", first])
         _ = try run(home: home, ["session", "link", "--ticket", second])
 
@@ -238,17 +238,65 @@ struct SessionVerbTests {
             #expect(listed.code == 0)
             let comments = try #require(try cli.object(from: listed.output)["comments"] as? [[String: Any]])
             #expect(comments.count == 1, "exactly one comment on \(ticket)")
-            #expect(comments.first?["author"] as? String == "usage")
+            #expect(comments.first?["author"] as? String == "builder", "the comment is signed by the record's agent")
             let body = try #require(comments.first?["body"] as? String)
-            #expect(body.contains(sessionID), "the body names the session")
-            #expect(body.contains("z-ai/glm-5.3-flash"), "the body names the model")
-            #expect(body.contains("12345 in"))
-            #expect(body.contains("4567 out"))
-            #expect(body.contains("89012 cache read"))
-            #expect(body.contains("1234 cache write"))
-            #expect(body.contains("567 reasoning"))
-            #expect(body.contains("$0.42"), "the body names the cost")
+            #expect(body.split(separator: "\n").map(String.init) == [
+                "Usage — \(sessionID) · z-ai/glm-5.3-flash",
+                "input 12,345",
+                "output 4,567",
+                "cache read 89,012",
+                "cache write 1,234",
+                "reasoning 567",
+                "cost $0.42",
+            ], "the body is one metric per line, with thousands separators")
         }
+    }
+
+    @Test("a record ended without `--agent` posts the usage comment under author `usage`")
+    func endWithoutAgentFallsBackToTheUsageAuthor() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let ticket = try cli.addTicket(home: home, title: "Carried")
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+        _ = try run(home: home, ["session", "link", "--ticket", ticket])
+
+        let ended = try run(home: home, ["session", "end", "--outcome", "succeeded", "--summary", "spec filed"] + usageFlags)
+        #expect(ended.code == 0)
+
+        let listed = try run(home: home, ["ticket", "comment", "list", "--id", ticket])
+        let comments = try #require(try cli.object(from: listed.output)["comments"] as? [[String: Any]])
+        #expect(comments.count == 1)
+        #expect(comments.first?["author"] as? String == "usage", "no agent on the record, the fallback names the line")
+    }
+
+    @Test("the usage body leaves pieces the harness did not report out, and groups the counts it did")
+    func usageBodyOmitsUnreportedPiecesAndGroupsCounts() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let ticket = try cli.addTicket(home: home, title: "Carried")
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--agent", "reviewer", "--brief", "spec the sessions work"])
+        _ = try run(home: home, ["session", "link", "--ticket", ticket])
+
+        let ended = try run(home: home, [
+            "session", "end", "--outcome", "succeeded", "--summary", "spec filed",
+            "--tokens-input", "5346816",
+            "--tokens-cache-write", "0",
+            "--cost", "0.22",
+        ])
+        #expect(ended.code == 0)
+
+        let listed = try run(home: home, ["ticket", "comment", "list", "--id", ticket])
+        let comments = try #require(try cli.object(from: listed.output)["comments"] as? [[String: Any]])
+        #expect(comments.first?["author"] as? String == "reviewer")
+        let body = try #require(comments.first?["body"] as? String)
+        #expect(body.split(separator: "\n").map(String.init) == [
+            "Usage — \(sessionID)",
+            "input 5,346,816",
+            "cache write 0",
+            "cost $0.22",
+        ], "unreported pieces are absent, never a zero dressed up as a count; a reported zero stays")
     }
 
     @Test("`session end` with usage and no linked tickets stores the usage and posts nothing")
