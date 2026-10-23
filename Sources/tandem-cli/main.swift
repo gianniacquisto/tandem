@@ -186,12 +186,31 @@ func dispatch(_ args: [String]) -> Int32 {
                 brief: try sessionBrief(brief))
             return try StoreEncoding.sessionResult(result.value, note: result.note)
         }
-    case .sessionEnd(let session, let outcome, let summary):
+    case .sessionEnd(
+        let session, let outcome, let summary,
+        let tokensInput, let tokensOutput, let tokensReasoning,
+        let tokensCacheRead, let tokensCacheWrite, let cost, let model):
         return run {
+            // The usage flags (spec `F68948C0`): absent is absent on the
+            // record, so an `end` without them is today's behaviour. When
+            // usage is present, the stamp posts one `usage` comment on every
+            // ticket the record links — through the core's own comment append,
+            // and only when this call stamped, so the comment cannot
+            // double-post (`end` stamps once).
+            let tokens = try usageTokens(
+                input: tokensInput, output: tokensOutput, reasoning: tokensReasoning,
+                cacheRead: tokensCacheRead, cacheWrite: tokensCacheWrite)
+            let usageCost = try usageCost(cost)
+            let usageModel = usageModel(model)
+            let reported = tokens != nil || usageCost != nil || usageModel != nil
             let result = try Sessions().end(
                 id: try sessionID(session),
                 outcome: try sessionOutcome(outcome),
-                summary: try sessionSummary(summary))
+                summary: try sessionSummary(summary),
+                tokens: tokens,
+                cost: usageCost,
+                model: usageModel,
+                onStamp: reported ? { try postUsageComments(for: $0) } : nil)
             return try StoreEncoding.sessionResult(result.value, note: result.note)
         }
     case .sessionLink(let ticket, let session):
@@ -422,6 +441,108 @@ func sessionOutcome(_ raw: String?) throws -> SessionOutcome {
         throw DomainError.invalidSessionOutcome(raw)
     }
     return outcome
+}
+
+// MARK: - session usage (spec F68948C0)
+
+/// The token counts the usage flags report: absent is absent on the record,
+/// a value that is not a non-negative whole number is a domain failure naming
+/// the flag.
+func usageTokens(
+    input: String?,
+    output: String?,
+    reasoning: String?,
+    cacheRead: String?,
+    cacheWrite: String?
+) throws -> SessionTokens? {
+    func count(_ flag: String, _ raw: String?) throws -> Int? {
+        guard let raw else { return nil }
+        guard let value = Int(raw), value >= 0 else {
+            throw DomainError.invalidUsageFlag(flag: flag, value: raw)
+        }
+        return value
+    }
+    let inCount = try count("tokens-input", input)
+    let outCount = try count("tokens-output", output)
+    let reasoningCount = try count("tokens-reasoning", reasoning)
+    let cacheReadCount = try count("tokens-cache-read", cacheRead)
+    let cacheWriteCount = try count("tokens-cache-write", cacheWrite)
+    if inCount == nil, outCount == nil, reasoningCount == nil,
+       cacheReadCount == nil, cacheWriteCount == nil {
+        return nil
+    }
+    return SessionTokens(
+        input: inCount, output: outCount, reasoning: reasoningCount,
+        cacheRead: cacheReadCount, cacheWrite: cacheWriteCount)
+}
+
+/// The cost the `--cost` flag reports, in dollars: absent is absent, a value
+/// that is not a non-negative number is a domain failure naming the flag.
+func usageCost(_ raw: String?) throws -> Double? {
+    guard let raw else { return nil }
+    guard let value = Double(raw), value >= 0, value.isFinite else {
+        throw DomainError.invalidUsageFlag(flag: "cost", value: raw)
+    }
+    return value
+}
+
+/// The model the `--model` flag reports: absent is absent; an empty value is
+/// no model, the way the core reads an empty agent name.
+func usageModel(_ raw: String?) -> String? {
+    guard let raw else { return nil }
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+}
+
+/// The one `usage` comment the CLI posts on every ticket a session carried:
+/// author `usage`, one plain-integer line naming the session id, the model and
+/// the counts plus the cost —
+/// `Tokens ses_xxx · z-ai/glm-5.3-flash · 12345 in · 4567 out · 89012 cache read · 1234 cache write · 567 reasoning · $0.42`.
+/// A piece the harness did not report is left out of the line, never a zero
+/// dressed up as a count.
+///
+/// The author constant is namespaced on a type, **not a top-level `let`**:
+/// main.swift runs `exit(dispatch(…))` before the bottom-of-file top-level
+/// lets initialize, so a global read from inside `dispatch` reads an
+/// uninitialized String — a segfault, not a wrong word.
+enum UsageComment {
+    /// The author every usage comment carries.
+    static let author = "usage"
+}
+
+func usageCommentBody(for session: Session) -> String {
+    var parts: [String] = []
+    if let model = session.model {
+        parts.append(model)
+    }
+    if let tokens = session.tokens {
+        if let input = tokens.input { parts.append("\(input) in") }
+        if let output = tokens.output { parts.append("\(output) out") }
+        if let cacheRead = tokens.cacheRead { parts.append("\(cacheRead) cache read") }
+        if let cacheWrite = tokens.cacheWrite { parts.append("\(cacheWrite) cache write") }
+        if let reasoning = tokens.reasoning { parts.append("\(reasoning) reasoning") }
+    }
+    if let cost = session.cost {
+        parts.append(String(format: "$%.2f", cost))
+    }
+    return "Tokens \(session.id)" + (parts.isEmpty ? "" : " · " + parts.joined(separator: " · "))
+}
+
+/// Post the usage comment on every ticket the ended record links, through the
+/// core's own comment append. Called only when this `end` stamped, so a second
+/// `end` posts nothing — the record's immutability is the comment's. A ticket
+/// that has vanished from the store since the link fails the call — the end
+/// itself has landed, and a retry is safe (it stamps nothing, so it posts
+/// nothing) — but the failure is named, never swallowed.
+func postUsageComments(for session: Session) throws {
+    guard !session.tickets.isEmpty else { return }
+    let store = Store()
+    for ticket in session.tickets {
+        try store.append(
+            ticketID: ticket.uuidString,
+            author: UsageComment.author,
+            body: usageCommentBody(for: session))
+    }
 }
 
 /// The status a list is filtered by: absent is every status, and a value that
