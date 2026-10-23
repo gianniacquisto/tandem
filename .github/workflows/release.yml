@@ -8,9 +8,10 @@ name: Release
 # prebuilt cask, its artifact built by CI on each tag).
 #
 # The stages are the test seam: the run fails if the test suite fails, the
-# build fails, the signature does not verify, the Info.plist version does not
-# match the tag, the in-bundle CLI fails its --help / no-argument exit-code
-# assertions, or the zip does not contain an intact app.
+# README's CLI grammar block drifts from `Usage.swift`, the build fails, the
+# signature does not verify, the Info.plist version does not match the tag,
+# the in-bundle CLI fails its --help / no-argument exit-code assertions, or
+# the zip does not contain an intact app.
 #
 # The work is split in three: `test` (the gates) and `build` (the artifact) run
 # in parallel, each on its own runner, and `release` aggregates them. The
@@ -59,6 +60,17 @@ jobs:
           # test's own threads still exercise the lock. (The self-hosted 10-core
           # Mac had the headroom for the default parallel run.)
           swift test --no-parallel
+
+      - name: "Gate: the README's CLI grammar matches Usage.swift"
+        run: |
+          # The README's grammar block is a hand-copy of `Usage.text`, and a
+          # hand-copy drifts — review gates caught it twice (the deprecated
+          # `todo` verb taught, `[--archived]` dropped, the `session` group
+          # missing) before this check existed. The script makes the drift a
+          # red run: every grammar entry the source carries must appear in the
+          # block, in order, and the block may not carry an entry the source
+          # does not have.
+          Scripts/check-readme-grammar.sh
 
       - name: "Gate: editor bundle tests + reproducible build"
         run: |
