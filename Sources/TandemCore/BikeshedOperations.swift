@@ -443,7 +443,7 @@ private struct NoteIndex {
     }
 }
 
-// The wikilink scanner lives here, and the vault-health report
+// The wikilink scanner lives here, and the health report
 // (`BikeshedHealth.swift`) uses the same two internal helpers — the scan
 // (`linkOccurrences`) and the line offsets — so the health report and the
 // rename-rewrite can never drift on what counts as a link. Everything else in
