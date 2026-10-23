@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// The vault-health readout (`note links`, and the app's Health panel): the
+/// The health readout (`note links`, and the app's Health panel): the
 /// wikilinks that resolve to nothing, the notes nothing links to, and the
 /// totals. Runs against a temp dir via `Bikeshed`'s explicit-directory
 /// initialiser — no fixture bikeshed, no real `~/.tandem`.
