@@ -126,14 +126,13 @@ struct BoardFace: View {
                 ticket: ticket,
                 palette: palette,
                 lanes: lanes,
-                comments: model.comments(for: ticket.id.uuidString),
                 onSave: { edits in
                     model.saveTicket(ticket.id.uuidString, edits: edits)
                     ticketFor = nil
                 },
                 onCancel: { ticketFor = nil },
                 onComment: { model.postComment(ticket.id.uuidString, body: $0) },
-                onRefreshComments: { model.comments(for: ticket.id.uuidString) },
+                onRefreshComments: { await model.comments(for: ticket.id.uuidString) },
                 onOpenLink: onOpenLink,
                 onPromote: { onPromote(ticket) })
         }

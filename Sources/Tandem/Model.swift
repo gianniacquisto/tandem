@@ -312,8 +312,18 @@ final class TandemModel {
     /// out the lock and gave up, the log is untouched, and the sheet says "busy —
     /// try again" rather than "repair this file". The mapping lives in the core
     /// (`Sources/TandemCore/CommentRead.swift`) so the test seam can reach it.
-    func comments(for ticketID: String) -> CommentRead {
-        store.commentRead(ticketID: ticketID)
+    ///
+    /// The read runs off the main thread: it takes the store's `flock`, and a CLI
+    /// write holding the lock for the core's ~2 s window must not hold the UI's
+    /// main thread for it. The caller awaits the answer and draws it when it
+    /// lands — a slow read is a state, not a freeze. (`Store` is `Sendable`, and
+    /// the read is the same file-and-flock call the CLI makes from its own
+    /// process, so a background thread is no different from a background process.)
+    func comments(for ticketID: String) async -> CommentRead {
+        let store = self.store
+        return await Task.detached(priority: .userInitiated) {
+            store.commentRead(ticketID: ticketID)
+        }.value
     }
 
     /// Posts the human's comment to the ticket's log — the app's write path, the
