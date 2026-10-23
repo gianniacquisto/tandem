@@ -106,7 +106,7 @@ A session is a record, not a ticket (ADR 0027): one record per agent session, st
 - **The note link is derived** — `note capture --session <id>` files the capture under `projects/<project>/.raw/<session>/`, and `show` lists those paths as `notes`. There is no linking verb for notes, and `list` rows omit the field.
 - **`--brief` and `--summary` take stdin** like `--description`: `-` reads stdin, and an empty body is a domain failure — omit the flag to leave the field unset. An unknown `--outcome` or `--status` is a domain failure.
 - **Re-`start` on a recorded id** returns the record unchanged with a `note` — nothing is overwritten.
-- **The usage is reported at `end`** — the seven optional flags (`--tokens-input`, `--tokens-output`, `--tokens-reasoning`, `--tokens-cache-read`, `--tokens-cache-write`, `--cost`, `--model`) write what the harness measured beside the outcome; a flag that is absent is absent on the record, never an invented zero. When any usage is present, the end posts **one `usage` comment on every ticket the session linked** — one plain-integer line naming the session id, the model and the counts plus the cost — and stamps once, so a second `end` cannot double-post it. A session with no linked tickets stores the usage and posts nothing. On this host the numbers come from the wrapper: `Scripts/usage-report.sh --outcome <…>` (summary on stdin) reads the session row from opencode's database and calls `session end` with the flags; the row missing is exit 1 and the pass falls back to a plain `session end`.
+- **The usage is reported at `end`** — the seven optional flags (`--tokens-input`, `--tokens-output`, `--tokens-reasoning`, `--tokens-cache-read`, `--tokens-cache-write`, `--cost`, `--model`) write what the harness measured beside the outcome; a flag that is absent is absent on the record, never an invented zero. When any usage is present, the end posts **one usage comment, signed by the record's agent (the `--agent` the session started with; `usage` when it carries none), on every ticket the session linked** — a header naming the session id and the model, then one line per reported metric with thousands separators; a piece the harness did not report is left out — and stamps once, so a second `end` cannot double-post it. A session with no linked tickets stores the usage and posts nothing. On this host the numbers come from the wrapper: `Scripts/usage-report.sh --outcome <…>` (summary on stdin) reads the session row from opencode's database and calls `session end` with the flags; the row missing is exit 1 and the pass falls back to a plain `session end`.
 
 One session, start to end (`ses_demo2` against a scratch home):
 
@@ -122,11 +122,11 @@ $ tandem-cli session end --outcome succeeded --summary "Documents landed on the 
 {"agent":"builder","brief":"Docs pass: write the session record documents","cost":0.42,"endedAt":"2026-10-23T12:33:55Z","id":"ses_demo2","model":"z-ai/glm-5.3-flash","outcome":"succeeded","project":"tandem","startedAt":"2026-10-23T12:33:55Z","status":"ended","summary":"Documents landed on the PR","tickets":["9879916B-2F32-4999-AEEC-A963DA951DFF"],"tokens":{"cacheRead":89012,"cacheWrite":1234,"input":12345,"output":4567,"reasoning":567}}
 ```
 
-The end above also posted one `usage` comment on ticket `9879916B…` — the only notice a linked ticket gets, composed by the CLI:
+The end above also posted one usage comment on ticket `9879916B…` — the only notice a linked ticket gets, composed by the CLI, signed by the session's agent (`usage` when the record carries no agent), one line per reported metric:
 
 ```sh
 $ tandem-cli ticket comment list --id 9879916B-2F32-4999-AEEC-A963DA951DFF
-{"comments":[{"at":"2026-10-23T12:33:55Z","author":"usage","body":"Tokens ses_demo2 · z-ai/glm-5.3-flash · 12345 in · 4567 out · 89012 cache read · 1234 cache write · 567 reasoning · $0.42"}]}
+{"comments":[{"at":"2026-10-23T12:33:55Z","author":"builder","body":"Usage — ses_demo2 · z-ai/glm-5.3-flash\ninput 12,345\noutput 4,567\ncache read 89,012\ncache write 1,234\nreasoning 567\ncost $0.42"}]}
 ```
 
 ## Notes
