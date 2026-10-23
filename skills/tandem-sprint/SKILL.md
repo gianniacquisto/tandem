@@ -5,7 +5,7 @@ description: "The SDLC kickoff — one skill that runs the whole cycle: orient, 
 
 # Tandem sprint
 
-A sprint is the unit of work: a batch of `ready` tickets driven through build → review → merge — one at a time unless the human in the session chooses parallel — recorded on one sprint ticket. Every coding session is a sprint — a batch of one is valid.
+A sprint is the unit of work: a batch of `ready` tickets driven through build → review → merge — one at a time unless the human in the session chooses parallel — recorded on one sprint ticket. Every coding session is a sprint — a batch of one is valid. A sprint covers **exactly one project — the session's own**: work in another project is another session, run in that project's directory, on that project's lane.
 
 The roles are the roster's (`skills/tandem-team/SKILL.md`): the session runs the sprint, the `refiner` shapes tickets, the `builder` builds, the `reviewer` gates the merge, the human answers what only a human can.
 
@@ -14,6 +14,8 @@ The roles are the roster's (`skills/tandem-team/SKILL.md`): the session runs the
 Start the session record (`AGENTS.md` — `session start`, `session link --ticket` for what this sprint carries), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's curated note, the open threads.
 
 ## 2. Triage
+
+**The lane is derived, never guessed.** The project is the basename of the directory the session runs in — and a worktree names its project: the `-wt-<slug>` suffix (e.g. `~/projects/tandem-wt-sprint`) strips to `tandem`. Outside a git repo the basename stands on its own. Match that name **case-insensitively** against the existing lane names — discover them with `tandem-cli ticket list --filter all --archived`, reading the `lane` values — and from then on every `--lane` carries the lane's **stored spelling**: the CLI's lane filter is an exact, case-sensitive match. **No matching lane** → ask the human: `lane add` is a human call. Until it is answered, no sprint opens; the session still files its own session ticket in the default area per `AGENTS.md`.
 
 Fill `ready` before you draw from it — `tandem-cli ticket list --filter open --lane <lane> --status backlog,refined,ready`:
 
@@ -87,7 +89,7 @@ A decision ticket's body is the channel — there is no comment field for it. Th
 B — <what was chosen, and any condition>
 ```
 
-Then in one write: keep the answer, reset `assignee`, set the status the answer opens — `ready` if buildable, `backlog` if it needs re-refining, `done` if settled. Every pass starts with `ticket list --assignee human`: a human ticket never goes back to an agent unread.
+Then in one write: keep the answer, reset `assignee`, set the status the answer opens — `ready` if buildable, `backlog` if it needs re-refining, `done` if settled. Every pass starts with `ticket list --assignee human`: a human ticket never goes back to an agent unread. The read is whole-board on purpose — an answer left unread is a worse failure than a read that spans lanes — but acting on another lane's ticket belongs to that project's own sprint.
 
 ## 6. Close
 
