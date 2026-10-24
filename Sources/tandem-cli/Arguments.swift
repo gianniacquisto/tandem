@@ -56,6 +56,12 @@ enum Command {
     case sessionLink(ticket: String, session: String?)
     case sessionList(project: String?, status: String?)
     case sessionShow(session: String?)
+    case sprintOpen(lane: String, mode: String?, session: String?)
+    case sprintTicket(lane: String, ticket: String)
+    case sprintRun(lane: String, note: String)
+    case sprintClose(lane: String, note: String?)
+    case sprintList(lane: String?, status: String?)
+    case sprintShow(lane: String, number: String)
 }
 
 /// A usage failure — no arguments, an unknown subcommand, an unknown flag, or a
@@ -86,6 +92,8 @@ func parseCommand(_ args: [String]) throws -> Command {
         return try parseNote(Array(args.dropFirst()))
     case "session":
         return try parseSession(Array(args.dropFirst()))
+    case "sprint":
+        return try parseSprint(Array(args.dropFirst()))
     default:
         throw UsageError()
     }
@@ -318,6 +326,73 @@ private func parseSession(_ args: [String]) throws -> Command {
     case "show":
         try accept(flags, ["--session"])
         return .sessionShow(session: flags["--session"])
+    default:
+        throw UsageError()
+    }
+}
+
+// MARK: - sprint
+
+/// `sprint open|ticket|run|close|list|show` — the sprint record (spec
+/// `4F746EFE`): a record of one sprint's run — its lane, batch, run log and
+/// close.
+///
+/// **A sprint is not a ticket.** It has its own file (`sprints.json`) and its
+/// own vocabulary — `open`/`closed` for the state, `serial`/`parallel` for the
+/// mode — so the flags here never borrow the board's `--status` values.
+///
+/// **The handle is the pair (lane, number), and the lane-only verbs target the
+/// open record.** `show` names the pair; `ticket`, `run` and `close` name only
+/// the lane and act on the lane's open sprint — `main` resolves the number,
+/// because a lane holds at most one open record. The `--session` default is
+/// the environment's (`$OPENCODE_SESSION_ID`), resolved in `main`, the
+/// session group's rule.
+///
+/// The rule every verb below follows is the CLI's own: an absent flag takes
+/// the default, a present-but-empty one is the empty value the core rejects
+/// (or reads as the empty field).
+private func parseSprint(_ args: [String]) throws -> Command {
+    guard let verb = args.first else { throw UsageError() }
+    let flags = try parseFlags(Array(args.dropFirst()))
+    switch verb {
+    case "open":
+        try accept(flags, ["--lane", "--mode", "--session"])
+        // A missing `--lane` is the empty lane name the core refuses
+        // (`emptyLaneName`), exactly as a missing `--name` is on `lane add`.
+        // A missing `--session` falls back to `$OPENCODE_SESSION_ID` in
+        // `main`; a present-but-empty one is no session (the core trims it
+        // to `nil`).
+        return .sprintOpen(
+            lane: flags["--lane"] ?? "",
+            mode: flags["--mode"],
+            session: flags["--session"])
+    case "ticket":
+        try accept(flags, ["--lane", "--ticket"])
+        // A missing `--ticket` is the empty id the store rejects with the
+        // unknown-ticket failure, as `session link` does.
+        return .sprintTicket(lane: flags["--lane"] ?? "", ticket: flags["--ticket"] ?? "")
+    case "run":
+        try accept(flags, ["--lane", "--note"])
+        // A missing `--note` is the empty note the core refuses
+        // (`emptySprintNote`); `--note -` is read from stdin (multi-line text
+        // is a quoting trap); `main` recognizes the dash, because stdin
+        // belongs to the adapter.
+        return .sprintRun(lane: flags["--lane"] ?? "", note: flags["--note"] ?? "")
+    case "close":
+        try accept(flags, ["--lane", "--note"])
+        // `--note` is optional: a close that names no note is the stamp
+        // alone. `--note -` is stdin, as `--note` is on `run`.
+        return .sprintClose(lane: flags["--lane"] ?? "", note: flags["--note"])
+    case "list":
+        try accept(flags, ["--lane", "--status"])
+        // Absent `--lane` reports every lane; absent `--status` every state.
+        // A status that is not one of the two is a domain failure.
+        return .sprintList(lane: flags["--lane"], status: flags["--status"])
+    case "show":
+        try accept(flags, ["--lane", "--number"])
+        // A missing `--lane` is the empty lane name; a missing `--number` is
+        // the empty value the number parse refuses. The pair is the handle.
+        return .sprintShow(lane: flags["--lane"] ?? "", number: flags["--number"] ?? "")
     default:
         throw UsageError()
     }

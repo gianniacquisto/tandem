@@ -106,6 +106,24 @@ public enum StoreEncoding {
         return try serialize(object)
     }
 
+    /// The `sprint open` / `ticket` / `run` / `close` / `show` result: the
+    /// sprint record, with a top-level `note` when non-nil — a second `open`
+    /// or `close` for a record that already stands carries one.
+    public static func sprintResult(_ sprint: Sprint, note: String?) throws -> String {
+        var object = try sprintObject(sprint)
+        if let note { object["note"] = note }
+        return try serialize(object)
+    }
+
+    /// The `sprint list` result: `{"sprints": [...]}` — the records newest
+    /// `openedAt` first — with a top-level `note` when non-nil. An empty
+    /// result is a successful empty list, never an error.
+    public static func sprintsResult(_ sprints: [Sprint], note: String?) throws -> String {
+        var object: [String: Any] = ["sprints": try sprints.map { try sprintObject($0) }]
+        if let note { object["note"] = note }
+        return try serialize(object)
+    }
+
     /// The `archive` result: `{"archived": <n>}`, with a top-level `note` when non-nil.
     /// A bulk operation reports how much it did, not which tickets it touched — the
     /// caller's next `list` has the tickets, and the count keeps the reply one line.
@@ -238,6 +256,17 @@ public enum StoreEncoding {
         let data = try JSONEncoder().encode(session)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StoreIOError.io("could not encode session for result")
+        }
+        return object
+    }
+
+    /// A single sprint record as a JSON-compatible object. Encodes through
+    /// `Sprint`'s custom `Codable`, so the dates are ISO-8601 UTC and every
+    /// key is present — `null` included — exactly as in `sprints.json`.
+    private static func sprintObject(_ sprint: Sprint) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(sprint)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw StoreIOError.io("could not encode sprint for result")
         }
         return object
     }

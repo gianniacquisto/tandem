@@ -37,12 +37,20 @@ enum Usage {
       tandem-cli session link --ticket <id> [--session <id>]
       tandem-cli session list [--project <name>] [--status <value>]
       tandem-cli session show [--session <id>]
+      tandem-cli sprint open --lane <name> [--mode serial|parallel] [--session <id>]
+      tandem-cli sprint ticket --lane <name> --ticket <id>
+      tandem-cli sprint run --lane <name> --note <string|->
+      tandem-cli sprint close --lane <name> [--note <string|->]
+      tandem-cli sprint list [--lane <name>] [--status open|closed]
+      tandem-cli sprint show --lane <name> --number <n>
       tandem-cli doctor
       tandem-cli --help | -h
 
     Values:
       status    backlog | refined | ready | in-progress | in-review | done
                 running | ended — a session's status, on `session list`
+                open | closed — a sprint's status, on `sprint list`
+      mode      serial | parallel — how a sprint's batch was built
       filter    open (default) | done | all
       assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
       origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it

@@ -136,10 +136,16 @@ tandem-cli session end [--session <id>] [--outcome <value>] [--summary <string|-
 tandem-cli session link --ticket <id> [--session <id>]
 tandem-cli session list [--project <name>] [--status <value>]
 tandem-cli session show [--session <id>]
+tandem-cli sprint open --lane <name> [--mode serial|parallel] [--session <id>]
+tandem-cli sprint ticket --lane <name> --ticket <id>
+tandem-cli sprint run --lane <name> --note <string|->
+tandem-cli sprint close --lane <name> [--note <string|->]
+tandem-cli sprint list [--lane <name>] [--status open|closed]
+tandem-cli sprint show --lane <name> --number <n>
 tandem-cli doctor
 ```
 
-The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `done`; a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status.
+The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `done`; a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status. A sprint keeps its own vocabulary too — `open` and `closed`, with a batch built `serial` or `parallel` — and never borrows the board's Status either.
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 
