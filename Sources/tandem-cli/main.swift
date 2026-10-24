@@ -16,7 +16,9 @@ import TandemCore
 // `archiveDone`, `append(ticketID:author:body:)`, `list(ticketID:)`,
 // `addLane`, `renameLane`, `deleteLane`, `rename`, `capture`,
 // `stats`, `health`, `DescriptionBody.required`, `Sessions.start`,
-// `Sessions.end`, `Sessions.link`, `Sessions.list`, `Sessions.show`) and the
+// `Sessions.end`, `Sessions.link`, `Sessions.list`, `Sessions.show`,
+// `Sprints.open`, `Sprints.ticket`, `Sprints.run`, `Sprints.close`,
+// `Sprints.list`, `Sprints.show`) and the
 // encoding (`StoreEncoding`, `tandemErrorText`) stay in TandemCore, which the
 // single test seam (`TandemCoreTests`) covers. The two things that belong to a
 // process rather than to the domain live here: stdin and the environment.
@@ -243,6 +245,56 @@ func dispatch(_ args: [String]) -> Int32 {
             let notes = try Bikeshed().sessionNotes(session: id).value
             return try StoreEncoding.sessionDetailResult(result.value, notes: notes, note: result.note)
         }
+    case .sprintOpen(let lane, let mode, let session):
+        return run {
+            // The opening session's handle is the flag's, else the host's —
+            // and an unset environment is a domain failure, the session
+            // group's rule: an invented id is a record nothing can look up
+            // again.
+            let result = try Sprints().open(
+                lane: lane,
+                mode: try sprintMode(mode),
+                session: try sessionID(session))
+            return try StoreEncoding.sprintResult(result.value, note: result.note)
+        }
+    case .sprintTicket(let lane, let ticket):
+        return run {
+            // The handle first: the lane's open sprint is resolved before the
+            // board is asked, so a mistyped lane is reported as one.
+            let id = try ticketID(ticket)
+            let number = try openSprintNumber(lane: lane)
+            // An id the store does not carry is the core's own
+            // `unknownTicketID` failure — the whole board, archive included.
+            let result = try Sprints().ticket(
+                lane: lane, number: number, ticketID: id, on: Store())
+            return try StoreEncoding.sprintResult(result.value, note: result.note)
+        }
+    case .sprintRun(let lane, let note):
+        return run {
+            let body = try sprintNote(note)
+            let number = try openSprintNumber(lane: lane)
+            let result = try Sprints().run(lane: lane, number: number, note: body)
+            return try StoreEncoding.sprintResult(result.value, note: result.note)
+        }
+    case .sprintClose(let lane, let note):
+        return run {
+            // `--note` optional: absent is the stamp alone; `--note -` is
+            // stdin, whose empty body the core refuses.
+            let body: String? = try note.map { try sprintNote($0) }
+            let number = try closeSprintNumber(lane: lane)
+            let result = try Sprints().close(lane: lane, number: number, note: body)
+            return try StoreEncoding.sprintResult(result.value, note: result.note)
+        }
+    case .sprintList(let lane, let status):
+        return run {
+            let result = try Sprints().list(lane: lane, status: try sprintStatus(status))
+            return try StoreEncoding.sprintsResult(result.value, note: result.note)
+        }
+    case .sprintShow(let lane, let number):
+        return run {
+            let result = try Sprints().show(lane: lane, number: try sprintNumber(number))
+            return try StoreEncoding.sprintResult(result.value, note: result.note)
+        }
     }
 }
 
@@ -441,6 +493,84 @@ func sessionOutcome(_ raw: String?) throws -> SessionOutcome {
         throw DomainError.invalidSessionOutcome(raw)
     }
     return outcome
+}
+
+// MARK: - sprint
+
+/// A sprint's mode: the `--mode` value; absent is `serial` — the skill's
+/// default, stored either way. A value that is not one of the two is the
+/// core's own failure, naming them.
+func sprintMode(_ raw: String?) throws -> SprintMode {
+    guard let raw else { return .serial }
+    guard let mode = SprintMode(rawValue: raw) else {
+        throw DomainError.invalidSprintMode(raw)
+    }
+    return mode
+}
+
+/// The status a sprint list is filtered by: absent is every state, and a
+/// value that is not one of the two is the core's own failure, naming them.
+func sprintStatus(_ raw: String?) throws -> SprintStatus? {
+    guard let raw else { return nil }
+    guard let status = SprintStatus(rawValue: raw) else {
+        throw DomainError.invalidSprintStatus(raw)
+    }
+    return status
+}
+
+/// `sprint show`'s number — the second half of the pair handle. A value that
+/// is not a whole number is a domain failure naming it.
+func sprintNumber(_ raw: String) throws -> Int {
+    guard let number = Int(raw) else { throw DomainError.invalidSprintNumber(raw) }
+    return number
+}
+
+/// A ticket id for the batch: parsed as a UUID, the type the core takes. A
+/// value that does not parse is the same unknown-ticket failure a
+/// well-formed id the store does not carry gets — `session link`'s rule,
+/// "a malformed id is the same failure, not a crash".
+func ticketID(_ raw: String) throws -> UUID {
+    guard let id = UUID(uuidString: raw) else {
+        throw DomainError.unknownTicketID(raw)
+    }
+    return id
+}
+
+/// A sprint note: the flag's own value, or the text piped in when the flag
+/// is `-`. The empty body is left to the core's own refusal
+/// (`emptySprintNote`) — an empty pipe is not a landing without words, and
+/// the core owns the rule the way it owns every stdin body.
+func sprintNote(_ raw: String) throws -> String {
+    guard raw == "-" else { return raw }
+    return try readStandardInput()
+}
+
+/// The number of the lane's open sprint — the record `sprint ticket` and
+/// `sprint run` act on, resolved from the file because the lane-only verbs
+/// name no number. A lane holds at most one open record (`open` refuses a
+/// second), so the first open row is the one.
+func openSprintNumber(lane: String) throws -> Int {
+    let open = try Sprints().list(lane: lane, status: .open)
+    guard let sprint = open.value.first else {
+        throw DomainError.noOpenSprint(lane: lane)
+    }
+    return sprint.number
+}
+
+/// The number `sprint close` acts on: the lane's open sprint — or, when the
+/// lane's sprint has already closed, the lane's newest record, whose `close`
+/// answers unchanged with its note (the stamp is once, so a re-run of the
+/// skill's close step cannot restate it). A lane with no records at all is
+/// the no-open-sprint failure.
+func closeSprintNumber(lane: String) throws -> Int {
+    if let open = try Sprints().list(lane: lane, status: .open).value.first {
+        return open.number
+    }
+    let records = try Sprints().list(lane: lane)
+    guard let newest = records.value.first else {
+        throw DomainError.noOpenSprint(lane: lane)
+    }
+    return newest.number
 }
 
 // MARK: - session usage (spec F68948C0)
