@@ -299,21 +299,23 @@ final class TandemModel {
     }
 
     /// Applies the ticket sheet's edits. Fields travel through **one** `set` (title, Status,
-    /// body — each only when it actually changed), and the lane is its own `move`, because
-    /// changing a lane also decides where in the lane the ticket lands. A sheet that was
-    /// opened, read, and saved writes nothing.
+    /// body, assignee — each only when it actually changed), and the lane is its own `move`,
+    /// because changing a lane also decides where in the lane the ticket lands. A sheet that
+    /// was opened, read, and saved writes nothing.
     func saveTicket(_ id: String, edits: TicketEdits) {
         guard let stored = tickets.first(where: { $0.id.uuidString == id }) else { return }
         let trimmedBody = edits.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let titleChanged = edits.title != stored.title
         let bodyChanged = (stored.description ?? "") != trimmedBody
         let statusChanged = edits.status != stored.status
-        if titleChanged || bodyChanged || statusChanged {
+        let assigneeChanged = edits.assignee != stored.assignee
+        if titleChanged || bodyChanged || statusChanged || assigneeChanged {
             run {
                 try self.store.set(
                     id,
                     title: titleChanged ? .set(edits.title) : .unchanged,
                     status: statusChanged ? .set(edits.status) : .unchanged,
+                    assignee: assigneeChanged ? .set(edits.assignee) : .unchanged,
                     description: bodyChanged ? .set(trimmedBody) : .unchanged)
             }
         }
