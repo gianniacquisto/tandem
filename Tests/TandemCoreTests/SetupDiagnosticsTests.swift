@@ -30,7 +30,7 @@ struct SetupDiagnosticsTests {
         SetupDiagnostics.Facts(
             homePath: "/Users/tester/.tandem-dev",
             homeSource: homeSource,
-            storePath: "/Users/tester/.tandem-dev/todos.json",
+            storePath: "/Users/tester/.tandem-dev/tickets.json",
             storeHealth: storeHealth,
             storeBackup: storeBackup,
             storeLockHeld: storeLockHeld,

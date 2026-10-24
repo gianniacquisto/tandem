@@ -5,7 +5,9 @@ import Testing
 /// Corrupt-store recovery (ADR 0001) and result-encoding tests.
 ///
 /// Recovery: an invalid file is backed up (under the lock) to
-/// `todos.json.corrupt-<unix-ts>` and the store restarts empty; only the op that
+/// `todos.json.corrupt-<unix-ts>` — or `tickets.json.corrupt-<unix-ts>` after
+/// the handover, the artifact keeping the name of the file it was taken from —
+/// and the store restarts empty; only the op that
 /// performs the recovery surfaces a `note` naming the backup path. Lenient read:
 /// unknown extra fields are ignored. Encoding: `StoreEncoding` + `tandemErrorText`
 /// produce the exact schema-v1 shapes and actionable error text the CLI sends.
@@ -26,12 +28,15 @@ struct RecoveryTests {
         try text.write(to: store.storeFileURL, atomically: false, encoding: .utf8)
     }
 
-    /// Backup filenames present in the store dir (`todos.json.corrupt-*`).
+    /// Backup filenames present in the store dir (`todos.json.corrupt-*` before the
+    /// handover, `tickets.json.corrupt-*` after).
     private func corruptBackups(in dir: URL) -> [String] {
         guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else {
             return []
         }
-        return entries.filter { $0.hasPrefix("todos.json.corrupt-") }.sorted()
+        return entries
+            .filter { $0.hasPrefix("todos.json.corrupt-") || $0.hasPrefix("tickets.json.corrupt-") }
+            .sorted()
     }
 
     private func json(_ text: String) throws -> [String: Any] {

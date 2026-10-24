@@ -466,8 +466,12 @@ struct OrderAndLanesTests {
         #expect(tickets.contains { $0["lane"] as? String == "Work" },
                 "the lane survives the round trip under the renamed key")
         #expect(try store.list(.all).value.count == 2)
-        #expect(preRenameCopies(in: dir).isEmpty,
-                "a file that carries no v1 name gets no safety copy")
+        // The handover's trigger is the legacy *name*, not the keys: a renamed-key
+        // store still named `todos.json` is copied aside (and renamed) all the same.
+        #expect(preRenameCopies(in: dir).count == 1,
+                "the handover copies todos.json aside whatever keys it carries")
+        #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("todos.json").path),
+                "the handover removed the legacy file")
     }
 
     @Test("a v1-named file that also carries the done mirror takes both copies, one write")

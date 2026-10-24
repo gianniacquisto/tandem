@@ -85,6 +85,21 @@ struct LockedDirectory: Sendable {
         }
     }
 
+    /// Flush a **directory's** entries to disk: a `rename(2)` is durable only
+    /// once the directory entry it changed is synced — the file fsync inside
+    /// `atomicWrite` does not cover it. Call while holding the lock, after an
+    /// atomic write whose rename must survive a crash before anything the old
+    /// file was is removed (the store's handover). Tolerates an unopenable
+    /// directory (as the file fsync does); a failing `fsync` throws.
+    func fsyncDirectory() throws {
+        let fd = open(cleanRoot.path, O_RDONLY)
+        guard fd >= 0 else { return }
+        defer { close(fd) }
+        guard Darwin.fsync(fd) == 0 else {
+            throw LockedDirectoryError.posix(op: "fsync directory", code: errno)
+        }
+    }
+
     // MARK: - Locking (private)
 
     /// Acquire the exclusive `flock` on the sidecar lockfile with bounded retry.
