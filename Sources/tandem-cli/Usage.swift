@@ -2,15 +2,6 @@
 /// in the `tandem` skill, so help and the skill are not two homes for the same
 /// contract — `--help` carries the grammar, the skill carries the meaning.
 enum Usage {
-    /// The deprecated group token: `todo` answers for `ticket` for one release
-    /// and says so on stderr. The alias is on the group token, so the whole
-    /// grammar moves at once — one notice, and nothing to keep in step.
-    static let deprecatedAliasToken = "todo"
-
-    /// The one line the alias prints on stderr — and the line the usage text
-    /// carries under the grammar, so the two say the same thing.
-    static let deprecatedAliasNotice = "todo is a deprecated alias, removed in the release after this one"
-
     static let text = """
     tandem-cli — Tandem's agent-facing command line.
 
@@ -28,8 +19,6 @@ enum Usage {
       tandem-cli ticket archive
       tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
       tandem-cli ticket comment list --id <id>
-
-      todo is a deprecated alias, removed in the release after this one
 
       tandem-cli lane add --name <name>
       tandem-cli lane rename --from <name> --to <name>
