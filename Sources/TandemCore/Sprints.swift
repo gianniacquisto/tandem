@@ -749,10 +749,44 @@ public struct Sprints: Sendable {
             .map(\.element)
     }
 
+    // MARK: - Display grouping
+
+    /// The records grouped by lane for display (spec `4F746EFE`, R3).
+    ///
+    /// **The rule lives in the core because the core is the only test seam**
+    /// (the `QuickOpen.rank` precedent): the app's Sprints tab and any later
+    /// reader of the record must reach the same grouping rather than
+    /// lookalikes. The lanes come out in first-appearance order — the newest
+    /// sprint's lane first — and the sprints inside a group keep the order
+    /// they arrive in, which is `list`'s own: newest `openedAt` first. The
+    /// grouping is a fold, not a sort, so it never reshuffles a read.
+    public static func groupedByLane(_ sprints: [Sprint]) -> [SprintLaneGroup] {
+        var order: [String] = []
+        var byLane: [String: [Sprint]] = [:]
+        for sprint in sprints {
+            if byLane[sprint.lane] == nil { order.append(sprint.lane) }
+            byLane[sprint.lane, default: []].append(sprint)
+        }
+        return order.map { SprintLaneGroup(lane: $0, sprints: byLane[$0] ?? []) }
+    }
+
     /// Now, truncated to the stored form of a timestamp: the file keeps whole
     /// seconds, so the in-memory value is the same shape — a record equals what
     /// a later read gives back.
     private static func now() -> Date {
         Date(timeIntervalSince1970: Date.now.timeIntervalSince1970.rounded())
+    }
+}
+
+/// One lane's sprints, grouped for display (spec `4F746EFE`, R3) — the lane's
+/// name and its records in the order they arrived (newest `openedAt` first,
+/// the core's own list order, kept).
+public struct SprintLaneGroup: Sendable, Hashable {
+    public let lane: String
+    public let sprints: [Sprint]
+
+    public init(lane: String, sprints: [Sprint]) {
+        self.lane = lane
+        self.sprints = sprints
     }
 }
