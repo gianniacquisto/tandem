@@ -20,6 +20,10 @@ enum MainTab: String, CaseIterable, Identifiable {
     /// (`sessions.json`), read-only, and the place a session's record is read
     /// now that the sessions left the board (spec `FC770B8A`).
     case sessions = "Sessions"
+    /// The sprint records — the artifacts a sprint leaves behind
+    /// (`sprints.json`), read-only, in the record's own two states (`open`,
+    /// `closed`) — never the board's (spec `4F746EFE`, R3).
+    case sprints = "Sprints"
     case bikeshed = "Bikeshed"
     var id: String { rawValue }
 }
@@ -56,7 +60,11 @@ struct BikeTabControl: View {
                 .buttonStyle(.plain)
             }
         }
-        .frame(width: 420, height: Space.control)
+        // 504 pt: six labelled tabs at the 760 pt window floor — 84 pt per
+        // tab, the per-tab width the fifth tab's move settled (340 → 420),
+        // so every label ("Sessions" the widest at ~62 pt) draws whole with
+        // no truncation.
+        .frame(width: 504, height: Space.control)
         .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.paper))
         .clipShape(RoundedRectangle(cornerRadius: Radius.control))
         .overlay(RoundedRectangle(cornerRadius: Radius.control)
