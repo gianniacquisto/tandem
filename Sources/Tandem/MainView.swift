@@ -4,7 +4,8 @@ import TandemCore
 /// The main window in reach B — subtle Ligne Claire (ticket 01 verdict).
 ///
 ///   Header    — the "Tandem" wordmark and the Tickets/Board/Inbox/Sessions/
-///               Bikeshed tab control, closed by a hairline (identical on every tab)
+///               Sprints/Bikeshed tab control, closed by a hairline (identical
+///               on every tab)
 ///   Tickets   — a centered 540 pt column: flat parchment quick-add
 ///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All/
 ///               Archived with live counts (⌘1–⌘4) on a row with "+ Cycle lane" and
@@ -30,6 +31,11 @@ import TandemCore
 ///               sessions leave behind in `sessions.json`, grouped by project.
 ///               Read-only, and in the record's own words (`running`, `ended`);
 ///               a row opens the record's sheet — its brief, its notes, its tickets
+///   Sprints   — the sprint records (SprintsFace.swift): the artifacts a sprint
+///               leaves behind in `sprints.json`, grouped by lane. Read-only,
+///               and in the record's own words (`open`, `closed`); a row opens
+///               the record's sheet — its batch, its runs, its close, its
+///               opening session, its times
 ///   Bikeshed  — the notes face (BikeFace.swift): tree sidebar, the WKWebView
 ///               editor, the backlinks dock
 ///   ⌘K        — the quick-open palette over the window: one ranked list of
@@ -110,6 +116,16 @@ struct MainView: View {
                                  bikeModel: bikeModel,
                                  palette: palette,
                                  onOpenLink: openLinkedNote)
+                    .frame(maxWidth: 540)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            } else if tab == .sprints {
+                // The sprint records (spec `4F746EFE`, R3): read-only, in the
+                // record's own vocabulary — `open` and `closed`, never the
+                // board's `backlog` and `done`.
+                SprintsFaceView(model: model,
+                                bikeModel: bikeModel,
+                                palette: palette,
+                                onOpenLink: openLinkedNote)
                     .frame(maxWidth: 540)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
