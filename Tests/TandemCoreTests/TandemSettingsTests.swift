@@ -236,4 +236,81 @@ struct TandemSettingsTests {
         try Data("not json at all".utf8).write(to: settingsFile(in: home))
         #expect(TandemSettings.showHiddenFiles(in: home) == false)
     }
+
+    // MARK: - The roster (the reassignment picker's names, ticket 4B7CD193)
+
+    @Test("no settings file → the six-role seed roster")
+    func rosterDefaultIsSeed() {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        #expect(TandemSettings.roster(in: home) == TandemSettings.defaultRoster)
+        #expect(TandemSettings.defaultRoster
+                == ["human", "builder", "refiner", "reviewer", "consolidator", "sprint"])
+    }
+
+    @Test("valid JSON without the roster key reads as the seed")
+    func missingRosterKeyIsSeed() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try Data(#"{"setupComplete": true}"#.utf8).write(to: settingsFile(in: home))
+        #expect(TandemSettings.roster(in: home) == TandemSettings.defaultRoster)
+    }
+
+    @Test("a stored roster reads back")
+    func storedRosterReadsBack() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setRoster(["human", "poet", "builder"], in: home)
+        #expect(TandemSettings.roster(in: home) == ["human", "poet", "builder"])
+    }
+
+    @Test("an edited roster persists through the file: the restart round-trip")
+    func editedRosterRoundTripsThroughFile() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setSetupComplete(true, in: home)
+        try TandemSettings.setRoster(["human", "builder", "poet"], in: home)
+        // The settings file is re-read on every getter, so a fresh read is the
+        // restart; the other settings survive the roster write.
+        let data = try Data(contentsOf: settingsFile(in: home))
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(json?["roster"] as? [String] == ["human", "builder", "poet"])
+        #expect(TandemSettings.roster(in: home) == ["human", "builder", "poet"])
+        #expect(TandemSettings.setupComplete(in: home))
+    }
+
+    @Test("an empty stored roster reads as empty, not as the seed")
+    func emptyRosterStaysEmpty() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setRoster([], in: home)
+        #expect(TandemSettings.roster(in: home) == [])
+    }
+
+    @Test("a roster write trims names and drops blank ones")
+    func rosterWriteTrims() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try TandemSettings.setRoster(["  poet  ", "", "   ", "builder"], in: home)
+        #expect(TandemSettings.roster(in: home) == ["poet", "builder"])
+    }
+
+    @Test("a malformed roster value (not an array of strings) reads as the seed")
+    func malformedRosterIsSeed() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try Data(#"{"roster": "human,builder"}"#.utf8).write(to: settingsFile(in: home))
+        #expect(TandemSettings.roster(in: home) == TandemSettings.defaultRoster)
+    }
+
+    @Test("a corrupt settings file reads as the seed roster, never a crash")
+    func corruptFileIsSeedRoster() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try Data("not json at all".utf8).write(to: settingsFile(in: home))
+        #expect(TandemSettings.roster(in: home) == TandemSettings.defaultRoster)
+    }
 }
