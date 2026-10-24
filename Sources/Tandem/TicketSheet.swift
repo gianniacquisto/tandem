@@ -14,8 +14,11 @@ import TandemCore
 ///
 /// The body is markdown as stored — no rendering, so nothing can hide a character an agent
 /// wrote — and Save is the same instruction the CLI's `set` makes, not a parallel write.
-/// Assignee is read-only here: assignment is an agent's instruction, and the inbox is where
-/// the human answers it. Origin is read-only for the stronger reason: it is stamped at
+/// Assignee is a picker over the roster (ticket 4B7CD193): the names the Settings view
+/// keeps, plus Unassigned and `human` — the picker's constants — plus the ticket's own
+/// assignee when it is off-roster. A choice rides the same single `set(id, …)` write the
+/// other fields take; Unassigned is the clear. Origin is read-only for the stronger
+/// reason: it is stamped at
 /// add and never edited, so the sheet only shows who filed the ticket — "you filed", or
 /// the agent's name — which is how triage starts with "what did I ask for?"
 ///
@@ -28,6 +31,10 @@ struct TicketSheet: View {
     var ticket: Ticket
     var palette: Palette
     var lanes: [String]
+    /// The roster — the names the assignee picker offers. The caller reads it
+    /// from `TandemSettings.roster()` so the sheet cannot disagree with the
+    /// Settings view's list.
+    var roster: [String]
     /// Called with the sheet's values; the caller writes what changed and dismisses.
     var onSave: (TicketEdits) -> Void
     var onCancel: () -> Void
@@ -57,6 +64,9 @@ struct TicketSheet: View {
     @State private var title: String
     @State private var status: Status
     @State private var lane: String?
+    /// The sheet's own copy of the assignee: seeded from the ticket, changed by
+    /// the picker, written by Save through `TicketEdits.assignee`.
+    @State private var assignee: String?
     @State private var bodyText: String
     /// The ticket's note link. Seeded from the ticket, then owned by the sheet: a
     /// promotion writes a new link the open ticket does not know about yet.
@@ -83,7 +93,7 @@ struct TicketSheet: View {
 
     private enum Field { case title, body }
 
-    init(ticket: Ticket, palette: Palette, lanes: [String],
+    init(ticket: Ticket, palette: Palette, lanes: [String], roster: [String],
          onSave: @escaping (TicketEdits) -> Void,
          onCancel: @escaping () -> Void,
          onComment: @escaping (String) -> CommentPostOutcome,
@@ -93,6 +103,7 @@ struct TicketSheet: View {
         self.ticket = ticket
         self.palette = palette
         self.lanes = lanes
+        self.roster = roster
         self.onSave = onSave
         self.onCancel = onCancel
         self.onComment = onComment
@@ -102,6 +113,7 @@ struct TicketSheet: View {
         _title = State(initialValue: ticket.title)
         _status = State(initialValue: ticket.status)
         _lane = State(initialValue: ticket.lane)
+        _assignee = State(initialValue: ticket.assignee)
         _bodyText = State(initialValue: ticket.description ?? "")
         _link = State(initialValue: ticket.link)
         // The seed read no longer happens here: the sheet reads the log itself,
@@ -160,11 +172,16 @@ struct TicketSheet: View {
                         choose(name, selected: lane == name) { lane = name }
                     }
                 }
-                if let assignee = ticket.assignee {
-                    Text(assignee == TicketQuery.human ? "human" : "@\(assignee)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(assignee == TicketQuery.human ? palette.emberDeep
-                                                                     : palette.inkDim)
+                // The reassignment picker (ticket 4B7CD193): the roster plus
+                // Unassigned, plus the ticket's own assignee when it is
+                // off-roster — the rule lives in the core (`AssigneePicker`).
+                picker("Assignee", value: assigneeDisplay) {
+                    ForEach(AssigneePicker.options(roster: roster,
+                                                   current: ticket.assignee),
+                            id: \.self) { option in
+                        choose(option.map(Self.label(for:)) ?? "Unassigned",
+                               selected: option == assignee) { assignee = option }
+                    }
                 }
                 // The filer, read-only (the type will not let a write touch it):
                 // `human` reads as "you", an agent as its name. The agent's filing is
@@ -232,7 +249,8 @@ struct TicketSheet: View {
                     onSave(TicketEdits(title: trimmedTitle,
                                        description: bodyText,
                                        status: status,
-                                       lane: lane))
+                                       lane: lane,
+                                       assignee: assignee))
                 }
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(!canSave)
@@ -490,6 +508,21 @@ struct TicketSheet: View {
         }
     }
 
+    /// The picker's own label: Unassigned, `human`, or the name with its @ — the
+    /// read-only chip's vocabulary, now the picker's value.
+    private var assigneeDisplay: String {
+        switch assignee {
+        case nil: return "Unassigned"
+        case .some(let name): return Self.label(for: name)
+        }
+    }
+
+    /// One name as the picker draws it: `human` unadorned (the reserved word),
+    /// an agent as `@name`.
+    static func label(for name: String) -> String {
+        name == TicketQuery.human ? "human" : "@\(name)"
+    }
+
     /// A quiet "label · value ⌄" chip, the sheet's one control shape.
     @ViewBuilder
     private func picker<Content: View>(_ label: String, value: String,
@@ -532,11 +565,13 @@ struct TicketSheet: View {
 
 /// The field changes a ticket sheet proposes. The caller compares them with the stored
 /// ticket and writes only what moved — a sheet that was opened, read, and saved is free.
+/// `assignee` is the picker's choice: `nil` is Unassigned, the store's clear.
 struct TicketEdits {
     var title: String
     var description: String
     var status: Status
     var lane: String?
+    var assignee: String?
 }
 
 /// The log with one more comment on it: what the sheet draws after the human's
