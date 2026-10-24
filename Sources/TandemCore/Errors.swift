@@ -83,6 +83,16 @@ public enum DomainError: Error, Sendable, Equatable {
     /// A sprint mode that is not `serial` or `parallel`. The board's `Status`
     /// is a different vocabulary, and so is its own failure.
     case invalidSprintMode(String)
+    /// `ticket`/`run` was asked for a lane that has no open sprint — the
+    /// lane-only handle resolves to the open record, and there is none. The
+    /// next step is the sprint's own `open`.
+    case noOpenSprint(lane: String)
+    /// `list` was called with a sprint status that is not `open` or `closed`.
+    /// The board's `Status` is a different vocabulary, and so is its own
+    /// failure.
+    case invalidSprintStatus(String)
+    /// `show` was given a sprint number that is not a whole number.
+    case invalidSprintNumber(String)
     /// A session status that is not `running` or `ended`. The board's `Status`
     /// is a different vocabulary, and so is its own failure.
     case invalidSessionStatus(String)
@@ -164,6 +174,12 @@ public enum DomainError: Error, Sendable, Equatable {
             return "Unknown sprint \"Sprint \(number) — \(lane)\". Here are the sprints lane \"\(lane)\" holds: \(known.map(String.init).joined(separator: ", "))."
         case .invalidSprintMode(let bad):
             return "mode must be one of \(SprintMode.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
+        case .noOpenSprint(let lane):
+            return "No sprint is open in lane \"\(lane)\". Run `sprint open --lane <lane>` first, or check the lane, and try again."
+        case .invalidSprintStatus(let bad):
+            return "sprint status must be one of \(SprintStatus.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
+        case .invalidSprintNumber(let bad):
+            return "number must be a whole number (got \"\(bad)\")."
         case .invalidSessionStatus(let bad):
             return "session status must be one of \(SessionStatus.wireValues.joined(separator: ", ")) (got \"\(bad)\")."
         case .invalidSessionOutcome(let bad):
