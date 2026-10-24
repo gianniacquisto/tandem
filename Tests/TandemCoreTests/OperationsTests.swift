@@ -526,6 +526,53 @@ struct OperationsTests {
         }
     }
 
+    // MARK: - set (the sheet's assignee write-through, ticket 4B7CD193)
+
+    @Test("set(id, assignee:) persists a named assignee; an unassigned ticket is overwritten")
+    func setAssigneePersists() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        let id = try store.add("Decide the door").value.id.uuidString
+
+        try store.set(id, assignee: .set("builder"))
+        #expect(try store.list(.all).value.first?.assignee == "builder")
+
+        // A fresh Store over the same directory reads it back — the restart.
+        #expect(try Store(directory: dir).list(.all).value.first?.assignee == "builder")
+    }
+
+    @Test("set(id, assignee: .set(nil)) clears to unassigned and persists the clear")
+    func setAssigneeClears() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        let id = try store.add("Decide the door", assignee: "builder").value.id.uuidString
+
+        let cleared = try store.set(id, assignee: .set(nil)).value
+        #expect(cleared.assignee == nil)
+        #expect(try store.list(.all).value.first?.assignee == nil)
+
+        // The clear persists: a fresh Store reads the written nil, not the old name.
+        #expect(try Store(directory: dir).list(.all).value.first?.assignee == nil)
+        let raw = try String(contentsOf: store.storeFileURL, encoding: .utf8)
+        let json = try JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any]
+        let tickets = try #require(json?["tickets"] as? [[String: Any]],
+                                   "the writer key (the vocabulary rename) holds the tickets")
+        #expect(tickets.first?["assignee"] is NSNull, "the clear is written, not left as the old name")
+    }
+
+    @Test("set(id, assignee: .unchanged) leaves the assignee alone")
+    func setAssigneeUnchangedLeavesIt() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        let id = try store.add("Decide the door", assignee: "builder").value.id.uuidString
+
+        let same = try store.set(id, title: .set("Renamed")).value
+        #expect(same.assignee == "builder")
+    }
+
     // MARK: - on-disk round-trip
 
     @Test("on-disk file keeps envelope version 1 (lanes are additive) and round-trips")

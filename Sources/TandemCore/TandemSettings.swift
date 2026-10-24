@@ -2,10 +2,12 @@ import Foundation
 import Darwin
 
 /// The persisted, human-chosen settings Tandem keeps beside its other state:
-/// the bikeshed, the first-run setup flag, and whether the bikeshed's hidden
-/// layer is revealed, in `<TandemHome.directory>/settings.json` (ADR 0011). One
+/// the bikeshed, the first-run setup flag, whether the bikeshed's hidden
+/// layer is revealed, and the reassignment roster, in
+/// `<TandemHome.directory>/settings.json` (ADR 0011). One
 /// tiny `{"bikeshedPath": "<absolute path>", "setupComplete": true,
-/// "showHiddenFiles": false}` record, deliberately separate from the store
+/// "showHiddenFiles": false, "roster": ["human", …]}` record, deliberately
+/// separate from the store
 /// schema and the bikeshed itself — a settings file is not domain data, and a
 /// new setting is one more key, not a schema version bump.
 ///
@@ -28,11 +30,17 @@ public enum TandemSettings {
     /// The key inside `settings.json` holding the lane new tickets are filed into: the
     /// human's last choice, cached so a session of filing does not repeat it.
     private static let defaultLaneKey = "defaultLane"
-    /// The key inside `settings.json` holding whether the bikeshed's hidden layer —
+    /// Whether the bikeshed's hidden layer —
     /// the capture saddlebag (`.raw/`) and the consolidation archive (`.raw/.done/`)
     /// — is revealed in the tree. Off by default: the curated layer is the
     /// reading surface, and the hidden layer is revealed only on request.
     private static let showHiddenFilesKey = "showHiddenFiles"
+    /// The key inside `settings.json` holding the roster — the names the ticket
+    /// sheet's assignee picker offers (ticket 4B7CD193). The SKILL.md roster
+    /// (`skills/tandem-team/SKILL.md`, ADR 0029) stays the agents' source of
+    /// truth; this is the human's editable copy for the app, and the two can
+    /// drift — the human owns both.
+    private static let rosterKey = "roster"
     /// The settings file's name, under `TandemHome.directory`.
     private static let fileName = "settings.json"
 
@@ -93,6 +101,31 @@ public enum TandemSettings {
         try setShowHiddenFiles(shown, in: TandemHome.directory)
     }
 
+    /// The roster the assignee picker offers when no roster was ever stored:
+    /// the six roles of `skills/tandem-team/SKILL.md` (ADR 0029) at the time the
+    /// setting shipped. A stored roster replaces this whole list — it is the
+    /// human's list to edit, not a set to merge into.
+    public static let defaultRoster: [String] = [
+        "human", "builder", "refiner", "reviewer", "consolidator", "sprint",
+    ]
+
+    /// The roster — the names the ticket sheet's assignee picker offers. Read
+    /// from the real `TandemHome.directory`; an absent (or malformed) key reads
+    /// as `defaultRoster`, because a list that was never edited should not
+    /// shrink the picker. An explicitly stored empty list reads as empty: the
+    /// human removed every name, and the picker's own constants (`human`,
+    /// Unassigned) keep it useful anyway.
+    public static func roster() -> [String] {
+        roster(in: TandemHome.directory)
+    }
+
+    /// Persist the roster, writing `settings.json` atomically under the real
+    /// `TandemHome.directory`. Names are trimmed and blank ones dropped — the
+    /// same edge-trim rule every other setting's write applies.
+    public static func setRoster(_ names: [String]) throws {
+        try setRoster(names, in: TandemHome.directory)
+    }
+
     /// The testable seam: `chosenBikeshed()` against an explicit home directory,
     /// so tests never read or write the process's real home.
     static func chosenBikeshed(in home: URL) -> URL? {
@@ -148,6 +181,24 @@ public enum TandemSettings {
     static func setChosenBikeshed(_ url: URL, in home: URL) throws {
         var settings = object(in: home)
         settings[bikeshedKey] = url.standardizedFileURL.path
+        try write(settings, in: home)
+    }
+
+    /// The testable seam: `roster()` against an explicit home directory.
+    static func roster(in home: URL) -> [String] {
+        guard let raw = object(in: home)[rosterKey] as? [Any] else { return defaultRoster }
+        return raw.compactMap { $0 as? String }
+    }
+
+    /// The testable seam: `setRoster(_:)` against an explicit home directory.
+    /// Merges the key onto the existing record (the bikeshed choice, the setup
+    /// flag, and the rest are preserved), then writes atomically. An empty list
+    /// is stored as one: absent means "never edited", empty means "edited to
+    /// nothing".
+    static func setRoster(_ names: [String], in home: URL) throws {
+        var settings = object(in: home)
+        let trimmed = names.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        settings[rosterKey] = trimmed.filter { !$0.isEmpty }
         try write(settings, in: home)
     }
 
