@@ -138,10 +138,16 @@ tandem-cli session end [--session <id>] [--outcome <value>] [--summary <string|-
 tandem-cli session link --ticket <id> [--session <id>]
 tandem-cli session list [--project <name>] [--status <value>]
 tandem-cli session show [--session <id>]
+tandem-cli sprint open --lane <name> [--mode serial|parallel] [--session <id>]
+tandem-cli sprint ticket --lane <name> --ticket <id>
+tandem-cli sprint run --lane <name> --note <string|->
+tandem-cli sprint close --lane <name> [--note <string|->]
+tandem-cli sprint list [--lane <name>] [--status open|closed]
+tandem-cli sprint show --lane <name> --number <n>
 tandem-cli doctor
 ```
 
-The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `done`; a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status.
+The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `done`; a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status. A sprint keeps its own vocabulary too — `open` and `closed`, with a batch built `serial` or `parallel` — and never borrows the board's Status either.
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 
@@ -157,10 +163,12 @@ Not a ticket: `session start` opens a record of one agent session's run — the 
 | --- | --- | --- |
 | `tandem` | the CLI contract an agent reads before it touches the store | v0.9.0 |
 | `tandem-memory` | the bikeshed as the agent's memory: orient from the Hub, record captures as you work, consolidate into the curated notes on request | v0.6.0, the capture-and-consolidation protocol in v0.11.0 |
-| `tandem-sprint` | the SDLC kickoff: orient, triage, batch, and drive each ticket through build and review to merge | v0.15.0 |
+| `tandem-sprint` | the SDLC in one invocation — the loop refine → build → review → retro: orient, triage with refine filling the batch, the batch through `tandem-build`, retro at the close | v0.15.0 |
+| `tandem-build` | the sprint's build phase: each batch ticket claimed, built in its own worktree, gated through review, recorded | v0.15.0 (as `tandem-sprint`; renamed 2026-10-24) |
 | `tandem-refine` | dispatches the refiner to shape a backlog ticket into a buildable brief | v0.16.0 |
 | `tandem-setup` | installs the whole agent face on a host | v0.16.0 |
 | `tandem-consolidate` | dispatches the consolidator pass | v0.16.0 |
+| `tandem-tidy` | the board hygiene pass: sweeps open tickets against landed work, completes the done or moot with evidence, archives, reports the oddities | unreleased |
 
 `skills/grilling/`, `skills/tdd/` and `skills/writing-for-agents/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), so a clone of this repo is the whole workflow; `skills/retro/` is adapted from the same collection, its output filed as tickets on the board.
 

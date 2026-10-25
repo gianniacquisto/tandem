@@ -40,3 +40,13 @@ The roster is the other half. The roles are named across four prompts, a dozen s
 **Why.** The human's call: a clear, opinionated SDLC — sprint as kickoff, refine as its own deliberate mode with its own model choice, retro on human request only. Six passes and three ceremonies had become twelve skills and four agents; the terse pass cut the ones no one was reaching for.
 
 **Consequences.** The ceremony set is now: roster, sprint, retro. The store, the CLI and the app are still untouched — no field, no verb, no surface, no migration. The roster's `standup` and `sprint` role rows are redefined: `sprint` is the session's own agent running the skill, `standup` is gone.
+
+## Amendment, 2026-10-24: the cycle is refine, build, review, retro
+
+**The change.** The human reverses the 2026-10-23 amendment's "the retro leaves the cycle" and "refine as its own deliberate mode" lines: the retro runs at every sprint close — dispatched on the sprint session's own transcript, before the `## Close` is written, since the close is the session's final act — and refine fills the batch: the batch is still five, a cap not a quota, drawn in stored order with `ready` tickets taking the slots first and `backlog` tickets filling the remaining slots, the picked ones refined as part of the run. A lane with five or more ready runs no refine phase; a lane with no ready refines five; a zero-batch (triage-only) session opens no sprint and runs no retro.
+
+**The rename.** The build passes keep their skill under a new name: `skills/tandem-sprint/` becomes `skills/tandem-build/` — the same build → review passes, no new behavior — and `tandem-sprint` names the whole loop, refine → build → review → retro, one skill invocation that runs `tandem-build` for its build phase. The interface is still one invocation; no new command, agent or verb. `skills/tandem-refine/` stays the front door for refine-heavy sessions with a chosen model.
+
+**Why.** The human, 2026-10-24: "sprint should be refine, build, review, retro in one easy to run workflow." Backlog tickets with no brief sat unrefined between sprints, and the retro ran only when asked — two passes outside the loop the human wanted inside it.
+
+**Consequences.** The ceremony set is still roster, sprint, retro — but the retro is now a phase of the sprint, and the sprint's cycle is refine, build, review, retro. The store, the CLI and the app are still untouched — no field, no verb, no surface, no migration.

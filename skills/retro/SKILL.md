@@ -1,6 +1,6 @@
 ---
 name: retro
-description: "Run a retrospective on a coding session and file what it finds as backlog tickets in the Retro lane. Human-invoked: reach for it when the user asks for a retro or a retrospective, or asks what a session should have done differently."
+description: "Run a retrospective on a coding session and file what it finds as backlog tickets in the Retro lane. Runs at every sprint close — the sprint dispatches it on the sprint session's own transcript — and still invocable alone: reach for it when the user asks for a retro or a retrospective, or asks what a session should have done differently."
 ---
 
 Derived from the `retro` skill in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `NOTICE.txt`), adapted: the output is tickets on the board, not a report to the user.

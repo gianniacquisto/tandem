@@ -31,6 +31,16 @@ final class TandemModel {
     /// and no polling is needed.
     private let sessionStore: Sessions
 
+    /// The sprints records' own file (`sprints.json`, beside the ticket
+    /// store). The core owns it, its lock and its vocabulary; the app only
+    /// ever reads it (spec `4F746EFE`, R3).
+    ///
+    /// It is rooted at the **store's own directory**, which makes an agent's
+    /// write visible for free — the file is replaced by rename inside the
+    /// directory the `StoreWatcher` already watches, so no second watcher and
+    /// no polling is needed.
+    private let sprintStore: Sprints
+
     /// All tickets in stored order (the order the human arranged — new tickets land on top;
     /// never re-sorted here).
     private(set) var tickets: [Ticket] = []
@@ -38,11 +48,20 @@ final class TandemModel {
     /// (`Sessions.list`). Read-only: the app never creates, ends or links a
     /// record; an agent does that, through the CLI.
     private(set) var sessions: [Session] = []
+    /// The recorded sprints, newest `openedAt` first — the core's own order
+    /// (`Sprints.list`). Read-only: the app never opens, runs or closes a
+    /// sprint; an agent does that, through the CLI.
+    private(set) var sprints: [Sprint] = []
     /// A note from the sessions file — it names a corrupt file that was kept
     /// aside and the list that restarted empty. The sessions face says so
     /// quietly; the board's banner is about the ticket list, and this is a
     /// different file.
     private(set) var sessionNote: String?
+    /// A note from the sprints file — it names a corrupt file that was kept
+    /// aside and the list that restarted empty. The sprints face says so
+    /// quietly; the board's banner is about the ticket list, and this is a
+    /// different file.
+    private(set) var sprintNote: String?
     /// The declared lane names, in render order. The default (ungrouped) area at the
     /// top of the list is implicit and unnamed, so it is not in here.
     private(set) var lanes: [String] = []
@@ -80,8 +99,9 @@ final class TandemModel {
     private init(store: Store = Store()) {
         self.store = store
         // The sessions file lives in the store's directory — the one the
-        // watcher below already watches.
+        // watcher below already watches. So does the sprints file.
         self.sessionStore = Sessions(directory: store.directory)
+        self.sprintStore = Sprints(directory: store.directory)
         self.defaultLane = TandemSettings.defaultLane()
         // Watch the store *directory* (the file is replaced via atomic rename) so an
         // agent writing the store refreshes the UI without a manual reload.
@@ -107,6 +127,7 @@ final class TandemModel {
             if let lane = defaultLane, !lanes.contains(lane) { setDefaultLane(nil) }
             if let note = result.note { recoveryNote = note }
             reloadSessions()
+            reloadSprints()
             lastError = nil
         } catch {
             apply(error: error)
@@ -120,6 +141,15 @@ final class TandemModel {
         guard let result = try? sessionStore.list() else { return }
         sessions = result.value
         sessionNote = result.note
+    }
+
+    /// The sprint records, read from their own file. A read that fails leaves
+    /// the list as it was: the ticket list and the sprint list are separate
+    /// files, and one of them being unreadable says nothing about the other.
+    private func reloadSprints() {
+        guard let result = try? sprintStore.list() else { return }
+        sprints = result.value
+        sprintNote = result.note
     }
 
     /// The ticket with this id, or `nil` when the store does not hold it —
@@ -269,21 +299,23 @@ final class TandemModel {
     }
 
     /// Applies the ticket sheet's edits. Fields travel through **one** `set` (title, Status,
-    /// body — each only when it actually changed), and the lane is its own `move`, because
-    /// changing a lane also decides where in the lane the ticket lands. A sheet that was
-    /// opened, read, and saved writes nothing.
+    /// body, assignee — each only when it actually changed), and the lane is its own `move`,
+    /// because changing a lane also decides where in the lane the ticket lands. A sheet that
+    /// was opened, read, and saved writes nothing.
     func saveTicket(_ id: String, edits: TicketEdits) {
         guard let stored = tickets.first(where: { $0.id.uuidString == id }) else { return }
         let trimmedBody = edits.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let titleChanged = edits.title != stored.title
         let bodyChanged = (stored.description ?? "") != trimmedBody
         let statusChanged = edits.status != stored.status
-        if titleChanged || bodyChanged || statusChanged {
+        let assigneeChanged = edits.assignee != stored.assignee
+        if titleChanged || bodyChanged || statusChanged || assigneeChanged {
             run {
                 try self.store.set(
                     id,
                     title: titleChanged ? .set(edits.title) : .unchanged,
                     status: statusChanged ? .set(edits.status) : .unchanged,
+                    assignee: assigneeChanged ? .set(edits.assignee) : .unchanged,
                     description: bodyChanged ? .set(trimmedBody) : .unchanged)
             }
         }

@@ -126,6 +126,7 @@ struct BoardFace: View {
                 ticket: ticket,
                 palette: palette,
                 lanes: lanes,
+                roster: TandemSettings.roster(),
                 onSave: { edits in
                     model.saveTicket(ticket.id.uuidString, edits: edits)
                     ticketFor = nil

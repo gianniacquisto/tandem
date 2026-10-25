@@ -301,7 +301,9 @@ enum SessionNotes {
 // MARK: - The sheet
 
 /// One session's record, whole: the brief, the summary, the notes it filed,
-/// the tickets it carried, and when it started and ended.
+/// the tickets it carried, when it started and ended — and, when `end`
+/// reported usage, what it spent (the model, the five token counts, the
+/// cost).
 ///
 /// Read-only by design — the app never creates, ends or links a record, so
 /// there is nothing here to save. What the sheet shows is what the record
@@ -342,6 +344,7 @@ struct SessionSheet: View {
                 ticket: ticket,
                 palette: palette,
                 lanes: model.lanes,
+                roster: TandemSettings.roster(),
                 onSave: { edits in
                     model.saveTicket(ticket.id.uuidString, edits: edits)
                     ticketFor = nil
@@ -448,7 +451,82 @@ struct SessionSheet: View {
                     timeRow("Ended", session.endedAt)
                 }
             }
+            if !usagePieces.isEmpty {
+                // The usage `end` reported, beside the end it stamps: the
+                // record without usage (the older ones) draws no section at
+                // all, and keeps its sheet exactly as it was.
+                section("Usage") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(usagePieces) { piece in
+                            usageRow(piece)
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    // MARK: usage
+
+    /// One usage piece: the record's own word for what `end` reported, and
+    /// the number or model beside it.
+    private struct UsagePiece: Identifiable {
+        let label: String
+        let value: String
+        let monospaced: Bool
+        var id: String { label }
+    }
+
+    /// The pieces the record reports: the model, the five counts in the
+    /// order the record's own usage comment carries them, then the cost. A
+    /// piece `end` did not report is left out — never a zero dressed up as a
+    /// count, the record's own rule. Empty means the record carries no
+    /// usage, and no section is drawn.
+    private var usagePieces: [UsagePiece] {
+        var pieces: [UsagePiece] = []
+        if let model = session.model {
+            pieces.append(UsagePiece(label: "Model", value: model, monospaced: true))
+        }
+        if let tokens = session.tokens {
+            let counts: [(String, Int?)] = [
+                ("Input", tokens.input),
+                ("Output", tokens.output),
+                ("Cache read", tokens.cacheRead),
+                ("Cache write", tokens.cacheWrite),
+                ("Reasoning", tokens.reasoning),
+            ]
+            for (label, count) in counts {
+                if let count {
+                    pieces.append(UsagePiece(label: label, value: Self.formatted(count), monospaced: false))
+                }
+            }
+        }
+        if let cost = session.cost {
+            pieces.append(UsagePiece(label: "Cost", value: String(format: "$%.2f", cost), monospaced: false))
+        }
+        return pieces
+    }
+
+    /// One usage piece: the record's own word on the left, the number or
+    /// model on the right — the sheet's row shape, `timeRow`'s.
+    private func usageRow(_ piece: UsagePiece) -> some View {
+        HStack(spacing: 8) {
+            Text(piece.label)
+                .font(.system(size: 11.5))
+                .foregroundStyle(palette.inkDim)
+                .frame(width: 66, alignment: .leading)
+            Text(piece.value)
+                .font(.system(size: 11.5, design: piece.monospaced ? .monospaced : .default))
+                .foregroundStyle(palette.ink)
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// A token count with thousands separators — the same shape the usage
+    /// comment on a ticket's log carries, en_US grouping.
+    private static func formatted(_ count: Int) -> String {
+        count.formatted(.number.locale(Locale(identifier: "en_US")))
     }
 
     /// A labelled section.

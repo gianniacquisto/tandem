@@ -12,9 +12,9 @@ description: "The roster — which agent fills which role, what to write in --as
 | `refiner` | the `refiner` subagent | `backlog` → `refined` → `ready` | `agents/refiner.md`, dispatched by `skills/tandem-refine/` |
 | `reviewer` | the `reviewer` subagent | the merge gate | `agents/reviewer.md` |
 | `consolidator` | the `consolidator` subagent | the sole writer of the curated bikeshed notes | `agents/consolidator.md`, dispatched by `skills/tandem-consolidate/` |
-| `sprint` | the session's own agent | runs the SDLC: triage, dispatch, record, close | `skills/tandem-sprint/` |
+| `sprint` | the session's own agent | runs the loop — refine, build, review, retro, close | `skills/tandem-sprint/` (build phase: `skills/tandem-build/`) |
 
-`sprint` and `human` fill no subagent — the sprint is a procedure the session runs, the human is the decision. `retro` is not a role: it is a human-invoked skill (`skills/retro/SKILL.md`) that files `backlog` tickets into the Retro lane. Capture is not a role either: it is the session rule in `AGENTS.md`.
+`sprint` and `human` fill no subagent — the sprint is a procedure the session runs, the human is the decision. `retro` is not a role: it is a skill (`skills/retro/SKILL.md`) that runs at every sprint close and on human request, filing `backlog` tickets into the Retro lane. Capture is not a role either: it is the session rule in `AGENTS.md`.
 
 ## The name rule
 
