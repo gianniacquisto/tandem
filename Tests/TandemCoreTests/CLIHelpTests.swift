@@ -25,6 +25,9 @@ struct CLIHelpTests {
         #expect(result.error == "", "a help probe is not an error")
         #expect(result.output.contains("tandem-cli note capture"))
         #expect(result.output.contains("--kind"))
+        #expect(result.output.contains("<decision|gotcha|fact|thread>"),
+            "the four live kinds (the retired `work` kind is gone)")
+        #expect(!result.output.contains("fact|work|thread"), "the retired kind leaves the help")
     }
 
     @Test("ticket add --help and ticket set --help print their own usage, exit 0")

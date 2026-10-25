@@ -117,7 +117,7 @@ struct BikeshedCaptureTests {
         for body in ["", "   ", "\n\n", " \t\n "] {
             #expect(throws: BikeshedError.emptyCaptureBody) {
                 _ = try bikeshed.capture(
-                    project: "tandem", kind: .work, body: body, session: "s", at: instant)
+                    project: "tandem", kind: .fact, body: body, session: "s", at: instant)
             }
         }
         #expect(!FileManager.default.fileExists(atPath: dir.path),
@@ -131,9 +131,9 @@ struct BikeshedCaptureTests {
         let bikeshed = Bikeshed(directory: dir)
 
         for body in ["!!!", "# !!!", "---", "###"] {
-            #expect(throws: BikeshedError.emptyCaptureSlug(kind: "work")) {
+            #expect(throws: BikeshedError.emptyCaptureSlug(kind: "fact")) {
                 _ = try bikeshed.capture(
-                    project: "tandem", kind: .work, body: body, session: "s", at: instant)
+                    project: "tandem", kind: .fact, body: body, session: "s", at: instant)
             }
         }
         #expect(!FileManager.default.fileExists(atPath: dir.path))
@@ -146,8 +146,8 @@ struct BikeshedCaptureTests {
         let bikeshed = Bikeshed(directory: dir)
 
         let path = try bikeshed.capture(
-            project: "tandem", kind: .work, body: "# x\n\nbody", session: "s", at: instant).value
-        #expect(path == "projects/tandem/.raw/s/\(instantStamp)-work-x.md")
+            project: "tandem", kind: .fact, body: "# x\n\nbody", session: "s", at: instant).value
+        #expect(path == "projects/tandem/.raw/s/\(instantStamp)-fact-x.md")
     }
 
     @Test("capture dedupes: same project, kind, and body re-file nothing")
