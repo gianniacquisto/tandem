@@ -290,6 +290,12 @@ enum Usage {
 
         An absent `--project` is the working directory's last path component; an
         absent `--session` is $OPENCODE_SESSION_ID.
+
+        The verb refuses junk at the door (exit 2, nothing filed): an empty or
+        whitespace-only body, and a body whose first non-empty line gives the
+        filename no slug. An exact re-file — same project, kind, and body — is
+        a no-op: exit 0, naming the capture already pending. A consumed capture
+        (one the consolidation pass moved to `.done/`) may be filed again.
         """,
         "note stats": """
         tandem-cli note stats — the memory-health readout.

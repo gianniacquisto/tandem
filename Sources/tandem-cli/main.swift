@@ -166,7 +166,7 @@ func dispatch(_ args: [String]) -> Int32 {
             return try pathResult(result.value)
         }
     case .noteCapture(let kind, let project, let session):
-        return run {
+        return runCapture {
             guard let captureKind = CaptureKind(rawValue: kind) else {
                 throw BikeshedError.invalidCaptureKind(kind: kind)
             }
@@ -175,7 +175,7 @@ func dispatch(_ args: [String]) -> Int32 {
                 kind: captureKind,
                 body: readStandardInput(),
                 session: session ?? captureSessionDefault())
-            return try pathResult(result.value)
+            return try pathResult(result.value, note: result.note)
         }
     case .noteStats(let project):
         return run {
@@ -316,6 +316,28 @@ func run(_ body: () throws -> String) -> Int32 {
     } catch {
         FileHandle.standardError.write(Data((tandemErrorText(error) + "\n").utf8))
         return 1
+    }
+}
+
+/// Run one `note capture` call: `run`'s contract, plus the junk gate's exit
+/// codes (ticket 824CB789). A refused capture is not a retryable domain
+/// failure — an empty body or a slug with no words is the caller's own text to
+/// fix — so those exit 2, the usage-failure code: retrying unchanged cannot
+/// succeed. Every other failure stays a domain exit 1.
+func runCapture(_ body: () throws -> String) -> Int32 {
+    do {
+        print(try body())
+        return 0
+    } catch {
+        let refused: Bool
+        switch error {
+        case BikeshedError.emptyCaptureBody, BikeshedError.emptyCaptureSlug:
+            refused = true
+        default:
+            refused = false
+        }
+        FileHandle.standardError.write(Data((tandemErrorText(error) + "\n").utf8))
+        return refused ? 2 : 1
     }
 }
 
@@ -723,9 +745,11 @@ func sessionStatus(_ raw: String?) throws -> SessionStatus? {
 /// in the same style as `StoreEncoding` (sorted keys, UTF-8). A note operation
 /// has no store-schema encoder of its own, so the CLI builds the one-value
 /// object here.
-func pathResult(_ path: String) throws -> String {
+func pathResult(_ path: String, note: String? = nil) throws -> String {
+    var object: [String: Any] = ["path": path]
+    if let note { object["note"] = note }
     let data = try JSONSerialization.data(
-        withJSONObject: ["path": path], options: [.sortedKeys])
+        withJSONObject: object, options: [.sortedKeys])
     guard let text = String(data: data, encoding: .utf8) else {
         throw StoreIOError.io("could not serialize result to UTF-8")
     }
