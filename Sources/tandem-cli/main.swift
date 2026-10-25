@@ -39,12 +39,6 @@ exit(dispatch(Array(CommandLine.arguments.dropFirst())))
 /// `--help` prints the usage to stdout and exits 0; a parse failure prints it to
 /// stderr and exits 2.
 func dispatch(_ args: [String]) -> Int32 {
-    // The deprecated alias says so, once, on stderr — where no JSON parser is
-    // reading. It is the group token that is deprecated, so the notice is on the
-    // group token: `todo` and `todo list` say the same thing.
-    if args.first == Usage.deprecatedAliasToken {
-        FileHandle.standardError.write(Data((Usage.deprecatedAliasNotice + "\n").utf8))
-    }
     let command: Command
     do {
         command = try parseCommand(args)

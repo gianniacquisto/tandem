@@ -120,8 +120,6 @@ tandem-cli ticket archive
 tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
 tandem-cli ticket comment list --id <id>
 
-todo is a deprecated alias, removed in the release after this one
-
 tandem-cli lane add --name <name>
 tandem-cli lane rename --from <name> --to <name>
 tandem-cli lane delete --name <name>

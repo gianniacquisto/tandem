@@ -3,64 +3,62 @@ import Testing
 @testable import TandemCore
 @testable import tandem_cli
 
-/// The CLI's verb is `ticket`; `todo` is the deprecated alias that answers for
-/// one release (D1). The alias parses the same, answers the same, and says so
-/// once on stderr — where no JSON parser is reading. The wire carries both
-/// words for the same release: `tickets` beside `todos`, `lane` beside
-/// `section`. C8 drops the old spellings.
-@Suite("The ticket verb and the todo alias")
+/// The CLI's verb is `ticket` — the `todo` alias ended when its one-release
+/// window closed (D1 answer A): an unknown group token, usage on stderr, exit 2,
+/// like any other unknown word. The wire carries one word too: `tickets`, and
+/// `lane` — the v1 `todos`/`section` spellings are gone from the *encoding*,
+/// while the store's decoder keeps reading them forever (C4's rule). `done`
+/// stays on the wire: it predates the ticket model (ADR 0017).
+@Suite("The ticket verb and the retired todo alias")
 struct TicketVerbTests {
 
     /// The anchor the test bundle is found by (`Bundle(for:)` needs a class).
     private final class Anchor {}
 
-    // MARK: - The wire: both words, one array
+    // MARK: - The wire: one word
 
-    @Test("the list result carries the same array under `tickets` and `todos`")
-    func listResultCarriesBothWords() throws {
+    @Test("the list result carries `tickets` alone — the old `todos` key is gone")
+    func listResultCarriesOneWord() throws {
         let one = Ticket(title: "one")
         let two = Ticket(title: "two")
         let object = try json(StoreEncoding.listResult([one, two], note: nil))
 
         let tickets = try #require(object["tickets"] as? [[String: Any]])
-        let todos = try #require(object["todos"] as? [[String: Any]])
         #expect(tickets.count == 2)
-        #expect(todos.count == 2)
-        // The same array, not a copy that drifted: the same ids in the same order.
         #expect(tickets.map { $0["id"] as? String } == [one.id.uuidString, two.id.uuidString])
-        #expect(todos.map { $0["id"] as? String } == tickets.map { $0["id"] as? String })
+        #expect(object["todos"] == nil, "the old wire key is gone")
     }
 
-    @Test("the unknown-id error's open list carries both words too")
-    func openListCarriesBothWords() throws {
+    @Test("the unknown-id error's open list carries `tickets` alone too")
+    func openListCarriesOneWord() throws {
         let ticket = Ticket(title: "open one")
         let object = try json(StoreEncoding.openList([ticket]))
 
         let tickets = try #require(object["tickets"] as? [[String: Any]])
-        let todos = try #require(object["todos"] as? [[String: Any]])
         #expect(tickets.map { $0["id"] as? String } == [ticket.id.uuidString])
-        #expect(todos.map { $0["id"] as? String } == tickets.map { $0["id"] as? String })
+        #expect(object["todos"] == nil, "the old wire key is gone")
     }
 
-    // MARK: - The wire: `lane` beside `section`
+    // MARK: - The wire: `lane`, not `section`
 
-    @Test("a ticket carries `lane` beside `section`, with the same value")
-    func laneRidesBesideSection() throws {
+    @Test("a ticket carries `lane`, never `section`; `done` stays and is derived")
+    func laneOnlyNoSection() throws {
         let inLane = Ticket(title: "in a lane", lane: "Tandem")
         let noLane = Ticket(title: "in the default area")
 
         let withLane = try json(StoreEncoding.ticketResult(inLane, note: nil))
         #expect(withLane["lane"] as? String == "Tandem")
-        #expect(withLane["lane"] as? String == withLane["section"] as? String)
+        #expect(withLane["section"] == nil, "the v1 wire key is gone")
+        #expect(withLane["done"] as? Bool == false, "`done` stays on the wire (ADR 0017)")
 
         let withoutLane = try json(StoreEncoding.ticketResult(noLane, note: nil))
-        #expect(withoutLane["lane"] is NSNull, "no lane is null under both keys")
-        #expect(withoutLane["lane"] is NSNull, "no lane is null under both keys")
+        #expect(withoutLane["lane"] is NSNull)
+        #expect(withoutLane["section"] == nil)
 
         let listed = try json(StoreEncoding.listResult([inLane], note: nil))
         let first = try #require((listed["tickets"] as? [[String: Any]])?.first)
         #expect(first["lane"] as? String == "Tandem")
-        #expect(first["lane"] as? String == first["section"] as? String)
+        #expect(first["section"] == nil)
     }
 
     // MARK: - `show`: one ticket by id, whole
@@ -112,26 +110,25 @@ struct TicketVerbTests {
         #expect(missing.code == 1, "a missing --id is the empty id, a domain failure, not usage")
     }
 
-    // MARK: - The alias, end to end
+    // MARK: - The alias, retired
 
-    @Test("`todo` answers like `ticket`, says so once on stderr, and exits 0")
-    func aliasAnswersAndWarns() throws {
+    @Test("`todo` is an unknown group: usage on stderr, exit 2, nothing on stdout")
+    func aliasIsAnUnknownGroup() throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
 
-        let added = try run(home: home, ["ticket", "add", "--title", "A ticket"])
-        #expect(added.code == 0)
-        #expect(added.error.isEmpty, "the new verb says nothing")
+        let todoList = try run(home: home, ["todo", "list", "--filter", "all"])
+        #expect(todoList.code == 2, "the alias reads like `ticketx` now")
+        #expect(todoList.output.isEmpty, "stdout stays empty — one JSON object or none")
+        #expect(todoList.error == Usage.text + "\n", "the usage text is the whole answer")
 
-        let ticket = try run(home: home, ["ticket", "list", "--filter", "all"])
-        let todo = try run(home: home, ["todo", "list", "--filter", "all"])
-        #expect(todo.code == 0)
-        #expect(todo.output == ticket.output, "the alias answers the same")
-        #expect(todo.error == Usage.deprecatedAliasNotice + "\n", "one line on stderr")
+        let bare = try run(home: home, ["todo"])
+        #expect(bare.code == 2, "the bare token is the same unknown group")
+        #expect(bare.error == Usage.text + "\n")
     }
 
-    @Test("the usage text lists `ticket` and the alias line")
-    func helpListsTheVerbAndTheAlias() throws {
+    @Test("the usage text lists `ticket` and no alias line")
+    func helpListsTheVerbOnly() throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
 
@@ -140,7 +137,7 @@ struct TicketVerbTests {
         #expect(help.output.contains("tandem-cli ticket list"))
         #expect(help.output.contains("tandem-cli ticket show --id"))
         #expect(help.output.contains("tandem-cli ticket comment add"))
-        #expect(help.output.contains("todo is a deprecated alias, removed in the release after this one"))
+        #expect(!help.output.contains("todo"), "the alias line is gone from the grammar")
     }
 
     @Test("the error prose says ticket")
@@ -155,8 +152,7 @@ struct TicketVerbTests {
 
         let unknown = try run(home: home, ["ticket", "complete", "--id", "00000000-0000-0000-0000-000000000000"])
         #expect(unknown.code == 1)
-        // The prose is the first line; the open list under it still carries the
-        // old `todos` key for this release.
+        // The prose is the first line; the open list under it carries `tickets` alone now.
         let prose = try #require(unknown.error.split(separator: "\n").first)
         #expect(prose.contains("Unknown ticket id"))
         #expect(!prose.contains("todo"))

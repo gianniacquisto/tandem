@@ -84,9 +84,7 @@ func parseCommand(_ args: [String]) throws -> Command {
         // argument is a usage failure.
         guard args.count == 1 else { throw UsageError() }
         return .doctor
-    case "ticket", Usage.deprecatedAliasToken:
-        // `ticket` is the verb (D1). `todo` is the deprecated alias: the same
-        // parse, the same answer, and one line on stderr (see `main`).
+    case "ticket":
         return try parseTicket(Array(args.dropFirst()))
     case "lane":
         return try parseLane(Array(args.dropFirst()))

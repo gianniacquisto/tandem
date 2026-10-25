@@ -8,10 +8,8 @@ import Foundation
 /// returned text to stdout.
 public enum StoreEncoding {
 
-    /// The `list` result: `{"tickets": [...], "todos": [...]}`, with a top-level
-    /// `note` when non-nil. The two keys carry **the same array** for one
-    /// release: `ticket` is the new word and `todos` is the one agents parse
-    /// today (D1). The release after next drops the old key (C8).
+    /// The `list` result: `{"tickets": [...]}`, with a top-level `note` when
+    /// non-nil. The old `todos` wire key is gone (C8): one word for one entity.
     ///
     /// The rows are **summaries**, not whole tickets: a board is read many times
     /// more often than one ticket is read in full, and the description is the
@@ -25,7 +23,7 @@ public enum StoreEncoding {
     /// receipt.
     public static func listResult(_ tickets: [Ticket], note: String?) throws -> String {
         let array = try tickets.map { try ticketSummaryObject($0) }
-        var object: [String: Any] = ["tickets": array, "todos": array]
+        var object: [String: Any] = ["tickets": array]
         if let note { object["note"] = note }
         return try serialize(object)
     }
@@ -137,13 +135,13 @@ public enum StoreEncoding {
 
     /// The open list in the `list` shape — used to render the unknown-id error so the
     /// caller recovers in one turn (spec: tool contract, `complete`). It carries the
-    /// same two keys as `listResult`: `tickets` and `todos`, the same array —
+    /// `tickets` key like `listResult` —
     /// **summaries**, like the list: recovery needs the id and the title, and an
     /// error that dumped every description was the same megabyte read the list
     /// itself was.
     public static func openList(_ tickets: [Ticket]) throws -> String {
         let array = try tickets.map { try ticketSummaryObject($0) }
-        return try serialize(["tickets": array, "todos": array])
+        return try serialize(["tickets": array])
     }
 
     /// The `doctor` result: the setup report as JSON (`{"ok": …, "checks": […]}`),
@@ -232,14 +230,13 @@ public enum StoreEncoding {
 
     /// A single ticket as a JSON-compatible object. Encodes through `Ticket`'s custom
     /// `Codable` so dates are ISO-8601 UTC and the id is a string, exactly as on disk.
-    /// The ticket's lane rides beside the v1 wire key `section` — same value, both
-    /// spellings — for one release (D1); C8 drops the old one.
+    /// The wire key is `lane` — the v1 `section` spelling is gone from the encoding
+    /// (C8); the store's *decoder* still reads both names forever (C4's rule).
     private static func ticketObject(_ ticket: Ticket) throws -> [String: Any] {
         let data = try JSONEncoder().encode(ticket)
         guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StoreIOError.io("could not encode ticket for result")
         }
-        object["section"] = object["lane"] ?? NSNull()
         return object
     }
 

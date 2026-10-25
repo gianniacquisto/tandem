@@ -40,13 +40,13 @@ struct CLIDescriptionTests {
         defer { try? FileManager.default.removeItem(at: home) }
 
         let id = try cli.addTicket(home: home, title: "A ticket")
-        let set = try cli.run(home: home, ["todo", "set", "--id", id, "--description", "the brief"])
+        let set = try cli.run(home: home, ["ticket", "set", "--id", id, "--description", "the brief"])
         #expect(set.code == 0)
         #expect(try description(of: id, home: home) == "the brief")
 
         for body in ["", "   ", "\n\t "] {
             let refused = try cli.run(home: home,
-                                      ["todo", "set", "--id", id, "--description", "-"],
+                                      ["ticket", "set", "--id", id, "--description", "-"],
                                       stdin: body)
             #expect(refused.code == 1)
             #expect(refused.error.contains("empty"))
@@ -54,7 +54,7 @@ struct CLIDescriptionTests {
         }
 
         // `--description ""` is the deliberate clear: it still works.
-        let cleared = try cli.run(home: home, ["todo", "set", "--id", id, "--description", ""])
+        let cleared = try cli.run(home: home, ["ticket", "set", "--id", id, "--description", ""])
         #expect(cleared.code == 0)
         #expect(try description(of: id, home: home) == nil)
     }
