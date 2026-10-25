@@ -14,12 +14,11 @@ The moments and their kinds:
 
 - A **non-obvious decision** — `decision`, the choice plus a one-line rationale.
 - A **gotcha or hard-won fact** — `gotcha` / `fact`.
-- A **significant unit of work finished** — `work`.
 - A **Thread opened or closed** — `thread`, the context a title cannot carry.
 
 The verb owns the kinds, the body shape (`# <short title>` then 1–3 lines), and the naming — its contract is `skills/tandem/SKILL.md`. Captures are **create-only** and carry **no `[[wikilinks]]`**; the consolidation pass adds those when it promotes a note.
 
-**Floor: one `work` note at session end** (or when context nears exhaustion) — what was done and where it left off. That is a sub-agent's minimum deliverable before it returns.
+**The work record is the session summary**: at session end (or when context nears exhaustion), `tandem-cli session end --summary -` records what was done and where the session left off (ADR 0027) — a sub-agent's minimum deliverable before it returns, too. There is no floor `work` capture; the consolidation pass reads the ended session records' summaries ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
 
 **Threads stay immediate**: `tandem-cli ticket add --title "…"` runs the moment a thread opens — the ticket list is the authoritative live list — with a `thread` capture for the context a title cannot carry. Closing one: `tandem-cli ticket complete --id <id>`, plus a `thread` note.
 
@@ -33,7 +32,7 @@ File only when the information would be **lost when the session ends** and re-de
 
 ## The closing pass
 
-At session end (or when context nears exhaustion), file the floor `work` note. The captures simply keep — consolidation is deliberate, never automatic. When the human asks (or the root was told to close out), **hand the saddlebag to the consolidation agent** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — a fresh agent, never a recording sub-agent, that folds this session's captures into the curated notes and refreshes the Index. The human can run the same pass on demand. The working session does not consolidate itself.
+At session end (or when context nears exhaustion), end the session record — `session end --summary -`; the summary is the work record. The captures simply keep — consolidation is deliberate, never automatic. When the human asks (or the root was told to close out), **hand the saddlebag to the consolidation agent** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — a fresh agent, never a recording sub-agent, that folds this session's captures into the curated notes and refreshes the Index. The human can run the same pass on demand. The working session does not consolidate itself.
 
 ## The curated shape — what the consolidation pass writes
 

@@ -5,7 +5,7 @@
 This project's memory is the Tandem **bikeshed** (`~/.tandem/bikeshed/`), reached through the `tandem-memory` skill. Before you read or edit project files, and as you work:
 
 - **Orient first** — load the `tandem-memory` skill, then read `Index.md`, the project's curated note under `projects/<project>/`, and `tandem-cli ticket list`. Do this before touching project files.
-- **Record captures as you work** — `tandem-cli note capture --kind <decision|gotcha|fact|work|thread> --project tandem`, but only when the information would be lost at session end and re-deriving it costs real effort, and finish with one `work` note. The curated bikeshed notes have one writer — the consolidation pass — so never edit them.
+- **Record captures as you work** — `tandem-cli note capture --kind <decision|gotcha|fact|thread> --project tandem`, but only when the information would be lost at session end and re-deriving it costs real effort. There is no floor `work` note: the summary at `session end` (ADR 0027) is the work record. The curated bikeshed notes have one writer — the consolidation pass — so never edit them.
 - **Consolidate on request** — the captures keep at session close; when the human asks, `skills/tandem-consolidate/` dispatches the pass.
 - **Applies to sub-agents too** — a child session receives this section like the root does, so a brief need not restate it.
 
