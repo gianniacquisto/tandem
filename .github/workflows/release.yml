@@ -237,6 +237,11 @@ jobs:
 
       - name: Check out the source
         uses: actions/checkout@v4
+        with:
+          # The release-body generator (Scripts/release-notes.sh) walks the
+          # tags and the merge history between them; the default shallow,
+          # no-tags fetch has neither.
+          fetch-depth: 0
 
       - name: Resolve the version
         run: |
@@ -274,7 +279,11 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
             gh release delete "$GITHUB_REF_NAME" --yes
           fi
+          # The body carries what shipped (7B005267), not a fixed tag line:
+          # the generator lists the PRs merged on dev since the previous tag
+          # (titles via gh, the fixed install line as the lead).
+          notes=$(Scripts/release-notes.sh "$GITHUB_REF_NAME")
           gh release create "$GITHUB_REF_NAME" \
             --title "Tandem $version" \
-            --notes "Tandem $version for macOS 27 (Apple silicon). Install: brew install --cask gianniacquisto/tap/tandem" \
+            --notes "$notes" \
             "dist/Tandem-$version.zip" dist/SHA256SUMS
