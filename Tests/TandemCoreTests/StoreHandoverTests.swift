@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import TandemCore
@@ -7,7 +8,8 @@ import Testing
 /// fsync the directory, remove the old one only then, all in one locked act.
 /// A fork (both files present) is left alone, a fresh home writes
 /// `tickets.json` alone, and a failed copy fails the write while a failed
-/// remove never loses it.
+/// directory fsync or a failed remove never loses it — both leave the legacy
+/// file in place.
 @Suite("Store handover")
 struct StoreHandoverTests {
 
@@ -106,6 +108,28 @@ struct StoreHandoverTests {
         #expect(!(try entries(in: dir)).contains("tickets.json"), "no store file appeared")
         #expect(!(try entries(in: dir)).contains("tickets.json.bak"), "no backup was rolled")
         #expect(try preRenameCopies(in: dir).isEmpty)
+    }
+
+    @Test("a failed directory fsync skips the removal: the write stands and todos.json stays")
+    func failedDirectoryFsyncKeepsTheLegacyFile() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var store = Store(directory: dir)
+        try v1Fixture.write(to: dir.appendingPathComponent("todos.json"), atomically: false, encoding: .utf8)
+        store.fsyncDirectory = { _ in throw LockedDirectoryError.posix(op: "open directory", code: ENOTDIR) }
+
+        let added = try store.add("new")
+
+        // The write succeeded and the store reads back complete.
+        let result = try store.list(.all)
+        #expect(result.value.count == 3)
+        #expect(result.value.contains { $0.id == added.value.id })
+        // The removal was skipped: both files present, the legacy one untouched —
+        // the fork state, `doctor`'s to name.
+        #expect(try entries(in: dir).contains("todos.json"), "the legacy file must stay")
+        #expect(try entries(in: dir).contains("tickets.json"))
+        // The copy-aside still happened: the rename is recorded even though the removal was skipped.
+        #expect(try preRenameCopies(in: dir).count == 1)
     }
 
     @Test("a failed remove does not lose the write: the store is written and the op succeeds")

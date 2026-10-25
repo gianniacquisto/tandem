@@ -103,13 +103,22 @@ public struct Store: Sendable {
     /// sweep, identical to the bikeshed's (ADR 0004).
     private let storage: LockedDirectory
 
-    /// The handover's file steps, as seams: the copy-aside (step 2) and the
-    /// legacy removal (step 5). The defaults are FileManager's own; tests
-    /// replace them to make one step throw and pin the order's guarantees.
-    /// Only the handover uses them — a post-handover write copies nothing
-    /// aside and removes nothing.
+    /// The handover's file steps, as seams: the copy-aside (step 2), the
+    /// directory fsync (step 4) and the legacy removal (step 5). The defaults
+    /// are FileManager's own and the storage mechanics' own; tests replace
+    /// them to make one step throw and pin the order's guarantees. Only the
+    /// handover uses them — a post-handover write copies nothing aside,
+    /// fsyncs no directory and removes nothing.
     var copyAsideFile: @Sendable (URL, URL) throws -> Void = {
         try FileManager.default.copyItem(at: $0, to: $1)
+    }
+    /// The directory fsync that makes the rename durable before the legacy
+    /// removal (step 4). A failure — an unopenable directory or a failing
+    /// `fsync` — leaves the legacy file in place, the only confirmed-durable
+    /// copy, so the removal is skipped and the write still succeeds. The seam
+    /// exists so a test can prove that guarantee.
+    var fsyncDirectory: @Sendable (LockedDirectory) throws -> Void = {
+        try $0.fsyncDirectory()
     }
     /// The removal of the legacy `todos.json`, the handover's last step. A
     /// remove that fails never fails the write — the store is already written
@@ -457,12 +466,13 @@ public struct Store: Sendable {
     /// The handover's epilogue, after `tickets.json` is on disk (the rename inside
     /// `atomicWrite` has happened): make the rename durable, then remove the legacy
     /// file — one locked act, the order the type's doc block pins. A directory fsync
-    /// that fails leaves the legacy file in place (it is then the only durable copy;
+    /// that fails — an unopenable directory or a failing `fsync` — leaves the legacy
+    /// file in place (it is then the only confirmed-durable copy;
     /// the fork state is `doctor`'s to name) but does not fail the write — the store
     /// is already written. A removal that fails likewise never fails the write: the
     /// leftover is the fork state, not a lost store.
     private func finishHandover() throws {
-        guard (try? storage.fsyncDirectory()) != nil else { return }
+        guard (try? fsyncDirectory(storage)) != nil else { return }
         _ = try? removeLegacy(legacyFileURL)
     }
 

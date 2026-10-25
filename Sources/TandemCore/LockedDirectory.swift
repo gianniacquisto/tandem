@@ -89,11 +89,16 @@ struct LockedDirectory: Sendable {
     /// once the directory entry it changed is synced — the file fsync inside
     /// `atomicWrite` does not cover it. Call while holding the lock, after an
     /// atomic write whose rename must survive a crash before anything the old
-    /// file was is removed (the store's handover). Tolerates an unopenable
-    /// directory (as the file fsync does); a failing `fsync` throws.
+    /// file was is removed (the store's handover). An unopenable directory is
+    /// a failed guarantee, not a tolerated absence (unlike the file fsync):
+    /// a failed `open` throws like a failed `fsync`, so a caller that skips
+    /// work on a throw (the handover's removal) cannot proceed on
+    /// unconfirmed durability.
     func fsyncDirectory() throws {
         let fd = open(cleanRoot.path, O_RDONLY)
-        guard fd >= 0 else { return }
+        guard fd >= 0 else {
+            throw LockedDirectoryError.posix(op: "open directory", code: errno)
+        }
         defer { close(fd) }
         guard Darwin.fsync(fd) == 0 else {
             throw LockedDirectoryError.posix(op: "fsync directory", code: errno)
