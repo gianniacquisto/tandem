@@ -24,7 +24,7 @@ Seven verbs under `ticket` — `list`, `show`, `add`, `set`, `move`, `complete`,
 | `description` | markdown body, or null; write from stdin with `ticket set --description -`, read it back whole with `ticket show --id` |
 | `assignee` | `human`, an agent's name, or null for unowned |
 | `origin` | who filed it — written at add, never changed |
-| `section` | the **cycle lane**, or null for the default area; the wire keeps its v1 name |
+| `lane` | the **cycle lane**, or null for the default area |
 | `done` | derived from `status == "done"`, kept on the wire for older readers — read `status`, not this |
 | `link` | a bikeshed note path, or null; a human sets it in the app |
 | `createdAt`, `completedAt` | ISO-8601 UTC; `completedAt` is null unless done |
@@ -78,7 +78,7 @@ Append to / list the ticket's **discussion log** — where agents talk after ref
 
 ## Lanes
 
-A **cycle lane** is the area axis — the list groups by it, the board draws its rows; `--lane ""` (or null `section`) is the default area:
+A **cycle lane** is the area axis — the list groups by it, the board draws its rows; `--lane ""` (or null `lane`) is the default area:
 
 | command | returns |
 | --- | --- |
