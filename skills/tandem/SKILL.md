@@ -1,6 +1,6 @@
 ---
 name: tandem
-description: "Read and write the shared Tandem ticket list, manage its cycle lanes, and rename bikeshed notes, from `tandem-cli` on this Mac. Reach for it when the user says to add a todo, asks what's on their list, wants a ticket's status or assignee changed, wants a cycle lane created, renamed, or deleted, asks to mark a todo done, or wants a note renamed (reopened under a new name). Also runs a local setup check when the user asks whether Tandem is installed or working. The same tickets a human sees and edits in the Tandem app."
+description: "Read and write the shared Tandem ticket list, manage its cycle lanes, and rename bikeshed notes, from `tandem-cli` on this Mac. Reach for it when the user says to add a todo, asks what's on their list, wants a ticket's status or assignee changed, wants a cycle lane created, renamed, or deleted, or listed, asks to mark a todo done, or wants a note renamed (reopened under a new name). Also runs a local setup check when the user asks whether Tandem is installed or working. The same tickets a human sees and edits in the Tandem app."
 ---
 
 # Tandem
@@ -24,7 +24,7 @@ Seven verbs under `ticket` — `list`, `show`, `add`, `set`, `move`, `complete`,
 | `description` | markdown body, or null; write from stdin with `ticket set --description -`, read it back whole with `ticket show --id` |
 | `assignee` | `human`, an agent's name, or null for unowned |
 | `origin` | who filed it — written at add, never changed |
-| `section` | the **cycle lane**, or null for the default area; the wire keeps its v1 name |
+| `lane` | the **cycle lane**, or null for the default area |
 | `done` | derived from `status == "done"`, kept on the wire for older readers — read `status`, not this |
 | `link` | a bikeshed note path, or null; a human sets it in the app |
 | `createdAt`, `completedAt` | ISO-8601 UTC; `completedAt` is null unless done |
@@ -78,15 +78,16 @@ Append to / list the ticket's **discussion log** — where agents talk after ref
 
 ## Lanes
 
-A **cycle lane** is the area axis — the list groups by it, the board draws its rows; `--lane ""` (or null `section`) is the default area:
+A **cycle lane** is the area axis — the list groups by it, the board draws its rows; `--lane ""` (or null `lane`) is the default area:
 
 | command | returns |
 | --- | --- |
+| `lane list` | `{"lanes": [...]}` |
 | `lane add --name <name>` | `{"lanes": [...]}` |
 | `lane rename --from <a> --to <b>` | `{"lanes": [...]}` |
 | `lane delete --name <name>` | `{"lanes": [...], "moved": <n>}` |
 
-`lanes` is the list after the write, in render order. Names are trimmed; empty, duplicate, and unknown names are domain failures. `rename` rewrites the lane list and every ticket in it in one write; `delete` never deletes tickets — members fall back to the default area, `moved` is how many. A lane must exist before `ticket add/move --lane` accepts it; there is no `lane list` verb — `ticket list --filter all --archived` shows every lane that holds a ticket.
+`lanes` is the lane list, in render order — `list`'s answer is the store's declared lane list read directly (empty lanes included, no ticket rows); the write verbs answer the list their write produced. Names are trimmed; empty, duplicate, and unknown names are domain failures. `rename` rewrites the lane list and every ticket in it in one write; `delete` never deletes tickets — members fall back to the default area, `moved` is how many. A lane must exist before `ticket add/move --lane` accepts it.
 
 ## Sessions
 
@@ -137,9 +138,9 @@ The bikeshed (`~/.tandem/bikeshed/`) is a plain folder of `.md` files, and the f
 
 Both paths bikeshed-root-relative, `.md` included. Rewrites every wikilink that resolves to the note — bare, qualified, aliased, `#fragment` — in every note including itself, in one locked transaction. Rename through the CLI only: a raw `mv` breaks every wikilink silently, and nothing repairs them but re-running the rename.
 
-### `note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]`
+### `note capture --kind <decision|gotcha|fact|thread> [--project <name>] [--session <id>]`
 
-File one **capture** — a small, create-only record of a moment that would be lost when the session ends. Body from **stdin** (UTF-8; empty allowed). It lands at `projects/<project>/.raw/<session>/<utc>-<kind>-<slug>.md`; the slug comes from the body's first line, same-second same-slug notes get a `-2`, `-3`… suffix. `--project` defaults to the working directory's last path component; `--session` to `$OPENCODE_SESSION_ID`, else a generated token. The saddlebag is **hidden**: captures never appear in search, backlinks, or wikilink resolution, and carry no `[[wikilinks]]` — file as you work, and the consolidation pass promotes them into the curated notes. An unknown `--kind`, or a `--project`/`--session` that is not one folder name, is a domain failure.
+File one **capture** — a small, create-only record of a moment that would be lost when the session ends. Body from **stdin** (UTF-8; empty allowed). It lands at `projects/<project>/.raw/<session>/<utc>-<kind>-<slug>.md`; the slug comes from the body's first line, same-second same-slug notes get a `-2`, `-3`… suffix. `--project` defaults to the working directory's last path component; `--session` to `$OPENCODE_SESSION_ID`, else a generated token. The saddlebag is **hidden**: captures never appear in search, backlinks, or wikilink resolution, and carry no `[[wikilinks]]` — file as you work, and the consolidation pass promotes them into the curated notes. An unknown `--kind`, or a `--project`/`--session` that is not one folder name, is a domain failure. The `work` kind is retired — the summary at `session end --summary` (ADR 0027) is the work record; the CLI still accepts it for older captures, the cadence no longer files it.
 
 A note filename may not contain `/`, `#`, `|`, or a leading dot, and must end `.md` — `#` and `|` are the wikilink grammar's separators, so such a name can never be resolved (ADR 0004). The rule constrains what is *created*; pre-existing violators still show and edit.
 
@@ -157,6 +158,6 @@ The link graph — `broken` (wikilinks that resolve to nothing: `note`, `link` a
 
 ## Streams and exit codes
 
-- **stdout** — one JSON object on success. `list` → `{"tickets": [...]}`, summary rows (no `description`, its `descriptionLength` instead); `show` → the whole ticket object; `add`, `set`, `move`, `complete` → the ticket object; `archive` → `{"archived": <n>}`; `comment add` → the comment; `comment list` → `{"comments": [...]}`; `lane add`/`rename` → `{"lanes": [...]}`, `lane delete` → `{"lanes": [...], "moved": <n>}`. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
+- **stdout** — one JSON object on success. `list` → `{"tickets": [...]}`, summary rows (no `description`, its `descriptionLength` instead); `show` → the whole ticket object; `add`, `set`, `move`, `complete` → the ticket object; `archive` → `{"archived": <n>}`; `comment add` → the comment; `comment list` → `{"comments": [...]}`; `lane list`/`add`/`rename` → `{"lanes": [...]}`, `lane delete` → `{"lanes": [...], "moved": <n>}`. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
 - **stderr** — short, actionable plain text on failure, naming the failed value and the next step; `complete` and `show` with an unknown id append the current open list in the `list` shape (summaries).
 - **exit** — `0` success; `1` domain failure (empty title, unknown id, locked store); `2` usage failure (no arguments, unknown subcommand or flag). A missing flag value is deliberately a domain failure, not usage — `add` with no `--title` is the empty title the domain rejects. Retry only when the text says the store is locked.

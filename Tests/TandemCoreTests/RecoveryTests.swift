@@ -5,7 +5,9 @@ import Testing
 /// Corrupt-store recovery (ADR 0001) and result-encoding tests.
 ///
 /// Recovery: an invalid file is backed up (under the lock) to
-/// `todos.json.corrupt-<unix-ts>` and the store restarts empty; only the op that
+/// `todos.json.corrupt-<unix-ts>` — or `tickets.json.corrupt-<unix-ts>` after
+/// the handover, the artifact keeping the name of the file it was taken from —
+/// and the store restarts empty; only the op that
 /// performs the recovery surfaces a `note` naming the backup path. Lenient read:
 /// unknown extra fields are ignored. Encoding: `StoreEncoding` + `tandemErrorText`
 /// produce the exact schema-v1 shapes and actionable error text the CLI sends.
@@ -26,12 +28,15 @@ struct RecoveryTests {
         try text.write(to: store.storeFileURL, atomically: false, encoding: .utf8)
     }
 
-    /// Backup filenames present in the store dir (`todos.json.corrupt-*`).
+    /// Backup filenames present in the store dir (`todos.json.corrupt-*` before the
+    /// handover, `tickets.json.corrupt-*` after).
     private func corruptBackups(in dir: URL) -> [String] {
         guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else {
             return []
         }
-        return entries.filter { $0.hasPrefix("todos.json.corrupt-") }.sorted()
+        return entries
+            .filter { $0.hasPrefix("todos.json.corrupt-") || $0.hasPrefix("tickets.json.corrupt-") }
+            .sorted()
     }
 
     private func json(_ text: String) throws -> [String: Any] {
@@ -253,23 +258,24 @@ struct RecoveryTests {
         let todo = Ticket(title: "one", description: "the body")
         // No note → no note key.
         let noNote = try json(StoreEncoding.listResult([todo], note: nil))
-        #expect((noNote["todos"] as? [Any])?.count == 1)
+        #expect((noNote["tickets"] as? [Any])?.count == 1)
+        #expect(noNote["todos"] == nil, "the old wire key is gone from the encoding")
         #expect(noNote["note"] == nil, "note key must be absent when note is nil")
         // Summary rows: no description key, its length instead.
-        let row = try #require((noNote["todos"] as? [[String: Any]])?.first)
+        let row = try #require((noNote["tickets"] as? [[String: Any]])?.first)
         #expect(row["description"] == nil, "list rows are summaries, not whole tickets")
         #expect(row["descriptionLength"] as? Int == "the body".count)
         #expect(row["title"] as? String == "one")
         // No description → length 0, the key still there (the shape never varies by row).
         let bare = try json(StoreEncoding.listResult([Ticket(title: "bare")], note: nil))
-        let bareRow = try #require((bare["todos"] as? [[String: Any]])?.first)
+        let bareRow = try #require((bare["tickets"] as? [[String: Any]])?.first)
         #expect(bareRow["descriptionLength"] as? Int == 0)
         // With note → top-level note.
         let withNote = try json(StoreEncoding.listResult([todo], note: "NOTE"))
         #expect(withNote["note"] as? String == "NOTE")
-        // Empty → {"todos":[]}.
+        // Empty → {"tickets":[]}.
         let empty = try json(StoreEncoding.listResult([], note: nil))
-        #expect((empty["todos"] as? [Any])?.isEmpty == true)
+        #expect((empty["tickets"] as? [Any])?.isEmpty == true)
     }
 
     @Test("StoreEncoding.ticketResult is the ticket object plus optional note")
@@ -291,10 +297,11 @@ struct RecoveryTests {
     func openListEncoding() throws {
         let todo = Ticket(title: "open one", description: "a body")
         let obj = try json(StoreEncoding.openList([todo]))
-        #expect((obj["todos"] as? [Any])?.count == 1)
+        #expect((obj["tickets"] as? [Any])?.count == 1)
+        #expect(obj["todos"] == nil, "the old wire key is gone from the encoding")
         #expect(obj["note"] == nil)
         // Summarized like the list: the recovery needs the id and the title.
-        let row = try #require((obj["todos"] as? [[String: Any]])?.first)
+        let row = try #require((obj["tickets"] as? [[String: Any]])?.first)
         #expect(row["description"] == nil)
         #expect(row["descriptionLength"] as? Int == "a body".count)
     }

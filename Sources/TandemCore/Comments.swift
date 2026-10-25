@@ -5,7 +5,8 @@ import Darwin
 /// ticket's sidecar log, `<home>/comments/<ticket-id>.jsonl`.
 ///
 /// **The log is a sidecar, not a field.** The installed app rewrites
-/// `todos.json` whole and drops keys it does not know — the same tax `origin`
+/// `todos.json` whole (the store file, `tickets.json` since the rename) and drops
+/// keys it does not know — the same tax `origin`
 /// pays — so an in-ticket `comments` array would be erased by the next human
 /// edit until a build carrying the field is installed. A sidecar cannot be
 /// erased by an older writer, and append-only suits two agents taking turns on

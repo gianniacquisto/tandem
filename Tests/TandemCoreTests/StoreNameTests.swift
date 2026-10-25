@@ -3,8 +3,9 @@ import Testing
 @testable import TandemCore
 
 /// The store's file-name resolution: `tickets.json` or the legacy `todos.json`.
-/// The reader reads either name, and the write goes to the name it read from.
-/// A fresh home (neither present) writes `todos.json`.
+/// The reader reads either name, and the write always lands in `tickets.json` —
+/// a store read from `todos.json` hands over on that write, and a fresh home
+/// (neither present) writes `tickets.json` alone.
 @Suite("Store name resolution")
 struct StoreNameTests {
 
@@ -139,7 +140,7 @@ struct StoreNameTests {
         #expect(result.value.count == 2)
     }
 
-    @Test("todo add against a todos.json-only store leaves two tickets in todos.json and no tickets.json")
+    @Test("todo add against a todos.json-only store hands over: tickets.json holds both, todos.json is gone")
     func writeBackToTodosFile() throws {
         let dir = try makeDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -148,13 +149,13 @@ struct StoreNameTests {
 
         _ = try store.add("second")
         let names = try entries(in: dir)
-        #expect(names.contains("todos.json"))
-        #expect(!names.contains("tickets.json"))
+        #expect(names.contains("tickets.json"))
+        #expect(!names.contains("todos.json"), "the handover removed the legacy file")
         let result = try store.list()
         #expect(result.value.count == 2)
     }
 
-    @Test("todo add against an empty dir creates todos.json alone")
+    @Test("todo add against an empty dir creates tickets.json alone")
     func writeBackToFreshHome() throws {
         let dir = try makeDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -162,8 +163,9 @@ struct StoreNameTests {
 
         _ = try store.add("first")
         let names = try entries(in: dir)
-        #expect(names.contains("todos.json"))
-        #expect(!names.contains("tickets.json"))
+        #expect(names.contains("tickets.json"))
+        #expect(!names.contains("todos.json"))
+        #expect(!names.contains("tickets.json.bak"), "the first write rolls no backup")
         let result = try store.list()
         #expect(result.value.count == 1)
     }

@@ -14,18 +14,17 @@ The moments and their kinds:
 
 - A **non-obvious decision** — `decision`, the choice plus a one-line rationale.
 - A **gotcha or hard-won fact** — `gotcha` / `fact`.
-- A **significant unit of work finished** — `work`.
 - A **Thread opened or closed** — `thread`, the context a title cannot carry.
 
 The verb owns the kinds, the body shape (`# <short title>` then 1–3 lines), and the naming — its contract is `skills/tandem/SKILL.md`. Captures are **create-only** and carry **no `[[wikilinks]]`**; the consolidation pass adds those when it promotes a note.
 
-**Floor: one `work` note at session end** (or when context nears exhaustion) — what was done and where it left off. That is a sub-agent's minimum deliverable before it returns.
+**The work record is the session summary**: at session end (or when context nears exhaustion), `tandem-cli session end --summary -` records what was done and where the session left off (ADR 0027) — a sub-agent's minimum deliverable before it returns, too. There is no floor `work` capture; the consolidation pass reads the ended session records' summaries ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
 
 **Threads stay immediate**: `tandem-cli ticket add --title "…"` runs the moment a thread opens — the ticket list is the authoritative live list — with a `thread` capture for the context a title cannot carry. Closing one: `tandem-cli ticket complete --id <id>`, plus a `thread` note.
 
 ## Qualification gate — what you'd lose when the session ends
 
-File when the information would be **lost when the session ends** and re-deriving it would cost real effort. A capture is cheap, so borderline notes are welcome — omit only what the repo or environment reproduces on the next look (a command's output, a file's contents, a `--help`). The stricter cost-of-derivation gate, the ≲50/≲40 length targets, and the pruning discipline govern only what consolidation **promotes** into the curated notes; they ride on that pass, not on the moment.
+File only when the information would be **lost when the session ends** and re-deriving it would cost real effort — both tests must hold, and the gate rides on the capture, not on promotion. What the repo, the environment, or the session transcript reproduces on the next look — a command's output, a file's contents, a `--help`, a narration of what you are about to do — fails the cost test; leave it out. The ≲50/≲40 length targets and the pruning discipline govern what consolidation **promotes** into the curated notes, not what you capture.
 
 ## Working agents never edit curated notes
 
@@ -33,11 +32,41 @@ File when the information would be **lost when the session ends** and re-derivin
 
 ## The closing pass
 
-At session end (or when context nears exhaustion), file the floor `work` note. The captures simply keep — consolidation is deliberate, never automatic. When the human asks (or the root was told to close out), **hand the saddlebag to the consolidation agent** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — a fresh agent, never a recording sub-agent, that folds this session's captures into the curated notes and refreshes the Index. The human can run the same pass on demand. The working session does not consolidate itself.
+At session end (or when context nears exhaustion), end the session record — `session end --summary -`; the summary is the work record. The captures simply keep — consolidation is deliberate, never automatic. When the human asks (or the root was told to close out), **hand the saddlebag to the consolidation agent** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — a fresh agent, never a recording sub-agent, that folds this session's captures into the curated notes and refreshes the Index. The human can run the same pass on demand. The working session does not consolidate itself.
 
 ## The curated shape — what the consolidation pass writes
 
-Every curated note — project note or topic — uses this skeleton, in this order, with these exact `##` headings:
+The **scaffold pages** have a fixed shape of their own ([`CONVENTIONS.md`](CONVENTIONS.md)).
+
+**Overview** (`projects/<project>/<project>.md`) — the anchor:
+
+```
+# <Project>
+
+<one line: what this project is>
+
+## Where left off
+## Threads
+## Notes
+```
+
+- `Where left off` — state and next move; the one section read in full at orientation, and the summary the front page shows.
+- `Threads` — the project's open threads: the ticket's title verbatim plus a one-clause hook.
+- `Notes` — the project's other notes: its scaffold pages and its linked sub-pages, one line each.
+
+**Decisions**, **Risks**, and **Processes** — one line per entry, no sections:
+
+```
+# <Project> Decisions
+
+<one line: what this page is>
+
+- **the choice** — its rationale. Link to its ADR or ticket.
+```
+
+One line per entry, pointers over restatement: a Decisions entry links to its ADR (which stays in the repo) or its ticket; a **decision that flips** leaves one dated line — `**X** — reversed <date>: <reason>` — never two live contradicting lines.
+
+Everything else — a **sub-page** or a **topic note** — uses the skeleton, in this order, with these exact `##` headings:
 
 ```
 # <Note name>
@@ -59,7 +88,7 @@ Every curated note — project note or topic — uses this skeleton, in this ord
 
 Correct in place: the covering note is the single source of truth — edit a contradicting truth into it. Facts are corrected silently; a **decision that flips** leaves one dated line so the next session does not re-litigate it — `**X** — reversed <date>: <reason>`. Never two live contradicting lines; never append-only. Amend the covering note; create a new one only when [`CONVENTIONS.md`](CONVENTIONS.md)'s coherence test fires.
 
-Targets: ≲50 lines a project note, ≲40 a topic — a *trigger*, not a rule. A **project note is an overview**, so its ≲50 lines are an index budget, kept small by **linking out**, not by compressing subsystem detail. When a section outgrows its target **or** a coherent subsystem appears ([`CONVENTIONS.md`](CONVENTIONS.md)), the pass **creates the subsystem note and links it from the project note** — it never deepens the project note past its overview role. Pointers over restatement, one-line entries, no code, no step-by-step procedures.
+Targets: ≲50 lines the Overview, ≲40 a sub-page or a topic — a *trigger*, not a rule. The **Overview is an overview**, so its ≲50 lines are an index budget, kept small by **linking out**, not by compressing detail. The scaffold's entry pages hold one line per entry; an entry that grows into a topic earns the sub-page that owns it, and keeps its one line plus link. When a section outgrows its target **or** a coherent subsystem appears ([`CONVENTIONS.md`](CONVENTIONS.md)), the pass **creates the sub-page and links it from the Overview** — it never deepens the Overview past its overview role. Pointers over restatement, one-line entries, no code, no step-by-step procedures.
 
 **Prune on write**: adding a line invites retiring one, so the target stays live because every write makes room. Delete whole any line the repo or environment reproduces, a stale line, or a no-op. (The Bikeshed has no history; the dated reversal line is the stopgap.)
 

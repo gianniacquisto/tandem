@@ -77,14 +77,14 @@ struct CLIHarness {
 
     /// A new ticket's id, from the JSON the CLI prints.
     func addTicket(home: URL, title: String) throws -> String {
-        let result = try run(home: home, ["todo", "add", "--title", title])
+        let result = try run(home: home, ["ticket", "add", "--title", title])
         #expect(result.code == 0)
         return try object(from: result.output)["id"] as? String ?? ""
     }
 
     /// The comments `todo comment list` prints, in append order.
     func comments(home: URL, id: String) throws -> [[String: Any]] {
-        let result = try run(home: home, ["todo", "comment", "list", "--id", id])
+        let result = try run(home: home, ["ticket", "comment", "list", "--id", id])
         #expect(result.code == 0)
         return try object(from: result.output)["comments"] as? [[String: Any]] ?? []
     }

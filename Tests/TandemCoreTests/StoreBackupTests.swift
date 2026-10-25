@@ -3,10 +3,11 @@ import Testing
 @testable import TandemCore
 
 /// The rolling backup (ADR 0018): before each successful write, the file about to
-/// be replaced is copied to `todos.json.bak` — one generation, atomically, under
-/// the write's own lock. These tests pin the three states the ticket names: no
-/// `.bak` on the first write, the pre-write state on the second, and the previous
-/// `.bak` untouched when a write fails.
+/// be replaced is copied to `tickets.json.bak` — one generation, atomically, under
+/// the write's own lock; on the handover the file replaced is the legacy
+/// `todos.json`, so the first `.bak` holds its bytes. These tests pin the three
+/// states the ticket names: no `.bak` on the first write, the pre-write state on
+/// the second, and the previous `.bak` untouched when a write fails.
 @Suite("Rolling store backup")
 struct StoreBackupTests {
 

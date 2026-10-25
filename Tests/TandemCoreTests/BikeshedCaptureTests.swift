@@ -104,10 +104,133 @@ struct BikeshedCaptureTests {
         let expectedCapped = "projects/tandem/.raw/s/\(instantStamp)-fact-\(String(repeating: "a", count: 40)).md"
         #expect(capped == expectedCapped)
 
-        // An empty body (no slug-able line) falls back to the kind.
-        let empty = try bikeshed.capture(
-            project: "tandem", kind: .work, body: "", session: "s", at: instant).value
-        #expect(empty == "projects/tandem/.raw/s/\(instantStamp)-work-work.md")
+        }
+
+    // MARK: - The junk gate (ticket 824CB789)
+
+    @Test("capture refuses an empty or whitespace-only body, filing nothing")
+    func captureRefusesEmptyBody() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        let bikeshed = Bikeshed(directory: dir)
+
+        for body in ["", "   ", "\n\n", " \t\n "] {
+            #expect(throws: BikeshedError.emptyCaptureBody) {
+                _ = try bikeshed.capture(
+                    project: "tandem", kind: .work, body: body, session: "s", at: instant)
+            }
+        }
+        #expect(!FileManager.default.fileExists(atPath: dir.path),
+            "a refused capture must not create the bikeshed")
+    }
+
+    @Test("capture refuses a body whose slug is empty — the kind-name fallback was the junk")
+    func captureRefusesSluglessBody() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        let bikeshed = Bikeshed(directory: dir)
+
+        for body in ["!!!", "# !!!", "---", "###"] {
+            #expect(throws: BikeshedError.emptyCaptureSlug(kind: "work")) {
+                _ = try bikeshed.capture(
+                    project: "tandem", kind: .work, body: body, session: "s", at: instant)
+            }
+        }
+        #expect(!FileManager.default.fileExists(atPath: dir.path))
+    }
+
+    @Test("capture files a body whose first line names it — the `# x` shape survives")
+    func captureAcceptsTitleBody() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        let bikeshed = Bikeshed(directory: dir)
+
+        let path = try bikeshed.capture(
+            project: "tandem", kind: .work, body: "# x\n\nbody", session: "s", at: instant).value
+        #expect(path == "projects/tandem/.raw/s/\(instantStamp)-work-x.md")
+    }
+
+    @Test("capture dedupes: same project, kind, and body re-file nothing")
+    func captureDeduplicates() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        let bikeshed = Bikeshed(directory: dir)
+        let body = "# Zanzibar\n\nthe body"
+
+        let first = try bikeshed.capture(
+            project: "tandem", kind: .gotcha, body: body, session: "ses_a", at: instant)
+        let second = try bikeshed.capture(
+            project: "tandem", kind: .gotcha, body: body, session: "ses_b",
+            at: instant.addingTimeInterval(60))
+
+        #expect(second.value == first.value, "the re-file names the existing capture")
+        #expect(second.note != nil, "the re-file says why nothing was written")
+        let files = filesUnderRaw(of: dir, project: "tandem")
+        #expect(files.count == 1, "no second file was written")
+    }
+
+    @Test("dedupe identity: kind, body, and project must all match")
+    func dedupeIdentity() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        let bikeshed = Bikeshed(directory: dir)
+        let body = "# Zanzibar"
+
+        _ = try bikeshed.capture(project: "tandem", kind: .gotcha, body: body, session: "s", at: instant)
+
+        // A different kind files its own note; a different body files its own;
+        // the same body under another project files its own.
+        let otherKind = try bikeshed.capture(
+            project: "tandem", kind: .fact, body: body, session: "s", at: instant)
+        let otherBody = try bikeshed.capture(
+            project: "tandem", kind: .gotcha, body: "# Other", session: "s", at: instant)
+        let otherProject = try bikeshed.capture(
+            project: "other", kind: .gotcha, body: body, session: "s", at: instant)
+
+        #expect(otherKind.note == nil)
+        #expect(otherBody.note == nil)
+        #expect(otherProject.note == nil)
+        #expect(filesUnderRaw(of: dir, project: "tandem").count == 3,
+            "the original, the other kind, and the other body each filed one")
+        #expect(filesUnderRaw(of: dir, project: "other").count == 1)
+    }
+
+    @Test("dedupe ignores the archive: a consumed capture can be filed again")
+    func dedupeIgnoresArchive() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        let bikeshed = Bikeshed(directory: dir)
+        let body = "# Zanzibar"
+
+        // An archived (consumed) copy of the same capture, the shape the
+        // consolidation pass leaves behind under `.raw/.done/<session>/`.
+        let done = dir.appendingPathComponent("projects/tandem/.raw/.done/ses_old")
+        try FileManager.default.createDirectory(at: done, withIntermediateDirectories: true)
+        try Data(body.utf8).write(to: done.appendingPathComponent("\(instantStamp)-gotcha-zanzibar.md"))
+
+        let filed = try bikeshed.capture(
+            project: "tandem", kind: .gotcha, body: body, session: "ses_new", at: instant)
+
+        #expect(filed.note == nil, "the archive is out of the pending scan")
+        #expect(filed.value.hasPrefix("projects/tandem/.raw/ses_new/"))
+    }
+
+    // MARK: - Helpers (junk gate)
+
+    /// The pending capture files of one project, recursively — the set the
+    /// duplicate scan reads.
+    private func filesUnderRaw(of dir: URL, project: String) -> [String] {
+        let raw = dir.appendingPathComponent("projects/\(project)/.raw")
+        let fm = FileManager.default
+        guard let sessions = try? fm.contentsOfDirectory(at: raw, includingPropertiesForKeys: nil) else {
+            return []
+        }
+        var found: [String] = []
+        for session in sessions where !session.lastPathComponent.hasPrefix(".") {
+            let files = (try? fm.contentsOfDirectory(at: session, includingPropertiesForKeys: nil)) ?? []
+            found.append(contentsOf: files.map(\.lastPathComponent))
+        }
+        return found
     }
 
     @Test("capture suffixes a same-second, same-slug collision and keeps both notes")
@@ -115,23 +238,23 @@ struct BikeshedCaptureTests {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let bikeshed = Bikeshed(directory: dir)
+        // Same slug, different bytes: the collision the suffix exists for —
+        // a byte-identical body is the duplicate no-op instead (the junk gate).
         let body = "# Caret not placed"
+        let twin = "# caret not placed"
 
         let first = try bikeshed.capture(
             project: "tandem", kind: .gotcha, body: body, session: "ses", at: instant).value
         let second = try bikeshed.capture(
-            project: "tandem", kind: .gotcha, body: body, session: "ses", at: instant).value
-        let third = try bikeshed.capture(
-            project: "tandem", kind: .gotcha, body: body, session: "ses", at: instant).value
+            project: "tandem", kind: .gotcha, body: twin, session: "ses", at: instant).value
 
         #expect(first == "projects/tandem/.raw/ses/\(instantStamp)-gotcha-caret-not-placed.md")
         #expect(second == "projects/tandem/.raw/ses/\(instantStamp)-gotcha-caret-not-placed-2.md")
-        #expect(third == "projects/tandem/.raw/ses/\(instantStamp)-gotcha-caret-not-placed-3.md")
 
-        // Nothing was overwritten: all three files are on disk, each with the body.
-        for path in [first, second, third] {
+        // Nothing was overwritten: both files are on disk, each with its body.
+        for (path, text) in [(first, body), (second, twin)] {
             let onDisk = try String(contentsOf: dir.appendingPathComponent(path), encoding: .utf8)
-            #expect(onDisk == body)
+            #expect(onDisk == text)
         }
     }
 

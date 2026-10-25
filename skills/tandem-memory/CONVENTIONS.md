@@ -9,14 +9,33 @@ The **Bikeshed** — `~/.tandem/bikeshed/` — is a plain folder of `.md` notes.
 ## Two layers
 
 - **saddlebag** — many small per-moment notes, one file per moment, at `projects/<project>/.raw/<session>/<utc>-<kind>-<slug>.md`. Hidden, **create-only** (never edited), **no wikilinks**. Filed by *every* agent through `tandem-cli note capture`; the verb owns the kinds, body shape, and naming (`skills/tandem/SKILL.md`). Read only by the consolidation pass, which archives what it consumes to `projects/<project>/.raw/.done/<session>/`.
+- **scratch** — the human's scratch pad: a visible `scratch/` directory of daily notes, the human's working space. The consolidation pass reads it and folds what it holds into the curated layer. It is **read-only to the consolidator** — the pass never edits or archives the scratch; the human prunes.
 - **curated** — the human- and agent-readable notes under `projects/<project>/` and `topics/`. A working agent **never** edits them; the consolidation pass is the sole writer ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
+
+The curated layer has **exactly two inputs** — the agents' saddlebag captures and the human's scratch — and exactly one writer: the consolidation pass. Two doors, one writer; no other input, no other writer.
 
 ## Folder layout
 
 - **`projects/`** — one folder per **project**, `projects/<project>/`. `<project>` is the **codebase/product you are working in** (`tandem` today, `code-rank` another day), not the workstream. The folder holds the project's curated notes **and** its hidden saddlebag (`.raw/`), so a project is **always** a folder — from the first record. A folder can hold several curated notes: the Index carries one line per note, so one project can contribute several lines.
 - **`topics/`** — flat, cross-project concepts, `topics/<Topic>.md`.
 
-A project folder's notes sit **flat beside each other** until it holds **more than 7 curated notes**; past that threshold the project may **group** them into **one level** of sub-folders — `projects/<project>/<group>/<Note>.md`, and no deeper. A group name follows the note-name hygiene (no `/`, `#`, `|`; no hidden name). The **threshold** is what keeps placement predictable: below it a project's notes are flat and side by side; above it they are grouped. ADR 0004 permits nested folders, so this convention spends that permission only where the pile asks for it — `topics/` stays flat, and the hidden saddlebag (`.raw/`) remains the one deliberate exception, outside the curated tree. **Which group a note lands in is the consolidation pass's call**: the convention states the shape a project *may* take, not the shape it *must*. Placement is **intermixed**: a curated note lives wherever its topic naturally lives, beside **human notes**. When a human note already covers a topic, extend it — never create a parallel agent note. One concept, one note.
+A project folder's notes sit **flat beside each other** until it holds **more than 7 curated notes**; past that threshold the project may **group** them into **one level** of sub-folders — `projects/<project>/<group>/<Note>.md`, and no deeper. A group name follows the note-name hygiene (no `/`, `#`, `|`; no hidden name). The **threshold** is what keeps placement predictable: below it a project's notes are flat and side by side; above it its sub-pages are grouped (the scaffold pages stay at the root). ADR 0004 permits nested folders, so this convention spends that permission only where the pile asks for it — `topics/` stays flat, and the hidden saddlebag (`.raw/`) remains the one deliberate exception, outside the curated tree. **Which group a note lands in is the consolidation pass's call**: the convention states the shape a project *may* take, not the shape it *must*. Placement is **intermixed**: a curated note lives wherever its topic naturally lives, beside **human notes**. When a human note already covers a topic, extend it — never create a parallel agent note. One concept, one note.
+
+## The scaffold — every project's fixed curated pages
+
+Every project's curated layer is a **fixed scaffold** of four pages, **created on demand** — the consolidation pass creates all four when it creates the project — and maintained by consolidation alone. The scaffold is the project's structure, not whatever notes accumulated:
+
+| Page | File | Holds |
+| --- | --- | --- |
+| **Overview** | `projects/<project>/<project>.md` — the anchor note | the project's current state and next move — the "where this left off" summary the front page shows — its open threads, and links to the project's other notes |
+| **Decisions** | `projects/<project>/<project> Decisions.md` | one line per decision: the choice, its rationale, and a link to its ADR or ticket |
+| **Risks** | `projects/<project>/<project> Risks.md` | one line per open risk: the risk, its consequence, and the ticket that owns it when one exists |
+| **Processes** | `projects/<project>/<project> Processes.md` | one line per process: what it is, and a link to the note or ticket that documents it |
+
+- **Fixed** — exactly these four pages per project; the scaffold never grows a fifth. The scaffold pages carry the project in their names, so basenames stay bikeshed-unique and bare `[[links]]` keep resolving (ADR 0005). The scaffold pages sit at the project root; [grouping](#folder-layout) applies to the project's other notes.
+- **Decisions indexes, never copies** — the page carries an entry for **every ADR and every decision recorded on the board it can reach**, each linked to its ADR or its ticket. The ADR **stays in the repo** (`docs/adr/`): the page is the human's index of it, not a copy of it.
+- **What fits no page is a linked sub-page** — a subsystem, or a pile of gotchas or facts that fits no scaffold page, earns the note that owns it ([Granularity and links](#granularity-and-links)): the full curated skeleton, placed by the rules above, linked from the Overview's notes.
+- **Personas hold no partition** — no per-persona folders and no per-persona notes: identity lives in the prompts and the roster.
 
 ## Names
 
@@ -46,20 +65,20 @@ Capture filenames are the exception: they are the verb's `<utc>-<kind>-<slug>`, 
 
 ## Threads
 
-Active work lives in the Tandem's open tickets (`tandem-cli ticket list`). A project note's Threads section names the threads that belong to it.
+Active work lives in the Tandem's open tickets (`tandem-cli ticket list`). A project's Overview `Threads` section names the threads that belong to it.
 ```
 
-Two tiers below it: the **curated note** (`Where left off` at the top) → **topic notes** via wikilinks. The app's **Backlinks** panel is the one-hop neighbourhood, derived and maintained by nobody.
+Two tiers below it: the **Overview** (`Where left off` at the top) → the project's pages and sub-pages via wikilinks. The app's **Backlinks** panel is the one-hop neighbourhood, derived and maintained by nobody.
 
 A **grouped** note still gets exactly one Index line: the line names the note, never its group. A folder is placement, not a level of the Index — the Index stays one line per note however the tree is arranged.
 
-The Index stays honest by being derived, never authored: a note's Index line is **re-derived from that note's `Where left off`**, and the consolidation pass rewrites it in the same run — and only when the status actually changed. That is what keeps the Index from becoming a second source of truth.
+The Index stays honest by being derived, never authored: a note's Index line is **re-derived from that note's `Where left off`** — and from a scaffold entry page's one-line intro, which has no `Where left off` — and the consolidation pass rewrites it in the same run, only when the status actually changed. That is what keeps the Index from becoming a second source of truth.
 
 ## Granularity and links
 
 A **coherent topic earns its own note**. The test is **topical coherence** — the concept carries its own vocabulary and its own durable decisions and gotchas — *not* how many notes link it yet. A subsystem inside one project qualifies as readily as a cross-project concept; write it down the moment it is coherent, before the links arrive. Placement follows ownership: a concept one project owns lives at `projects/<project>/<Anchor>.md` — or `projects/<project>/<group>/<Anchor>.md` in a project that is grouped; a cross-project concept lives at `topics/<Topic>.md`. Creating that note, and the group it lands in, is the consolidation pass's call.
 
-The **project note is the project's overview and index**: it holds the current state, the next move, and links out to its own notes. Subsystem detail lives in the note that owns it, so the project note never accumulates it. One concept, one note.
+The **Overview is the project's overview and index**: it holds the current state, the next move, and links out to the project's notes — its scaffold pages and its sub-pages. Subsystem detail lives in the note that owns it, so the Overview never accumulates it. One concept, one note.
 
 Wikilinks live **only in curated notes**, and the consolidation pass is the only thing that writes them — a capture carries none, so the graph has one writer. A curated note **wikilinks out** to every existing note it mentions by name. A broken `[[link]]` is written only when you create its target in the same breath; a one-off mention stays plain text. Outbound links are the writer's to maintain; the inbound side is derived (**backlinks**).
 

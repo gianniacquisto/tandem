@@ -14,7 +14,7 @@ import TandemCore
 // semantics (`list`, `TicketQuery.parse`, `ticket(id:)` — the `show` read,
 // `add`, `set`, `move`, `complete`,
 // `archiveDone`, `append(ticketID:author:body:)`, `list(ticketID:)`,
-// `addLane`, `renameLane`, `deleteLane`, `rename`, `capture`,
+// `addLane`, `renameLane`, `deleteLane`, `lanes`, `rename`, `capture`,
 // `stats`, `health`, `DescriptionBody.required`, `Sessions.start`,
 // `Sessions.end`, `Sessions.link`, `Sessions.list`, `Sessions.show`,
 // `Sprints.open`, `Sprints.ticket`, `Sprints.run`, `Sprints.close`,
@@ -36,15 +36,10 @@ exit(dispatch(Array(CommandLine.arguments.dropFirst())))
 // MARK: - Dispatch
 
 /// Route one parsed command to the core and return the process exit code.
-/// `--help` prints the usage to stdout and exits 0; a parse failure prints it to
-/// stderr and exits 2.
+/// `--help` prints the usage to stdout and exits 0 — at the root, the root
+/// usage; below it, that group's or verb's own usage (ticket `BEE9B50F`). A
+/// parse failure prints it to stderr and exits 2.
 func dispatch(_ args: [String]) -> Int32 {
-    // The deprecated alias says so, once, on stderr — where no JSON parser is
-    // reading. It is the group token that is deprecated, so the notice is on the
-    // group token: `todo` and `todo list` say the same thing.
-    if args.first == Usage.deprecatedAliasToken {
-        FileHandle.standardError.write(Data((Usage.deprecatedAliasNotice + "\n").utf8))
-    }
     let command: Command
     do {
         command = try parseCommand(args)
@@ -55,6 +50,12 @@ func dispatch(_ args: [String]) -> Int32 {
     switch command {
     case .help:
         print(Usage.text)
+        return 0
+    case .groupHelp(let group):
+        print(Usage.groups[group] ?? Usage.text)
+        return 0
+    case .verbHelp(let name):
+        print(Usage.verbs[name] ?? Usage.text)
         return 0
     case .doctor:
         return runDoctor()
@@ -137,6 +138,13 @@ func dispatch(_ args: [String]) -> Int32 {
             let result = try Store().list(ticketID: id)
             return try StoreEncoding.commentsResult(result.value, note: result.note)
         }
+    case .laneList:
+        return run {
+            // The read: the store's declared lane list, empty lanes included —
+            // the lanes are their own axis, not a property of ticket rows.
+            let result = try Store().lanes()
+            return try StoreEncoding.lanesResult(result.value, note: result.note)
+        }
     case .laneAdd(let name):
         return run {
             let result = try Store().addLane(name)
@@ -158,7 +166,7 @@ func dispatch(_ args: [String]) -> Int32 {
             return try pathResult(result.value)
         }
     case .noteCapture(let kind, let project, let session):
-        return run {
+        return runCapture {
             guard let captureKind = CaptureKind(rawValue: kind) else {
                 throw BikeshedError.invalidCaptureKind(kind: kind)
             }
@@ -167,7 +175,7 @@ func dispatch(_ args: [String]) -> Int32 {
                 kind: captureKind,
                 body: readStandardInput(),
                 session: session ?? captureSessionDefault())
-            return try pathResult(result.value)
+            return try pathResult(result.value, note: result.note)
         }
     case .noteStats(let project):
         return run {
@@ -308,6 +316,28 @@ func run(_ body: () throws -> String) -> Int32 {
     } catch {
         FileHandle.standardError.write(Data((tandemErrorText(error) + "\n").utf8))
         return 1
+    }
+}
+
+/// Run one `note capture` call: `run`'s contract, plus the junk gate's exit
+/// codes (ticket 824CB789). A refused capture is not a retryable domain
+/// failure — an empty body or a slug with no words is the caller's own text to
+/// fix — so those exit 2, the usage-failure code: retrying unchanged cannot
+/// succeed. Every other failure stays a domain exit 1.
+func runCapture(_ body: () throws -> String) -> Int32 {
+    do {
+        print(try body())
+        return 0
+    } catch {
+        let refused: Bool
+        switch error {
+        case BikeshedError.emptyCaptureBody, BikeshedError.emptyCaptureSlug:
+            refused = true
+        default:
+            refused = false
+        }
+        FileHandle.standardError.write(Data((tandemErrorText(error) + "\n").utf8))
+        return refused ? 2 : 1
     }
 }
 
@@ -715,9 +745,11 @@ func sessionStatus(_ raw: String?) throws -> SessionStatus? {
 /// in the same style as `StoreEncoding` (sorted keys, UTF-8). A note operation
 /// has no store-schema encoder of its own, so the CLI builds the one-value
 /// object here.
-func pathResult(_ path: String) throws -> String {
+func pathResult(_ path: String, note: String? = nil) throws -> String {
+    var object: [String: Any] = ["path": path]
+    if let note { object["note"] = note }
     let data = try JSONSerialization.data(
-        withJSONObject: ["path": path], options: [.sortedKeys])
+        withJSONObject: object, options: [.sortedKeys])
     guard let text = String(data: data, encoding: .utf8) else {
         throw StoreIOError.io("could not serialize result to UTF-8")
     }

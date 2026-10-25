@@ -31,22 +31,36 @@ import Foundation
 ///   `section`) is copied aside as `<store>.pre-rename-<unix-ts>` on the first write
 ///   in the renamed shape, with the migrator's exact rules: under the lock, the bytes as
 ///   they were, old keys and all, colliding names suffixed, and a copy that cannot be
-///   taken fails the write. The rename is one-way and one generation: after that write
-///   the file carries the renamed keys, and no later write copies it again.
+///   taken fails the write. The same rules cover the file rename below: the handover's
+///   copy keeps the name of the file it was taken from (`todos.json.pre-rename-<ts>`,
+///   whatever keys it carries), and a snapshot taken from `tickets.json` is
+///   `tickets.json.pre-rename-<ts>`. Each retirement is one generation: no later write
+///   copies again.
 /// - **Rolling backup** — each write first copies the file it is about to replace to
-///   `<store>.bak` (one generation, same temp + fsync + `rename` under the same lock,
+///   `tickets.json.bak` (one generation, same temp + fsync + `rename` under the same lock,
 ///   ADR 0018), so an ordinary bad write — a kill mid-rename, a bad regex — leaves one
-///   previous good copy to fall back on. The first write has no `.bak` (no file yet), and
-///   a failed write leaves the previous one untouched. Reads write nothing.
+///   previous good copy to fall back on. On the handover the file replaced is the legacy
+///   one, so `tickets.json.bak` holds `todos.json`'s bytes and the README's one-command
+///   recovery is true from the first post-rename second. The first write has no `.bak`
+///   (no file yet), and a failed write leaves the previous one untouched. Reads write
+///   nothing.
 /// - **Two names, one file** — the store resolves to **`tickets.json`** when it is
 ///   present (a regular file), else to the legacy **`todos.json`** when *that* is
 ///   present, else it is absent. *Present* means a regular file: a directory, a broken
 ///   link or an unreadable path at `tickets.json` is **invalid** — the corrupt path
 ///   fires, and the old name is never a fall-through for a broken new one. Reads read
 ///   both names forever (a hand-restored `.pre-rename` copy, a `.corrupt-` fixture and
-///   a rolled-back store all load); **the writer writes back to the name it read from**,
-///   and a fresh home (neither present) writes `todos.json`. Reads never move anything:
-///   the handover to `tickets.json` is an ordinary write's job, not a read's.
+///   a rolled-back store all load). **The writer writes `tickets.json` — every write.**
+///   When the store it read is the legacy `todos.json`, that write is the **handover**,
+///   one locked act in this order: copy `todos.json` aside as
+///   `todos.json.pre-rename-<ts>` (a copy that cannot be taken fails the write), write
+///   `tickets.json` with the `.bak` rolled, `fsync` the store **directory** so the
+///   rename survives a crash before anything is deleted, then remove `todos.json`. A
+///   remove that fails does not fail the write — the store is already written, and the
+///   leftover is the fork state `doctor` names. The handover is one generation: later
+///   writes never touch `todos.json` again (a human may have restored one on purpose),
+///   and both files present is a fork — `tickets.json` is the store, the legacy file is
+///   left exactly as it is. A fresh home (neither present) writes `tickets.json` alone.
 /// - **Two names, one shape** — the decoder reads the renamed keys (`tickets`, `lanes`,
 ///   and a ticket's `lane`) *beside* the v1 ones (`todos`, `sections`, `section`), and
 ///   the renamed name wins when a file carries both. **The writer emits the renamed keys
@@ -78,15 +92,41 @@ public struct Store: Sendable {
     }
     /// The rolling backup of the file the last write replaced — the one previous
     /// good copy. Not written by reads, and not on the first write (ADR 0018).
-    /// Follows the store: `<store>.bak`.
+    /// Follows the store's name, `tickets.json.bak`; on the handover it holds
+    /// `todos.json`'s bytes — the state before the write that renamed the store.
     var backupURL: URL {
-        URL(fileURLWithPath: storeFileURL.path + ".bak")
+        URL(fileURLWithPath: fileURL.path + ".bak")
     }
     /// The sidecar lockfile (created if missing, never renamed).
     let lockURL: URL
     /// The shared storage mechanics (ADR 0001): flock + atomic write + orphan
     /// sweep, identical to the bikeshed's (ADR 0004).
     private let storage: LockedDirectory
+
+    /// The handover's file steps, as seams: the copy-aside (step 2), the
+    /// directory fsync (step 4) and the legacy removal (step 5). The defaults
+    /// are FileManager's own and the storage mechanics' own; tests replace
+    /// them to make one step throw and pin the order's guarantees. Only the
+    /// handover uses them — a post-handover write copies nothing aside,
+    /// fsyncs no directory and removes nothing.
+    var copyAsideFile: @Sendable (URL, URL) throws -> Void = {
+        try FileManager.default.copyItem(at: $0, to: $1)
+    }
+    /// The directory fsync that makes the rename durable before the legacy
+    /// removal (step 4). A failure — an unopenable directory or a failing
+    /// `fsync` — leaves the legacy file in place, the only confirmed-durable
+    /// copy, so the removal is skipped and the write still succeeds. The seam
+    /// exists so a test can prove that guarantee.
+    var fsyncDirectory: @Sendable (LockedDirectory) throws -> Void = {
+        try $0.fsyncDirectory()
+    }
+    /// The removal of the legacy `todos.json`, the handover's last step. A
+    /// remove that fails never fails the write — the store is already written
+    /// — so the closure's error is swallowed at the call site; the seam exists
+    /// so a test can prove that guarantee.
+    var removeLegacy: @Sendable (URL) throws -> Void = {
+        try FileManager.default.removeItem(at: $0)
+    }
 
     /// The default store: the real `~/.tandem` from the shipped app, `~/.tandem-dev`
     /// from anything built and run in place (see `TandemHome`).
@@ -160,24 +200,28 @@ public struct Store: Sendable {
     /// Read while holding the exclusive lock. Re-checks under the lock so a process that
     /// already recovered is not double-recovered; if still corrupt, backs the file up and
     /// restarts empty. Returns the contents, when *this* call performed the backup the
-    /// backup path, and whether the file it read still carries the legacy `done` mirror
+    /// backup path, whether the file it read still carries the legacy `done` mirror
     /// or the v1 names — the caller writing must then copy it aside first, under the
-    /// matching marker. Internal (not private): `withLockedRead` builds on it for
+    /// matching marker — and the file it read (the resolved store at read time): the
+    /// caller writing recognizes the handover when that is the legacy `todos.json`.
+    /// Internal (not private): `withLockedRead` builds on it for
     /// operations that read the store and write a sidecar.
     func readLocked() throws -> (
         contents: StoreContents,
         backupPath: String?,
         legacyMirror: Bool,
-        v1Names: Bool
+        v1Names: Bool,
+        readFrom: URL
     ) {
+        let url = storeFileURL
         switch peek() {
         case .absent:
-            return (StoreContents(lanes: [], todos: []), nil, false, false)
+            return (StoreContents(lanes: [], todos: []), nil, false, false, url)
         case .valid(let contents, let raw):
-            return (contents, nil, Self.carriesLegacyMirror(raw), Self.carriesV1Names(raw))
+            return (contents, nil, Self.carriesLegacyMirror(raw), Self.carriesV1Names(raw), url)
         case .invalid:
             let ts = Int(Date().timeIntervalSince1970)
-            let prefix = storeFileURL.lastPathComponent
+            let prefix = url.lastPathComponent
             var backup = directory.appendingPathComponent("\(prefix).corrupt-\(ts)")
             var suffix = 1
             let fm = FileManager.default
@@ -186,30 +230,36 @@ public struct Store: Sendable {
                 suffix += 1
             }
             do {
-                try fm.moveItem(at: storeFileURL, to: backup)
+                try fm.moveItem(at: url, to: backup)
             } catch {
                 // Never silently discard: if we cannot back the corrupt file up, fail loudly.
                 throw StoreIOError.io("could not back up corrupt store: \(error)")
             }
-            return (StoreContents(lanes: [], todos: []), backup.path, false, false)
+            return (StoreContents(lanes: [], todos: []), backup.path, false, false, url)
         }
     }
 
     /// Write while holding the lock: encode and hand to the shared atomic
     /// write-temp+fsync+rename primitive, taking the rolling backup of the file the
-    /// write replaces just before the commit (see `backUpCurrentFile`).
+    /// write replaces just before the commit (see `backUpCurrentFile`). The write
+    /// always lands in `tickets.json`, the store's name — on the handover that is
+    /// the write that renames the store.
     private func writeLocked(_ contents: StoreContents) throws {
         let data = try Self.encode(contents)
-        try storage.atomicWrite(data, to: storeFileURL) { try backUpCurrentFile() }
+        try storage.atomicWrite(data, to: fileURL) { try backUpCurrentFile() }
     }
 
-    /// Roll the file this write is about to replace to `<store>.bak` — **one
+    /// Roll the file this write is about to replace to `tickets.json.bak` — **one
     /// generation**, the state before the write. Runs under the lock, from inside the
     /// atomic write (new bytes durable, `rename` not yet done), so the backup is itself
     /// temp + fsync + `rename` and no failure mode leaves it half-written or stale-wrong:
-    /// a failed write leaves the previous `.bak` untouched. No file yet means nothing to
-    /// roll — the first write writes no backup. A backup we cannot take fails the write
-    /// rather than going unrecorded (the `backUpBeforeMigrating` rule).
+    /// a failed write leaves the previous `.bak` untouched. The source is the file the
+    /// write replaces — the resolved store, which on the handover is still the legacy
+    /// `todos.json` — so `.bak` holds exactly the bytes the write is retiring, and the
+    /// README's one-command recovery is true from the first post-rename second. No file
+    /// yet means nothing to roll — the first write writes no backup. A backup we cannot
+    /// take fails the write rather than going unrecorded (the `backUpBeforeMigrating`
+    /// rule).
     private func backUpCurrentFile() throws {
         guard FileManager.default.fileExists(atPath: storeFileURL.path) else { return }
         guard let data = try? Data(contentsOf: storeFileURL) else {
@@ -350,7 +400,7 @@ public struct Store: Sendable {
         case .valid(let contents, _):
             return (contents, nil)
         case .invalid:
-            let (contents, backup, _, _) = try withLock { try readLocked() }
+            let (contents, backup, _, _, _) = try withLock { try readLocked() }
             return (contents, backup.map(Self.recoveryNote))
         }
     }
@@ -361,17 +411,19 @@ public struct Store: Sendable {
     /// still taken and recovery is still checked. The contents are normalized again before
     /// the write, so every operation leaves the invariant holding. A first write over a
     /// file that still carries the legacy `done` mirror copies that file aside first (the
-    /// migrator's safety net), a first write in the renamed shape over a file that still
-    /// carries the v1 names copies it aside as `todos.json.pre-rename-<ts>`, and every
-    /// write rolls the file it replaces to `todos.json.bak`. If `body` throws and this
-    /// call performed a recovery, the failure is wrapped in a `RecoveryFailure` so the
-    /// note is not lost. Internal (not public): the public surface is the
-    /// `Operations` extension.
+    /// migrator's safety net), a first write over a file that still carries the v1 names
+    /// copies it aside as `todos.json.pre-rename-<ts>` — and when the store read is the
+    /// legacy **file** (`todos.json`), that write is the handover: copy aside, write
+    /// `tickets.json`, fsync the directory, remove the legacy file, one locked act (see
+    /// the type's doc block). Every write rolls the file it replaces to
+    /// `tickets.json.bak`. If `body` throws and this call performed a recovery, the
+    /// failure is wrapped in a `RecoveryFailure` so the note is not lost. Internal (not
+    /// public): the public surface is the `Operations` extension.
     func mutate<T: Sendable>(
         _ body: (inout StoreContents) throws -> (value: T, changed: Bool)
     ) throws -> (value: T, note: String?) {
         try withLock {
-            let (initial, backup, legacyMirror, v1Names) = try readLocked()
+            let (initial, backup, legacyMirror, v1Names, readFrom) = try readLocked()
             let note = backup.map(Self.recoveryNote)
             var contents = initial
             contents.normalize()
@@ -382,10 +434,22 @@ public struct Store: Sendable {
                     if legacyMirror {
                         try copyStoreAside(marker: "pre-migrator", reason: "retiring the done mirror")
                     }
-                    if v1Names {
+                    // The handover is the write that replaces the legacy *file* — its
+                    // name, whatever keys it carries — and only that: the legacy file
+                    // must still be there to copy (a recovery has already moved a
+                    // corrupt one aside), and a fork (both files present) reads as
+                    // `tickets.json` and is never a handover.
+                    let handover = readFrom == legacyFileURL
+                        && FileManager.default.fileExists(atPath: legacyFileURL.path)
+                    if handover {
+                        try copyStoreAside(marker: "pre-rename", reason: "the store file's rename")
+                    } else if v1Names {
                         try copyStoreAside(marker: "pre-rename", reason: "renaming its keys")
                     }
                     try writeLocked(contents)
+                    if handover {
+                        try finishHandover()
+                    }
                 }
                 return (value, note)
             } catch {
@@ -397,6 +461,19 @@ public struct Store: Sendable {
                 throw error
             }
         }
+    }
+
+    /// The handover's epilogue, after `tickets.json` is on disk (the rename inside
+    /// `atomicWrite` has happened): make the rename durable, then remove the legacy
+    /// file — one locked act, the order the type's doc block pins. A directory fsync
+    /// that fails — an unopenable directory or a failing `fsync` — leaves the legacy
+    /// file in place (it is then the only confirmed-durable copy;
+    /// the fork state is `doctor`'s to name) but does not fail the write — the store
+    /// is already written. A removal that fails likewise never fails the write: the
+    /// leftover is the fork state, not a lost store.
+    private func finishHandover() throws {
+        guard (try? fsyncDirectory(storage)) != nil else { return }
+        _ = try? removeLegacy(legacyFileURL)
     }
 
     /// Run `body` under the store's exclusive lock with the store read under the
@@ -416,7 +493,7 @@ public struct Store: Sendable {
         _ body: (StoreContents, String?) throws -> T
     ) throws -> T {
         try withLock {
-            let (initial, backup, _, _) = try self.readLocked()
+            let (initial, backup, _, _, _) = try self.readLocked()
             let note = backup.map(Self.recoveryNote)
             var contents = initial
             contents.normalize()
@@ -451,7 +528,7 @@ public struct Store: Sendable {
             suffix += 1
         }
         do {
-            try fm.copyItem(at: storeFileURL, to: backup)
+            try copyAsideFile(storeFileURL, backup)
         } catch {
             throw StoreIOError.io("could not copy the store aside before \(reason): \(error)")
         }

@@ -1,38 +1,54 @@
 # Consolidation — from captures to curated notes
 
-The one writer of the curated Bikeshed: the **consolidation agent** — a distinct, fresh agent the root session **hands the saddlebag to on request** (or a human runs it on demand) — never automatically at session close — and **never** a recording sub-agent. It reads the captures every working agent filed, distills them, and archives them. This repo names it (`agents/consolidator.md`) and ships the skill that dispatches it (`skills/tandem-consolidate/`); how a host binds those is that host's own wiring → [`HARNESS.md`](HARNESS.md). The capture cadence is [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md); the layout and naming are [`CONVENTIONS.md`](CONVENTIONS.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill to every curated note.
+The one writer of the curated Bikeshed: the **consolidation agent** — a distinct, fresh agent the root session **hands the saddlebag to on request** (or a human runs it on demand) — never automatically at session close — and **never** a recording sub-agent. It reads the agents' captures, the human's scratch pad, and the ended session records' summaries as its inputs — distills them, and archives what it consumes (the scratch excepted). This repo names it (`agents/consolidator.md`) and ships the skill that dispatches it (`skills/tandem-consolidate/`); how a host binds those is that host's own wiring → [`HARNESS.md`](HARNESS.md). The capture cadence is [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md); the layout and naming are [`CONVENTIONS.md`](CONVENTIONS.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill to every curated note.
 
-It is the **only** writer of `Index.md` and the notes under `projects/**` — no working agent may touch them (decision 8). It never writes a capture.
+It is the **only** writer of `Index.md` and the notes under `projects/**` — no working agent may touch them (decision 8). It never writes a capture, and it **never** writes the scratch.
 
-## Read the queue — hidden by default
+## Read the inputs — the saddlebag, the scratch, the session records
 
-Pending = every file under `projects/*/.raw/**` that is **not** under `.done/`. The `.raw/` subtree is hidden, so a plain glob or grep skips it:
+The pass reads the agents' saddlebag captures and the human's scratch pad ([`CONVENTIONS.md`](CONVENTIONS.md)) — and, alongside them, the ended session records' summaries (ADR 0027).
+
+**The saddlebag** — pending = every file under `projects/*/.raw/**` that is **not** under `.done/`. The `.raw/` subtree is hidden, so a plain glob or grep skips it:
 
 - glob with `hidden: true`
 - `rg --hidden …`
 - `ls -a`
 
-Read every pending file — the **whole** saddlebag, not a session's slice. Group by **project** (the `.raw/` folder's parent) and by **kind** (the filename, and the section it lands in). Drop what the repo or environment reproduces cheaply — a lookup, a file's contents, a command's output. Dedupe repeats within and across sessions.
+Read every pending file — the **whole** saddlebag, not a session's slice. Group by **project** (the `.raw/` folder's parent) and by **kind** (the filename, and where it lands). Drop what the repo or environment reproduces cheaply — a lookup, a file's contents, a command's output. Dedupe repeats within and across sessions.
+
+**The scratch pad** — the visible `scratch/` directory of the human's daily notes. Read it whole, alongside the saddlebag; fold what it holds into the scaffold. It is **read-only to the consolidator**: the pass never edits the scratch and never archives it — it is the human's space, and the human prunes.
+
+**The session records** — every ended session's summary: `tandem-cli session list --project <project> --status ended`, then `tandem-cli session show --session <id>` for the `summary` field (ADR 0027). The summary is the session's work record — what it did and where it left off; there is no floor `work` capture to read. Records live in `sessions.json`, never the saddlebag: they are read, not archived.
 
 ## Write the curated notes
 
-For each project, **route each capture to the narrowest note that owns it** — never pour it into the project note. The kind picks the section: `decision` → `Decisions`, `gotcha` → `Gotchas`, `fact` → `Facts`, `work` → `Where left off`, `thread` → `Threads`. Use the skeleton, one-line entries, and length targets in [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md).
+For each project, route each moment to where the scaffold owns it ([`CONVENTIONS.md`](CONVENTIONS.md)):
 
-Route each moment in this order:
+| Kind / moment | Lands in |
+| --- | --- |
+| an ended session's **summary** | the **Overview**'s `Where left off` — current state and next move |
+| `thread` | the **Overview**'s `Threads` — the ticket's title verbatim plus a one-clause hook |
+| `decision` | the **Decisions** page — one line: the choice, its rationale, a link to its ADR or ticket |
+| an open or retired **risk** | the **Risks** page — one line: the risk, its consequence, the ticket that owns it when one exists |
+| an established **process** | the **Processes** page — one line: what it is, a link to the note or ticket that documents it |
+| `gotcha`, `fact`, subsystem detail | the narrowest **sub-page** that owns the topic — never a scaffold page |
 
-1. **Narrowest owner first.** Write it into the narrowest existing note whose topic it belongs to — a subsystem note before the project note.
-2. **Coherent subsystem or topic, no note?** A moment that has found its own vocabulary, decisions, or gotchas ([`CONVENTIONS.md`](CONVENTIONS.md)) **earns that note**: create it with the full skeleton, at the placement CONVENTIONS fixes — flat in the project folder, or in one of its groups when the project is grouped — and wikilink it from the note that covers it (its project note, or the Index `Topics`).
-3. **Overgrown note?** A note whose section has outgrown its target is **split** into the subsystem note it now describes — never appended to past the target.
-4. **A project note stays an overview and index** — current state plus links to its notes; it never becomes a changelog, and subsystem detail lives in the note that owns it.
+Use the one-line entries and length targets in [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md). What the scaffold does not own, route in this order:
 
-- **Refresh `Where left off`** from the session's `work` notes: current state and next move.
+1. **Narrowest owner first.** Write it into the narrowest existing sub-page whose topic it belongs to — a subsystem sub-page before any broader one.
+2. **Coherent subsystem or topic, no note?** A moment that has found its own vocabulary, decisions, or gotchas ([`CONVENTIONS.md`](CONVENTIONS.md)) **earns that sub-page**: create it with the full skeleton, at the placement CONVENTIONS fixes — flat in the project folder, or in one of its groups when the project is grouped — and link it from the Overview's notes.
+3. **Overgrown note?** A note whose section has outgrown its target is **split** into the sub-page it now describes — never appended to past the target.
+4. **The Overview stays an overview and index** — `Where left off`, `Threads`, and links to the project's notes; it never becomes a changelog, and no detail lives in it.
+
+- **Refresh `Where left off`** from the ended sessions' summaries plus the remaining captures: current state and next move.
 - **Add `Threads` bullets** for open `thread` notes — Ticket title verbatim plus a one-clause hook — and mark resolved ones.
-- **Create the project note** (full skeleton, `Where left off` first) when the project has none. A concurrent create is the atomic case in [`CONCURRENCY.md`](CONCURRENCY.md).
-- **Place the note** where [`CONVENTIONS.md`](CONVENTIONS.md) puts it: `projects/<project>/<group>/<Note>.md` in a grouped project, `projects/<project>/<Note>.md` in a flat one, `topics/<Topic>.md` for a cross-project concept. **Grouping** a project — one level of sub-folders, once it holds more than 7 curated notes — is this pass's call; the notes move with it and their links do not change (`[[Name]]` resolves by basename either way, ADR 0005).
+- **Create the scaffold on demand** — when a project has none, this pass creates all four pages: the **Overview** (the anchor note, `Where left off` first) and the **Decisions**, **Risks**, and **Processes** pages. The anchor's concurrent create is the atomic case in [`CONCURRENCY.md`](CONCURRENCY.md); the other three pages follow it.
+- **Give the Decisions page its index duty** — every ADR in the repo and every decision recorded on the board (`tandem-cli ticket list`) that the page can reach earns a line with its link; the ADR stays in the repo, never copied into the page. A decision that flips leaves the one dated reversal line ([`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md)).
+- **Place the note** where [`CONVENTIONS.md`](CONVENTIONS.md) puts it: the scaffold pages at the project root, `projects/<project>/<group>/<Note>.md` in a grouped project's sub-pages, `projects/<project>/<Note>.md` in a flat one, `topics/<Topic>.md` for a cross-project concept. **Grouping** a project — one level of sub-folders for its sub-pages, once the project folder holds more than 7 curated notes — is this pass's call; the notes move with it and their links do not change (`[[Name]]` resolves by basename either way, ADR 0005).
 - **`Index.md`** — re-derive each note's one-line status and rewrite it **only if the status changed**; adding to `Decisions`/`Gotchas` never churns the Index. A grouped note still gets exactly one line, naming the note and not its group.
 - **Link** — every note this pass writes wikilinks out to each existing note it names. A capture carries none; adding links is this pass's job.
 
-Write behind the boundary ([`CONCURRENCY.md`](CONCURRENCY.md)): re-read → minimal patch → write, prune on write. Never invent state the captures do not support.
+Write behind the boundary ([`CONCURRENCY.md`](CONCURRENCY.md)): re-read → minimal patch → write, prune on write. Never invent state the inputs do not support.
 
 ## Dedupe threads against tickets
 
@@ -40,8 +56,8 @@ A `thread` note usually already has a Ticket — the working agent files it the 
 
 ## Consume — archive, never delete
 
-Move each capture it consumed to `projects/<project>/.raw/.done/<session>/<file>`, mirroring the session folder (`mv`, still hidden). Nothing is lost, and the saddlebag stays stateless — pending is simply "any file under `.raw/` not under `.done/`". The human reads the archive with "Show hidden files" in Tandem's Settings — the app's tree then draws the hidden layer, still outside search, backlinks, and wikilinks.
+Move each capture it consumed to `projects/<project>/.raw/.done/<session>/<file>`, mirroring the session folder (`mv`, still hidden). Nothing is lost, and the saddlebag stays stateless — pending is simply "any file under `.raw/` not under `.done/`". The human reads the archive with "Show hidden files" in Tandem's Settings — the app's tree then draws the hidden layer, still outside search, backlinks, and wikilinks. The **scratch is the exception**: it is folded, never moved — the pass leaves it byte-identical, and the human prunes it.
 
 ## Done when
 
-Every pending capture is folded into a curated note or dropped as reproducible, every consumed file is archived under `.done/`, and the touched curated notes are current: a cold session could resume from them alone.
+Every pending capture is folded into the scaffold or dropped as reproducible, the scratch is read and left untouched, every consumed capture is archived under `.done/`, and every project with input carries all four scaffold pages with the touched notes current: a cold session could resume from them alone.
