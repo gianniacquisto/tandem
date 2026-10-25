@@ -24,7 +24,7 @@ The verb owns the kinds, the body shape (`# <short title>` then 1–3 lines), an
 
 ## Qualification gate — what you'd lose when the session ends
 
-File when the information would be **lost when the session ends** and re-deriving it would cost real effort. A capture is cheap, so borderline notes are welcome — omit only what the repo or environment reproduces on the next look (a command's output, a file's contents, a `--help`). The stricter cost-of-derivation gate, the ≲50/≲40 length targets, and the pruning discipline govern only what consolidation **promotes** into the curated notes; they ride on that pass, not on the moment.
+File only when the information would be **lost when the session ends** and re-deriving it would cost real effort — both tests must hold, and the gate rides on the capture, not on promotion. What the repo, the environment, or the session transcript reproduces on the next look — a command's output, a file's contents, a `--help`, a narration of what you are about to do — fails the cost test; leave it out. The ≲50/≲40 length targets and the pruning discipline govern what consolidation **promotes** into the curated notes, not what you capture.
 
 ## Working agents never edit curated notes
 
