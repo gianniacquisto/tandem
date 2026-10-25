@@ -64,7 +64,7 @@ struct BikeshedStatsTests {
         _ = try bikeshed.capture(
             project: "tandem", kind: .gotcha, body: "# Older", session: "ses", at: instant)
         _ = try bikeshed.capture(
-            project: "tandem", kind: .work, body: "# Newer", session: "ses",
+            project: "tandem", kind: .fact, body: "# Newer", session: "ses",
             at: instant.addingTimeInterval(60))
         // … and one consumed capture.
         let consumed = try bikeshed.capture(

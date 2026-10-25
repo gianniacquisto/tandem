@@ -42,9 +42,9 @@ struct BikeshedSessionNotesTests {
         let bikeshed = Bikeshed(directory: dir)
 
         let mine = try bikeshed.capture(
-            project: "tandem", kind: .work, body: "# Mine\n", session: "ses_1").value
+            project: "tandem", kind: .fact, body: "# Mine\n", session: "ses_1").value
         let theirs = try bikeshed.capture(
-            project: "tandem", kind: .work, body: "# Theirs\n", session: "ses_2").value
+            project: "tandem", kind: .fact, body: "# Theirs\n", session: "ses_2").value
         _ = try bikeshed.capture(
             project: "fleet", kind: .gotcha, body: "# Elsewhere\n", session: "ses_1").value
 
@@ -61,7 +61,7 @@ struct BikeshedSessionNotesTests {
         let bikeshed = Bikeshed(directory: dir)
 
         let pending = try bikeshed.capture(
-            project: "tandem", kind: .work, body: "# Kept\n", session: "ses_1").value
+            project: "tandem", kind: .fact, body: "# Kept\n", session: "ses_1").value
         let consumed = try bikeshed.capture(
             project: "tandem", kind: .decision, body: "# Folded\n", session: "ses_1").value
         try archive(consumed, in: bikeshed)
@@ -87,7 +87,7 @@ struct BikeshedSessionNotesTests {
         #expect(try bikeshed.sessionNotes(session: "ses_1").value.isEmpty)
 
         _ = try bikeshed.capture(
-            project: "tandem", kind: .work, body: "# Mine\n", session: "ses_1").value
+            project: "tandem", kind: .fact, body: "# Mine\n", session: "ses_1").value
         #expect(try bikeshed.sessionNotes(session: "ses_other").value.isEmpty,
                 "another session's notes are not this session's")
     }

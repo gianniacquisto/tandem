@@ -31,7 +31,7 @@ enum Usage {
       tandem-cli lane rename --from <name> --to <name>
       tandem-cli lane delete --name <name>
       tandem-cli note rename --from <path> --to <path>
-      tandem-cli note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]
+      tandem-cli note capture --kind <decision|gotcha|fact|thread> [--project <name>] [--session <id>]
       tandem-cli note stats [--project <name>]
       tandem-cli note links
       tandem-cli session start [--project <name>] [--agent <name>] [--session <id>]
@@ -109,7 +109,7 @@ enum Usage {
 
         Usage:
           tandem-cli note rename --from <path> --to <path>
-          tandem-cli note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]
+          tandem-cli note capture --kind <decision|gotcha|fact|thread> [--project <name>] [--session <id>]
           tandem-cli note stats [--project <name>]
           tandem-cli note links
         """,
@@ -285,7 +285,7 @@ enum Usage {
         tandem-cli note capture — a pending capture, queued for consolidation.
 
         Usage:
-          tandem-cli note capture --kind <decision|gotcha|fact|work|thread>
+          tandem-cli note capture --kind <decision|gotcha|fact|thread>
                                   [--project <name>] [--session <id>]
 
         An absent `--project` is the working directory's last path component; an
