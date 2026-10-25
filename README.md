@@ -149,7 +149,7 @@ The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 
-That block is `dev`'s grammar, the branch the next release is cut from — `tandem-cli --help` prints the whole of it.
+That block is `dev`'s grammar, the branch the next release is cut from — `tandem-cli --help` prints the whole of it, and `--help` on any subcommand or verb prints that subcommand's own usage (`tandem-cli note capture --help` the `note capture` line) on stdout, exit 0.
 
 ### A session is its own record
 

@@ -11,6 +11,8 @@ import Foundation
 /// outside the `ticket`/`session`/`note` domains (ADR 0014) and takes no flags.
 enum Command {
     case help
+    case groupHelp(group: String)
+    case verbHelp(name: String)
     case doctor
     case ticketList(
         filter: String?,
@@ -81,7 +83,10 @@ func parseCommand(_ args: [String]) throws -> Command {
         return .help
     case "doctor":
         // A setup/diagnostic verb (ADR 0014): no group, no flags. Any extra
-        // argument is a usage failure.
+        // argument is a usage failure — `--help` / `-h` excepted.
+        if args.count == 2, args[1] == "--help" || args[1] == "-h" {
+            return .verbHelp(name: "doctor")
+        }
         guard args.count == 1 else { throw UsageError() }
         return .doctor
     case "ticket":
@@ -99,6 +104,21 @@ func parseCommand(_ args: [String]) throws -> Command {
     }
 }
 
+// MARK: - Help
+
+/// Whether any token in `tokens` is a help request.
+private func asksHelp(_ tokens: [String]) -> Bool {
+    tokens.contains("--help") || tokens.contains("-h")
+}
+
+/// A `--help` / `-h` below the root (ticket `BEE9B50F`): the narrowest usage
+/// text — with a verb, the verb's own line; without, the group's verbs. An
+/// unknown verb is still a usage failure, help or not.
+private func helpCommand(group: String, verb: String, known: [String]) throws -> Command {
+    guard known.contains(verb) else { throw UsageError() }
+    return .verbHelp(name: "\(group) \(verb)")
+}
+
 // MARK: - ticket
 
 /// `ticket list|show|add|set|move|complete|archive|comment` — the ticket verbs (the
@@ -108,12 +128,22 @@ func parseCommand(_ args: [String]) throws -> Command {
 /// core already owns.
 private func parseTicket(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
+    // `--help` / `-h` below the root: the group's or the verb's own usage,
+    // stdout, exit 0 (ticket `BEE9B50F`).
+    if verb == "--help" || verb == "-h" { return .groupHelp(group: "ticket") }
+    let rest = Array(args.dropFirst())
     // `comment` takes a sub-verb of its own (`add` / `list`), so it parses
-    // before the shared `--flag value` pass.
+    // before the shared `--flag value` pass — and before the help check, since
+    // `ticket comment add --help` names the comment verb, not a ticket one.
     if verb == "comment" {
-        return try parseTicketComment(Array(args.dropFirst()))
+        return try parseTicketComment(rest)
     }
-    let flags = try parseFlags(Array(args.dropFirst()))
+    if asksHelp(rest) {
+        return try helpCommand(group: "ticket", verb: verb, known: [
+            "list", "show", "add", "set", "move", "complete", "archive",
+        ])
+    }
+    let flags = try parseFlags(rest)
     switch verb {
     case "list":
         try accept(flags, ["--filter", "--text", "--status", "--assignee", "--lane", "--archived"])
@@ -181,7 +211,12 @@ private func parseTicket(_ args: [String]) throws -> Command {
 /// core rejects, not a usage error; `--author` absent is the unnamed author.
 private func parseTicketComment(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
-    let flags = try parseFlags(Array(args.dropFirst()))
+    if verb == "--help" || verb == "-h" { return .verbHelp(name: "ticket comment") }
+    let rest = Array(args.dropFirst())
+    if asksHelp(rest) {
+        return try helpCommand(group: "ticket comment", verb: verb, known: ["add", "list"])
+    }
+    let flags = try parseFlags(rest)
     switch verb {
     case "add":
         try accept(flags, ["--id", "--author", "--body"])
@@ -204,7 +239,12 @@ private func parseTicketComment(_ args: [String]) throws -> Command {
 /// (empty name, duplicate, unknown lane), exactly as it does for the app's tree.
 private func parseLane(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
-    let flags = try parseFlags(Array(args.dropFirst()))
+    if verb == "--help" || verb == "-h" { return .groupHelp(group: "lane") }
+    let rest = Array(args.dropFirst())
+    if asksHelp(rest) {
+        return try helpCommand(group: "lane", verb: verb, known: ["add", "rename", "delete"])
+    }
+    let flags = try parseFlags(rest)
     switch verb {
     case "add":
         try accept(flags, ["--name"])
@@ -229,7 +269,12 @@ private func parseLane(_ args: [String]) throws -> Command {
 /// read-only link-graph health readout (broken links and orphan notes).
 private func parseNote(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
-    let flags = try parseFlags(Array(args.dropFirst()))
+    if verb == "--help" || verb == "-h" { return .groupHelp(group: "note") }
+    let rest = Array(args.dropFirst())
+    if asksHelp(rest) {
+        return try helpCommand(group: "note", verb: verb, known: ["rename", "capture", "stats", "links"])
+    }
+    let flags = try parseFlags(rest)
     switch verb {
     case "rename":
         try accept(flags, ["--from", "--to"])
@@ -274,7 +319,14 @@ private func parseNote(_ args: [String]) throws -> Command {
 /// `main`, because the environment and the process belong to the adapter.
 private func parseSession(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
-    let flags = try parseFlags(Array(args.dropFirst()))
+    if verb == "--help" || verb == "-h" { return .groupHelp(group: "session") }
+    let rest = Array(args.dropFirst())
+    if asksHelp(rest) {
+        return try helpCommand(group: "session", verb: verb, known: [
+            "start", "end", "link", "list", "show",
+        ])
+    }
+    let flags = try parseFlags(rest)
     switch verb {
     case "start":
         try accept(flags, ["--project", "--agent", "--session", "--brief"])
@@ -353,7 +405,14 @@ private func parseSession(_ args: [String]) throws -> Command {
 /// (or reads as the empty field).
 private func parseSprint(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
-    let flags = try parseFlags(Array(args.dropFirst()))
+    if verb == "--help" || verb == "-h" { return .groupHelp(group: "sprint") }
+    let rest = Array(args.dropFirst())
+    if asksHelp(rest) {
+        return try helpCommand(group: "sprint", verb: verb, known: [
+            "open", "ticket", "run", "close", "list", "show",
+        ])
+    }
+    let flags = try parseFlags(rest)
     switch verb {
     case "open":
         try accept(flags, ["--lane", "--mode", "--session"])
