@@ -7,14 +7,14 @@ How a session picks up where the work left off, and finds related information ch
 At the start of a session, before reading or editing project files:
 
 1. **Open `Index.md`** — the one fixed constant. In one small read it names every project the bikeshed has memory for, and where the topics live.
-2. **Match the task to a project line** — that line's wikilink is the project's **curated note**, under `projects/<project>/`. A project is always a folder holding its curated notes and a hidden saddlebag (`.raw/`).
-3. **Read the note** — `Where left off` in full; `Decisions`, `Gotchas`, `Facts` scanned by heading and pulled only when the task touches them.
+2. **Match the task to a project line** — that line's wikilink is the project's **Overview** — `projects/<project>/<project>.md`, the anchor of its fixed scaffold (Overview, Decisions, Risks, Processes). A project is always a folder holding its scaffold, its sub-pages, and a hidden saddlebag (`.raw/`).
+3. **Read the Overview** — `Where left off` in full; the project's Decisions, Risks, and Processes pages, and its linked sub-pages, pulled only when the task touches them.
 4. **Follow the note's wikilinks outward** only as the task needs them.
 5. **Check Tandem's open tickets** (`tandem-cli ticket list`) for the open threads.
 
 **Stop** as soon as you can state the project's **current state**, its **next move**, and which **threads are open**. Topic notes and human root notes are read on demand — see Retrieval — never at orientation.
 
-No project matches the task → read only the Index's `Topics` list, then grep the bikeshed for reusable knowledge; the project note is bootstrap-created by the consolidation pass ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
+No project matches the task → read only the Index's `Topics` list, then grep the bikeshed for reusable knowledge; the project's scaffold is created on demand by the consolidation pass ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
 
 The **saddlebag** (`projects/<project>/.raw/`) is **not** part of orientation: it is hidden, and only the consolidation pass reads it, with hidden enabled (glob `hidden: true`, `rg --hidden`, `ls -a`). Orientation reads the curated notes alone.
 
