@@ -22,7 +22,7 @@ struct CaptureVerbTests {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
 
-        let refused = try run(home: home, ["note", "capture", "--kind", "work", "--project", "tandem"], stdin: "")
+        let refused = try run(home: home, ["note", "capture", "--kind", "fact", "--project", "tandem"], stdin: "")
         #expect(refused.code == 2)
         #expect(refused.error.contains("Capture body is empty"))
         #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent("bikeshed/projects").path),
@@ -47,10 +47,26 @@ struct CaptureVerbTests {
 
         // The first line is all punctuation — the filename would fall back to
         // the kind's own name (`work-work.md`), the junk the gate exists for.
-        let refused = try run(home: home, ["note", "capture", "--kind", "work", "--project", "tandem"], stdin: "# !!!\n")
+        let refused = try run(home: home, ["note", "capture", "--kind", "fact", "--project", "tandem"], stdin: "# !!!\n")
         #expect(refused.code == 2)
         #expect(refused.error.contains("no usable slug"))
         #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent("bikeshed/projects").path))
+    }
+
+    // MARK: - The retired kind (exit 1, ticket F75507ED)
+
+    @Test("--kind work is a domain failure pointing at session end --summary")
+    func retiredWorkKindIsADomainFailure() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        // A well-formed body: the refusal is about the kind alone.
+        let refused = try run(home: home, ["note", "capture", "--kind", "work", "--project", "tandem"], stdin: "# A body\n")
+        #expect(refused.code == 1, "a domain failure, not a usage one")
+        #expect(refused.error.contains("retired"))
+        #expect(refused.error.contains("session end --summary"), "the summary is the work record (ADR 0027)")
+        #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent("bikeshed/projects").path),
+            "a refused capture must not create the bikeshed")
     }
 
     // MARK: - The duplicate no-op (exit 0)
@@ -61,14 +77,14 @@ struct CaptureVerbTests {
         defer { try? FileManager.default.removeItem(at: home) }
 
         let body = "# x\n\nbody"
-        let first = try run(home: home, ["note", "capture", "--kind", "work", "--project", "tandem"], stdin: body)
+        let first = try run(home: home, ["note", "capture", "--kind", "fact", "--project", "tandem"], stdin: body)
         #expect(first.code == 0)
         let firstPath = try cli.object(from: first.output)["path"] as? String
         #expect(firstPath != nil)
         #expect(FileManager.default.fileExists(atPath: home.appendingPathComponent("bikeshed/" + firstPath.unsafelyUnwrapped).path),
             "the first call filed the capture")
 
-        let second = try run(home: home, ["note", "capture", "--kind", "work", "--project", "tandem"], stdin: body)
+        let second = try run(home: home, ["note", "capture", "--kind", "fact", "--project", "tandem"], stdin: body)
         #expect(second.code == 0, "a re-file after a retry is not an error")
         #expect(try cli.object(from: second.output)["path"] as? String == firstPath,
             "the second call names the existing file")

@@ -1,16 +1,21 @@
 import Foundation
 
-/// The five kinds of raw memory note `capture` writes. Each maps 1:1 to the
+/// The four kinds of raw memory note `capture` writes. Each maps 1:1 to the
 /// curated section the consolidation pass folds it into
-/// (decision→Decisions, gotcha→Gotchas, fact→Facts, work→Where left off,
-/// thread→Threads), so the kind also labels the filename for the consolidator
+/// (decision→Decisions, gotcha→Gotcha, fact→Facts, thread→Threads), so the
+/// kind also labels the filename for the consolidator
 /// (raw-layer design decision 2). A `String` raw value so the CLI can carry the
 /// `--kind` token without a second table of its own.
+///
+/// The fifth original kind, `work`, is retired (ticket F75507ED, following
+/// 0AC26CC5): the summary at `session end --summary` (ADR 0027) is the work
+/// record, so the writer's set no longer carries it. Stored `*-work-*.md`
+/// captures still decode, read and archive fine — the filename needs no enum
+/// to be read — but `--kind work` is refused at the door.
 public enum CaptureKind: String, Sendable, CaseIterable {
     case decision
     case gotcha
     case fact
-    case work
     case thread
 }
 

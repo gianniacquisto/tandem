@@ -12,7 +12,7 @@ The **Bikeshed** — `~/.tandem/bikeshed/` — is a plain folder of `.md` notes.
 - **scratch** — the human's scratch pad: a visible `scratch/` directory of daily notes, the human's working space. The consolidation pass reads it and folds what it holds into the curated layer. It is **read-only to the consolidator** — the pass never edits or archives the scratch; the human prunes.
 - **curated** — the human- and agent-readable notes under `projects/<project>/` and `topics/`. A working agent **never** edits them; the consolidation pass is the sole writer ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
 
-The curated layer has **exactly two inputs** — the agents' saddlebag captures and the human's scratch — and exactly one writer: the consolidation pass. Two doors, one writer; no other input, no other writer.
+The curated layer has **exactly three inputs** — the agents' saddlebag captures, the human's scratch, and the ended session records' summaries ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — and exactly one writer: the consolidation pass. Three doors, one writer; no other input, no other writer.
 
 ## Folder layout
 

@@ -49,6 +49,10 @@ final class BikeshedModel {
     /// True while a trimmed non-empty search query is active (results show
     /// in place of the tree).
     private(set) var searchActive = false
+    /// The wiki front page (4E5E9A0B): one row per project under `projects/` —
+    /// the Overview, its scaffold pages, the "where this left off" line and
+    /// the freshness stamp. The no-note-selected home of the tab.
+    private(set) var frontPage: [ProjectFront] = []
     /// The most recent operation error, surfaced verbatim (core text).
     private(set) var lastError: String?
 
@@ -100,6 +104,8 @@ final class BikeshedModel {
     private var backlinkRun: Task<Void, Never>?
     private var healthDebounce: DispatchWorkItem?
     private var healthRun: Task<Void, Never>?
+    private var frontDebounce: DispatchWorkItem?
+    private var frontRun: Task<Void, Never>?
 
     private init(bikeshed: Bikeshed = Bikeshed(), tickets: TandemModel = .shared) {
         self.bikeshed = bikeshed
@@ -137,6 +143,8 @@ final class BikeshedModel {
         backlinkRun?.cancel()
         healthDebounce?.cancel()
         healthRun?.cancel()
+        frontDebounce?.cancel()
+        frontRun?.cancel()
     }
     // (Tasks capture `self` weakly; a deallocated model leaves them no-ops.)
 
@@ -218,6 +226,7 @@ final class BikeshedModel {
             if !isDirty { closeNote(silent: true) }
         }
         refreshHealth()
+        refreshFrontPage()
     }
 
     /// Whether the note is still on disk. The tree's index answers this for a
@@ -364,6 +373,37 @@ final class BikeshedModel {
                 self?.health = report
             }
         }
+    }
+
+    // MARK: - Front page (derived; off-main; the same reload cadence as the
+    // health report — the watcher's batch recompute, debounced)
+
+    /// Recompute the wiki front page (one row per project). Debounced and
+    /// off-main like the health report: the derivation reads the projects'
+    /// Overview notes, and a watcher burst must not cost a rescan per event.
+    func refreshFrontPage() {
+        frontDebounce?.cancel()
+        frontRun?.cancel()
+        let item = DispatchWorkItem { [weak self] in self?.runFrontPage() }
+        frontDebounce = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
+    }
+
+    private func runFrontPage() {
+        let bikeshed = self.bikeshed
+        frontRun = Task.detached(priority: .utility) { [weak self] in
+            let rows = (try? bikeshed.frontPage())?.value ?? []
+            guard !Task.isCancelled else { return }   // superseded by a newer pass
+            DispatchQueue.main.async {
+                self?.frontPage = rows
+            }
+        }
+    }
+
+    /// The project row the given open note belongs to, if any (the note sits
+    /// inside the project's folder). Drives the editor column's scaffold strip.
+    func projectFront(for path: String) -> ProjectFront? {
+        frontPage.first { path.hasPrefix($0.folder + "/") }
     }
 
     // MARK: - Notes: open / create / rename / delete

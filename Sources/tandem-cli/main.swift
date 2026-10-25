@@ -167,6 +167,12 @@ func dispatch(_ args: [String]) -> Int32 {
         }
     case .noteCapture(let kind, let project, let session):
         return runCapture {
+            // The retired `work` kind is refused by name: `CaptureKind` no
+            // longer carries it (F75507ED), so `rawValue` would call it
+            // "unknown" — the retired case names the next step instead.
+            if kind == "work" {
+                throw BikeshedError.retiredCaptureKind(kind: kind)
+            }
             guard let captureKind = CaptureKind(rawValue: kind) else {
                 throw BikeshedError.invalidCaptureKind(kind: kind)
             }
