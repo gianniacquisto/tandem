@@ -139,4 +139,24 @@ struct LockedDirectoryTests {
             try store.withLock {}
         }
     }
+
+    // MARK: - Directory fsync
+
+    @Test("a directory fsync over an unopenable directory throws the open failure")
+    func fsyncDirectoryOpenFailureThrows() throws {
+        let dir = try tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // cleanRoot sits behind a regular file, so open(2) fails with ENOTDIR.
+        let notADir = dir.appendingPathComponent("not-a-dir")
+        try "a file".write(to: notADir, atomically: false, encoding: .utf8)
+        let store = LockedDirectory(
+            lockURL: dir.appendingPathComponent("sidecar.lock"),
+            tempPrefix: ".side-",
+            cleanRoot: notADir.appendingPathComponent("sub"),
+            cleanRecursively: false)
+
+        #expect(throws: LockedDirectoryError.posix(op: "open directory", code: ENOTDIR)) {
+            try store.fsyncDirectory()
+        }
+    }
 }
