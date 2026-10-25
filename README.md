@@ -125,7 +125,7 @@ tandem-cli lane add --name <name>
 tandem-cli lane rename --from <name> --to <name>
 tandem-cli lane delete --name <name>
 tandem-cli note rename --from <path> --to <path>
-tandem-cli note capture --kind <decision|gotcha|fact|work|thread> [--project <name>] [--session <id>]
+tandem-cli note capture --kind <decision|gotcha|fact|thread> [--project <name>] [--session <id>]
 tandem-cli note stats [--project <name>]
 tandem-cli note links
 tandem-cli session start [--project <name>] [--agent <name>] [--session <id>]

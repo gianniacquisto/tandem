@@ -409,7 +409,7 @@ struct SessionVerbTests {
         defer { try? FileManager.default.removeItem(at: home) }
 
         _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
-        let captured = try run(home: home, ["note", "capture", "--kind", "work", "--project", "tandem", "--session", sessionID], stdin: "# A note\n")
+        let captured = try run(home: home, ["note", "capture", "--kind", "fact", "--project", "tandem", "--session", sessionID], stdin: "# A note\n")
         #expect(captured.code == 0)
         let path = try #require(try cli.object(from: captured.output)["path"] as? String)
 
@@ -419,7 +419,7 @@ struct SessionVerbTests {
         #expect(notes == [path], "the capture the session wrote is named")
 
         // Another session's capture is not this session's note.
-        _ = try run(home: home, ["note", "capture", "--kind", "work", "--project", "tandem", "--session", "ses_other"], stdin: "# Another\n")
+        _ = try run(home: home, ["note", "capture", "--kind", "fact", "--project", "tandem", "--session", "ses_other"], stdin: "# Another\n")
         let again = try run(home: home, ["session", "show", "--session", sessionID])
         #expect(try #require(try cli.object(from: again.output)["notes"] as? [String]) == [path])
     }
