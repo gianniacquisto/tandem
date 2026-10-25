@@ -14,7 +14,7 @@ import TandemCore
 // semantics (`list`, `TicketQuery.parse`, `ticket(id:)` — the `show` read,
 // `add`, `set`, `move`, `complete`,
 // `archiveDone`, `append(ticketID:author:body:)`, `list(ticketID:)`,
-// `addLane`, `renameLane`, `deleteLane`, `rename`, `capture`,
+// `addLane`, `renameLane`, `deleteLane`, `lanes`, `rename`, `capture`,
 // `stats`, `health`, `DescriptionBody.required`, `Sessions.start`,
 // `Sessions.end`, `Sessions.link`, `Sessions.list`, `Sessions.show`,
 // `Sprints.open`, `Sprints.ticket`, `Sprints.run`, `Sprints.close`,
@@ -130,6 +130,13 @@ func dispatch(_ args: [String]) -> Int32 {
         return run {
             let result = try Store().list(ticketID: id)
             return try StoreEncoding.commentsResult(result.value, note: result.note)
+        }
+    case .laneList:
+        return run {
+            // The read: the store's declared lane list, empty lanes included —
+            // the lanes are their own axis, not a property of ticket rows.
+            let result = try Store().lanes()
+            return try StoreEncoding.lanesResult(result.value, note: result.note)
         }
     case .laneAdd(let name):
         return run {

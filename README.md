@@ -120,6 +120,7 @@ tandem-cli ticket archive
 tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
 tandem-cli ticket comment list --id <id>
 
+tandem-cli lane list
 tandem-cli lane add --name <name>
 tandem-cli lane rename --from <name> --to <name>
 tandem-cli lane delete --name <name>

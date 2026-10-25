@@ -34,6 +34,7 @@ enum Command {
     case ticketArchive
     case ticketCommentAdd(id: String, author: String?, body: String)
     case ticketCommentList(id: String)
+    case laneList
     case laneAdd(name: String)
     case laneRename(from: String, to: String)
     case laneDelete(name: String)
@@ -199,13 +200,18 @@ private func parseTicketComment(_ args: [String]) throws -> Command {
 
 // MARK: - lane
 
-/// `lane add|rename|delete` — the lane lifecycle, the one part of the lane surface the
+/// `lane list|add|rename|delete` — the lane lifecycle, the one part of the lane surface the
 /// app used to own alone. The names travel raw: the core trims and owns every rejection
 /// (empty name, duplicate, unknown lane), exactly as it does for the app's tree.
 private func parseLane(_ args: [String]) throws -> Command {
     guard let verb = args.first else { throw UsageError() }
     let flags = try parseFlags(Array(args.dropFirst()))
     switch verb {
+    case "list":
+        // The read: the store's declared lane list, empty lanes included — no
+        // ticket rows, no filters, the discovery verb.
+        try accept(flags, [])
+        return .laneList
     case "add":
         try accept(flags, ["--name"])
         return .laneAdd(name: flags["--name"] ?? "")
