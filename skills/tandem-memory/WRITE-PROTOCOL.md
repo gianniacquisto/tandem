@@ -37,7 +37,37 @@ At session end (or when context nears exhaustion), file the floor `work` note. T
 
 ## The curated shape — what the consolidation pass writes
 
-Every curated note — project note or topic — uses this skeleton, in this order, with these exact `##` headings:
+The **scaffold pages** have a fixed shape of their own ([`CONVENTIONS.md`](CONVENTIONS.md)).
+
+**Overview** (`projects/<project>/<project>.md`) — the anchor:
+
+```
+# <Project>
+
+<one line: what this project is>
+
+## Where left off
+## Threads
+## Notes
+```
+
+- `Where left off` — state and next move; the one section read in full at orientation, and the summary the front page shows.
+- `Threads` — the project's open threads: the ticket's title verbatim plus a one-clause hook.
+- `Notes` — the project's other notes: its scaffold pages and its linked sub-pages, one line each.
+
+**Decisions**, **Risks**, and **Processes** — one line per entry, no sections:
+
+```
+# <Project> Decisions
+
+<one line: what this page is>
+
+- **the choice** — its rationale. Link to its ADR or ticket.
+```
+
+One line per entry, pointers over restatement: a Decisions entry links to its ADR (which stays in the repo) or its ticket; a **decision that flips** leaves one dated line — `**X** — reversed <date>: <reason>` — never two live contradicting lines.
+
+Everything else — a **sub-page** or a **topic note** — uses the skeleton, in this order, with these exact `##` headings:
 
 ```
 # <Note name>
@@ -59,7 +89,7 @@ Every curated note — project note or topic — uses this skeleton, in this ord
 
 Correct in place: the covering note is the single source of truth — edit a contradicting truth into it. Facts are corrected silently; a **decision that flips** leaves one dated line so the next session does not re-litigate it — `**X** — reversed <date>: <reason>`. Never two live contradicting lines; never append-only. Amend the covering note; create a new one only when [`CONVENTIONS.md`](CONVENTIONS.md)'s coherence test fires.
 
-Targets: ≲50 lines a project note, ≲40 a topic — a *trigger*, not a rule. A **project note is an overview**, so its ≲50 lines are an index budget, kept small by **linking out**, not by compressing subsystem detail. When a section outgrows its target **or** a coherent subsystem appears ([`CONVENTIONS.md`](CONVENTIONS.md)), the pass **creates the subsystem note and links it from the project note** — it never deepens the project note past its overview role. Pointers over restatement, one-line entries, no code, no step-by-step procedures.
+Targets: ≲50 lines the Overview, ≲40 a sub-page or a topic — a *trigger*, not a rule. The **Overview is an overview**, so its ≲50 lines are an index budget, kept small by **linking out**, not by compressing detail. The scaffold's entry pages hold one line per entry; an entry that grows into a topic earns the sub-page that owns it, and keeps its one line plus link. When a section outgrows its target **or** a coherent subsystem appears ([`CONVENTIONS.md`](CONVENTIONS.md)), the pass **creates the sub-page and links it from the Overview** — it never deepens the Overview past its overview role. Pointers over restatement, one-line entries, no code, no step-by-step procedures.
 
 **Prune on write**: adding a line invites retiring one, so the target stays live because every write makes room. Delete whole any line the repo or environment reproduces, a stale line, or a no-op. (The Bikeshed has no history; the dated reversal line is the stopgap.)
 
