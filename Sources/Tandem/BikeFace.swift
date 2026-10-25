@@ -138,6 +138,14 @@ struct BikeFaceView: View {
             if let path = model.openPath {
                 titleBar(path)
                 Rectangle().fill(palette.sand).frame(height: Line.hairline)
+                // The project's scaffold strip (4E5E9A0B): when the open note
+                // lives in a project, its page set — Overview, Decisions,
+                // Risks, Processes — is one click away from any of its pages.
+                if let front = model.projectFront(for: path) {
+                    BikeProjectStrip(model: model, front: front, openPath: path,
+                                     palette: palette)
+                    Rectangle().fill(palette.sand).frame(height: Line.hairline)
+                }
                 if model.conflict {
                     conflictBanner
                         .padding(.horizontal, 16)
@@ -148,6 +156,10 @@ struct BikeFaceView: View {
                 BikeEditorPane(model: model)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 backlinksDock
+            } else if !model.frontPage.isEmpty {
+                // The wiki front page (4E5E9A0B): the tab's home — one glance,
+                // every project's state.
+                frontPageView
             } else {
                 noNotePlaceholder
             }
@@ -332,6 +344,88 @@ struct BikeFaceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    // MARK: front page (the tab's home — one glance, every project's state)
+
+    /// The wiki front page (4E5E9A0B): one row per project — the project's
+    /// name (clickable → its Overview), the freshness stamp (the Overview's
+    /// on-disk mtime — the consolidation pass rewrites the Overview exactly
+    /// when the state changes), the "where this left off" line, and the
+    /// project's scaffold page set as chips. Sub-pages are the wikilinks in
+    /// the Overview — the editor renders those clickable already.
+    private var frontPageView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Bikeshed")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(palette.ink)
+                Text("every project, where it left off")
+                    .font(.system(size: 12))
+                    .foregroundStyle(palette.inkDim)
+            }
+            .padding(.bottom, 12)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(model.frontPage, id: \.folder) { row in
+                        projectRow(row)
+                        if row.folder != model.frontPage.last?.folder {
+                            Rectangle().fill(palette.sand)
+                                .frame(height: Line.hairline)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 12)
+        .frame(maxWidth: 640)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    /// One project row: name + freshness stamp, the state line, the scaffold
+    /// chips. The name opens the Overview.
+    private func projectRow(_ row: ProjectFront) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Button {
+                    if let overview = row.pages.first(where: { $0.role == .overview }) {
+                        model.open(overview.path)
+                    }
+                } label: {
+                    Text(row.name)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(palette.accent)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open \(row.name)'s Overview")
+                Spacer()
+                if let fresh = row.freshness {
+                    Text("updated \(fresh.formatted(.dateTime.month().day()))")
+                        .font(.system(size: 11))
+                        .foregroundStyle(palette.inkDim)
+                        .monospacedDigit()
+                }
+            }
+            if let state = row.stateLine {
+                Text(state)
+                    .font(.system(size: 12))
+                    .foregroundStyle(palette.ink)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 6) {
+                ForEach(row.pages, id: \.path) { page in
+                    BikePageChip(title: page.role.label, palette: palette,
+                                 selected: false) {
+                        model.open(page.path)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 12)
+    }
+
     private var newNoteButton: some View {
         Button {
             model.createNote(in: nil)
@@ -452,14 +546,24 @@ struct BikeTreeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Sidebar header: label + new-note
+            // Sidebar header: label + new-note. The label is the way home:
+            // clicking it closes the note and shows the front page.
             HStack(spacing: 6) {
-                Image(systemName: "folder")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(palette.inkDim)
-                Text("Bikeshed")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(palette.ink)
+                Button {
+                    model.closeNote(silent: false)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(palette.inkDim)
+                        Text("Bikeshed")
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(palette.ink)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Back to the front page")
                 Spacer()
                 Menu {
                     Button("New note") { model.createNote(in: nil) }
@@ -767,6 +871,65 @@ private struct BikeDragPreview: View {
             .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
             .overlay(RoundedRectangle(cornerRadius: Radius.control)
                 .strokeBorder(palette.line, lineWidth: Line.hairline))
+    }
+}
+
+// MARK: - Scaffold chips (the project's page set)
+
+/// One scaffold-page chip: the role's label, clickable → the page. Selected
+/// = the note open in the editor (the strip's state).
+private struct BikePageChip: View {
+    var title: String
+    var palette: Palette
+    var selected: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: selected ? .semibold : .medium))
+                .foregroundStyle(selected ? palette.paper : palette.ink)
+                .padding(.horizontal, 9)
+                .frame(height: 22)
+                .background(selected ? AnyShapeStyle(palette.accent)
+                                     : AnyShapeStyle(Color.clear))
+                .overlay(RoundedRectangle(cornerRadius: Radius.control)
+                    .strokeBorder(selected ? palette.accent : palette.line,
+                                  lineWidth: Line.hairline))
+                .clipShape(RoundedRectangle(cornerRadius: Radius.control))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// The editor column's scaffold strip (4E5E9A0B): when the open note lives
+/// in a project, the project's page set — Overview, Decisions, Risks,
+/// Processes — draws as chips under the title bar, the open page highlighted.
+/// The chips are the same derivation the front page's rows carry
+/// (`Bikeshed.frontPage()`), so the strip and the home can never disagree.
+private struct BikeProjectStrip: View {
+    var model: BikeshedModel
+    var front: ProjectFront
+    var openPath: String
+    var palette: Palette
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                Image(systemName: "square.stack")
+                    .font(.system(size: 10))
+                    .foregroundStyle(palette.inkDim)
+                ForEach(front.pages, id: \.path) { page in
+                    BikePageChip(title: page.role.label, palette: palette,
+                                 selected: page.path == openPath) {
+                        model.open(page.path)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 30)
     }
 }
 
