@@ -36,8 +36,9 @@ exit(dispatch(Array(CommandLine.arguments.dropFirst())))
 // MARK: - Dispatch
 
 /// Route one parsed command to the core and return the process exit code.
-/// `--help` prints the usage to stdout and exits 0; a parse failure prints it to
-/// stderr and exits 2.
+/// `--help` prints the usage to stdout and exits 0 — at the root, the root
+/// usage; below it, that group's or verb's own usage (ticket `BEE9B50F`). A
+/// parse failure prints it to stderr and exits 2.
 func dispatch(_ args: [String]) -> Int32 {
     let command: Command
     do {
@@ -49,6 +50,12 @@ func dispatch(_ args: [String]) -> Int32 {
     switch command {
     case .help:
         print(Usage.text)
+        return 0
+    case .groupHelp(let group):
+        print(Usage.groups[group] ?? Usage.text)
+        return 0
+    case .verbHelp(let name):
+        print(Usage.verbs[name] ?? Usage.text)
         return 0
     case .doctor:
         return runDoctor()
