@@ -1,12 +1,12 @@
 # Consolidation — from captures to curated notes
 
-The one writer of the curated Bikeshed: the **consolidation agent** — a distinct, fresh agent the root session **hands the saddlebag to on request** (or a human runs it on demand) — never automatically at session close — and **never** a recording sub-agent. It reads its two inputs — the captures every working agent filed, and the human's scratch pad — distills them, and archives what it consumes. This repo names it (`agents/consolidator.md`) and ships the skill that dispatches it (`skills/tandem-consolidate/`); how a host binds those is that host's own wiring → [`HARNESS.md`](HARNESS.md). The capture cadence is [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md); the layout and naming are [`CONVENTIONS.md`](CONVENTIONS.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill to every curated note.
+The one writer of the curated Bikeshed: the **consolidation agent** — a distinct, fresh agent the root session **hands the saddlebag to on request** (or a human runs it on demand) — never automatically at session close — and **never** a recording sub-agent. It reads the agents' captures, the human's scratch pad, and the ended session records' summaries as its inputs — distills them, and archives what it consumes (the scratch excepted). This repo names it (`agents/consolidator.md`) and ships the skill that dispatches it (`skills/tandem-consolidate/`); how a host binds those is that host's own wiring → [`HARNESS.md`](HARNESS.md). The capture cadence is [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md); the layout and naming are [`CONVENTIONS.md`](CONVENTIONS.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill to every curated note.
 
 It is the **only** writer of `Index.md` and the notes under `projects/**` — no working agent may touch them (decision 8). It never writes a capture, and it **never** writes the scratch.
 
-## Read the inputs — the saddlebag, then the scratch
+## Read the inputs — the saddlebag, the scratch, the session records
 
-The pass has **two inputs** ([`CONVENTIONS.md`](CONVENTIONS.md)): the agents' saddlebag captures and the human's scratch pad.
+The pass reads the agents' saddlebag captures and the human's scratch pad ([`CONVENTIONS.md`](CONVENTIONS.md)) — and, alongside them, the ended session records' summaries (ADR 0027).
 
 **The saddlebag** — pending = every file under `projects/*/.raw/**` that is **not** under `.done/`. The `.raw/` subtree is hidden, so a plain glob or grep skips it:
 
@@ -18,13 +18,15 @@ Read every pending file — the **whole** saddlebag, not a session's slice. Grou
 
 **The scratch pad** — the visible `scratch/` directory of the human's daily notes. Read it whole, alongside the saddlebag; fold what it holds into the scaffold. It is **read-only to the consolidator**: the pass never edits the scratch and never archives it — it is the human's space, and the human prunes.
 
+**The session records** — every ended session's summary: `tandem-cli session list --project <project> --status ended`, then `tandem-cli session show --session <id>` for the `summary` field (ADR 0027). The summary is the session's work record — what it did and where it left off; there is no floor `work` capture to read. Records live in `sessions.json`, never the saddlebag: they are read, not archived.
+
 ## Write the curated notes
 
 For each project, route each moment to where the scaffold owns it ([`CONVENTIONS.md`](CONVENTIONS.md)):
 
 | Kind / moment | Lands in |
 | --- | --- |
-| `work` | the **Overview**'s `Where left off` — current state and next move |
+| an ended session's **summary** | the **Overview**'s `Where left off` — current state and next move |
 | `thread` | the **Overview**'s `Threads` — the ticket's title verbatim plus a one-clause hook |
 | `decision` | the **Decisions** page — one line: the choice, its rationale, a link to its ADR or ticket |
 | an open or retired **risk** | the **Risks** page — one line: the risk, its consequence, the ticket that owns it when one exists |
@@ -38,7 +40,7 @@ Use the one-line entries and length targets in [`WRITE-PROTOCOL.md`](WRITE-PROTO
 3. **Overgrown note?** A note whose section has outgrown its target is **split** into the sub-page it now describes — never appended to past the target.
 4. **The Overview stays an overview and index** — `Where left off`, `Threads`, and links to the project's notes; it never becomes a changelog, and no detail lives in it.
 
-- **Refresh `Where left off`** from the session's `work` notes: current state and next move.
+- **Refresh `Where left off`** from the ended sessions' summaries plus the remaining captures: current state and next move.
 - **Add `Threads` bullets** for open `thread` notes — Ticket title verbatim plus a one-clause hook — and mark resolved ones.
 - **Create the scaffold on demand** — when a project has none, this pass creates all four pages: the **Overview** (the anchor note, `Where left off` first) and the **Decisions**, **Risks**, and **Processes** pages. The anchor's concurrent create is the atomic case in [`CONCURRENCY.md`](CONCURRENCY.md); the other three pages follow it.
 - **Give the Decisions page its index duty** — every ADR in the repo and every decision recorded on the board (`tandem-cli ticket list`) that the page can reach earns a line with its link; the ADR stays in the repo, never copied into the page. A decision that flips leaves the one dated reversal line ([`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md)).
