@@ -37,6 +37,8 @@ sprint=$(tandem-cli ticket add --title "Sprint $n — $lane" \
 # batch: the slots drawn in triage — ready first, backlog picks filling the rest
 ```
 
+On a host that exports no `TANDEM_AGENT`, `self` cannot resolve — pass the sprint's agent name for both `--assignee` and `--origin` (e.g. `--assignee sprint --origin sprint`), and never fall back by omitting `--origin` (the default stamps `human`).
+
 Take the batch before anything moves it. One comment per batch ticket naming the sprint: `ticket comment add --id <id> --author sprint --body "Sprint $n — $lane: in the batch, on sprint ticket $sprint."`
 
 The sprint ticket's description is **written once and appended to**: `## The batch` first (ids and titles in stored order, the session that opened it), then a `## Run — <date>` per landing, then `## Close`. An append is read → add → write back:
