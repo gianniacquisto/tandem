@@ -21,6 +21,14 @@ public enum BikeshedError: Error, Sendable, Equatable {
     case invalidCaptureName(name: String)
     /// `capture` was called with a `--kind` that is not one of the five kinds.
     case invalidCaptureKind(kind: String)
+    /// `capture` was called with an empty or whitespace-only body — the
+    /// ticket-description rule, mirrored: there is nothing to file.
+    case emptyCaptureBody
+    /// `capture` was called with a body whose slug is empty — the first
+    /// non-empty line carries no words, so the filename would fall back to the
+    /// kind's own name (`work-work.md`, the junk the consolidator cannot
+    /// label).
+    case emptyCaptureSlug(kind: String)
     /// A folder was moved into itself or into one of its own descendants — the
     /// move would make the tree cyclic.
     case moveCycle(path: String, into: String)
@@ -40,6 +48,10 @@ public enum BikeshedError: Error, Sendable, Equatable {
         case .invalidCaptureKind(let kind):
             let kinds = CaptureKind.allCases.map(\.rawValue).joined(separator: ", ")
             return "Unknown capture kind \"\(kind)\". Use one of: \(kinds)."
+        case .emptyCaptureBody:
+            return "Capture body is empty. Provide a non-empty body on stdin and try again."
+        case .emptyCaptureSlug(let kind):
+            return "Capture \"\(kind)\" has no usable slug: the body's first non-empty line carries no words. Start the body with a short title line (e.g. \"# Caret not placed\") and try again."
         case .moveCycle(let path, let into):
             let destination = into.isEmpty ? "the bikeshed root" : "\"\(into)\""
             return "Cannot move \"\(path)\" into \(destination): a folder cannot be moved into itself. Choose a different folder."
