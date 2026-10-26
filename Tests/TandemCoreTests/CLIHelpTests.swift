@@ -82,6 +82,25 @@ struct CLIHelpTests {
         }
     }
 
+    /// A group's text is the root's lines for its verbs, so a verb the CLI
+    /// dispatches under a group must not be missing from that group's `--help`
+    /// (ticket `94F94B1A`: `lane list` had its own help but no group line).
+    @Test("every group's --help lists every verb that group dispatches")
+    func everyGroupListsItsVerbs() throws {
+        let dispatched = Dictionary(grouping: Usage.verbs.keys) {
+            $0.split(separator: " ").first.map(String.init) ?? $0
+        }
+        for group in Usage.groups.keys {
+            let result = try cli.run(home: home, [group, "--help"])
+            let lines = result.output.split(separator: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            for verb in dispatched[group] ?? [] {
+                #expect(lines.contains { $0.hasPrefix("tandem-cli \(verb)") },
+                    "\(group) --help omits `\(verb)`")
+            }
+        }
+    }
+
     @Test("`-h` answers below the root too")
     func shortSpellingAnswers() throws {
         let result = try cli.run(home: home, ["ticket", "list", "-h"])
