@@ -103,8 +103,11 @@ final class TandemModel {
         self.sessionStore = Sessions(directory: store.directory)
         self.sprintStore = Sprints(directory: store.directory)
         self.defaultLane = TandemSettings.defaultLane()
-        // Watch the store *directory* (the file is replaced via atomic rename) so an
-        // agent writing the store refreshes the UI without a manual reload.
+        // Watch the store *directory* (entry changes: the JSON fallback's atomic
+        // rename, the sidecars) and the database's `-wal` (content changes: a
+        // SQLite commit appends to the journal's existing inode, which a directory
+        // descriptor never sees) so an agent writing the store refreshes the UI
+        // without a manual reload.
         self.watcher = StoreWatcher(directory: store.directory)
         // Attach the callback only now that `self` is fully initialized.
         self.watcher.onEvent = { [weak self] in self?.reload() }
