@@ -33,7 +33,7 @@ enum Command {
     )
     case ticketMove(id: String, lane: String?, index: String?)
     case ticketComplete(id: String)
-    case ticketArchive
+    case ticketArchive(id: String?)
     case ticketCommentAdd(id: String, author: String?, body: String)
     case ticketCommentList(id: String)
     case laneList
@@ -197,9 +197,12 @@ private func parseTicket(_ args: [String]) throws -> Command {
         // carries the open list.
         return .ticketComplete(id: flags["--id"] ?? "")
     case "archive":
-        // Bulk, whole-list: finished work leaves the view, nothing is deleted.
-        try accept(flags, [])
-        return .ticketArchive
+        // Without the flag: the bulk sweep, whole-list — finished work leaves
+        // the view, nothing is deleted. `--id` names one ticket instead, open
+        // or done — the per-ticket archive the GUI has had all along, whose
+        // unknown id is the same `unknownID` failure `complete` raises.
+        try accept(flags, ["--id"])
+        return .ticketArchive(id: flags["--id"])
     default:
         throw UsageError()
     }
@@ -243,7 +246,7 @@ private func parseLane(_ args: [String]) throws -> Command {
     if verb == "--help" || verb == "-h" { return .groupHelp(group: "lane") }
     let rest = Array(args.dropFirst())
     if asksHelp(rest) {
-        return try helpCommand(group: "lane", verb: verb, known: ["add", "rename", "delete"])
+        return try helpCommand(group: "lane", verb: verb, known: ["list", "add", "rename", "delete"])
     }
     let flags = try parseFlags(rest)
     switch verb {

@@ -29,7 +29,7 @@ For each project, route each moment to where the scaffold owns it ([`CONVENTIONS
 | an ended session's **summary** | the **Overview**'s `Where left off` — current state and next move |
 | `thread` | the **Overview**'s `Threads` — the ticket's title verbatim plus a one-clause hook |
 | `decision` | the **Decisions** page — one line: the choice, its rationale, a link to its ADR or ticket |
-| an open or retired **risk** | the **Risks** page — one line: the risk, its consequence, the ticket that owns it when one exists |
+| an open **risk** | the **Risks** page — one line: the risk, its consequence, the ticket that owns it when one exists |
 | an established **process** | the **Processes** page — one line: what it is, a link to the note or ticket that documents it |
 | `gotcha`, `fact`, subsystem detail | the narrowest **sub-page** that owns the topic — never a scaffold page |
 

@@ -485,6 +485,65 @@ struct OperationsTests {
         #expect(try store.list(.all).value.filter(\.archived).count == 1)
     }
 
+    // MARK: - archive (one ticket)
+
+    @Test("archive(id) sets one ticket aside — open or done — and only that one")
+    func archiveByIDArchivesOne() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let open = try store.add("open")
+        let done = try store.add("done")
+        _ = try store.complete(done.value.id.uuidString)
+
+        let archived = try store.archive(open.value.id.uuidString)
+        #expect(archived.value.archived == true)
+
+        // Nothing is deleted, and only the named ticket is set aside.
+        let all = try store.list(.all).value
+        #expect(all.count == 2)
+        #expect(all.filter(\.archived).map(\.title) == ["open"])
+
+        // It leaves the default views, whatever its status.
+        #expect(try store.list(.open).value.isEmpty)
+        #expect(try store.list(.done).value.map(\.title) == ["done"])
+    }
+
+    @Test("archive(id) with an unknown id is the same unknownID failure complete raises")
+    func archiveByIDUnknownID() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        _ = try store.add("on the board")
+        for id in [UUID().uuidString, "not-a-uuid"] {
+            do {
+                _ = try store.archive(id)
+                Issue.record("Expected unknownID to be thrown for \(id)")
+            } catch let error as DomainError {
+                guard case .unknownID = error else {
+                    Issue.record("Expected unknownID, got \(error)")
+                    return
+                }
+            }
+        }
+    }
+
+    @Test("archive(id) is idempotent: an already-archived ticket is returned unchanged")
+    func archiveByIDIdempotent() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let ticket = try store.add("open")
+        let first = try store.archive(ticket.value.id.uuidString)
+        #expect(first.value.archived == true)
+        let second = try store.archive(ticket.value.id.uuidString)
+        #expect(second.value.archived == true)
+        #expect(try store.list(.all).value.filter(\.archived).count == 1)
+    }
+
     // MARK: - delete
 
     @Test("delete removes a single ticket, open or done")
@@ -555,11 +614,6 @@ struct OperationsTests {
 
         // The clear persists: a fresh Store reads the written nil, not the old name.
         #expect(try Store(directory: dir).list(.all).value.first?.assignee == nil)
-        let raw = try String(contentsOf: store.storeFileURL, encoding: .utf8)
-        let json = try JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any]
-        let tickets = try #require(json?["tickets"] as? [[String: Any]],
-                                   "the writer key (the vocabulary rename) holds the tickets")
-        #expect(tickets.first?["assignee"] is NSNull, "the clear is written, not left as the old name")
     }
 
     @Test("set(id, assignee: .unchanged) leaves the assignee alone")
@@ -573,9 +627,9 @@ struct OperationsTests {
         #expect(same.assignee == "builder")
     }
 
-    // MARK: - on-disk round-trip
+    // MARK: - round-trip
 
-    @Test("on-disk file keeps envelope version 1 (lanes are additive) and round-trips")
+    @Test("a fresh store reads back the same tickets, order and timestamps")
     func onDiskRoundTrip() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -584,37 +638,6 @@ struct OperationsTests {
         let open = try store.add("open")
         let done = try store.add("done")
         _ = try store.complete(done.value.id.uuidString)
-
-        // Read the raw file straight off disk.
-        let text = try String(contentsOf: store.storeFileURL, encoding: .utf8)
-        let obj = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
-        // Additive fields must NOT move the version: a v1-era reader has to keep
-        // reading this file (ADR 0006 — bumping it once wiped a real store).
-        #expect((obj?["version"] as? Int) == 1)
-        // No lanes declared yet, and the field is written as an empty array.
-        #expect((obj?["lanes"] as? [String])?.isEmpty == true)
-        #expect(obj?["sections"] == nil, "the v1 lane key is gone from the writer")
-
-        guard let todos = obj?["tickets"] as? [[String: Any]] else {
-            Issue.record("`tickets` is not a JSON array of objects")
-            return
-        }
-        #expect(todos.count == 2)
-
-        // Pretty-printed: the file is human-legible and contains newlines.
-        #expect(text.contains("\n"))
-
-        // Every createdAt is an ISO-8601 UTC string ending in Z.
-        for todo in todos {
-            #expect((todo["createdAt"] as? String)?.hasSuffix("Z") == true)
-        }
-        // The open ticket's completedAt and lane are JSON null.
-        let openEntry = todos.first { ($0["status"] as? String) == "backlog" }
-        #expect(openEntry?["completedAt"] is NSNull)
-        #expect(openEntry?["lane"] is NSNull)
-        // The done ticket's completedAt is a real (non-null) string.
-        let doneEntry = todos.first { ($0["status"] as? String) == "done" }
-        #expect(doneEntry?["completedAt"] is String)
 
         // Decode round-trip: a fresh Store over the same dir sees the same tickets,
         // newest on top (the stored order is the order).
@@ -625,5 +648,8 @@ struct OperationsTests {
         #expect(all.map(\.done) == [true, false])
         #expect(all[0].completedAt != nil)
         #expect(all[1].completedAt == nil)
+        // The database is the store; the retired JSON file was not written.
+        #expect(FileManager.default.fileExists(atPath: fresh.databaseURL.path))
+        #expect(!FileManager.default.fileExists(atPath: fresh.storeFileURL.path))
     }
 }

@@ -12,6 +12,9 @@ struct SetupDiagnosticsTests {
     /// Facts for a healthy machine, overridable per test.
     private func facts(
         homeSource: TandemHome.Source = .devBuild,
+        storePath: String = "/Users/tester/.tandem-dev/tandem.db",
+        storeVersion: Int? = 1,
+        storeJSONFork: String? = nil,
         storeHealth: Store.Health = .counts(open: 3, done: 2),
         storeBackup: Store.BackupHealth = .present(age: 300),
         storeLockHeld: Bool = false,
@@ -30,7 +33,9 @@ struct SetupDiagnosticsTests {
         SetupDiagnostics.Facts(
             homePath: "/Users/tester/.tandem-dev",
             homeSource: homeSource,
-            storePath: "/Users/tester/.tandem-dev/tickets.json",
+            storePath: storePath,
+            storeVersion: storeVersion,
+            storeJSONFork: storeJSONFork,
             storeHealth: storeHealth,
             storeBackup: storeBackup,
             storeLockHeld: storeLockHeld,
@@ -92,6 +97,19 @@ struct SetupDiagnosticsTests {
         let store = report.checks.first { $0.name == "store" }
         #expect(store?.ok == false)
         #expect(store?.detail.contains("backup 2h old") == true)
+    }
+
+    @Test("the store row names the database, its migration version and the JSON fork")
+    func storeRowNamesTheDatabaseVersionAndFork() {
+        let report = SetupDiagnostics.report(facts(
+            storePath: "/Users/tester/.tandem-dev/tandem.db",
+            storeVersion: 1,
+            storeJSONFork: "/Users/tester/.tandem-dev/tickets.json"))
+        let store = report.checks.first { $0.name == "store" }
+        #expect(store?.detail.contains("/Users/tester/.tandem-dev/tandem.db") == true)
+        #expect(store?.detail.contains("v1;") == true)
+        #expect(store?.detail.contains("a fork") == true)
+        #expect(store?.detail.contains("tickets.json") == true)
     }
 
     @Test("backup ages read as seconds, minutes, hours, then days")
@@ -190,7 +208,8 @@ struct SetupDiagnosticsTests {
         _ = try store.add("Doctor probe")
         #expect(store.health() == .counts(open: 1, done: 0))
 
-        try Data("not json".utf8).write(to: store.storeFileURL)
+        // A file that is not a database where the store's database belongs.
+        try Data("not a database".utf8).write(to: store.databaseURL)
         #expect(store.health() == .unreadable)
     }
 

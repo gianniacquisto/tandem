@@ -29,7 +29,11 @@ let package = Package(
             name: "TandemCore",
             dependencies: [
                 .product(name: "Markdown", package: "swift-markdown")
-            ]
+            ],
+            // The system libsqlite3 the store's database rides on (ADR 0031). The C API
+            // ships with every platform the core could target; the module map is the
+            // SDK's, so no package is vendored for it.
+            linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         // The GUI app. AppKit/SwiftUI interop stays in Swift 5 language mode to avoid
         // strict-concurrency friction; all logic lives in TandemCore.

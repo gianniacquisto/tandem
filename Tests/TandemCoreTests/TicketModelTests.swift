@@ -20,41 +20,10 @@ struct TicketModelTests {
         try text.write(to: store.storeFileURL, atomically: false, encoding: .utf8)
     }
 
-    /// The store file as a JSON object, for asserting the on-disk shape.
-    private func fileObject(_ store: Store) throws -> [String: Any] {
-        let data = try Data(contentsOf: store.storeFileURL)
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw StoreIOError.io("test fixture is not a JSON object")
-        }
-        return object
-    }
-
-    /// The ticket objects in the store file, under either array name — the writer emits
-    /// the renamed `tickets` key, and a hand-written v1 fixture carries `todos`.
-    private func fileTickets(_ store: Store) throws -> [[String: Any]] {
-        let object = try fileObject(store)
-        return (object["tickets"] as? [[String: Any]])
-            ?? (object["todos"] as? [[String: Any]])
-            ?? []
-    }
-
-    /// The first ticket object in the store file, as written.
-    private func firstTicketObject(_ store: Store) throws -> [String: Any] {
-        guard let first = try fileTickets(store).first else {
-            throw StoreIOError.io("test fixture has no todos")
-        }
-        return first
-    }
-
-    /// The on-disk object for the ticket with this title.
-    private func todoObject(_ store: Store, titled title: String) throws -> [String: Any]? {
-        try fileTickets(store).first { ($0["title"] as? String) == title }
-    }
-
-    /// The migrator's safety copies, oldest first.
-    private func preMigratorBackups(in dir: URL) -> [URL] {
+    /// The one-time import's copies (`<name>.pre-sqlite-<ts>`), oldest first.
+    private func preSqliteCopies(in dir: URL) -> [URL] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
-        return names.filter { $0.hasPrefix("todos.json.pre-migrator-") }.sorted()
+        return names.filter { $0.contains(".pre-sqlite-") }.sorted()
             .map { dir.appendingPathComponent($0) }
     }
 
@@ -89,7 +58,7 @@ struct TicketModelTests {
         #expect(read.done == false)
     }
 
-    @Test("in-review round-trips through the store and the file")
+    @Test("in-review round-trips through the store")
     func inReviewRoundTrips() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -98,8 +67,6 @@ struct TicketModelTests {
         let added = try store.add("Waiting for review", status: .inReview).value
         #expect(added.status == .inReview)
         #expect(added.done == false)
-        #expect((try todoObject(store, titled: "Waiting for review")?["status"] as? String) == "in-review")
-
         // A fresh Store over the same directory reads the same stage.
         let read = try #require(try Store(directory: dir).list(.all).value.first)
         #expect(read.status == .inReview)
@@ -123,31 +90,6 @@ struct TicketModelTests {
     func workflowOrder() {
         #expect(Status.workflow == [.backlog, .refined, .ready, .inProgress, .inReview, .done])
         #expect(Status.wireValues == ["backlog", "refined", "ready", "in-progress", "in-review", "done"])
-    }
-
-    @Test("the on-disk shape keeps version 1, writes the renamed keys, and writes every field")
-    func onDiskShape() throws {
-        let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let store = Store(directory: dir)
-
-        _ = try store.add("Bare")
-
-        let object = try fileObject(store)
-        #expect((object["version"] as? Int) == 1)
-        #expect(object["lanes"] is [Any], "the lane list is written under the renamed key")
-        #expect(object["todos"] == nil, "the v1 array key is gone from the writer")
-        #expect(object["sections"] == nil, "the v1 lane key is gone from the writer")
-
-        let todo = try firstTicketObject(store)
-        #expect(todo["done"] == nil, "the legacy mirror retired from the file")
-        #expect((todo["status"] as? String) == "backlog")
-        #expect((todo["archived"] as? Bool) == false)
-        #expect(todo["description"] is NSNull)
-        #expect(todo["assignee"] is NSNull)
-        #expect((todo["origin"] as? String) == "human", "the filer is never null")
-        #expect(todo["lane"] is NSNull, "the lane is written under the renamed key")
-        #expect(todo["section"] == nil, "the v1 lane key is gone from the writer")
     }
 
     @Test("a file written before the ticket fields existed reads as backlog and unassigned")
@@ -174,7 +116,7 @@ struct TicketModelTests {
 
     // MARK: - The legacy done mirror
 
-    @Test("the mirror wins on read: done true with status backlog reads as done, and migrates")
+    @Test("the mirror wins on read: done true with status backlog reads as done, and the import keeps it")
     func mirrorDoneWins() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -187,20 +129,20 @@ struct TicketModelTests {
         #expect(todo.done == true)
         #expect(try store.list(.done).value.count == 1)
 
-        // Reading never migrates: the file keeps its old shape, and nothing is copied.
-        #expect(try todoObject(store, titled: "finished by the old app")?["done"] as? Bool == true)
-        #expect(preMigratorBackups(in: dir).isEmpty)
+        // Reading never migrates: no database appears, and nothing is copied.
+        #expect(!FileManager.default.fileExists(atPath: store.databaseURL.path))
+        #expect(preSqliteCopies(in: dir).isEmpty)
 
-        // The next write persists the reconciled status, retires the mirror, and copies
-        // the old file aside first.
+        // The next write imports the file, keeping the reconciled status, and copies the
+        // old file aside first.
         _ = try store.add("another")
-        let healed = try todoObject(store, titled: "finished by the old app")
-        #expect((healed?["status"] as? String) == "done")
-        #expect(healed?["done"] == nil, "the migrated file carries status alone")
+        let healed = try #require(try store.list(.all).value.first { $0.title == "finished by the old app" })
+        #expect(healed.status == .done)
+        #expect(healed.completedAt != nil)
 
-        let backups = preMigratorBackups(in: dir)
-        #expect(backups.count == 1)
-        let backedUp = try Data(contentsOf: try #require(backups.first))
+        let copies = preSqliteCopies(in: dir)
+        #expect(copies.count == 1)
+        let backedUp = try Data(contentsOf: try #require(copies.first))
         let object = try JSONSerialization.jsonObject(with: backedUp) as? [String: Any]
         let first = (object?["todos"] as? [[String: Any]])?.first
         #expect(first?["done"] as? Bool == true, "the copy keeps the pre-migration shape")
@@ -220,10 +162,9 @@ struct TicketModelTests {
         #expect(try store.list(.open).value.count == 1)
 
         _ = try store.add("another")
-        let healed = try todoObject(store, titled: "reopened by the old app")
-        #expect((healed?["status"] as? String) == "backlog")
-        #expect(healed?["done"] == nil)
-        #expect(preMigratorBackups(in: dir).count == 1)
+        let healed = try #require(try store.list(.all).value.first { $0.title == "reopened by the old app" })
+        #expect(healed.status == .backlog)
+        #expect(preSqliteCopies(in: dir).count == 1)
     }
 
     @Test("a file written after the migrator has no done key and reads from status alone")
@@ -237,10 +178,11 @@ struct TicketModelTests {
         #expect(all.first { $0.title == "finished by the new app" }?.status == .done)
         #expect(all.first { $0.title == "ready by the new app" }?.status == .ready)
 
-        // A write leaves the shape alone and makes no migrator backup: there is nothing old.
+        // A write imports the file once; the database carries the status alone.
         _ = try store.add("another")
-        #expect(preMigratorBackups(in: dir).isEmpty)
-        #expect(try todoObject(store, titled: "finished by the new app")?["done"] == nil)
+        let healed = try #require(try store.list(.all).value.first { $0.title == "finished by the new app" })
+        #expect(healed.status == .done)
+        #expect(preSqliteCopies(in: dir).count == 1)
     }
 
     @Test("the CLI wire keeps the derived done flag even though the file drops it")
@@ -278,14 +220,14 @@ struct TicketModelTests {
 
         let old = try #require(try store.list(.all).value.first)
         #expect(old.origin == "human", "absent reads as the filer every old ticket has")
-        #expect(try todoObject(store, titled: "predates the field")?["origin"] == nil,
-               "a read never writes: the file keeps its old shape")
+        #expect(!FileManager.default.fileExists(atPath: store.databaseURL.path),
+               "a read never writes: the home keeps its old shape")
 
-        // The next write stamps the filer on the pre-existing ticket — a reconciliation,
-        // not a recovery: no file is copied aside.
+        // The next write imports the file once, and the ticket keeps its filer.
         _ = try store.add("another")
-        #expect((try todoObject(store, titled: "predates the field")?["origin"] as? String) == "human")
-        #expect(preMigratorBackups(in: dir).isEmpty)
+        let healed = try #require(try store.list(.all).value.first { $0.title == "predates the field" })
+        #expect(healed.origin == "human")
+        #expect(preSqliteCopies(in: dir).count == 1)
     }
 
     @Test("add stamps its origin, defaulting to human, with the assignee's spelling rules")
@@ -339,7 +281,7 @@ struct TicketModelTests {
         }
     }
 
-    @Test("completing writes status done, completedAt, and no legacy mirror")
+    @Test("completing writes status done and completedAt")
     func completeWritesStatusOnly() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -348,10 +290,9 @@ struct TicketModelTests {
         let added = try store.add("Task").value
         _ = try store.complete(added.id.uuidString)
 
-        let object = try firstTicketObject(store)
-        #expect(object["done"] == nil)
-        #expect((object["status"] as? String) == "done")
-        #expect(object["completedAt"] is String)
+        let read = try #require(try Store(directory: dir).list(.all).value.first)
+        #expect(read.status == .done)
+        #expect(read.completedAt != nil)
     }
 
     @Test("reopening after done lands in backlog — completion erased the stage")

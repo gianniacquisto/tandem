@@ -22,7 +22,7 @@ enum Usage {
                             [--assignee <name|self>] [--description <string|->]
       tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
       tandem-cli ticket complete --id <id>
-      tandem-cli ticket archive
+      tandem-cli ticket archive [--id <id>]
       tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
       tandem-cli ticket comment list --id <id>
 
@@ -256,6 +256,12 @@ enum Usage {
 
         Usage:
           tandem-cli ticket comment list --id <id>
+        """,
+        "lane list": """
+        tandem-cli lane list — the store's declared lanes, empty ones included.
+
+        Usage:
+          tandem-cli lane list
         """,
         "lane add": """
         tandem-cli lane add — a new lane.

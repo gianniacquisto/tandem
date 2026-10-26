@@ -4,7 +4,7 @@
 
 This project's memory is the Tandem **bikeshed** (`~/.tandem/bikeshed/`), reached through the `tandem-memory` skill. Before you read or edit project files, and as you work:
 
-- **Orient first** — load the `tandem-memory` skill, then read `Index.md`, the project's curated note under `projects/<project>/`, and `tandem-cli ticket list`. Do this before touching project files.
+- **Orient first** — load the `tandem-memory` skill, then read `Index.md`, the project's **Overview** (`projects/<project>/<project>.md`, the anchor of its fixed scaffold), and `tandem-cli ticket list`. Do this before touching project files.
 - **Record captures as you work** — `tandem-cli note capture --kind <decision|gotcha|fact|thread> --project tandem`, but only when the information would be lost at session end and re-deriving it costs real effort. There is no floor `work` note: the summary at `session end` (ADR 0027) is the work record. The curated bikeshed notes have one writer — the consolidation pass — so never edit them.
 - **Consolidate on request** — the captures keep at session close; when the human asks, `skills/tandem-consolidate/` dispatches the pass.
 - **Applies to sub-agents too** — a child session receives this section like the root does, so a brief need not restate it.
@@ -15,7 +15,7 @@ The full protocol is in the skill: `SKILL.md`, `WRITE-PROTOCOL.md`, `CONSOLIDATI
 
 A session is a record, not a ticket (ADR 0027): one record per session, keyed by `$OPENCODE_SESSION_ID`, in its own file — `sessions.json` at Tandem's home — and never a ticket on the board. The CLI's five verbs are `session start`, `session link`, `session end`, `session list` and `session show`; the two states are `running` and `ended`.
 
-- **Start** — `tandem-cli session start --brief -`, the brief on stdin: what this session is for and what done looks like. `<project>` defaults to the working directory's last path component; `--agent` names the pass when the session tells you one.
+- **Start** — `tandem-cli session start --agent <pass> --brief -`, the brief on stdin: what this session is for and what done looks like. `<project>` defaults to the working directory's last path component; `--agent` is never omitted — every session knows its pass, and a record without it cannot attribute the pass and signs the usage comment its end posts `usage`.
 - **Carry tickets** — `tandem-cli session link --ticket <id>` for each ticket the session carries. A child session is a session: it starts its own record and links what it carries.
 - **End** — before your final reply: `tandem-cli session end --outcome <succeeded|failed|interrupted|unknown> --summary -`, one line on what landed. On this host, end through the usage wrapper instead: `Scripts/usage-report.sh --outcome <…>` (summary on stdin) — it reads the session's tokens, cost and model from opencode's database, reports them on the record, and the CLI posts one usage comment — signed by the session's agent, `usage` when the record carries no agent — on every ticket the session linked. When the wrapper reports no row (exit 1), fall back to the plain `session end`.
 - **A session that dies leaves a `running` record and nothing to reclaim.** The board holds only work, so no pass reclaims the rows of a dead session — what the session carried, its record's `tickets` names.

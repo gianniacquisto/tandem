@@ -429,11 +429,17 @@ public struct Sessions: Sendable {
     /// with a note — whatever its status: a session that has ended is not
     /// restarted, and one that is running is not touched. The first `start` for
     /// an id creates the record and writes the file.
+    ///
+    /// `at` is the caller's own timestamp for the start — a record can stand
+    /// for a session that started earlier (the one that migrated the pre-record
+    /// tickets does), whole seconds like the file's own stamps; absent, it is
+    /// now.
     public func start(
         id: String,
         project: String,
         agent: String? = nil,
-        brief: String
+        brief: String,
+        at: Date? = nil
     ) throws -> OperationResult<Session> {
         let handle = try Self.handle(id)
         let text = brief.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -449,15 +455,15 @@ public struct Sessions: Sendable {
                 project: project,
                 agent: name,
                 brief: text,
-                startedAt: Self.now())
+                startedAt: Self.when(at))
             sessions.append(session)
             return (session, true, nil)
         }
         return OperationResult(session, note: note)
     }
 
-    /// `end(id:outcome:summary:tokens:cost:model:onStamp:)`: stamp a session as
-    /// ended, **once**.
+    /// `end(id:outcome:summary:tokens:cost:model:at:onStamp:)`: stamp a session
+    /// as ended, **once**.
     ///
     /// The outcome, the end time, the summary and the usage are written
     /// together; the summary is trimmed, and an empty result is no summary
@@ -477,6 +483,11 @@ public struct Sessions: Sendable {
     /// comment from double-posting. A throwing hook fails the call after the
     /// stamp; the record is ended, and a retry is safe, because the retry
     /// stamps nothing and so calls nothing.
+    ///
+    /// `at` is the caller's own timestamp for the stamp — a record can stand
+    /// for a session that ended earlier (the one that migrated the pre-record
+    /// tickets does), whole seconds like the file's own stamps; absent, it is
+    /// now.
     public func end(
         id: String,
         outcome: SessionOutcome,
@@ -484,6 +495,7 @@ public struct Sessions: Sendable {
         tokens: SessionTokens? = nil,
         cost: Double? = nil,
         model: String? = nil,
+        at: Date? = nil,
         onStamp: ((Session) throws -> Void)? = nil
     ) throws -> OperationResult<Session> {
         let handle = try Self.handle(id)
@@ -500,7 +512,7 @@ public struct Sessions: Sendable {
             var record = sessions[index]
             record.end(
                 outcome: outcome, summary: said,
-                tokens: tokens, cost: cost, model: model, at: Self.now())
+                tokens: tokens, cost: cost, model: model, at: Self.when(at))
             sessions[index] = record
             stamped = true
             return (record, true, nil)
@@ -793,10 +805,11 @@ public struct Sessions: Sendable {
             .map(\.element)
     }
 
-    /// Now, truncated to the stored form of a timestamp: the file keeps whole
-    /// seconds, so the in-memory value is the same shape — a record equals what
+    /// The caller's timestamp for a stamp, or now when the caller carries
+    /// none — either way truncated to the file's whole-second form, so the
+    /// in-memory value is the same shape the file keeps: a record equals what
     /// a later read gives back.
-    private static func now() -> Date {
-        Date(timeIntervalSince1970: Date.now.timeIntervalSince1970.rounded())
+    private static func when(_ date: Date?) -> Date {
+        Date(timeIntervalSince1970: (date ?? .now).timeIntervalSince1970.rounded())
     }
 }

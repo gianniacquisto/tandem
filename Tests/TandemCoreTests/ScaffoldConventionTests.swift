@@ -65,6 +65,21 @@ struct ScaffoldConventionTests {
         }
     }
 
+    @Test("The scaffold's own files agree — risk routing and the Overview wording (12D351E9)")
+    func scaffoldProseAgrees() throws {
+        let consolidation = try Self.file("skills/tandem-memory/CONSOLIDATION.md")
+        #expect(consolidation.contains("| an open **risk** | the **Risks** page"),
+                "the routing can only route what the Risks page holds")
+        #expect(!consolidation.contains("open or retired **risk**"),
+                "the Risks page holds one line per open risk")
+        let conventions = try Self.file("skills/tandem-memory/CONVENTIONS.md")
+        #expect(conventions.contains("one line per open risk"))
+        let agents = try Self.file("AGENTS.md")
+        #expect(!agents.contains("the project's curated note"),
+                "the orient step names the Overview, the scaffold's anchor")
+        #expect(agents.contains("the project's **Overview**"))
+    }
+
     @Test("CONSOLIDATION reads the inputs, creates the scaffold on demand, leaves the scratch untouched")
     func consolidationStatesThePass() throws {
         let c = try Self.file("skills/tandem-memory/CONSOLIDATION.md")

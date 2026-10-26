@@ -219,6 +219,42 @@ struct SessionsTests {
         #expect(shown.status == .ended)
     }
 
+    // MARK: - the caller's own clock
+
+    @Test("start(at:) keeps the caller's timestamp: a record can stand for a session that started earlier")
+    func startKeepsTheGivenStart() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let started = Date(timeIntervalSince1970: 1_761_123_456)
+        let result = try sessions.start(
+            id: "ses_1", project: "tandem",
+            brief: "A session that started earlier.", at: started)
+        #expect(result.value.startedAt == started)
+
+        // The file carries the same stamp: a fresh read gives the same record.
+        let shown = try sessions.show(id: "ses_1")
+        #expect(shown.value.startedAt == started)
+    }
+
+    @Test("end(at:) keeps the caller's timestamp: a record can stand for a session that ended earlier")
+    func endKeepsTheGivenEnd() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "A session that ended earlier.")
+
+        let ended = Date(timeIntervalSince1970: 1_761_234_567)
+        let result = try sessions.end(
+            id: "ses_1", outcome: .unknown,
+            summary: "It ended earlier.", at: ended)
+        #expect(result.value.status == .ended)
+        #expect(result.value.outcome == .unknown)
+        #expect(result.value.endedAt == ended)
+
+        let shown = try sessions.show(id: "ses_1")
+        #expect(shown.value.endedAt == ended)
+    }
+
     // MARK: - usage
 
     /// The usage a reported session carries — the five counts as opencode's
@@ -796,7 +832,7 @@ struct SessionsTests {
         #expect(!text.contains("Tandem store"))
     }
 
-    @Test("the store's own lock failure still wears the store's vocabulary")
+    @Test("the store's own failure still wears the store's vocabulary")
     func storeLockFailureUnchanged() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-store-lock-tests-\(UUID().uuidString)")
@@ -805,14 +841,17 @@ struct SessionsTests {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
 
-        // The store's file is `todos.json`, and its failures say so: this
-        // ticket is about the file that is not the store.
+        // The store cannot create its database there, and its failure says so in its
+        // own words and names the file: this ticket is about the file that is not the
+        // store. (`StoreLockTests` owned this wording before the database took over.)
         do {
             _ = try Store(directory: dir).add("a ticket")
-            Issue.record("expected the store's own lock failure")
+            Issue.record("expected the store's own failure")
         } catch {
             let text = tandemErrorText(error)
-            #expect(text.contains("Tandem store I/O failed during open lockfile"))
+            #expect(text.contains("Tandem store error: could not open"), "got \(text)")
+            #expect(text.contains("tandem.db"), "got \(text)")
+            #expect(!text.contains("sessions file"))
         }
     }
 }

@@ -117,8 +117,15 @@ func dispatch(_ args: [String]) -> Int32 {
             let result = try Store().complete(id)
             return try StoreEncoding.ticketResult(result.value, note: result.note)
         }
-    case .ticketArchive:
+    case .ticketArchive(let id):
         return run {
+            if let id {
+                // One ticket, by id: open or done, the GUI's per-ticket
+                // archive. An unknown id is the domain failure the
+                // open-listing `complete` raises.
+                let result = try Store().archive(id)
+                return try StoreEncoding.ticketResult(result.value, note: result.note)
+            }
             let result = try Store().archiveDone()
             return try StoreEncoding.archivedResult(result.value, note: result.note)
         }
