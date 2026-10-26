@@ -279,9 +279,11 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
             gh release delete "$GITHUB_REF_NAME" --yes
           fi
-          # The body carries what shipped (7B005267), not a fixed tag line:
-          # the generator lists the PRs merged on dev since the previous tag
-          # (titles via gh, the fixed install line as the lead).
+          # The body carries what shipped (7B005267), grouped by kind
+          # (BCE67BAE), not a fixed tag line: the generator lists the PRs
+          # merged on dev since the previous tag (titles and labels via gh,
+          # the fixed install line as the lead), never writing the bikeshed —
+          # that is `--capture`, a local step this runner cannot take.
           notes=$(Scripts/release-notes.sh "$GITHUB_REF_NAME")
           gh release create "$GITHUB_REF_NAME" \
             --title "Tandem $version" \
