@@ -9,7 +9,7 @@ description: "Read and write the shared Tandem ticket list, manage its cycle lan
 
 ## The store
 
-`~/.tandem/todos.json`, the human's real list. A from-source build (`swift run tandem-cli`) writes `~/.tandem-dev/` instead, so development can never reach the real list; notes live beside it (`~/.tandem/bikeshed/`, `~/.tandem-dev/bikeshed/` from source). Every write keeps one previous good copy beside it — `todos.json.bak` — and `mv ~/.tandem/todos.json.bak ~/.tandem/todos.json` is the one-command recovery; the app reloads it on its own.
+`~/.tandem/tandem.db`, a SQLite database and the human's real list — tickets, their comments, sessions and sprints — with its journal (`tandem.db-wal`, `tandem.db-shm`) beside it. A from-source build (`swift run tandem-cli`) writes `~/.tandem-dev/` instead, so development can never reach the real list; notes live beside it (`~/.tandem/bikeshed/`, `~/.tandem-dev/bikeshed/` from source). Every write keeps one previous good copy beside it — `tandem.db.bak` — and `rm ~/.tandem/tandem.db-wal ~/.tandem/tandem.db-shm ~/.tandem/tandem.db && mv ~/.tandem/tandem.db.bak ~/.tandem/tandem.db` is the one-command recovery, the journal files first or the restored file reads under the dead WAL; the app reloads it on its own. A JSON store file left from before the database is imported once, then ignored.
 
 ## Tickets
 
@@ -154,7 +154,7 @@ The link graph — `broken` (wikilinks that resolve to nothing: `note`, `link` a
 
 ## Setup check
 
-`tandem-cli doctor` — where this machine's Tandem state lives and whether it is healthy. One JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "detail": "..."}]}`. The checks, in order — `home` (the resolved state directory and why: `TANDEM_HOME` override, shipped app, or dev build), `store` (the `todos.json` path, open/done counts, the rolling backup), `bikeshed`, `comments` (`absent` is a valid early state), `lock`, `app` (the installed version, with the quarantine-strip hint), `skills` (whether this skill is found for each agent host). The first four can fail; a missing app or uninstalled host is informational, not failure. Exit `0` healthy, `1` not, `2` usage error.
+`tandem-cli doctor` — where this machine's Tandem state lives and whether it is healthy. One JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "detail": "..."}]}`. The checks, in order — `home` (the resolved state directory and why: `TANDEM_HOME` override, shipped app, or dev build), `store` (the `tandem.db` path, schema version, open/done counts, the rolling `tandem.db.bak`, and any JSON store file beside it — a fork the database ignores), `bikeshed`, `comments` (`absent` is a valid early state), `lock`, `app` (the installed version, with the quarantine-strip hint), `skills` (whether this skill is found for each agent host). The first four can fail; a missing app or uninstalled host is informational, not failure. Exit `0` healthy, `1` not, `2` usage error.
 
 ## Streams and exit codes
 
