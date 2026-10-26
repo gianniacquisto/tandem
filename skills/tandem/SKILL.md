@@ -17,7 +17,9 @@ Eight verbs under `ticket` — `list`, `show`, `add`, `set`, `move`, `complete`,
 
 | field | meaning |
 | --- | --- |
-| `id` | pass it back to `set`, `move`, `complete` |
+| `id` | the UUID; pass it back to any id-taking verb |
+| `ref` | the human handle, `TAN-42` — a lane key plus a per-lane number, null in the default area; pass it **anywhere `--id` is taken** |
+| `number` | the number inside the lane (`42`), null in the default area |
 | `title` | one line, trimmed |
 | `status` | `backlog` (default), `refined`, `ready`, `in-progress`, `in-review`, `done` |
 | `archived` | true when set aside — out of the default views, still in the store |
@@ -28,6 +30,10 @@ Eight verbs under `ticket` — `list`, `show`, `add`, `set`, `move`, `complete`,
 | `done` | derived from `status == "done"`, kept on the wire for older readers — read `status`, not this |
 | `link` | a bikeshed note path, or null; a human sets it in the app |
 | `createdAt`, `completedAt` | ISO-8601 UTC; `completedAt` is null unless done |
+
+### The ref — `TAN-42`
+
+A ticket in a declared lane also carries a **ref**: the lane's key and a per-lane number, rendered `KEY-N` — `TAN-42`, never zero-padded. It is the handle a human writes in chat, and every verb that takes `--id` (or `--ticket`) accepts it beside the full UUID: `ticket show --id TAN-42` and `ticket show --id tan-42` both resolve. A UUID *prefix* is not a handle — the ref is. Numbers are issued per lane, one-based, and never handed out twice; a move to another lane takes that lane's next number and does not carry the old one, and the default area has neither a number nor a ref. An unknown ref fails with the lane's real range (`Lane "Probe" (PRB) has issued PRB-1 to PRB-2`), not the open list. Numbering an existing board is the store's own migration: every lane's tickets are numbered by `createdAt`, once.
 
 `status` is the truth, and a change is free-form — any status to any other, backwards included — because the board records what is true, not a process.
 
@@ -87,11 +93,13 @@ A **cycle lane** is the area axis — the list groups by it, the board draws its
 | command | returns |
 | --- | --- |
 | `lane list` | `{"lanes": [...]}` |
-| `lane add --name <name>` | `{"lanes": [...]}` |
-| `lane rename --from <a> --to <b>` | `{"lanes": [...]}` |
+| `lane add --name <name> [--abbr <key>]` | `{"lanes": [...]}` |
+| `lane rename --from <a> --to <b> [--abbr <key>]` | `{"lanes": [...]}` |
 | `lane delete --name <name>` | `{"lanes": [...], "moved": <n>}` |
 
 `lanes` is the lane list, in render order — `list`'s answer is the store's declared lane list read directly (empty lanes included, no ticket rows); the write verbs answer the list their write produced. Names are trimmed; empty, duplicate, and unknown names are domain failures. `rename` rewrites the lane list and every ticket in it in one write; `delete` never deletes tickets — members fall back to the default area, `moved` is how many. A lane must exist before `ticket add/move --lane` accepts it.
+
+Each lane has a **key** — the `PRB` of `PRB-1` (see "The ref" above). `lane add --abbr <key>` names it; omitted, the key is the first three alphanumerics of the name (`Tandem` → `TAN`, `code-rank` → `COD`). A key is uppercase letters and digits, unique across lanes case-insensitively, and **frozen once a ticket in the lane holds a number**: `lane rename` keeps it, and `--abbr` that would move a frozen key is refused, naming the refs that would move.
 
 ## Sessions
 
@@ -119,7 +127,7 @@ One session, start to end (`ses_demo2` against a scratch home):
 $ export OPENCODE_SESSION_ID="ses_demo2"
 $ tandem-cli session start --project tandem --agent builder --brief "Docs pass: write the session record documents"
 {"agent":"builder","brief":"Docs pass: write the session record documents","endedAt":null,"id":"ses_demo2","outcome":null,"project":"tandem","startedAt":"2026-10-23T12:33:55Z","status":"running","summary":null,"tickets":[]}
-$ tandem-cli session link --ticket 9879916B-2F32-4999-AEEC-A963DA951DFF
+$ tandem-cli session link --ticket TAN-42
 {"agent":"builder","brief":"Docs pass: write the session record documents","endedAt":null,"id":"ses_demo2","outcome":null,"project":"tandem","startedAt":"2026-10-23T12:33:55Z","status":"running","summary":null,"tickets":["9879916B-2F32-4999-AEEC-A963DA951DFF"]}
 $ tandem-cli session end --outcome succeeded --summary "Documents landed on the PR" \
     --tokens-input 12345 --tokens-output 4567 --tokens-reasoning 567 \
@@ -130,7 +138,7 @@ $ tandem-cli session end --outcome succeeded --summary "Documents landed on the 
 The end above also posted one usage comment on ticket `9879916B…` — the only notice a linked ticket gets, composed by the CLI, signed by the session's agent (`usage` when the record carries no agent), one line per reported metric:
 
 ```sh
-$ tandem-cli ticket comment list --id 9879916B-2F32-4999-AEEC-A963DA951DFF
+$ tandem-cli ticket comment list --id TAN-42
 {"comments":[{"at":"2026-10-23T12:33:55Z","author":"builder","body":"Usage — ses_demo2 · z-ai/glm-5.3-flash\ninput 12,345\noutput 4,567\ncache read 89,012\ncache write 1,234\nreasoning 567\ncost $0.42"}]}
 ```
 

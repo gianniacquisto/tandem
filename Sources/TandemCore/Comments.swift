@@ -96,7 +96,7 @@ extension Store {
                     let contents = try StoreSchema.readContents(db)
                     // The store's one rule for "which ticket is this id?" — the
                     // same answer `complete` gives, from the same place.
-                    let id = try Self.requireTicket(ticketID, in: contents.todos).uuid
+                    let id = try Self.requireTicket(ticketID, in: contents).uuid
                     // The stored form of the timestamp is whole seconds, so the
                     // in-memory value is truncated to the same form: an appended
                     // comment equals what `list` reads back.

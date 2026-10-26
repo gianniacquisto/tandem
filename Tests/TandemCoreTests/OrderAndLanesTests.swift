@@ -346,7 +346,7 @@ struct OrderAndLanesTests {
         // The same contents, whichever name the file carries.
         #expect(renamed.lanes == v1.lanes)
         #expect(renamed.todos == v1.todos)
-        #expect(renamed.lanes == ["Work"])
+        #expect(renamed.lanes.map(\.name) == ["Work"])
         #expect(renamed.todos.first?.lane == "Work")
     }
 

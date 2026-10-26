@@ -123,8 +123,8 @@ tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
 tandem-cli ticket comment list --id <id>
 
 tandem-cli lane list
-tandem-cli lane add --name <name>
-tandem-cli lane rename --from <name> --to <name>
+tandem-cli lane add --name <name> [--abbr <key>]
+tandem-cli lane rename --from <name> --to <name> [--abbr <key>]
 tandem-cli lane delete --name <name>
 tandem-cli note rename --from <path> --to <path>
 tandem-cli note capture --kind <decision|gotcha|fact|thread> [--project <name>] [--session <id>]
@@ -148,7 +148,7 @@ tandem-cli sprint show --lane <name> --number <n>
 tandem-cli doctor
 ```
 
-The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `done`; a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status. A sprint keeps its own vocabulary too — `open` and `closed`, with a batch built `serial` or `parallel` — and never borrows the board's Status either.
+The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `done`; a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A ticket in a lane carries a **ref** — the lane's key and a per-lane number, `TAN-42` — and every `--id` (or `--ticket`) accepts it beside the full UUID; the default area's tickets have none, and a lane's key is frozen once its tickets carry numbers. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status. A sprint keeps its own vocabulary too — `open` and `closed`, with a batch built `serial` or `parallel` — and never borrows the board's Status either.
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 

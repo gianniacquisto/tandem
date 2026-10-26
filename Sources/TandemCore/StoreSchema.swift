@@ -26,7 +26,7 @@ enum StoreSchema {
     }
 
     /// The version this build writes and reads.
-    static let currentVersion = 2
+    static let currentVersion = 3
 
     /// Every migration, in order. Append only — a shipped version's DDL never changes.
     static let migrations: [Migration] = [
@@ -112,6 +112,50 @@ enum StoreSchema {
             try db.execute("ALTER TABLE sessions ADD COLUMN tokensCacheWrite INTEGER")
             try db.execute("ALTER TABLE sessions ADD COLUMN model TEXT")
             try db.execute("ALTER TABLE sprints RENAME COLUMN note TO close")
+        },
+        // Ticket references (ticket 6598E091): a lane key, a per-lane ticket number and
+        // the lane's issued-number counter. The backfill is the read path's `prepare()`
+        // in SQL: declare every lane a ticket names, generate each lane's key
+        // deterministically, and number each lane's tickets in `createdAt` order (ties
+        // by UUID). The default area's tickets keep `number` NULL. One transaction, so a
+        // failed backfill rolls back whole; the version row is what makes a second open a
+        // no-op.
+        Migration(version: 3, name: "lane keys and ticket numbers") { db in
+            try db.execute("ALTER TABLE tickets ADD COLUMN number INTEGER")
+            try db.execute("ALTER TABLE lanes ADD COLUMN key TEXT")
+            try db.execute("ALTER TABLE lanes ADD COLUMN lastNumber INTEGER NOT NULL DEFAULT 0")
+
+            var names = try db.rows("SELECT name FROM lanes ORDER BY position") { $0.text(0) }
+            // A lane a ticket names but the lane list does not carry (a hand edit) is
+            // declared too, in first-appearance order — the read path does the same, so
+            // its pre-migration refs and the migration's agree.
+            let dangling = try db.rows("""
+                SELECT lane FROM tickets WHERE lane IS NOT NULL
+                GROUP BY lane ORDER BY MIN(position)
+                """) { $0.text(0) }
+            var position = try db.scalarInt("SELECT COUNT(*) FROM lanes") ?? 0
+            for name in dangling where !names.contains(name) {
+                try db.run("INSERT INTO lanes (name, position) VALUES (?, ?)",
+                           [.text(name), .int(position)])
+                position += 1
+                names.append(name)
+            }
+
+            var taken: Set<String> = []
+            for name in names {
+                let key = LaneKey.generate(from: name, taken: taken)
+                taken.insert(key)
+                try db.run("UPDATE lanes SET key = ? WHERE name = ?", [.text(key), .text(name)])
+                let ids = try db.rows("""
+                    SELECT id FROM tickets WHERE lane = ? ORDER BY createdAt, id
+                    """, [.text(name)]) { $0.text(0) }
+                for (index, id) in ids.enumerated() {
+                    try db.run("UPDATE tickets SET number = ? WHERE id = ?",
+                               [.int(index + 1), .text(id)])
+                }
+                try db.run("UPDATE lanes SET lastNumber = ? WHERE name = ?",
+                           [.int(ids.count), .text(name)])
+            }
         }
     ]
 
@@ -240,9 +284,27 @@ enum StoreSchema {
     // MARK: - Ticket rows
 
     /// Read the ticket domain: lanes in render order, then tickets in stored order.
+    ///
+    /// **A version-2 database reads too** (ticket 6598E091): a read never migrates, so a
+    /// home the installed build left at v2 must still list — and it answers with the refs
+    /// the pending migration will make true, because `prepare()` generates the keys and
+    /// numbers from the same rule the migration's backfill uses.
     static func readContents(_ db: SQLiteDatabase) throws -> StoreContents {
-        let lanes = try db.rows("SELECT name FROM lanes ORDER BY position") { $0.text(0) }
-        let todos = try db.rows("""
+        let version = try version(of: db) ?? 0
+        let keyed = version >= 3
+        let lanes = try db.rows(keyed
+            ? "SELECT name, key, lastNumber FROM lanes ORDER BY position"
+            : "SELECT name, position FROM lanes ORDER BY position") { row -> Lane in
+            keyed
+                ? Lane(name: row.text(0), key: row.textOrNil(1) ?? "", lastNumber: row.int(2))
+                : Lane(name: row.text(0), key: "", lastNumber: 0)
+        }
+        let todos = try db.rows(keyed ? """
+            SELECT id, title, status, archived, description, assignee, origin, lane, link,
+                   createdAt, completedAt, number
+            FROM tickets
+            ORDER BY position
+            """ : """
             SELECT id, title, status, archived, description, assignee, origin, lane, link,
                    createdAt, completedAt
             FROM tickets
@@ -276,11 +338,17 @@ enum StoreSchema {
                 assignee: row.textOrNil(5),
                 origin: row.text(6),
                 lane: row.textOrNil(7),
+                number: keyed ? row.intOrNil(11) : nil,
                 link: row.textOrNil(8),
                 createdAt: created,
                 completedAt: completed)
         }
-        return StoreContents(lanes: lanes, todos: todos)
+        var contents = StoreContents(lanes: lanes, todos: todos)
+        // Idempotent: an up-to-date database finds nothing to declare, key or number, and
+        // only the derived `ref` is refreshed; a v2 database reads as its migration will
+        // leave it.
+        contents.prepare()
+        return contents
     }
 
     /// Replace the ticket domain with `contents`: one transaction's worth of rows, the
@@ -288,16 +356,16 @@ enum StoreSchema {
     static func writeContents(_ contents: StoreContents, to db: SQLiteDatabase) throws {
         try db.run("DELETE FROM tickets")
         try db.run("DELETE FROM lanes")
-        for (position, name) in contents.lanes.enumerated() {
-            try db.run("INSERT INTO lanes (name, position) VALUES (?, ?)",
-                       [.text(name), .int(position)])
+        for (position, lane) in contents.lanes.enumerated() {
+            try db.run("INSERT INTO lanes (name, key, lastNumber, position) VALUES (?, ?, ?, ?)",
+                       [.text(lane.name), .text(lane.key), .int(lane.lastNumber), .int(position)])
         }
         for (position, ticket) in contents.todos.enumerated() {
             try db.run("""
                 INSERT INTO tickets
                     (id, title, description, status, archived, lane, assignee, origin, link,
-                     position, createdAt, completedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     position, createdAt, completedAt, number)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, [
                     .text(ticket.id.uuidString),
                     .text(ticket.title),
@@ -310,7 +378,8 @@ enum StoreSchema {
                     .textOrNull(ticket.link),
                     .int(position),
                     .text(Timestamp.encode(ticket.createdAt)),
-                    ticket.completedAt.map { .text(Timestamp.encode($0)) } ?? .null
+                    ticket.completedAt.map { .text(Timestamp.encode($0)) } ?? .null,
+                    .intOrNull(ticket.number)
                 ])
         }
     }

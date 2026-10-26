@@ -38,8 +38,8 @@ enum Command {
     case ticketCommentAdd(id: String, author: String?, body: String)
     case ticketCommentList(id: String)
     case laneList
-    case laneAdd(name: String)
-    case laneRename(from: String, to: String)
+    case laneAdd(name: String, abbr: String?)
+    case laneRename(from: String, to: String, abbr: String?)
     case laneDelete(name: String)
     case noteRename(from: String, to: String)
     case noteCapture(kind: String, project: String?, session: String?)
@@ -270,11 +270,18 @@ private func parseLane(_ args: [String]) throws -> Command {
         try accept(flags, [])
         return .laneList
     case "add":
-        try accept(flags, ["--name"])
-        return .laneAdd(name: flags["--name"] ?? "")
+        // `--abbr` is the lane's key (ticket 6598E091): an absent one is generated from
+        // the name, a present-but-empty one is the empty key the core rejects.
+        try accept(flags, ["--name", "--abbr"])
+        return .laneAdd(name: flags["--name"] ?? "", abbr: flags["--abbr"])
     case "rename":
-        try accept(flags, ["--from", "--to"])
-        return .laneRename(from: flags["--from"] ?? "", to: flags["--to"] ?? "")
+        // No `--abbr` keeps the key; one moves it, which a lane holding numbered
+        // tickets refuses.
+        try accept(flags, ["--from", "--to", "--abbr"])
+        return .laneRename(
+            from: flags["--from"] ?? "",
+            to: flags["--to"] ?? "",
+            abbr: flags["--abbr"])
     case "delete":
         try accept(flags, ["--name"])
         return .laneDelete(name: flags["--name"] ?? "")
