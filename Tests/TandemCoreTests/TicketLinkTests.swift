@@ -71,14 +71,14 @@ struct TicketLinkTests {
 
         let added = try store.add("Task")
         _ = try store.setLink(added.value.id.uuidString, to: "Ideas.md")
-        let fileURL = store.storeFileURL
+        let fileURL = store.databaseURL
         let before = try FileManager.default.attributesOfItem(atPath: fileURL.path)[.modificationDate] as? Date
         #expect(before != nil)
 
         let again = try store.setLink(added.value.id.uuidString, to: "Ideas.md")
         #expect(again.value.link == "Ideas.md")
         let after = try FileManager.default.attributesOfItem(atPath: fileURL.path)[.modificationDate] as? Date
-        #expect(after == before)
+        #expect(after == before, "a no-op write writes nothing")
 
         // An unchanged nil → nil is also a no-op.
         _ = try store.setLink(added.value.id.uuidString, to: nil)
@@ -107,10 +107,10 @@ struct TicketLinkTests {
         }
     }
 
-    // MARK: - On disk (additive: the envelope stays version 1)
+    // MARK: - Round-trip
 
-    @Test("the file reports version 1 with the link present and absent")
-    func envelopeStaysVersionOne() throws {
+    @Test("the link round-trips through the store, present and cleared")
+    func linkRoundTrips() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
@@ -118,23 +118,11 @@ struct TicketLinkTests {
         let added = try store.add("Task")
         _ = try store.setLink(added.value.id.uuidString, to: "Ideas.md")
 
-        let fileURL = store.storeFileURL
-        func readEntry() throws -> [String: Any]? {
-            let text = try String(contentsOf: fileURL, encoding: .utf8)
-            let obj = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
-            #expect((obj?["version"] as? Int) == 1)
-            return (obj?["tickets"] as? [[String: Any]])?.first
-        }
+        // Present: a real string, read back by a fresh Store.
+        #expect(try Store(directory: dir).list(.all).value.first?.link == "Ideas.md")
 
-        // Link present: a real string.
-        #expect((try readEntry())?["link"] as? String == "Ideas.md")
-
-        // Link absent: JSON null, and the version is still 1.
+        // Cleared: nil, and the clear persists.
         _ = try store.setLink(added.value.id.uuidString, to: nil)
-        #expect((try readEntry())?["link"] is NSNull)
-
-        // A fresh store over the same dir round-trips the nil link.
-        let fresh = Store(directory: dir)
-        #expect(try fresh.list(.all).value.first?.link == nil)
+        #expect(try Store(directory: dir).list(.all).value.first?.link == nil)
     }
 }

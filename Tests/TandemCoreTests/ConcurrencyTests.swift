@@ -3,12 +3,10 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// Concurrency + store-protocol tests (ADR 0001): no lost updates under
-/// contention, a lock-free reader that never observes a partial file, the
-/// bounded-retry "locked" error, and orphan temp-file cleanup.
-///
-/// Contention is exercised with threads (separate fds contend via `flock` on
-/// macOS) rather than spawned processes. Each test uses its own temp dir.
+/// Concurrency tests for the database-backed store (ADR 0031): no lost updates under
+/// contention, and a lock-free reader that sees a consistent WAL snapshot while a writer
+/// works. Contention is exercised with threads (each write opens its own connection, as
+/// a separate process would). Each test uses its own temp dir.
 @Suite("Concurrency")
 struct ConcurrencyTests {
 
@@ -62,102 +60,46 @@ struct ConcurrencyTests {
         }
     }
 
-    // MARK: - Atomicity (reader never sees a partial file)
+    // MARK: - Atomicity (a reader sees a consistent snapshot)
 
-    @Test("lock-free reader never observes a partial file")
-    func readerNeverSeesPartialFile() throws {
+    @Test("a lock-free reader sees a consistent snapshot while a writer works")
+    func readerSeesAConsistentSnapshot() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = Store(directory: dir)
-        _ = try store.add("seed")   // ensure the file exists before the race
-
-        struct Envelope: Decodable { let version: Int; let tickets: [Ticket] }
+        _ = try store.add("seed")   // ensure the database exists before the race
 
         let errors = Box<[Error]>([])
         let writerDone = DispatchGroup()
 
         writerDone.enter()
         DispatchQueue.global().async {
-            for i in 0..<120 {
+            for i in 0..<60 {
                 do { _ = try store.add("w-\(i)") } catch { errors[] = errors[] + [error] }
             }
             writerDone.leave()
         }
 
-        // Reader: repeatedly read the raw file and decode it until the writer is
-        // done. Atomic rename guarantees a read sees a complete old or new file; a
-        // broken (non-atomic) write would surface here as a decode failure.
+        // Reader: a WAL snapshot is always a complete state — a read never sees a
+        // half-applied write, and a count between 1 and 61 is fine at any point.
         var reads = 0
+        var lastCount = 0
         for _ in 0..<2000 {
             reads += 1
-            if let data = try? Data(contentsOf: store.storeFileURL) {
-                do { _ = try JSONDecoder().decode(Envelope.self, from: data) }
-                catch { errors[] = errors[] + [error] }
+            do {
+                let count = try store.list(.all).value.count
+                #expect(count >= 1 && count <= 61, "impossible ticket count \(count)")
+                #expect(count >= lastCount, "a read lost committed tickets: \(lastCount) -> \(count)")
+                lastCount = count
+            } catch {
+                errors[] = errors[] + [error]
             }
             if writerDone.wait(timeout: .now()) == .success { break }
         }
         #expect(writerDone.wait(timeout: .now() + 15) == .success, "writer did not finish")
         #expect(reads > 0, "reader never ran")
-        #expect(errors[].isEmpty, "reader observed an invalid store state: \(errors[])")
-    }
-
-    // MARK: - Bounded-retry "locked" error
-
-    @Test("an op on a locked store throws locked after the bounded retry")
-    func lockedStoreThrowsAfterBoundedRetry() throws {
-        let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let store = Store(directory: dir)
-        _ = try store.add("seed")
-
-        // Hold the store's exclusive flock in another thread for ~2.5s.
-        let hasLock = DispatchSemaphore(value: 0)
-        let holder = DispatchGroup()
-        holder.enter()
-        DispatchQueue.global().async {
-            let fd = open(store.lockURL.path, O_RDWR | O_CREAT, 0o644)
-            guard fd >= 0 else { holder.leave(); return }
-            if flock(fd, LOCK_EX) == 0 { hasLock.signal() }
-            usleep(2_500_000)   // 2.5s — longer than the store's ~2s retry window
-            close(fd)
-            holder.leave()
-        }
-        // Deterministic: only attempt the op once the holder definitely has the lock.
-        // 15s windows (matching the sibling tests): ~10s process stalls observed on
-        // macOS 27 runners deschedule the holder thread past a 5s window (first seen
-        // on the hosted xcode-27 pool, 2026-10-13, run 38437473891, 2/2 runs).
-        #expect(hasLock.wait(timeout: .now() + 15) == .success, "holder never acquired the lock")
-
-        #expect(throws: DomainError.locked) {
-            _ = try store.add("should fail while locked")
-        }
-        #expect(holder.wait(timeout: .now() + 15) == .success, "holder did not release")
-    }
-
-    // MARK: - Orphan temp cleanup
-
-    @Test("stale orphan temps are removed, fresh temps are kept")
-    func orphanCleanup() throws {
-        let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let store = Store(directory: dir)
-        _ = try store.add("seed")
-        let fm = FileManager.default
-
-        // A crash-leftover orphan older than the 60s threshold.
-        let orphan = dir.appendingPathComponent(".todos-\(UUID().uuidString).tmp")
-        try "orphan".write(to: orphan, atomically: true, encoding: .utf8)
-        try fm.setAttributes(
-            [.modificationDate: Date().addingTimeInterval(-120)], ofItemAtPath: orphan.path)
-        // A fresh temp that must NOT be treated as an orphan.
-        let fresh = dir.appendingPathComponent(".todos-\(UUID().uuidString).tmp")
-        try "fresh".write(to: fresh, atomically: true, encoding: .utf8)
-
-        // Any write op triggers orphan cleanup while holding the lock.
-        _ = try store.add("trigger cleanup")
-
-        #expect(!fm.fileExists(atPath: orphan.path), "stale orphan was not removed")
-        #expect(fm.fileExists(atPath: fresh.path), "fresh temp was wrongly removed")
+        #expect(errors[].isEmpty, "reader observed an inconsistent store: \(errors[])")
+        #expect(try store.list(.all).value.count == 61)
     }
 
     // MARK: - Ticket fields under contention

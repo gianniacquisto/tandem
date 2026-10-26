@@ -832,7 +832,7 @@ struct SessionsTests {
         #expect(!text.contains("Tandem store"))
     }
 
-    @Test("the store's own lock failure still wears the store's vocabulary")
+    @Test("the store's own failure still wears the store's vocabulary")
     func storeLockFailureUnchanged() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandem-store-lock-tests-\(UUID().uuidString)")
@@ -841,14 +841,15 @@ struct SessionsTests {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
 
-        // The store's file is `todos.json`, and its failures say so: this
+        // The store cannot create its database there, and its failure says so: this
         // ticket is about the file that is not the store.
         do {
             _ = try Store(directory: dir).add("a ticket")
-            Issue.record("expected the store's own lock failure")
+            Issue.record("expected the store's own failure")
         } catch {
             let text = tandemErrorText(error)
-            #expect(text.contains("Tandem store I/O failed during open lockfile"))
+            #expect(text.contains("Tandem store"), "got \(text)")
+            #expect(!text.contains("sessions file"))
         }
     }
 }

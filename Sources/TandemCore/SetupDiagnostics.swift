@@ -71,6 +71,12 @@ public enum SetupDiagnostics {
         public var homePath: String
         public var homeSource: TandemHome.Source
         public var storePath: String
+        /// The applied schema-migration version, `nil` when there is no database yet
+        /// (ADR 0031). Reported beside the path so `doctor` names the version seam.
+        public var storeVersion: Int?
+        /// A JSON store file still sitting beside an existing database — a fork, and
+        /// named as one: the database is the store, the file is never read again.
+        public var storeJSONFork: String?
         public var storeHealth: Store.Health
         /// The rolling backup beside the store (ADR 0018): absent, or its age.
         public var storeBackup: Store.BackupHealth
@@ -92,7 +98,8 @@ public enum SetupDiagnostics {
         public var opencodeHasSkills: Bool
 
         public init(homePath: String, homeSource: TandemHome.Source,
-                    storePath: String, storeHealth: Store.Health,
+                    storePath: String, storeVersion: Int? = nil,
+                    storeJSONFork: String? = nil, storeHealth: Store.Health,
                     storeBackup: Store.BackupHealth, storeLockHeld: Bool,
                     bikeshedPath: String, bikeshedNoteCount: Int, bikeshedIsFile: Bool,
                     commentsPath: String, commentsState: CommentsState,
@@ -101,6 +108,8 @@ public enum SetupDiagnostics {
             self.homePath = homePath
             self.homeSource = homeSource
             self.storePath = storePath
+            self.storeVersion = storeVersion
+            self.storeJSONFork = storeJSONFork
             self.storeHealth = storeHealth
             self.storeBackup = storeBackup
             self.storeLockHeld = storeLockHeld
@@ -135,13 +144,17 @@ public enum SetupDiagnostics {
                             detail: "\(facts.homePath) (\(why))"))
 
         let backup = backupDetail(facts.storeBackup)
+        let version = facts.storeVersion.map { "v\($0); " } ?? ""
+        let fork = facts.storeJSONFork.map {
+            "; a JSON store file is also present at \($0) — a fork, ignored since the database took over"
+        } ?? ""
         switch facts.storeHealth {
         case .absent:
             checks.append(Check(name: "store", ok: true,
                                 detail: "\(facts.storePath) — absent (a valid empty store); \(backup)"))
         case .counts(let open, let done):
             checks.append(Check(name: "store", ok: true,
-                                detail: "\(facts.storePath) — \(open) open, \(done) done; \(backup)"))
+                                detail: "\(facts.storePath) — \(version)\(open) open, \(done) done; \(backup)\(fork)"))
         case .unreadable:
             checks.append(Check(name: "store", ok: false,
                                 detail: "\(facts.storePath) — present but unreadable or corrupt; "
@@ -229,6 +242,16 @@ public enum SetupDiagnostics {
 
         let health = store.health()
         let notes = (try? bikeshed.list())?.value ?? []
+        // A live JSON store file beside a database is the fork the brief names: the db
+        // is the store and the file is dead weight, but `doctor` should say so.
+        let storeJSONFork: String?
+        if store.schemaVersion() != nil {
+            storeJSONFork = ["tickets.json", "todos.json"]
+                .map { store.directory.appendingPathComponent($0).path }
+                .first { FileManager.default.fileExists(atPath: $0) }
+        } else {
+            storeJSONFork = nil
+        }
         let bikeshedIsFile = isFile(bikeshed.directory.path)
         let commentsPath = store.commentsDirectory.path
         let commentsState = commentsState(at: commentsPath)
@@ -245,7 +268,9 @@ public enum SetupDiagnostics {
                 environment: ProcessInfo.processInfo.environment,
                 executablePath: TandemHome.executablePath,
                 isDebugBuild: TandemHome.isDebugBuild),
-            storePath: store.storeFileURL.path,
+            storePath: store.databaseURL.path,
+            storeVersion: store.schemaVersion(),
+            storeJSONFork: storeJSONFork,
             storeHealth: health,
             storeBackup: store.backupHealth(),
             storeLockHeld: store.lockIsHeld(),
