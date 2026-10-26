@@ -13,7 +13,7 @@ The full protocol is in the skill: `SKILL.md`, `WRITE-PROTOCOL.md`, `CONSOLIDATI
 
 ## Sessions
 
-A session is a record, not a ticket (ADR 0027): one record per session, keyed by `$OPENCODE_SESSION_ID`, in its own file — `sessions.json` at Tandem's home — and never a ticket on the board. The CLI's five verbs are `session start`, `session link`, `session end`, `session list` and `session show`; the two states are `running` and `ended`.
+A session is a record, not a ticket (ADR 0027): one record per session, keyed by `$OPENCODE_SESSION_ID`, a row of the store's `sessions` table in `tandem.db` at Tandem's home — never a ticket on the board. The CLI's five verbs are `session start`, `session link`, `session end`, `session list` and `session show`; the two states are `running` and `ended`.
 
 - **Start** — `tandem-cli session start --agent <pass> --brief -`, the brief on stdin: what this session is for and what done looks like. `<project>` defaults to the working directory's last path component; `--agent` is never omitted — every session knows its pass, and a record without it cannot attribute the pass and signs the usage comment its end posts `usage`.
 - **Carry tickets** — `tandem-cli session link --ticket <id>` for each ticket the session carries. A child session is a session: it starts its own record and links what it carries.
@@ -26,6 +26,8 @@ Tickets keep their own conventions: a ticket's description is written once and a
 ## Handoff
 
 The actor that finishes a ticket's work sets the next status and, where there is a next, the next assignee — instead of leaving the next move to a later pass. The names are the roster's: `skills/tandem-team/SKILL.md`. The builder hands to `in-review`; the reviewer completes on merge or escalates to `human`; the sprint session dispatches and records.
+
+**Status and assignee move together, and `human` is an assignee only while a question is open.** `ticket answer` is the one write that records the answer and closes the hold: the answering actor names the status the answer opens and the next owner, and the ticket leaves the inbox in the same call. A question answered without that write is not answered — the inbox stops asking as soon as the `## Answer` block is in the body, and the ticket's `human` tag and column are then debt the next pass owes an `answer`.
 
 ## Git
 

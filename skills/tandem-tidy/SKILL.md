@@ -13,7 +13,7 @@ Start the session record (`AGENTS.md`), then read in one round:
 
 - the open board — `tandem-cli ticket list --filter open` — every lane; the rows carry each lane's stored spelling;
 - the live sessions — `tandem-cli session list --status running` — a ticket's claim is live while its claiming session runs;
-- the memory protocol (`skills/tandem-memory/SKILL.md`) — `Index.md`, the project's curated note.
+- the memory protocol (`skills/tandem-memory/SKILL.md`) — `Index.md`, the project's **Overview**.
 
 The sweep is board-wide: a repo fact behind another project's ticket is verified in that project's checkout — the board is shared, the evidence is local.
 
@@ -37,6 +37,8 @@ Three verdicts:
 - **Unproven** — the ticket stays exactly as it is. Only what you can point at moves; a hunch completes nothing.
 
 A ticket assigned `human` whose question the world has since answered is resolved like any other, the answer named in its comment; one still waiting on the human is the human's queue and stays.
+
+**An escalated merge is not waiting.** An `in-review` ticket assigned `human` whose comment log names a PR is settled by the PR itself: read `gh pr view <n> --json state,mergedAt,mergeCommit`; `MERGED` → **Resolved**, the merge commit in a signed comment, because the human's act already happened outside any pass. Still open → the ticket stays the human's queue, untouched.
 
 ## 3. Done housekeeping
 
