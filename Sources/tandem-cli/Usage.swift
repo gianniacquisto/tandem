@@ -100,6 +100,7 @@ enum Usage {
         tandem-cli lane — the lane lifecycle.
 
         Usage:
+          tandem-cli lane list
           tandem-cli lane add --name <name>
           tandem-cli lane rename --from <name> --to <name>
           tandem-cli lane delete --name <name>
