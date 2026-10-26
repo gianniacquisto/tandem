@@ -1,9 +1,11 @@
 import Foundation
 import Testing
 import TandemCore
-@testable import Tandem
 
-/// The app's watcher, against a real store on disk.
+/// The store watcher, against a real store on disk.
+///
+/// It lives in `TandemCore`, so this is the seam that pins it: ADR 0009 rejects
+/// a second test target against the app executable's top-level code.
 ///
 /// The bug (3D77D0BD): the store writes through SQLite in WAL mode, so a write's
 /// only remaining trace after the transaction commits is an append to

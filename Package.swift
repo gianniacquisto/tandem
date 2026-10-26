@@ -62,14 +62,6 @@ let package = Package(
         .testTarget(
             name: "TandemCoreTests",
             dependencies: ["TandemCore", "tandem-cli"]
-        ),
-        // The app's own seam. The GUI is a thin adapter, but `StoreWatcher` is
-        // OS-level logic a descriptor-level test is the only way to pin: the WAL
-        // append that never reached the directory watch (ticket 3D77D0BD) is
-        // invisible to the core's tests because it is not a core question.
-        .testTarget(
-            name: "TandemTests",
-            dependencies: ["Tandem", "TandemCore"]
         )
     ]
 )

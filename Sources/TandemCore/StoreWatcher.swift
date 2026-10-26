@@ -1,8 +1,14 @@
 import Foundation
+import Darwin
 
 /// Watches a directory for changes via a `DispatchSource` on a file descriptor,
 /// invoking `onEvent` on the main queue when anything in it changes. The GUI uses
 /// this to refresh when another process (the CLI) writes the store.
+///
+/// It lives in `TandemCore` — Foundation and Darwin only — so the seam that pins
+/// it is `TandemCoreTests`: ADR 0009 rejects a second test target against an
+/// executable's top-level code, and a descriptor-level test is the only way to
+/// pin the journal append the directory watch cannot see.
 ///
 /// It watches **two** paths, because the store has two ways of changing:
 ///
@@ -24,7 +30,7 @@ import Foundation
 /// hint to re-attach. A home with no database yet has no WAL to watch: the
 /// directory watch alone is exactly the pre-SQLite behaviour (the JSON fallback
 /// stays live until the import commits).
-final class StoreWatcher {
+public final class StoreWatcher {
     private let directory: URL
     private let walURL: URL
     /// The queue both handlers run on. The app passes the default (`main`) — the
@@ -34,14 +40,14 @@ final class StoreWatcher {
     private let queue: DispatchQueue
     /// Set after construction (so the owner can attach a `[weak self]` callback once
     /// it is fully initialized).
-    var onEvent: (() -> Void)?
+    public var onEvent: (() -> Void)?
     private var directorySource: DispatchSourceFileSystemObject?
     private var walSource: DispatchSourceFileSystemObject?
     /// The WAL descriptor the source is on, kept apart from its source so
     /// `refreshWALWatch` can ask whether the path still names that inode.
     private var walDescriptor: Int32 = -1
 
-    init(directory: URL, queue: DispatchQueue = .main) {
+    public init(directory: URL, queue: DispatchQueue = .main) {
         self.directory = directory
         self.walURL = Self.walURL(in: directory)
         self.queue = queue
@@ -50,18 +56,18 @@ final class StoreWatcher {
     /// The journal the store writes through, beside the database (`tandem.db`).
     /// The store's own path, restated here because the app must not reach into
     /// the core's storage to know what to watch.
-    static func walURL(in directory: URL) -> URL {
+    public static func walURL(in directory: URL) -> URL {
         directory.appendingPathComponent("tandem.db-wal")
     }
 
     /// The paths a watcher on `directory` observes: the directory itself, then
     /// the database's journal. Pinned by `StoreWatcherTests` so the watch set
     /// cannot drift from the store's file names.
-    static func watchedPaths(in directory: URL) -> [URL] {
+    public static func watchedPaths(in directory: URL) -> [URL] {
         [directory, walURL(in: directory)]
     }
 
-    func start() {
+    public func start() {
         guard directorySource == nil else { return }
         // O_EVTONLY: a read-only descriptor used purely for event observation.
         let fd = open(directory.path, O_EVTONLY)
@@ -88,7 +94,7 @@ final class StoreWatcher {
         refreshWALWatch()
     }
 
-    func stop() {
+    public func stop() {
         directorySource?.cancel()
         directorySource = nil
         // The cancel handler closes the descriptor; drop the source from the event
