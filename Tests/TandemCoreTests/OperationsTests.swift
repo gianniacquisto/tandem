@@ -485,6 +485,65 @@ struct OperationsTests {
         #expect(try store.list(.all).value.filter(\.archived).count == 1)
     }
 
+    // MARK: - archive (one ticket)
+
+    @Test("archive(id) sets one ticket aside — open or done — and only that one")
+    func archiveByIDArchivesOne() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let open = try store.add("open")
+        let done = try store.add("done")
+        _ = try store.complete(done.value.id.uuidString)
+
+        let archived = try store.archive(open.value.id.uuidString)
+        #expect(archived.value.archived == true)
+
+        // Nothing is deleted, and only the named ticket is set aside.
+        let all = try store.list(.all).value
+        #expect(all.count == 2)
+        #expect(all.filter(\.archived).map(\.title) == ["open"])
+
+        // It leaves the default views, whatever its status.
+        #expect(try store.list(.open).value.isEmpty)
+        #expect(try store.list(.done).value.map(\.title) == ["done"])
+    }
+
+    @Test("archive(id) with an unknown id is the same unknownID failure complete raises")
+    func archiveByIDUnknownID() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        _ = try store.add("on the board")
+        for id in [UUID().uuidString, "not-a-uuid"] {
+            do {
+                _ = try store.archive(id)
+                Issue.record("Expected unknownID to be thrown for \(id)")
+            } catch let error as DomainError {
+                guard case .unknownID = error else {
+                    Issue.record("Expected unknownID, got \(error)")
+                    return
+                }
+            }
+        }
+    }
+
+    @Test("archive(id) is idempotent: an already-archived ticket is returned unchanged")
+    func archiveByIDIdempotent() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let ticket = try store.add("open")
+        let first = try store.archive(ticket.value.id.uuidString)
+        #expect(first.value.archived == true)
+        let second = try store.archive(ticket.value.id.uuidString)
+        #expect(second.value.archived == true)
+        #expect(try store.list(.all).value.filter(\.archived).count == 1)
+    }
+
     // MARK: - delete
 
     @Test("delete removes a single ticket, open or done")

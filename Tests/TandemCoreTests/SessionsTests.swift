@@ -219,6 +219,42 @@ struct SessionsTests {
         #expect(shown.status == .ended)
     }
 
+    // MARK: - the caller's own clock
+
+    @Test("start(at:) keeps the caller's timestamp: a record can stand for a session that started earlier")
+    func startKeepsTheGivenStart() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let started = Date(timeIntervalSince1970: 1_761_123_456)
+        let result = try sessions.start(
+            id: "ses_1", project: "tandem",
+            brief: "A session that started earlier.", at: started)
+        #expect(result.value.startedAt == started)
+
+        // The file carries the same stamp: a fresh read gives the same record.
+        let shown = try sessions.show(id: "ses_1")
+        #expect(shown.value.startedAt == started)
+    }
+
+    @Test("end(at:) keeps the caller's timestamp: a record can stand for a session that ended earlier")
+    func endKeepsTheGivenEnd() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "A session that ended earlier.")
+
+        let ended = Date(timeIntervalSince1970: 1_761_234_567)
+        let result = try sessions.end(
+            id: "ses_1", outcome: .unknown,
+            summary: "It ended earlier.", at: ended)
+        #expect(result.value.status == .ended)
+        #expect(result.value.outcome == .unknown)
+        #expect(result.value.endedAt == ended)
+
+        let shown = try sessions.show(id: "ses_1")
+        #expect(shown.value.endedAt == ended)
+    }
+
     // MARK: - usage
 
     /// The usage a reported session carries — the five counts as opencode's

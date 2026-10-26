@@ -11,13 +11,13 @@ The roles are the roster's (`skills/tandem-team/SKILL.md`): the session runs the
 
 ## 1. Orient
 
-Start the session record (`AGENTS.md` — `session start`, `session link --ticket` for what this sprint carries), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's curated note, the open threads.
+Start the session record (`AGENTS.md` — `session start --agent sprint`, `session link --ticket` for what this sprint carries), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's curated note, the open threads.
 
 ## 2. Triage
 
 **The lane is derived, never guessed.** The project is the basename of the directory the session runs in — and a worktree names its project: the `-wt-<slug>` suffix (e.g. `~/projects/tandem-wt-sprint`) strips to `tandem`. Outside a git repo the basename stands on its own. Match that name **case-insensitively** against the existing lane names — discover them with `tandem-cli ticket list --filter all --archived`, reading the `lane` values — and from then on every `--lane` carries the lane's **stored spelling**: the CLI's lane filter is an exact, case-sensitive match. Every `ticket list` read returns one JSON object, `{"tickets": […], "todos": […]}` — jq runs on `.tickets[]` (or `.todos[]`), never the bare `.[]`; the result-shape contract is pinned in `skills/tandem/SKILL.md` (§ Streams and exit codes) and is pointed at, not copied, wherever a read appears here. **No matching lane** → ask the human: `lane add` is a human call. Until it is answered, no sprint opens; the session still files its own session ticket in the default area per `AGENTS.md`.
 
-The batch is drawn here — `tandem-cli ticket list --filter open --lane <lane> --status backlog,refined,ready` (same object shape; jq on `.tickets[]`) — **five, a cap not a quota, in stored order**:
+The batch is drawn here — `tandem-cli ticket list --filter open --lane <lane> --status backlog,refined,ready` (same object shape; jq on `.tickets[]`) — **five, a cap not a quota, in stored order**. The harness shell is **zsh**, not bash: `declare -A`, `${!arr[@]}` and every other bash-only form fails with exit 1 — write multi-item shell loops as paired `id|value` strings split with POSIX parameter expansion (`${pair%%|*}` / `${pair#*|}`), never associative arrays:
 
 - **`ready` tickets take the slots first; `backlog` tickets fill the remaining slots**, and the picked ones are refined **as part of the run**, not before the batch is open. A lane with five or more ready runs no refine phase; a lane with no ready refines five.
 - **The refine rule is per ticket, unchanged** — a picked backlog ticket too big or too undecided for one session → dispatch the `refiner` (`agents/refiner.md`) with the ticket id; otherwise shape it yourself into the brief — Why / What / Done when / Decided against / Open questions — and mark it `refined`. The refine session (`skills/tandem-refine/`) stays the front door for refine-heavy work with a chosen model.
