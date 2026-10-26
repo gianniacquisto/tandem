@@ -14,20 +14,19 @@ import Darwin
 /// A key is **absent when it was never set**, which is the default state:
 /// `chosenBikeshed()` returning `nil` means "wherever the default is"
 /// (`<home>/bikeshed`; see `Bikeshed.init()`), and `setupComplete()` returning
-/// `false` means "the setup wizard has not been finished or skipped". Reads
-/// never create the file and never throw — a missing, unreadable, or malformed
-/// file is simply the default, because a broken settings file must never take
-/// the app down. Writes create the home directory if needed, merge onto the
-/// existing record (so a bikeshed choice and the setup flag never clobber each
-/// other), and replace the file atomically (a same-directory temp file +
-/// `rename(2)`).
+/// `false` means "the setup wizard has not been finished or skipped". Reads never
+/// create anything and never throw — an absent row, or a missing, unreadable, or
+/// malformed legacy file, is simply the default, because a broken settings record
+/// must never take the app down. Writes create the home directory if needed, merge
+/// onto the existing keys (so a bikeshed choice and the setup flag never clobber
+/// each other), and land in one database transaction.
 public enum TandemSettings {
 
-    /// The key inside `settings.json` holding the chosen bikeshed's absolute path.
+    /// The `settings` table's key holding the chosen bikeshed's absolute path.
     private static let bikeshedKey = "bikeshedPath"
-    /// The key inside `settings.json` holding whether first-run setup finished.
+    /// The `settings` table's key holding whether first-run setup finished.
     private static let setupKey = "setupComplete"
-    /// The key inside `settings.json` holding the lane new tickets are filed into: the
+    /// The `settings` table's key holding the lane new tickets are filed into: the
     /// human's last choice, cached so a session of filing does not repeat it.
     private static let defaultLaneKey = "defaultLane"
     /// Whether the bikeshed's hidden layer —
@@ -35,23 +34,24 @@ public enum TandemSettings {
     /// — is revealed in the tree. Off by default: the curated layer is the
     /// reading surface, and the hidden layer is revealed only on request.
     private static let showHiddenFilesKey = "showHiddenFiles"
-    /// The key inside `settings.json` holding the roster — the names the ticket
+    /// The `settings` table's key holding the roster — the names the ticket
     /// sheet's assignee picker offers (ticket 4B7CD193). The SKILL.md roster
     /// (`skills/tandem-team/SKILL.md`, ADR 0029) stays the agents' source of
     /// truth; this is the human's editable copy for the app, and the two can
     /// drift — the human owns both.
     private static let rosterKey = "roster"
-    /// The settings file's name, under `TandemHome.directory`.
+    /// The legacy settings file's name, under `TandemHome.directory`: the
+    /// read-fallback's source and the one-time import's, never written again.
     private static let fileName = "settings.json"
 
-    /// The human's chosen bikeshed, or `nil` when none was chosen (or the file is
-    /// missing, unreadable, or malformed). Reads the real
+    /// The human's chosen bikeshed, or `nil` when none was chosen (or the legacy
+    /// file is missing, unreadable, or malformed). Reads the real
     /// `TandemHome.directory`; returns a standardized absolute URL.
     public static func chosenBikeshed() -> URL? {
         chosenBikeshed(in: TandemHome.directory)
     }
 
-    /// Persist `url` as the chosen bikeshed, writing `settings.json` atomically
+    /// Persist `url` as the chosen bikeshed, writing the store's `settings` table
     /// under the real `TandemHome.directory`.
     public static func setChosenBikeshed(_ url: URL) throws {
         try setChosenBikeshed(url, in: TandemHome.directory)
@@ -59,14 +59,14 @@ public enum TandemSettings {
 
     /// Whether the first-run setup has been finished or skipped, read from the
     /// real `TandemHome.directory`. `false` when the flag was never written —
-    /// including a missing, unreadable, or malformed settings file (the same
-    /// leniency as `chosenBikeshed()`: a broken file re-shows the wizard rather
-    /// than crashing the app).
+    /// including an absent row, or a missing, unreadable, or malformed legacy file
+    /// (the same leniency as `chosenBikeshed()`: a broken file re-shows the wizard
+    /// rather than crashing the app).
     public static func setupComplete() -> Bool {
         setupComplete(in: TandemHome.directory)
     }
 
-    /// Record that first-run setup is done, writing `settings.json` atomically
+    /// Record that first-run setup is done, writing the store's `settings` table
     /// under the real `TandemHome.directory`.
     public static func setSetupComplete(_ done: Bool) throws {
         try setSetupComplete(done, in: TandemHome.directory)
@@ -81,7 +81,7 @@ public enum TandemSettings {
     }
 
     /// Remember (or, with `nil`, forget) the lane new tickets are filed into. Writes
-    /// `settings.json` atomically under the real `TandemHome.directory`.
+    /// the store's `settings` table under the real `TandemHome.directory`.
     public static func setDefaultLane(_ lane: String?) throws {
         try setDefaultLane(lane, in: TandemHome.directory)
     }
@@ -95,8 +95,8 @@ public enum TandemSettings {
         showHiddenFiles(in: TandemHome.directory)
     }
 
-    /// Record whether the hidden layer is revealed, writing `settings.json`
-    /// atomically under the real `TandemHome.directory`.
+    /// Record whether the hidden layer is revealed, writing the store's `settings`
+    /// table under the real `TandemHome.directory`.
     public static func setShowHiddenFiles(_ shown: Bool) throws {
         try setShowHiddenFiles(shown, in: TandemHome.directory)
     }
@@ -119,7 +119,7 @@ public enum TandemSettings {
         roster(in: TandemHome.directory)
     }
 
-    /// Persist the roster, writing `settings.json` atomically under the real
+    /// Persist the roster, writing the store's `settings` table under the real
     /// `TandemHome.directory`. Names are trimmed and blank ones dropped — the
     /// same edge-trim rule every other setting's write applies.
     public static func setRoster(_ names: [String]) throws {

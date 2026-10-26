@@ -1,5 +1,7 @@
 # Sessions are records, not tickets: the board holds only work
 
+> **Amended 2026-10-26 by [ADR 0031](0031-one-database-the-store.md):** a session is a row of the store's `sessions` table, not `sessions.json`, and its own `sessions.lock` went with the file. The record, its fields and its five verbs are unchanged. The amendment's text is ADR 0031's.
+
 ADR 0024 made every session file itself as a ticket — `Session — <project> · <session-id>` — and the board refines and moves it like any other ticket. The rule worked: a dead session's ticket became reachable, and the first passes dispatched successors to it. But the convention put a session's row on a work board, and the board now carries sixty-three of them — rows every triage pass must read, refine, dispatch, or close, each one a session's diary wearing a ticket's face. The human's answer to `5C98453A` settles the question the other way: a session is its own artifact — its own file, its own states, never a ticket, never on the board.
 
 ## Decision

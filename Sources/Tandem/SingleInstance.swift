@@ -55,8 +55,9 @@ enum SingleInstance {
 
     // MARK: - Internals
 
-    /// `<home>/app.pid` — a sidecar in the store's directory, like `tandem.lock`
-    /// (ADR 0001), but for app lifecycle rather than store writes. A dev build has
+    /// `<home>/app.pid` — a sidecar in the store's directory, like the retired
+    /// `tandem.lock` (ADR 0001; retired with the SQLite store, ADR 0031), but for app
+    /// lifecycle rather than store writes. A dev build has
     /// its own home (`TandemHome`), so a from-source run and the installed app are
     /// each one visible instance rather than two identities fighting over one slot.
     private static var pidFileURL: URL {

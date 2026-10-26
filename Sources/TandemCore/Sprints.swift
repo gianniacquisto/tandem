@@ -5,11 +5,10 @@ import Foundation
 ///
 /// **A sprint is not a ticket.** The human's answer (2026-10-23) makes the
 /// sprint its own record — the session record's shape (ADR 0027) applied to
-/// sprints — so it lives in its own file (`sprints.json`) beside `todos.json`,
-/// never as a key inside it: the installed app rewrites `todos.json` whole and
-/// drops the keys it does not know (ADR 0017's comments amendment), so a
-/// `sprints` array there would be erased by the next human edit until a build
-/// carrying the field is installed.
+/// sprints — so it has its own `sprints` table in `<home>/tandem.db` (ADR 0031),
+/// never a key inside the ticket rows: a sprint write replaces its table and
+/// never touches the board's. The legacy `sprints.json` is the read-fallback's
+/// source and the one-time import's, and is never written again.
 ///
 /// **The vocabulary is the record's, not the board's.** `open` and `closed`
 /// are its two states. The board's `Status` (`backlog`…`done`) says nothing
@@ -730,8 +729,8 @@ public struct Sprints: Sendable {
 
     /// The recovery note for an invalid sprints file. The sessions file's
     /// recovery note (`Sessions.recoveryNote`) in this file's own nouns: the
-    /// sessions file's `sessions.json` was not touched, so the note must not
-    /// say the session list restarted empty.
+    /// session rows in `tandem.db` were not touched, so the note must not say
+    /// the session list restarted empty.
     private static func recoveryNote(backupPath: String) -> String {
         "Previous sprints file was corrupt and backed up to \(backupPath); the sprint list restarted empty."
     }

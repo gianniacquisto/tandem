@@ -74,10 +74,15 @@ struct ScaffoldConventionTests {
                 "the Risks page holds one line per open risk")
         let conventions = try Self.file("skills/tandem-memory/CONVENTIONS.md")
         #expect(conventions.contains("one line per open risk"))
-        let agents = try Self.file("AGENTS.md")
-        #expect(!agents.contains("the project's curated note"),
-                "the orient step names the Overview, the scaffold's anchor")
-        #expect(agents.contains("the project's **Overview**"))
+        for path in ["AGENTS.md",
+                     "skills/tandem-memory/SKILL.md",
+                     "skills/tandem-sprint/SKILL.md",
+                     "skills/tandem-tidy/SKILL.md"] {
+            let orient = try Self.file(path)
+            #expect(!orient.contains("the project's curated note"),
+                    "\(path): the orient step names the Overview, the scaffold's anchor")
+            #expect(orient.contains("**Overview**"), "\(path): the orient step names the Overview")
+        }
     }
 
     @Test("CONSOLIDATION reads the inputs, creates the scaffold on demand, leaves the scratch untouched")

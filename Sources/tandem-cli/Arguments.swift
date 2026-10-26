@@ -331,9 +331,10 @@ private func parseNote(_ args: [String]) throws -> Command {
 /// `session start|end|link|list|show` — the session record (spec `FC770B8A`): a
 /// record of one agent session's run, kept as an artifact of its own.
 ///
-/// **A session is not a ticket.** It has its own file (`sessions.json`) and its
-/// own vocabulary — `running`/`ended`, `succeeded`/`failed`/`interrupted`/
-/// `unknown` — so the flags here never borrow the board's `--status`.
+/// **A session is not a ticket.** It has its own `sessions` table in the store
+/// (`<home>/tandem.db`, ADR 0031) and its own vocabulary — `running`/`ended`,
+/// `succeeded`/`failed`/`interrupted`/`unknown` — so the flags here never borrow
+/// the board's `--status`.
 ///
 /// The rule every verb below follows is the CLI's own: an absent flag takes
 /// the default, a present-but-empty one is the empty value the core rejects (or
@@ -412,9 +413,10 @@ private func parseSession(_ args: [String]) throws -> Command {
 /// `4F746EFE`): a record of one sprint's run — its lane, batch, run log and
 /// close.
 ///
-/// **A sprint is not a ticket.** It has its own file (`sprints.json`) and its
-/// own vocabulary — `open`/`closed` for the state, `serial`/`parallel` for the
-/// mode — so the flags here never borrow the board's `--status` values.
+/// **A sprint is not a ticket.** It has its own `sprints` table in the store
+/// (`<home>/tandem.db`, ADR 0031) and its own vocabulary — `open`/`closed` for
+/// the state, `serial`/`parallel` for the mode — so the flags here never borrow
+/// the board's `--status` values.
 ///
 /// **The handle is the pair (lane, number), and the lane-only verbs target the
 /// open record.** `show` names the pair; `ticket`, `run` and `close` name only

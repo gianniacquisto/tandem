@@ -1,5 +1,7 @@
 # A rolling store backup: one previous good copy, taken under the write's own lock
 
+> **Amended 2026-10-26 by [ADR 0031](0031-one-database-the-store.md):** the backup is `tandem.db.bak`, one whole-database generation taken through SQLite's backup API inside the write's transaction. This record's `todos.json.bak` name, its sidecar `flock` and its `mv` recipe belong to the JSON store it was written about; the one-generation rule, the take-it-before-the-write seam, "a copy we cannot take fails the write" and "no restore verb, `mv` is the restore" stand. The amendment's text is ADR 0031's.
+
 The store already kept two copies aside, and both answer a *shape* failure: a file that will not decode is quarantined as `todos.json.corrupt-<ts>` ([ADR 0001](0001-store-protocol.md)), and a file still carrying the legacy `done` mirror is copied aside as `todos.json.pre-migrator-<ts>` ([ADR 0017](0017-the-ticket-model.md)). Neither answers an **ordinary bad write** — a `kill` mid-rename, an agent with a bad regex, a half-finished hand edit — because nothing holds the state that write replaced. On 2026-10-17 that cost a real list, and the recovery was manual.
 
 We decided: **before each successful write, the file about to be replaced is copied to `todos.json.bak`**, one generation, by the same temp + fsync + `rename` every other store write uses, under the same sidecar `flock`. Reads write nothing; the backup moves only when the store does.

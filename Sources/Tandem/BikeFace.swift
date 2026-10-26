@@ -17,12 +17,13 @@ enum MainTab: String, CaseIterable, Identifiable {
     case board = "Board"
     case inbox = "Inbox"
     /// The session records — the artifacts an agent session leaves behind
-    /// (`sessions.json`), read-only, and the place a session's record is read
-    /// now that the sessions left the board (spec `FC770B8A`).
+    /// (rows in the store's `sessions` table), read-only, and the place a
+    /// session's record is read now that the sessions left the board (spec
+    /// `FC770B8A`).
     case sessions = "Sessions"
     /// The sprint records — the artifacts a sprint leaves behind
-    /// (`sprints.json`), read-only, in the record's own two states (`open`,
-    /// `closed`) — never the board's (spec `4F746EFE`, R3).
+    /// (rows in the store's `sprints` table), read-only, in the record's own
+    /// two states (`open`, `closed`) — never the board's (spec `4F746EFE`, R3).
     case sprints = "Sprints"
     case bikeshed = "Bikeshed"
     var id: String { rawValue }
