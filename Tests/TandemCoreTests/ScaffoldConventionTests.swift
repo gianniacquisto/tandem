@@ -3,8 +3,8 @@ import Testing
 
 /// The project-wiki scaffold (9D846650): the conventions state the fixed
 /// scaffold (Overview, Decisions, Risks, Processes), the input rule (the
-/// agents' `.raw/` captures + the human's scratch pad + the ended session
-/// records' summaries), and the scratch read-only rule. The repo's rules
+/// agents' `.raw/` captures + the human's daily notes + the ended session
+/// records' summaries), and the daily notes' read-only rule. The repo's rules
 /// live in the skill files, not in the app — this suite pins the
 /// load-bearing phrases so a refactor cannot drop the contract silently.
 @Suite("Scaffold conventions")
@@ -30,15 +30,18 @@ struct ScaffoldConventionTests {
         #expect(c.contains("no per-persona folders"))
     }
 
-    @Test("CONVENTIONS states the input rule and the scratch read-only rule")
+    @Test("CONVENTIONS states the input rule and the daily notes' read-only rule (EE991EF2)")
     func conventionsStateTheInputs() throws {
         let c = try Self.file("skills/tandem-memory/CONVENTIONS.md")
         #expect(c.contains("three inputs"))
         #expect(c.contains("the ended session records' summaries"),
                 "the session summaries are a consolidation input (ADR 0027)")
+        #expect(c.contains("the human's daily notes"),
+                "the human's daily notes are a consolidation input")
         #expect(c.contains("read-only to the consolidator"))
-        #expect(c.contains("never edits or archives the scratch"))
-        #expect(c.contains("the human prunes"))
+        #expect(c.contains("never edits, moves or archives"),
+                "the pass folds a daily note, never edits, moves or archives it")
+        #expect(c.contains("the human keeps and edits"))
     }
 
     @Test("CONVENTIONS gives the Decisions page its index duty — ADRs stay in the repo")
@@ -85,13 +88,35 @@ struct ScaffoldConventionTests {
         }
     }
 
-    @Test("CONSOLIDATION reads the inputs, creates the scaffold on demand, leaves the scratch untouched")
+    @Test("CONSOLIDATION reads the inputs, creates the scaffold on demand, leaves the daily notes untouched")
     func consolidationStatesThePass() throws {
         let c = try Self.file("skills/tandem-memory/CONSOLIDATION.md")
-        #expect(c.contains("scratch"))
+        #expect(c.contains("daily"))
         #expect(c.contains("read-only to the consolidator"))
         #expect(c.contains("creates all four"))
-        #expect(c.contains("the human prunes"))
+        #expect(c.contains("never edits, moves or archives"))
+    }
+
+    @Test("The daily notes contract — the harvest list, the read-only rule and the fold marker (EE991EF2)")
+    func dailyNotesContractIsStated() throws {
+        for path in ["skills/tandem-consolidate/SKILL.md",
+                     "skills/tandem-memory/CONSOLIDATION.md"] {
+            let c = try Self.file(path)
+            #expect(c.contains("[\"daily\"]"), "\(path): the harvest list is named, `[\"daily\"]`")
+            #expect(c.contains("human-owned"), "\(path): the daily notes are the human's")
+            #expect(c.contains("read-only"), "\(path): agents never write them")
+            #expect(c.contains("Human notes folded through"),
+                    "\(path): the fold marker's wording is fixed")
+            #expect(c.contains("never edits, moves or archives"),
+                    "\(path): the source files are untouched")
+        }
+        // Discovery is the list plus the marker date — an mtime never re-folds.
+        let consolidation = try Self.file("skills/tandem-memory/CONSOLIDATION.md")
+        #expect(consolidation.contains("not mtime"), "the pass does not scan by mtime")
+        // The agent capture path is unchanged: daily notes added no agent write path.
+        let consolidate = try Self.file("skills/tandem-consolidate/SKILL.md")
+        #expect(consolidate.contains("tandem-cli note capture"),
+                "agent captures still go through `note capture`")
     }
 
     @Test("The question's exit is one write — the handoff rule and the sprint's inbox debt (D2522EC3)")
