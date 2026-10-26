@@ -193,7 +193,7 @@ ln -s "$PWD/skills/tandem" ~/.claude/skills/tandem
 
 ## The store
 
-`~/.tandem/tandem.db` is the store: one SQLite database holding the tickets and their cycle lanes, the comment logs, the session and sprint records, and the app's settings. The app watches it, so the list updates live whenever anything changes it — including an agent. There is no second copy and no sidecar file to keep in step; the bikeshed's notes stay plain markdown beside it.
+`~/.tandem/tandem.db` is the store: one SQLite database holding the tickets and their cycle lanes, the comment logs, the session and sprint records, and the app's settings. The app watches it, so the list updates live whenever anything changes it — including an agent. There is no second source of truth and no sidecar file to keep in step; the bikeshed's notes stay plain markdown beside it.
 
 The tickets are rows, in stored order — `tickets.position` **is** the list order, new tickets land on top, and the order is never recomputed from `createdAt`. Each ticket's `lane` names one of the `lanes` rows, and a null lane is the default (ungrouped) area, which always comes first. The columns are typed, so a count is a query: the open and done counts come straight out of the database rather than from loading the list. See [ADR 0031](docs/adr/0031-one-database-the-store.md) for the decision, [ADR 0006](docs/adr/0006-stored-order-and-sections.md) for order and lanes, and [ADR 0030](docs/adr/0030-one-entity-the-ticket.md) for the vocabulary.
 
