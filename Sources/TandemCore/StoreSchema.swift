@@ -26,7 +26,7 @@ enum StoreSchema {
     }
 
     /// The version this build writes and reads.
-    static let currentVersion = 1
+    static let currentVersion = 2
 
     /// Every migration, in order. Append only — a shipped version's DDL never changes.
     static let migrations: [Migration] = [
@@ -104,6 +104,14 @@ enum StoreSchema {
                     value TEXT NOT NULL
                 )
                 """)
+        },
+        // The sidecar domains' record fields that v1's table sketch left out. The
+        // migration is append-only: v1's DDL is what shipped on `dev`, so the new
+        // columns and the sprint's `close` name land here rather than editing it.
+        Migration(version: 2, name: "sidecar columns") { db in
+            try db.execute("ALTER TABLE sessions ADD COLUMN tokensCacheWrite INTEGER")
+            try db.execute("ALTER TABLE sessions ADD COLUMN model TEXT")
+            try db.execute("ALTER TABLE sprints RENAME COLUMN note TO close")
         }
     ]
 
@@ -135,6 +143,12 @@ enum StoreSchema {
 
     /// The domain whose import the ticket store's first write records.
     static let ticketsDomain = "tickets"
+    /// The sidecar domains' import markers (P2). Each is written in the same
+    /// transaction as its rows, so the read fallback never serves a half-import.
+    static let commentsDomain = "comments"
+    static let sessionsDomain = "sessions"
+    static let sprintsDomain = "sprints"
+    static let settingsDomain = "settings"
 
     /// Whether `domain` has been imported — the row is written in the same transaction
     /// as the imported rows, so seeing it means both are durable and not seeing it means

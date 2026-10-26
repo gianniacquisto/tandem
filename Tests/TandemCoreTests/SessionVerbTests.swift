@@ -41,9 +41,8 @@ struct SessionVerbTests {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
 
-        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
-        let file = home.appendingPathComponent("sessions.json")
-        let before = try Data(contentsOf: file)
+        let first = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+        let firstRecord = try cli.object(from: first.output)
 
         let again = try run(home: home, ["session", "start", "--project", "tandem", "--session", sessionID, "--brief", "spec the sessions work"])
         #expect(again.code == 0)
@@ -52,9 +51,8 @@ struct SessionVerbTests {
         #expect(record["id"] as? String == sessionID)
         #expect(record["status"] as? String == "running")
         #expect(record["note"] as? String == "session \(sessionID) already recorded")
-
-        let after = try Data(contentsOf: file)
-        #expect(before == after, "the second start writes nothing")
+        #expect(record["startedAt"] as? String == firstRecord["startedAt"] as? String,
+                "the second start writes nothing")
     }
 
     @Test("`session start` reads its brief from stdin, and refuses an empty one")

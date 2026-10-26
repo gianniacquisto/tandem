@@ -198,7 +198,7 @@ struct StoreMigrationTests {
         let db = try SQLiteDatabase(url: store.databaseURL, mode: .readWrite)
         try StoreSchema.migrate(db)
         db.close()
-        #expect(store.schemaVersion() == 1)
+        #expect(store.schemaVersion() == StoreSchema.currentVersion)
 
         // The database alone is not the store: the JSON is still the truth, so a read
         // answers from it rather than returning an empty board.
