@@ -55,10 +55,12 @@ public enum SetupDiagnostics {
         }
     }
 
-    /// The comments directory's state (ADR 0017, amendment 2026-10-20). Absent is
-    /// valid — the first comment creates it — so the check fails only when the
-    /// path is present but unreadable: a file in its place, or a directory that
-    /// cannot be listed.
+    /// The legacy comment log directory's state (`<home>/comments/`, ADR 0017,
+    /// amendment 2026-10-20). Since P2 the live log is the `comments` table in
+    /// `tandem.db`, so the directory is only the import's evidence: while the
+    /// comments domain is un-imported its logs still answer every read, and after
+    /// the marker lands nothing reads them. Absent is valid either way; only a
+    /// present-but-unusable path *before* the import counts as a setup failure.
     public enum CommentsState: Sendable, Equatable {
         case absent
         case readable
@@ -88,6 +90,13 @@ public enum SetupDiagnostics {
         public var bikeshedIsFile: Bool
         public var commentsPath: String
         public var commentsState: CommentsState
+        /// Comment rows in `tandem.db` — the live log since P2 (ADR 0031). Read only once
+        /// the `comments` import marker is present; otherwise it is zero and the legacy
+        /// logs are still the truth.
+        public var commentRows: Int
+        /// Whether the `comments` domain's import has been recorded — from then on the
+        /// directory is evidence, not the store.
+        public var commentsImported: Bool
         public var appPresent: Bool
         public var appVersion: String?
         public var appQuarantined: Bool
@@ -104,6 +113,7 @@ public enum SetupDiagnostics {
                     storeBackup: Store.BackupHealth, storeLockHeld: Bool,
                     bikeshedPath: String, bikeshedNoteCount: Int, bikeshedIsFile: Bool,
                     commentsPath: String, commentsState: CommentsState,
+                    commentRows: Int = 0, commentsImported: Bool = false,
                     appPresent: Bool, appVersion: String?, appQuarantined: Bool,
                     skillHosts: [SkillHost], opencodeHasSkills: Bool) {
             self.homePath = homePath
@@ -119,6 +129,8 @@ public enum SetupDiagnostics {
             self.bikeshedIsFile = bikeshedIsFile
             self.commentsPath = commentsPath
             self.commentsState = commentsState
+            self.commentRows = commentRows
+            self.commentsImported = commentsImported
             self.appPresent = appPresent
             self.appVersion = appVersion
             self.appQuarantined = appQuarantined
@@ -172,18 +184,7 @@ public enum SetupDiagnostics {
                                 detail: "\(facts.bikeshedPath) — \(facts.bikeshedNoteCount) note(s)"))
         }
 
-        switch facts.commentsState {
-        case .absent:
-            checks.append(Check(name: "comments", ok: true,
-                                detail: "\(facts.commentsPath) — absent (created on first comment)"))
-        case .readable:
-            checks.append(Check(name: "comments", ok: true,
-                                detail: facts.commentsPath))
-        case .unreadable:
-            checks.append(Check(name: "comments", ok: false,
-                                detail: "\(facts.commentsPath) — present but unreadable; "
-                                       + "a directory of comment logs is expected here"))
-        }
+        checks.append(commentsCheck(facts))
 
         checks.append(Check(name: "lock", ok: !facts.storeLockHeld,
                             detail: facts.storeLockHeld
@@ -206,6 +207,42 @@ public enum SetupDiagnostics {
                             detail: skillDetail(facts)))
 
         return Report(ok: checks.allSatisfy { $0.ok }, checks: checks)
+    }
+
+    /// The comments row: the live log is the database (P2), and the legacy
+    /// `<home>/comments/` directory is the import's evidence — named as pending until
+    /// the marker lands, and as already imported after. Only an unusable directory
+    /// *before* the import is a failure, because only then does a read land in it.
+    static func commentsCheck(_ facts: Facts) -> Check {
+        let path = facts.commentsPath
+        if facts.commentsImported {
+            let live = "\(facts.storePath) — \(facts.commentRows) comment(s)"
+            switch facts.commentsState {
+            case .absent:
+                return Check(name: "comments", ok: true,
+                             detail: "\(live); no legacy log directory")
+            case .readable:
+                return Check(name: "comments", ok: true,
+                             detail: "\(live); legacy logs at \(path) already imported")
+            case .unreadable:
+                return Check(name: "comments", ok: true,
+                             detail: "\(live); legacy logs at \(path) present but unreadable "
+                                   + "— already imported, so not read")
+            }
+        }
+        switch facts.commentsState {
+        case .absent:
+            return Check(name: "comments", ok: true,
+                         detail: "\(facts.storePath) — none yet; the first comment writes a row")
+        case .readable:
+            return Check(name: "comments", ok: true,
+                         detail: "\(path) — legacy logs, still the store; "
+                               + "the first comment imports them into \(facts.storePath)")
+        case .unreadable:
+            return Check(name: "comments", ok: false,
+                         detail: "\(path) — present but unreadable; the legacy logs are the "
+                               + "store until the first comment imports them")
+        }
     }
 
     /// The rolling backup's clause for the store check: presence and age, the recovery
@@ -259,6 +296,9 @@ public enum SetupDiagnostics {
         let bikeshedIsFile = isFile(bikeshed.directory.path)
         let commentsPath = store.commentsDirectory.path
         let commentsState = commentsState(at: commentsPath)
+        // The live comment log is the database (P2); the directory above is the import's
+        // evidence, so the row names the store's rows and only explains the directory.
+        let commentsHealth = store.commentsHealth()
 
         let appURL = URL(fileURLWithPath: appPath)
         let appPresent = FileManager.default.fileExists(atPath: appPath)
@@ -283,6 +323,8 @@ public enum SetupDiagnostics {
             bikeshedIsFile: bikeshedIsFile,
             commentsPath: commentsPath,
             commentsState: commentsState,
+            commentRows: commentsHealth.rows,
+            commentsImported: commentsHealth.imported,
             appPresent: appPresent,
             appVersion: appVersion,
             appQuarantined: appPresent && hasQuarantine(appPath),

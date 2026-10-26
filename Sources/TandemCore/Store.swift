@@ -222,6 +222,33 @@ public struct Store: Sendable {
         }) ?? false
     }
 
+    /// The comments domain's state for `doctor` (ADR 0014): whether the import marker
+    /// landed, and how many rows the store holds. The live log is the `comments` table;
+    /// `commentsDirectory` is evidence of the import now, not the store. Lock-free and
+    /// read-only, like the other diagnostics: a home with no database answers zero, and
+    /// an un-imported database answers zero too (the legacy logs are still the truth).
+    public struct CommentsHealth: Sendable, Equatable {
+        public let rows: Int
+        public let imported: Bool
+
+        public init(rows: Int, imported: Bool) {
+            self.rows = rows
+            self.imported = imported
+        }
+    }
+
+    public func commentsHealth() -> CommentsHealth {
+        let none = CommentsHealth(rows: 0, imported: false)
+        guard databaseExists else { return none }
+        return (try? Self.translate {
+            let db = try SQLiteDatabase(url: databaseURL, mode: .readOnly)
+            defer { db.close() }
+            guard try StoreSchema.isImported(StoreSchema.commentsDomain, in: db) else { return none }
+            let rows = try db.scalarInt("SELECT COUNT(*) FROM comments") ?? 0
+            return CommentsHealth(rows: rows, imported: true)
+        }) ?? none
+    }
+
     /// The applied migration version, or `nil` when there is no database yet. For
     /// `doctor`'s store row (ADR 0014): the version seam, reported as a fact.
     public func schemaVersion() -> Int? {
