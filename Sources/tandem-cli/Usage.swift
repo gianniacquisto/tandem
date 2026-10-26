@@ -257,6 +257,12 @@ enum Usage {
         Usage:
           tandem-cli ticket comment list --id <id>
         """,
+        "lane list": """
+        tandem-cli lane list — the store's declared lanes, empty ones included.
+
+        Usage:
+          tandem-cli lane list
+        """,
         "lane add": """
         tandem-cli lane add — a new lane.
 
