@@ -15,12 +15,16 @@ struct SetupDiagnosticsTests {
         storePath: String = "/Users/tester/.tandem-dev/tandem.db",
         storeVersion: Int? = 1,
         storeJSONFork: String? = nil,
+        storeJSONSource: String? = nil,
+        storeDatabaseUnimported: Bool = false,
         storeHealth: Store.Health = .counts(open: 3, done: 2),
         storeBackup: Store.BackupHealth = .present(age: 300),
         storeLockHeld: Bool = false,
         bikeshedNoteCount: Int = 4,
         bikeshedIsFile: Bool = false,
         commentsState: SetupDiagnostics.CommentsState = .absent,
+        commentRows: Int = 0,
+        commentsImported: Bool = false,
         appPresent: Bool = true,
         appVersion: String? = "0.9.0",
         appQuarantined: Bool = false,
@@ -36,6 +40,8 @@ struct SetupDiagnosticsTests {
             storePath: storePath,
             storeVersion: storeVersion,
             storeJSONFork: storeJSONFork,
+            storeJSONSource: storeJSONSource,
+            storeDatabaseUnimported: storeDatabaseUnimported,
             storeHealth: storeHealth,
             storeBackup: storeBackup,
             storeLockHeld: storeLockHeld,
@@ -44,6 +50,8 @@ struct SetupDiagnosticsTests {
             bikeshedIsFile: bikeshedIsFile,
             commentsPath: "/Users/tester/.tandem-dev/comments",
             commentsState: commentsState,
+            commentRows: commentRows,
+            commentsImported: commentsImported,
             appPresent: appPresent,
             appVersion: appVersion,
             appQuarantined: appQuarantined,
@@ -61,7 +69,7 @@ struct SetupDiagnosticsTests {
         #expect(report.checks[1].detail.contains("3 open, 2 done"))
         #expect(report.checks[1].detail.contains("backup 5m old"))
         #expect(report.checks[2].detail.contains("4 note(s)"))
-        #expect(report.checks[3].detail.contains("created on first comment"))
+        #expect(report.checks[3].detail.contains("the first comment writes a row"))
         #expect(report.checks[5].detail.contains("version 0.9.0"))
     }
 
@@ -99,7 +107,7 @@ struct SetupDiagnosticsTests {
         #expect(store?.detail.contains("backup 2h old") == true)
     }
 
-    @Test("the store row names the database, its migration version and the JSON fork")
+    @Test("the store row names the database, its migration version and how to clear the JSON fork")
     func storeRowNamesTheDatabaseVersionAndFork() {
         let report = SetupDiagnostics.report(facts(
             storePath: "/Users/tester/.tandem-dev/tandem.db",
@@ -110,6 +118,50 @@ struct SetupDiagnosticsTests {
         #expect(store?.detail.contains("v1;") == true)
         #expect(store?.detail.contains("a fork") == true)
         #expect(store?.detail.contains("tickets.json") == true)
+        #expect(store?.detail.contains("rm '/Users/tester/.tandem-dev/tickets.json'") == true,
+                "a fork nothing deletes names the command that clears it")
+    }
+
+    @Test("a pre-import home names the JSON file the counts came from, not the database")
+    func preImportStoreRowNamesTheJSONFile() {
+        let report = SetupDiagnostics.report(facts(
+            storePath: "/Users/tester/.tandem-dev/tandem.db",
+            storeVersion: nil,
+            storeJSONSource: "/Users/tester/.tandem-dev/tickets.json",
+            storeDatabaseUnimported: true,
+            storeHealth: .counts(open: 3, done: 2)))
+        let store = report.checks.first { $0.name == "store" }
+        #expect(store?.detail.contains("/Users/tester/.tandem-dev/tickets.json") == true)
+        #expect(store?.detail.contains("3 open, 2 done") == true)
+        #expect(store?.detail.contains("v1") == false, "the schema is not the store's yet")
+        #expect(store?.detail.contains("has not imported it yet") == true)
+    }
+
+    @Test("a JSON-only home names the file, and has no database to mention")
+    func jsonOnlyStoreRowNamesTheFile() {
+        let report = SetupDiagnostics.report(facts(
+            storePath: "/Users/tester/.tandem-dev/tandem.db",
+            storeVersion: nil,
+            storeJSONSource: "/Users/tester/.tandem-dev/tickets.json",
+            storeHealth: .counts(open: 1, done: 0)))
+        let store = report.checks.first { $0.name == "store" }
+        #expect(store?.detail.contains("/Users/tester/.tandem-dev/tickets.json") == true)
+        #expect(store?.detail.contains("tandem.db") == false, "there is no database to name")
+        #expect(store?.detail.contains("has not imported") == false)
+    }
+
+    @Test("an unreadable JSON file is named as the store, with no backup recipe for a database")
+    func unreadableJSONSourceRowNamesTheFile() {
+        let report = SetupDiagnostics.report(facts(
+            storePath: "/Users/tester/.tandem-dev/tandem.db",
+            storeVersion: nil,
+            storeJSONSource: "/Users/tester/.tandem-dev/tickets.json",
+            storeHealth: .unreadable))
+        let store = report.checks.first { $0.name == "store" }
+        #expect(store?.ok == false)
+        #expect(store?.detail.contains("/Users/tester/.tandem-dev/tickets.json") == true)
+        #expect(store?.detail.contains("tandem.db") == false)
+        #expect(store?.detail.contains("store is not rewritten") == true)
     }
 
     @Test("backup ages read as seconds, minutes, hours, then days")
@@ -139,24 +191,49 @@ struct SetupDiagnosticsTests {
         #expect(report.checks.first { $0.name == "bikeshed" }?.ok == false)
     }
 
-    @Test("an absent comments directory is a valid setup, created on first comment")
-    func absentCommentsIsOK() {
-        let report = SetupDiagnostics.report(facts(commentsState: .absent))
+    @Test("the comments row reads the live store, not the legacy directory")
+    func commentsRowReadsTheDatabase() {
+        let report = SetupDiagnostics.report(
+            facts(commentsState: .absent, commentRows: 12, commentsImported: true))
+        let comments = report.checks.first { $0.name == "comments" }
+        #expect(report.ok)
+        #expect(comments?.ok == true)
+        #expect(comments?.detail.contains("/Users/tester/.tandem-dev/tandem.db") == true)
+        #expect(comments?.detail.contains("12 comment(s)") == true)
+        #expect(comments?.detail.contains("created on first comment") == false)
+        #expect(comments?.detail.contains("no legacy log directory") == true)
+    }
+
+    @Test("legacy logs awaiting the import are named as still to import")
+    func pendingImportNamesTheDirectoryAsEvidence() {
+        let report = SetupDiagnostics.report(facts(commentsState: .readable))
         let comments = report.checks.first { $0.name == "comments" }
         #expect(report.ok)
         #expect(comments?.ok == true)
         #expect(comments?.detail.contains("/Users/tester/.tandem-dev/comments") == true)
-        #expect(comments?.detail.contains("created on first comment") == true)
+        #expect(comments?.detail.contains("still the store") == true)
+        #expect(comments?.detail.contains("created on first comment") == false)
     }
 
-    @Test("an unreadable comments path fails the report, naming the directory")
-    func unreadableCommentsFails() {
+    @Test("an unreadable legacy directory fails while it is still the store")
+    func unreadableCommentsFailBeforeImport() {
         let report = SetupDiagnostics.report(facts(commentsState: .unreadable))
         let comments = report.checks.first { $0.name == "comments" }
         #expect(!report.ok)
         #expect(comments?.ok == false)
         #expect(comments?.detail.contains("/Users/tester/.tandem-dev/comments") == true)
         #expect(comments?.detail.contains("unreadable") == true)
+    }
+
+    @Test("an unreadable legacy directory is harmless once the import landed")
+    func unreadableCommentsAreHarmlessAfterImport() {
+        let report = SetupDiagnostics.report(
+            facts(commentsState: .unreadable, commentRows: 5, commentsImported: true))
+        let comments = report.checks.first { $0.name == "comments" }
+        #expect(report.ok)
+        #expect(comments?.ok == true)
+        #expect(comments?.detail.contains("5 comment(s)") == true)
+        #expect(comments?.detail.contains("already imported") == true)
     }
 
     @Test("a missing app is informational — not installed, still ok")
@@ -211,6 +288,17 @@ struct SetupDiagnosticsTests {
         // A file that is not a database where the store's database belongs.
         try Data("not a database".utf8).write(to: store.databaseURL)
         #expect(store.health() == .unreadable)
+    }
+
+    @Test("commentsHealth: no database is no rows, and the first append imports the domain")
+    func storeCommentsHealth() throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        #expect(store.commentsHealth() == .init(rows: 0, imported: false))
+        let ticket = try store.add("Comment probe").value
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "one")
+        #expect(store.commentsHealth() == .init(rows: 1, imported: true))
     }
 
     @Test("the lock probe reports free when nothing holds the lock")

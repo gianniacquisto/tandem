@@ -22,6 +22,8 @@ enum Usage {
                             [--assignee <name|self>] [--description <string|->]
       tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
       tandem-cli ticket complete --id <id>
+      tandem-cli ticket answer --id <id> --status <value> [--assignee <name|self>]
+                               [--body <string|->]
       tandem-cli ticket archive [--id <id>]
       tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
       tandem-cli ticket comment list --id <id>
@@ -83,6 +85,8 @@ enum Usage {
                                 [--assignee <name|self>] [--description <string|->]
           tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
           tandem-cli ticket complete --id <id>
+          tandem-cli ticket answer --id <id> --status <value> [--assignee <name|self>]
+                                   [--body <string|->]
           tandem-cli ticket archive
           tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
           tandem-cli ticket comment list --id <id>
@@ -100,6 +104,7 @@ enum Usage {
         tandem-cli lane — the lane lifecycle.
 
         Usage:
+          tandem-cli lane list
           tandem-cli lane add --name <name>
           tandem-cli lane rename --from <name> --to <name>
           tandem-cli lane delete --name <name>
@@ -223,6 +228,22 @@ enum Usage {
 
         Usage:
           tandem-cli ticket complete --id <id>
+        """,
+        "ticket answer": """
+        tandem-cli ticket answer — the human's answer, recorded and the hold closed.
+
+        Usage:
+          tandem-cli ticket answer --id <id> --status <value> [--assignee <name|self>]
+                                   [--body <string|->]
+
+        Values:
+          status    backlog | refined | ready | in-progress | in-review | done
+          assignee  a name, `self` ($TANDEM_AGENT), or "" to leave it unowned
+
+        One write: a `## Answer — <date>` block appended to the description, then the
+        status and the assignee set — the question's exit from the inbox. An absent
+        `--assignee` clears the owner. `--body -` reads the body from stdin; an empty
+        body is refused and the ticket is left alone.
         """,
         "ticket archive": """
         tandem-cli ticket archive — the whole done list, bulk.

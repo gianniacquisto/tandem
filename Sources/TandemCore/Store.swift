@@ -15,8 +15,9 @@ import SQLite3
 ///   the same words ADR 0007's translation rule gave the sidecar lock. The temp +
 ///   fsync + rename dance and the `tandem.lock` write lock are gone from the store: a
 ///   transaction is the atomic write, and SQLite's journal covers the kill-mid-write
-///   case. (The `tandem.lock` file survives only as the comments sidecar's own lock
-///   until that domain migrates.)
+///   case. The comments domain moved into the database too (P2), so no store operation
+///   takes a sidecar lock and the `tandem.lock` file is retired — a stale one beside a
+///   home is inert.
 /// - **Readers** — lock-free. A WAL snapshot is the consistent read ADR 0001 promised,
 ///   and a read never writes.
 /// - **Rolling backup** — kept (ADR 0018): before each write transaction the database is
@@ -40,8 +41,9 @@ import SQLite3
 ///   protocol's recovery path existed for cannot happen. A legacy JSON file that cannot
 ///   be decoded fails the read loudly instead of being moved aside and restarted empty.
 ///
-/// The comment operations still live in their JSON sidecar (P2 migrates them) and use
-/// `withLock` / `withLockedRead` below for the append ordering they need today.
+/// The comments, sessions, sprints and settings domains are re-backed on the same
+/// database (P2): each imports its JSON file once, on its own first write, and reads
+/// its legacy file only until that marker lands.
 public struct Store: Sendable {
     /// The store's directory (created on first write). Public so the GUI can watch it
     /// for external changes (FSEvents); the GUI never writes it directly.
@@ -65,11 +67,6 @@ public struct Store: Sendable {
     var backupURL: URL {
         directory.appendingPathComponent("tandem.db.bak")
     }
-    /// The comments sidecar's lockfile (`tandem.lock`). The store's own writes no longer
-    /// take it; the append-only comment log still does until its domain moves into the
-    /// database.
-    let lockURL: URL
-    private let commentLock: LockedDirectory
 
     /// The store's directory's database file, as a fact about the filesystem.
     private var databaseExists: Bool {
@@ -86,27 +83,6 @@ public struct Store: Sendable {
     public init(directory: URL) {
         self.directory = directory
         self.fileURL = directory.appendingPathComponent("tickets.json")
-        self.lockURL = directory.appendingPathComponent("tandem.lock")
-        self.commentLock = LockedDirectory(
-            lockURL: directory.appendingPathComponent("tandem.lock"),
-            tempPrefix: ".comments-",
-            cleanRoot: directory,
-            cleanRecursively: false)
-    }
-
-    // MARK: - The comment sidecar's lock (removed when comments migrate)
-
-    /// Take the comments sidecar's lock and run `body` under it, translating the
-    /// primitive's errors into the store's vocabulary. Internal: the comment read and
-    /// append serialize with each other through it.
-    func withLock<T: Sendable>(_ body: () throws -> T) throws -> T {
-        do {
-            return try commentLock.withLock(body)
-        } catch LockedDirectoryError.locked {
-            throw DomainError.locked
-        } catch LockedDirectoryError.posix(let op, let code) {
-            throw StoreIOError.posix(op: op, code: code)
-        }
     }
 
     // MARK: - Reads
@@ -192,21 +168,6 @@ public struct Store: Sendable {
         return (outcome.value, nil)
     }
 
-    /// Run `body` with the store read, for operations that read the store and write
-    /// elsewhere — the comment append verifies the ticket exists before appending to the
-    /// sidecar, so check and append are one locked act. The lock is the comments
-    /// sidecar's; the read is the database's (or the JSON fallback's). Internal (not
-    /// public): the public surface is the `Operations` extension.
-    func withLockedRead<T: Sendable>(
-        _ body: (StoreContents, String?) throws -> T
-    ) throws -> T {
-        try withLock {
-            var contents = try readAll().contents
-            contents.normalize()
-            return try body(contents, nil)
-        }
-    }
-
     // MARK: - Diagnostics (read-only; ADR 0014)
 
     /// The store's health for `tandem-cli doctor`: the open/done counts, or
@@ -259,6 +220,33 @@ public struct Store: Sendable {
             defer { db.close() }
             return try StoreSchema.isImported(StoreSchema.ticketsDomain, in: db)
         }) ?? false
+    }
+
+    /// The comments domain's state for `doctor` (ADR 0014): whether the import marker
+    /// landed, and how many rows the store holds. The live log is the `comments` table;
+    /// `commentsDirectory` is evidence of the import now, not the store. Lock-free and
+    /// read-only, like the other diagnostics: a home with no database answers zero, and
+    /// an un-imported database answers zero too (the legacy logs are still the truth).
+    public struct CommentsHealth: Sendable, Equatable {
+        public let rows: Int
+        public let imported: Bool
+
+        public init(rows: Int, imported: Bool) {
+            self.rows = rows
+            self.imported = imported
+        }
+    }
+
+    public func commentsHealth() -> CommentsHealth {
+        let none = CommentsHealth(rows: 0, imported: false)
+        guard databaseExists else { return none }
+        return (try? Self.translate {
+            let db = try SQLiteDatabase(url: databaseURL, mode: .readOnly)
+            defer { db.close() }
+            guard try StoreSchema.isImported(StoreSchema.commentsDomain, in: db) else { return none }
+            let rows = try db.scalarInt("SELECT COUNT(*) FROM comments") ?? 0
+            return CommentsHealth(rows: rows, imported: true)
+        }) ?? none
     }
 
     /// The applied migration version, or `nil` when there is no database yet. For
@@ -316,7 +304,7 @@ public struct Store: Sendable {
     /// The rolling backup: open the database read-only (a WAL snapshot of the last
     /// committed state) and copy it through SQLite's backup API. A copy that fails fails
     /// the write.
-    private static func backUpDatabase(at source: URL, to destination: URL) throws {
+    static func backUpDatabase(at source: URL, to destination: URL) throws {
         let db = try SQLiteDatabase(url: source, mode: .readOnly)
         defer { db.close() }
         try db.backUp(to: destination)
@@ -327,7 +315,7 @@ public struct Store: Sendable {
     /// ADR 0007's rule, at the new seam: SQLite's contention becomes the store's
     /// "locked" domain error (the same words), every other engine failure the store's
     /// I/O vocabulary with the engine's detail.
-    private static func translate<T>(_ body: () throws -> T) throws -> T {
+    static func translate<T>(_ body: () throws -> T) throws -> T {
         do {
             return try body()
         } catch let error as SQLiteError {

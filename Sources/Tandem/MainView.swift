@@ -28,11 +28,13 @@ import TandemCore
 ///               with the list's own rows (the description sheet holds the question).
 ///               A dot on the tab says one is waiting, from any other face
 ///   Sessions  — the session records (SessionsFace.swift): the artifacts agent
-///               sessions leave behind in `sessions.json`, grouped by project.
+///               sessions leave behind in the store's `sessions` table, grouped
+///               by project.
 ///               Read-only, and in the record's own words (`running`, `ended`);
 ///               a row opens the record's sheet — its brief, its notes, its tickets
 ///   Sprints   — the sprint records (SprintsFace.swift): the artifacts a sprint
-///               leaves behind in `sprints.json`, grouped by lane. Read-only,
+///               leaves behind in the store's `sprints` table, grouped by lane.
+///               Read-only,
 ///               and in the record's own words (`open`, `closed`); a row opens
 ///               the record's sheet — its batch, its runs, its close, its
 ///               opening session, its times
@@ -420,7 +422,9 @@ struct MainView: View {
 
     /// The human's inbox: the tickets an agent assigned to `human` to ask for a decision.
     /// A query (`TicketQuery.inbox`), not a second store — the row is the list's row, and the
-    /// question itself is the ticket's description, read in the description sheet.
+    /// question itself is the ticket's description, read in the description sheet. An
+    /// answered ticket is out of it: a description carrying an `## Answer` block has had
+    /// its question settled, whatever its owner still says.
     private var inboxFace: some View {
         let inbox = model.inboxTickets
         return VStack(spacing: 0) {

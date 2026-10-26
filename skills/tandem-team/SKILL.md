@@ -27,4 +27,4 @@ One vocabulary, two fields. A role's name goes in `--assignee` when it owns a ti
 
 ## The minutes
 
-The comment log on a ticket is the team's minutes — append-only, no edit, no delete; a correction is a new comment. The description is the brief: written once and appended to, never overwritten. Evidence a reader must act on goes in the description too; the comment is the conversation. The regular producers are the sprint session (`--author sprint`, the `## Run` notes) and the reviewer's verdict; any role may write as itself.
+The comment log on a ticket is the team's minutes — append-only, no edit, no delete; a correction is a new comment. The description is the brief: written once and appended to, never overwritten. Evidence a reader must act on goes in the description too; the comment is the conversation. The regular producer is the reviewer's verdict; any role that speaks on a ticket writes as itself. A sprint's run log is the record's, not a ticket's, and it is not part of the minutes.

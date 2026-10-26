@@ -18,7 +18,7 @@ Read every pending file — the **whole** saddlebag, not a session's slice. Grou
 
 **The scratch pad** — the visible `scratch/` directory of the human's daily notes. Read it whole, alongside the saddlebag; fold what it holds into the scaffold. It is **read-only to the consolidator**: the pass never edits the scratch and never archives it — it is the human's space, and the human prunes.
 
-**The session records** — every ended session's summary: `tandem-cli session list --project <project> --status ended`, then `tandem-cli session show --session <id>` for the `summary` field (ADR 0027). The summary is the session's work record — what it did and where it left off; there is no floor `work` capture to read. Records live in `sessions.json`, never the saddlebag: they are read, not archived.
+**The session records** — every ended session's summary: `tandem-cli session list --project <project> --status ended`, then `tandem-cli session show --session <id>` for the `summary` field (ADR 0027). The summary is the session's work record — what it did and where it left off; there is no floor `work` capture to read. Records are rows of the store's `sessions` table in `tandem.db` (ADR 0031), never the saddlebag: they are read, not archived.
 
 ## Write the curated notes
 

@@ -1,17 +1,13 @@
 import Foundation
 import Darwin
 
-/// A comment on a ticket (ADR 0017, amendment 2026-10-20): one line of the
-/// ticket's sidecar log, `<home>/comments/<ticket-id>.jsonl`.
+/// A comment on a ticket (ADR 0017, amendment 2026-10-20; re-backed in ADR
+/// 0031's database): one row of the `comments` table in `<home>/tandem.db`.
 ///
-/// **The log is a sidecar, not a field.** The installed app rewrites
-/// `todos.json` whole (the store file, `tickets.json` since the rename) and drops
-/// keys it does not know — the same tax `origin`
-/// pays — so an in-ticket `comments` array would be erased by the next human
-/// edit until a build carrying the field is installed. A sidecar cannot be
-/// erased by an older writer, and append-only suits two agents taking turns on
-/// one ticket. The log is **append-only**: there is no edit and no delete, and
-/// a deleted ticket's log stays on disk.
+/// **The log is append-only.** There is no edit and no delete, and a deleted
+/// ticket's log stays. The legacy `comments/<ticket-id>.jsonl` logs are read as
+/// the fallback until the first comment write imports them once, each log
+/// copied aside as `<name>.pre-sqlite-<ts>` and left where it was.
 ///
 /// `at` is ISO-8601 UTC on the wire, exactly like the store's timestamps.
 public struct Comment: Codable, Sendable, Equatable {
@@ -71,94 +67,129 @@ extension Store {
 
     // MARK: - append
 
-    /// `append(ticketID:author:body:)`: append one comment to the ticket's log,
-    /// under the store's own flock. The ticket must exist — the check and the
-    /// append are one locked act, so a ticket deleted in between cannot get a
-    /// comment — and an unknown id throws `DomainError.unknownID` carrying the
+    /// `append(ticketID:author:body:)`: append one comment to the ticket's log — a
+    /// row in `tandem.db` now (ADR 0031). The ticket must exist, and the existence
+    /// check and the insert are **one transaction**: a ticket deleted in between
+    /// cannot get a comment, and the P1 seam's check-then-append window is gone
+    /// with the flock. An unknown id throws `DomainError.unknownID` carrying the
     /// open list, like `complete`. The body is trimmed; an empty result is
-    /// rejected (`DomainError.emptyCommentBody`) before anything is written.
-    /// The author is trimmed; an empty result is the unnamed author `""`. The
-    /// comments directory is created on first append.
+    /// rejected (`DomainError.emptyCommentBody`) before anything is written. The
+    /// author is trimmed; an empty result is the unnamed author `""`.
+    ///
+    /// The first append imports `comments/*.jsonl` once: each log is read whole,
+    /// its comments inserted, and the file copied aside as
+    /// `<name>.pre-sqlite-<ts>` — the log itself is never deleted. From then on
+    /// the database is the log's truth.
     public func append(ticketID: String, author: String, body: String) throws -> OperationResult<Comment> {
         let text = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw DomainError.emptyCommentBody }
         let who = author.trimmingCharacters(in: .whitespacesAndNewlines)
-        let (comment, note) = try withLockedRead { contents, note in
-            // The store's one rule for "which ticket is this id?" — the same
-            // answer `complete` gives, from the same place.
-            let id = try Self.requireTicket(ticketID, in: contents.todos).uuid
-            // The stored form of the timestamp is whole seconds, so the
-            // in-memory value is truncated to the same form: an appended
-            // comment equals what `list` reads back.
-            let at = Date(timeIntervalSince1970: Date.now.timeIntervalSince1970.rounded())
-            let comment = Comment(author: who, at: at, body: text)
-            try self.appendCommentLine(comment, for: id)
-            return (comment, note)
+        let (comment, note) = try Self.translate {
+            try StoreMigration.sidecarWrite(
+                in: directory, domain: StoreSchema.commentsDomain,
+                importDomain: { db in try self.importCommentLogs(into: db) },
+                body: { db in
+                    // The ticket domain's own import rides this transaction too: a
+                    // comment never lands against a board the database has not
+                    // imported, and a ticket deleted before the commit is not found.
+                    _ = try StoreMigration.importIfNeeded(in: self.directory, into: db)
+                    let contents = try StoreSchema.readContents(db)
+                    // The store's one rule for "which ticket is this id?" — the
+                    // same answer `complete` gives, from the same place.
+                    let id = try Self.requireTicket(ticketID, in: contents.todos).uuid
+                    // The stored form of the timestamp is whole seconds, so the
+                    // in-memory value is truncated to the same form: an appended
+                    // comment equals what `list` reads back.
+                    let at = Date(timeIntervalSince1970: Date.now.timeIntervalSince1970.rounded())
+                    let comment = Comment(author: who, at: at, body: text)
+                    return (comment, true, nil, { try Self.insert(comment, for: id, into: db) })
+                })
         }
         return OperationResult(comment, note: note)
     }
 
     /// `list(ticketID:)`: the ticket's comments in append order, or an empty
     /// list — never an error — for a ticket with no log (including one that is
-    /// unknown: the sidecar outlives the store's entries). Runs under the
-    /// store's flock because an append is a physical `O_APPEND` write, not an
-    /// atomic rename: an unlocked reader could observe a half-written line.
-    /// A damaged line is a loud failure — the log is append-only, so a bad
-    /// line is repair, not recovery.
+    /// unknown: the log outlives the store's entries). The database answers once
+    /// the comments domain has been imported; until then, and on a home that has
+    /// no database, the JSON log is read whole. A damaged line in the fallback
+    /// is a loud failure — the log is append-only, so a bad line is repair, not
+    /// recovery.
     public func list(ticketID: String) throws -> OperationResult<[Comment]> {
         guard let id = UUID(uuidString: ticketID) else { return OperationResult<[Comment]>([]) }
-        let url = commentFileURL(for: id)
-        return try withLock {
-            guard let data = try? Data(contentsOf: url) else {
-                return OperationResult<[Comment]>([])
-            }
-            var comments: [Comment] = []
-            for line in data.split(separator: 0x0A) where !line.isEmpty {
-                guard let comment = try? JSONDecoder().decode(Comment.self, from: Data(line)) else {
-                    throw StoreIOError.io(
-                        "The comment log \(url.lastPathComponent) has a damaged line; repair the file and try again.")
+        let stored = try Self.translate {
+            try StoreMigration.sidecarRead(
+                in: directory, domain: StoreSchema.commentsDomain
+            ) { db in
+                try db.rows(
+                    "SELECT author, at, body FROM comments WHERE ticketId = ? ORDER BY rowid",
+                    [.text(id.uuidString)]
+                ) { row -> Comment in
+                    let raw = row.text(1)
+                    guard let at = Timestamp.decode(raw) else {
+                        throw StoreIOError.io(
+                            "A comment row carries an unreadable timestamp \"\(raw)\"")
+                    }
+                    return Comment(author: row.text(0), at: at, body: row.text(2))
                 }
-                comments.append(comment)
             }
-            return OperationResult(comments)
         }
+        if let stored { return OperationResult(stored) }
+        return OperationResult(try readCommentLog(commentFileURL(for: id)))
     }
 
     // MARK: - Sidecar mechanics (private)
 
-    /// Append one encoded comment line to the ticket's log. Call only while
-    /// holding the store's lock (the append is not atomic on its own; the
-    /// flock is what makes the line land whole).
-    private func appendCommentLine(_ comment: Comment, for id: UUID) throws {
-        try FileManager.default.createDirectory(
-            at: commentsDirectory, withIntermediateDirectories: true)
-        let url = commentFileURL(for: id)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        var line = try encoder.encode(comment)
-        line.append(0x0A)
-        // O_APPEND, written whole and fsync'd: the line lands complete because
-        // this runs under the store's flock (no other appender), and the fsync
-        // keeps it on disk before the lock is released.
-        let fd = open(url.path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
-        guard fd >= 0 else { throw StoreIOError.posix(op: "open comment log", code: errno) }
-        defer { close(fd) }
-        var remaining = line
-        while !remaining.isEmpty {
-            let n = remaining.withUnsafeBytes { buffer in
-                guard let base = buffer.baseAddress else { return 0 }
-                return Darwin.write(fd, base, remaining.count)
+    /// The JSON log whole, in append order. The fallback and the importer share
+    /// this read, so the damaged-line failure reads the same before and during
+    /// the import.
+    private func readCommentLog(_ url: URL) throws -> [Comment] {
+        guard let data = try? Data(contentsOf: url) else { return [] }
+        var comments: [Comment] = []
+        for line in data.split(separator: 0x0A) where !line.isEmpty {
+            guard let comment = try? JSONDecoder().decode(Comment.self, from: Data(line)) else {
+                throw StoreIOError.io(
+                    "The comment log \(url.lastPathComponent) has a damaged line; repair the file and try again.")
             }
-            if n > 0 {
-                remaining.removeFirst(n)
-            } else if errno == EINTR {
-                continue
-            } else {
-                throw StoreIOError.posix(op: "write comment", code: errno)
+            comments.append(comment)
+        }
+        return comments
+    }
+
+    /// Insert one comment row. The caller holds the write transaction.
+    private static func insert(_ comment: Comment, for id: UUID, into db: SQLiteDatabase) throws {
+        try db.run(
+            "INSERT INTO comments (ticketId, author, at, body) VALUES (?, ?, ?, ?)",
+            [.text(id.uuidString), .text(comment.author),
+             .text(Timestamp.encode(comment.at)), .text(comment.body)])
+    }
+
+    /// The one-time import of `comments/*.jsonl`: every log read whole, inserted in
+    /// file order, and copied aside. A log that cannot be decoded fails the write;
+    /// the transaction rolls the rows back, and the files stay where they were.
+    /// Returns the marker's source name — `comments` when any logs existed.
+    private func importCommentLogs(into db: SQLiteDatabase) throws -> (source: String?, note: String?) {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: commentsDirectory.path) else { return (nil, nil) }
+        let names: [String]
+        do {
+            names = try fm.contentsOfDirectory(atPath: commentsDirectory.path)
+        } catch {
+            throw StoreIOError.io(
+                "could not read the comments directory at \(commentsDirectory.path): \(error)")
+        }
+        var imported = false
+        for name in names.sorted() {
+            guard name.hasSuffix(".jsonl") else { continue }
+            let stem = String(name.dropLast(".jsonl".count))
+            guard let id = UUID(uuidString: stem) else { continue }
+            let url = commentsDirectory.appendingPathComponent(name)
+            for comment in try readCommentLog(url) {
+                try Self.insert(comment, for: id, into: db)
             }
+            try StoreMigration.copyAside(url)
+            imported = true
         }
-        guard Darwin.fsync(fd) == 0 else {
-            throw StoreIOError.posix(op: "fsync comment", code: errno)
-        }
+        return (imported ? "comments" : nil, nil)
     }
 }

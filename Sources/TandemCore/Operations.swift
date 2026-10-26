@@ -5,11 +5,11 @@ import Foundation
 /// both faces behave identically. The CLI adds only encoding; the GUI adds only
 /// presentation.
 ///
-/// Ordering: the **stored order** is authoritative — the position of a ticket in `todos.json`
-/// is its position in the list, and `add` puts a new ticket on **top** by default. Order is
-/// never recomputed from `createdAt`. Lanes group the list; the array is kept grouped by
-/// lane (default first, then each declared lane) so a reader can walk it straight
-/// through (see `StoreContents`).
+/// Ordering: the **stored order** is authoritative — a ticket's `position` in the
+/// `tickets` table is its position in the list, and `add` puts a new ticket on **top**
+/// by default. Order is never recomputed from `createdAt`. Lanes group the list; the
+/// table is kept grouped by lane (default first, then each declared lane) so a reader
+/// can walk it straight through (see `StoreContents`).
 extension Store {
 
     // MARK: - list
@@ -362,6 +362,63 @@ extension Store {
     /// edit the list does on every double-click.
     public func update(_ id: String, title rawTitle: String) throws -> OperationResult<Ticket> {
         try set(id, title: .set(rawTitle))
+    }
+
+    // MARK: - answer
+
+    /// `answer(id, status, assignee, body)`: the human's answer recorded and the hold
+    /// closed — a `## Answer — <date>` block appended to the description, the status
+    /// the answer opens and the next assignee, all in **one** write.
+    ///
+    /// **The write cannot half-land.** Recording the answer in the description and
+    /// moving the pair in a second call is what let answered tickets sit in the inbox
+    /// wearing `human` (D2522EC3, seven in the 2026-10-21 audit); one mutation means an
+    /// answer cannot be written without the pair moving with it. `assignee` is the next
+    /// owner — `nil` (or `""`, the store's spelling for the unowned) clears it, because
+    /// the question is settled. `body` must carry text: `DescriptionBody.required`
+    /// refuses the empty stdin body, and a refused answer writes nothing (ADR 0024).
+    /// An unknown id throws `DomainError.unknownID` carrying the open list, as every
+    /// id-taking operation does.
+    public func answer(
+        _ id: String,
+        status: Status,
+        assignee: String? = nil,
+        body rawBody: String,
+        at now: Date = .now
+    ) throws -> OperationResult<Ticket> {
+        let body = try DescriptionBody.required(rawBody)
+        let who = Self.normalizeAssignee(assignee)
+        let block = Self.answerBlock(body, at: now)
+        let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
+            let i = try Self.requireTicket(id, in: contents.todos).index
+            var todo = contents.todos[i]
+            todo.description = Self.appending(block, to: todo.description)
+            todo.setStatus(status, at: now)
+            todo.assignee = who
+            contents.todos[i] = todo
+            return (todo, true)
+        }
+        return OperationResult(todo, note: note)
+    }
+
+    /// The answer block: `## Answer — <yyyy-MM-dd>` (UTC, the day the answer was
+    /// recorded), a blank line, then the body. The heading is what
+    /// `DescriptionBody.answered` reads back, so the written form and the read agree
+    /// by construction.
+    static func answerBlock(_ body: String, at now: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "## Answer — \(formatter.string(from: now))\n\n\(body)"
+    }
+
+    /// A section appended to a description, separated by one blank line — the
+    /// ticket-as-document rule: a description is written once and appended to, never
+    /// rewritten. No description at all means the section *is* the description.
+    static func appending(_ section: String, to description: String?) -> String {
+        guard let existing = Store.normalizeDescription(description) else { return section }
+        return existing + "\n\n" + section
     }
 
     // MARK: - Field rules

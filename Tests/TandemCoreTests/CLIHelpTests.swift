@@ -32,11 +32,22 @@ struct CLIHelpTests {
 
     @Test("ticket add --help and ticket set --help print their own usage, exit 0")
     func ticketVerbHelp() throws {
-        for verb in ["add", "set"] {
+        for verb in ["add", "set", "answer"] {
             let result = try cli.run(home: home, ["ticket", verb, "--help"])
             #expect(result.code == 0, "verb \(verb)")
             #expect(result.output.contains("tandem-cli ticket \(verb)"), "verb \(verb)")
         }
+    }
+
+    @Test("ticket answer --help carries the write's own grammar")
+    func ticketAnswerHelp() throws {
+        let result = try cli.run(home: home, ["ticket", "answer", "--help"])
+        #expect(result.code == 0)
+        #expect(result.error == "")
+        #expect(result.output.contains("--status"))
+        #expect(result.output.contains("--assignee"))
+        #expect(result.output.contains("--body <string|->"))
+        #expect(result.output.contains("## Answer"), "the block the write appends is named")
     }
 
     @Test("session start --help and lane add --help print their own usage, exit 0")
@@ -79,6 +90,25 @@ struct CLIHelpTests {
             #expect(result.code == 0, "verb \(group)")
             #expect(result.error == "", "verb \(group)")
             #expect(result.output.contains("tandem-cli \(group) "), "verb \(group)")
+        }
+    }
+
+    /// A group's text is the root's lines for its verbs, so a verb the CLI
+    /// dispatches under a group must not be missing from that group's `--help`
+    /// (ticket `94F94B1A`: `lane list` had its own help but no group line).
+    @Test("every group's --help lists every verb that group dispatches")
+    func everyGroupListsItsVerbs() throws {
+        let dispatched = Dictionary(grouping: Usage.verbs.keys) {
+            $0.split(separator: " ").first.map(String.init) ?? $0
+        }
+        for group in Usage.groups.keys {
+            let result = try cli.run(home: home, [group, "--help"])
+            let lines = result.output.split(separator: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            for verb in dispatched[group] ?? [] {
+                #expect(lines.contains { $0.hasPrefix("tandem-cli \(verb)") },
+                    "\(group) --help omits `\(verb)`")
+            }
         }
     }
 

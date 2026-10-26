@@ -3,7 +3,7 @@ import Foundation
 import TandemCore
 
 // The Sessions face (spec `FC770B8A`): the records of agent sessions, read
-// from `sessions.json` through the core (`Sessions`).
+// from the `sessions` table in `<home>/tandem.db` through the core (`Sessions`).
 //
 // **The record's own words.** A session has two states — `running` and
 // `ended` — and four outcomes (`succeeded`, `failed`, `interrupted`,

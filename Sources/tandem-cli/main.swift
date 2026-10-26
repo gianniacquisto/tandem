@@ -12,7 +12,7 @@ import TandemCore
 // This file is the whole adapter: it turns a command line into the core calls
 // and writes their outcome to the right stream. It adds no boundary logic — the
 // semantics (`list`, `TicketQuery.parse`, `ticket(id:)` — the `show` read,
-// `add`, `set`, `move`, `complete`,
+// `add`, `set`, `move`, `complete`, `answer`,
 // `archiveDone`, `append(ticketID:author:body:)`, `list(ticketID:)`,
 // `addLane`, `renameLane`, `deleteLane`, `lanes`, `rename`, `capture`,
 // `stats`, `health`, `DescriptionBody.required`, `Sessions.start`,
@@ -115,6 +115,19 @@ func dispatch(_ args: [String]) -> Int32 {
     case .ticketComplete(let id):
         return run {
             let result = try Store().complete(id)
+            return try StoreEncoding.ticketResult(result.value, note: result.note)
+        }
+    case .ticketAnswer(let id, let status, let assignee, let body):
+        return run {
+            // `--body -`: the answer is stdin, the precedent `ticket set
+            // --description -` set. The block, the status and the assignee are
+            // one core write — the answer cannot land without the pair.
+            let text = body == "-" ? try readStandardInput() : body
+            let result = try Store().answer(
+                id,
+                status: try Status.parse(raw: status),
+                assignee: try resolveAssignee(assignee),
+                body: text)
             return try StoreEncoding.ticketResult(result.value, note: result.note)
         }
     case .ticketArchive(let id):

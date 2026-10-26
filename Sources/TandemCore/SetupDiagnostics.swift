@@ -55,10 +55,12 @@ public enum SetupDiagnostics {
         }
     }
 
-    /// The comments directory's state (ADR 0017, amendment 2026-10-20). Absent is
-    /// valid — the first comment creates it — so the check fails only when the
-    /// path is present but unreadable: a file in its place, or a directory that
-    /// cannot be listed.
+    /// The legacy comment log directory's state (`<home>/comments/`, ADR 0017,
+    /// amendment 2026-10-20). Since P2 the live log is the `comments` table in
+    /// `tandem.db`, so the directory is only the import's evidence: while the
+    /// comments domain is un-imported its logs still answer every read, and after
+    /// the marker lands nothing reads them. Absent is valid either way; only a
+    /// present-but-unusable path *before* the import counts as a setup failure.
     public enum CommentsState: Sendable, Equatable {
         case absent
         case readable
@@ -78,6 +80,14 @@ public enum SetupDiagnostics {
         /// — a fork, and named as one: the database is the store, the file is never read
         /// again. Before the import marker lands the file is the store, not a fork.
         public var storeJSONFork: String?
+        /// The JSON store file that is still the store: the home has no imported
+        /// database, and `storeHealth` counted this file. The row names it instead of
+        /// the database the home has not imported from yet (ADR 0031's read-fallback).
+        public var storeJSONSource: String?
+        /// A database file is present but its ticket import has not committed — a first
+        /// write killed before its marker. Only meaningful beside `storeJSONSource`: it
+        /// turns the row's silent fall-through into a named, pending import.
+        public var storeDatabaseUnimported: Bool
         public var storeHealth: Store.Health
         /// The rolling backup beside the store (ADR 0018): absent, or its age.
         public var storeBackup: Store.BackupHealth
@@ -88,6 +98,13 @@ public enum SetupDiagnostics {
         public var bikeshedIsFile: Bool
         public var commentsPath: String
         public var commentsState: CommentsState
+        /// Comment rows in `tandem.db` — the live log since P2 (ADR 0031). Read only once
+        /// the `comments` import marker is present; otherwise it is zero and the legacy
+        /// logs are still the truth.
+        public var commentRows: Int
+        /// Whether the `comments` domain's import has been recorded — from then on the
+        /// directory is evidence, not the store.
+        public var commentsImported: Bool
         public var appPresent: Bool
         public var appVersion: String?
         public var appQuarantined: Bool
@@ -100,10 +117,13 @@ public enum SetupDiagnostics {
 
         public init(homePath: String, homeSource: TandemHome.Source,
                     storePath: String, storeVersion: Int? = nil,
-                    storeJSONFork: String? = nil, storeHealth: Store.Health,
+                    storeJSONFork: String? = nil,
+                    storeJSONSource: String? = nil, storeDatabaseUnimported: Bool = false,
+                    storeHealth: Store.Health,
                     storeBackup: Store.BackupHealth, storeLockHeld: Bool,
                     bikeshedPath: String, bikeshedNoteCount: Int, bikeshedIsFile: Bool,
                     commentsPath: String, commentsState: CommentsState,
+                    commentRows: Int = 0, commentsImported: Bool = false,
                     appPresent: Bool, appVersion: String?, appQuarantined: Bool,
                     skillHosts: [SkillHost], opencodeHasSkills: Bool) {
             self.homePath = homePath
@@ -111,6 +131,8 @@ public enum SetupDiagnostics {
             self.storePath = storePath
             self.storeVersion = storeVersion
             self.storeJSONFork = storeJSONFork
+            self.storeJSONSource = storeJSONSource
+            self.storeDatabaseUnimported = storeDatabaseUnimported
             self.storeHealth = storeHealth
             self.storeBackup = storeBackup
             self.storeLockHeld = storeLockHeld
@@ -119,6 +141,8 @@ public enum SetupDiagnostics {
             self.bikeshedIsFile = bikeshedIsFile
             self.commentsPath = commentsPath
             self.commentsState = commentsState
+            self.commentRows = commentRows
+            self.commentsImported = commentsImported
             self.appPresent = appPresent
             self.appVersion = appVersion
             self.appQuarantined = appQuarantined
@@ -146,22 +170,43 @@ public enum SetupDiagnostics {
 
         let backup = backupDetail(facts.storeBackup)
         let version = facts.storeVersion.map { "v\($0); " } ?? ""
-        let fork = facts.storeJSONFork.map {
-            "; a JSON store file is also present at \($0) — a fork, ignored since the database took over"
+        let fork = facts.storeJSONFork.map { path -> String in
+            let quoted = "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+            return "; a JSON store file is also present at \(path) — a fork, ignored since the database took over"
+                + "; remove it with: rm \(quoted)"
         } ?? ""
         switch facts.storeHealth {
         case .absent:
             checks.append(Check(name: "store", ok: true,
                                 detail: "\(facts.storePath) — absent (a valid empty store); \(backup)"))
         case .counts(let open, let done):
-            checks.append(Check(name: "store", ok: true,
-                                detail: "\(facts.storePath) — \(version)\(open) open, \(done) done; \(backup)\(fork)"))
+            if let source = facts.storeJSONSource {
+                // The file is still the store: name it, and the database's pending import
+                // if one is sitting there uncommitted.
+                let pending = facts.storeDatabaseUnimported
+                    ? "; the database at \(facts.storePath) has not imported it yet"
+                    : ""
+                checks.append(Check(name: "store", ok: true,
+                                    detail: "\(source) — \(open) open, \(done) done\(pending); \(backup)"))
+            } else {
+                checks.append(Check(name: "store", ok: true,
+                                    detail: "\(facts.storePath) — \(version)\(open) open, \(done) done; \(backup)\(fork)"))
+            }
         case .unreadable:
-            checks.append(Check(name: "store", ok: false,
-                                detail: "\(facts.storePath) — present but unreadable or corrupt; "
-                                      + "fix the file, or restore it from tandem.db.bak "
-                                      + "(remove tandem.db-wal and tandem.db-shm first); "
-                                      + backup))
+            if let source = facts.storeJSONSource {
+                // The unreadable thing is the JSON file, not the database: the backup
+                // recipe would name a file that has nothing to restore.
+                checks.append(Check(name: "store", ok: false,
+                                    detail: "\(source) — present but unreadable or corrupt; "
+                                          + "fix the file — the store is not rewritten; "
+                                          + backup))
+            } else {
+                checks.append(Check(name: "store", ok: false,
+                                    detail: "\(facts.storePath) — present but unreadable or corrupt; "
+                                          + "fix the file, or restore it from tandem.db.bak "
+                                          + "(remove tandem.db-wal and tandem.db-shm first); "
+                                          + backup))
+            }
         }
 
         if facts.bikeshedIsFile {
@@ -172,18 +217,7 @@ public enum SetupDiagnostics {
                                 detail: "\(facts.bikeshedPath) — \(facts.bikeshedNoteCount) note(s)"))
         }
 
-        switch facts.commentsState {
-        case .absent:
-            checks.append(Check(name: "comments", ok: true,
-                                detail: "\(facts.commentsPath) — absent (created on first comment)"))
-        case .readable:
-            checks.append(Check(name: "comments", ok: true,
-                                detail: facts.commentsPath))
-        case .unreadable:
-            checks.append(Check(name: "comments", ok: false,
-                                detail: "\(facts.commentsPath) — present but unreadable; "
-                                       + "a directory of comment logs is expected here"))
-        }
+        checks.append(commentsCheck(facts))
 
         checks.append(Check(name: "lock", ok: !facts.storeLockHeld,
                             detail: facts.storeLockHeld
@@ -206,6 +240,42 @@ public enum SetupDiagnostics {
                             detail: skillDetail(facts)))
 
         return Report(ok: checks.allSatisfy { $0.ok }, checks: checks)
+    }
+
+    /// The comments row: the live log is the database (P2), and the legacy
+    /// `<home>/comments/` directory is the import's evidence — named as pending until
+    /// the marker lands, and as already imported after. Only an unusable directory
+    /// *before* the import is a failure, because only then does a read land in it.
+    static func commentsCheck(_ facts: Facts) -> Check {
+        let path = facts.commentsPath
+        if facts.commentsImported {
+            let live = "\(facts.storePath) — \(facts.commentRows) comment(s)"
+            switch facts.commentsState {
+            case .absent:
+                return Check(name: "comments", ok: true,
+                             detail: "\(live); no legacy log directory")
+            case .readable:
+                return Check(name: "comments", ok: true,
+                             detail: "\(live); legacy logs at \(path) already imported")
+            case .unreadable:
+                return Check(name: "comments", ok: true,
+                             detail: "\(live); legacy logs at \(path) present but unreadable "
+                                   + "— already imported, so not read")
+            }
+        }
+        switch facts.commentsState {
+        case .absent:
+            return Check(name: "comments", ok: true,
+                         detail: "\(facts.storePath) — none yet; the first comment writes a row")
+        case .readable:
+            return Check(name: "comments", ok: true,
+                         detail: "\(path) — legacy logs, still the store; "
+                               + "the first comment imports them into \(facts.storePath)")
+        case .unreadable:
+            return Check(name: "comments", ok: false,
+                         detail: "\(path) — present but unreadable; the legacy logs are the "
+                               + "store until the first comment imports them")
+        }
     }
 
     /// The rolling backup's clause for the store check: presence and age, the recovery
@@ -244,12 +314,15 @@ public enum SetupDiagnostics {
 
         let health = store.health()
         let notes = (try? bikeshed.list())?.value ?? []
-        // A live JSON store file beside a database that has completed its import is the
-        // fork the brief names: the db is the store and the file is dead weight, but
-        // `doctor` should say so. Before the import marker lands the file is not a
-        // fork — it is still the store, and the next write will import it.
+        let imported = store.hasImportedTickets()
+        // Which file is the store right now (ADR 0031's read-fallback). Imported: the
+        // database; a JSON file beside it is the fork the row names. Un-imported: the
+        // JSON file is the store, and the row names it — a database present without its
+        // marker (a kill before the import committed) is named as the pending importer.
+        let storeJSONSource = imported
+            ? nil : ((try? StoreMigration.legacyStore(in: store.directory)) ?? nil)?.path
         let storeJSONFork: String?
-        if store.hasImportedTickets() {
+        if imported {
             storeJSONFork = ["tickets.json", "todos.json"]
                 .map { store.directory.appendingPathComponent($0).path }
                 .first { FileManager.default.fileExists(atPath: $0) }
@@ -259,6 +332,9 @@ public enum SetupDiagnostics {
         let bikeshedIsFile = isFile(bikeshed.directory.path)
         let commentsPath = store.commentsDirectory.path
         let commentsState = commentsState(at: commentsPath)
+        // The live comment log is the database (P2); the directory above is the import's
+        // evidence, so the row names the store's rows and only explains the directory.
+        let commentsHealth = store.commentsHealth()
 
         let appURL = URL(fileURLWithPath: appPath)
         let appPresent = FileManager.default.fileExists(atPath: appPath)
@@ -273,8 +349,11 @@ public enum SetupDiagnostics {
                 executablePath: TandemHome.executablePath,
                 isDebugBuild: TandemHome.isDebugBuild),
             storePath: store.databaseURL.path,
-            storeVersion: store.schemaVersion(),
+            storeVersion: imported ? store.schemaVersion() : nil,
             storeJSONFork: storeJSONFork,
+            storeJSONSource: storeJSONSource,
+            storeDatabaseUnimported: !imported
+                && FileManager.default.fileExists(atPath: store.databaseURL.path),
             storeHealth: health,
             storeBackup: store.backupHealth(),
             storeLockHeld: store.lockIsHeld(),
@@ -283,6 +362,8 @@ public enum SetupDiagnostics {
             bikeshedIsFile: bikeshedIsFile,
             commentsPath: commentsPath,
             commentsState: commentsState,
+            commentRows: commentsHealth.rows,
+            commentsImported: commentsHealth.imported,
             appPresent: appPresent,
             appVersion: appVersion,
             appQuarantined: appPresent && hasQuarantine(appPath),

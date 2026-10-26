@@ -33,6 +33,7 @@ enum Command {
     )
     case ticketMove(id: String, lane: String?, index: String?)
     case ticketComplete(id: String)
+    case ticketAnswer(id: String, status: String, assignee: String?, body: String)
     case ticketArchive(id: String?)
     case ticketCommentAdd(id: String, author: String?, body: String)
     case ticketCommentList(id: String)
@@ -122,8 +123,8 @@ private func helpCommand(group: String, verb: String, known: [String]) throws ->
 
 // MARK: - ticket
 
-/// `ticket list|show|add|set|move|complete|archive|comment` — the ticket verbs (the
-/// agent surface). An absent flag is `nil` (the core's default); a flag with no
+/// `ticket list|show|add|set|move|complete|answer|archive|comment` — the ticket verbs
+/// (the agent surface). An absent flag is `nil` (the core's default); a flag with no
 /// value is `""`, which the core rejects or reads as the empty field. That is
 /// the one rule every verb below follows, so no verb repeats a validation the
 /// core already owns.
@@ -141,7 +142,7 @@ private func parseTicket(_ args: [String]) throws -> Command {
     }
     if asksHelp(rest) {
         return try helpCommand(group: "ticket", verb: verb, known: [
-            "list", "show", "add", "set", "move", "complete", "archive",
+            "list", "show", "add", "set", "move", "complete", "answer", "archive",
         ])
     }
     let flags = try parseFlags(rest)
@@ -196,6 +197,19 @@ private func parseTicket(_ args: [String]) throws -> Command {
         // A missing `--id` is likewise the empty id whose `unknownID` error
         // carries the open list.
         return .ticketComplete(id: flags["--id"] ?? "")
+    case "answer":
+        try accept(flags, ["--id", "--status", "--assignee", "--body"])
+        // The answer and the hold close in one write: the block goes into the
+        // description, the status and the assignee move with it. `--status` is
+        // required, and a missing one is the empty status the domain rejects —
+        // the missing-`--id` rule. `--assignee` absent clears the owner (the
+        // question is settled); `--body -` is stdin, as `--description -` on
+        // `set` is, and `main` recognizes the dash.
+        return .ticketAnswer(
+            id: flags["--id"] ?? "",
+            status: flags["--status"] ?? "",
+            assignee: flags["--assignee"],
+            body: flags["--body"] ?? "")
     case "archive":
         // Without the flag: the bulk sweep, whole-list — finished work leaves
         // the view, nothing is deleted. `--id` names one ticket instead, open
@@ -317,9 +331,10 @@ private func parseNote(_ args: [String]) throws -> Command {
 /// `session start|end|link|list|show` — the session record (spec `FC770B8A`): a
 /// record of one agent session's run, kept as an artifact of its own.
 ///
-/// **A session is not a ticket.** It has its own file (`sessions.json`) and its
-/// own vocabulary — `running`/`ended`, `succeeded`/`failed`/`interrupted`/
-/// `unknown` — so the flags here never borrow the board's `--status`.
+/// **A session is not a ticket.** It has its own `sessions` table in the store
+/// (`<home>/tandem.db`, ADR 0031) and its own vocabulary — `running`/`ended`,
+/// `succeeded`/`failed`/`interrupted`/`unknown` — so the flags here never borrow
+/// the board's `--status`.
 ///
 /// The rule every verb below follows is the CLI's own: an absent flag takes
 /// the default, a present-but-empty one is the empty value the core rejects (or
@@ -398,9 +413,10 @@ private func parseSession(_ args: [String]) throws -> Command {
 /// `4F746EFE`): a record of one sprint's run — its lane, batch, run log and
 /// close.
 ///
-/// **A sprint is not a ticket.** It has its own file (`sprints.json`) and its
-/// own vocabulary — `open`/`closed` for the state, `serial`/`parallel` for the
-/// mode — so the flags here never borrow the board's `--status` values.
+/// **A sprint is not a ticket.** It has its own `sprints` table in the store
+/// (`<home>/tandem.db`, ADR 0031) and its own vocabulary — `open`/`closed` for
+/// the state, `serial`/`parallel` for the mode — so the flags here never borrow
+/// the board's `--status` values.
 ///
 /// **The handle is the pair (lane, number), and the lane-only verbs target the
 /// open record.** `show` names the pair; `ticket`, `run` and `close` name only

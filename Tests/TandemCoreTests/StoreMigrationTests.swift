@@ -198,7 +198,7 @@ struct StoreMigrationTests {
         let db = try SQLiteDatabase(url: store.databaseURL, mode: .readWrite)
         try StoreSchema.migrate(db)
         db.close()
-        #expect(store.schemaVersion() == 1)
+        #expect(store.schemaVersion() == StoreSchema.currentVersion)
 
         // The database alone is not the store: the JSON is still the truth, so a read
         // answers from it rather than returning an empty board.
@@ -248,6 +248,32 @@ struct StoreMigrationTests {
         #expect(try store.list(.all).value.count == 3)
         #expect(try copies(of: "tickets.json", in: dir).count == 1)
         live.close()
+    }
+
+    @Test("a rolled-back import keeps its copy as accepted evidence, and the retry adds a suffixed one")
+    func rolledBackImportKeepsItsCopy() throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try write(renamedFixture, named: "tickets.json", to: dir)
+        let store = Store(directory: dir)
+
+        struct Boom: Error {}
+        do {
+            _ = try store.mutate { _ -> (value: Void, changed: Bool) in throw Boom() }
+            Issue.record("expected the caller's mutation to throw")
+        } catch {}
+
+        // The copy is taken inside the transaction and nothing can take it back when
+        // the rows and marker roll back. Accepted, not silent: it is a byte copy of the
+        // file that is still the store, so it records an attempt, never a landed import.
+        #expect(try copies(of: "tickets.json", in: dir).count == 1)
+        #expect(!store.hasImportedTickets(), "the marker rolled back with the rows")
+        #expect(try store.list(.all).value.map(\.title) == ["first", "second"])
+
+        _ = try store.add("new")
+        #expect(try copies(of: "tickets.json", in: dir).count == 2,
+                "the retry imports once more and writes a second copy")
+        #expect(try store.list(.all).value.count == 3)
     }
 
     @Test("a tickets.json that is a directory fails the read and the write loudly")

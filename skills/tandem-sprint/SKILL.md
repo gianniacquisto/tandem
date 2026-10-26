@@ -11,7 +11,7 @@ The roles are the roster's (`skills/tandem-team/SKILL.md`): the session runs the
 
 ## 1. Orient
 
-Start the session record (`AGENTS.md` — `session start --agent sprint`, `session link --ticket` for what this sprint carries), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's curated note, the open threads.
+Start the session record (`AGENTS.md` — `session start --agent sprint`, `session link --ticket` for what this sprint carries), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's **Overview**, the open threads.
 
 ## 2. Triage
 
@@ -29,49 +29,48 @@ The batch is drawn here — `tandem-cli ticket list --filter open --lane <lane> 
 
 The batch is the slots drawn in triage — ready first, the backlog picks filling the rest. **Zero drawn** → no sprint is opened: this is a triage session, it runs no retro, and it says so in its report.
 
-The number `<n>` is derived, never guessed: one more than the highest `n` among the lane's tickets titled `Sprint <n> — <lane>`, `1` when there are none (`--filter all`, because a closed sprint still holds its number; same object shape — jq on `.tickets[]`).
+The record derives the number, never the session: `sprint open` answers `1` on a lane with no records and one more than the lane's highest number otherwise, and a second open on a lane whose sprint is still open returns that record unchanged — a re-run of this step cannot fork the sprint. Pass the lane's stored spelling, as §2 discovered it.
 
 ```sh
-sprint=$(tandem-cli ticket add --title "Sprint $n — $lane" \
-  --status in-progress --assignee self --lane "$lane" --origin self | jq -r '.id')
-# batch: the slots drawn in triage — ready first, backlog picks filling the rest
+lane="Tandem"                                    # the stored spelling, from triage
+tandem-cli sprint open --lane "$lane" --mode serial
+for id in <the slots drawn in triage>; do
+  tandem-cli sprint ticket --lane "$lane" --ticket "$id"
+done
 ```
 
-On a host that exports no `TANDEM_AGENT`, `self` cannot resolve — pass the sprint's agent name for both `--assignee` and `--origin` (e.g. `--assignee sprint --origin sprint`), and never fall back by omitting `--origin` (the default stamps `human`).
+`--mode parallel` is the human's call before the first dispatch; the record stores it. The open replies with the record: its `number` is the handle's second half, and `tandem-cli sprint show --lane "$lane" --number <n>` reads it back later. The opening session is `$OPENCODE_SESSION_ID`, captured by `sprint open` — that id, not a title, is what the dead-sprint rule reads.
 
-Take the batch before anything moves it. One comment per batch ticket naming the sprint: `ticket comment add --id <id> --author sprint --body "Sprint $n — $lane: in the batch, on sprint ticket $sprint."`
-
-The sprint ticket's description is **written once and appended to**: `## The batch` first (ids and titles in stored order, the session that opened it), then a `## Run — <date>` per landing, then `## Close`. An append is read → add → write back:
-
-```sh
-current=$(tandem-cli ticket show --id "$sprint" | jq -r '.description // ""')
-printf '%s\n\n%s\n' "$current" "$section" | tandem-cli ticket set --id "$sprint" --description -
-```
+The batch lives on the record, in stored order, and nowhere else. The batch comment that named the sprint on each ticket is gone: the record is the machine truth, and a comment would be a second copy of it.
 
 ## 4. Build
 
-The build phase is the `tandem-build` skill (`skills/tandem-build/SKILL.md`), run per batch ticket: **claim → build → review → record**, each ticket ending in a `## Run — <date>` entry on this sprint's description. The mode — one at a time (the default) or in parallel, the human's call before the first dispatch, recorded under `## The batch` — and the turn budget are the build skill's, with the per-ticket contracts (`agents/builder.md`, `agents/reviewer.md`). A drawn backlog ticket is refined first, in this phase, by the refine rule in §2 — then it runs the build pass like any batch ticket.
+The build phase is the `tandem-build` skill (`skills/tandem-build/SKILL.md`), run per batch ticket: **claim → build → review → record**, each ticket ending in a `sprint run` entry on this sprint's record — `tandem-cli sprint run --lane "$lane" --note -`, dated by the core. The mode — one at a time (the default) or in parallel, the human's call before the first dispatch, chosen at `sprint open --mode` and stored on the record — and the turn budget are the build skill's, with the per-ticket contracts (`agents/builder.md`, `agents/reviewer.md`). A drawn backlog ticket is refined first, in this phase, by the refine rule in §2 — then it runs the build pass like any batch ticket.
 
 ## 5. Human answers
 
-A decision ticket's body is the channel — there is no comment field for it. The human answers in the app, from the CLI (`ticket set --description -` with the answer appended), or in chat to an agent, who appends it. The answer is its own block:
+A decision ticket's body is the channel — there is no comment field for it. The human answers in the app, from the CLI, or in chat to an agent, who records it. The answer is its own block, and one verb appends it and moves the pair with it:
 
-```
-## Answer
-B — <what was chosen, and any condition>
+```sh
+tandem-cli ticket answer --id "$id" --status ready --assignee "" \
+  --body "B — <what was chosen, and any condition>"
 ```
 
-Then in one write: keep the answer, reset `assignee`, set the status the answer opens — `ready` if buildable, `backlog` if it needs re-refining, `done` if settled. Every pass starts with `ticket list --assignee human`: a human ticket never goes back to an agent unread. The read is whole-board on purpose — an answer left unread is a worse failure than a read that spans lanes — but acting on another lane's ticket belongs to that project's own sprint.
+`--status` is the status the answer opens — `ready` if buildable, `backlog` if it needs re-refining, `done` if settled — and `--assignee` is the next owner, omitted (or `""`) when nobody owns it yet. The block and the pair are one write: an answered ticket cannot sit in the inbox wearing `human`.
+
+**Every pass starts with `ticket list --assignee human`.** That read still lists answered tickets, and that is the bookkeeping debt: a ticket carrying a `## Answer` block while `human` still owns it is answered but unsettled, and the pass that finds one owes it an `answer` call (the next owner is the pass's own judgment; `""` when there is none). The read is whole-board on purpose — an answer left unread is a worse failure than a read that spans lanes — but acting on another lane's ticket belongs to that project's own sprint.
+
+**An escalated merge is already the human's act.** An `in-review` ticket assigned `human` whose comment log names a PR has been merged by the human outside any pass — `gh pr view <n> --json state,mergedAt,mergeCommit` answers `MERGED` — so the pass completes it: `ticket complete --id <id>` with the merge commit in a signed comment. A PR still open leaves the ticket in the human's queue, untouched.
 
 ## 6. Retro
 
-After the last `## Run` entry, dispatch the retro (`skills/retro/SKILL.md`) on the sprint session's own transcript, then write `## Close`. The close is the session's final act — nothing is dispatched after it begins — so the retro precedes it, never follows it. A zero-batch (triage-only) session opens no sprint and runs no retro. The retro's bar, categories, cap and lane are the retro skill's, unchanged: `--origin retro`, the Retro lane, capture-shaped bodies, the five-ticket cap, and a retro that files nothing is a valid result.
+After the last `sprint run` entry, dispatch the retro (`skills/retro/SKILL.md`) on the sprint session's own transcript, then close the record (§7). The close is the session's final act — nothing is dispatched after it begins — so the retro precedes it, never follows it. A zero-batch (triage-only) session opens no sprint and runs no retro. The retro's bar, categories, cap and lane are the retro skill's, unchanged: `--origin retro`, the Retro lane, capture-shaped bodies, the five-ticket cap, and a retro that files nothing is a valid result.
 
 ## 7. Close
 
-Append `## Close` — what landed, what slipped, what waits on the human — then `tandem-cli ticket complete --id "$sprint"`. Write the close before completing: a done sprint with an empty close is a lie the next session inherits. The close is the session's final act: nothing is dispatched after it begins, so no child session can spend the turn budget the close needs. The report names `Sprint <n+1>` as the next step, opened in a **new** session — never this one.
+`sprint close --lane "$lane" --note -` — what landed, what slipped, what waits on the human. Write the close before closing the record: a closed sprint with no close is a lie the next session inherits, and the stamp is once, so a second close keeps the first text. The close is the session's final act: nothing is dispatched after it begins, so no child session can spend the turn budget the close needs. The report names the next sprint as the next step, opened in a **new** session — never this one.
 
-**A dead sprint is stale work.** An `in-progress` ticket titled `Sprint <n> — <lane>` whose opening session — the one named in its `## The batch` — has ended (its session record says `ended` — `tandem-cli session show --session <id>`, the record's two states are `running` and `ended`; when the record still says `running`, the host's session list settles it: an `outcome` **and** a stale `time.updated`, both signals needed and neither exact alone) died before it could write `## Close`, and nothing on the board separates it from a sprint still running. The next sprint's triage closes it **from what the board shows**: append a `## Close` that names the recorded `## Run` entries and any escalations left with the human, says it was written by triage from the board, then `ticket complete`. It writes nothing the dead session did not leave on the board. A sprint whose session is live is left alone — the "a claim is not a stall" rule governs the borderline.
+**A dead sprint is stale work.** A record still `open` — `tandem-cli sprint list --status open` — whose opening session has ended (its session record says `ended` — `tandem-cli session show --session <id>`, the record's two states are `running` and `ended`; when the record still says `running`, the host's session list settles it: an `outcome` **and** a stale `time.updated`, both signals needed and neither exact alone) died before it could close, and nothing on the board separates it from a sprint still running. The next sprint's triage closes it **from what the record shows**: `tandem-cli sprint close --lane <lane> --note -` with a close that names the recorded `sprint run` entries and any escalations left with the human, and says it was written by triage from the record. It writes nothing the dead session did not leave on the record. A sprint whose session is live is left alone — the "a claim is not a stall" rule governs the borderline.
 
 ## The board
 

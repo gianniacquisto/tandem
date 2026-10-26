@@ -96,10 +96,11 @@ struct SprintsTests {
         #expect(record.name == "Sprint 1 — Tandem")
         #expect(result.note == nil)
 
-        // The file, and the lockfile the mechanism takes beside it — no store
-        // file, no sessions file, no backup, no temp file.
+        // The database, and no legacy file, no lockfile, no temp file.
         let names = try fm.contentsOfDirectory(atPath: dir.path).sorted()
-        #expect(names == ["sprints.json", "sprints.lock"])
+        #expect(names.contains("tandem.db"))
+        #expect(!names.contains("sprints.json"))
+        #expect(!names.contains("sprints.lock"))
     }
 
     @Test("a second open on a lane with an open sprint returns the record unchanged, and the file's bytes do not move")
@@ -107,13 +108,13 @@ struct SprintsTests {
         let (sprints, _, dir) = try tempSprints()
         defer { try? FileManager.default.removeItem(at: dir) }
         let first = try sprints.open(lane: "Tandem", mode: .serial, session: "ses_1")
-        let before = try Data(contentsOf: file(dir))
+        let before = try sprints.list().value
 
         // A different mode and session: the open record stands, either way.
         let second = try sprints.open(lane: "Tandem", mode: .parallel, session: "ses_9")
         #expect(second.value == first.value)
         #expect(second.note == "Sprint 1 — Tandem is already open")
-        #expect(try Data(contentsOf: file(dir)) == before)
+        #expect(try sprints.list().value == before)
 
         // One record, and it is the first one — the second open changed nothing.
         let listed = try sprints.list().value
@@ -213,11 +214,8 @@ struct SprintsTests {
 
         let opened = try sprints.open(lane: "Tandem", session: "  ")
         #expect(opened.value.session == nil)
-        // The file carries the null, not an empty string.
-        let raw = try Data(contentsOf: file(dir))
-        let object = try #require(JSONSerialization.jsonObject(with: raw) as? [String: Any])
-        let records = try #require(object["sprints"] as? [[String: Any]])
-        #expect(records.first?["session"] is NSNull)
+        // The row carries the null, not an empty string.
+        #expect(try sprints.show(lane: "Tandem", number: 1).value.session == nil)
     }
 
     // MARK: - ticket
@@ -254,7 +252,7 @@ struct SprintsTests {
         _ = try sprints.open(lane: "Tandem")
         let onBoard = try store.add("A real ticket.").value.id
         _ = try sprints.ticket(lane: "Tandem", number: 1, ticketID: onBoard, on: store)
-        let before = try Data(contentsOf: file(dir))
+        let before = try sprints.list().value
 
         let stranger = UUID()
         do {
@@ -264,9 +262,9 @@ struct SprintsTests {
             #expect(id == stranger.uuidString)
         }
 
-        // The refusal wrote nothing: the file's bytes did not move, and the
-        // batch holds only the ticket the store carries.
-        #expect(try Data(contentsOf: file(dir)) == before)
+        // The refusal wrote nothing: the record did not move, and the batch
+        // holds only the ticket the store carries.
+        #expect(try sprints.list().value == before)
         #expect(try sprints.show(lane: "Tandem", number: 1).value.batch == [onBoard])
 
         // The failure the human sees says the ticket is not on the board.
@@ -322,7 +320,7 @@ struct SprintsTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         _ = try sprints.open(lane: "Tandem")
         _ = try sprints.run(lane: "Tandem", number: 1, note: "Landed a thing.")
-        let before = try Data(contentsOf: file(dir))
+        let before = try sprints.list().value
 
         for note in ["", "   ", "\n  \n"] {
             do {
@@ -332,7 +330,7 @@ struct SprintsTests {
                 // The domain failure, not a usage one.
             }
         }
-        #expect(try Data(contentsOf: file(dir)) == before)
+        #expect(try sprints.list().value == before)
         #expect(try sprints.show(lane: "Tandem", number: 1).value.runs.count == 1)
     }
 
@@ -514,8 +512,8 @@ struct SprintsTests {
 
     // MARK: - The file's shape
 
-    @Test("the file carries the envelope and the whole record shape")
-    func fileCarriesTheEnvelopeAndTheRecord() throws {
+    @Test("the record round-trips through the database with every field")
+    func recordRoundTripsThroughTheDatabase() throws {
         let (sprints, store, dir) = try tempSprints()
         defer { try? FileManager.default.removeItem(at: dir) }
         defer { try? FileManager.default.removeItem(at: store.directory) }
@@ -525,27 +523,20 @@ struct SprintsTests {
         _ = try sprints.run(lane: "Tandem", number: 1, note: "Landed the record.")
         _ = try sprints.close(lane: "Tandem", number: 1, note: "The record landed.")
 
-        let raw = try Data(contentsOf: file(dir))
-        let object = try #require(JSONSerialization.jsonObject(with: raw) as? [String: Any])
-        #expect(object["version"] as? Int == 1)
-        let records = try #require(object["sprints"] as? [[String: Any]])
-        #expect(records.count == 1)
-        let record = try #require(records.first)
-        #expect(record["lane"] as? String == "Tandem")
-        #expect(record["number"] as? Int == 1)
-        #expect(record["session"] as? String == "ses_1")
-        #expect(record["mode"] as? String == "parallel")
-        #expect(record["batch"] as? [String] == [ticket.uuidString])
-        #expect((record["runs"] as? [String])?.count == 1)
-        #expect(record["close"] as? String == "The record landed.")
-        #expect(record["status"] as? String == "closed")
-        // Every stamp is ISO-8601 UTC with a trailing Z, like the store's.
-        #expect((record["openedAt"] as? String)?.hasSuffix("Z") == true)
-        #expect((record["closedAt"] as? String)?.hasSuffix("Z") == true)
+        let record = try sprints.show(lane: "Tandem", number: 1).value
+        #expect(record.lane == "Tandem")
+        #expect(record.number == 1)
+        #expect(record.session == "ses_1")
+        #expect(record.mode == .parallel)
+        #expect(record.batch == [ticket])
+        #expect(record.runs.count == 1)
+        #expect(record.close == "The record landed.")
+        #expect(record.status == .closed)
+        #expect(record.closedAt != nil)
     }
 
-    @Test("an unknown key is ignored on read, and gone on the next write")
-    func unknownKeysAreIgnoredOnReadAndDroppedOnWrite() throws {
+    @Test("an unknown key is ignored on import and never reaches the database row")
+    func unknownKeysAreIgnoredOnImport() throws {
         let (sprints, _, dir) = try tempSprints()
         defer { try? FileManager.default.removeItem(at: dir) }
         try writeFile(dir, [
@@ -555,15 +546,12 @@ struct SprintsTests {
         ])
 
         // Lenient read: the unknown key does not make the file invalid.
-        let listed = try sprints.list().value
-        #expect(listed.map(\.number) == [1])
+        #expect(try sprints.list().value.map(\.number) == [1])
 
-        // Strict write: the next write emits the shape this build knows.
+        // The first write imports the record this build knows; the unknown key
+        // has no column and is not carried.
         _ = try sprints.run(lane: "Tandem", number: 1, note: "Landed a thing.")
-        let raw = try Data(contentsOf: file(dir))
-        let object = try #require(JSONSerialization.jsonObject(with: raw) as? [String: Any])
-        let records = try #require(object["sprints"] as? [[String: Any]])
-        #expect(records.first?["aKeyThisBuildDoesNotKnow"] == nil)
+        #expect(try sprints.show(lane: "Tandem", number: 1).value.runs.count == 1)
     }
 
     @Test("a missing required key invalidates the file")
@@ -631,7 +619,7 @@ struct SprintsTests {
     func corruptFileIsMovedAside() throws {
         let (sprints, _, dir) = try tempSprints()
         defer { try? FileManager.default.removeItem(at: dir) }
-        _ = try sprints.open(lane: "Tandem")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try Data("{not a sprints file\n".utf8).write(to: file(dir))
 
         let listed = try sprints.list()
@@ -662,9 +650,7 @@ struct SprintsTests {
         let (sprints, _, dir) = try tempSprints()
         defer { try? FileManager.default.removeItem(at: dir) }
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path) }
-        // The lockfile first: it must exist before the directory is closed to
-        // writes, or the lock itself would be what fails.
-        _ = try sprints.open(lane: "Tandem")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try Data("{not a sprints file\n".utf8).write(to: file(dir))
         // Read-only directory: the corrupt file cannot be renamed aside, so the
         // recovery fails and the file stays where it is.
@@ -766,86 +752,23 @@ struct SprintsTests {
 
     // MARK: - The file's own I/O failures
 
-    @Test("a home whose sprints file cannot be locked fails in the sprints file's own words")
-    func lockFailureNamesTheSprintsFile() throws {
+    @Test("a sprints write on an unwritable home wears the store's vocabulary")
+    func sprintsWriteOnUnwritableHomeIsAStoreFailure() throws {
         let (sprints, _, dir) = try tempSprints()
         defer { try? FileManager.default.removeItem(at: dir) }
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path) }
-        // A directory that cannot be written: the lockfile cannot be created,
-        // so the lock fails before the file is ever touched.
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
 
         do {
             _ = try sprints.open(lane: "Tandem")
-            Issue.record("expected the sprints file's own lock failure")
-        } catch let DomainError.sprintsFileIO(path, op, detail) {
-            #expect(path == file(dir).path)
-            #expect(op == "open lockfile")
-            #expect(detail.contains("13"))
+            Issue.record("expected the store's own failure")
+        } catch {
+            let text = tandemErrorText(error)
+            #expect(text.contains("Tandem store error"), "got \(text)")
+            #expect(text.contains("tandem.db"), "got \(text)")
+            #expect(!text.contains("sprints file"), "got \(text)")
         }
-
-        // The failure the human sees names the sprints file and the operation,
-        // and never calls it a store or sessions error: those files are fine.
-        let text = tandemErrorText(DomainError.sprintsFileIO(
-            path: file(dir).path, op: "open lockfile", detail: "13: Permission denied"))
-        #expect(text.contains("sprints.json"))
-        #expect(text.contains(file(dir).path))
-        #expect(text.contains("open lockfile"))
-        #expect(!text.contains("Tandem store"))
-        #expect(!text.contains("sessions.json"))
-    }
-
-    @Test("a sprints file locked by another process fails in the sprints file's own words")
-    func lockContentionNamesTheSprintsFile() throws {
-        let (sprints, _, dir) = try tempSprints()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        // The lockfile first: it must exist before another process holds it.
-        _ = try sprints.open(lane: "Tandem")
-        let lockPath = dir.appendingPathComponent("sprints.lock")
-        let fd = open(lockPath.path, O_RDWR | O_CREAT, 0o644)
-        #expect(fd >= 0)
-        #expect(flock(fd, LOCK_EX) == 0)
-        defer { close(fd) }
-
-        do {
-            _ = try sprints.open(lane: "code-rank")
-            Issue.record("expected the sprints file's own lock failure")
-        } catch let DomainError.sprintsFileLocked(path) {
-            #expect(path == file(dir).path)
-        }
-
-        let text = tandemErrorText(DomainError.sprintsFileLocked(path: file(dir).path))
-        #expect(text.contains("sprints.json"))
-        #expect(text.contains(file(dir).path))
-        #expect(!text.contains("Tandem store"))
-        #expect(!text.contains("sessions.json"))
-    }
-
-    @Test("a write that cannot happen fails in the sprints file's own words")
-    func writeFailureNamesTheSprintsFile() throws {
-        let (sprints, _, dir) = try tempSprints()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        // A directory where the file should be: the atomic write's `rename`
-        // cannot land on it, so the write fails where the file is named.
-        try FileManager.default.createDirectory(at: file(dir), withIntermediateDirectories: true)
-
-        do {
-            _ = try sprints.open(lane: "Tandem")
-            Issue.record("expected the sprints file's own write failure")
-        } catch let DomainError.sprintsFileIO(path, op, detail) {
-            #expect(path == file(dir).path)
-            #expect(op == "rename")
-            #expect(!detail.isEmpty)
-        }
-
-        let text = tandemErrorText(DomainError.sprintsFileIO(
-            path: file(dir).path, op: "rename", detail: "21: Is a directory"))
-        #expect(text.contains("sprints.json"))
-        #expect(text.contains(file(dir).path))
-        #expect(text.contains("rename"))
-        #expect(!text.contains("Tandem store"))
-        #expect(!text.contains("sessions.json"))
     }
 
     @Test("the sessions file's own failures still wear the sessions file's vocabulary")

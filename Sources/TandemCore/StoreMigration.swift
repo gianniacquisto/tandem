@@ -19,6 +19,10 @@ import Foundation
 ///   state read inside the write transaction, two first writers import once and a kill
 ///   before the commit leaves the file as the store's truth for the next write.
 ///
+///   A copy taken by an import that then rolls back stays where it is: it is a byte
+///   copy of a file that is still the store, so it is evidence of an attempt, never of
+///   a landed import, and the next import writes its own suffixed copy (`copyAside`).
+///
 /// The import is install-gated in ADR 0017's sense: the trigger is a build that carries
 /// the database reaching the home, not a flag or a click.
 enum StoreMigration {
@@ -27,7 +31,6 @@ enum StoreMigration {
     /// `tickets.json` is invalid — the old name is never a fall-through for a broken new
     /// one.
     static func legacyStore(in directory: URL) throws -> URL? {
-        let fm = FileManager.default
         for name in ["tickets.json", "todos.json"] {
             let url = directory.appendingPathComponent(name)
             guard let mode = lstatMode(of: url) else { continue }
@@ -92,12 +95,81 @@ enum StoreMigration {
         return (contents, true)
     }
 
+    // MARK: - Sidecar domains (P2)
+
+    /// A sidecar domain's read: the database when its import marker is present, else
+    /// `nil` so the caller serves the JSON file it still has. Never writes, and never
+    /// imports — a diagnostic or a first read before the first write is the file's.
+    static func sidecarRead<T>(
+        in directory: URL, domain: String, _ body: (SQLiteDatabase) throws -> T
+    ) throws -> T? {
+        let database = directory.appendingPathComponent("tandem.db")
+        guard FileManager.default.fileExists(atPath: database.path) else { return nil }
+        let db = try SQLiteDatabase(url: database, mode: .readOnly)
+        defer { db.close() }
+        guard try StoreSchema.isImported(domain, in: db) else { return nil }
+        return try body(db)
+    }
+
+    /// A sidecar domain's write: open the store, migrate, and in **one** transaction
+    /// decide the import from its marker, write the legacy rows, and run the caller's
+    /// change. `importDomain` reads and inserts the domain's source file(s) and returns
+    /// the source name to record (`nil` for a fresh home); the marker is written here,
+    /// in the same transaction, after those rows. `body` returns the value, whether it
+    /// changed anything, and the write to run — the rolling backup (ADR 0018) is taken
+    /// between the decision and that write, so the `.bak` holds the pre-write state.
+    static func sidecarWrite<T>(
+        in directory: URL, domain: String,
+        importDomain: (SQLiteDatabase) throws -> (source: String?, note: String?),
+        body: (SQLiteDatabase) throws -> (value: T, changed: Bool, note: String?, write: () throws -> Void)
+    ) throws -> (value: T, note: String?) {
+        let database = directory.appendingPathComponent("tandem.db")
+        let databaseExisted = FileManager.default.fileExists(atPath: database.path)
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true)
+        let db = try SQLiteDatabase(url: database, mode: .readWrite)
+        defer { db.close() }
+        try StoreSchema.migrate(db)
+        var result: (value: T, note: String?)?
+        try db.transaction {
+            var note: String?
+            if !(try StoreSchema.isImported(domain, in: db)) {
+                let imported = try importDomain(db)
+                try StoreSchema.markImported(
+                    domain, from: imported.source, at: Date(), in: db)
+                note = imported.note
+            }
+            let step = try body(db)
+            if step.changed {
+                if databaseExisted {
+                    try Store.backUpDatabase(
+                        at: database,
+                        to: directory.appendingPathComponent("tandem.db.bak"))
+                }
+                try step.write()
+            }
+            result = (step.value, note ?? step.note)
+        }
+        guard let result else {
+            throw StoreIOError.io("the store transaction produced no result")
+        }
+        return result
+    }
+
     // MARK: - Private
 
     /// Copy the legacy file aside as `<name>.pre-sqlite-<unix-ts>`, colliding names
     /// suffixed. The bytes as they were: the file is the evidence the import is true,
     /// and a copy that cannot be taken fails the write rather than being skipped.
-    private static func copyAside(_ url: URL) throws {
+    ///
+    /// The copy is taken inside the caller's transaction, so a throwing import (the
+    /// marker, the caller's own change) rolls the rows back and leaves the copy behind.
+    /// Accepted, not removed: the copy is byte-for-byte the file that is still the
+    /// store, so it records an attempt and not a landed import, and the next import
+    /// writes a second, suffixed copy rather than reusing this one — the same way it
+    /// would after a kill. Removing it would mean threading a rollback hook through
+    /// every domain's import, and a failed write would then leave less evidence.
+    static func copyAside(_ url: URL) throws {
         let directory = url.deletingLastPathComponent()
         let stamp = Int(Date().timeIntervalSince1970)
         let prefix = "\(url.lastPathComponent).pre-sqlite-\(stamp)"

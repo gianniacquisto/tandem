@@ -26,4 +26,25 @@ public enum DescriptionBody {
         }
         return text
     }
+
+    /// Whether the description carries an answer block — a line whose trimmed
+    /// start is `## Answer`, case-insensitively.
+    ///
+    /// **Line-anchored on purpose.** The block is how the sprint and the
+    /// interview record a decision (the heading, then the answer), so the test
+    /// is the heading, not the words: ticket `4D5D6D37` mentions the block
+    /// inline ("The `## Answer` is recorded on `F1CEFA57`") and its question is
+    /// still open — a substring match would call it answered and hide it. The
+    /// heading's date and any trailing note are the writer's, so only the start
+    /// of the line is read.
+    public static func answered(_ description: String?) -> Bool {
+        guard let description else { return false }
+        return description
+            .components(separatedBy: .newlines)
+            .contains { line in
+                line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                    .hasPrefix("## answer")
+            }
+    }
 }

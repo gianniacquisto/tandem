@@ -3,10 +3,11 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// The comments sidecar (ADR 0017, amendment 2026-10-20): `append` / `list`
-/// over `<home>/comments/<ticket-id>.jsonl`, one JSON line per comment,
-/// appended under the store's own flock. The log is append-only: no edit, no
-/// delete, and a deleted ticket's log stays on disk.
+/// The comments log (ADR 0017, amendment 2026-10-20): `append` / `list` over
+/// the `comments` table in `<home>/tandem.db` (ADR 0031, P2). The legacy
+/// `comments/<ticket-id>.jsonl` logs are imported once and read as the fallback
+/// until then. The log is append-only: no edit, no delete, and a deleted
+/// ticket's log stays.
 @Suite("Comments sidecar")
 struct CommentsTests {
 
@@ -24,7 +25,7 @@ struct CommentsTests {
         store.commentsDirectory.appendingPathComponent("\(id.uuidString).jsonl")
     }
 
-    @Test("the first append creates the directory and the log, and list reads it back")
+    @Test("the first append records the comment in the store, and list reads it back")
     func firstAppendCreatesEverything() throws {
         let (store, dir) = try tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -39,12 +40,8 @@ struct CommentsTests {
         #expect(comment.author == "builder")
         #expect(comment.body == "did you mean X?")
         #expect(result.note == nil)
-
-        var isDir: ObjCBool = false
-        #expect(fm.fileExists(atPath: store.commentsDirectory.path, isDirectory: &isDir) && isDir.boolValue)
-        let raw = try String(contentsOf: logFile(store, ticket.id), encoding: .utf8)
-        #expect(raw.hasSuffix("\n"))
-        #expect(raw.split(separator: "\n").count == 1) // one line, one trailing newline
+        // No sidecar directory is created: the row is the log now.
+        #expect(!fm.fileExists(atPath: store.commentsDirectory.path))
 
         let listed = try store.list(ticketID: ticket.id.uuidString).value
         #expect(listed.count == 1)
@@ -80,7 +77,7 @@ struct CommentsTests {
             }
         }
         #expect(!FileManager.default.fileExists(
-            atPath: logFile(store, ticket.id).path))
+            atPath: store.commentsDirectory.path))
         #expect(try store.list(ticketID: ticket.id.uuidString).value.isEmpty)
     }
 
@@ -166,21 +163,22 @@ struct CommentsTests {
         let ticket = try makeTicket(store)
         _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "hi")
 
-        let listed = try store.list(ticketID: ticket.id.uuidString.lowercased()).value
-        #expect(listed.map(\.body) == ["hi"])
-        #expect(try FileManager.default.contentsOfDirectory(
-            atPath: store.commentsDirectory.path).count == 1)
+        #expect(try store.list(ticketID: ticket.id.uuidString.lowercased()).value.map(\.body) == ["hi"])
+        #expect(try store.list(ticketID: ticket.id.uuidString.uppercased()).value.map(\.body) == ["hi"])
     }
 
-    @Test("a damaged line is a loud failure, not a silent skip")
+    @Test("a damaged legacy log is a loud fallback failure, not a silent skip")
     func damagedLineFails() throws {
         let (store, dir) = try tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
         let ticket = try makeTicket(store)
-        _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "ok")
 
+        // No comment has been written yet, so the comments domain has not been
+        // imported: the legacy log is still the read's source.
         let url = logFile(store, ticket.id)
-        try Data("{not a comment\n".utf8).append(to: url)
+        try FileManager.default.createDirectory(
+            at: store.commentsDirectory, withIntermediateDirectories: true)
+        try Data("{not a comment\n".utf8).write(to: url)
         do {
             _ = try store.list(ticketID: ticket.id.uuidString)
             Issue.record("expected a damaged-log failure")
@@ -257,13 +255,40 @@ struct CommentReadPathTests {
         #expect(!FileManager.default.fileExists(atPath: store.commentsDirectory.path))
     }
 
-    @Test("a damaged line is a failure for the sheet to show, not an empty list")
+    @Test("a database held exclusively reads as busy, not as a damaged log")
+    func busyIsNotDamaged() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "first")
+
+        // Another connection holds the database exclusively: a WAL snapshot
+        // reads past a normal writer, but an exclusive holder is the contention
+        // the store's ~2 s window ends in a timeout.
+        let holder = try SQLiteDatabase(
+            url: dir.appendingPathComponent("tandem.db"), mode: .readWrite)
+        defer { holder.close() }
+        try holder.run("PRAGMA locking_mode=EXCLUSIVE")
+        try holder.run("BEGIN IMMEDIATE")
+        defer { try? holder.run("ROLLBACK") }
+
+        let read = store.commentRead(ticketID: ticket.id.uuidString)
+        guard case .busy = read else {
+            Issue.record("expected a busy read, got \(read)")
+            return
+        }
+    }
+
+    @Test("a damaged legacy line is a failure for the sheet to show, not an empty list")
     func damagedLineIsAFailure() throws {
         let (store, dir) = try tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
         let ticket = try makeTicket(store)
-        _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "ok")
-        try Data("{not a comment\n".utf8).append(to: logFile(store, ticket.id))
+
+        // The comments domain is not imported yet: the legacy log is the source.
+        try FileManager.default.createDirectory(
+            at: store.commentsDirectory, withIntermediateDirectories: true)
+        try Data("{not a comment\n".utf8).write(to: logFile(store, ticket.id))
 
         let read = store.commentRead(ticketID: ticket.id.uuidString)
         guard case .failed(let message) = read else {
@@ -273,38 +298,6 @@ struct CommentReadPathTests {
         // The sheet shows this message where the conversation would have been.
         #expect(message.contains("damaged line"))
         #expect(message.contains(logFile(store, ticket.id).lastPathComponent))
-        // A damaged log is not a busy store: the two ask the human for different
-        // things, and only the busy one is worth a retry.
-        #expect(!message.contains("locked by another process"))
-    }
-
-    @Test("a lock timeout is busy, not a damaged log")
-    func lockTimeoutIsBusyNotDamaged() throws {
-        let (store, dir) = try tempStore()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let ticket = try makeTicket(store)
-        _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "ok")
-
-        // Hold the store's own lock, the way a CLI append does: the read then
-        // waits out the ~2 s window and gives up on the lock.
-        let fd = open(store.lockURL.path, O_RDWR | O_CREAT, 0o644)
-        #expect(fd >= 0)
-        #expect(flock(fd, LOCK_EX) == 0)
-        defer { close(fd) }
-
-        let read = store.commentRead(ticketID: ticket.id.uuidString)
-        guard case .busy(let message) = read else {
-            Issue.record("expected a busy read, got \(read)")
-            return
-        }
-        // The words say the store is locked, and ask for a retry.
-        #expect(message.contains("locked by another process"))
-        #expect(message.lowercased().contains("retry"))
-        // Nothing about the log is wrong, so nothing asks for a repair: a busy
-        // store must not read as a damaged file.
-        #expect(!message.contains("damaged"))
-        #expect(!message.contains("repair"))
-        #expect(!message.contains(logFile(store, ticket.id).lastPathComponent))
     }
 }
 
@@ -349,12 +342,9 @@ struct CommentWritePathTests {
         #expect(written.value.author == "human")
         #expect(written.value.body == "the human's own note")
 
-        // The sidecar is the one log: the file `todo comment list` reads.
-        let raw = try String(contentsOf: logFile(store, ticket.id), encoding: .utf8)
-        #expect(raw.hasSuffix("\n"))
-        #expect(raw.split(separator: "\n").count == 1) // one line, one trailing newline
-        #expect(raw.contains("\"author\":\"human\""))
-        #expect(raw.contains("the human's own note"))
+        // The store is the one log: no sidecar file is created, and the row is
+        // what every read sees.
+        #expect(!FileManager.default.fileExists(atPath: store.commentsDirectory.path))
 
         // The app's read: the comment is in the list at once.
         guard case .list(let listed) = store.commentRead(ticketID: ticket.id.uuidString) else {
@@ -415,84 +405,31 @@ struct CommentWritePathTests {
         #expect(listed.map(\.author) == ["builder", "human"])
     }
 
-    @Test("the write path takes the lock once — the record comes back, not a busy store")
-    func theWritePathTakesTheLockOnce() throws {
+    @Test("the write path needs no sidecar lock: a held tandem.lock blocks neither the write nor the read")
+    func theWritePathNeedsNoSidecarLock() throws {
         let (store, dir) = try tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
         let ticket = try makeTicket(store)
-        let log = logFile(store, ticket.id)
 
-        // Another holder of the store's own lock — a CLI append, or the app's own
-        // read path. It holds the lock with its own fd, which contends through
-        // the same flock as another process's would (the repo's own convention:
-        // `ConcurrencyTests`).
-        //
-        // It holds the lock long enough for the write path to queue behind it,
-        // then lets the write in, and takes the lock again the moment the
-        // write's log file appears — which is while the append still holds it,
-        // so the second holder is queued first and is handed the lock the
-        // moment the append releases it. A *second* lock acquisition by the
-        // write path would then wait out the whole window and come back
-        // "busy" — for a comment that was written.
-        let holder = DispatchGroup()
-        let hasLock = DispatchSemaphore(value: 0)
-        let relocked = DispatchSemaphore(value: 0)
-        holder.enter()
-        DispatchQueue.global().async {
-            defer { holder.leave() }
-            let fd = open(store.lockURL.path, O_RDWR | O_CREAT, 0o644)
-            guard fd >= 0 else { hasLock.signal(); relocked.signal(); return }
-            guard flock(fd, LOCK_EX) == 0 else { close(fd); hasLock.signal(); relocked.signal(); return }
-            hasLock.signal()
-            usleep(300_000)                 // 300 ms: the write path waits here
-            close(fd)                       // and comes in
-            // The write's log file appears: the append has created it, and it
-            // still holds the lock. Take the lock again, and keep it.
-            let deadline = Date().addingTimeInterval(10)
-            while !FileManager.default.fileExists(atPath: log.path), Date() < deadline {
-                usleep(50)
-            }
-            guard FileManager.default.fileExists(atPath: log.path) else { relocked.signal(); return }
-            let second = open(store.lockURL.path, O_RDWR | O_CREAT, 0o644)
-            guard second >= 0 else { relocked.signal(); return }
-            _ = flock(second, LOCK_EX)      // granted when the append releases
-            // The holder holds the lock again from here. The test must not
-            // start its read until this has happened — a read that runs
-            // before the second flock is granted wins the lock and reads
-            // the list, which is the race this test once lost in CI.
-            relocked.signal()
-            usleep(2_500_000)               // the full wait window
-            close(second)
-        }
-        #expect(hasLock.wait(timeout: .now() + 15) == .success, "the holder never took the lock")
+        // Another process holds the legacy `tandem.lock` for the whole test.
+        // The database's transaction is the write's ordering now, so the lock is
+        // free to be held without starving either path.
+        let fd = open(dir.appendingPathComponent("tandem.lock").path, O_RDWR | O_CREAT, 0o644)
+        #expect(fd >= 0)
+        #expect(flock(fd, LOCK_EX) == 0)
+        defer { close(fd) }
 
-        // The write path: one lock, one answer. The record that was written
-        // comes back — not "busy", and not a lost draft.
         let written = try store.commentWrite(ticketID: ticket.id.uuidString,
                                              body: "the human's own note")
         #expect(written.value.author == "human")
         #expect(written.value.body == "the human's own note")
 
-        // The comment is in the log: nothing was lost. (The log is read from
-        // the file — the store's lock is held by the holder for the whole
-        // window, and the read path is the one that waits it out.)
-        let raw = try String(contentsOf: log, encoding: .utf8)
-        #expect(raw.contains("\"author\":\"human\""))
-        #expect(raw.contains("the human's own note"))
-
-        // And the read path, under the same contention, still says busy —
-        // which is the answer the write path no longer gives. The holder
-        // signals once its second flock is granted, so this read runs with
-        // the lock genuinely held; without that wait the read could win the
-        // lock first and come back a list.
-        #expect(relocked.wait(timeout: .now() + 15) == .success, "the holder never retook the lock")
         let read = store.commentRead(ticketID: ticket.id.uuidString)
-        guard case .busy(let message) = read else {
-            Issue.record("expected a busy read, got \(read)")
+        guard case .list(let listed) = read else {
+            Issue.record("expected the log, got \(read)")
             return
         }
-        #expect(message.contains("locked by another process"))
-        #expect(message.lowercased().contains("retry"))
+        #expect(listed.map(\.body) == ["the human's own note"])
     }
 
     @Test("the CLI's `todo comment list` shows the comment the app wrote — one log")
@@ -584,54 +521,28 @@ struct CommentRefreshTests {
         #expect(refreshed.first?.at == written.value.at)
     }
 
-    @Test("a refresh that answers busy leaves the log — and so the sheet's list — as it was")
-    func aBusyRefreshTakesNothingAway() throws {
+    @Test("a refresh is lock-free: a held legacy lock does not take the list away")
+    func aRefreshUnderAHeldLockStillReads() throws {
         let (store, dir) = try tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
         let ticket = try makeTicket(store)
-        let log = logFile(store, ticket.id)
 
-        // The human posts, and the sheet's list has that comment in it.
         let written = try store.commentWrite(ticketID: ticket.id.uuidString,
                                              body: "the human's own note")
-        let before = try String(contentsOf: log, encoding: .utf8)
 
-        // Another process holds the store's lock — a CLI write, say. The
-        // refresh waits out the window and gives up.
-        let fd = open(store.lockURL.path, O_RDWR | O_CREAT, 0o644)
+        // Another process holds the retired `tandem.lock`; the read is a WAL
+        // snapshot and does not wait for it.
+        let fd = open(dir.appendingPathComponent("tandem.lock").path, O_RDWR | O_CREAT, 0o644)
         #expect(fd >= 0)
         #expect(flock(fd, LOCK_EX) == 0)
         defer { close(fd) }
 
         let read = store.commentRead(ticketID: ticket.id.uuidString)
-        guard case .busy(let message) = read else {
-            Issue.record("expected a busy read, got \(read)")
+        guard case .list(let listed) = read else {
+            Issue.record("expected the log, got \(read)")
             return
         }
-        // The words ask for a retry, not a repair: nothing is wrong with the log.
-        #expect(message.contains("locked by another process"))
-        #expect(message.lowercased().contains("retry"))
-        #expect(!message.contains("damaged"))
-
-        // The refresh took nothing away: the log is byte for byte what it was,
-        // so the sheet's list — which holds the human's comment — stays as it
-        // was, and the comment the human posted is still in it.
-        #expect(try String(contentsOf: log, encoding: .utf8) == before)
-        #expect(before.contains("\"author\":\"human\""))
-        #expect(before.contains("the human's own note"))
-        // And the record the write handed back is still the one the log holds.
-        #expect(written.value.body == "the human's own note")
-    }
-}
-
-/// Append to an existing file (the test's hand-edit of the log).
-private extension Data {
-    func append(to url: URL) throws {
-        var existing = Data()
-        if FileManager.default.fileExists(atPath: url.path) {
-            existing = try Data(contentsOf: url)
-        }
-        existing.append(self)
-        try existing.write(to: url)
+        #expect(listed.map(\.body) == ["the human's own note"])
+        #expect(listed.first?.at == written.value.at)
     }
 }

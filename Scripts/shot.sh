@@ -147,9 +147,12 @@ trap 'rm -rf "$tmp"' EXIT
 if [ "$mode" = list ]; then
   tab="$(printf '\t')"
   printf 'shot: windows of pid %s (fixture home %s)\n' "$APP_PID" "$FIXTURE_HOME"
+  # The rows come back as the expression's value (`-O`), not as printf from the
+  # app: on attach lldb does not own the app's stdout, so anything the injected
+  # code prints lands wherever the app was launched from, never in this log.
   lldb --batch --no-lldbinit -p "$APP_PID" \
     -o "expr -- @import AppKit;" \
-    -o "expr -- { for (NSWindow *w in [NSApp windows]) printf(\"%ld\\t%.0f\\t%.0f\\t%@\\n\", (long)w.windowNumber, w.frame.size.width, w.frame.size.height, w.title ? w.title : @\"(untitled)\"); }" \
+    -o "expr -O -- ({ NSMutableArray *rows = [NSMutableArray array]; for (NSWindow *w in [(NSApplication *)NSApp windows]) [rows addObject:[NSString stringWithFormat:@\"%ld\\t%.0f\\t%.0f\\t%@\", (long)w.windowNumber, w.frame.size.width, w.frame.size.height, w.title ? w.title : @\"(untitled)\"]]; [rows componentsJoinedByString:@\"\\n\"]; })" \
     -o "detach" -o "quit" >"$tmp/lldb.log" 2>&1 \
     || { sed 's/^/lldb: /' "$tmp/lldb.log" >&2; die 1 "lldb attach failed — the app may have quit, or developer tools access is not granted"; }
   grep -q "$tab" "$tmp/lldb.log" || { sed 's/^/lldb: /' "$tmp/lldb.log" >&2; die 1 "no windows listed (see lldb output above)"; }
@@ -162,11 +165,15 @@ clang -dynamiclib -framework AppKit -framework Foundation -o "$dylib" "$root/Scr
   sed 's/^/clang: /' || die 1 "compiling Scripts/shot.m failed"
 
 printf 'shot: window %s of pid %s -> %s\n' "$window_id" "$APP_PID" "$out"
+# The dylib is loaded at runtime, so no declaration of tandem_shot exists in the
+# app at compile time: resolve it with dlsym and call it through a pointer of
+# the right signature. The return code goes back as the expression's value
+# (`-O`) for the same reason the list rows do — the app's stdout is not this log.
 lldb --batch --no-lldbinit -p "$APP_PID" \
   -o "thread select 1" \
   -o "expr -- @import Foundation;" \
   -o "expr -- @import Darwin;" \
-  -o "expr -- { void *h = dlopen(\"$dylib\", 2); if (h) { printf(\"tandem_shot=%d\\n\", tandem_shot($window_id, \"$out\")); } else { printf(\"tandem_shot=dlopen-failed\\n\"); } }" \
+  -o "expr -O -- ({ void *h = dlopen(\"$dylib\", 2); int (*shot)(long, const char *) = h ? (int (*)(long, const char *))dlsym(h, \"tandem_shot\") : 0; NSString *r = !h ? @\"tandem_shot=dlopen-failed\" : !shot ? @\"tandem_shot=dlsym-failed\" : [NSString stringWithFormat:@\"tandem_shot=%d\", shot($window_id, \"$out\")]; r; })" \
   -o "detach" -o "quit" >"$tmp/lldb.log" 2>&1 \
   || { sed 's/^/lldb: /' "$tmp/lldb.log" >&2; die 1 "lldb attach failed — the app may have quit, or developer tools access is not granted"; }
 
