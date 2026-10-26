@@ -58,13 +58,43 @@ final class SQLiteDatabase {
         sqlite3_busy_timeout(connection, timeout)
         if mode != .readOnly {
             // WAL: readers see a consistent snapshot without taking a lock (ADR 0001),
-            // and writers serialise on one file. Idempotent — the mode is a property of
-            // the database, not of the connection.
-            try execute("PRAGMA journal_mode=WAL")
+            // and writers serialise on one file. The mode is a property of the database
+            // file, not of the connection, so read it and set it only when it is not
+            // already WAL: re-asserting it on every open is a write-side operation that
+            // answers SQLITE_BUSY the moment another connection holds the write lock,
+            // and the busy handler does not cover it — that is the lost update the
+            // concurrency suite caught.
+            // A fresh file is in rollback mode and the open that created it can set WAL
+            // without contention. Two connections racing to create the same home are the
+            // one case that waits: the loser re-checks the mode, and a winner's switch is
+            // as good as its own.
+            if try scalarString("PRAGMA journal_mode")?.lowercased() != "wal" {
+                try switchToWAL()
+            }
         }
     }
 
     deinit { close() }
+
+    /// Turn WAL on, waiting out a connection that is creating the same file at the same
+    /// moment. `PRAGMA journal_mode=WAL` is not a read: it takes the write lock, and
+    /// SQLite answers `SQLITE_BUSY` immediately there rather than consulting the busy
+    /// handler. Success is the mode reading `wal` — from this attempt or from a peer's.
+    private func switchToWAL() throws {
+        var lastError: Error?
+        for attempt in 0..<40 {
+            do {
+                _ = try scalarString("PRAGMA journal_mode=WAL")
+                return
+            } catch let error as SQLiteError
+                where error.code == SQLITE_BUSY || error.code == SQLITE_LOCKED {
+                lastError = error
+                if try scalarString("PRAGMA journal_mode")?.lowercased() == "wal" { return }
+                usleep(useconds_t(25_000 * (attempt + 1)))
+            }
+        }
+        if let lastError { throw lastError }
+    }
 
     /// Close once; later calls are no-ops, so a deterministic `close()` beside the
     /// deinit's own cannot double-close the handle.
