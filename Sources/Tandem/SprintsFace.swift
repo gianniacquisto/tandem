@@ -3,7 +3,7 @@ import Foundation
 import TandemCore
 
 // The Sprints face (spec `4F746EFE`, R3): the records of sprints, read from
-// `sprints.json` through the core (`Sprints`).
+// the `sprints` table in `<home>/tandem.db` through the core (`Sprints`).
 //
 // **The record's own words.** A sprint has two states — `open` and `closed` —
 // and the board's `Status` (`backlog`…`done`) says nothing about one: a sprint

@@ -13,9 +13,9 @@ import Darwin
 /// It watches **two** paths, because the store has two ways of changing:
 ///
 /// - The **directory**, for entry changes — a file created, renamed or removed.
-///   That is the JSON fallback's write (temp + `rename`, a new inode) and the
-///   session and sprint sidecars, which are still replaced atomically. It is also
-///   what tells the watcher that `tandem.db-wal` was created or removed.
+///   That is the store's own entry changes (`tandem.db` created, the rolling
+///   backup's temp renamed over `tandem.db.bak`, a legacy file copied aside), and
+///   it is also what tells the watcher that `tandem.db-wal` was created or removed.
 /// - The **WAL file** (`tandem.db-wal`, beside `tandem.db`), for content changes.
 ///   A SQLite write appends to the existing journal inode and a directory
 ///   descriptor does not see a regular file's content change — an append that

@@ -28,11 +28,13 @@ import TandemCore
 ///               with the list's own rows (the description sheet holds the question).
 ///               A dot on the tab says one is waiting, from any other face
 ///   Sessions  — the session records (SessionsFace.swift): the artifacts agent
-///               sessions leave behind in `sessions.json`, grouped by project.
+///               sessions leave behind in the store's `sessions` table, grouped
+///               by project.
 ///               Read-only, and in the record's own words (`running`, `ended`);
 ///               a row opens the record's sheet — its brief, its notes, its tickets
 ///   Sprints   — the sprint records (SprintsFace.swift): the artifacts a sprint
-///               leaves behind in `sprints.json`, grouped by lane. Read-only,
+///               leaves behind in the store's `sprints` table, grouped by lane.
+///               Read-only,
 ///               and in the record's own words (`open`, `closed`); a row opens
 ///               the record's sheet — its batch, its runs, its close, its
 ///               opening session, its times

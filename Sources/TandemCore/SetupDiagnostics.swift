@@ -80,6 +80,14 @@ public enum SetupDiagnostics {
         /// — a fork, and named as one: the database is the store, the file is never read
         /// again. Before the import marker lands the file is the store, not a fork.
         public var storeJSONFork: String?
+        /// The JSON store file that is still the store: the home has no imported
+        /// database, and `storeHealth` counted this file. The row names it instead of
+        /// the database the home has not imported from yet (ADR 0031's read-fallback).
+        public var storeJSONSource: String?
+        /// A database file is present but its ticket import has not committed — a first
+        /// write killed before its marker. Only meaningful beside `storeJSONSource`: it
+        /// turns the row's silent fall-through into a named, pending import.
+        public var storeDatabaseUnimported: Bool
         public var storeHealth: Store.Health
         /// The rolling backup beside the store (ADR 0018): absent, or its age.
         public var storeBackup: Store.BackupHealth
@@ -109,7 +117,9 @@ public enum SetupDiagnostics {
 
         public init(homePath: String, homeSource: TandemHome.Source,
                     storePath: String, storeVersion: Int? = nil,
-                    storeJSONFork: String? = nil, storeHealth: Store.Health,
+                    storeJSONFork: String? = nil,
+                    storeJSONSource: String? = nil, storeDatabaseUnimported: Bool = false,
+                    storeHealth: Store.Health,
                     storeBackup: Store.BackupHealth, storeLockHeld: Bool,
                     bikeshedPath: String, bikeshedNoteCount: Int, bikeshedIsFile: Bool,
                     commentsPath: String, commentsState: CommentsState,
@@ -121,6 +131,8 @@ public enum SetupDiagnostics {
             self.storePath = storePath
             self.storeVersion = storeVersion
             self.storeJSONFork = storeJSONFork
+            self.storeJSONSource = storeJSONSource
+            self.storeDatabaseUnimported = storeDatabaseUnimported
             self.storeHealth = storeHealth
             self.storeBackup = storeBackup
             self.storeLockHeld = storeLockHeld
@@ -158,22 +170,43 @@ public enum SetupDiagnostics {
 
         let backup = backupDetail(facts.storeBackup)
         let version = facts.storeVersion.map { "v\($0); " } ?? ""
-        let fork = facts.storeJSONFork.map {
-            "; a JSON store file is also present at \($0) — a fork, ignored since the database took over"
+        let fork = facts.storeJSONFork.map { path -> String in
+            let quoted = "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+            return "; a JSON store file is also present at \(path) — a fork, ignored since the database took over"
+                + "; remove it with: rm \(quoted)"
         } ?? ""
         switch facts.storeHealth {
         case .absent:
             checks.append(Check(name: "store", ok: true,
                                 detail: "\(facts.storePath) — absent (a valid empty store); \(backup)"))
         case .counts(let open, let done):
-            checks.append(Check(name: "store", ok: true,
-                                detail: "\(facts.storePath) — \(version)\(open) open, \(done) done; \(backup)\(fork)"))
+            if let source = facts.storeJSONSource {
+                // The file is still the store: name it, and the database's pending import
+                // if one is sitting there uncommitted.
+                let pending = facts.storeDatabaseUnimported
+                    ? "; the database at \(facts.storePath) has not imported it yet"
+                    : ""
+                checks.append(Check(name: "store", ok: true,
+                                    detail: "\(source) — \(open) open, \(done) done\(pending); \(backup)"))
+            } else {
+                checks.append(Check(name: "store", ok: true,
+                                    detail: "\(facts.storePath) — \(version)\(open) open, \(done) done; \(backup)\(fork)"))
+            }
         case .unreadable:
-            checks.append(Check(name: "store", ok: false,
-                                detail: "\(facts.storePath) — present but unreadable or corrupt; "
-                                      + "fix the file, or restore it from tandem.db.bak "
-                                      + "(remove tandem.db-wal and tandem.db-shm first); "
-                                      + backup))
+            if let source = facts.storeJSONSource {
+                // The unreadable thing is the JSON file, not the database: the backup
+                // recipe would name a file that has nothing to restore.
+                checks.append(Check(name: "store", ok: false,
+                                    detail: "\(source) — present but unreadable or corrupt; "
+                                          + "fix the file — the store is not rewritten; "
+                                          + backup))
+            } else {
+                checks.append(Check(name: "store", ok: false,
+                                    detail: "\(facts.storePath) — present but unreadable or corrupt; "
+                                          + "fix the file, or restore it from tandem.db.bak "
+                                          + "(remove tandem.db-wal and tandem.db-shm first); "
+                                          + backup))
+            }
         }
 
         if facts.bikeshedIsFile {
@@ -281,12 +314,15 @@ public enum SetupDiagnostics {
 
         let health = store.health()
         let notes = (try? bikeshed.list())?.value ?? []
-        // A live JSON store file beside a database that has completed its import is the
-        // fork the brief names: the db is the store and the file is dead weight, but
-        // `doctor` should say so. Before the import marker lands the file is not a
-        // fork — it is still the store, and the next write will import it.
+        let imported = store.hasImportedTickets()
+        // Which file is the store right now (ADR 0031's read-fallback). Imported: the
+        // database; a JSON file beside it is the fork the row names. Un-imported: the
+        // JSON file is the store, and the row names it — a database present without its
+        // marker (a kill before the import committed) is named as the pending importer.
+        let storeJSONSource = imported
+            ? nil : ((try? StoreMigration.legacyStore(in: store.directory)) ?? nil)?.path
         let storeJSONFork: String?
-        if store.hasImportedTickets() {
+        if imported {
             storeJSONFork = ["tickets.json", "todos.json"]
                 .map { store.directory.appendingPathComponent($0).path }
                 .first { FileManager.default.fileExists(atPath: $0) }
@@ -313,8 +349,11 @@ public enum SetupDiagnostics {
                 executablePath: TandemHome.executablePath,
                 isDebugBuild: TandemHome.isDebugBuild),
             storePath: store.databaseURL.path,
-            storeVersion: store.schemaVersion(),
+            storeVersion: imported ? store.schemaVersion() : nil,
             storeJSONFork: storeJSONFork,
+            storeJSONSource: storeJSONSource,
+            storeDatabaseUnimported: !imported
+                && FileManager.default.fileExists(atPath: store.databaseURL.path),
             storeHealth: health,
             storeBackup: store.backupHealth(),
             storeLockHeld: store.lockIsHeld(),
