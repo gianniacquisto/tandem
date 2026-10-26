@@ -205,7 +205,7 @@ struct BikeshedHiddenLayerTests {
         let bikeshed = Bikeshed(directory: dir, showsHiddenFiles: true)
 
         let path = try bikeshed.capture(
-            project: "tandem", kind: .work, body: "a capture", session: "ses_1").value
+            project: "tandem", kind: .fact, body: "a capture", session: "ses_1").value
         #expect(path.hasPrefix("projects/tandem/.raw/ses_1/"))
         #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent(path).path))
     }

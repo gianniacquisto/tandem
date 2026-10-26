@@ -14,18 +14,17 @@ The moments and their kinds:
 
 - A **non-obvious decision** — `decision`, the choice plus a one-line rationale.
 - A **gotcha or hard-won fact** — `gotcha` / `fact`.
-- A **significant unit of work finished** — `work`.
 - A **Thread opened or closed** — `thread`, the context a title cannot carry.
 
 The verb owns the kinds, the body shape (`# <short title>` then 1–3 lines), and the naming — its contract is `skills/tandem/SKILL.md`. Captures are **create-only** and carry **no `[[wikilinks]]`**; the consolidation pass adds those when it promotes a note.
 
-**Floor: one `work` note at session end** (or when context nears exhaustion) — what was done and where it left off. That is a sub-agent's minimum deliverable before it returns.
+**The work record is the session summary**: at session end (or when context nears exhaustion), `tandem-cli session end --summary -` records what was done and where the session left off (ADR 0027) — a sub-agent's minimum deliverable before it returns, too. There is no floor `work` capture; the consolidation pass reads the ended session records' summaries ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
 
 **Threads stay immediate**: `tandem-cli ticket add --title "…"` runs the moment a thread opens — the ticket list is the authoritative live list — with a `thread` capture for the context a title cannot carry. Closing one: `tandem-cli ticket complete --id <id>`, plus a `thread` note.
 
 ## Qualification gate — what you'd lose when the session ends
 
-File when the information would be **lost when the session ends** and re-deriving it would cost real effort. A capture is cheap, so borderline notes are welcome — omit only what the repo or environment reproduces on the next look (a command's output, a file's contents, a `--help`). The stricter cost-of-derivation gate, the ≲50/≲40 length targets, and the pruning discipline govern only what consolidation **promotes** into the curated notes; they ride on that pass, not on the moment.
+File only when the information would be **lost when the session ends** and re-deriving it would cost real effort — both tests must hold, and the gate rides on the capture, not on promotion. What the repo, the environment, or the session transcript reproduces on the next look — a command's output, a file's contents, a `--help`, a narration of what you are about to do — fails the cost test; leave it out. The ≲50/≲40 length targets and the pruning discipline govern what consolidation **promotes** into the curated notes, not what you capture.
 
 ## Working agents never edit curated notes
 
@@ -33,7 +32,7 @@ File when the information would be **lost when the session ends** and re-derivin
 
 ## The closing pass
 
-At session end (or when context nears exhaustion), file the floor `work` note. The captures simply keep — consolidation is deliberate, never automatic. When the human asks (or the root was told to close out), **hand the saddlebag to the consolidation agent** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — a fresh agent, never a recording sub-agent, that folds this session's captures into the curated notes and refreshes the Index. The human can run the same pass on demand. The working session does not consolidate itself.
+At session end (or when context nears exhaustion), end the session record — `session end --summary -`; the summary is the work record. The captures simply keep — consolidation is deliberate, never automatic. When the human asks (or the root was told to close out), **hand the saddlebag to the consolidation agent** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — a fresh agent, never a recording sub-agent, that folds this session's captures into the curated notes and refreshes the Index. The human can run the same pass on demand. The working session does not consolidate itself.
 
 ## The curated shape — what the consolidation pass writes
 
