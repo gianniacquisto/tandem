@@ -64,7 +64,7 @@ struct SessionsTests {
 
     // MARK: - start
 
-    @Test("the first start creates sessions.json in the given directory, and nothing else")
+    @Test("the first start creates the database, and never a sessions.json")
     func firstStartCreatesTheFile() throws {
         let (sessions, dir) = try tempSessions()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -84,10 +84,11 @@ struct SessionsTests {
         #expect(record.tickets.isEmpty)
         #expect(result.note == nil)
 
-        // The file, and the lockfile the mechanism takes beside it — no store
-        // file, no backup, no temp file.
+        // The database, and no legacy file, no lockfile, no temp file.
         let names = try fm.contentsOfDirectory(atPath: dir.path).sorted()
-        #expect(names == ["sessions.json", "sessions.lock"])
+        #expect(names.contains("tandem.db"))
+        #expect(!names.contains("sessions.json"))
+        #expect(!names.contains("sessions.lock"))
     }
 
     @Test("a second start returns the record unchanged, and the file's bytes do not move")
@@ -95,12 +96,12 @@ struct SessionsTests {
         let (sessions, dir) = try tempSessions()
         defer { try? FileManager.default.removeItem(at: dir) }
         let first = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
-        let before = try Data(contentsOf: file(dir))
+        let before = try sessions.list().value
 
         let second = try sessions.start(id: "ses_1", project: "tandem", brief: "A different brief.")
         #expect(second.value == first.value)
         #expect(second.note == "session ses_1 already recorded")
-        #expect(try Data(contentsOf: file(dir)) == before)
+        #expect(try sessions.list().value == before)
 
         // One record, and it is the first one — the second brief changed nothing.
         let listed = try sessions.list().value
@@ -135,7 +136,8 @@ struct SessionsTests {
                 // The domain failure, not a usage one.
             }
         }
-        #expect(!FileManager.default.fileExists(atPath: file(dir).path))
+        #expect(!FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent("tandem.db").path))
         #expect(try sessions.list().value.isEmpty)
     }
 
@@ -152,7 +154,8 @@ struct SessionsTests {
                 // The domain failure, not a usage one.
             }
         }
-        #expect(!FileManager.default.fileExists(atPath: file(dir).path))
+        #expect(!FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent("tandem.db").path))
         #expect(try sessions.list().value.isEmpty)
 
         // The other id-taking operations refuse it too, rather than reporting
@@ -311,15 +314,12 @@ struct SessionsTests {
         #expect(shown.cost == nil)
         #expect(shown.model == nil)
 
-        // Omitted on the wire — the file shows the shape a record carries,
-        // and a record without usage carries none of the three keys.
-        let raw = try Data(contentsOf: file(dir))
-        let object = try #require(JSONSerialization.jsonObject(with: raw) as? [String: Any])
-        let records = try #require(object["sessions"] as? [[String: Any]])
-        let record = try #require(records.first)
-        #expect(record["tokens"] == nil)
-        #expect(record["cost"] == nil)
-        #expect(record["model"] == nil)
+        // The database row carries none of the three: a record without usage
+        // stays without usage across the round trip.
+        let again = try sessions.list().value
+        #expect(again.first?.tokens == nil)
+        #expect(again.first?.cost == nil)
+        #expect(again.first?.model == nil)
     }
 
     @Test("the usage survives the round trip through the file")
@@ -458,8 +458,8 @@ struct SessionsTests {
 
     // MARK: - The file's shape
 
-    @Test("the file carries the envelope and the whole record shape")
-    func fileCarriesTheEnvelopeAndTheRecord() throws {
+    @Test("the record round-trips through the database with every field")
+    func recordRoundTripsThroughTheDatabase() throws {
         let (sessions, dir) = try tempSessions()
         defer { try? FileManager.default.removeItem(at: dir) }
         let ticket = UUID()
@@ -468,27 +468,20 @@ struct SessionsTests {
         _ = try sessions.link(id: "ses_1", ticket: ticket)
         _ = try sessions.end(id: "ses_1", outcome: .succeeded, summary: "Built it.")
 
-        let raw = try Data(contentsOf: file(dir))
-        let object = try #require(JSONSerialization.jsonObject(with: raw) as? [String: Any])
-        #expect(object["version"] as? Int == 1)
-        let records = try #require(object["sessions"] as? [[String: Any]])
-        #expect(records.count == 1)
-        let record = try #require(records.first)
-        #expect(record["id"] as? String == "ses_1")
-        #expect(record["project"] as? String == "tandem")
-        #expect(record["agent"] as? String == "black")
-        #expect(record["brief"] as? String == "Build the core.")
-        #expect(record["summary"] as? String == "Built it.")
-        #expect(record["status"] as? String == "ended")
-        #expect(record["outcome"] as? String == "succeeded")
-        #expect(record["tickets"] as? [String] == [ticket.uuidString])
-        // Every stamp is ISO-8601 UTC with a trailing Z, like the store's.
-        #expect((record["startedAt"] as? String)?.hasSuffix("Z") == true)
-        #expect((record["endedAt"] as? String)?.hasSuffix("Z") == true)
+        let record = try sessions.show(id: "ses_1").value
+        #expect(record.id == "ses_1")
+        #expect(record.project == "tandem")
+        #expect(record.agent == "black")
+        #expect(record.brief == "Build the core.")
+        #expect(record.summary == "Built it.")
+        #expect(record.status == .ended)
+        #expect(record.outcome == .succeeded)
+        #expect(record.tickets == [ticket])
+        #expect(record.endedAt != nil)
     }
 
-    @Test("an unknown key is ignored on read, and gone on the next write")
-    func unknownKeysAreIgnoredOnReadAndDroppedOnWrite() throws {
+    @Test("an unknown key is ignored on import and never reaches the database row")
+    func unknownKeysAreIgnoredOnImport() throws {
         let (sessions, dir) = try tempSessions()
         defer { try? FileManager.default.removeItem(at: dir) }
         try writeFile(dir, [
@@ -498,15 +491,12 @@ struct SessionsTests {
         ])
 
         // Lenient read: the unknown key does not make the file invalid.
-        let listed = try sessions.list().value
-        #expect(listed.map(\.id) == ["ses_1"])
+        #expect(try sessions.list().value.map(\.id) == ["ses_1"])
 
-        // Strict write: the next write emits the shape this build knows.
+        // The first write imports the record this build knows; the unknown key
+        // has no column and is not carried.
         _ = try sessions.link(id: "ses_1", ticket: UUID())
-        let raw = try Data(contentsOf: file(dir))
-        let object = try #require(JSONSerialization.jsonObject(with: raw) as? [String: Any])
-        let records = try #require(object["sessions"] as? [[String: Any]])
-        #expect(records.first?["aKeyThisBuildDoesNotKnow"] == nil)
+        #expect(try sessions.show(id: "ses_1").value.tickets.count == 1)
     }
 
     @Test("a missing required key invalidates the file")
@@ -590,11 +580,11 @@ struct SessionsTests {
 
     // MARK: - Recovery
 
-    @Test("a corrupt sessions file is moved aside, and the next read is empty with a note")
+    @Test("a corrupt legacy sessions file is moved aside before the first import, with a note")
     func corruptFileIsMovedAside() throws {
         let (sessions, dir) = try tempSessions()
         defer { try? FileManager.default.removeItem(at: dir) }
-        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try Data("{not a sessions file\n".utf8).write(to: file(dir))
 
         let listed = try sessions.list()
@@ -602,8 +592,8 @@ struct SessionsTests {
         let note = try #require(listed.note)
         #expect(note.contains("corrupt"))
 
-        // The corrupt file is kept, not deleted, and the live file is gone: the
-        // list restarted empty, and the next write makes a new file.
+        // The corrupt file is kept, not deleted, and the live name is gone: the
+        // list restarted empty.
         let kept = try FileManager.default.contentsOfDirectory(atPath: dir.path)
             .filter { $0.hasPrefix("sessions.json.corrupt-") }
         #expect(kept.count == 1)
@@ -618,9 +608,7 @@ struct SessionsTests {
         let (sessions, dir) = try tempSessions()
         defer { try? FileManager.default.removeItem(at: dir) }
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path) }
-        // The lockfile first: it must exist before the directory is closed to
-        // writes, or the lock itself would be what fails.
-        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try Data("{not a sessions file\n".utf8).write(to: file(dir))
         // Read-only directory: the corrupt file cannot be renamed aside, so the
         // recovery fails and the file stays where it is.
@@ -705,131 +693,23 @@ struct SessionsTests {
 
     // MARK: - The file's own I/O failures
 
-    @Test("a home whose sessions file cannot be locked fails in the sessions file's own words")
-    func lockFailureNamesTheSessionsFile() throws {
+    @Test("a sessions write on an unwritable home wears the store's vocabulary")
+    func sessionsWriteOnUnwritableHomeIsAStoreFailure() throws {
         let (sessions, dir) = try tempSessions()
         defer { try? FileManager.default.removeItem(at: dir) }
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path) }
-        // A directory that cannot be written: the lockfile cannot be created,
-        // so the lock fails before the file is ever touched.
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
 
         do {
             _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
-            Issue.record("expected the sessions file's own lock failure")
-        } catch let DomainError.sessionsFileIO(path, op, detail) {
-            #expect(path == file(dir).path)
-            #expect(op == "open lockfile")
-            #expect(detail.contains("13"))
-        }
-
-        // The failure the human sees names the sessions file and the operation,
-        // and never calls it a store error: the store is `todos.json`, and it
-        // is fine.
-        let text = tandemErrorText(DomainError.sessionsFileIO(
-            path: file(dir).path, op: "open lockfile", detail: "13: Permission denied"))
-        #expect(text.contains("sessions.json"))
-        #expect(text.contains(file(dir).path))
-        #expect(text.contains("open lockfile"))
-        #expect(!text.contains("Tandem store"))
-    }
-
-    @Test("a sessions file locked by another process fails in the sessions file's own words")
-    func lockContentionNamesTheSessionsFile() throws {
-        let (sessions, dir) = try tempSessions()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        // The lockfile first: it must exist before another process holds it.
-        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
-        let lockPath = dir.appendingPathComponent("sessions.lock")
-        let fd = open(lockPath.path, O_RDWR | O_CREAT, 0o644)
-        #expect(fd >= 0)
-        #expect(flock(fd, LOCK_EX) == 0)
-        defer { close(fd) }
-
-        do {
-            _ = try sessions.start(id: "ses_2", project: "tandem", brief: "Read the fleet.")
-            Issue.record("expected the sessions file's own lock failure")
-        } catch let DomainError.sessionsFileLocked(path) {
-            #expect(path == file(dir).path)
-        }
-
-        let text = tandemErrorText(DomainError.sessionsFileLocked(path: file(dir).path))
-        #expect(text.contains("sessions.json"))
-        #expect(text.contains(file(dir).path))
-        #expect(!text.contains("Tandem store"))
-    }
-
-    @Test("a write that cannot happen fails in the sessions file's own words")
-    func writeFailureNamesTheSessionsFile() throws {
-        let (sessions, dir) = try tempSessions()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        // A directory where the file should be: the atomic write's `rename`
-        // cannot land on it, so the write fails where the file is named.
-        try FileManager.default.createDirectory(at: file(dir), withIntermediateDirectories: true)
-
-        do {
-            _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
-            Issue.record("expected the sessions file's own write failure")
-        } catch let DomainError.sessionsFileIO(path, op, detail) {
-            #expect(path == file(dir).path)
-            #expect(op == "rename")
-            #expect(!detail.isEmpty)
-        }
-
-        let text = tandemErrorText(DomainError.sessionsFileIO(
-            path: file(dir).path, op: "rename", detail: "21: Is a directory"))
-        #expect(text.contains("sessions.json"))
-        #expect(text.contains(file(dir).path))
-        #expect(text.contains("rename"))
-        #expect(!text.contains("Tandem store"))
-    }
-
-    @Test("a write that fails after a recovery is this file's failure, with the recovery note kept")
-    func writeFailureAfterRecoveryNamesTheSessionsFile() throws {
-        let (sessions, dir) = try tempSessions()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        // A corrupt file, so the call that fails is also the call that
-        // recovers: the move-aside is the production path, only the write is
-        // injected. The injected failure is the one the primitive raises for
-        // real when the disk fills — a Foundation `NSError`, not a
-        // `TandemError`.
-        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
-        try Data("{not a sessions file\n".utf8).write(to: file(dir))
-        let failing = Sessions(directory: dir) { _, _ in
-            throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteOutOfSpaceError)
-        }
-
-        var thrown: (any Error)?
-        do {
-            _ = try failing.start(id: "ses_2", project: "tandem", brief: "Build the core.")
-            Issue.record("expected the sessions file's own write failure")
+            Issue.record("expected the store's own failure")
         } catch {
-            thrown = error
+            let text = tandemErrorText(error)
+            #expect(text.contains("Tandem store error"), "got \(text)")
+            #expect(text.contains("tandem.db"), "got \(text)")
+            #expect(!text.contains("sessions file"), "got \(text)")
         }
-        // The failure is wrapped so the recovery note survives, and what it
-        // wraps is the sessions file's own I/O failure — the raw Foundation
-        // error and the store's `StoreIOError` are both wrong here.
-        let wrapped = try #require(thrown as? RecoveryFailure)
-        guard case let DomainError.sessionsFileIO(path, op, _) = wrapped.underlying else {
-            Issue.record("expected sessionsFileIO, got \(wrapped.underlying)")
-            return
-        }
-        #expect(path == file(dir).path)
-        #expect(op == "write")
-
-        // The recovery really happened, and the surfaced text names the
-        // sessions file and keeps the note — and never calls it a store error.
-        let kept = try FileManager.default.contentsOfDirectory(atPath: dir.path)
-            .filter { $0.hasPrefix("sessions.json.corrupt-") }
-        #expect(kept.count == 1)
-        let text = tandemErrorText(wrapped)
-        #expect(text.contains("sessions file"))
-        #expect(text.contains(file(dir).path))
-        #expect(text.contains("failed during write"))
-        #expect(text.contains(kept[0]))
-        #expect(text.contains("restarted empty"))
-        #expect(!text.contains("Tandem store"))
     }
 
     @Test("the store's own failure still wears the store's vocabulary")

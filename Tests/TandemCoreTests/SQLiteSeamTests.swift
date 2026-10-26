@@ -29,7 +29,7 @@ struct SQLiteSeamTests {
 
     // MARK: - Open and create
 
-    @Test("a fresh home's first write creates tandem.db, WAL on, schema version 1")
+    @Test("a fresh home's first write creates tandem.db, WAL on, the current schema version")
     func freshHomeCreatesDatabase() throws {
         let dir = try makeDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -38,14 +38,14 @@ struct SQLiteSeamTests {
         _ = try store.add("first")
 
         #expect(FileManager.default.fileExists(atPath: store.databaseURL.path))
-        #expect(store.schemaVersion() == 1)
+        #expect(store.schemaVersion() == StoreSchema.currentVersion)
         let db = try SQLiteDatabase(url: store.databaseURL, mode: .readOnly)
         defer { db.close() }
         #expect(try db.scalarString("PRAGMA journal_mode") == "wal")
         let versions = try db.rows("SELECT version FROM schema_migrations ORDER BY version") {
             $0.int(0)
         }
-        #expect(versions == [1])
+        #expect(versions == Array(1...StoreSchema.currentVersion))
         let appliedAt = try #require(try db.scalarString("SELECT appliedAt FROM schema_migrations"))
         #expect(Timestamp.decode(appliedAt) != nil, "appliedAt is an ISO-8601 UTC timestamp")
     }
@@ -114,7 +114,7 @@ struct SQLiteSeamTests {
         try StoreSchema.migrate(db)
         try StoreSchema.migrate(db)
         #expect(try StoreSchema.version(of: db) == StoreSchema.currentVersion)
-        #expect(try db.scalarInt("SELECT COUNT(*) FROM schema_migrations") == 1)
+        #expect(try db.scalarInt("SELECT COUNT(*) FROM schema_migrations") == StoreSchema.currentVersion)
     }
 
     @Test("a failing migration rolls back and fails the open; nothing half-applies")

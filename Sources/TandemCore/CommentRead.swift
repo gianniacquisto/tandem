@@ -4,17 +4,19 @@ import Foundation
 /// not be read.
 ///
 /// The three cases mean different things to whoever reads them, so they stay
-/// apart. An empty log is nothing to say. A **busy** store is a read that waited
-/// out the lock and gave up — nothing is wrong with the log, and the read can
-/// simply be tried again. A **damaged** log is a file to repair. A timeout that
-/// reads as corruption sends the human to repair a file that is perfectly fine.
+/// apart. An empty log is nothing to say. A **busy** store is a read that
+/// waited out contention and gave up — nothing is wrong with the log, and the
+/// read can simply be tried again. A **damaged** legacy log is a file to
+/// repair. The database's reads are lock-free WAL snapshots, so `busy` is no
+/// longer produced for an imported log; the case stays because it is the app's
+/// rendered vocabulary.
 public enum CommentRead: Sendable, Equatable {
     /// The log's comments, in append order (oldest first). Empty when the
     /// ticket has no log — the common case, and one that draws no section.
     case list([Comment])
-    /// The store was locked by another process for longer than the read waited
-    /// (`LockedDirectory.lockTimeout`, ~2 s). The log is fine; the read can be
-    /// tried again. The message is the core's own.
+    /// The store was locked for longer than the read waited. The log is fine;
+    /// the read can be tried again. Kept as the API's case: a database read is
+    /// a lock-free snapshot and does not produce it.
     case busy(String)
     /// The log could not be read — a damaged line, most often. The message is
     /// the core's own, and it names the file to repair.

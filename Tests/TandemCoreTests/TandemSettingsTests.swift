@@ -2,10 +2,11 @@ import Foundation
 import Testing
 @testable import TandemCore
 
-/// The chosen-bikeshed settings record (ADR 0011):
-/// `<home>/settings.json` holds `{"bikeshedPath": "<absolute path>"}`, the key
-/// absent when no choice was made. Every test uses the explicit-home seam so
-/// the process's real `TandemHome.directory` is never read or written.
+/// The settings record (ADR 0011, re-backed by ADR 0031): the `settings` table
+/// in `<home>/tandem.db` holds each key as a row; the legacy `settings.json` is
+/// the read-fallback and the one-time import's source. Every test uses the
+/// explicit-home seam so the process's real `TandemHome.directory` is never
+/// read or written.
 @Suite("Tandem settings — chosen bikeshed")
 struct TandemSettingsTests {
 
@@ -36,16 +37,17 @@ struct TandemSettingsTests {
         #expect(TandemSettings.chosenBikeshed(in: home) == chosen.standardizedFileURL)
     }
 
-    @Test("the on-disk file is valid JSON holding the bikeshedPath key")
+    @Test("the write lands in the database, not a settings.json")
     func fileShapeIsJSON() throws {
         let home = tempHome()
         defer { try? FileManager.default.removeItem(at: home) }
         let chosen = home.appendingPathComponent("Notes")
         try TandemSettings.setChosenBikeshed(chosen, in: home)
 
-        let data = try Data(contentsOf: settingsFile(in: home))
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        #expect(json?["bikeshedPath"] as? String == chosen.standardizedFileURL.path)
+        #expect(!FileManager.default.fileExists(atPath: settingsFile(in: home).path))
+        #expect(FileManager.default.fileExists(
+            atPath: home.appendingPathComponent("tandem.db").path))
+        #expect(TandemSettings.chosenBikeshed(in: home) == chosen.standardizedFileURL)
     }
 
     @Test("setting twice overwrites the previous choice")
@@ -169,9 +171,7 @@ struct TandemSettingsTests {
 
         #expect(TandemSettings.defaultLane(in: home) == nil)
         #expect(TandemSettings.setupComplete(in: home))
-        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: settingsFile(in: home)))
-        let object = try #require(json as? [String: Any])
-        #expect(object["defaultLane"] == nil)
+        #expect(!FileManager.default.fileExists(atPath: settingsFile(in: home).path))
     }
 
     @Test("an empty or whitespace default lane is the default area, not a lane name")
@@ -201,15 +201,14 @@ struct TandemSettingsTests {
         #expect(TandemSettings.showHiddenFiles(in: home) == false)
     }
 
-    @Test("the on-disk file is valid JSON holding the showHiddenFiles key")
+    @Test("the reveal flag is a settings row, and no settings.json is written")
     func showHiddenFilesFileShape() throws {
         let home = tempHome()
         defer { try? FileManager.default.removeItem(at: home) }
         try TandemSettings.setShowHiddenFiles(true, in: home)
 
-        let data = try Data(contentsOf: settingsFile(in: home))
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        #expect(json?["showHiddenFiles"] as? Bool == true)
+        #expect(!FileManager.default.fileExists(atPath: settingsFile(in: home).path))
+        #expect(TandemSettings.showHiddenFiles(in: home))
     }
 
     @Test("the reveal flag coexists with the other settings")
@@ -265,17 +264,17 @@ struct TandemSettingsTests {
         #expect(TandemSettings.roster(in: home) == ["human", "poet", "builder"])
     }
 
-    @Test("an edited roster persists through the file: the restart round-trip")
+    @Test("an edited roster persists through the store: the restart round-trip")
     func editedRosterRoundTripsThroughFile() throws {
         let home = tempHome()
         defer { try? FileManager.default.removeItem(at: home) }
         try TandemSettings.setSetupComplete(true, in: home)
         try TandemSettings.setRoster(["human", "builder", "poet"], in: home)
-        // The settings file is re-read on every getter, so a fresh read is the
-        // restart; the other settings survive the roster write.
-        let data = try Data(contentsOf: settingsFile(in: home))
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        #expect(json?["roster"] as? [String] == ["human", "builder", "poet"])
+        // The store is re-read on every getter, so a fresh read is the restart;
+        // the other settings survive the roster write.
+        #expect(!FileManager.default.fileExists(atPath: settingsFile(in: home).path))
+        #expect(FileManager.default.fileExists(
+            atPath: home.appendingPathComponent("tandem.db").path))
         #expect(TandemSettings.roster(in: home) == ["human", "builder", "poet"])
         #expect(TandemSettings.setupComplete(in: home))
     }

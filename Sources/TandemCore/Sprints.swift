@@ -240,75 +240,48 @@ public enum SprintStatus: String, Sendable, CaseIterable, Hashable {
     public static var wireValues: [String] { allCases.map(\.rawValue) }
 }
 
-/// The sprints file: `<home>/sprints.json`, beside `todos.json` (spec
-/// `4F746EFE`, R1).
+/// The sprints store: the `sprints` table in `<home>/tandem.db` (spec
+/// `4F746EFE`, R1; re-backed by ADR 0031).
 ///
-/// **Its own file, not a key in `todos.json`.** The installed app rewrites
-/// `todos.json` whole and drops the keys it does not know (ADR 0017's comments
-/// amendment), so a `sprints` array there is erased by the next human edit
-/// until a build carrying the field is installed. A file no older writer
-/// touches is the only shape that survives — the same reasoning that put the
-/// sessions file beside the store (ADR 0027).
+/// **Its own records, not a key in the ticket store.** The old file existed
+/// because the installed app rewrote `todos.json` whole and dropped the keys it
+/// did not know; the database has a table instead, and a sprint write never
+/// touches the board's rows.
 ///
-/// The file mechanics are the sessions file's own (ADR 0001 / ADR 0007 /
-/// ADR 0027):
-/// - **Locking** — an exclusive `flock` on `<home>/sprints.lock` (created if
-///   missing, never renamed), held across the whole read → modify →
-///   write-temp → `rename` cycle. Readers take no lock: the atomic rename
-///   guarantees a reader sees a complete old or new file.
-/// - **Atomic writes** — same-directory temp `.sprints-<random>.tmp`, fsync,
-///   `rename`; orphaned temps older than 60 s are swept under the lock.
-/// - **Lenient read, strict write** — unknown keys are ignored; a missing or
-///   mistyped required field invalidates the file.
-/// - **Recovery** — an invalid file is renamed to `sprints.json.corrupt-<unix-ts>`
-///   under the lock and the list restarts empty, with a note naming *this*
-///   file — never the store's `todos.json`.
+/// **One transaction per write.** `open`, `ticket`, `run` and `close` read the
+/// rows, change the record and replace the table in one `BEGIN IMMEDIATE`, so
+/// two writers cannot lose each other's records. The first write imports
+/// `sprints.json` once — its records inserted, the file copied aside as
+/// `<name>.pre-sqlite-<ts>` and left where it was — and records the import in
+/// `store_imports` in the same transaction. Reads are lock-free WAL snapshots;
+/// before the marker lands they still serve the legacy JSON.
 ///
-/// **Its own errors, too.** The file's decode failures are its own internal
-/// signal (`CorruptSprints`, the sprints file's counterpart to the sessions
-/// file's `CorruptSessions`) — never surfaced, exactly like the store's and
-/// the sessions file's. A file that cannot be moved aside is a contract
-/// failure that names `sprints.json` and what the human has to do about it
-/// (`DomainError.corruptSprintsFile`). A lock that cannot be taken, and a
-/// write that cannot happen, are the same kind of failure —
-/// `DomainError.sprintsFileLocked` and `DomainError.sprintsFileIO`, both
-/// naming the file and the operation. The sessions file's vocabulary is the
-/// sessions file's: `sessions.json` is a different file, and it is fine.
-///
-/// **No rolling backup.** A record is recoverable from the tickets it names
-/// and the transcript; `todos.json.bak` exists to protect hand-written work,
-/// and this file holds none.
+/// An invalid legacy file is moved aside as `sprints.json.corrupt-<unix-ts>`
+/// on the fallback read and the list restarts empty with a note. A file that
+/// cannot be moved aside is `DomainError.corruptSprintsFile`. Database failures
+/// wear the store's own vocabulary — `DomainError.locked` on contention,
+/// `StoreIOError` otherwise.
 public struct Sprints: Sendable {
     /// The home directory the file lives in (the store's directory, so the
     /// app's existing watcher sees a sprint write for free). Created on first
     /// write.
     public let directory: URL
-    /// The sprints file.
+    /// The legacy sprints file — the read-fallback's source and the import's
+    /// source, never written again.
     let fileURL: URL
-    /// The sidecar lockfile (created if missing, never renamed).
-    let lockURL: URL
-    /// The shared storage mechanics (ADR 0001): flock + atomic write + orphan
-    /// sweep, identical to the store's.
-    private let storage: LockedDirectory
 
-    /// The default sprints file: the real `~/.tandem` from the shipped app,
+    /// The default sprints store: the real `~/.tandem` from the shipped app,
     /// `~/.tandem-dev` from anything built and run in place (see `TandemHome`).
     public init() {
         self.init(directory: TandemHome.directory)
     }
 
-    /// A sprints file rooted at an explicit directory (used by tests with a
-    /// temp dir). The file is `<directory>/sprints.json` and the lockfile its
-    /// sibling `<directory>/sprints.lock`.
+    /// A sprints store rooted at an explicit directory (used by tests with a
+    /// temp dir). The legacy file is `<directory>/sprints.json`; the records
+    /// live in `<directory>/tandem.db`.
     public init(directory: URL) {
         self.directory = directory
         self.fileURL = directory.appendingPathComponent("sprints.json")
-        self.lockURL = directory.appendingPathComponent("sprints.lock")
-        self.storage = LockedDirectory(
-            lockURL: self.lockURL,
-            tempPrefix: ".sprints-",
-            cleanRoot: directory,
-            cleanRecursively: false)
     }
 
     // MARK: - Operations
@@ -518,25 +491,6 @@ public struct Sprints: Sendable {
         case invalid
     }
 
-    /// Take the sprints lock (translating the primitive's errors into the
-    /// sprints file's own vocabulary) and run `body` under it, orphan temps
-    /// cleaned first.
-    ///
-    /// **The sessions file's vocabulary is not this file's.** A lock that
-    /// cannot be taken is a failure of *this* file's lock (`sprints.lock`),
-    /// and the human is told which file it was — the sessions file
-    /// (`sessions.json`) is fine.
-    private func withLock<T: Sendable>(_ body: () throws -> T) throws -> T {
-        do {
-            return try storage.withLock(body)
-        } catch LockedDirectoryError.locked {
-            throw DomainError.sprintsFileLocked(path: fileURL.path)
-        } catch LockedDirectoryError.posix(let op, let code) {
-            throw DomainError.sprintsFileIO(
-                path: fileURL.path, op: op, detail: Self.posixDetail(code))
-        }
-    }
-
     /// A lock-free read of the current file state: "no file yet" (a valid empty
     /// list), a readable file, or a file that cannot be decoded.
     private func peek() -> Peek {
@@ -555,129 +509,181 @@ public struct Sprints: Sendable {
         }
     }
 
-    /// Read while holding the exclusive lock. Re-checks under the lock so a
-    /// process that already recovered is not double-recovered; if the file is
-    /// still invalid, it is moved aside and the list restarts empty. Returns
-    /// the records and, when *this* call performed the move, the path it was
-    /// kept at.
-    private func readLocked() throws -> (sprints: [Sprint], backupPath: String?) {
-        switch peek() {
-        case .absent:
-            return ([], nil)
-        case .valid(let sprints):
-            return (sprints, nil)
-        case .invalid:
-            let ts = Int(Date().timeIntervalSince1970)
-            var backup = directory.appendingPathComponent("sprints.json.corrupt-\(ts)")
-            var suffix = 1
-            let fm = FileManager.default
-            while fm.fileExists(atPath: backup.path) {
-                backup = directory.appendingPathComponent("sprints.json.corrupt-\(ts)-\(suffix)")
-                suffix += 1
-            }
-            do {
-                try fm.moveItem(at: fileURL, to: backup)
-            } catch {
-                // Never silently discard: if the invalid file cannot be kept, fail
-                // loudly — **in the sprints file's own words**. The sessions file's
-                // `corruptSessionsFile` would report this as a sessions failure, and
-                // the sessions file is not what is broken: `sessions.json` is fine,
-                // and this file is the one the human has to look for.
-                throw DomainError.corruptSprintsFile(
-                    path: fileURL.path,
-                    detail: (error as NSError).localizedDescription)
-            }
-            return ([], backup.path)
+    /// Move an invalid legacy file aside as `sprints.json.corrupt-<unix-ts>`,
+    /// returning the path it was kept at. The file is evidence, never deleted.
+    private func recoverInvalidFile() throws -> String {
+        let ts = Int(Date().timeIntervalSince1970)
+        var backup = directory.appendingPathComponent("sprints.json.corrupt-\(ts)")
+        var suffix = 1
+        let fm = FileManager.default
+        while fm.fileExists(atPath: backup.path) {
+            backup = directory.appendingPathComponent("sprints.json.corrupt-\(ts)-\(suffix)")
+            suffix += 1
         }
+        do {
+            try fm.moveItem(at: fileURL, to: backup)
+        } catch {
+            throw DomainError.corruptSprintsFile(
+                path: fileURL.path,
+                detail: (error as NSError).localizedDescription)
+        }
+        return backup.path
     }
 
-    /// A lock-free read (the `list` fast path). Takes the lock only to recover
-    /// an invalid file.
+    /// A read: the database once the sprints domain has been imported, else the
+    /// legacy JSON still beside it. An invalid JSON file is moved aside and the
+    /// list reads empty with a note — the pre-migration behaviour, kept for a
+    /// home whose first write has not landed yet.
     private func readAll() throws -> (sprints: [Sprint], note: String?) {
+        let stored = try Store.translate {
+            try StoreMigration.sidecarRead(
+                in: directory, domain: StoreSchema.sprintsDomain
+            ) { db in try Self.read(from: db) }
+        }
+        if let stored { return (stored, nil) }
         switch peek() {
         case .absent:
             return ([], nil)
         case .valid(let sprints):
             return (sprints, nil)
         case .invalid:
-            let (sprints, backup) = try withLock { try readLocked() }
-            return (sprints, backup.map(Self.recoveryNote))
+            let backup = try recoverInvalidFile()
+            return ([], Self.recoveryNote(backupPath: backup))
         }
     }
 
-    /// A read-modify-write under the exclusive lock. `body` receives the current
-    /// records and returns `(value, changed, note)`; when `changed` is false no
-    /// write is performed — the file's bytes are untouched — but the lock is
-    /// still taken and recovery is still checked. A note from `body` (a second
-    /// `open`, a second `close`) and the recovery note cannot both happen: the
-    /// recovery note wins when it does, because it says the caller's model of
-    /// the file is void.
+    /// A read-modify-write in one database transaction. The first write imports
+    /// `sprints.json` (rows, the copy-aside and the marker commit together) and
+    /// the body sees those rows; a changed write after that rolls the store's
+    /// backup and replaces the table.
     private func mutate<T: Sendable>(
         _ body: (inout [Sprint]) throws -> (value: T, changed: Bool, note: String?)
     ) throws -> (value: T, note: String?) {
-        try withLock {
-            let (initial, backup) = try readLocked()
-            let recovery = backup.map(Self.recoveryNote)
-            var sprints = initial
-            do {
-                let (value, changed, note) = try body(&sprints)
-                if changed {
-                    try writeLocked(sprints)
-                }
-                return (value, recovery ?? note)
-            } catch {
-                if let recovery {
-                    // The failure is the sprints file's, whatever it is: the
-                    // sessions file's `corruptSessionsFile` would name a file
-                    // that is not broken.
-                    let underlying: any TandemError = error as? any TandemError
-                        ?? DomainError.sprintsFileIO(
-                            path: fileURL.path,
-                            op: "update",
-                            detail: (error as NSError).localizedDescription)
-                    throw RecoveryFailure(underlying: underlying, note: recovery)
-                }
-                throw error
-            }
+        try Store.translate {
+            try StoreMigration.sidecarWrite(
+                in: directory, domain: StoreSchema.sprintsDomain,
+                importDomain: { db in try self.importSprints(into: db) },
+                body: { db in
+                    var sprints = try Self.read(from: db)
+                    let (value, changed, note) = try body(&sprints)
+                    return (value, changed, note, { try Self.write(sprints, to: db) })
+                })
         }
     }
 
-    /// Write the file atomically — temp, fsync, `rename` — via the shared
-    /// storage primitive, translating the primitive's failures into the
-    /// sprints file's own vocabulary. Call only while holding the lock.
-    ///
-    /// **The failure is this file's, not the sessions file's.** A write that
-    /// cannot happen — a full disk, a read-only home, a `rename` that will not
-    /// land — says so in the sprints file's words, naming the file the human
-    /// has to look for. The sessions file (`sessions.json`) is a different
-    /// file and it is fine.
-    private func writeLocked(_ sprints: [Sprint]) throws {
-        do {
-            try storage.atomicWrite(try Self.encode(sprints), to: fileURL)
-        } catch LockedDirectoryError.posix(let op, let code) {
-            throw DomainError.sprintsFileIO(
-                path: fileURL.path, op: op, detail: Self.posixDetail(code))
-        } catch {
-            // The primitive's POSIX failures are not the only ones: the write
-            // can fail inside Foundation (a full disk, a read-only directory)
-            // with an `NSError`. Both are this file's failure.
-            throw DomainError.sprintsFileIO(
-                path: fileURL.path, op: "write", detail: (error as NSError).localizedDescription)
+    /// The one-time import: `sprints.json` read once, its records inserted, the
+    /// file copied aside as `<name>.pre-sqlite-<ts>` and left where it was. An
+    /// invalid file is moved aside (the existing recovery) and the import starts
+    /// from empty, with the note the caller surfaces.
+    private func importSprints(
+        into db: SQLiteDatabase
+    ) throws -> (source: String?, note: String?) {
+        switch peek() {
+        case .absent:
+            return (nil, nil)
+        case .valid(let sprints):
+            try StoreMigration.copyAside(fileURL)
+            try Self.write(sprints, to: db)
+            return ("sprints.json", nil)
+        case .invalid:
+            let backup = try recoverInvalidFile()
+            try Self.write([], to: db)
+            return ("sprints.json", Self.recoveryNote(backupPath: backup))
+        }
+    }
+
+    // MARK: - Rows (private)
+
+    private static func read(from db: SQLiteDatabase) throws -> [Sprint] {
+        try db.rows("""
+            SELECT lane, number, session, mode, batch, runs, close, status,
+                   openedAt, closedAt
+            FROM sprints
+            ORDER BY rowid
+            """) { row -> Sprint in
+            guard let mode = SprintMode(rawValue: row.text(3)) else {
+                throw StoreIOError.io(
+                    "a sprint row carries an unknown mode \(row.text(3))")
+            }
+            guard let status = SprintStatus(rawValue: row.text(7)) else {
+                throw StoreIOError.io(
+                    "a sprint row carries an unknown status \(row.text(7))")
+            }
+            guard let openedAt = Timestamp.decode(row.text(8)) else {
+                throw StoreIOError.io(
+                    "a sprint row carries an unreadable openedAt \(row.text(8))")
+            }
+            let closedAt: Date?
+            if let raw = row.textOrNil(9) {
+                guard let date = Timestamp.decode(raw) else {
+                    throw StoreIOError.io(
+                        "a sprint row carries an unreadable closedAt \(raw)")
+                }
+                closedAt = date
+            } else {
+                closedAt = nil
+            }
+            let batch: [UUID]
+            if let raw = row.textOrNil(4) {
+                do {
+                    batch = try JSONDecoder().decode([UUID].self, from: Data(raw.utf8))
+                } catch {
+                    throw StoreIOError.io("a sprint row carries an unreadable batch: \(error)")
+                }
+            } else {
+                batch = []
+            }
+            let runs: [String]
+            if let raw = row.textOrNil(5) {
+                do {
+                    runs = try JSONDecoder().decode([String].self, from: Data(raw.utf8))
+                } catch {
+                    throw StoreIOError.io("a sprint row carries an unreadable run log: \(error)")
+                }
+            } else {
+                runs = []
+            }
+            return Sprint(
+                lane: row.text(0),
+                number: row.int(1),
+                session: row.textOrNil(2),
+                mode: mode,
+                batch: batch,
+                runs: runs,
+                close: row.textOrNil(6),
+                status: status,
+                openedAt: openedAt,
+                closedAt: closedAt)
+        }
+    }
+
+    private static func write(_ sprints: [Sprint], to db: SQLiteDatabase) throws {
+        try db.run("DELETE FROM sprints")
+        let encoder = JSONEncoder()
+        for sprint in sprints {
+            let batch = String(decoding: try encoder.encode(sprint.batch), as: UTF8.self)
+            let runs = String(decoding: try encoder.encode(sprint.runs), as: UTF8.self)
+            try db.run("""
+                INSERT INTO sprints
+                    (lane, number, session, mode, batch, runs, close, status,
+                     openedAt, closedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, [
+                    .text(sprint.lane),
+                    .int(sprint.number),
+                    .textOrNull(sprint.session),
+                    .text(sprint.mode.rawValue),
+                    .text(batch),
+                    .text(runs),
+                    .textOrNull(sprint.close),
+                    .text(sprint.status.rawValue),
+                    .text(Timestamp.encode(sprint.openedAt)),
+                    sprint.closedAt.map { .text(Timestamp.encode($0)) } ?? .null
+                ])
         }
     }
 
     // MARK: - Schema (private)
-
-    private static func encode(_ sprints: [Sprint]) throws -> Data {
-        let envelope = FileEnvelope(version: 1, sprints: sprints)
-        let encoder = JSONEncoder()
-        // Pretty-printed, like the store's file: it is human-legible. Sorted
-        // keys, so the same records always write the same bytes — Foundation's
-        // encoder otherwise emits the keys in hash order, and the file would
-        // reshuffle under a reader's eyes on every write.
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(envelope)
-    }
 
     private static func decode(_ data: Data) throws -> [Sprint] {
         let envelope = try JSONDecoder().decode(FileEnvelope.self, from: data)
@@ -720,12 +726,6 @@ public struct Sprints: Sendable {
         let error = DomainError.unknownSprint(lane: lane, number: number, known: known)
         guard let note else { return error }
         return RecoveryFailure(underlying: error, note: note)
-    }
-
-    /// The OS's own words for a POSIX failure: the code and `strerror`'s
-    /// description, in the shape the sessions file's own I/O errors use.
-    private static func posixDetail(_ code: Int32) -> String {
-        "\(code): \(String(cString: strerror(code)))"
     }
 
     /// The recovery note for an invalid sprints file. The sessions file's

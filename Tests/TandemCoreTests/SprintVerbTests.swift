@@ -46,9 +46,8 @@ struct SprintVerbTests {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
 
-        _ = try run(home: home, ["sprint", "open", "--lane", "Tandem"])
-        let file = home.appendingPathComponent("sprints.json")
-        let before = try Data(contentsOf: file)
+        let first = try run(home: home, ["sprint", "open", "--lane", "Tandem"])
+        let firstRecord = try cli.object(from: first.output)
 
         let again = try run(home: home, [
             "sprint", "open", "--lane", "Tandem", "--mode", "parallel", "--session", "ses_other",
@@ -62,8 +61,8 @@ struct SprintVerbTests {
         #expect(record["mode"] as? String == "serial")
         #expect(record["note"] as? String == "Sprint 1 — Tandem is already open")
 
-        let after = try Data(contentsOf: file)
-        #expect(before == after, "the second open writes nothing")
+        #expect(record["openedAt"] as? String == firstRecord["openedAt"] as? String,
+                "the second open writes nothing")
     }
 
     @Test("`sprint open` numbers per lane, and takes `--session` from the flag")

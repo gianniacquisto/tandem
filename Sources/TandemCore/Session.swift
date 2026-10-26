@@ -335,58 +335,34 @@ public enum SessionOutcome: String, Sendable, CaseIterable, Hashable {
     public static var wireValues: [String] { allCases.map(\.rawValue) }
 }
 
-/// The sessions file: `<home>/sessions.json`, beside `todos.json` (spec
-/// `FC770B8A`).
+/// The sessions store: the `sessions` table in `<home>/tandem.db` (spec
+/// `FC770B8A`, re-backed by ADR 0031).
 ///
-/// **Its own file, not a key in `todos.json`.** The installed app rewrites
-/// `todos.json` whole and drops the keys it does not know (ADR 0017's comments
-/// amendment), so a `sessions` array there is erased by the next human edit
-/// until a build carrying the field is installed. A file no older writer
-/// touches is the only shape that survives.
+/// **Its own records, not a key in the ticket store.** The old file existed
+/// because the installed app rewrote `todos.json` whole and dropped the keys it
+/// did not know; the database has a table instead, and a session write never
+/// touches the board's rows.
 ///
-/// The file mechanics are the store's own (ADR 0001 / ADR 0007):
-/// - **Locking** — an exclusive `flock` on `<home>/sessions.lock` (created if
-///   missing, never renamed), held across the whole read → modify →
-///   write-temp → `rename` cycle. Readers take no lock: the atomic rename
-///   guarantees a reader sees a complete old or new file.
-/// - **Atomic writes** — same-directory temp `.sessions-<random>.tmp`, fsync,
-///   `rename`; orphaned temps older than 60 s are swept under the lock.
-/// - **Lenient read, strict write** — unknown keys are ignored; a missing or
-///   mistyped required field invalidates the file.
-/// - **Recovery** — an invalid file is renamed to `sessions.json.corrupt-<unix-ts>`
-///   under the lock and the list restarts empty, with a note naming the file
-///   that was kept.
+/// **One transaction per write.** `start`, `end` and `link` read the rows,
+/// change the record and replace the table in one `BEGIN IMMEDIATE`, so two
+/// writers cannot lose each other's records. The first write imports
+/// `sessions.json` once — its records inserted, the file copied aside as
+/// `<name>.pre-sqlite-<ts>` and left where it was — and records the import in
+/// `store_imports` in the same transaction. Reads are lock-free WAL snapshots;
+/// before the marker lands they still serve the legacy JSON.
 ///
-/// **Its own errors, too.** The file's decode failures are its own internal
-/// signal (`CorruptSessions`, the sessions file's counterpart to the store's
-/// `CorruptStore`) — never surfaced, exactly like the store's. A file that
-/// cannot be moved aside is a contract failure that names `sessions.json` and
-/// what the human has to do about it (`DomainError.corruptSessionsFile`). A
-/// lock that cannot be taken, and a write that cannot happen, are the same
-/// kind of failure — `DomainError.sessionsFileLocked` and
-/// `DomainError.sessionsFileIO`, both naming the file and the operation. The
-/// store's `StoreIOError` is the store's: it is user-facing prose about
-/// `todos.json`, and the sessions file is not `todos.json`.
-///
-/// **No rolling backup.** A record is recoverable from the transcript and the
-/// saddlebag; `todos.json.bak` exists to protect hand-written work, and this
-/// file holds none.
+/// An invalid legacy file is moved aside as `sessions.json.corrupt-<unix-ts>`
+/// on the fallback read and the list restarts empty with a note (the
+/// pre-migration recovery). A file that cannot be moved aside is
+/// `DomainError.corruptSessionsFile`. Database failures wear the store's own
+/// vocabulary — `DomainError.locked` on contention, `StoreIOError` otherwise.
 public struct Sessions: Sendable {
     /// The home directory the file lives in (the store's directory, so the app's
     /// existing watcher sees a session write for free). Created on first write.
     public let directory: URL
-    /// The sessions file.
+    /// The legacy sessions file — the read-fallback's source and the import's
+    /// source, never written again.
     let fileURL: URL
-    /// The sidecar lockfile (created if missing, never renamed).
-    let lockURL: URL
-    /// The shared storage mechanics (ADR 0001): flock + atomic write + orphan
-    /// sweep, identical to the store's.
-    private let storage: LockedDirectory
-    /// The atomic write, as one seam: production always calls the shared
-    /// primitive; a test injects a write that fails, so a write failure after
-    /// a real recovery can be exercised — the lock, the read and the
-    /// move-aside stay the production code path.
-    private let atomicWrite: @Sendable (Data, URL) throws -> Void
 
     /// The default sessions file: the real `~/.tandem` from the shipped app,
     /// `~/.tandem-dev` from anything built and run in place (see `TandemHome`).
@@ -394,25 +370,19 @@ public struct Sessions: Sendable {
         self.init(directory: TandemHome.directory)
     }
 
-    /// A sessions file rooted at an explicit directory (used by tests with a
-    /// temp dir). The file is `<directory>/sessions.json` and the lockfile its
-    /// sibling `<directory>/sessions.lock`. `atomicWrite` replaces the shared
-    /// primitive's write alone — the seam a test uses to fail the write after
-    /// a real recovery.
+    /// A sessions store rooted at an explicit directory (used by tests with a
+    /// temp dir). The legacy file is `<directory>/sessions.json`; the records
+    /// live in `<directory>/tandem.db`.
+    ///
+    /// `atomicWrite` is kept in the signature for source compatibility with the
+    /// file-backed build; the database's transaction is the write now, so no
+    /// caller-supplied write runs.
     public init(
         directory: URL,
         atomicWrite: (@Sendable (Data, URL) throws -> Void)? = nil
     ) {
         self.directory = directory
         self.fileURL = directory.appendingPathComponent("sessions.json")
-        self.lockURL = directory.appendingPathComponent("sessions.lock")
-        let storage = LockedDirectory(
-            lockURL: self.lockURL,
-            tempPrefix: ".sessions-",
-            cleanRoot: directory,
-            cleanRecursively: false)
-        self.storage = storage
-        self.atomicWrite = atomicWrite ?? { try storage.atomicWrite($0, to: $1) }
     }
 
     // MARK: - Operations
@@ -591,24 +561,6 @@ public struct Sessions: Sendable {
         case invalid
     }
 
-    /// Take the sessions lock (translating the primitive's errors into the
-    /// sessions file's own vocabulary) and run `body` under it, orphan temps
-    /// cleaned first.
-    ///
-    /// **The store's vocabulary is not the file's.** A lock that cannot be
-    /// taken is a failure of *this* file's lock (`sessions.lock`), and the
-    /// human is told which file it was — the store (`todos.json`) is fine.
-    private func withLock<T: Sendable>(_ body: () throws -> T) throws -> T {
-        do {
-            return try storage.withLock(body)
-        } catch LockedDirectoryError.locked {
-            throw DomainError.sessionsFileLocked(path: fileURL.path)
-        } catch LockedDirectoryError.posix(let op, let code) {
-            throw DomainError.sessionsFileIO(
-                path: fileURL.path, op: op, detail: Self.posixDetail(code))
-        }
-    }
-
     /// A lock-free read of the current file state: "no file yet" (a valid empty
     /// list), a readable file, or a file that cannot be decoded.
     private func peek() -> Peek {
@@ -627,128 +579,195 @@ public struct Sessions: Sendable {
         }
     }
 
-    /// Read while holding the exclusive lock. Re-checks under the lock so a
-    /// process that already recovered is not double-recovered; if the file is
-    /// still invalid, it is moved aside and the list restarts empty. Returns
-    /// the records and, when *this* call performed the move, the path it was
-    /// kept at.
-    private func readLocked() throws -> (sessions: [Session], backupPath: String?) {
-        switch peek() {
-        case .absent:
-            return ([], nil)
-        case .valid(let sessions):
-            return (sessions, nil)
-        case .invalid:
-            let ts = Int(Date().timeIntervalSince1970)
-            var backup = directory.appendingPathComponent("sessions.json.corrupt-\(ts)")
-            var suffix = 1
-            let fm = FileManager.default
-            while fm.fileExists(atPath: backup.path) {
-                backup = directory.appendingPathComponent("sessions.json.corrupt-\(ts)-\(suffix)")
-                suffix += 1
-            }
-            do {
-                try fm.moveItem(at: fileURL, to: backup)
-            } catch {
-                // Never silently discard: if the invalid file cannot be kept, fail
-                // loudly — **in the sessions file's own words**. The store's
-                // `StoreIOError` would report this as a store failure, and the
-                // store is not what is broken: `todos.json` is fine, and this
-                // file is the one the human has to look for.
-                throw DomainError.corruptSessionsFile(
-                    path: fileURL.path,
-                    detail: (error as NSError).localizedDescription)
-            }
-            return ([], backup.path)
+    /// Move an invalid legacy file aside as `sessions.json.corrupt-<unix-ts>`,
+    /// returning the path it was kept at. The file is evidence, never deleted.
+    /// The failure, when the move cannot happen, is the sessions file's own —
+    /// the store is not what is broken.
+    private func recoverInvalidFile() throws -> String {
+        let ts = Int(Date().timeIntervalSince1970)
+        var backup = directory.appendingPathComponent("sessions.json.corrupt-\(ts)")
+        var suffix = 1
+        let fm = FileManager.default
+        while fm.fileExists(atPath: backup.path) {
+            backup = directory.appendingPathComponent("sessions.json.corrupt-\(ts)-\(suffix)")
+            suffix += 1
         }
+        do {
+            try fm.moveItem(at: fileURL, to: backup)
+        } catch {
+            throw DomainError.corruptSessionsFile(
+                path: fileURL.path,
+                detail: (error as NSError).localizedDescription)
+        }
+        return backup.path
     }
 
-    /// A lock-free read (the `list` fast path). Takes the lock only to recover
-    /// an invalid file.
+    /// A read: the database once the sessions domain has been imported, else the
+    /// legacy JSON still beside it. An invalid JSON file is moved aside and the
+    /// list reads empty with a note — the pre-migration behaviour, kept for a
+    /// home whose first write has not landed yet.
     private func readAll() throws -> (sessions: [Session], note: String?) {
+        let stored = try Store.translate {
+            try StoreMigration.sidecarRead(
+                in: directory, domain: StoreSchema.sessionsDomain
+            ) { db in try Self.read(from: db) }
+        }
+        if let stored { return (stored, nil) }
         switch peek() {
         case .absent:
             return ([], nil)
         case .valid(let sessions):
             return (sessions, nil)
         case .invalid:
-            let (sessions, backup) = try withLock { try readLocked() }
-            return (sessions, backup.map(Self.recoveryNote))
+            let backup = try recoverInvalidFile()
+            return ([], Self.recoveryNote(backupPath: backup))
         }
     }
 
-    /// A read-modify-write under the exclusive lock. `body` receives the current
-    /// records and returns `(value, changed, note)`; when `changed` is false no
-    /// write is performed — the file's bytes are untouched — but the lock is
-    /// still taken and recovery is still checked. A note from `body` (a second
-    /// `start`, a second `end`) and the recovery note cannot both happen: the
-    /// recovery note wins when it does, because it says the caller's model of
-    /// the file is void.
+    /// A read-modify-write in one database transaction. The first write imports
+    /// `sessions.json` (rows, the copy-aside and the marker commit together) and
+    /// the body sees those rows; a changed write after that rolls the store's
+    /// backup and replaces the table.
     private func mutate<T: Sendable>(
         _ body: (inout [Session]) throws -> (value: T, changed: Bool, note: String?)
     ) throws -> (value: T, note: String?) {
-        try withLock {
-            let (initial, backup) = try readLocked()
-            let recovery = backup.map(Self.recoveryNote)
-            var sessions = initial
-            do {
-                let (value, changed, note) = try body(&sessions)
-                if changed {
-                    try writeLocked(sessions)
-                }
-                return (value, recovery ?? note)
-            } catch {
-                if let recovery {
-                    // The failure is the sessions file's, whatever it is: the
-                    // store's `StoreIOError` would name a file that is not
-                    // broken.
-                    let underlying: any TandemError = error as? any TandemError
-                        ?? DomainError.sessionsFileIO(
-                            path: fileURL.path,
-                            op: "update",
-                            detail: (error as NSError).localizedDescription)
-                    throw RecoveryFailure(underlying: underlying, note: recovery)
-                }
-                throw error
-            }
+        try Store.translate {
+            try StoreMigration.sidecarWrite(
+                in: directory, domain: StoreSchema.sessionsDomain,
+                importDomain: { db in try self.importSessions(into: db) },
+                body: { db in
+                    var sessions = try Self.read(from: db)
+                    let (value, changed, note) = try body(&sessions)
+                    return (value, changed, note, { try Self.write(sessions, to: db) })
+                })
         }
     }
 
-    /// Write the file atomically — temp, fsync, `rename` — via the shared
-    /// storage primitive, translating the primitive's failures into the
-    /// sessions file's own vocabulary. Call only while holding the lock.
-    ///
-    /// **The failure is this file's, not the store's.** A write that cannot
-    /// happen — a full disk, a read-only home, a `rename` that will not land —
-    /// says so in the sessions file's words, naming the file the human has to
-    /// look for. The store (`todos.json`) is a different file and it is fine.
-    private func writeLocked(_ sessions: [Session]) throws {
-        do {
-            try atomicWrite(try Self.encode(sessions), fileURL)
-        } catch LockedDirectoryError.posix(let op, let code) {
-            throw DomainError.sessionsFileIO(
-                path: fileURL.path, op: op, detail: Self.posixDetail(code))
-        } catch {
-            // The primitive's POSIX failures are not the only ones: the write
-            // can fail inside Foundation (a full disk, a read-only directory)
-            // with an `NSError`. Both are this file's failure.
-            throw DomainError.sessionsFileIO(
-                path: fileURL.path, op: "write", detail: (error as NSError).localizedDescription)
+    /// The one-time import: `sessions.json` read once, its records inserted, the
+    /// file copied aside as `<name>.pre-sqlite-<ts>` and left where it was. An
+    /// invalid file is moved aside (the existing recovery) and the import starts
+    /// from empty, with the note the caller surfaces.
+    private func importSessions(
+        into db: SQLiteDatabase
+    ) throws -> (source: String?, note: String?) {
+        switch peek() {
+        case .absent:
+            return (nil, nil)
+        case .valid(let sessions):
+            try StoreMigration.copyAside(fileURL)
+            try Self.write(sessions, to: db)
+            return ("sessions.json", nil)
+        case .invalid:
+            let backup = try recoverInvalidFile()
+            try Self.write([], to: db)
+            return ("sessions.json", Self.recoveryNote(backupPath: backup))
+        }
+    }
+
+    // MARK: - Rows (private)
+
+    private static func read(from db: SQLiteDatabase) throws -> [Session] {
+        try db.rows("""
+            SELECT id, project, agent, brief, status, outcome, summary,
+                   startedAt, endedAt, tokensInput, tokensOutput, tokensReasoning,
+                   tokensCacheRead, tokensCacheWrite, seconds, cost, model, tickets
+            FROM sessions
+            ORDER BY rowid
+            """) { row -> Session in
+            guard let startedAt = Timestamp.decode(row.text(7)) else {
+                throw StoreIOError.io(
+                    "a session row carries an unreadable startedAt \(row.text(7))")
+            }
+            let endedAt: Date?
+            if let raw = row.textOrNil(8) {
+                guard let date = Timestamp.decode(raw) else {
+                    throw StoreIOError.io(
+                        "a session row carries an unreadable endedAt \(raw)")
+                }
+                endedAt = date
+            } else {
+                endedAt = nil
+            }
+            guard let status = SessionStatus(rawValue: row.text(4)) else {
+                throw StoreIOError.io(
+                    "a session row carries an unknown status \(row.text(4))")
+            }
+            let outcome = row.textOrNil(5).map { SessionOutcome(rawValue: $0) ?? .unknown }
+            let tickets: [UUID]
+            if let raw = row.textOrNil(17) {
+                do {
+                    tickets = try JSONDecoder().decode([UUID].self, from: Data(raw.utf8))
+                } catch {
+                    throw StoreIOError.io("a session row carries an unreadable ticket list: \(error)")
+                }
+            } else {
+                tickets = []
+            }
+            let tokens = SessionTokens(
+                input: row.intOrNil(9),
+                output: row.intOrNil(10),
+                reasoning: row.intOrNil(11),
+                cacheRead: row.intOrNil(12),
+                cacheWrite: row.intOrNil(13))
+            let hasTokens = tokens.input != nil || tokens.output != nil
+                || tokens.reasoning != nil || tokens.cacheRead != nil
+                || tokens.cacheWrite != nil
+            return Session(
+                id: row.text(0),
+                project: row.text(1),
+                agent: row.textOrNil(2),
+                brief: row.text(3),
+                summary: row.textOrNil(6),
+                status: status,
+                outcome: outcome,
+                tickets: tickets,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                tokens: hasTokens ? tokens : nil,
+                cost: row.realOrNil(15),
+                model: row.textOrNil(16))
+        }
+    }
+
+    private static func write(_ sessions: [Session], to db: SQLiteDatabase) throws {
+        try db.run("DELETE FROM sessions")
+        let encoder = JSONEncoder()
+        for session in sessions {
+            let tickets = String(
+                decoding: try encoder.encode(session.tickets), as: UTF8.self)
+            let seconds = session.endedAt.map {
+                $0.timeIntervalSince(session.startedAt)
+            }
+            try db.run("""
+                INSERT INTO sessions
+                    (id, project, agent, brief, status, outcome, summary,
+                     startedAt, endedAt, tokensInput, tokensOutput, tokensReasoning,
+                     tokensCacheRead, tokensCacheWrite, seconds, cost, model, tickets)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, [
+                    .text(session.id),
+                    .text(session.project),
+                    .textOrNull(session.agent),
+                    .text(session.brief),
+                    .text(session.status.rawValue),
+                    .textOrNull(session.outcome?.rawValue),
+                    .textOrNull(session.summary),
+                    .text(Timestamp.encode(session.startedAt)),
+                    session.endedAt.map { .text(Timestamp.encode($0)) } ?? .null,
+                    .intOrNull(session.tokens?.input),
+                    .intOrNull(session.tokens?.output),
+                    .intOrNull(session.tokens?.reasoning),
+                    .intOrNull(session.tokens?.cacheRead),
+                    .intOrNull(session.tokens?.cacheWrite),
+                    seconds.map { .real($0) } ?? .null,
+                    session.cost.map { .real($0) } ?? .null,
+                    .textOrNull(session.model),
+                    .text(tickets)
+                ])
         }
     }
 
     // MARK: - Schema (private)
-
-    private static func encode(_ sessions: [Session]) throws -> Data {
-        let envelope = FileEnvelope(version: 1, sessions: sessions)
-        let encoder = JSONEncoder()
-        // Pretty-printed, like the store's file: it is human-legible. Sorted
-        // keys, so the same records always write the same bytes — Foundation's
-        // encoder otherwise emits the keys in hash order, and the file would
-        // reshuffle under a reader's eyes on every write.
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(envelope)
-    }
 
     private static func decode(_ data: Data) throws -> [Session] {
         let envelope = try JSONDecoder().decode(FileEnvelope.self, from: data)
@@ -768,12 +787,6 @@ public struct Sessions: Sendable {
         let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw DomainError.emptySessionID }
         return trimmed
-    }
-
-    /// The OS's own words for a POSIX failure: the code and `strerror`'s
-    /// description, in the shape the store's own I/O errors use.
-    private static func posixDetail(_ code: Int32) -> String {
-        "\(code): \(String(cString: strerror(code)))"
     }
 
     /// The recovery note for an invalid sessions file. The store's recovery note

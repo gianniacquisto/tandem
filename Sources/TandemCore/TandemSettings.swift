@@ -3,13 +3,13 @@ import Darwin
 
 /// The persisted, human-chosen settings Tandem keeps beside its other state:
 /// the bikeshed, the first-run setup flag, whether the bikeshed's hidden
-/// layer is revealed, and the reassignment roster, in
-/// `<TandemHome.directory>/settings.json` (ADR 0011). One
-/// tiny `{"bikeshedPath": "<absolute path>", "setupComplete": true,
-/// "showHiddenFiles": false, "roster": ["human", …]}` record, deliberately
-/// separate from the store
-/// schema and the bikeshed itself — a settings file is not domain data, and a
-/// new setting is one more key, not a schema version bump.
+/// layer is revealed, and the reassignment roster, in the `settings` table of
+/// `<TandemHome.directory>/tandem.db` (ADR 0011, re-backed by ADR 0031).
+/// **A setting is a row, not a schema bump** — the old docstring's reason for
+/// a separate file ("deliberately separate from the store schema") died with
+/// the one-database decision; adding a setting is still one more `key`/`value`
+/// row, never a migration. The legacy `settings.json` is the read-fallback and
+/// the one-time import's source.
 ///
 /// A key is **absent when it was never set**, which is the default state:
 /// `chosenBikeshed()` returning `nil` means "wherever the default is"
@@ -145,14 +145,14 @@ public enum TandemSettings {
     /// empty or `nil` lane removes the key — absent means the default area, the same
     /// shape as every other setting that was never set.
     static func setDefaultLane(_ lane: String?, in home: URL) throws {
-        var settings = object(in: home)
-        let trimmed = lane?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let trimmed, !trimmed.isEmpty {
-            settings[defaultLaneKey] = trimmed
-        } else {
-            settings.removeValue(forKey: defaultLaneKey)
+        try mutate(in: home) { settings in
+            let trimmed = lane?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let trimmed, !trimmed.isEmpty {
+                settings[defaultLaneKey] = trimmed
+            } else {
+                settings.removeValue(forKey: defaultLaneKey)
+            }
         }
-        try write(settings, in: home)
     }
 
     /// The testable seam: `setupComplete()` against an explicit home directory.
@@ -168,20 +168,20 @@ public enum TandemSettings {
 
     /// The testable seam: `setShowHiddenFiles(_:)` against an explicit home
     /// directory. Merges the key onto the existing record (the bikeshed choice
-    /// and the setup flag are preserved), then writes atomically.
+    /// and the setup flag are preserved).
     static func setShowHiddenFiles(_ shown: Bool, in home: URL) throws {
-        var settings = object(in: home)
-        settings[showHiddenFilesKey] = shown
-        try write(settings, in: home)
+        try mutate(in: home) { settings in
+            settings[showHiddenFilesKey] = shown
+        }
     }
 
     /// The testable seam: `setChosenBikeshed(_:)` against an explicit home
     /// directory. Merges the key onto the existing record (keeping any other
-    /// settings), then writes atomically.
+    /// settings).
     static func setChosenBikeshed(_ url: URL, in home: URL) throws {
-        var settings = object(in: home)
-        settings[bikeshedKey] = url.standardizedFileURL.path
-        try write(settings, in: home)
+        try mutate(in: home) { settings in
+            settings[bikeshedKey] = url.standardizedFileURL.path
+        }
     }
 
     /// The testable seam: `roster()` against an explicit home directory.
@@ -192,28 +192,105 @@ public enum TandemSettings {
 
     /// The testable seam: `setRoster(_:)` against an explicit home directory.
     /// Merges the key onto the existing record (the bikeshed choice, the setup
-    /// flag, and the rest are preserved), then writes atomically. An empty list
-    /// is stored as one: absent means "never edited", empty means "edited to
-    /// nothing".
+    /// flag, and the rest are preserved). An empty list is stored as one: absent
+    /// means "never edited", empty means "edited to nothing".
     static func setRoster(_ names: [String], in home: URL) throws {
-        var settings = object(in: home)
-        let trimmed = names.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        settings[rosterKey] = trimmed.filter { !$0.isEmpty }
-        try write(settings, in: home)
+        try mutate(in: home) { settings in
+            let trimmed = names.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            settings[rosterKey] = trimmed.filter { !$0.isEmpty }
+        }
     }
 
     /// The testable seam: `setSetupComplete(_:)` against an explicit home
     /// directory. Merges the key onto the existing record (a bikeshed choice is
-    /// preserved), then writes atomically.
+    /// preserved).
     static func setSetupComplete(_ done: Bool, in home: URL) throws {
-        var settings = object(in: home)
-        settings[setupKey] = done
-        try write(settings, in: home)
+        try mutate(in: home) { settings in
+            settings[setupKey] = done
+        }
     }
 
-    /// The settings file parsed as a JSON object, or `[:]` when it is missing,
-    /// unreadable, or malformed — the read leniency, shared by every getter.
+    // MARK: - Storage (the database, with the JSON read-fallback)
+
+    /// Settings as a dictionary: the database once the settings domain has been
+    /// imported, else the legacy `settings.json`. A read never creates, imports
+    /// or throws — a missing, unreadable or malformed source is simply `[:]`,
+    /// because a broken settings store must never take the app down.
     private static func object(in home: URL) -> [String: Any] {
+        let stored = try? Store.translate {
+            try StoreMigration.sidecarRead(
+                in: home, domain: StoreSchema.settingsDomain
+            ) { db in try readRows(db) }
+        }
+        if let stored { return stored }
+        return fileObject(in: home)
+    }
+
+    /// A read-modify-write in one transaction: the first write imports
+    /// `settings.json` (rows, the copy-aside and the marker commit together),
+    /// then the body's key change and the whole row set land together. Every
+    /// setter is one setting, not a schema bump — the old docstring's reason for
+    /// a separate file died with the database; a new setting is still one key.
+    private static func mutate<T>(
+        in home: URL, _ body: (inout [String: Any]) throws -> T
+    ) throws -> T {
+        try Store.translate {
+            try StoreMigration.sidecarWrite(
+                in: home, domain: StoreSchema.settingsDomain,
+                importDomain: { db in try importSettings(in: home, into: db) },
+                body: { db in
+                    var settings = try readRows(db)
+                    let value = try body(&settings)
+                    return (value, true, nil, { try writeRows(settings, to: db) })
+                }).value
+        }
+    }
+
+    /// The one-time import: `settings.json` read once, its keys inserted, the
+    /// file copied aside as `<name>.pre-sqlite-<ts>` and left where it was.
+    private static func importSettings(
+        in home: URL, into db: SQLiteDatabase
+    ) throws -> (source: String?, note: String?) {
+        let file = home.appendingPathComponent(fileName)
+        guard FileManager.default.fileExists(atPath: file.path) else { return (nil, nil) }
+        let settings = fileObject(in: home)
+        try StoreMigration.copyAside(file)
+        try writeRows(settings, to: db)
+        return (fileName, nil)
+    }
+
+    private static func readRows(_ db: SQLiteDatabase) throws -> [String: Any] {
+        var object: [String: Any] = [:]
+        let rows = try db.rows("SELECT key, value FROM settings ORDER BY key") {
+            ($0.text(0), $0.text(1))
+        }
+        for (key, raw) in rows {
+            guard let data = raw.data(using: .utf8),
+                  let value = try? JSONSerialization.jsonObject(
+                    with: data, options: [.fragmentsAllowed])
+            else { continue }
+            object[key] = value
+        }
+        return object
+    }
+
+    private static func writeRows(
+        _ settings: [String: Any], to db: SQLiteDatabase
+    ) throws {
+        try db.run("DELETE FROM settings")
+        for (key, value) in settings.sorted(by: { $0.key < $1.key }) {
+            let data = try JSONSerialization.data(
+                withJSONObject: value, options: [.fragmentsAllowed, .sortedKeys])
+            try db.run(
+                "INSERT INTO settings (key, value) VALUES (?, ?)",
+                [.text(key), .text(String(decoding: data, as: UTF8.self))])
+        }
+    }
+
+    /// The legacy file parsed as a JSON object, or `[:]` when it is missing,
+    /// unreadable, or malformed — the read leniency, shared by every getter and
+    /// by the one-time import.
+    private static func fileObject(in home: URL) -> [String: Any] {
         let file = home.appendingPathComponent(fileName)
         guard let data = try? Data(contentsOf: file),
               let json = try? JSONSerialization.jsonObject(with: data),
@@ -221,42 +298,4 @@ public enum TandemSettings {
         else { return [:] }
         return object
     }
-
-    /// Write `settings` atomically: create `home` if needed, write a
-    /// same-directory temp file, then `rename(2)` it over `settings.json` — a
-    /// reader ever sees the complete old or new file, never a torn one.
-    private static func write(_ settings: [String: Any], in home: URL) throws {
-        let fm = FileManager.default
-        try fm.createDirectory(at: home, withIntermediateDirectories: true)
-        let data = try JSONSerialization.data(withJSONObject: settings,
-                                              options: [.sortedKeys])
-        let destination = home.appendingPathComponent(fileName)
-        let temp = home.appendingPathComponent(".settings-\(UUID().uuidString).tmp")
-        do {
-            try data.write(to: temp, options: [])
-            if Darwin.rename(temp.path, destination.path) != 0 {
-                throw TandemSettingsError.write(op: "rename", code: errno)
-            }
-        } catch {
-            try? fm.removeItem(at: temp)
-            throw error
-        }
-    }
 }
-
-/// The settings file's write failure — short, actionable, the `TandemError`
-/// convention, so the GUI surfaces the same text it does for every op. Reads
-/// never fail (a broken file is "no choice"), so this is write-only.
-enum TandemSettingsError: Error, Sendable {
-    case write(op: String, code: Int32)
-
-    var message: String {
-        switch self {
-        case .write(let op, let code):
-            let detail = String(cString: strerror(code))
-            return "Could not save Tandem settings during \(op) (\(code): \(detail)). Try again."
-        }
-    }
-}
-
-extension TandemSettingsError: TandemError {}
