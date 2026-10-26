@@ -4,11 +4,11 @@ import Foundation
 /// own (spec `FC770B8A`).
 ///
 /// **A session is not a ticket.** The human's answer (`5C98453A` → **B**) makes
-/// the session its own record, so it lives in its own file (`sessions.json`)
-/// beside `todos.json` — never as a key inside it: the installed app rewrites
-/// `todos.json` whole and drops the keys it does not know (ADR 0017's comments
-/// amendment), so a `sessions` array there would be erased by the next human
-/// edit until a build carrying the field is installed.
+/// the session its own record, so it has its own `sessions` table in
+/// `<home>/tandem.db` (ADR 0031) — never a key inside the ticket rows: a session
+/// write replaces its table and never touches the board's. The legacy
+/// `sessions.json` is the read-fallback's source and the one-time import's, and
+/// is never written again.
 ///
 /// **The vocabulary is the record's, not the board's.** `running` and `ended`
 /// are its two states; `succeeded`, `failed`, `interrupted` and `unknown` are
@@ -19,7 +19,7 @@ import Foundation
 /// **A record is a fact, not a log.** It is created once (`start`), stamped
 /// once (`end`) and linked to (`link`); there is no edit and no delete.
 public struct Session: Identifiable, Codable, Sendable, Equatable {
-    /// The host's session id (`ses_…`) — the handle everywhere: the file, the
+    /// The host's session id (`ses_…`) — the handle everywhere: the record, the
     /// CLI's `--session`, the app's row.
     public let id: String
     /// The codebase the session works in (`tandem`, `fleet`).
@@ -782,10 +782,9 @@ public struct Sessions: Sendable {
         return trimmed
     }
 
-    /// The recovery note for an invalid sessions file. The store's recovery note
-    /// (`Store.recoveryNote`) in this file's own nouns: the store's
-    /// `todos.json` was not touched, so the note must not say the store
-    /// restarted empty.
+    /// The recovery note for an invalid sessions file. The store's recovery note in
+    /// this file's own nouns: the board's rows in `tandem.db` were not touched, so the
+    /// note must not say the store restarted empty.
     private static func recoveryNote(backupPath: String) -> String {
         "Previous sessions file was corrupt and backed up to \(backupPath); the session list restarted empty."
     }

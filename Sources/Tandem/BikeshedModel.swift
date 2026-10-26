@@ -35,7 +35,8 @@ final class BikeshedModel {
     private(set) var tree: [BikeshedNode] = []
     /// Whether the tree reveals the hidden layer — the capture saddlebag
     /// (`.raw/`) and the consolidation archive (`.raw/.done/`). Off by default:
-    /// the curated layer is the reading surface. Persisted in `settings.json`.
+    /// the curated layer is the reading surface. Persisted as a `showHiddenFiles`
+    /// row in the store's `settings` table (ADR 0011, re-backed by ADR 0031).
     private(set) var showsHiddenFiles: Bool
     /// The note open in the editor (bikeshed-root-relative path), if any.
     private(set) var openPath: String?

@@ -95,17 +95,17 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
 
     // MARK: - Custom Codable (ISO-8601 UTC dates, strict on required fields)
 
-    /// The on-disk keys. `lane` is spelled **`lane`** on disk and on the wire: the v1
-    /// key `section` is read beside it and kept forever.
+    /// The wire keys. `Ticket`'s JSON shape is what the CLI emits and what the legacy
+    /// import reads: `lane` is spelled **`lane`**, and the v1 key `section` is read
+    /// beside it and kept forever.
     ///
-    /// **The reader takes both names; the writer emits the renamed one.** The `lane`
+    /// **The reader takes both names; the encoder emits the renamed one.** The `lane`
     /// key is decoded *beside* the v1 `section` one, and the renamed name wins when a
-    /// file carries both — a hand edit is not an error, and the next write makes the
-    /// file one shape. The writer emits `lane` alone, and the first write over a file
-    /// still under `section` copies that file aside as `todos.json.pre-rename-<ts>`
-    /// first. The reader tolerates both forever — a `.bak`, a restored file or a hand
-    /// edit can be v1-named forever — the same shape as the `done` mirror's decoding
-    /// half. The flip was gated on the both-reading build being installed.
+    /// file carries both — a hand edit is not an error. The encoder emits `lane` alone.
+    /// The reader tolerates both forever — a `.bak`, a restored file or a hand edit can
+    /// be v1-named forever — the same shape as the `done` mirror's decoding half. The
+    /// flip was gated on the both-reading build being installed, and the file writer it
+    /// guarded is gone: `tickets.json` is read once and never written (ADR 0031).
     private enum CodingKeys: String, CodingKey {
         case id, title, done, status, archived, description, assignee, origin, link, createdAt, completedAt
         /// The v1 key for the lane — read beside `lane` and kept forever.

@@ -21,24 +21,24 @@ final class TandemModel {
     private let store: Store
     private let watcher: StoreWatcher
 
-    /// The session records' own file (`sessions.json`, beside the ticket
-    /// store). The core owns it, its lock and its vocabulary; the app only
-    /// ever reads it (spec `FC770B8A`).
+    /// The session records: their own `sessions` table in the store's database
+    /// (`<home>/tandem.db`). The core owns it, its vocabulary and its
+    /// transaction; the app only ever reads it (spec `FC770B8A`).
     ///
     /// It is rooted at the **store's own directory**, which is what makes an
-    /// agent's write visible for free: the file is replaced by rename inside
-    /// the directory the `StoreWatcher` already watches, so no second watcher
-    /// and no polling is needed.
+    /// agent's write visible for free: a session write lands in `tandem.db-wal`,
+    /// the file the `StoreWatcher` already watches, so no second watcher and no
+    /// polling is needed.
     private let sessionStore: Sessions
 
-    /// The sprints records' own file (`sprints.json`, beside the ticket
-    /// store). The core owns it, its lock and its vocabulary; the app only
-    /// ever reads it (spec `4F746EFE`, R3).
+    /// The sprint records: their own `sprints` table in the store's database
+    /// (`<home>/tandem.db`). The core owns it, its vocabulary and its
+    /// transaction; the app only ever reads it (spec `4F746EFE`, R3).
     ///
     /// It is rooted at the **store's own directory**, which makes an agent's
-    /// write visible for free — the file is replaced by rename inside the
-    /// directory the `StoreWatcher` already watches, so no second watcher and
-    /// no polling is needed.
+    /// write visible for free — a sprint write lands in `tandem.db-wal`, the file
+    /// the `StoreWatcher` already watches, so no second watcher and no polling is
+    /// needed.
     private let sprintStore: Sprints
 
     /// All tickets in stored order (the order the human arranged — new tickets land on top;

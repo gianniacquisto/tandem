@@ -28,43 +28,45 @@ public enum DomainError: Error, Sendable, Equatable {
     /// record nothing can find, and the core is the one place a caller cannot
     /// slip past — a guard in the CLI is a courtesy on top of this one.
     case emptySessionID
-    /// `end`/`link`/`show` was called with a session id the sessions file does
-    /// not carry. `known` is the ids it does carry, so the caller recovers in one
-    /// turn.
+    /// `end`/`link`/`show` was called with a session id `tandem.db`'s session
+    /// rows do not carry. `known` is the ids it does carry, so the caller
+    /// recovers in one turn.
     case unknownSession(id: String, known: [String])
-    /// The sessions file (`sessions.json`) is corrupt and could not be moved
-    /// aside, so it stays where it is and the session list cannot be read
-    /// until it is gone. **The store is untouched**: `todos.json` is fine, and
-    /// this failure is about the sessions file, not about the store — so it
-    /// never wears the store's error vocabulary.
+    /// The legacy sessions file (`sessions.json`) is corrupt and could not be moved
+    /// aside, so it stays where it is and its records cannot be imported. **The store
+    /// is untouched**: the session rows in `tandem.db` are fine, and this failure is
+    /// about the file the one-time import reads — so it never wears the store's error
+    /// vocabulary.
     case corruptSessionsFile(path: String, detail: String)
-    /// A POSIX call on the sessions file's own storage failed: the lockfile
-    /// could not be opened, or the file could not be written. `op` names the
-    /// operation (`open lockfile`, `fsync`, `rename`, …) and `detail` says what
-    /// the OS said. **The store is untouched**: `todos.json` is fine, and this
-    /// failure is about the sessions file, not about the store — so it never
-    /// wears the store's error vocabulary.
+    /// A POSIX call on the legacy sessions file's own storage failed while the
+    /// read-fallback or the import was reading it: it could not be opened or moved
+    /// aside. `op` names the operation (`open`, `move aside`, …) and `detail` says what
+    /// the OS said. The JSON store's write lock and its lockfile are retired with the
+    /// one-database move (ADR 0031), so nothing throws this now; the case stays so the
+    /// vocabulary keeps one shape.
     case sessionsFileIO(path: String, op: String, detail: String)
-    /// The sessions file's lock (`sessions.lock`) is held by another process,
-    /// so the read-modify-write could not start. The next step is to retry.
+    /// The retired `sessions.lock` was held by another process, so the
+    /// read-modify-write could not start. The lock went with the JSON store (ADR 0031):
+    /// a write is the database's transaction, and its contention is
+    /// `DomainError.locked`, not this. Nothing throws it now; the case stays for the
+    /// vocabulary.
     case sessionsFileLocked(path: String)
-    /// The sprints file (`sprints.json`) is corrupt and could not be moved
-    /// aside, so it stays where it is and the sprint list cannot be read
-    /// until it is gone. **The store and the sessions file are untouched**:
-    /// `todos.json` and `sessions.json` are fine, and this failure is about
-    /// the sprints file, not about them — so it never wears their error
-    /// vocabulary.
+    /// The legacy sprints file (`sprints.json`) is corrupt and could not be moved
+    /// aside, so it stays where it is and its records cannot be imported. **The store
+    /// and the session rows are untouched**: `tandem.db`'s tickets and sessions are
+    /// fine, and this failure is about the file the one-time import reads — so it
+    /// never wears their error vocabulary.
     case corruptSprintsFile(path: String, detail: String)
-    /// A POSIX call on the sprints file's own storage failed: the lockfile
-    /// could not be opened, or the file could not be written. `op` names the
-    /// operation (`open lockfile`, `fsync`, `rename`, …) and `detail` says what
-    /// the OS said. **The store and the sessions file are untouched**:
-    /// `todos.json` and `sessions.json` are fine, and this failure is about
-    /// the sprints file, not about them — so it never wears their error
-    /// vocabulary.
+    /// A POSIX call on the legacy sprints file's own storage failed while the
+    /// read-fallback or the import was reading it: it could not be opened or moved
+    /// aside. `op` names the operation and `detail` says what the OS said. The JSON
+    /// store's write lock and its lockfile are retired with the one-database move
+    /// (ADR 0031), so nothing throws this now; the case stays for the vocabulary.
     case sprintsFileIO(path: String, op: String, detail: String)
-    /// The sprints file's lock (`sprints.lock`) is held by another process,
-    /// so the read-modify-write could not start. The next step is to retry.
+    /// The retired `sprints.lock` was held by another process, so the read-modify-write
+    /// could not start. The lock went with the JSON store (ADR 0031) — the database's
+    /// contention is `DomainError.locked` — so nothing throws it now; the case stays for
+    /// the vocabulary.
     case sprintsFileLocked(path: String)
     /// `run`/`close` was called with an empty or whitespace-only note body —
     /// an empty pipe, not a landing without words. (`close` that names *no*
