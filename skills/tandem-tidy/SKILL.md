@@ -13,7 +13,7 @@ Start the session record (`AGENTS.md`), then read in one round:
 
 - the open board — `tandem-cli ticket list --filter open` — every lane; the rows carry each lane's stored spelling;
 - the live sessions — `tandem-cli session list --status running` — a ticket's claim is live while its claiming session runs;
-- the memory protocol (`skills/tandem-memory/SKILL.md`) — `Index.md`, the project's curated note.
+- the memory protocol (`skills/tandem-memory/SKILL.md`) — `Index.md`, the project's **Overview**.
 
 The sweep is board-wide: a repo fact behind another project's ticket is verified in that project's checkout — the board is shared, the evidence is local.
 

@@ -11,7 +11,7 @@ The roles are the roster's (`skills/tandem-team/SKILL.md`): the session runs the
 
 ## 1. Orient
 
-Start the session record (`AGENTS.md` — `session start --agent sprint`, `session link --ticket` for what this sprint carries), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's curated note, the open threads.
+Start the session record (`AGENTS.md` — `session start --agent sprint`, `session link --ticket` for what this sprint carries), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's **Overview**, the open threads.
 
 ## 2. Triage
 
