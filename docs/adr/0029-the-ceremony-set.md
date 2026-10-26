@@ -11,7 +11,7 @@ The roster is the other half. The roles are named across four prompts, a dozen s
 ## Decision
 
 - **The ceremony set exists** — a roster, a standup, a sprint cycle, and the ticket comment log as the minutes. The roster is one page, `skills/tandem-team/SKILL.md`, and no other pass restates it: the board skill points at it, and the standup and sprint skills do too.
-- **The sprint's batch is a ticket, not a field.** A `Sprint <n> — <lane>` ticket carries the batch in its description. The store gains nothing — no schema change, no migration — and the board shows the batch where the work lives, in the lane.
+- **The sprint's batch is a ticket, not a field.** A `Sprint <n> — <lane>` ticket carries the batch in its description. The store gains nothing — no schema change, no migration — and the board shows the batch where the work lives, in the lane. **Superseded by ADR 0032** (sprint records, 2026-10-23) — the sprint is its own record; see the amendment below. The roster and the minutes stand.
 - **The standup reports and the dispatcher claims.** The `ready` set has one claimant, the board skill's dispatch, and one reporter, the standup. They are different roles on purpose, so a ticket is never picked up twice and the status round never claims anything.
 - **No new agent per ceremony.** A ceremony is a procedure the session's own agent runs — a skill, not a prompt. A prompt would add a config and a model choice without adding behaviour behind it, and the personas answer (`C4C590ED`) is still open.
 - **What changes when personas land.** The role strings become identities, each with its own memory in the bikeshed. Nothing else in the set moves: the roster's role column stays as it is, the row's agent changes, and the name rule keeps one vocabulary across `--assignee` and `--author`.
@@ -50,3 +50,11 @@ The roster is the other half. The roles are named across four prompts, a dozen s
 **Why.** The human, 2026-10-24: "sprint should be refine, build, review, retro in one easy to run workflow." Backlog tickets with no brief sat unrefined between sprints, and the retro ran only when asked — two passes outside the loop the human wanted inside it.
 
 **Consequences.** The ceremony set is still roster, sprint, retro — but the retro is now a phase of the sprint, and the sprint's cycle is refine, build, review, retro. The store, the CLI and the app are still untouched — no field, no verb, no surface, no migration.
+
+## Amendment, 2026-10-26: the sprint's batch is the record's
+
+**The change.** The decision above that "the sprint's batch is a ticket, not a field" is superseded by [ADR 0032](0032-sprint-records.md): a sprint is a record of its own — lane, number, stored batch, run log and close — with its own two states and its own Sprints tab. The batch is a field on the record (`sprint ticket`), the run log is `sprint run`, the close is `sprint close`, and the dead-sprint rule reads the record's `session` rather than a ticket title. The dated pointer sits on the superseded line, which keeps its history.
+
+**Why.** The human's answer, 2026-10-23: a sprint is its own record, the session record's shape (ADR 0027) applied to sprints, and the app gets its own Sprints tab. Five sprints as board tickets produced three `Sprint 1 — Tandem` titles, put a sprint's history in an archived description, and made every triage pass read a row whose only action was "still running". ADR 0032 records the decision in full.
+
+**Consequences.** Only the batch decision flips: the roster and the minutes are this record's and stand, and the ceremony set is unchanged. The record's table, its six verbs and its tab are R1–R3's (`4F746EFE`); this amendment is the documents' half — the sprint skill, the build skill, the glossary and the five archived tickets' migration.

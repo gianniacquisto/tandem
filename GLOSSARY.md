@@ -36,6 +36,10 @@ _Avoid_: task, item, to-do (hyphenated), todo (the old word), card, issue, story
 A record of one agent session — its brief, its outcome, and the tickets and notes it carried — with its own file (`sessions.json`) and its own two states (`running`, `ended`); the CLI's five verbs are `session start/link/end/list/show`. Not a ticket, and not on the board.
 _Avoid_: session log, journal
 
+**Sprint**:
+A record of one sprint — its lane, batch, run log and close — with its own two states (`open`, `closed`), stored in the store's `sprints` table and identified by the pair (lane, number). Its six verbs are `sprint open/ticket/run/close/list/show`. Not a ticket, and not on the board.
+_Avoid_: sprint ticket
+
 **Open**:
 A ticket that has not yet been completed.
 _Avoid_: pending, active

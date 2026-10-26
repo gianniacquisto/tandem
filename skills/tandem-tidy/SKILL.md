@@ -19,7 +19,7 @@ The sweep is board-wide: a repo fact behind another project's ticket is verified
 
 ## 1. The liveness line
 
-A ticket whose claiming session is still running is live: leave its status exactly as it is, sweep or no sweep. A ticket claimed by a session that has **ended** is stale work: set it back to `ready` and comment — the ended session named, the demotion dated and signed — so the next sprint's triage picks it up fresh. The one exception is the sprint ticket itself (`Sprint <n> — <lane>`): its close has its own clause in `skills/tandem-sprint/SKILL.md`, and tidy leaves that write to it.
+A ticket whose claiming session is still running is live: leave its status exactly as it is, sweep or no sweep. A ticket claimed by a session that has **ended** is stale work: set it back to `ready` and comment — the ended session named, the demotion dated and signed — so the next sprint's triage picks it up fresh. A sprint record is not a ticket and never appears in this sweep: its dead-sprint clause lives in `skills/tandem-sprint/SKILL.md`, and tidy leaves that write to it.
 
 ## 2. The evidence sweep
 
