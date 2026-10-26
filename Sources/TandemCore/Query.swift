@@ -18,19 +18,28 @@ public struct TicketQuery: Sendable, Equatable {
     public var lane: Lane
     /// Whether archived tickets are in view.
     public var archived: Archived
+    /// Whether tickets carrying an answer block (`DescriptionBody.answered`) are
+    /// left out of view. Only the inbox sets it: the human's queue is open
+    /// questions, and a ticket whose `## Answer` block is written is one already
+    /// settled. Every other view keeps them — the agents' read,
+    /// `ticket list --assignee human`, is where an answered ticket still wearing
+    /// `human` shows up as the bookkeeping debt an actor owes an `answer`.
+    public var excludeAnswered: Bool
 
     public init(
         text: String? = nil,
         statuses: Set<Status> = [],
         assignee: Assignee = .any,
         lane: Lane = .any,
-        archived: Archived = .excluded
+        archived: Archived = .excluded,
+        excludeAnswered: Bool = false
     ) {
         self.text = text
         self.statuses = statuses
         self.assignee = assignee
         self.lane = lane
         self.archived = archived
+        self.excludeAnswered = excludeAnswered
     }
 
     /// The assignee axis: anyone, the unassigned tickets, or one named owner.
@@ -59,16 +68,24 @@ public struct TicketQuery: Sendable, Equatable {
     /// lowercase so it is one name (see `Store.normalizeAssignee`).
     public static let human = "human"
 
-    /// The human's inbox: every open, non-archived ticket assigned to the person.
+    /// The human's inbox: every open, non-archived ticket assigned to the person —
+    /// minus the ones that already carry an answer.
     ///
     /// This is the escalation surface — an agent that needs a decision files a ticket
     /// assigned to `human`, its description carrying the question — so the inbox is a
     /// query, not a second store and not a flag. Defined here, beside the other views, so
     /// "what is waiting for me" means one thing everywhere it is shown.
+    ///
+    /// **Answered tickets are not waiting.** The queue asks questions; a ticket whose
+    /// `## Answer` block is written has been answered whether or not the answering
+    /// actor remembered to move it, and the human must not be asked again. The agents'
+    /// read keeps showing it — the ticket still wears its `human` tag and its column —
+    /// so the bookkeeping debt stays visible where the actors who must settle it look.
     public static var inbox: TicketQuery {
         TicketQuery(statuses: Set(Status.workflow.filter { $0 != .done }),
                   assignee: .named(human),
-                  archived: .excluded)
+                  archived: .excluded,
+                  excludeAnswered: true)
     }
 }
 
@@ -89,6 +106,7 @@ extension TicketQuery {
         case .included: break
         }
         if !statuses.isEmpty, !statuses.contains(todo.status) { return false }
+        if excludeAnswered, DescriptionBody.answered(todo.description) { return false }
         switch assignee {
         case .any: break
         case .unassigned: if todo.assignee != nil { return false }

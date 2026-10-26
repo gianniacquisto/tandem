@@ -116,6 +116,8 @@ tandem-cli ticket set --id <id> [--title <string>] [--status <value>]
                       [--assignee <name|self>] [--description <string|->]
 tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
 tandem-cli ticket complete --id <id>
+tandem-cli ticket answer --id <id> --status <value> [--assignee <name|self>]
+                         [--body <string|->]
 tandem-cli ticket archive [--id <id>]
 tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
 tandem-cli ticket comment list --id <id>

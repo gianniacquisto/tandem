@@ -232,6 +232,31 @@ struct QueryTests {
         #expect(TicketQuery.inbox.apply(to: [ticket("agent work", assignee: "ui")]).isEmpty)
     }
 
+    @Test("an answered ticket leaves the inbox; an unanswered one stays")
+    func inboxExcludesAnswered() {
+        let tickets = [
+            ticket("still asking", status: .refined,
+                   description: "## Why\n\nwhich option?", assignee: "human"),
+            ticket("decided", status: .refined,
+                   description: "## Why\n\nwhich option?\n\n## Answer — 2026-10-26\nA",
+                   assignee: "human"),
+            ticket("inline mention", status: .refined,
+                   description: "The `## Answer` is recorded on `F1CEFA57`", assignee: "human"),
+        ]
+        #expect(TicketQuery.inbox.apply(to: tickets).map(\.title) == [
+            "still asking", "inline mention",
+        ])
+    }
+
+    @Test("only the inbox hides answered tickets — the agents' read keeps them as debt")
+    func answeredStaysInTheAgentsRead() {
+        let answered = ticket("decided", status: .refined,
+                              description: "## Answer — 2026-10-26\nA",
+                              assignee: "human")
+        #expect(TicketQuery(assignee: .named("human")).apply(to: [answered]).count == 1)
+        #expect(TicketQuery().apply(to: [answered]).count == 1)
+    }
+
     @Test("parse rejects a bad filter or status by name")
     func parseBadValues() {
         #expect(throws: DomainError.invalidFilter("bogus")) {

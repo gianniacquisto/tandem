@@ -13,7 +13,7 @@ description: "Read and write the shared Tandem ticket list, manage its cycle lan
 
 ## Tickets
 
-Seven verbs under `ticket` — `list`, `show`, `add`, `set`, `move`, `complete`, `archive` — plus `comment` with sub-verbs of its own. Every object they return has the same shape:
+Eight verbs under `ticket` — `list`, `show`, `add`, `set`, `move`, `complete`, `answer`, `archive` — plus `comment` with sub-verbs of its own. Every object they return has the same shape:
 
 | field | meaning |
 | --- | --- |
@@ -67,6 +67,10 @@ Move between lanes and/or within one. `--index` is 0-based inside the target lan
 ### `ticket complete --id <id>`
 
 The short path to `--status done`: idempotent, and an unknown id's error carries the current open list. No `reopen` verb — `ticket set --id … --status backlog` is the reopen.
+
+### `ticket answer --id <id> --status <next> [--assignee <name|self>] --body <string|->`
+
+Record the human's answer and close the hold in **one write**: a `## Answer — <date>` block appended to the description, the status the answer opens, and the next assignee. `--assignee` omitted (or `""`) clears the owner — the question is settled; `self` names this agent. `--body -` reads the body from stdin, and an empty body is refused, leaving the ticket alone. The inbox stops listing a ticket as soon as the block is in its body, whether or not the pair moved — so an answered ticket still wearing `human` on the agents' read is debt: answer it again with the pair you want.
 
 ### `ticket archive`
 

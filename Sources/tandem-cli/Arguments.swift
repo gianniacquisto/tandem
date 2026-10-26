@@ -33,6 +33,7 @@ enum Command {
     )
     case ticketMove(id: String, lane: String?, index: String?)
     case ticketComplete(id: String)
+    case ticketAnswer(id: String, status: String, assignee: String?, body: String)
     case ticketArchive(id: String?)
     case ticketCommentAdd(id: String, author: String?, body: String)
     case ticketCommentList(id: String)
@@ -122,8 +123,8 @@ private func helpCommand(group: String, verb: String, known: [String]) throws ->
 
 // MARK: - ticket
 
-/// `ticket list|show|add|set|move|complete|archive|comment` — the ticket verbs (the
-/// agent surface). An absent flag is `nil` (the core's default); a flag with no
+/// `ticket list|show|add|set|move|complete|answer|archive|comment` — the ticket verbs
+/// (the agent surface). An absent flag is `nil` (the core's default); a flag with no
 /// value is `""`, which the core rejects or reads as the empty field. That is
 /// the one rule every verb below follows, so no verb repeats a validation the
 /// core already owns.
@@ -141,7 +142,7 @@ private func parseTicket(_ args: [String]) throws -> Command {
     }
     if asksHelp(rest) {
         return try helpCommand(group: "ticket", verb: verb, known: [
-            "list", "show", "add", "set", "move", "complete", "archive",
+            "list", "show", "add", "set", "move", "complete", "answer", "archive",
         ])
     }
     let flags = try parseFlags(rest)
@@ -196,6 +197,19 @@ private func parseTicket(_ args: [String]) throws -> Command {
         // A missing `--id` is likewise the empty id whose `unknownID` error
         // carries the open list.
         return .ticketComplete(id: flags["--id"] ?? "")
+    case "answer":
+        try accept(flags, ["--id", "--status", "--assignee", "--body"])
+        // The answer and the hold close in one write: the block goes into the
+        // description, the status and the assignee move with it. `--status` is
+        // required, and a missing one is the empty status the domain rejects —
+        // the missing-`--id` rule. `--assignee` absent clears the owner (the
+        // question is settled); `--body -` is stdin, as `--description -` on
+        // `set` is, and `main` recognizes the dash.
+        return .ticketAnswer(
+            id: flags["--id"] ?? "",
+            status: flags["--status"] ?? "",
+            assignee: flags["--assignee"],
+            body: flags["--body"] ?? "")
     case "archive":
         // Without the flag: the bulk sweep, whole-list — finished work leaves
         // the view, nothing is deleted. `--id` names one ticket instead, open
