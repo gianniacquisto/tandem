@@ -13,7 +13,7 @@ The full protocol is in the skill: `SKILL.md`, `WRITE-PROTOCOL.md`, `CONSOLIDATI
 
 ## Sessions
 
-A session is a record, not a ticket (ADR 0027): one record per session, keyed by `$OPENCODE_SESSION_ID`, in its own file — `sessions.json` at Tandem's home — and never a ticket on the board. The CLI's five verbs are `session start`, `session link`, `session end`, `session list` and `session show`; the two states are `running` and `ended`.
+A session is a record, not a ticket (ADR 0027): one record per session, keyed by `$OPENCODE_SESSION_ID`, a row of the store's `sessions` table in `tandem.db` at Tandem's home — never a ticket on the board. The CLI's five verbs are `session start`, `session link`, `session end`, `session list` and `session show`; the two states are `running` and `ended`.
 
 - **Start** — `tandem-cli session start --agent <pass> --brief -`, the brief on stdin: what this session is for and what done looks like. `<project>` defaults to the working directory's last path component; `--agent` is never omitted — every session knows its pass, and a record without it cannot attribute the pass and signs the usage comment its end posts `usage`.
 - **Carry tickets** — `tandem-cli session link --ticket <id>` for each ticket the session carries. A child session is a session: it starts its own record and links what it carries.

@@ -1,5 +1,7 @@
 # Order and sections: the stored order is the order, and sections group it
 
+> **Amended 2026-10-26 by [ADR 0031](0031-one-database-the-store.md):** the envelope is gone, so the order lives in columns — `tickets.position` is the list order and `lanes.position` the lane order — and `schema_migrations` replaced the envelope's `version` as the migration seam. The decision stands: the stored order is the order, never derived from `createdAt`. The amendment's text is ADR 0031's.
+
 [ADR 0001](0001-store-protocol.md) fixed the store envelope as `{"version": 1, "todos": [...]}` in **creation order**, "always" — the reason a captured list matched the order things were captured. This ADR supersedes that clause. We decided: the position of a todo in the `todos` array **is** its position in the list; `add` puts a new todo **on top** by default; the order is never recomputed from `createdAt`. Sections group the list: the envelope carries an ordered `sections: [String]`, each todo an optional `section` name, and `null` is the default (ungrouped) area, always first. The array is kept **grouped by section** — default first, then each declared section in order — so a reader walks it straight through and the file stays legible by hand. `sections` and `section` are **additive**, so **the envelope version does not move**: it stays `1`. Everything else from ADR 0001 (sidecar lock, atomic rename, recovery, lenient read) is unchanged.
 
 ## Why these boundaries

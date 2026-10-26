@@ -9,7 +9,7 @@ description: "Read and write the shared Tandem ticket list, manage its cycle lan
 
 ## The store
 
-`~/.tandem/todos.json`, the human's real list. A from-source build (`swift run tandem-cli`) writes `~/.tandem-dev/` instead, so development can never reach the real list; notes live beside it (`~/.tandem/bikeshed/`, `~/.tandem-dev/bikeshed/` from source). Every write keeps one previous good copy beside it — `todos.json.bak` — and `mv ~/.tandem/todos.json.bak ~/.tandem/todos.json` is the one-command recovery; the app reloads it on its own.
+`~/.tandem/tandem.db`, the human's real list — one SQLite database holding the tickets and lanes, the comment logs, the session and sprint records and the settings (ADR 0031). A from-source build (`swift run tandem-cli`) writes `~/.tandem-dev/` instead, so development can never reach the real list; notes live beside it (`~/.tandem/bikeshed/`, `~/.tandem-dev/bikeshed/` from source). Every changed write keeps one previous complete copy beside it — `tandem.db.bak`, taken through SQLite's own backup API — and recovery is the backup and two commands, the journal files first: `rm -f ~/.tandem/tandem.db-wal ~/.tandem/tandem.db-shm ~/.tandem/tandem.db` then `mv ~/.tandem/tandem.db.bak ~/.tandem/tandem.db`. A store from before v0.27.0 is a JSON file: it is read as the fallback and imported once on the domain's first write, and after that a copy put back beside the database is **ignored** — the backup is the recovery, not the file.
 
 ## Tickets
 
@@ -74,7 +74,7 @@ Archive every done ticket in one call: nothing is deleted, they leave the defaul
 
 ### `ticket comment add --id <id> [--author <name>] --body <string|->` / `ticket comment list --id <id>`
 
-Append to / list the ticket's **discussion log** — where agents talk after refinement, since the description stays refinement-only. The log is a sidecar (`~/.tandem/comments/<id>.jsonl`), not a ticket field, so it survives any edit of the ticket. `--body -` reads from stdin; an empty body is rejected. **`--author` signs the line with the name you write — `self` is not expanded for it** (only `--assignee` and `--origin` expand `self`); write the role out (`skills/tandem-team/SKILL.md`), and never omit it: an unnamed author is a gap in the record. Append-only — no edit, no delete; a correction is a new comment. `comment list` returns comments in append order; an unknown id is an empty list, because the log outlives the store's entries.
+Append to / list the ticket's **discussion log** — where agents talk after refinement, since the description stays refinement-only. The log is the store's `comments` table, not a ticket field, so it survives any edit of the ticket; an append is one transaction that checks the ticket exists and writes the comment together, so there is no sidecar lock to hold. `--body -` reads from stdin; an empty body is rejected. **`--author` signs the line with the name you write — `self` is not expanded for it** (only `--assignee` and `--origin` expand `self`); write the role out (`skills/tandem-team/SKILL.md`), and never omit it: an unnamed author is a gap in the record. Append-only — no edit, no delete; a correction is a new comment. `comment list` returns comments in append order; an unknown id is an empty list, because the log outlives the store's entries.
 
 ## Lanes
 
@@ -91,7 +91,7 @@ A **cycle lane** is the area axis — the list groups by it, the board draws its
 
 ## Sessions
 
-A session is a record, not a ticket (ADR 0027): one record per agent session, stored in `sessions.json` at Tandem's home — never a ticket, never on the board. Five verbs, two states (`running`, `ended`):
+A session is a record, not a ticket (ADR 0027): one record per agent session, a row of the store's `sessions` table in `tandem.db` (ADR 0031) — never a ticket, never on the board. Five verbs, two states (`running`, `ended`):
 
 | command | returns |
 | --- | --- |
@@ -154,10 +154,10 @@ The link graph — `broken` (wikilinks that resolve to nothing: `note`, `link` a
 
 ## Setup check
 
-`tandem-cli doctor` — where this machine's Tandem state lives and whether it is healthy. One JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "detail": "..."}]}`. The checks, in order — `home` (the resolved state directory and why: `TANDEM_HOME` override, shipped app, or dev build), `store` (the `todos.json` path, open/done counts, the rolling backup), `bikeshed`, `comments` (`absent` is a valid early state), `lock`, `app` (the installed version, with the quarantine-strip hint), `skills` (whether this skill is found for each agent host). The first four can fail; a missing app or uninstalled host is informational, not failure. Exit `0` healthy, `1` not, `2` usage error.
+`tandem-cli doctor` — where this machine's Tandem state lives and whether it is healthy. One JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "detail": "..."}]}`. The checks, in order — `home` (the resolved state directory and why: `TANDEM_HOME` override, shipped app, or dev build), `store` (the `tandem.db` path, its schema version, open/done counts, the rolling backup, and a fork note when a JSON store file sits beside an imported database), `bikeshed`, `comments` (`absent` is a valid early state), `lock` (a write transaction another process is holding), `app` (the installed version, with the quarantine-strip hint), `skills` (whether this skill is found for each agent host). `store`, `bikeshed`, `comments` and `lock` can fail; a missing app or uninstalled host is informational, not failure. Exit `0` healthy, `1` not, `2` usage error.
 
 ## Streams and exit codes
 
-- **stdout** — one JSON object on success. `list` → `{"tickets": [...]}`, summary rows (no `description`, its `descriptionLength` instead); `show` → the whole ticket object; `add`, `set`, `move`, `complete` → the ticket object; `archive` → `{"archived": <n>}`; `comment add` → the comment; `comment list` → `{"comments": [...]}`; `lane list`/`add`/`rename` → `{"lanes": [...]}`, `lane delete` → `{"lanes": [...], "moved": <n>}`. A top-level `note` appears only when the call recovered a corrupt store, naming the backup path.
+- **stdout** — one JSON object on success. `list` → `{"tickets": [...]}`, summary rows (no `description`, its `descriptionLength` instead); `show` → the whole ticket object; `add`, `set`, `move`, `complete` → the ticket object; `archive` → `{"archived": <n>}`; `comment add` → the comment; `comment list` → `{"comments": [...]}`; `lane list`/`add`/`rename` → `{"lanes": [...]}`, `lane delete` → `{"lanes": [...], "moved": <n>}`. A top-level `note` appears only when the call recovered a corrupt **session or sprint** record file, naming the backup path — the ticket store never recovers (ADR 0031).
 - **stderr** — short, actionable plain text on failure, naming the failed value and the next step; `complete` and `show` with an unknown id append the current open list in the `list` shape (summaries).
 - **exit** — `0` success; `1` domain failure (empty title, unknown id, locked store); `2` usage failure (no arguments, unknown subcommand or flag). A missing flag value is deliberately a domain failure, not usage — `add` with no `--title` is the empty title the domain rejects. Retry only when the text says the store is locked.
