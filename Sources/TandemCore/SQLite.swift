@@ -80,9 +80,13 @@ final class SQLiteDatabase {
     /// moment. `PRAGMA journal_mode=WAL` is not a read: it takes the write lock, and
     /// SQLite answers `SQLITE_BUSY` immediately there rather than consulting the busy
     /// handler. Success is the mode reading `wal` — from this attempt or from a peer's.
+    /// The wait is bounded by the store's own ~2 s window (the same one every write
+    /// rides on), never a backoff that can outlast it.
     private func switchToWAL() throws {
+        let deadline = Date().addingTimeInterval(
+            Double(Self.busyTimeoutMilliseconds) / 1_000)
         var lastError: Error?
-        for attempt in 0..<40 {
+        repeat {
             do {
                 _ = try scalarString("PRAGMA journal_mode=WAL")
                 return
@@ -90,9 +94,9 @@ final class SQLiteDatabase {
                 where error.code == SQLITE_BUSY || error.code == SQLITE_LOCKED {
                 lastError = error
                 if try scalarString("PRAGMA journal_mode")?.lowercased() == "wal" { return }
-                usleep(useconds_t(25_000 * (attempt + 1)))
+                usleep(5_000)
             }
-        }
+        } while Date() < deadline
         if let lastError { throw lastError }
     }
 

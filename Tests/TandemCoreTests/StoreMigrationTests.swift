@@ -186,6 +186,88 @@ struct StoreMigrationTests {
         #expect(try Data(contentsOf: dir.appendingPathComponent(copies[0])) == before)
     }
 
+    @Test("a crash between the migration and the import leaves the JSON readable, then imports it")
+    func crashBeforeImportIsNotLost() throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try write(renamedFixture, named: "tickets.json", to: dir)
+        let store = Store(directory: dir)
+
+        // The state a kill between `migrate` and the import leaves: the database and
+        // its schema exist, but the import marker does not and no ticket row is written.
+        let db = try SQLiteDatabase(url: store.databaseURL, mode: .readWrite)
+        try StoreSchema.migrate(db)
+        db.close()
+        #expect(store.schemaVersion() == 1)
+
+        // The database alone is not the store: the JSON is still the truth, so a read
+        // answers from it rather than returning an empty board.
+        #expect(try store.list(.all).value.map(\.title) == ["first", "second"])
+        #expect(store.health() == .counts(open: 1, done: 1))
+
+        // The next write completes the import once, and never leaves the file unread.
+        _ = try store.add("new")
+        #expect(try store.list(.all).value.map(\.title) == ["new", "second", "first"])
+        #expect(try copies(of: "tickets.json", in: dir).count == 1)
+        #expect(store.health() == .counts(open: 2, done: 1))
+    }
+
+    @Test("a copy-aside that cannot be taken fails the write and imports nothing")
+    func failedCopyAsideFailsTheWrite() throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try write(renamedFixture, named: "tickets.json", to: dir)
+        let store = Store(directory: dir)
+
+        // A live connection keeps the WAL files in place, so the write under test reaches
+        // the import rather than failing to open the database in the read-only directory.
+        let live = try SQLiteDatabase(url: store.databaseURL, mode: .readWrite)
+        try StoreSchema.migrate(live)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o500], ofItemAtPath: dir.path)
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o700], ofItemAtPath: dir.path)
+        }
+
+        do {
+            _ = try store.add("new")
+            Issue.record("expected the copy-aside to fail the write")
+        } catch {
+            let text = tandemErrorText(error)
+            #expect(text.contains("copy the legacy store"), "got \(text)")
+        }
+        #expect(try copies(of: "tickets.json", in: dir).isEmpty, "a failed copy leaves no artifact")
+
+        // Nothing was imported or marked: the JSON is still the store, and the next
+        // write — with the copy possible again — imports it exactly once.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: dir.path)
+        #expect(try store.list(.all).value.map(\.title) == ["first", "second"])
+        _ = try store.add("new")
+        #expect(try store.list(.all).value.count == 3)
+        #expect(try copies(of: "tickets.json", in: dir).count == 1)
+        live.close()
+    }
+
+    @Test("a tickets.json that is a directory fails the read and the write loudly")
+    func directoryTicketsFileFailsLoudly() throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(
+            at: dir.appendingPathComponent("tickets.json"), withIntermediateDirectories: true)
+        try write(v1Fixture, named: "todos.json", to: dir)
+        let store = Store(directory: dir)
+
+        #expect(throws: StoreIOError.self) { _ = try store.list(.all) }
+        #expect(throws: StoreIOError.self) { _ = try store.add("new") }
+        var isDirectory: ObjCBool = false
+        #expect(FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent("tickets.json").path, isDirectory: &isDirectory))
+        #expect(isDirectory.boolValue, "the invalid tickets.json is left where it is")
+        #expect(store.health() == .unreadable)
+    }
+
     @Test("a second write never re-imports: one copy, no duplicate rows")
     func secondWriteNeverReimports() throws {
         let dir = try makeDir()

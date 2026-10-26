@@ -74,8 +74,9 @@ public enum SetupDiagnostics {
         /// The applied schema-migration version, `nil` when there is no database yet
         /// (ADR 0031). Reported beside the path so `doctor` names the version seam.
         public var storeVersion: Int?
-        /// A JSON store file still sitting beside an existing database — a fork, and
-        /// named as one: the database is the store, the file is never read again.
+        /// A JSON store file still sitting beside a database that has finished its import
+        /// — a fork, and named as one: the database is the store, the file is never read
+        /// again. Before the import marker lands the file is the store, not a fork.
         public var storeJSONFork: String?
         public var storeHealth: Store.Health
         /// The rolling backup beside the store (ADR 0018): absent, or its age.
@@ -158,7 +159,8 @@ public enum SetupDiagnostics {
         case .unreadable:
             checks.append(Check(name: "store", ok: false,
                                 detail: "\(facts.storePath) — present but unreadable or corrupt; "
-                                      + "fix the file, or let the app back it up and start empty; "
+                                      + "fix the file, or restore it from tandem.db.bak "
+                                      + "(remove tandem.db-wal and tandem.db-shm first); "
                                       + backup))
         }
 
@@ -242,10 +244,12 @@ public enum SetupDiagnostics {
 
         let health = store.health()
         let notes = (try? bikeshed.list())?.value ?? []
-        // A live JSON store file beside a database is the fork the brief names: the db
-        // is the store and the file is dead weight, but `doctor` should say so.
+        // A live JSON store file beside a database that has completed its import is the
+        // fork the brief names: the db is the store and the file is dead weight, but
+        // `doctor` should say so. Before the import marker lands the file is not a
+        // fork — it is still the store, and the next write will import it.
         let storeJSONFork: String?
-        if store.schemaVersion() != nil {
+        if store.hasImportedTickets() {
             storeJSONFork = ["tickets.json", "todos.json"]
                 .map { store.directory.appendingPathComponent($0).path }
                 .first { FileManager.default.fileExists(atPath: $0) }

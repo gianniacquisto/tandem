@@ -11,10 +11,13 @@ import Foundation
 ///   first read never lies, and a hand-restored file is still readable — one generation
 ///   deeper than the dual-name reader, so both names and both shapes are read forever.
 ///   A fresh home (no db, no file) is an empty store, never an error.
-/// - **Import on the first write.** When a write finds no database and a legacy file,
-///   it reads the file once, copies it aside as `<name>.pre-sqlite-<unix-ts>` (a copy
-///   that cannot be taken fails the write), and writes the database. After that the
-///   JSON file is never read for a write again — a second write never re-imports.
+/// - **Import on the first write.** When a write finds no import recorded in
+///   `store_imports`, it reads the legacy file once (`tickets.json` or `todos.json`),
+///   copies it aside as `<name>.pre-sqlite-<unix-ts>` (a copy that cannot be taken
+///   fails the write), and writes the rows **and the marker in one transaction**. After
+///   that the JSON file is never read for a write again. Because the marker is durable
+///   state read inside the write transaction, two first writers import once and a kill
+///   before the commit leaves the file as the store's truth for the next write.
 ///
 /// The import is install-gated in ADR 0017's sense: the trigger is a build that carries
 /// the database reaching the home, not a flag or a click.
@@ -62,15 +65,31 @@ enum StoreMigration {
         }
     }
 
-    /// The first write's import: read the JSON, copy it aside, write the rows. A home
-    /// with no legacy file is simply a fresh home — nothing is written here.
-    static func importLegacyStoreIfPresent(in directory: URL, into db: SQLiteDatabase) throws {
-        guard let url = try legacyStore(in: directory) else { return }
-        let contents = try read(url)
-        try copyAside(url)
-        try db.transaction {
-            try StoreSchema.writeContents(contents, to: db)
+    /// The import decision **inside the caller's write transaction**, made from durable
+    /// state rather than from a snapshot taken before the connection: the
+    /// `store_imports` marker is absent exactly while no build carrying the database has
+    /// completed a first write here. A second writer that waited sees the marker and
+    /// does not import; a process killed before the commit leaves no marker, so the next
+    /// write imports the file it still finds.
+    ///
+    /// The rows, the marker and the copy-aside all belong to that one transaction: a
+    /// throw takes the rows and the marker back, and the JSON stays the store's truth
+    /// until a write commits. Returns the contents the caller's mutation starts from,
+    /// and whether this is the home's first write (which rolls no backup).
+    static func importIfNeeded(
+        in directory: URL, into db: SQLiteDatabase
+    ) throws -> (contents: StoreContents, firstWrite: Bool) {
+        if try StoreSchema.isImported(StoreSchema.ticketsDomain, in: db) {
+            return (try StoreSchema.readContents(db), false)
         }
+        let source = try legacyStore(in: directory)
+        let contents = try source.map { try read($0) }
+            ?? StoreContents(lanes: [], todos: [])
+        if let source { try copyAside(source) }
+        try StoreSchema.writeContents(contents, to: db)
+        try StoreSchema.markImported(
+            StoreSchema.ticketsDomain, from: source?.lastPathComponent, at: Date(), in: db)
+        return (contents, true)
     }
 
     // MARK: - Private
@@ -92,6 +111,9 @@ enum StoreMigration {
         do {
             try fm.copyItem(at: url, to: destination)
         } catch {
+            // A partial destination is not evidence of anything: remove it so the failed
+            // write leaves no artifact behind.
+            try? fm.removeItem(at: destination)
             throw StoreIOError.io(
                 "could not copy the legacy store at \(url.path) aside before importing: \(error)")
         }

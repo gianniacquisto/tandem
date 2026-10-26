@@ -21,16 +21,20 @@ import SQLite3
 ///   and a read never writes.
 /// - **Rolling backup** — kept (ADR 0018): before each write transaction the database is
 ///   copied to `tandem.db.bak` through SQLite's backup API, one generation. A copy that
-///   fails fails the write; reads never write. `mv tandem.db.bak tandem.db` is the
-///   recovery.
+///   fails fails the write; reads never write. Restoring it is
+///   `rm tandem.db-wal tandem.db-shm tandem.db && mv tandem.db.bak tandem.db` — the
+///   journal files must go first, or the restored file is read under the dead WAL.
 /// - **Schema** — `schema_migrations` is the version seam: an integer version and the
 ///   UTC timestamp it was applied at, one transaction per migration. A failed migration
 ///   rolls back and fails the open loudly; nothing half-applies.
 /// - **Read-fallback and the one-time import** — a home that has no database but still
 ///   has the JSON store reads the JSON (both names, both shapes) so an installed build's
 ///   first read never lies. The first write imports it, copies the file aside as
-///   `<name>.pre-sqlite-<ts>`, and never reads a JSON store file for a write again
-///   (`StoreMigration`).
+///   `<name>.pre-sqlite-<ts>`, and records that in `store_imports` — rows, marker and
+///   copy in one transaction. Both decisions are made from that durable marker inside
+///   the write transaction, never from a filesystem snapshot taken before the
+///   connection: two writers import once, and a kill before the commit leaves the JSON
+///   as the store's truth for the next read and the next write (`StoreMigration`).
 /// - **Recovery** — there is no corrupt-file recovery left to build: a write is one
 ///   transaction, so the erasure-by-unknown-writer and half-written-file class the JSON
 ///   protocol's recovery path existed for cannot happen. A legacy JSON file that cannot
@@ -107,18 +111,27 @@ public struct Store: Sendable {
 
     // MARK: - Reads
 
-    /// A read: the database when there is one, else the JSON store, else empty. Never
-    /// writes — a read of a fresh home creates nothing and a read of a JSON home does
-    /// not import. The `note` is always `nil` now; the shape is kept because every
-    /// operation's result carries it and the GUI renders it.
+    /// A read: the database when it is the store, else the JSON store, else empty.
+    /// Never writes — a read of a fresh home creates nothing and a read of a JSON home
+    /// does not import.
+    ///
+    /// "Is it the store?" is the import marker, not the file's existence: a database
+    /// whose first write was killed before its import committed has schema and no rows,
+    /// and answering from it would show an empty board beside a file full of tickets.
+    /// Until the marker lands, the JSON is the truth. The `note` is always `nil` now;
+    /// the shape is kept because every operation's result carries it and the GUI renders
+    /// it.
     func readAll() throws -> (contents: StoreContents, note: String?) {
         if databaseExists {
-            let contents = try Self.translate {
+            let stored = try Self.translate { () -> StoreContents? in
                 let db = try SQLiteDatabase(url: databaseURL, mode: .readOnly)
                 defer { db.close() }
+                guard try StoreSchema.isImported(StoreSchema.ticketsDomain, in: db) else {
+                    return nil
+                }
                 return try StoreSchema.readContents(db)
             }
-            return (contents, nil)
+            if let contents = stored { return (contents, nil) }
         }
         if let legacy = try StoreMigration.legacyStore(in: directory) {
             return (try StoreMigration.read(legacy), nil)
@@ -126,34 +139,34 @@ public struct Store: Sendable {
         return (StoreContents(lanes: [], todos: []), nil)
     }
 
-    /// A read-modify-write under the exclusive lock. `body` receives the current
-    /// contents (normalized to the grouped-by-lane invariant) and returns
-    /// `(value, changed)`; when `changed` is false no write is performed.
+    /// A read-modify-write under the store's write transaction. `body` receives the
+    /// current contents (normalized to the grouped-by-lane invariant) and returns
+    /// `(value, changed)`; when `changed` is false the mutation writes nothing beyond
+    /// what the first write's import records.
     ///
-    /// One database transaction: the read, the change and the write cannot interleave
-    /// with another writer, so the lost-update and half-written-file classes are gone.
-    /// When this is the home's first write and a legacy JSON store is present, the
-    /// file is imported first (its copy-aside included, `StoreMigration`). Every changed
-    /// write after the database exists rolls `tandem.db.bak` to the state before it.
+    /// One database transaction: the migration is idempotent under its own lock, and the
+    /// import decision is read **inside this transaction** from `store_imports`, so two
+    /// writers opening a JSON home at once import once and neither loses the other's
+    /// rows. A kill before the commit leaves no marker and no rows — the next write
+    /// imports the file again. Every changed write after the first rolls
+    /// `tandem.db.bak` to the state before it.
     /// Internal (not public): the public surface is the `Operations` extension.
     func mutate<T: Sendable>(
         _ body: (inout StoreContents) throws -> (value: T, changed: Bool)
     ) throws -> (value: T, note: String?) {
-        let preexisting = databaseExists
         let outcome: (value: T, changed: Bool) = try Self.translate {
             try FileManager.default.createDirectory(
                 at: directory, withIntermediateDirectories: true)
             let db = try SQLiteDatabase(url: databaseURL, mode: .readWrite)
             defer { db.close() }
             try StoreSchema.migrate(db)
-            if !preexisting {
-                // The install trigger: the first write of a build that carries the
-                // database imports the file it finds, once, and copies it aside.
-                try StoreMigration.importLegacyStoreIfPresent(in: directory, into: db)
-            }
             var result: (value: T, changed: Bool)?
             try db.transaction {
-                var contents = try StoreSchema.readContents(db)
+                // The import and the caller's change are one atomic act: the marker, the
+                // imported rows and the caller's change commit together, so a second
+                // writer sees the marker rather than re-importing over the first.
+                var (contents, firstWrite) = try StoreMigration.importIfNeeded(
+                    in: directory, into: db)
                 contents.normalize()
                 let step = try body(&contents)
                 result = step
@@ -164,8 +177,10 @@ public struct Store: Sendable {
                     // The copy is taken through its own read-only connection: a WAL
                     // reader sees the last committed state while this write waits, and
                     // the backup API does not run against a connection holding the write
-                    // lock.
-                    if preexisting { try Self.backUpDatabase(at: databaseURL, to: backupURL) }
+                    // lock. The first write has no earlier state to roll.
+                    if !firstWrite {
+                        try Self.backUpDatabase(at: databaseURL, to: backupURL)
+                    }
                     try StoreSchema.writeContents(contents, to: db)
                 }
             }
@@ -199,7 +214,8 @@ public struct Store: Sendable {
     /// decode. Performs **no recovery and no import**; a diagnostic never writes.
     /// Lock-free, like every read.
     public enum Health: Sendable, Equatable {
-        /// No database and no legacy file — a valid empty store (created on first write).
+        /// No imported database and no legacy file — a valid empty store (created on
+        /// first write).
         case absent
         /// A readable store: the load-free counts.
         case counts(open: Int, done: Int)
@@ -213,9 +229,14 @@ public struct Store: Sendable {
             if databaseExists {
                 let db = try SQLiteDatabase(url: databaseURL, mode: .readOnly)
                 defer { db.close() }
-                guard try StoreSchema.version(of: db) != nil else { return .unreadable }
-                let counts = try StoreSchema.counts(db)
-                return .counts(open: counts.open, done: counts.done)
+                // An un-imported database is not the store yet (a first write killed
+                // before its import): its counts would be a lie, so fall through to the
+                // JSON it still has to import.
+                if try StoreSchema.isImported(StoreSchema.ticketsDomain, in: db) {
+                    guard try StoreSchema.version(of: db) != nil else { return .unreadable }
+                    let counts = try StoreSchema.counts(db)
+                    return .counts(open: counts.open, done: counts.done)
+                }
             }
             if let legacy = try StoreMigration.legacyStore(in: directory) {
                 let contents = try StoreMigration.read(legacy)
@@ -226,6 +247,18 @@ public struct Store: Sendable {
         } catch {
             return .unreadable
         }
+    }
+
+    /// Whether the ticket domain's import has been recorded — the database is the
+    /// store's truth, not a file that a first write created before importing. For
+    /// `doctor`'s fork note, which must not call the still-unread JSON a dead copy.
+    func hasImportedTickets() -> Bool {
+        guard databaseExists else { return false }
+        return (try? Self.translate {
+            let db = try SQLiteDatabase(url: databaseURL, mode: .readOnly)
+            defer { db.close() }
+            return try StoreSchema.isImported(StoreSchema.ticketsDomain, in: db)
+        }) ?? false
     }
 
     /// The applied migration version, or `nil` when there is no database yet. For

@@ -841,14 +841,16 @@ struct SessionsTests {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
 
-        // The store cannot create its database there, and its failure says so: this
-        // ticket is about the file that is not the store.
+        // The store cannot create its database there, and its failure says so in its
+        // own words and names the file: this ticket is about the file that is not the
+        // store. (`StoreLockTests` owned this wording before the database took over.)
         do {
             _ = try Store(directory: dir).add("a ticket")
             Issue.record("expected the store's own failure")
         } catch {
             let text = tandemErrorText(error)
-            #expect(text.contains("Tandem store"), "got \(text)")
+            #expect(text.contains("Tandem store error: could not open"), "got \(text)")
+            #expect(text.contains("tandem.db"), "got \(text)")
             #expect(!text.contains("sessions file"))
         }
     }

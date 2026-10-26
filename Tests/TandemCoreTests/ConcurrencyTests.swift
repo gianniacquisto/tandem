@@ -28,6 +28,19 @@ struct ConcurrencyTests {
         return dir
     }
 
+    /// Run `body` on its own OS thread. The contention these tests exercise is between
+    /// separate writers — processes in the field — and the shared dispatch pool starves
+    /// under a parallel `swift test`, timing the test out on load rather than on
+    /// behaviour (CI runs `--no-parallel` for the same reason). A dedicated thread keeps
+    /// the race about the database.
+    private func spawn(_ done: DispatchGroup, _ body: @escaping @Sendable () -> Void) {
+        done.enter()
+        Thread {
+            body()
+            done.leave()
+        }.start()
+    }
+
     // MARK: - No lost update
 
     @Test("concurrent adds from two threads do not lose updates")
@@ -40,12 +53,10 @@ struct ConcurrencyTests {
         let groups = ["A", "B"]
         let done = DispatchGroup()
         for g in groups {
-            done.enter()
-            DispatchQueue.global().async {
+            spawn(done) {
                 for i in 0..<perThread {
                     _ = try? store.add("\(g)-\(i)")
                 }
-                done.leave()
             }
         }
         #expect(done.wait(timeout: .now() + 15) == .success, "writer threads did not finish")
@@ -57,6 +68,75 @@ struct ConcurrencyTests {
             for i in 0..<perThread {
                 #expect(titles.contains("\(g)-\(i)"), "missing \(g)-\(i)")
             }
+        }
+    }
+
+    // MARK: - The first write (schema and import are one durable decision)
+
+    @Test("concurrent first opens on a fresh home all succeed, one applying v1")
+    func concurrentFirstOpensMigrateOnce() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let dbURL = dir.appendingPathComponent("tandem.db")
+        let errors = Box<[Error]>([])
+        let start = DispatchGroup()
+        start.enter()
+        let done = DispatchGroup()
+        for _ in 0..<8 {
+            spawn(done) {
+                start.wait()
+                do {
+                    let db = try SQLiteDatabase(url: dbURL, mode: .readWrite)
+                    defer { db.close() }
+                    try StoreSchema.migrate(db)
+                    #expect(try StoreSchema.version(of: db) == 1)
+                } catch {
+                    errors[] = errors[] + [error]
+                }
+            }
+        }
+        start.leave()
+        #expect(done.wait(timeout: .now() + 20) == .success, "first opens did not finish")
+        #expect(errors[].isEmpty, "a first open failed: \(errors[])")
+
+        let db = try SQLiteDatabase(url: dbURL, mode: .readOnly)
+        defer { db.close() }
+        #expect(try db.scalarInt("SELECT COUNT(*) FROM schema_migrations") == 1,
+                "v1 must be recorded once, not once per opener")
+    }
+
+    @Test("two first writes on a JSON home import once and lose neither writer's rows")
+    func concurrentFirstWritesImportOnce() throws {
+        let fixture = """
+            {"version":1,"lanes":[],"tickets":[
+            {"id":"00000000-0000-0000-0000-000000000001","title":"legacy","status":"backlog","archived":false,"description":null,"assignee":null,"origin":"human","lane":null,"link":null,"createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}
+            """
+        for round in 0..<5 {
+            let dir = tempDir()
+            defer { try? FileManager.default.removeItem(at: dir) }
+            try fixture.write(
+                to: dir.appendingPathComponent("tickets.json"), atomically: false, encoding: .utf8)
+            let store = Store(directory: dir)
+            let errors = Box<[Error]>([])
+            let start = DispatchGroup()
+            start.enter()
+            let done = DispatchGroup()
+            for title in ["A", "B"] {
+                spawn(done) {
+                    start.wait()
+                    do { _ = try store.add(title) } catch { errors[] = errors[] + [error] }
+                }
+            }
+            start.leave()
+            #expect(done.wait(timeout: .now() + 20) == .success,
+                    "round \(round): writers did not finish")
+            #expect(errors[].isEmpty, "round \(round): \(errors[])")
+
+            let titles = Set(try store.list(.all).value.map(\.title))
+            #expect(titles == ["legacy", "A", "B"], "round \(round): got \(titles)")
+            let copies = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+                .filter { $0.hasPrefix("tickets.json.pre-sqlite-") }
+            #expect(copies.count == 1, "round \(round): one import, got \(copies)")
         }
     }
 
@@ -72,12 +152,10 @@ struct ConcurrencyTests {
         let errors = Box<[Error]>([])
         let writerDone = DispatchGroup()
 
-        writerDone.enter()
-        DispatchQueue.global().async {
+        spawn(writerDone) {
             for i in 0..<60 {
                 do { _ = try store.add("w-\(i)") } catch { errors[] = errors[] + [error] }
             }
-            writerDone.leave()
         }
 
         // Reader: a WAL snapshot is always a complete state — a read never sees a
@@ -116,19 +194,15 @@ struct ConcurrencyTests {
         let rounds = 25
         let done = DispatchGroup()
 
-        done.enter()
-        DispatchQueue.global().async {
+        spawn(done) {
             for i in 0..<rounds {
                 _ = try? store.set(id, status: .set(statuses[i % statuses.count]))
             }
-            done.leave()
         }
-        done.enter()
-        DispatchQueue.global().async {
+        spawn(done) {
             for i in 0..<rounds {
                 _ = try? store.set(id, description: .set(bodies[i % bodies.count]))
             }
-            done.leave()
         }
         #expect(done.wait(timeout: .now() + 15) == .success, "writer threads did not finish")
 

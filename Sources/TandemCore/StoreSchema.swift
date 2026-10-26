@@ -6,7 +6,9 @@ import Foundation
 /// ticket domain owns now, and the tables the sidecar domains (comments, sessions,
 /// sprints, settings) migrate into next. `schema_migrations` is the version seam — an
 /// integer version and the UTC timestamp it was applied at, one row per migration, one
-/// transaction each.
+/// transaction each. `store_imports` is the import seam: one row per domain whose
+/// legacy file has been imported, written in the same transaction as the imported rows
+/// so "imported" and "has rows" can never disagree.
 ///
 /// **Columns are typed, never JSON strings.** The ask's "counts" is queryability
 /// (tokens, cost, seconds as numbers), so only the small ordered lists that are never
@@ -116,18 +118,71 @@ enum StoreSchema {
             """)
     }
 
+    /// The table that records what has been imported into the database — the durable
+    /// answer to "is this database the store yet?" that the write transaction reads
+    /// (ticket 6B96343A's review). Like `schema_migrations` it is the seam's own table,
+    /// not schema a version owns, and it is created in the same transaction that reads
+    /// it.
+    static func createImportTable(_ db: SQLiteDatabase) throws {
+        try db.execute("""
+            CREATE TABLE IF NOT EXISTS store_imports (
+                domain     TEXT PRIMARY KEY,
+                source     TEXT,
+                importedAt TEXT NOT NULL
+            )
+            """)
+    }
+
+    /// The domain whose import the ticket store's first write records.
+    static let ticketsDomain = "tickets"
+
+    /// Whether `domain` has been imported — the row is written in the same transaction
+    /// as the imported rows, so seeing it means both are durable and not seeing it means
+    /// neither is. A database from before the marker existed (or one caught mid-create)
+    /// has no table: answer "not imported", never fail the read.
+    static func isImported(_ domain: String, in db: SQLiteDatabase) throws -> Bool {
+        let table = try db.scalarInt(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'store_imports'")
+        guard (table ?? 0) > 0 else { return false }
+        let rows = try db.scalarInt(
+            "SELECT COUNT(*) FROM store_imports WHERE domain = ?", [.text(domain)])
+        return (rows ?? 0) > 0
+    }
+
+    /// Record an import in the caller's transaction. `source` is the legacy file's name,
+    /// or `nil` for a fresh home.
+    static func markImported(
+        _ domain: String, from source: String?, at date: Date, in db: SQLiteDatabase
+    ) throws {
+        try db.run(
+            "INSERT INTO store_imports (domain, source, importedAt) VALUES (?, ?, ?)",
+            [.text(domain), .textOrNull(source), .text(Timestamp.encode(date))])
+    }
+
     /// Apply every migration newer than the recorded version, in order, one transaction
-    /// each. A migration that throws rolls its own transaction back and fails the open
-    /// with the store's I/O error — the store is never left half-migrated.
+    /// each. **The version is read inside the transaction that records it** — so two
+    /// connections opening a fresh home at once serialise on `BEGIN IMMEDIATE`, the
+    /// first applies v1 and the second sees it and applies nothing. Reading it before
+    /// the transaction let both apply v1, and the loser died on the primary key (a store
+    /// I/O error, not "locked", so nothing retried).
+    ///
+    /// A migration that throws rolls its own transaction back and fails the open with
+    /// the store's I/O error — the store is never left half-migrated.
     static func migrate(
         _ db: SQLiteDatabase,
         migrations: [Migration] = StoreSchema.migrations
     ) throws {
-        try createMigrationTable(db)
-        let applied = try db.scalarInt("SELECT MAX(version) FROM schema_migrations") ?? 0
-        for migration in migrations where migration.version > applied {
+        // A cheap pre-check so an up-to-date database pays no write transaction per
+        // write. It only decides whether there is work: the version that counts is read
+        // inside each migration's transaction below.
+        guard try needsMigration(db, migrations: migrations) else { return }
+        for migration in migrations.sorted(by: { $0.version < $1.version }) {
             do {
                 try db.transaction {
+                    try createMigrationTable(db)
+                    try createImportTable(db)
+                    let applied = try version(of: db) ?? 0
+                    guard migration.version > applied else { return }
                     try migration.apply(db)
                     try db.run(
                         "INSERT INTO schema_migrations (version, appliedAt) VALUES (?, ?)",
@@ -144,6 +199,23 @@ enum StoreSchema {
                 throw error
             }
         }
+    }
+
+    /// Whether the seam's tables are all present and the last migration is applied. Read
+    /// without a transaction on purpose: a stale "yes" is impossible (a later version
+    /// only comes from a committed migration and the version is re-read inside the
+    /// transaction that applies it), and a stale "no" only costs a transaction that then
+    /// finds nothing to do.
+    private static func needsMigration(
+        _ db: SQLiteDatabase, migrations: [Migration]
+    ) throws -> Bool {
+        guard let latest = migrations.map(\.version).max() else { return false }
+        let tables = try db.scalarInt("""
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type = 'table' AND name IN ('schema_migrations', 'store_imports')
+            """) ?? 0
+        guard tables == 2 else { return true }
+        return (try version(of: db) ?? 0) < latest
     }
 
     /// The highest applied migration, or `nil` when the database has no seam yet.

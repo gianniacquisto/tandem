@@ -226,6 +226,43 @@ struct SQLiteSeamTests {
         #expect(age >= 0 && age < 60)
     }
 
+    @Test("a backup that cannot be taken fails the write and leaves the store as it was")
+    func failedBackupFailsTheWrite() throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o700], ofItemAtPath: dir.path)
+        }
+        let store = Store(directory: dir)
+        _ = try store.add("one")
+        _ = try store.add("two")
+
+        // A live connection keeps the WAL files in place, so the write under test reaches
+        // the backup rather than failing to open the database in the read-only directory.
+        let live = try SQLiteDatabase(url: store.databaseURL)
+        try live.run("BEGIN IMMEDIATE")
+        try live.run("UPDATE tickets SET title = title")
+        try live.run("COMMIT")
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o500], ofItemAtPath: dir.path)
+
+        do {
+            _ = try store.add("three")
+            Issue.record("expected the backup to fail the write")
+        } catch {
+            let text = tandemErrorText(error)
+            #expect(text.contains("backup"), "got \(text)")
+        }
+        #expect(try store.list(.all).value.count == 2, "the failed write changed nothing")
+
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: dir.path)
+        live.close()
+        _ = try store.add("three")
+        #expect(try store.list(.all).value.count == 3)
+    }
+
     @Test("reads never roll a backup")
     func readsNeverBackUp() throws {
         let dir = try makeDir()
