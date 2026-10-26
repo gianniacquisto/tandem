@@ -160,7 +160,7 @@ struct TicketVerbTests {
 
     // MARK: - `archive --id`: one ticket, set aside
 
-    @Test("`todo archive --id` sets one ticket aside; an unknown id is the domain failure")
+    @Test("`ticket archive --id` sets one ticket aside; an unknown id is the domain failure")
     func archiveWithID() throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
@@ -169,7 +169,7 @@ struct TicketVerbTests {
         let id = try #require((try json(added.output)["id"] as? String))
 
         // One ticket, by id: it comes back archived...
-        let archived = try run(home: home, ["todo", "archive", "--id", id])
+        let archived = try run(home: home, ["ticket", "archive", "--id", id])
         #expect(archived.code == 0)
         let ticket = try json(archived.output)
         #expect(ticket["id"] as? String == id)
@@ -181,13 +181,13 @@ struct TicketVerbTests {
 
         // The sweep without the flag still answers with a count — and counts
         // nothing, because the archived ticket was open, not done.
-        let sweep = try run(home: home, ["todo", "archive"])
+        let sweep = try run(home: home, ["ticket", "archive"])
         #expect(sweep.code == 0)
         #expect(try json(sweep.output)["archived"] as? Int == 0)
 
         // An unknown id is the domain failure, exit 1, the open list attached.
         let unknown = try run(
-            home: home, ["todo", "archive", "--id", "00000000-0000-0000-0000-000000000000"])
+            home: home, ["ticket", "archive", "--id", "00000000-0000-0000-0000-000000000000"])
         #expect(unknown.code == 1)
         #expect(unknown.error.contains("Unknown ticket id"))
     }
