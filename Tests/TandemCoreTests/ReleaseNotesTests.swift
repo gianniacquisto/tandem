@@ -35,6 +35,16 @@ struct ReleaseNotesTests {
         let status: Int32
     }
 
+    /// The `## ` heading the bullet sits under, or `nil` when it is missing.
+    private static func heading(of bullet: String, in body: String) -> String? {
+        var heading = ""
+        for line in body.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.hasPrefix("## ") { heading = String(line) }
+            if String(line) == bullet { return heading }
+        }
+        return nil
+    }
+
     // MARK: fixture repo
 
     /// A throwaway git repo: `base` committed on `main`, tagged `v0.1.0`.
@@ -235,6 +245,126 @@ struct ReleaseNotesTests {
 
         #expect(run.body.contains("## Other (unclassified)"))
         #expect(run.body.contains("- #10 Notes tab: the wiki face"))
+    }
+
+    @Test("Each widened keyword places a title that carries only that word")
+    func widenedKeywordsPlaceTheirTitles() throws {
+        let cases: [(number: Int, title: String, heading: String)] = [
+            (10, "store: back the ticket domain with tandem.db", "## Features"),
+            (11, "sqlite: vacuum on quit", "## Features"),
+            (12, "database: the import writes its marker first", "## Features"),
+            (13, "migration: the legacy file is copied aside", "## Features"),
+            (14, "cli: doctor prints every check", "## Features"),
+            (15, "app: the ticket sheet carries the usage section", "## Features"),
+            (16, "window: the tab bar keeps its place on relaunch", "## Features"),
+            (17, "watcher: a write refreshes the list", "## Features"),
+            (18, "board: the Status gates hold their column", "## Features"),
+            (19, "help: lane list names its verb", "## Docs and infra"),
+            (20, "sprint: the batch runs one ticket at a time", "## Docs and infra"),
+        ]
+        let dir = try Self.makeRepo()
+        // A branch area of its own would classify — `board/pr-N` carries no
+        // keyword, so the heading comes from the title alone.
+        for row in cases {
+            try Self.merge(
+                dir,
+                "board/pr-\(row.number)",
+                subject: "Merge pull request #\(row.number) from gianniacquisto/board/pr-\(row.number)"
+            )
+        }
+        try Self.git(dir, "tag", "v0.2.0")
+        let gh = try Self.stubGH(cases.map { .init(number: $0.number, title: $0.title) })
+
+        let run = try Self.runScript(in: dir, gh: gh)
+
+        #expect(run.status == 0)
+        for row in cases {
+            #expect(
+                Self.heading(of: "- #\(row.number) \(row.title)", in: run.body) == row.heading,
+                "#\(row.number) \(row.title)"
+            )
+        }
+    }
+
+    @Test("A title with no keyword falls back to the merge subject's branch area")
+    func silentTitleFallsBackToTheBranchArea() throws {
+        let dir = try Self.makeRepo()
+        try Self.merge(
+            dir,
+            "board/sessions-migration",
+            subject: "Merge pull request #10 from gianniacquisto/board/sessions-migration"
+        )
+        try Self.git(dir, "tag", "v0.2.0")
+        let gh = try Self.stubGH([.init(number: 10, title: "todo archive --id: archive one ticket")])
+
+        let run = try Self.runScript(in: dir, gh: gh)
+
+        #expect(run.body.contains("## Features"))
+        #expect(run.body.contains("- #10 todo archive --id: archive one ticket"))
+        #expect(!run.body.contains("## Other (unclassified)"))
+    }
+
+    @Test("The v0.27.0 merges land in their sections and Other keeps only the ambiguous ones")
+    func theV0270MergesAreClassified() throws {
+        // The published v0.27.0 body put nine of these eleven under Other; the
+        // four the ticket names (store, archive, app watcher, help wiring) and
+        // the rest now land, and only the two a mechanical classifier cannot
+        // read — a retro skill tweak and a reviewer merge-wait — stay behind.
+        let merged: [(number: Int, branch: String, title: String, heading: String?)] = [
+            (185, "board/wal-watcher",
+             "app: watch the store's -wal beside the directory, so a CLI write refreshes the window (3D77D0BD)",
+             "## Features"),
+            (184, "board/release-notes-wiki",
+             "Release notes in the wiki, grouped by features / bugs / docs+infra (BCE67BAE)",
+             "## Docs and infra"),
+            (182, "board/scaffold-nits",
+             "Align the scaffold's own prose: risk routing and the Overview wording",
+             "## Docs and infra"),
+            (181, "board/sqlite-store-p1",
+             "store: back the ticket domain with tandem.db (P1 of 6B96343A)",
+             "## Features"),
+            (183, "board/lane-list-help",
+             "lane list meets the help wiring: known entry, verb text, help test",
+             "## Docs and infra"),
+            (168, "board/retro-child-session-record",
+             "builder contract: start the session record before the first tool call",
+             "## Docs and infra"),
+            (158, "board/sessions-migration",
+             "todo archive --id: archive one ticket",
+             "## Features"),
+            (171, "board/retro-transcript-truncation",
+             "retro: read the transcript in cursor pages and flag partial reads",
+             "## Other (unclassified)"),
+            (170, "board/session-start-agent-flag",
+             "AGENTS.md + sprint skill: every `session start` carries `--agent` explicitly",
+             "## Docs and infra"),
+            (169, "board/retro-zsh-shell-gotcha",
+             "sprint skill: the harness shell is zsh — POSIX-safe loops only",
+             "## Docs and infra"),
+            (167, "board/reviewer-merge-wait",
+             "reviewer: wait out pending checks on a BLOCKED merge, then merge",
+             "## Other (unclassified)"),
+        ]
+        let dir = try Self.makeRepo()
+        for row in merged {
+            try Self.merge(
+                dir,
+                row.branch,
+                subject: "Merge pull request #\(row.number) from gianniacquisto/\(row.branch)"
+            )
+        }
+        try Self.git(dir, "tag", "v0.2.0")
+        let gh = try Self.stubGH(merged.map { .init(number: $0.number, title: $0.title) })
+
+        let run = try Self.runScript(in: dir, gh: gh)
+
+        #expect(run.status == 0)
+        for row in merged {
+            #expect(
+                Self.heading(of: "- #\(row.number) \(row.title)", in: run.body) == row.heading,
+                "#\(row.number) \(row.title)"
+            )
+        }
     }
 
     @Test("A failed title lookup falls back to the merge subject's branch")

@@ -18,15 +18,25 @@
 # the same call: Scripts/release-notes.sh v0.25.0 --capture.
 #
 # Classification is mechanical, first match wins: the PR's labels, then the
-# words of its title (or of the merge subject's branch when the title lookup
-# failed). A PR whose labels and words say nothing lands in Other, never in a
-# guess. Words that place a PR:
+# words of its title. A title whose words say nothing falls back to the merge
+# subject's branch area — the last segment of `board/<area>`, the slug the
+# board names the work by — so a title like "todo archive --id: archive one
+# ticket" still lands through `board/sessions-migration`. A PR whose labels,
+# words and branch area all say nothing lands in Other, never in a guess.
+# Words that place a PR:
 #   bugs/fixes — fix(es|ed), bug(s), repair(s), correct(s), regression,
 #                crash(es), harden(s), tighten(s), reject(s), restore(s)
 #   features   — add(s), feat|feature, introduce(s), new, support(s), expose(s),
-#                wire(s), teach(es), ship(s), retire(s), remove(s), rename(s)
+#                wire(s), teach(es), ship(s), retire(s), remove(s), rename(s),
+#                store(s), sqlite, database(s), migration(s), cli, app(s),
+#                window(s), watcher(s), board
 #   docs/infra — doc(s), readme, prose, skill(s), adr, ci, workflow, release,
-#                script(s), help, contract, test(s), build
+#                script(s), help, contract, test(s), build, sprint(s)
+#
+# The area words are the product's own nouns — the store, the app and its
+# window, the board — so they read as features; `sprint` names the skill and
+# its records, which is prose, so it reads as infra. The area is scanned
+# without its `board/` prefix: the prefix is every branch's, not a word.
 set -eu
 
 new=${1:?usage: release-notes.sh <new-tag> [--capture]}
@@ -69,9 +79,9 @@ classify() {
     case "$word" in
       fix|fixes|fixed|bug|bugs|repair|repairs|correct|corrects|regression|crash|crashes|harden|hardens|tighten|tightens|reject|rejects|restore|restores)
         printf 'fixes\n'; return ;;
-      add|adds|feat|feature|introduce|introduces|new|support|supports|expose|exposes|wire|wires|teach|teaches|ship|ships|retire|retires|remove|removes|rename|renames)
+      add|adds|feat|feature|introduce|introduces|new|support|supports|expose|exposes|wire|wires|teach|teaches|ship|ships|retire|retires|remove|removes|rename|renames|store|stores|sqlite|database|databases|migration|migrations|cli|app|apps|window|windows|watcher|watchers|board)
         printf 'features\n'; return ;;
-      doc|docs|readme|prose|skill|skills|adr|ci|workflow|release|script|scripts|help|contract|test|tests|build)
+      doc|docs|readme|prose|skill|skills|adr|ci|workflow|release|script|scripts|help|contract|test|tests|build|sprint|sprints)
         printf 'infra\n'; return ;;
     esac
   done
@@ -115,12 +125,19 @@ printf '%s\n' "$subjects" | while IFS= read -r subject; do
         labels=${meta#*"$tab"}
         [ "$labels" = "$meta" ] && labels=""
       fi
+      # The area the branch names — `board/<area>`, so its last segment. The
+      # prefix is every board branch's and is never scanned as a word.
+      area=${branch##*/}
       if [ -n "$title" ]; then
         bullet="- #$num $title"
         kind=$(classify "$labels" "$title")
+        if [ "$kind" = other ]; then
+          # The title's words said nothing: the branch area gets the next say.
+          kind=$(classify "" "$area")
+        fi
       else
         bullet="- #$num ($branch)"
-        kind=$(classify "" "$branch")
+        kind=$(classify "" "$area")
       fi
       printf '%s\n' "$bullet" >> "$tmp/$kind"
       ;;
