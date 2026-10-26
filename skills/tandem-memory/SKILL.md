@@ -1,11 +1,11 @@
 ---
 name: tandem-memory
-description: "Memory and the wiki of work, backed by the Tandem bikeshed (`~/.tandem/bikeshed/`) — a plain folder of markdown notes. Reach this at the **start of a session in any project on this Mac, before reading or editing project files**, to orient: read `Index.md`, the matching project's Overview, and Tandem's open threads (`tandem-cli ticket list`). Reach it again **as you work** to record — file a capture with `tandem-cli note capture` when you make a non-obvious decision, hit a gotcha, or open/close a thread; don't batch to session end."
+description: "Memory and the wiki of work, backed by the Tandem bikeshed (`~/.tandem/bikeshed/`) — a plain folder of markdown notes. Reach this at the **start of a session in any project on this Mac, before reading or editing project files**, to orient: read `Index.md`, the matching project's Overview, and Tandem's open threads (`tandem-cli ticket list`). The session record's summary is the work record; reach it again only for a capture whose re-derivation would cost real effort."
 ---
 
 # Tandem memory
 
-The **bikeshed** (`~/.tandem/bikeshed/`) is the wiki of all work on this Mac and its memory: a plain folder of `[[wikilinked]]` markdown notes, shared by humans and agents and written for the next agent session as reader. It has two layers: **captures** — small, per-moment notes filed into a project's saddlebag as work happens — and the **curated** notes, which only a consolidation pass writes. This skill orients any session from the bikeshed and records its work back into it.
+The **bikeshed** (`~/.tandem/bikeshed/`) is the wiki of all work on this Mac and its memory: a plain folder of `[[wikilinked]]` markdown notes, shared by humans and agents and written for the next agent session as reader. It has two layers: the **session records** and the occasional **capture** — a small note filed into a project's saddlebag — and the **curated** notes, which only a consolidation pass writes. This skill orients any session from the bikeshed and records its work back into it.
 
 ## Orient — pick up where the work left off
 
@@ -20,15 +20,17 @@ No project line matches → read the Index `Topics` list, then grep the bikeshed
 
 **Done when** the session can resume from the bikeshed alone: the project's current state, its next move, and its open threads in hand — or, with no matching project, has read the `Topics` list, grepped, and knows there is no prior memory.
 
-## Record — every agent files captures; one pass writes curated
+## Record — the session record is the record; one pass writes curated
 
-**File a capture at each moment.** At each qualifying moment — a non-obvious decision, a gotcha or hard-won fact, a thread opened or closed — file one capture with `tandem-cli note capture`, right then, not batched to session end. This includes sub-agents: a child ends its session with a summary before it returns. The kinds, body shape, and naming are the verb's contract, not yours → `skills/tandem/SKILL.md`. **There is no floor `work` note** — the summary at `session end` (ADR 0027) is the work record. **Write protocol** — cadence, the qualification gate, threads as tickets, the curated shape → `WRITE-PROTOCOL.md`. **Concurrency** — captures create-only, the curated write boundary → `CONCURRENCY.md`.
+**The session record's summary is the work record.** End with `tandem-cli session end --summary -` (ADR 0027) — what the session did and where it left off; a sub-agent's minimum deliverable before it returns, too.
+
+**A capture is for one thing only.** File one with `tandem-cli note capture` when the decision, gotcha or fact is one whose **cost of re-derivation is real** — and it is not already in a session record, a ticket, an ADR or the code. That is the whole rule; a session that ends with its summary and no capture is compliant. The kinds, body shape, and naming are the verb's contract, not yours → `skills/tandem/SKILL.md`. **Write protocol** — the qualification gate, threads as tickets, the curated shape → `WRITE-PROTOCOL.md`. **Concurrency** — captures create-only, the curated write boundary → `CONCURRENCY.md`.
 
 **Never edit a curated note.** `Index.md` and the notes under `projects/**` have exactly one writer: the **consolidation agent** — a distinct agent the root hands the saddlebag to on request — never automatically at session close — or a human runs on demand. The pass's inputs are the agents' captures, the human's scratch pad, and the ended session records' summaries; the scratch is read-only to it — fold, never edit or archive ([`CONVENTIONS.md`](CONVENTIONS.md)). Staleness you notice becomes a `gotcha`/`fact` capture for that pass — never a patch in place. **Consolidation protocol** — the inputs, the writes, the archive → `CONSOLIDATION.md`. **Host bindings** — how a given host wires the pass, and reaches the hidden layer → `HARNESS.md`.
 
 ### Dispatch discipline
 
-A **working** sub-agent carries this discipline already: the root's instruction file reaches a child session too, so its brief holds the task and nothing else. The child reads the skill off that instruction — orient (Index → the project's Overview → `tandem-cli ticket list`), file captures as work happens. Where a host does not deliver ambient instructions to children, that gap belongs to [`HARNESS.md`](HARNESS.md).
+A **working** sub-agent carries this discipline already: the root's instruction file reaches a child session too, so its brief holds the task and nothing else. The child reads the skill off that instruction — orient (Index → the project's Overview → `tandem-cli ticket list`), end with its session record's summary. Where a host does not deliver ambient instructions to children, that gap belongs to [`HARNESS.md`](HARNESS.md).
 
 Consolidation is a distinct agent, never one of those briefed children: when consolidation is requested the root **hands the saddlebag to the consolidation agent** — a fresh agent that reads its own protocol, so the root briefs it with nothing beyond the queue. It does not run at session close unless asked.
 

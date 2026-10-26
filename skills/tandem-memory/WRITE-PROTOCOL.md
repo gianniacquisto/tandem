@@ -1,30 +1,30 @@
 # Write protocol — when and what to record
 
-When and what a session records, so the next session picks up without re-deriving what this one learned. Two layers: the working agent files **captures**; a **consolidation pass** promotes them into the **curated** notes. This file is the working agent's cadence and the curated shape it writes toward; the pass's own protocol is [`CONSOLIDATION.md`](CONSOLIDATION.md); the layout is [`CONVENTIONS.md`](CONVENTIONS.md); the read walk is [`READ-PROTOCOL.md`](READ-PROTOCOL.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill while writing every note — it is the writing discipline, not restated here.
+When and what a session records, so the next session picks up without re-deriving what this one learned. The record is the **session summary**; a **capture** files only what a summary cannot carry, and a **consolidation pass** promotes captures into the **curated** notes. This file is the working agent's capture rule and the curated shape it writes toward; the pass's own protocol is [`CONSOLIDATION.md`](CONSOLIDATION.md); the layout is [`CONVENTIONS.md`](CONVENTIONS.md); the read walk is [`READ-PROTOCOL.md`](READ-PROTOCOL.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill while writing every note — it is the writing discipline, not restated here.
 
-## Capture cadence — file a note at each moment
+## The record — the session summary; a capture for one real re-derivation cost
 
-File one **capture** at each qualifying moment, as it happens; never batch to session end. **Every agent does this, sub-agents included.**
+The work record is the **session summary**: at session end (or when context nears exhaustion), `tandem-cli session end --summary -` records what was done and where the session left off (ADR 0027) — a sub-agent's minimum deliverable before it returns, too. The consolidation pass reads the ended session records' summaries ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
+
+A **capture** is for one thing only: a decision, gotcha or fact whose **cost of re-derivation is real**, and which is not already in a session record, a ticket, an ADR or the code. A session that ends with its summary and no capture is compliant.
 
 ```
 printf '# <short title>\n\n<1-3 lines>\n' | tandem-cli note capture --kind <kind> --project <project>
 ```
 
-The moments and their kinds:
+What earns one:
 
-- A **non-obvious decision** — `decision`, the choice plus a one-line rationale.
-- A **gotcha or hard-won fact** — `gotcha` / `fact`.
-- A **Thread opened or closed** — `thread`, the context a title cannot carry.
+- A **decision** the code cannot show — `decision`, the choice plus a one-line rationale.
+- A **gotcha or hard-won fact** — `gotcha` / `fact`: an hour of re-derivation behind one line.
+- A **thread** — `thread`, the context a title cannot carry; the ticket list stays the live list of threads.
 
 The verb owns the kinds, the body shape (`# <short title>` then 1–3 lines), and the naming — its contract is `skills/tandem/SKILL.md`. Captures are **create-only** and carry **no `[[wikilinks]]`**; the consolidation pass adds those when it promotes a note.
 
-**The work record is the session summary**: at session end (or when context nears exhaustion), `tandem-cli session end --summary -` records what was done and where the session left off (ADR 0027) — a sub-agent's minimum deliverable before it returns, too. There is no floor `work` capture; the consolidation pass reads the ended session records' summaries ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
+**Threads stay immediate**: `tandem-cli ticket add --title "…"` runs the moment a thread opens — the ticket list is the authoritative live list. Closing one: `tandem-cli ticket complete --id <id>`, plus a `thread` capture only for the context a title cannot carry.
 
-**Threads stay immediate**: `tandem-cli ticket add --title "…"` runs the moment a thread opens — the ticket list is the authoritative live list — with a `thread` capture for the context a title cannot carry. Closing one: `tandem-cli ticket complete --id <id>`, plus a `thread` note.
+## What fails the cost test
 
-## Qualification gate — what you'd lose when the session ends
-
-File only when the information would be **lost when the session ends** and re-deriving it would cost real effort — both tests must hold, and the gate rides on the capture, not on promotion. What the repo, the environment, or the session transcript reproduces on the next look — a command's output, a file's contents, a `--help`, a narration of what you are about to do — fails the cost test; leave it out. The ≲50/≲40 length targets and the pruning discipline govern what consolidation **promotes** into the curated notes, not what you capture.
+The re-derivation test is what decides, and it rides on the capture, not on promotion. What the repo, the environment, or the session transcript reproduces on the next look — a command's output, a file's contents, a `--help`, a narration of what you are about to do — fails it; leave it out. The ≲50/≲40 length targets and the pruning discipline govern what consolidation **promotes** into the curated notes, not what you capture.
 
 ## Working agents never edit curated notes
 
