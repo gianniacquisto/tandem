@@ -33,7 +33,7 @@ The only entity in the domain — the word the store, the CLI and the board use 
 _Avoid_: task, item, to-do (hyphenated), todo (the old word), card, issue, story
 
 **Session**:
-A record of one agent session — its brief, its outcome, and the tickets and notes it carried — with its own file (`sessions.json`) and its own two states (`running`, `ended`); the CLI's five verbs are `session start/link/end/list/show`. Not a ticket, and not on the board.
+A record of one agent session — its brief, its outcome, and the tickets and notes it carried — a row of the store's `sessions` table with its own two states (`running`, `ended`); the CLI's five verbs are `session start/link/end/list/show`. Not a ticket, and not on the board. Its record is a fact, not a log: created once, stamped once, linked to.
 _Avoid_: session log, journal
 
 **Open**:
@@ -65,8 +65,20 @@ Which tickets are in view: `open` (the default), `done`, or `all`. One term for 
 _Avoid_: view, tab, scope, state
 
 **Store**:
-The single source of truth for tickets, shared by the app and agents. All reads and writes go through the store; no other copy is authoritative. Beside the file sits its **rolling backup**, `todos.json.bak` — the one previous good copy, written under the same lock as the write it precedes (ADR 0018). It is a fallback, never a source: nothing reads it but a human recovering the list. The store file is still named `todos.json`; the rename to `tickets.json` is ADR 0030's last step.
-_Avoid_: database, backend, sync, cache
+Tandem's single source of truth for every domain it keeps — tickets and lanes, comments, sessions, sprints, settings — one SQLite database at `<home>/tandem.db`, read and written by the app and by every `tandem-cli` invocation. All reads and writes go through it; no other copy is authoritative, and there is no second file to fall out of step. Its shape changes only by a **schema migration**; its move off the JSON files is recorded by an **import marker**; beside it sits its **rolling backup**, `tandem.db.bak` — the one previous complete generation, which a human restores and nothing reads (ADR 0018, ADR 0031).
+_Avoid_: store file, JSON store, hand edits, backend, sync, cache (the JSON store and its sidecars are history: ADR 0001, and ADR 0031's amendments)
+
+**Schema migration**:
+One numbered, append-only step in the database's shape, applied in its own transaction and recorded in `schema_migrations` with the version and when it was applied — so a migration either applied whole or did not apply at all, and "which shape is this store?" is a row, not an inspection.
+_Avoid_: schema bump, upgrade, patch, version (that is the migration's number, not the shape)
+
+**Import marker**:
+The `store_imports` row that records a domain's legacy JSON file as imported. It is the durable answer to "is this database the store yet", written in the same transaction as the imported rows and read inside the write transaction — not table emptiness, which cannot tell a killed first write from a home with no tickets. Present, the file is never read for a write again; absent, the file is still the store.
+_Avoid_: import flag, seed, bootstrap, checkpoint
+
+**Rolling backup**:
+`tandem.db.bak`, the one complete generation of the database as it was before the last changed write — copied through SQLite's backup API, replaced each write, never rotated. It is a fallback, never a source: nothing reads it but a human recovering the store, and a copy we cannot take fails the write (ADR 0018).
+_Avoid_: snapshot, dump, backup set, restore point
 
 ### The bikeshed
 

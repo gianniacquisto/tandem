@@ -32,3 +32,14 @@ The rejected option above — putting the gathering and the pass/fail decision i
 **What is unchanged.** The decision stands: the core keeps the gathering and the pass/fail rule, and the CLI stays a thin adapter that calls them unchanged. What it now rests on is ADR 0009's boundary rather than the tests' reach. `SetupDiagnostics.gather()` observes the machine and `SetupDiagnostics.report(_:)` is the pure function that turns those facts into the report — the pass/fail rule's one home, covered by `TandemCoreTests` with injected facts. A second home for that rule in the executable would not be an untested one; it would be a second copy of a rule that has one home. And the adapter's own header is explicit about what belongs to the executable — *"the two things that belong to a process rather than to the domain live here: stdin and the environment"* — while the doctor's gathering is impure but is the machine's setup rather than a process's stdin or environment; the facts it observes come from the core (`Store.health()`, `Store.lockIsHeld()`, `TandemHome.Source`).
 
 Nothing about `doctor` changes: the verb, the report shape, the check order and the exit codes are as they were, and this amendment changes no behaviour anywhere.
+
+## Amendment, 2026-10-26: seven checks, and the lock is a transaction
+
+Two things this record pins have moved with the store's re-backing ([ADR 0031](0031-one-database-the-store.md)):
+
+- **The check list is seven names, in this order:** `home`, `store`, `bikeshed`, `comments`, `lock`, `app`, `skills`. `comments` joined with the comment log (ADR 0017's amendment) — a comment log that is present but unreadable is a failure — and that change was made in code without a line here; this is the line.
+- **Four checks can fail:** `store`, `bikeshed`, `comments` and `lock`. `home`, `app` and `skills` stay informational.
+- **`lock` keeps its name and its non-destructive rule, not its mechanism.** It no longer probes a sidecar `flock` — `tandem.lock` is retired — but begins a write transaction on a read-write, no-wait connection and rolls it straight back, so `held` means another process holds the store's write transaction. A missing database is still free.
+- **The `store` row's detail** now reads `tandem.db — v<n>; <open> open, <done> done; <backup>`, the schema-migration version from `schema_migrations` before the counts, and a `; a JSON store file is also present at <path> — a fork, ignored since the database took over` clause when a legacy file sits beside an imported database. The backup clause is ADR 0018's, unchanged in shape (`; backup 5m old`, `; no backup yet`).
+
+The report's shape (`{"ok", "checks": [{"name", "ok", "detail"}]}`) and its exit codes are unchanged.

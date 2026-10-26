@@ -7,7 +7,7 @@
 
 ![The tandem bike — the app's brand mark and icon](Resources/TandemBike.jpg)
 
-**Tandem is a native macOS board for you and your AI coding agents.** One ticket list, one board by status and lane, an inbox for what the agents owe you, and the bikeshed — a folder of markdown notes — that doubles as the agents' memory. Your agent and you share one list: it files tickets you see, and it sees the ones you close. Everything runs on your Mac, in files you can read. No account, no server, no network.
+**Tandem is a native macOS board for you and your AI coding agents.** One ticket list, one board by status and lane, an inbox for what the agents owe you, and the bikeshed — a folder of markdown notes — that doubles as the agents' memory. Your agent and you share one list: it files tickets you see, and it sees the ones you close. Everything runs on your Mac: one SQLite database and a folder of markdown notes you own. No account, no server, no network.
 
 ## Install
 
@@ -35,7 +35,7 @@ Tandem then opens normally until the next install or upgrade.
 tandem-cli doctor
 ```
 
-One JSON report of where your state lives and whether it is healthy: the home directory, the store, the bikeshed, the comments sidecar, the lock, the installed app and the agent skills. It exits `1` when something needs attention, so it is the quickest way to know a fresh install is whole.
+One JSON report of where your state lives and whether it is healthy: the home directory, the store, the bikeshed, the comment log, the write lock, the installed app and the agent skills. It exits `1` when something needs attention, so it is the quickest way to know a fresh install is whole.
 
 ### What it runs on
 
@@ -74,9 +74,9 @@ The app and the agent read and write the same store, and the app watches it: a t
 | The note↔ticket bridge — "Send to tickets", "Promote to note" | v0.15.0 |
 | The face says tickets — the tab, the search field, the button | v0.16.0 |
 | A first-run setup wizard | v0.10.0 |
-| The store — one JSON file, watched live, editable by hand | v0.1.0 |
-| The rolling backup `todos.json.bak` — the one previous good copy | v0.15.0 |
-| The session record — an agent session's own artifact, in `sessions.json` | v0.16.0 |
+| The store — one SQLite database, watched live | v0.1.0 (a JSON file until v0.27.0) |
+| The rolling backup `tandem.db.bak` — the one previous good copy | v0.15.0 (a whole-database copy since v0.27.0) |
+| The session record — an agent session's own artifact, in the store | v0.16.0 |
 | A dev build that keeps its own state in `~/.tandem-dev`, so it can never touch yours | v0.9.0 |
 
 Every picture below, and every word of the app's own copy in it, is `dev`'s — the branch the next release is cut from. An installed build can lag `dev` by a release.
@@ -154,7 +154,7 @@ That block is `dev`'s grammar, the branch the next release is cut from — `tand
 
 ### A session is its own record
 
-Not a ticket: `session start` opens a record of one agent session's run — the project it works in, the agent's name, the brief it was given — `session end` stamps how it ended and what it did, `session link` ties the record to a ticket, and `session list` and `session show` read the record back. The record keeps its own file, `sessions.json`, beside the store, and is created once, stamped once and linked to — there is no edit and no delete.
+Not a ticket: `session start` opens a record of one agent session's run — the project it works in, the agent's name, the brief it was given — `session end` stamps how it ended and what it did, `session link` ties the record to a ticket, and `session list` and `session show` read the record back. The record is a row of the store's `sessions` table, beside the tickets, and is created once, stamped once and linked to — there is no edit and no delete.
 
 ### The skills
 
@@ -193,43 +193,32 @@ ln -s "$PWD/skills/tandem" ~/.claude/skills/tandem
 
 ## The store
 
-`~/.tandem/todos.json` is a plain JSON file you can edit by hand. The app watches it, so the list updates live whenever anything changes it — including an agent. The file keeps the `todos.json` name until its rename to `tickets.json` lands ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)); the keys inside it are the renamed ones:
+`~/.tandem/tandem.db` is the store: one SQLite database holding the tickets and their cycle lanes, the comment logs, the session and sprint records, and the app's settings. The app watches it, so the list updates live whenever anything changes it — including an agent. There is no second copy and no sidecar file to keep in step; the bikeshed's notes stay plain markdown beside it.
 
-```json
-{
-  "version": 1,
-  "lanes": ["Tandem"],
-  "tickets": [
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440000",
-      "title": "Water the plants",
-      "status": "backlog",
-      "archived": false,
-      "description": null,
-      "assignee": null,
-      "origin": "human",
-      "lane": "Tandem",
-      "link": null,
-      "createdAt": "2026-10-09T14:03:22Z",
-      "completedAt": null
-    }
-  ]
-}
+The tickets are rows, in stored order — `tickets.position` **is** the list order, new tickets land on top, and the order is never recomputed from `createdAt`. Each ticket's `lane` names one of the `lanes` rows, and a null lane is the default (ungrouped) area, which always comes first. The columns are typed, so a count is a query: the open and done counts come straight out of the database rather than from loading the list. See [ADR 0031](docs/adr/0031-one-database-the-store.md) for the decision, [ADR 0006](docs/adr/0006-stored-order-and-sections.md) for order and lanes, and [ADR 0030](docs/adr/0030-one-entity-the-ticket.md) for the vocabulary.
+
+The schema is versioned in the database itself: `schema_migrations` holds one row per migration — a version and when it was applied — so "which shape is this store?" is a query, and a migration that fails rolls back whole rather than leaving the store half-upgraded.
+
+Beside the store, every changed write keeps **one previous complete copy** in `tandem.db.bak`, taken through SQLite's backup API before the write touches the database. There is one generation, no rotation. Recovery is the backup plus one command, and the journal files go first or the restored file is read under a dead WAL:
+
+```sh
+rm ~/.tandem/tandem.db-wal ~/.tandem/tandem.db-shm ~/.tandem/tandem.db
+mv ~/.tandem/tandem.db.bak ~/.tandem/tandem.db
 ```
 
-The order of `tickets` **is** the list order — new tickets land on top, and the order is never recomputed from `createdAt`, so you can rearrange the file by hand. Each ticket's `lane` names one of the `lanes`; `null` is the default (ungrouped) area, which always comes first. The decoder also reads the pre-rename spellings (`todos`/`sections`/`section`), so a file from before the rename reads fine. See [ADR 0001](docs/adr/0001-store-protocol.md) for the file protocol, [ADR 0006](docs/adr/0006-stored-order-and-sections.md) for order and lanes, and [ADR 0030](docs/adr/0030-one-entity-the-ticket.md) for the rename.
+See [ADR 0018](docs/adr/0018-rolling-store-backup.md).
 
-Every field but `id`, `title` and `createdAt` is additive: a file from before one existed reads fine, and older builds read this one — they simply ignore the fields. That is also why the envelope version stays `1`; only a change an older reader would *misread* earns a bump.
+### Moving off the JSON store
 
-If the file ever gets corrupted, Tandem moves it to `todos.json.corrupt-<timestamp>` and starts with an empty list. Beside it, every write also keeps **one previous good copy** in `todos.json.bak` — the state of the file before that write — so an ordinary bad write (a kill mid-rename, a bad edit by hand or by an agent) is one `mv` from recovery: `mv ~/.tandem/todos.json.bak ~/.tandem/todos.json`. There is one generation, no rotation. See [ADR 0018](docs/adr/0018-rolling-store-backup.md).
+Tandem's store was `tickets.json` until v0.27.0, with the comments, sessions, sprints and settings in files beside it. A home from that era is read as it is: a read falls back to the JSON while the database has not imported it, and the first write to each domain imports its file once — copying it aside as `tickets.json.pre-sqlite-<timestamp>` and recording the import in the database (`store_imports`). After that the file is never read again, so a hand-restored `tickets.json` beside a database that already imported it is **ignored**, and `tandem-cli doctor` says so: *a fork, ignored since the database took over*. Copying a file back is not a recovery path — the backup is, or, deliberately, dropping the domain's import row so the next write imports the file again.
 
 ## What it is not yet
 
-- **Not a service.** No account, no server, no sync, no network. The state is a JSON file and a folder of notes in your home directory.
+- **Not a service.** No account, no server, no sync, no network. The state is one SQLite database and a folder of notes in your home directory.
 - **Not a team tool yet.** One Mac, one store. There is no shared board and no realtime collaboration; the bikeshed is not shareable either.
 - **Not cross-platform.** macOS 27 or later, on Apple silicon.
 - **Not a tracker with edges.** The board has no labels, no blocking edges and no child tickets — see [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
-- **Not settled on its nouns — one word left to move.** The domain, the CLI, the app and the store's keys say *ticket*; the store's file is still `todos.json`, and its rename to `tickets.json` is the rename's last step ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)).
+- **Not a text file.** The store is a database the app and the CLI own; the bikeshed is where prose, and hand edits, belong. A JSON store from an older build is read once and then ignored.
 
 ## How to contribute
 
