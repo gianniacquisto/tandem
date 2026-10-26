@@ -54,14 +54,18 @@ The build phase is the `tandem-build` skill (`skills/tandem-build/SKILL.md`), ru
 
 ## 5. Human answers
 
-A decision ticket's body is the channel — there is no comment field for it. The human answers in the app, from the CLI (`ticket set --description -` with the answer appended), or in chat to an agent, who appends it. The answer is its own block:
+A decision ticket's body is the channel — there is no comment field for it. The human answers in the app, from the CLI, or in chat to an agent, who records it. The answer is its own block, and one verb appends it and moves the pair with it:
 
-```
-## Answer
-B — <what was chosen, and any condition>
+```sh
+tandem-cli ticket answer --id "$id" --status ready --assignee "" \
+  --body "B — <what was chosen, and any condition>"
 ```
 
-Then in one write: keep the answer, reset `assignee`, set the status the answer opens — `ready` if buildable, `backlog` if it needs re-refining, `done` if settled. Every pass starts with `ticket list --assignee human`: a human ticket never goes back to an agent unread. The read is whole-board on purpose — an answer left unread is a worse failure than a read that spans lanes — but acting on another lane's ticket belongs to that project's own sprint.
+`--status` is the status the answer opens — `ready` if buildable, `backlog` if it needs re-refining, `done` if settled — and `--assignee` is the next owner, omitted (or `""`) when nobody owns it yet. The block and the pair are one write: an answered ticket cannot sit in the inbox wearing `human`.
+
+**Every pass starts with `ticket list --assignee human`.** That read still lists answered tickets, and that is the bookkeeping debt: a ticket carrying a `## Answer` block while `human` still owns it is answered but unsettled, and the pass that finds one owes it an `answer` call (the next owner is the pass's own judgment; `""` when there is none). The read is whole-board on purpose — an answer left unread is a worse failure than a read that spans lanes — but acting on another lane's ticket belongs to that project's own sprint.
+
+**An escalated merge is already the human's act.** An `in-review` ticket assigned `human` whose comment log names a PR has been merged by the human outside any pass — `gh pr view <n> --json state,mergedAt,mergeCommit` answers `MERGED` — so the pass completes it: `ticket complete --id <id>` with the merge commit in a signed comment. A PR still open leaves the ticket in the human's queue, untouched.
 
 ## 6. Retro
 

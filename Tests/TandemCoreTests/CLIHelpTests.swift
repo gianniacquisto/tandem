@@ -32,11 +32,22 @@ struct CLIHelpTests {
 
     @Test("ticket add --help and ticket set --help print their own usage, exit 0")
     func ticketVerbHelp() throws {
-        for verb in ["add", "set"] {
+        for verb in ["add", "set", "answer"] {
             let result = try cli.run(home: home, ["ticket", verb, "--help"])
             #expect(result.code == 0, "verb \(verb)")
             #expect(result.output.contains("tandem-cli ticket \(verb)"), "verb \(verb)")
         }
+    }
+
+    @Test("ticket answer --help carries the write's own grammar")
+    func ticketAnswerHelp() throws {
+        let result = try cli.run(home: home, ["ticket", "answer", "--help"])
+        #expect(result.code == 0)
+        #expect(result.error == "")
+        #expect(result.output.contains("--status"))
+        #expect(result.output.contains("--assignee"))
+        #expect(result.output.contains("--body <string|->"))
+        #expect(result.output.contains("## Answer"), "the block the write appends is named")
     }
 
     @Test("session start --help and lane add --help print their own usage, exit 0")

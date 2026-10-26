@@ -38,6 +38,34 @@ struct DescriptionBodyTests {
         #expect(text.contains("--description"))
     }
 
+    // MARK: - The answer block (D2522EC3)
+
+    @Test("a line that starts `## Answer` is an answer — any case, any dated spelling")
+    func answerBlockIsAnAnswer() {
+        for description in [
+            "## Answer\nB — the chosen option",
+            "## answer — 2026-10-26\nA",
+            "## ANSWER\nsettled",
+            "## Answer (2026-10-21)\nA — approved by merging PR #59",
+            "## Why\n\nwhy this is asked\n\n## Answer — 2026-10-23\nA",
+            "  ## Answer — 2026-10-26\nindented, still a heading",
+            "the brief\r\n\r\n## Answer — 2026-10-26\r\nA",
+        ] {
+            #expect(DescriptionBody.answered(description), "not answered: \(description)")
+        }
+    }
+
+    @Test("a ticket with no answer block is not answered")
+    func noAnswerBlockIsNotAnswered() {
+        #expect(!DescriptionBody.answered(nil))
+        #expect(!DescriptionBody.answered(""))
+        #expect(!DescriptionBody.answered("## Why\n\nno answer yet"))
+        #expect(!DescriptionBody.answered("text ## Answer — not a heading"),
+                "the heading is line-anchored")
+        #expect(!DescriptionBody.answered("The `## Answer` is recorded on `F1CEFA57`"),
+                "4D5D6D37 mentions the block inline and its question is still open")
+    }
+
     @Test("the store still takes an empty description as a deliberate clear")
     func storeStillClearsOnEmpty() throws {
         let dir = FileManager.default.temporaryDirectory

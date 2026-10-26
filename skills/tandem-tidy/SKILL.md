@@ -38,6 +38,8 @@ Three verdicts:
 
 A ticket assigned `human` whose question the world has since answered is resolved like any other, the answer named in its comment; one still waiting on the human is the human's queue and stays.
 
+**An escalated merge is not waiting.** An `in-review` ticket assigned `human` whose comment log names a PR is settled by the PR itself: read `gh pr view <n> --json state,mergedAt,mergeCommit`; `MERGED` → **Resolved**, the merge commit in a signed comment, because the human's act already happened outside any pass. Still open → the ticket stays the human's queue, untouched.
+
 ## 3. Done housekeeping
 
 After the sweep, `tandem-cli ticket archive` — every done ticket leaves the default views. Nothing is deleted: the archive is one flag away, and the reply names how many went.

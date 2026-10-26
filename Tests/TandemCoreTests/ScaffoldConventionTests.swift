@@ -88,4 +88,23 @@ struct ScaffoldConventionTests {
         #expect(c.contains("creates all four"))
         #expect(c.contains("the human prunes"))
     }
+
+    @Test("The question's exit is one write — the handoff rule and the sprint's inbox debt (D2522EC3)")
+    func questionExitIsStatedOnce() throws {
+        let agents = try Self.file("AGENTS.md")
+        #expect(agents.contains("`human` is an assignee only while a question is open"),
+                "the handoff states when `human` is an assignee")
+        #expect(agents.contains("`ticket answer` is the one write that records the answer"),
+                "the answer write is the question's exit")
+
+        let sprint = try Self.file("skills/tandem-sprint/SKILL.md")
+        #expect(sprint.contains("tandem-cli ticket answer"),
+                "sprint §5 records an answer through the verb, not a restated write")
+        #expect(sprint.contains("that is the bookkeeping debt"),
+                "the agents' read is named as the debt an answered ticket leaves")
+
+        let interview = try Self.file("skills/tandem-interview/SKILL.md")
+        #expect(interview.contains("tandem-cli ticket answer"),
+                "interview §6 closes the hold through the same verb")
+    }
 }
