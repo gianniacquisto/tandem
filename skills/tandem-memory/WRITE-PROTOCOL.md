@@ -54,6 +54,8 @@ The **scaffold pages** have a fixed shape of their own ([`CONVENTIONS.md`](CONVE
 - `Threads` — the project's open threads: the ticket's title verbatim plus a one-clause hook.
 - `Notes` — the project's other notes: its scaffold pages and its linked sub-pages, one line each.
 
+The page as a whole is the project's documentation — what this is, how to run it, where things live, and what is open; its role and the freshness rule are [`CONVENTIONS.md`](CONVENTIONS.md)'s.
+
 **Decisions**, **Risks**, and **Processes** — one line per entry, no sections:
 
 ```
