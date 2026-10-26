@@ -478,6 +478,28 @@ extension Store {
         return OperationResult(count, note: note)
     }
 
+    // MARK: - archive (one ticket)
+
+    /// `archive(id)`: sets one ticket aside — the per-ticket half of `archiveDone`,
+    /// which sweeps only the done tickets and so cannot reach an open one.
+    /// Idempotent — an already-archived ticket is returned unchanged, no error,
+    /// nothing written — like `complete`. An unknown id throws
+    /// `DomainError.unknownID` carrying the current open list. **Nothing is
+    /// deleted.** Archiving only takes the ticket out of the default views, and
+    /// any ticket can be brought back with `set(id, archived: .set(false))`.
+    public func archive(_ id: String) throws -> OperationResult<Ticket> {
+        let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
+            let i = try Self.requireTicket(id, in: contents.todos).index
+            var changed = false
+            if !contents.todos[i].archived {
+                contents.todos[i].archived = true
+                changed = true
+            }
+            return (contents.todos[i], changed)
+        }
+        return OperationResult(todo, note: note)
+    }
+
     // MARK: - delete
 
     /// `delete(id)`: removes a single ticket. GUI-only — the CLI has no delete verb.
