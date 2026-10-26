@@ -15,6 +15,8 @@ struct SetupDiagnosticsTests {
         storePath: String = "/Users/tester/.tandem-dev/tandem.db",
         storeVersion: Int? = 1,
         storeJSONFork: String? = nil,
+        storeJSONSource: String? = nil,
+        storeDatabaseUnimported: Bool = false,
         storeHealth: Store.Health = .counts(open: 3, done: 2),
         storeBackup: Store.BackupHealth = .present(age: 300),
         storeLockHeld: Bool = false,
@@ -38,6 +40,8 @@ struct SetupDiagnosticsTests {
             storePath: storePath,
             storeVersion: storeVersion,
             storeJSONFork: storeJSONFork,
+            storeJSONSource: storeJSONSource,
+            storeDatabaseUnimported: storeDatabaseUnimported,
             storeHealth: storeHealth,
             storeBackup: storeBackup,
             storeLockHeld: storeLockHeld,
@@ -103,7 +107,7 @@ struct SetupDiagnosticsTests {
         #expect(store?.detail.contains("backup 2h old") == true)
     }
 
-    @Test("the store row names the database, its migration version and the JSON fork")
+    @Test("the store row names the database, its migration version and how to clear the JSON fork")
     func storeRowNamesTheDatabaseVersionAndFork() {
         let report = SetupDiagnostics.report(facts(
             storePath: "/Users/tester/.tandem-dev/tandem.db",
@@ -114,6 +118,50 @@ struct SetupDiagnosticsTests {
         #expect(store?.detail.contains("v1;") == true)
         #expect(store?.detail.contains("a fork") == true)
         #expect(store?.detail.contains("tickets.json") == true)
+        #expect(store?.detail.contains("rm '/Users/tester/.tandem-dev/tickets.json'") == true,
+                "a fork nothing deletes names the command that clears it")
+    }
+
+    @Test("a pre-import home names the JSON file the counts came from, not the database")
+    func preImportStoreRowNamesTheJSONFile() {
+        let report = SetupDiagnostics.report(facts(
+            storePath: "/Users/tester/.tandem-dev/tandem.db",
+            storeVersion: nil,
+            storeJSONSource: "/Users/tester/.tandem-dev/tickets.json",
+            storeDatabaseUnimported: true,
+            storeHealth: .counts(open: 3, done: 2)))
+        let store = report.checks.first { $0.name == "store" }
+        #expect(store?.detail.contains("/Users/tester/.tandem-dev/tickets.json") == true)
+        #expect(store?.detail.contains("3 open, 2 done") == true)
+        #expect(store?.detail.contains("v1") == false, "the schema is not the store's yet")
+        #expect(store?.detail.contains("has not imported it yet") == true)
+    }
+
+    @Test("a JSON-only home names the file, and has no database to mention")
+    func jsonOnlyStoreRowNamesTheFile() {
+        let report = SetupDiagnostics.report(facts(
+            storePath: "/Users/tester/.tandem-dev/tandem.db",
+            storeVersion: nil,
+            storeJSONSource: "/Users/tester/.tandem-dev/tickets.json",
+            storeHealth: .counts(open: 1, done: 0)))
+        let store = report.checks.first { $0.name == "store" }
+        #expect(store?.detail.contains("/Users/tester/.tandem-dev/tickets.json") == true)
+        #expect(store?.detail.contains("tandem.db") == false, "there is no database to name")
+        #expect(store?.detail.contains("has not imported") == false)
+    }
+
+    @Test("an unreadable JSON file is named as the store, with no backup recipe for a database")
+    func unreadableJSONSourceRowNamesTheFile() {
+        let report = SetupDiagnostics.report(facts(
+            storePath: "/Users/tester/.tandem-dev/tandem.db",
+            storeVersion: nil,
+            storeJSONSource: "/Users/tester/.tandem-dev/tickets.json",
+            storeHealth: .unreadable))
+        let store = report.checks.first { $0.name == "store" }
+        #expect(store?.ok == false)
+        #expect(store?.detail.contains("/Users/tester/.tandem-dev/tickets.json") == true)
+        #expect(store?.detail.contains("tandem.db") == false)
+        #expect(store?.detail.contains("store is not rewritten") == true)
     }
 
     @Test("backup ages read as seconds, minutes, hours, then days")

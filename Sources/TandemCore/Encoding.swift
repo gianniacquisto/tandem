@@ -251,7 +251,8 @@ public enum StoreEncoding {
 
     /// A single session record as a JSON-compatible object. Encodes through
     /// `Session`'s custom `Codable`, so the dates are ISO-8601 UTC and every
-    /// key is present — `null` included — exactly as in `sessions.json`.
+    /// key is present — `null` included — the shape the legacy `sessions.json`
+    /// wrote and the CLI still emits.
     private static func sessionObject(_ session: Session) throws -> [String: Any] {
         let data = try JSONEncoder().encode(session)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -262,7 +263,8 @@ public enum StoreEncoding {
 
     /// A single sprint record as a JSON-compatible object. Encodes through
     /// `Sprint`'s custom `Codable`, so the dates are ISO-8601 UTC and every
-    /// key is present — `null` included — exactly as in `sprints.json`.
+    /// key is present — `null` included — the shape the legacy `sprints.json`
+    /// wrote and the CLI still emits.
     private static func sprintObject(_ sprint: Sprint) throws -> [String: Any] {
         let data = try JSONEncoder().encode(sprint)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {

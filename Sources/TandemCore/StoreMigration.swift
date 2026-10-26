@@ -19,6 +19,10 @@ import Foundation
 ///   state read inside the write transaction, two first writers import once and a kill
 ///   before the commit leaves the file as the store's truth for the next write.
 ///
+///   A copy taken by an import that then rolls back stays where it is: it is a byte
+///   copy of a file that is still the store, so it is evidence of an attempt, never of
+///   a landed import, and the next import writes its own suffixed copy (`copyAside`).
+///
 /// The import is install-gated in ADR 0017's sense: the trigger is a build that carries
 /// the database reaching the home, not a flag or a click.
 enum StoreMigration {
@@ -157,6 +161,14 @@ enum StoreMigration {
     /// Copy the legacy file aside as `<name>.pre-sqlite-<unix-ts>`, colliding names
     /// suffixed. The bytes as they were: the file is the evidence the import is true,
     /// and a copy that cannot be taken fails the write rather than being skipped.
+    ///
+    /// The copy is taken inside the caller's transaction, so a throwing import (the
+    /// marker, the caller's own change) rolls the rows back and leaves the copy behind.
+    /// Accepted, not removed: the copy is byte-for-byte the file that is still the
+    /// store, so it records an attempt and not a landed import, and the next import
+    /// writes a second, suffixed copy rather than reusing this one — the same way it
+    /// would after a kill. Removing it would mean threading a rollback hook through
+    /// every domain's import, and a failed write would then leave less evidence.
     static func copyAside(_ url: URL) throws {
         let directory = url.deletingLastPathComponent()
         let stamp = Int(Date().timeIntervalSince1970)

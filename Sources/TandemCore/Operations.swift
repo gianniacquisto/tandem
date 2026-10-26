@@ -5,11 +5,11 @@ import Foundation
 /// both faces behave identically. The CLI adds only encoding; the GUI adds only
 /// presentation.
 ///
-/// Ordering: the **stored order** is authoritative — the position of a ticket in `todos.json`
-/// is its position in the list, and `add` puts a new ticket on **top** by default. Order is
-/// never recomputed from `createdAt`. Lanes group the list; the array is kept grouped by
-/// lane (default first, then each declared lane) so a reader can walk it straight
-/// through (see `StoreContents`).
+/// Ordering: the **stored order** is authoritative — a ticket's `position` in the
+/// `tickets` table is its position in the list, and `add` puts a new ticket on **top**
+/// by default. Order is never recomputed from `createdAt`. Lanes group the list; the
+/// table is kept grouped by lane (default first, then each declared lane) so a reader
+/// can walk it straight through (see `StoreContents`).
 extension Store {
 
     // MARK: - list
