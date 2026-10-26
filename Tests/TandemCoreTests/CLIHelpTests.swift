@@ -50,6 +50,15 @@ struct CLIHelpTests {
         #expect(lane.output.contains("tandem-cli lane add"))
     }
 
+    @Test("lane list --help prints lane list's own usage and exits 0")
+    func laneListHelp() throws {
+        let result = try cli.run(home: home, ["lane", "list", "--help"])
+        #expect(result.code == 0)
+        #expect(result.error == "", "a help probe is not an error")
+        #expect(result.output.hasPrefix("tandem-cli lane list"),
+            "the verb's own line, not the group or root text")
+    }
+
     // MARK: - Every verb and group answers
 
     @Test("every verb's --help prints that verb's usage and exits 0")

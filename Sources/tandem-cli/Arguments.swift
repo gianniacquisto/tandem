@@ -246,7 +246,7 @@ private func parseLane(_ args: [String]) throws -> Command {
     if verb == "--help" || verb == "-h" { return .groupHelp(group: "lane") }
     let rest = Array(args.dropFirst())
     if asksHelp(rest) {
-        return try helpCommand(group: "lane", verb: verb, known: ["add", "rename", "delete"])
+        return try helpCommand(group: "lane", verb: verb, known: ["list", "add", "rename", "delete"])
     }
     let flags = try parseFlags(rest)
     switch verb {
