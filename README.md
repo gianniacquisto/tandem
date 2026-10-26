@@ -199,10 +199,10 @@ The tickets are rows, in stored order — `tickets.position` **is** the list ord
 
 The schema is versioned in the database itself: `schema_migrations` holds one row per migration — a version and when it was applied — so "which shape is this store?" is a query, and a migration that fails rolls back whole rather than leaving the store half-upgraded.
 
-Beside the store, every changed write keeps **one previous complete copy** in `tandem.db.bak`, taken through SQLite's backup API before the write touches the database. There is one generation, no rotation. Recovery is the backup plus one command, and the journal files go first or the restored file is read under a dead WAL:
+Beside the store, every changed write keeps **one previous complete copy** in `tandem.db.bak`, taken through SQLite's backup API before the write touches the database. There is one generation, no rotation. Recovery is the backup and two commands, and the journal files go first or the restored file is read under a dead WAL:
 
 ```sh
-rm ~/.tandem/tandem.db-wal ~/.tandem/tandem.db-shm ~/.tandem/tandem.db
+rm -f ~/.tandem/tandem.db-wal ~/.tandem/tandem.db-shm ~/.tandem/tandem.db
 mv ~/.tandem/tandem.db.bak ~/.tandem/tandem.db
 ```
 
@@ -210,7 +210,7 @@ See [ADR 0018](docs/adr/0018-rolling-store-backup.md).
 
 ### Moving off the JSON store
 
-Tandem's store was `tickets.json` until v0.27.0, with the comments, sessions, sprints and settings in files beside it. A home from that era is read as it is: a read falls back to the JSON while the database has not imported it, and the first write to each domain imports its file once — copying it aside as `tickets.json.pre-sqlite-<timestamp>` and recording the import in the database (`store_imports`). After that the file is never read again, so a hand-restored `tickets.json` beside a database that already imported it is **ignored**, and `tandem-cli doctor` says so: *a fork, ignored since the database took over*. Copying a file back is not a recovery path — the backup is, or, deliberately, dropping the domain's import row so the next write imports the file again.
+Tandem's store was `tickets.json` until v0.27.0, with the comments, sessions, sprints and settings in files beside it. A home from that era is read as it is: a read falls back to the JSON while the database has not imported it, and the first write to each domain imports its file once — copying it aside as `tickets.json.pre-sqlite-<timestamp>` and recording the import in the database (`store_imports`). After that the file is never read again, so a hand-restored `tickets.json` beside a database that already imported it is **ignored**, and `tandem-cli doctor` says so: *a fork, ignored since the database took over*. Copying a file back is not a recovery path — the backup is, or, deliberately, dropping the domain's import row so the next write imports the file again. The same marker silences writes from the other direction: a pre-v0.27.0 build writing `tickets.json` beside the database is ignored too — its writes never reach the store — so upgrade every writer on the Mac, not just the app.
 
 ## What it is not yet
 

@@ -73,7 +73,7 @@ One numbered, append-only step in the database's shape, applied in its own trans
 _Avoid_: schema bump, upgrade, patch, version (that is the migration's number, not the shape)
 
 **Import marker**:
-The `store_imports` row that records a domain's legacy JSON file as imported. It is the durable answer to "is this database the store yet", written in the same transaction as the imported rows and read inside the write transaction — not table emptiness, which cannot tell a killed first write from a home with no tickets. Present, the file is never read for a write again; absent, the file is still the store.
+The `store_imports` row that records a domain as the database's: its `source` is the legacy JSON file's name when one was imported, and `source` is NULL when a fresh home's first write found nothing to import. It is the durable answer to "is this database the store yet", written in the same transaction as the imported rows and read inside the write transaction — not table emptiness, which cannot tell a killed first write from a home with no tickets. Present, the file is never read for a write again; absent, the file is still the store.
 _Avoid_: import flag, seed, bootstrap, checkpoint
 
 **Rolling backup**:

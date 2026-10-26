@@ -1,5 +1,7 @@
 # Store protocol: sidecar lock, atomic rename, versioned JSON
 
+> **Amended 2026-10-26 by [ADR 0031](0031-one-database-the-store.md):** the store is one SQLite database, `tandem.db`. For the store, the sidecar `flock`, the atomic-rename dance, the versioned JSON envelope and the quarantine-and-restart are retired. What stands from this record: a reader never writes, a reader sees a consistent state, contention is bounded and loud, and the dev-build home rule. The amendment's text is ADR 0031's.
+
 The store is a single JSON file (`~/.tandem/todos.json`) read and written by several processes at once — the GUI app plus one short-lived MCP server process per agent session. We decided: writers take an exclusive `flock` on a **sidecar lockfile** (`~/.tandem/tandem.lock`) held across the entire read → modify → write-temp → `rename` cycle; readers take no lock at all; writes are atomic via a same-directory temp file + `rename`; the file is a versioned envelope (`{"version": 1, "todos": [...]}` with UUIDv4 ids, ISO-8601 UTC timestamps, creation order); done todos accumulate until explicitly cleared; a corrupt or schema-invalid file is backed up as `todos.json.corrupt-<ts>` (recovery done under the lock) and the store restarts empty, with the GUI notifying the human.
 
 ## Dev builds get their own home
