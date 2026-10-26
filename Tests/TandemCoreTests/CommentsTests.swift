@@ -255,6 +255,30 @@ struct CommentReadPathTests {
         #expect(!FileManager.default.fileExists(atPath: store.commentsDirectory.path))
     }
 
+    @Test("a database held exclusively reads as busy, not as a damaged log")
+    func busyIsNotDamaged() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ticket = try makeTicket(store)
+        _ = try store.append(ticketID: ticket.id.uuidString, author: "builder", body: "first")
+
+        // Another connection holds the database exclusively: a WAL snapshot
+        // reads past a normal writer, but an exclusive holder is the contention
+        // the store's ~2 s window ends in a timeout.
+        let holder = try SQLiteDatabase(
+            url: dir.appendingPathComponent("tandem.db"), mode: .readWrite)
+        defer { holder.close() }
+        try holder.run("PRAGMA locking_mode=EXCLUSIVE")
+        try holder.run("BEGIN IMMEDIATE")
+        defer { try? holder.run("ROLLBACK") }
+
+        let read = store.commentRead(ticketID: ticket.id.uuidString)
+        guard case .busy = read else {
+            Issue.record("expected a busy read, got \(read)")
+            return
+        }
+    }
+
     @Test("a damaged legacy line is a failure for the sheet to show, not an empty list")
     func damagedLineIsAFailure() throws {
         let (store, dir) = try tempStore()

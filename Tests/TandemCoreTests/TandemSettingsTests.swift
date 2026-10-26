@@ -236,6 +236,39 @@ struct TandemSettingsTests {
         #expect(TandemSettings.showHiddenFiles(in: home) == false)
     }
 
+    // MARK: - A failed database read (the settings contract)
+
+    @Test("an imported database that cannot be read is no choice, never the import-time settings.json")
+    func failedDatabaseReadIsNoChoice() throws {
+        let home = tempHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        // The pre-import file: the state the fallback must not serve once the
+        // database is the settings record.
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try Data(#"{"bikeshedPath":"/tmp/Old","showHiddenFiles":true}"#.utf8)
+            .write(to: settingsFile(in: home))
+
+        // The first write imports the file, then the human changes the choices.
+        try TandemSettings.setChosenBikeshed(home.appendingPathComponent("Notes"), in: home)
+        try TandemSettings.setShowHiddenFiles(false, in: home)
+
+        // Replace the database with garbage: the settings domain is imported, so
+        // the file is evidence, not the record.
+        for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(
+                at: home.appendingPathComponent("tandem.db\(suffix)"))
+        }
+        try Data("this is not a sqlite database".utf8).write(
+            to: home.appendingPathComponent("tandem.db"))
+
+        // Reads never throw (a broken settings store must not take the app
+        // down), but the answer is "no choice": the import-time bikeshed and
+        // the re-shown hidden layer would be a silent lie about the human's
+        // current choices.
+        #expect(TandemSettings.chosenBikeshed(in: home) == nil)
+        #expect(TandemSettings.showHiddenFiles(in: home) == false)
+    }
+
     // MARK: - The roster (the reassignment picker's names, ticket 4B7CD193)
 
     @Test("no settings file → the six-role seed roster")

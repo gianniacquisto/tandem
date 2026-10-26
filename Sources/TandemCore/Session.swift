@@ -373,14 +373,7 @@ public struct Sessions: Sendable {
     /// A sessions store rooted at an explicit directory (used by tests with a
     /// temp dir). The legacy file is `<directory>/sessions.json`; the records
     /// live in `<directory>/tandem.db`.
-    ///
-    /// `atomicWrite` is kept in the signature for source compatibility with the
-    /// file-backed build; the database's transaction is the write now, so no
-    /// caller-supplied write runs.
-    public init(
-        directory: URL,
-        atomicWrite: (@Sendable (Data, URL) throws -> Void)? = nil
-    ) {
+    public init(directory: URL) {
         self.directory = directory
         self.fileURL = directory.appendingPathComponent("sessions.json")
     }

@@ -216,14 +216,32 @@ public enum TandemSettings {
     /// imported, else the legacy `settings.json`. A read never creates, imports
     /// or throws — a missing, unreadable or malformed source is simply `[:]`,
     /// because a broken settings store must never take the app down.
+    ///
+    /// Once the database exists, a read that fails is `[:]` ("no choice"), never
+    /// the legacy file: after the import the file is evidence, and serving it
+    /// would silently put back the values the human had at import time. The file
+    /// is the fallback only while the domain's marker is absent.
     private static func object(in home: URL) -> [String: Any] {
-        let stored = try? Store.translate {
-            try StoreMigration.sidecarRead(
-                in: home, domain: StoreSchema.settingsDomain
-            ) { db in try readRows(db) }
+        let database = home.appendingPathComponent("tandem.db")
+        guard FileManager.default.fileExists(atPath: database.path) else {
+            return fileObject(in: home)
         }
-        if let stored { return stored }
-        return fileObject(in: home)
+        do {
+            if let stored = try StoreMigration.sidecarRead(
+                in: home, domain: StoreSchema.settingsDomain,
+                { db in try readRows(db) })
+            {
+                return stored
+            }
+            // No import marker yet: the legacy file is still the record.
+            return fileObject(in: home)
+        } catch {
+            // The database is there but cannot answer. The marker cannot be read
+            // from a broken database, so the only honest non-throwing answer is
+            // "no choice" — not the pre-import file, which would be a silent lie
+            // about the human's current settings.
+            return [:]
+        }
     }
 
     /// A read-modify-write in one transaction: the first write imports
