@@ -522,10 +522,10 @@ func sessionAgent(_ raw: String?) -> String? {
 /// the record is *for* — so it is refused with the core's own
 /// `emptySessionBrief` rather than filed as no brief at all.
 ///
-/// A value that names an existing file is refused too (RET-32): the flag never
-/// read the file, so the path would be filed as the brief, and a session start
-/// refuses to overwrite a record — there is no repair. Telling the caller to
-/// pipe it is the whole fix.
+/// A value that names an existing regular file is refused too (RET-32): the flag
+/// never read the file, so the path would be filed as the brief, and a session
+/// start refuses to overwrite a record — there is no repair. Telling the caller
+/// to pipe it is the whole fix. A `~` is expanded first, since no shell does.
 func sessionBrief(_ raw: String) throws -> String {
     guard raw != "-" else {
         let body = try readStandardInput()
@@ -534,7 +534,13 @@ func sessionBrief(_ raw: String) throws -> String {
         }
         return body
     }
-    guard !FileManager.default.fileExists(atPath: raw) else {
+    // `~` is the shell's to expand and no shell runs between the caller and the
+    // flag, so the value is expanded here before the check; a directory (or
+    // anything else that is not a regular file) is not a file, so `--brief
+    // build` stays a literal brief.
+    let path = (raw as NSString).expandingTildeInPath
+    var isDirectory: ObjCBool = false
+    if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue {
         throw DomainError.briefNamesAFile(path: raw)
     }
     return raw
