@@ -14,20 +14,6 @@ import TandemCore
 // axes and nothing else is added to a ticket but its title, its assignee, and the
 // paperclip of a linked note. The description stays out of it — the body is map ticket 6.
 
-extension Status {
-    /// The column title ("in-progress" is a wire value, not a phrase).
-    var displayName: String {
-        switch self {
-        case .backlog: return "Backlog"
-        case .refined: return "To refine"
-        case .ready: return "Ready"
-        case .inProgress: return "In progress"
-        case .inReview: return "In Review"
-        case .done: return "Done"
-        }
-    }
-}
-
 /// What every cell and ticket on the board needs: the model it writes through, the theme,
 /// the lanes a ticket can be filed into, and the parent's note opener.
 struct BoardContext {
@@ -297,8 +283,8 @@ private struct BoardTicket: View {
                         .foregroundStyle(palette.inkDim)
                         .lineLimit(1)
                 }
-                if let assignee = ticket.assignee {
-                    Text(assignee == TicketQuery.human ? "human" : "@\(assignee)")
+                if let assignee = ticket.assignee, let label = AssigneeLabel.of(assignee) {
+                    Text(label)
                         .font(.system(size: 10.5))
                         .foregroundStyle(assignee == TicketQuery.human ? palette.emberDeep
                                                                      : palette.inkDim)
