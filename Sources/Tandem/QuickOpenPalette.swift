@@ -147,14 +147,17 @@ struct QuickOpenPalette: View {
         case .ticket(let ticket):
             guard let lane = ticket.lane else { return ticket.status.displayName }
             return "\(ticket.status.displayName) · \(lane)"
+        case .action:
+            return "daily note"
         }
     }
 
-    /// The row's mark: a note is a document, a ticket is work.
+    /// The row's mark: a note is a document, a ticket is work, an action is a verb.
     private func symbol(for item: QuickOpen.Item) -> String {
         switch item {
         case .note: return "doc.text"
         case .ticket: return "checklist"
+        case .action: return "calendar"
         }
     }
 
