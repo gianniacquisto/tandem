@@ -25,6 +25,20 @@ const syntax = HighlightStyle.define([
   { tag: [t.invalid], color: "var(--ember-deep)" },
 ]);
 
+// The prose column: wide enough to use a large window, still capped and
+// centred with its horizontal padding (prototype: h padding 28, v padding
+// 24 at the scroller). The cap is the editor's alone — the Swift host gives
+// the pane all the width the window has.
+export const proseColumn = {
+  maxWidth: "1100px",
+  margin: "0 auto",
+  padding: "0 28px",
+  caretColor: "var(--ink)",
+  // An unbreakable run (a long URL, an endless word) wraps instead of
+  // forcing a horizontal scrollbar.
+  overflowWrap: "anywhere",
+};
+
 export const ligneTheme = [
   syntaxHighlighting(syntax),
   EditorView.theme(
@@ -44,16 +58,7 @@ export const ligneTheme = [
         lineHeight: "1.35",
         padding: "24px 0",
       },
-      // 720 pt prose column, centred (prototype: h padding 28, v padding 24).
-      ".cm-content": {
-        maxWidth: "720px",
-        margin: "0 auto",
-        padding: "0 28px",
-        caretColor: "var(--ink)",
-        // An unbreakable run (a long URL, an endless word) wraps instead of
-        // forcing a horizontal scrollbar.
-        overflowWrap: "anywhere",
-      },
+      ".cm-content": proseColumn,
       ".cm-line": {
         padding: "0 2px",
         minHeight: "1.35em", // stable line height: classes, never token visibility
