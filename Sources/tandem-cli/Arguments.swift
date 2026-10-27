@@ -23,7 +23,14 @@ enum Command {
         archived: Bool
     )
     case ticketShow(id: String)
-    case ticketAdd(title: String, status: String?, assignee: String?, lane: String?, origin: String?)
+    case ticketAdd(
+        title: String,
+        status: String?,
+        assignee: String?,
+        lane: String?,
+        origin: String?,
+        description: String?
+    )
     case ticketSet(
         id: String,
         title: String?,
@@ -164,17 +171,19 @@ private func parseTicket(_ args: [String]) throws -> Command {
         // `unknownID` error carries the open list, as `complete` does.
         return .ticketShow(id: flags["--id"] ?? "")
     case "add":
-        try accept(flags, ["--title", "--status", "--assignee", "--lane", "--origin"])
+        try accept(flags, ["--title", "--status", "--assignee", "--lane", "--origin", "--description"])
         // A missing `--title` is not a usage error: it is the empty title the
         // domain rejects (`emptyTitle`), exactly as the MCP server read an
         // absent argument. An absent `--origin` is `nil` (the core's `human`
         // default), not the empty string: there is no "no filer" value to reject.
+        // `--description -` is read from stdin, as on `set`; `main` owns the dash.
         return .ticketAdd(
             title: flags["--title"] ?? "",
             status: flags["--status"],
             assignee: flags["--assignee"],
             lane: flags["--lane"],
-            origin: flags["--origin"])
+            origin: flags["--origin"],
+            description: flags["--description"])
     case "set":
         try accept(flags, ["--id", "--title", "--status", "--assignee", "--description"])
         // Every field is optional: the ones not named are left alone, in one write.
