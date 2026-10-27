@@ -3,8 +3,8 @@ import Testing
 
 /// The project-wiki scaffold (9D846650): the conventions state the fixed
 /// scaffold (Overview, Decisions, Risks, Processes), the input rule (the
-/// agents' `.raw/` captures + the human's scratch pad + the ended session
-/// records' summaries), and the scratch read-only rule. The repo's rules
+/// agents' `.raw/` captures + the human's daily notes + the ended session
+/// records' summaries), and the daily notes' read-only rule. The repo's rules
 /// live in the skill files, not in the app — this suite pins the
 /// load-bearing phrases so a refactor cannot drop the contract silently.
 @Suite("Scaffold conventions")
@@ -30,15 +30,18 @@ struct ScaffoldConventionTests {
         #expect(c.contains("no per-persona folders"))
     }
 
-    @Test("CONVENTIONS states the input rule and the scratch read-only rule")
+    @Test("CONVENTIONS states the input rule and the daily notes' read-only rule (EE991EF2)")
     func conventionsStateTheInputs() throws {
         let c = try Self.file("skills/tandem-memory/CONVENTIONS.md")
         #expect(c.contains("three inputs"))
         #expect(c.contains("the ended session records' summaries"),
                 "the session summaries are a consolidation input (ADR 0027)")
+        #expect(c.contains("the human's daily notes"),
+                "the human's daily notes are a consolidation input")
         #expect(c.contains("read-only to the consolidator"))
-        #expect(c.contains("never edits or archives the scratch"))
-        #expect(c.contains("the human prunes"))
+        #expect(c.contains("never edits, moves or archives"),
+                "the pass folds a daily note, never edits, moves or archives it")
+        #expect(c.contains("the human keeps and edits"))
     }
 
     @Test("CONVENTIONS gives the Decisions page its index duty — ADRs stay in the repo")
@@ -65,6 +68,52 @@ struct ScaffoldConventionTests {
         }
     }
 
+    @Test("The bikeshed holds three areas, and the session record is not one of them (7CA67B4F)")
+    func bikeshedHoldsThreeAreas() throws {
+        let memory = try Self.file("skills/tandem-memory/SKILL.md")
+        #expect(!memory.lowercased().contains("two layers"), "the skill miscounts the bikeshed's areas")
+        for area in ["saddlebag", "daily notes", "curated"] {
+            #expect(memory.contains(area), "the skill names the \(area) area")
+        }
+        #expect(memory.contains("tandem.db"),
+                "the session record is a row in the store, not a layer of the folder (ADR 0027)")
+        let conventions = try Self.file("skills/tandem-memory/CONVENTIONS.md")
+        #expect(!conventions.contains("Two layers"), "CONVENTIONS heads three areas as two layers")
+        #expect(conventions.contains("Three areas"), "CONVENTIONS counts the areas it lists")
+    }
+
+    @Test("The per-event capture cadence is retired — the session record is the record (7CA67B4F)")
+    func perEventCaptureCadenceIsRetired() throws {
+        let retired = ["Record captures as you work", "at each moment", "at each qualifying moment",
+                       "never batch to session end", "don't batch to session end",
+                       "files its captures", "file note captures as you work",
+                       "a moment that would be lost when the session ends"]
+        for path in ["AGENTS.md",
+                     "skills/tandem-memory/SKILL.md",
+                     "skills/tandem-memory/WRITE-PROTOCOL.md",
+                     "skills/tandem-build/SKILL.md",
+                     "skills/tandem/SKILL.md",
+                     "agents/builder.md"] {
+            let c = try Self.file(path)
+            for phrase in retired {
+                #expect(!c.contains(phrase), "\(path) still carries the retired cadence: \(phrase)")
+            }
+        }
+        for path in ["AGENTS.md", "skills/tandem-memory/SKILL.md", "skills/tandem-memory/WRITE-PROTOCOL.md"] {
+            let c = try Self.file(path)
+            #expect(c.contains("cost of re-derivation"),
+                    "\(path) states the one capture rule: a real cost of re-derivation")
+            #expect(c.contains("session record") || c.contains("session end"),
+                    "\(path) points the record at the session record")
+        }
+        let write = try Self.file("skills/tandem-memory/WRITE-PROTOCOL.md")
+        #expect(write.contains("session end --summary"), "the session summary is the work record")
+        let build = try Self.file("skills/tandem-build/SKILL.md")
+        #expect(build.contains("session record"), "the build pass's record step is the session record")
+        let retro = try Self.file("skills/retro/SKILL.md")
+        #expect(retro.contains("session record"), "the retro records through the session record, not a capture")
+    }
+
     @Test("The scaffold's own files agree — risk routing and the Overview wording (12D351E9)")
     func scaffoldProseAgrees() throws {
         let consolidation = try Self.file("skills/tandem-memory/CONSOLIDATION.md")
@@ -85,13 +134,74 @@ struct ScaffoldConventionTests {
         }
     }
 
-    @Test("CONSOLIDATION reads the inputs, creates the scaffold on demand, leaves the scratch untouched")
+    @Test("CONSOLIDATION reads the inputs, creates the scaffold on demand, leaves the daily notes untouched")
     func consolidationStatesThePass() throws {
         let c = try Self.file("skills/tandem-memory/CONSOLIDATION.md")
-        #expect(c.contains("scratch"))
+        #expect(c.contains("daily"))
         #expect(c.contains("read-only to the consolidator"))
         #expect(c.contains("creates all four"))
-        #expect(c.contains("the human prunes"))
+        #expect(c.contains("never edits, moves or archives"))
+    }
+
+    @Test("The daily notes contract — the harvest list, the read-only rule and the fold marker (EE991EF2)")
+    func dailyNotesContractIsStated() throws {
+        for path in ["skills/tandem-consolidate/SKILL.md",
+                     "skills/tandem-memory/CONSOLIDATION.md"] {
+            let c = try Self.file(path)
+            #expect(c.contains("[\"daily\"]"), "\(path): the harvest list is named, `[\"daily\"]`")
+            #expect(c.contains("human-owned"), "\(path): the daily notes are the human's")
+            #expect(c.contains("read-only"), "\(path): agents never write them")
+            #expect(c.contains("Human notes folded through"),
+                    "\(path): the fold marker's wording is fixed")
+            #expect(c.contains("never edits, moves or archives"),
+                    "\(path): the source files are untouched")
+        }
+        // Discovery is the list plus the marker date — an mtime never re-folds.
+        let consolidation = try Self.file("skills/tandem-memory/CONSOLIDATION.md")
+        #expect(consolidation.contains("not mtime"), "the pass does not scan by mtime")
+        // The agent capture path is unchanged: daily notes added no agent write path.
+        let consolidate = try Self.file("skills/tandem-consolidate/SKILL.md")
+        #expect(consolidate.contains("tandem-cli note capture"),
+                "agent captures still go through `note capture`")
+    }
+
+    @Test("The wiki is documentation — both readers, the page roles, the journal out (8C8DBD13)")
+    func wikiIsDocumentation() throws {
+        let adr = try Self.file("docs/adr/0033-wiki-is-documentation.md")
+        #expect(adr.contains("## Decision"))
+        #expect(adr.contains("journal"), "the ADR refuses the journal by name")
+        #expect(adr.contains("human"), "the ADR names the human reader")
+        #expect(adr.contains("agent"), "the ADR names the agent reader")
+
+        let conventions = try Self.file("skills/tandem-memory/CONVENTIONS.md")
+        #expect(conventions.contains("## One wiki, two readers"),
+                "the page roles get a section of their own")
+        #expect(conventions.contains("ADR 0033"), "the section cites the decision")
+        #expect(conventions.contains("journal is out"), "the page set refuses the journal")
+        #expect(conventions.contains("what this is, how to run it, where things live, and what is open"),
+                "the Overview's job is stated where the pages are described")
+    }
+
+    @Test("The freshness rule — a page dates itself, and a pass that changes a fact amends it (8C8DBD13)")
+    func freshnessRule() throws {
+        let conventions = try Self.file("skills/tandem-memory/CONVENTIONS.md")
+        #expect(conventions.contains("Reviewed <date>"), "the review stamp is the page's own date")
+        #expect(conventions.contains("mtime"), "the Notes tab's mtime is the reader's signal")
+        #expect(conventions.contains("amends the page in the same write"),
+                "a fact change is not deferred to a later pass")
+
+        let agents = try Self.file("AGENTS.md")
+        #expect(agents.contains("CONVENTIONS.md"), "AGENTS.md points at the conventions")
+        #expect(!agents.contains("Reviewed <date>"), "AGENTS.md does not restate the freshness rule")
+    }
+
+    @Test("The README leads a human to a project's Overview (8C8DBD13)")
+    func readmeLeadsToTheOverview() throws {
+        let readme = try Self.file("README.md")
+        #expect(readme.contains("~/.tandem/bikeshed/projects/<project>/<project>.md"),
+                "the README names the Overview's path")
+        #expect(readme.contains("`## Threads`"),
+                "the Overview's Threads section is where what is open lives")
     }
 
     @Test("The question's exit is one write — the handoff rule and the sprint's inbox debt (D2522EC3)")

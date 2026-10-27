@@ -1,7 +1,9 @@
 import Foundation
 
 /// The quick-open palette (⌘K): **one ranked list over the bikeshed's notes and
-/// the store's tickets** (ticket 3E1F4D23).
+/// the store's tickets** (ticket 3E1F4D23), plus the app's own actions — **Today's
+/// note** is one (ticket EE991EF2), so the keyboard path reaches the human's daily
+/// file even on a day no such file exists yet.
 ///
 /// The ranking lives in the core, not the view, for two reasons: the core is the only
 /// test seam (a ranked list is a pure function, so it needs no window, no store and no
@@ -41,38 +43,52 @@ public enum QuickOpen {
         /// A ticket from the store.
         case ticket(Ticket)
 
-        /// A stable identity for the row: a note is its path, a ticket its id.
+        /// An action the palette runs rather than a thing it opens — today's daily
+        /// note is the first (ticket EE991EF2): the palette's keyboard path to the
+        /// human's file, which no note in the list may exist to find yet.
+        case action(id: String, name: String)
+
+        /// Today's note, the app's daily-note action.
+        public static let dailyNote = Item.action(id: "daily.today", name: "Today's note")
+
+        /// A stable identity for the row: a note is its path, a ticket its id, an
+        /// action its id.
         public var id: String {
             switch self {
             case .note(let path): return "note:\(path)"
             case .ticket(let todo): return "ticket:\(todo.id.uuidString)"
+            case .action(let id, _): return "action:\(id)"
             }
         }
 
-        /// The name the row shows: a note's name (its file name, without `.md`) or a
-        /// ticket's title.
+        /// The name the row shows: a note's name (its file name, without `.md`), a
+        /// ticket's title, or an action's name.
         public var name: String {
             switch self {
             case .note(let path): return BikeshedPath.name(of: path)
             case .ticket(let todo): return todo.title
+            case .action(_, let name): return name
             }
         }
 
-        /// The text the query is matched against: a note's path, a ticket's title.
+        /// The text the query is matched against: a note's path, a ticket's title and
+        /// ref (ticket 6598E091 — a typed `TAN-42` is how a human names a ticket), an
+        /// action's name.
         public var searchText: String {
             switch self {
             case .note(let path): return path
-            case .ticket(let todo): return todo.title
+            case .ticket(let todo): return [todo.ref, todo.title].compactMap { $0 }.joined(separator: " ")
+            case .action(_, let name): return name
             }
         }
 
-        /// Whether this ticket is done. A note is never done.
+        /// Whether this ticket is done. A note and an action are never done.
         public var isDone: Bool {
             if case .ticket(let todo) = self { return todo.done }
             return false
         }
 
-        /// Whether this ticket is archived. A note is never archived.
+        /// Whether this ticket is archived. A note and an action are never archived.
         public var isArchived: Bool {
             if case .ticket(let todo) = self { return todo.archived }
             return false

@@ -60,7 +60,7 @@ enum StoreMigration {
             guard envelope.version == 1 || envelope.version == 2 else {
                 throw CorruptStore.unsupportedVersion(envelope.version)
             }
-            return StoreContents(lanes: envelope.lanes ?? [], todos: envelope.todos)
+            return StoreContents(laneNames: envelope.lanes ?? [], todos: envelope.todos)
         } catch {
             throw StoreIOError.io(
                 "the legacy store at \(url.path) is corrupt (\(error)); "

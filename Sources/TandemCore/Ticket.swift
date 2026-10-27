@@ -45,6 +45,16 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
     /// first. Written as `lane` on disk; a file still under the v1 key `section` is read
     /// fine and copied aside before the write that retires it.
     public var lane: String?
+    /// The ticket's number within its lane, one-based — the `42` of `TAN-42`
+    /// (ticket 6598E091). `nil` for a ticket in the default area, which carries no
+    /// number and no ref. Issued by the store, never reused: the lane holds the counter
+    /// (`Lane.lastNumber`), so a moved-away number is not handed out twice.
+    public var number: Int?
+    /// The ticket's ref as the store renders it — `KEY-N`, the lane's key plus
+    /// `number`. **Derived, never stored:** the store fills it on every read from the
+    /// lane's key, so a lane rename that keeps the key cannot drift it. `nil` when the
+    /// ticket has no number.
+    public var ref: String?
     /// An optional link to a Bikeshed note: a bikeshed-root-relative path like
     /// `projects/App.md`, or `nil` for an unlinked ticket. Set in the GUI only ([ADR 0010]).
     public var link: String?
@@ -64,6 +74,8 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
         assignee: String? = nil,
         origin: String = "human",
         lane: String? = nil,
+        number: Int? = nil,
+        ref: String? = nil,
         link: String? = nil,
         createdAt: Date = .now,
         completedAt: Date? = nil
@@ -76,6 +88,8 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
         self.assignee = assignee
         self.origin = origin
         self.lane = lane
+        self.number = number
+        self.ref = ref
         self.link = link
         self.createdAt = createdAt
         self.completedAt = completedAt
@@ -108,6 +122,10 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
     /// guarded is gone: `tickets.json` is read once and never written (ADR 0031).
     private enum CodingKeys: String, CodingKey {
         case id, title, done, status, archived, description, assignee, origin, link, createdAt, completedAt
+        /// The lane number and its rendered ref (ticket 6598E091). The number is the
+        /// stored half; `ref` is derived by the store on read and written on the wire
+        /// only, so it always agrees with the lane's current key.
+        case number, ref
         /// The v1 key for the lane — read beside `lane` and kept forever.
         case lane = "section"
         /// The renamed key, what the writer emits.
@@ -148,6 +166,11 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
         let laneFromRenamedKey = try c.decodeIfPresent(String.self, forKey: .renamedLane)
         let laneFromV1Key = try c.decodeIfPresent(String.self, forKey: .lane)
         self.lane = laneFromRenamedKey ?? laneFromV1Key
+        // Additive: a store written before the ref scheme has no numbers, and a ticket
+        // in the default area never has one. `ref` is read so a wire round-trip keeps
+        // the field; the store overwrites it from the lane's key on every read.
+        self.number = try c.decodeIfPresent(Int.self, forKey: .number)
+        self.ref = try c.decodeIfPresent(String.self, forKey: .ref)
         self.link = try c.decodeIfPresent(String.self, forKey: .link)
 
         let createdRaw = try c.decode(String.self, forKey: .createdAt)
@@ -197,6 +220,19 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
             try c.encode(lane, forKey: .renamedLane)
         } else {
             try c.encodeNil(forKey: .renamedLane)
+        }
+        // The number and the ref ride the wire explicitly, `null` included, like every
+        // additive field: the shape never varies by ticket. A ticket in the default
+        // area has neither.
+        if let number {
+            try c.encode(number, forKey: .number)
+        } else {
+            try c.encodeNil(forKey: .number)
+        }
+        if let ref {
+            try c.encode(ref, forKey: .ref)
+        } else {
+            try c.encodeNil(forKey: .ref)
         }
         if let link {
             try c.encode(link, forKey: .link)

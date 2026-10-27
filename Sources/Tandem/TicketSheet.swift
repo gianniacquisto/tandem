@@ -190,6 +190,20 @@ struct TicketSheet: View {
                     .font(.system(size: 11))
                     .foregroundStyle(ticket.origin == TicketQuery.human ? palette.inkDim
                                                                     : palette.emberDeep)
+                // The ticket's ref (ticket 6598E091): the handle a human writes in chat,
+                // and a click copies it. A ticket in the default area has none.
+                if let ref = ticket.ref {
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(ref, forType: .string)
+                    } label: {
+                        Text(ref)
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundStyle(palette.inkDim)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy \(ref)")
+                }
                 Spacer(minLength: 0)
                 if let link {
                     if let onOpenLink {

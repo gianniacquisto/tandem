@@ -29,8 +29,8 @@ enum Usage {
       tandem-cli ticket comment list --id <id>
 
       tandem-cli lane list
-      tandem-cli lane add --name <name>
-      tandem-cli lane rename --from <name> --to <name>
+      tandem-cli lane add --name <name> [--abbr <key>]
+      tandem-cli lane rename --from <name> --to <name> [--abbr <key>]
       tandem-cli lane delete --name <name>
       tandem-cli note rename --from <path> --to <path>
       tandem-cli note capture --kind <decision|gotcha|fact|thread> [--project <name>] [--session <id>]
@@ -67,6 +67,8 @@ enum Usage {
       lane      a lane name, or "" for the default area
       index     0-based within the lane; omitted appends to it
       outcome   succeeded | failed | interrupted | unknown — how a session ended
+      id        a ticket's UUID, or its ref — the lane key and number, TAN-42
+      key       a lane's ref key: uppercase letters and digits, unique across lanes
     """
 
     /// `<group> --help`: the group's verbs, the root's lines for it.
@@ -105,9 +107,13 @@ enum Usage {
 
         Usage:
           tandem-cli lane list
-          tandem-cli lane add --name <name>
-          tandem-cli lane rename --from <name> --to <name>
+          tandem-cli lane add --name <name> [--abbr <key>]
+          tandem-cli lane rename --from <name> --to <name> [--abbr <key>]
           tandem-cli lane delete --name <name>
+
+        Values:
+          key       a lane's ref key: uppercase letters and digits, unique across lanes;
+                    omitted, the first three letters of the name (Tandem → TAN)
         """,
         "note": """
         tandem-cli note — the bikeshed's agent face.
@@ -186,6 +192,9 @@ enum Usage {
 
         `ticket list` prints summaries (`descriptionLength` in place of the body);
         this is the read that carries the description.
+
+        `--id` takes the ticket's ref (`TAN-42`) as well as its UUID — the same handle
+        every id-taking verb accepts.
         """,
         "ticket add": """
         tandem-cli ticket add — a new ticket.
@@ -288,13 +297,23 @@ enum Usage {
         tandem-cli lane add — a new lane.
 
         Usage:
-          tandem-cli lane add --name <name>
+          tandem-cli lane add --name <name> [--abbr <key>]
+
+        Values:
+          key       a lane's ref key: uppercase letters and digits, unique across lanes;
+                    omitted, the first three letters of the name (Tandem → TAN)
+
+        The key is the `TAN` of a ticket ref (`TAN-42`): it is frozen once a ticket in
+        the lane holds a number.
         """,
         "lane rename": """
-        tandem-cli lane rename — a lane's name.
+        tandem-cli lane rename — a lane's name, and its key.
 
         Usage:
-          tandem-cli lane rename --from <name> --to <name>
+          tandem-cli lane rename --from <name> --to <name> [--abbr <key>]
+
+        The key survives a rename; `--abbr` moves it, and a lane with a numbered ticket
+        refuses — the refs a human already wrote would move with it.
         """,
         "lane delete": """
         tandem-cli lane delete — a lane, its members to the default area.

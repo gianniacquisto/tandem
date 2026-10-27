@@ -304,6 +304,14 @@ private struct BoardTicket: View {
                                                                      : palette.inkDim)
                         .lineLimit(1)
                 }
+                // The ticket's ref (ticket 6598E091) — the handle a human writes in chat.
+                // A ticket in the default area has none.
+                if let ref = ticket.ref {
+                    Text(ref)
+                        .font(.system(size: 9.5, design: .monospaced))
+                        .foregroundStyle(palette.inkDim)
+                        .lineLimit(1)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 

@@ -58,7 +58,7 @@ public struct TicketToNote: Sendable {
             text: Self.text(title: todo.title, body: todo.description))
         do {
             let (linked, note) = try store.mutate { contents -> (value: Ticket, changed: Bool) in
-                let i = try Store.requireTicket(id, in: contents.todos).index
+                let i = try Store.requireTicket(id, in: contents).index
                 // The link may have been set since the read above (another
                 // face, an agent): a note is only linked to a ticket that has
                 // no note yet.

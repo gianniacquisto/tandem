@@ -93,6 +93,20 @@ The bikeshed: the notes the app watches and the agents write, with the tree on t
 
 ![The bikeshed — the notes tree, the editor and the backlinks](docs/screenshots/bikeshed.png)
 
+### The notes — where a project's page starts
+
+The bikeshed is a wiki, not a log: its pages hold what a project is, how to run it, where things live, what is open now, and the decisions behind it. It does not hold the story of what was tried — git history and the session records are that.
+
+Every project has one entry point, its **Overview**:
+
+```
+~/.tandem/bikeshed/projects/<project>/<project>.md
+```
+
+The prose says what the project is, how to run it and where things live; its `## Threads` list is what is open now (the board is the full list — `tandem-cli ticket list`); and it links the project's Decisions, Risks, Processes and sub-pages. Each page names the date it was last true, `Reviewed <date>`, and the Notes tab's mtime is the same signal — a page that has drifted is the page to fix.
+
+Start at `~/.tandem/bikeshed/Index.md`, or the app's Notes tab, when you do not know the project's name yet.
+
 ## The agent face
 
 ### `tandem-cli` on PATH
@@ -123,8 +137,8 @@ tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
 tandem-cli ticket comment list --id <id>
 
 tandem-cli lane list
-tandem-cli lane add --name <name>
-tandem-cli lane rename --from <name> --to <name>
+tandem-cli lane add --name <name> [--abbr <key>]
+tandem-cli lane rename --from <name> --to <name> [--abbr <key>]
 tandem-cli lane delete --name <name>
 tandem-cli note rename --from <path> --to <path>
 tandem-cli note capture --kind <decision|gotcha|fact|thread> [--project <name>] [--session <id>]
@@ -148,7 +162,7 @@ tandem-cli sprint show --lane <name> --number <n>
 tandem-cli doctor
 ```
 
-The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `done`; a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status. A sprint keeps its own vocabulary too — `open` and `closed`, with a batch built `serial` or `parallel` — and never borrows the board's Status either.
+The Statuses are `backlog`, `refined`, `ready`, `in-progress`, `in-review` and `done`; a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A ticket in a lane carries a **ref** — the lane's key and a per-lane number, `TAN-42` — and every `--id` (or `--ticket`) accepts it beside the full UUID; the default area's tickets have none, and a lane's key is frozen once its tickets carry numbers. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status. A sprint keeps its own vocabulary too — `open` and `closed`, with a batch built `serial` or `parallel` — and never borrows the board's Status either.
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 
@@ -163,7 +177,7 @@ Not a ticket: `session start` opens a record of one agent session's run — the 
 | skill | what it is for | since |
 | --- | --- | --- |
 | `tandem` | the CLI contract an agent reads before it touches the store | v0.9.0 |
-| `tandem-memory` | the bikeshed as the agent's memory: orient from the Hub, record captures as you work, consolidate into the curated notes on request | v0.6.0, the capture-and-consolidation protocol in v0.11.0 |
+| `tandem-memory` | the bikeshed as the agent's memory: orient from the Hub, record the session, consolidate into the curated notes on request | v0.6.0, the capture-and-consolidation protocol in v0.11.0 |
 | `tandem-sprint` | the SDLC in one invocation — the loop refine → build → review → retro: orient, triage with refine filling the batch, the batch through `tandem-build`, retro at the close | v0.15.0 |
 | `tandem-build` | the sprint's build phase: each batch ticket claimed, built in its own worktree, gated through review, recorded | v0.15.0 (as `tandem-sprint`; renamed 2026-10-24) |
 | `tandem-refine` | dispatches the refiner to shape a backlog ticket into a buildable brief | v0.16.0 |
