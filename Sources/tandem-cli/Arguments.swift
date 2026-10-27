@@ -63,7 +63,7 @@ enum Command {
     case sprintOpen(lane: String, mode: String?, session: String?)
     case sprintTicket(lane: String, ticket: String)
     case sprintRun(lane: String, note: String)
-    case sprintClose(lane: String, note: String?)
+    case sprintClose(lane: String, number: String?, note: String?)
     case sprintList(lane: String?, status: String?)
     case sprintShow(lane: String, number: String)
 }
@@ -470,10 +470,15 @@ private func parseSprint(_ args: [String]) throws -> Command {
         // belongs to the adapter.
         return .sprintRun(lane: flags["--lane"] ?? "", note: flags["--note"] ?? "")
     case "close":
-        try accept(flags, ["--lane", "--note"])
+        try accept(flags, ["--lane", "--number", "--note"])
         // `--note` is optional: a close that names no note is the stamp
-        // alone. `--note -` is stdin, as `--note` is on `run`.
-        return .sprintClose(lane: flags["--lane"] ?? "", note: flags["--note"])
+        // alone. `--note -` is stdin, as `--note` is on `run`. `--number` names
+        // the record instead of the lane's open one, so a close can be aimed at
+        // a record that has already closed — a write that changes nothing.
+        return .sprintClose(
+            lane: flags["--lane"] ?? "",
+            number: flags["--number"],
+            note: flags["--note"])
     case "list":
         try accept(flags, ["--lane", "--status"])
         // Absent `--lane` reports every lane; absent `--status` every state.
