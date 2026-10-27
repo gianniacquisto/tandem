@@ -9,7 +9,7 @@ This project's memory is the Tandem **bikeshed** (`~/.tandem/bikeshed/`), reache
 - **Consolidate on request** — the captures keep at session close; when the human asks, `skills/tandem-consolidate/` dispatches the pass.
 - **Applies to sub-agents too** — a child session receives this section like the root does, so a brief need not restate it.
 
-The full protocol is in the skill: `SKILL.md`, `WRITE-PROTOCOL.md`, `CONSOLIDATION.md`.
+The full protocol is in the skill: `SKILL.md`, `CONVENTIONS.md` (the page roles and the freshness rule), `WRITE-PROTOCOL.md`, `CONSOLIDATION.md`.
 
 ## Sessions
 

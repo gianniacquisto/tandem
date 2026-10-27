@@ -93,6 +93,20 @@ The bikeshed: the notes the app watches and the agents write, with the tree on t
 
 ![The bikeshed — the notes tree, the editor and the backlinks](docs/screenshots/bikeshed.png)
 
+### The notes — where a project's page starts
+
+The bikeshed is a wiki, not a log: its pages hold what a project is, how to run it, where things live, what is open now, and the decisions behind it. It does not hold the story of what was tried — git history and the session records are that.
+
+Every project has one entry point, its **Overview**:
+
+```
+~/.tandem/bikeshed/projects/<project>/<project>.md
+```
+
+The prose says what the project is, how to run it and where things live; its `## Threads` list is what is open now (the board is the full list — `tandem-cli ticket list`); and it links the project's Decisions, Risks, Processes and sub-pages. Each page names the date it was last true, `Reviewed <date>`, and the Notes tab's mtime is the same signal — a page that has drifted is the page to fix.
+
+Start at `~/.tandem/bikeshed/Index.md`, or the app's Notes tab, when you do not know the project's name yet.
+
 ## The agent face
 
 ### `tandem-cli` on PATH

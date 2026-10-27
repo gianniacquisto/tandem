@@ -124,6 +124,45 @@ struct ScaffoldConventionTests {
         #expect(c.contains("the human prunes"))
     }
 
+    @Test("The wiki is documentation — both readers, the page roles, the journal out (8C8DBD13)")
+    func wikiIsDocumentation() throws {
+        let adr = try Self.file("docs/adr/0033-wiki-is-documentation.md")
+        #expect(adr.contains("## Decision"))
+        #expect(adr.contains("journal"), "the ADR refuses the journal by name")
+        #expect(adr.contains("human"), "the ADR names the human reader")
+        #expect(adr.contains("agent"), "the ADR names the agent reader")
+
+        let conventions = try Self.file("skills/tandem-memory/CONVENTIONS.md")
+        #expect(conventions.contains("## One wiki, two readers"),
+                "the page roles get a section of their own")
+        #expect(conventions.contains("ADR 0033"), "the section cites the decision")
+        #expect(conventions.contains("journal is out"), "the page set refuses the journal")
+        #expect(conventions.contains("what this is, how to run it, where things live, and what is open"),
+                "the Overview's job is stated where the pages are described")
+    }
+
+    @Test("The freshness rule — a page dates itself, and a pass that changes a fact amends it (8C8DBD13)")
+    func freshnessRule() throws {
+        let conventions = try Self.file("skills/tandem-memory/CONVENTIONS.md")
+        #expect(conventions.contains("Reviewed <date>"), "the review stamp is the page's own date")
+        #expect(conventions.contains("mtime"), "the Notes tab's mtime is the reader's signal")
+        #expect(conventions.contains("amends the page in the same write"),
+                "a fact change is not deferred to a later pass")
+
+        let agents = try Self.file("AGENTS.md")
+        #expect(agents.contains("CONVENTIONS.md"), "AGENTS.md points at the conventions")
+        #expect(!agents.contains("Reviewed <date>"), "AGENTS.md does not restate the freshness rule")
+    }
+
+    @Test("The README leads a human to a project's Overview (8C8DBD13)")
+    func readmeLeadsToTheOverview() throws {
+        let readme = try Self.file("README.md")
+        #expect(readme.contains("~/.tandem/bikeshed/projects/<project>/<project>.md"),
+                "the README names the Overview's path")
+        #expect(readme.contains("`## Threads`"),
+                "the Overview's Threads section is where what is open lives")
+    }
+
     @Test("The question's exit is one write — the handoff rule and the sprint's inbox debt (D2522EC3)")
     func questionExitIsStatedOnce() throws {
         let agents = try Self.file("AGENTS.md")
