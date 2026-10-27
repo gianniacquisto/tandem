@@ -24,6 +24,19 @@ public enum Status: String, Sendable, CaseIterable, Hashable {
     /// names the values in.
     public static var workflow: [Status] { allCases }
 
+    /// The word every face draws: the board's column header, the sheet's picker, the
+    /// list's row. The wire value is lowercase (`in-progress`); this is the phrase.
+    public var displayName: String {
+        switch self {
+        case .backlog: return "Backlog"
+        case .refined: return "To refine"
+        case .ready: return "Ready"
+        case .inProgress: return "In progress"
+        case .inReview: return "In Review"
+        case .done: return "Done"
+        }
+    }
+
     /// Every wire value, in workflow order.
     public static var wireValues: [String] { workflow.map(\.rawValue) }
 
