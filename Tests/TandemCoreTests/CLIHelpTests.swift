@@ -101,6 +101,21 @@ struct CLIHelpTests {
             "the verb's own line, not the group or root text")
     }
 
+    /// TAN-196: an agent reads the value list before a write, so the new stage has to
+    /// be in every help text that names the statuses — the root's and the verbs' that
+    /// take `--status`.
+    @Test("the status value list in help carries on-hold")
+    func statusValuesCarryOnHold() throws {
+        let probes = [["--help"], ["ticket", "--help"], ["ticket", "list", "--help"],
+                      ["ticket", "add", "--help"], ["ticket", "set", "--help"],
+                      ["ticket", "answer", "--help"]]
+        for probe in probes {
+            let result = try cli.run(home: home, probe)
+            #expect(result.code == 0, "\(probe)")
+            #expect(result.output.contains("on-hold"), "\(probe)")
+        }
+    }
+
     // MARK: - Every verb and group answers
 
     @Test("every verb's --help prints that verb's usage and exits 0")

@@ -82,7 +82,7 @@ public struct TicketQuery: Sendable, Equatable {
     /// read keeps showing it — the ticket still wears its `human` tag and its column —
     /// so the bookkeeping debt stays visible where the actors who must settle it look.
     public static var inbox: TicketQuery {
-        TicketQuery(statuses: Set(Status.workflow.filter { $0 != .done }),
+        TicketQuery(statuses: Set(Status.allCases.filter { $0 != .done }),
                   assignee: .named(human),
                   archived: .excluded,
                   excludeAnswered: true)

@@ -13,7 +13,7 @@ struct TicketLabelTests {
     @Test("the Status words, in workflow order")
     func statusWords() {
         #expect(Status.workflow.map(\.displayName)
-                == ["Backlog", "To refine", "Ready", "In progress", "In Review", "Done"])
+                == ["Backlog", "On hold", "Ready", "In progress", "In Review", "Done"])
     }
 
     @Test("the assignee label: nil, the reserved word, and an agent's name as stored")

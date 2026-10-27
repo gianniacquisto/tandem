@@ -39,6 +39,21 @@ struct BoardTests {
         #expect(rows[0].tickets(.done).isEmpty)
     }
 
+    /// TAN-196: the retired `refined` row is still a ticket, so it draws in the column
+    /// the word folds into — On hold — and the lane header's count is the cells' sum.
+    @Test("a refined row draws beside the on-hold rows, and the header count matches the cells")
+    func refinedFoldsIntoOnHold() {
+        let parked = Ticket(title: "parked the old way", status: .refined, lane: "Tandem")
+        let held = Ticket(title: "parked the new way", status: .onHold, lane: "Tandem")
+        let rows = TicketBoard.rows(from: [parked, held], lanes: ["Tandem"])
+
+        let row = rows[1]
+        #expect(row.tickets(.onHold).map { $0.title } == ["parked the old way", "parked the new way"])
+        #expect(row.tickets(.refined).isEmpty, "refined is a readable status, not a drawn column")
+        let drawn = Status.workflow.reduce(0) { $0 + row.tickets($1).count }
+        #expect(drawn == row.count, "the lane header counts exactly what the cells draw")
+    }
+
     @Test("the default area is the first row, then declared lanes, then a lane only a ticket names")
     func laneOrder() {
         let handEdited = Ticket(title: "hand edited", lane: "Stray")
