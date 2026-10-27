@@ -44,3 +44,5 @@ RETRO: <session id> — <n> filed, <m> skipped — <the finding that matters mos
 ```
 
 Then the ticket list, one line each, and each skipped candidate with its reason. No questions to the caller, no offer to fix.
+
+The retro's record is its **session record**: end it with the `RETRO:` line as the summary. File a capture only for a finding that is not already a ticket in the log above and whose re-derivation would cost real effort.

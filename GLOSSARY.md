@@ -107,7 +107,7 @@ A project's hidden layer of captures — the `projects/<project>/.raw/` folder: 
 _Avoid_: raw layer, queue, inbox, backlog
 
 **Capture**:
-A small, create-only note an agent files with `tandem-cli note capture` as it works: one file in its project's **saddlebag**, out of the curated graph, for the consolidation pass to fold into the project's curated notes.
+A small, create-only note an agent files with `tandem-cli note capture` for a decision, gotcha or fact whose re-derivation would cost real effort: one file in its project's **saddlebag**, out of the curated graph, for the consolidation pass to fold into the project's curated notes.
 _Avoid_: note (ambiguous with a curated note), raw note, log entry, scratch note
 
 **Consolidator**:

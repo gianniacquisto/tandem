@@ -65,6 +65,36 @@ struct ScaffoldConventionTests {
         }
     }
 
+    @Test("The per-event capture cadence is retired — the session record is the record (7CA67B4F)")
+    func perEventCaptureCadenceIsRetired() throws {
+        let retired = ["Record captures as you work", "at each moment", "at each qualifying moment",
+                       "never batch to session end", "don't batch to session end",
+                       "files its captures", "file note captures as you work"]
+        for path in ["AGENTS.md",
+                     "skills/tandem-memory/SKILL.md",
+                     "skills/tandem-memory/WRITE-PROTOCOL.md",
+                     "skills/tandem-build/SKILL.md",
+                     "agents/builder.md"] {
+            let c = try Self.file(path)
+            for phrase in retired {
+                #expect(!c.contains(phrase), "\(path) still carries the retired cadence: \(phrase)")
+            }
+        }
+        for path in ["AGENTS.md", "skills/tandem-memory/SKILL.md", "skills/tandem-memory/WRITE-PROTOCOL.md"] {
+            let c = try Self.file(path)
+            #expect(c.contains("cost of re-derivation"),
+                    "\(path) states the one capture rule: a real cost of re-derivation")
+            #expect(c.contains("session record") || c.contains("session end"),
+                    "\(path) points the record at the session record")
+        }
+        let write = try Self.file("skills/tandem-memory/WRITE-PROTOCOL.md")
+        #expect(write.contains("session end --summary"), "the session summary is the work record")
+        let build = try Self.file("skills/tandem-build/SKILL.md")
+        #expect(build.contains("session record"), "the build pass's record step is the session record")
+        let retro = try Self.file("skills/retro/SKILL.md")
+        #expect(retro.contains("session record"), "the retro records through the session record, not a capture")
+    }
+
     @Test("The scaffold's own files agree — risk routing and the Overview wording (12D351E9)")
     func scaffoldProseAgrees() throws {
         let consolidation = try Self.file("skills/tandem-memory/CONSOLIDATION.md")
