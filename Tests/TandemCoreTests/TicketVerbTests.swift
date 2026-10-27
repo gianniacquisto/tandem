@@ -192,6 +192,47 @@ struct TicketVerbTests {
         #expect(unknown.error.contains("Unknown ticket id"))
     }
 
+    // MARK: - the on-hold status (TAN-196: the reader ships first)
+
+    @Test("`ticket set --status on-hold` writes the new value and `list --status` finds it")
+    func onHoldWritesAndLists() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let added = try run(home: home, ["ticket", "add", "--title", "Parked on purpose"])
+        let id = try #require((try json(added.output)["id"] as? String))
+
+        let set = try run(home: home, ["ticket", "set", "--id", id, "--status", "on-hold"])
+        #expect(set.code == 0)
+        #expect(try json(set.output)["status"] as? String == "on-hold")
+
+        let listed = try run(home: home, ["ticket", "list", "--status", "on-hold"])
+        #expect(listed.code == 0)
+        let rows = try #require(try json(listed.output)["tickets"] as? [[String: Any]])
+        #expect(rows.count == 1)
+        #expect(rows.first?["status"] as? String == "on-hold")
+    }
+
+    /// The other half of the gate: the build that learns `on-hold` must not stop
+    /// reading or writing the word every existing row and skill still uses.
+    @Test("`ticket set --status refined` still answers in the build that adds on-hold")
+    func refinedStillWrites() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let added = try run(home: home, ["ticket", "add", "--title", "Refined the old way"])
+        let id = try #require((try json(added.output)["id"] as? String))
+
+        let set = try run(home: home, ["ticket", "set", "--id", id, "--status", "refined"])
+        #expect(set.code == 0)
+        #expect(try json(set.output)["status"] as? String == "refined")
+
+        let listed = try run(home: home, ["ticket", "list", "--status", "refined"])
+        #expect(listed.code == 0)
+        let rows = try #require(try json(listed.output)["tickets"] as? [[String: Any]])
+        #expect(rows.first?["status"] as? String == "refined")
+    }
+
     // MARK: - Helpers
 
     /// A throwaway home: the CLI writes there, never the human's store.

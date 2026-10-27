@@ -19,6 +19,9 @@ extension Status {
     var displayName: String {
         switch self {
         case .backlog: return "Backlog"
+        case .onHold: return "On hold"
+        // The retired stage. No column or menu offers it; a legacy row still reads
+        // with the phrase its column used to carry (TAN-196).
         case .refined: return "To refine"
         case .ready: return "Ready"
         case .inProgress: return "In progress"
