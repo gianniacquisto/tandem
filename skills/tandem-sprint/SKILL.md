@@ -22,7 +22,7 @@ The batch is drawn here — `tandem-cli ticket list --filter open --lane <lane> 
 - **`ready` tickets take the slots first; `backlog` tickets fill the remaining slots**, and the picked ones are refined **as part of the run**, not before the batch is open. A lane with five or more ready runs no refine phase; a lane with no ready refines five.
 - **The refine rule is per ticket, unchanged** — a picked backlog ticket too big or too undecided for one session → dispatch the `refiner` (`agents/refiner.md`) with the ticket id; otherwise shape it yourself into the brief — Why / What / Done when / Decided against / Open questions — and mark it `refined`. The refine session (`skills/tandem-refine/`) stays the front door for refine-heavy work with a chosen model.
 - **Ready** = refined, no open questions, no human decision pending, and it fits one agent session. Bigger → split, file the parts, link them in the description.
-- **A human-only decision** → `--assignee human`, status `refined`, one question per ticket, described below.
+- **A human-only decision** → `--assignee human`, status `refined`, one question per ticket, described below. That pair is the refine-time hold, before any build exists; an escalated PR is `in-review` with `human` (`agents/reviewer.md`), and the two must not be read for each other.
 - **Escalation scope**: a preference, a spend, or an irreversible or outward-facing act. Everything else you decide yourself and record under **Decided against** — a question the environment can answer is not a question.
 
 ## 3. Open the sprint
