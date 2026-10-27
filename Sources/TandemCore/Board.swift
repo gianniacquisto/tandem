@@ -27,6 +27,14 @@ public struct BoardLane: Identifiable, Sendable, Equatable {
     public var count: Int { cells.values.reduce(0) { $0 + $1.count } }
 }
 
+extension Status {
+    /// The board column a ticket draws in: the stage itself, except the retired
+    /// `refined`, which folds into **On hold** (TAN-196). `workflow` stays the drawn
+    /// stages, so no header, menu or ⌘K line offers the retired word while a row a
+    /// pre-migration store still holds stays visible, counted, and droppable.
+    public var column: Status { self == .refined ? .onHold : self }
+}
+
 /// The board's geometry, in the core: which rows to draw and what sits in each cell.
 ///
 /// The rule is the list's rule, because a lane must mean the same thing in both faces:
@@ -47,7 +55,7 @@ public enum TicketBoard {
     public static func rows(from todos: [Ticket], lanes: [String]) -> [BoardLane] {
         orderedKeys(declared: lanes, todos: todos).map { key in
             BoardLane(key: key, cells: Dictionary(grouping: todos.filter { $0.lane == key },
-                                                  by: \.status))
+                                                  by: \.status.column))
         }
     }
 

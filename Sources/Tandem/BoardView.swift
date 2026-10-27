@@ -20,9 +20,9 @@ extension Status {
         switch self {
         case .backlog: return "Backlog"
         case .onHold: return "On hold"
-        // The retired stage. No column or menu offers it; a legacy row still reads
-        // with the phrase its column used to carry (TAN-196).
-        case .refined: return "To refine"
+        // The retired stage. It draws in On hold (see `Status.column`), so the label a
+        // legacy row shows — in the sheet and the ⌘K line — is the column's.
+        case .refined: return "On hold"
         case .ready: return "Ready"
         case .inProgress: return "In progress"
         case .inReview: return "In Review"
