@@ -68,6 +68,36 @@ struct ScaffoldConventionTests {
         }
     }
 
+    @Test("The per-event capture cadence is retired — the session record is the record (7CA67B4F)")
+    func perEventCaptureCadenceIsRetired() throws {
+        let retired = ["Record captures as you work", "at each moment", "at each qualifying moment",
+                       "never batch to session end", "don't batch to session end",
+                       "files its captures", "file note captures as you work"]
+        for path in ["AGENTS.md",
+                     "skills/tandem-memory/SKILL.md",
+                     "skills/tandem-memory/WRITE-PROTOCOL.md",
+                     "skills/tandem-build/SKILL.md",
+                     "agents/builder.md"] {
+            let c = try Self.file(path)
+            for phrase in retired {
+                #expect(!c.contains(phrase), "\(path) still carries the retired cadence: \(phrase)")
+            }
+        }
+        for path in ["AGENTS.md", "skills/tandem-memory/SKILL.md", "skills/tandem-memory/WRITE-PROTOCOL.md"] {
+            let c = try Self.file(path)
+            #expect(c.contains("cost of re-derivation"),
+                    "\(path) states the one capture rule: a real cost of re-derivation")
+            #expect(c.contains("session record") || c.contains("session end"),
+                    "\(path) points the record at the session record")
+        }
+        let write = try Self.file("skills/tandem-memory/WRITE-PROTOCOL.md")
+        #expect(write.contains("session end --summary"), "the session summary is the work record")
+        let build = try Self.file("skills/tandem-build/SKILL.md")
+        #expect(build.contains("session record"), "the build pass's record step is the session record")
+        let retro = try Self.file("skills/retro/SKILL.md")
+        #expect(retro.contains("session record"), "the retro records through the session record, not a capture")
+    }
+
     @Test("The scaffold's own files agree — risk routing and the Overview wording (12D351E9)")
     func scaffoldProseAgrees() throws {
         let consolidation = try Self.file("skills/tandem-memory/CONSOLIDATION.md")
@@ -117,6 +147,45 @@ struct ScaffoldConventionTests {
         let consolidate = try Self.file("skills/tandem-consolidate/SKILL.md")
         #expect(consolidate.contains("tandem-cli note capture"),
                 "agent captures still go through `note capture`")
+    }
+
+    @Test("The wiki is documentation — both readers, the page roles, the journal out (8C8DBD13)")
+    func wikiIsDocumentation() throws {
+        let adr = try Self.file("docs/adr/0033-wiki-is-documentation.md")
+        #expect(adr.contains("## Decision"))
+        #expect(adr.contains("journal"), "the ADR refuses the journal by name")
+        #expect(adr.contains("human"), "the ADR names the human reader")
+        #expect(adr.contains("agent"), "the ADR names the agent reader")
+
+        let conventions = try Self.file("skills/tandem-memory/CONVENTIONS.md")
+        #expect(conventions.contains("## One wiki, two readers"),
+                "the page roles get a section of their own")
+        #expect(conventions.contains("ADR 0033"), "the section cites the decision")
+        #expect(conventions.contains("journal is out"), "the page set refuses the journal")
+        #expect(conventions.contains("what this is, how to run it, where things live, and what is open"),
+                "the Overview's job is stated where the pages are described")
+    }
+
+    @Test("The freshness rule — a page dates itself, and a pass that changes a fact amends it (8C8DBD13)")
+    func freshnessRule() throws {
+        let conventions = try Self.file("skills/tandem-memory/CONVENTIONS.md")
+        #expect(conventions.contains("Reviewed <date>"), "the review stamp is the page's own date")
+        #expect(conventions.contains("mtime"), "the Notes tab's mtime is the reader's signal")
+        #expect(conventions.contains("amends the page in the same write"),
+                "a fact change is not deferred to a later pass")
+
+        let agents = try Self.file("AGENTS.md")
+        #expect(agents.contains("CONVENTIONS.md"), "AGENTS.md points at the conventions")
+        #expect(!agents.contains("Reviewed <date>"), "AGENTS.md does not restate the freshness rule")
+    }
+
+    @Test("The README leads a human to a project's Overview (8C8DBD13)")
+    func readmeLeadsToTheOverview() throws {
+        let readme = try Self.file("README.md")
+        #expect(readme.contains("~/.tandem/bikeshed/projects/<project>/<project>.md"),
+                "the README names the Overview's path")
+        #expect(readme.contains("`## Threads`"),
+                "the Overview's Threads section is where what is open lives")
     }
 
     @Test("The question's exit is one write — the handoff rule and the sprint's inbox debt (D2522EC3)")
