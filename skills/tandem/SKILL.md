@@ -23,7 +23,7 @@ Eight verbs under `ticket` — `list`, `show`, `add`, `set`, `move`, `complete`,
 | `title` | one line, trimmed |
 | `status` | `backlog` (default), `refined`, `ready`, `in-progress`, `in-review`, `done` |
 | `archived` | true when set aside — out of the default views, still in the store |
-| `description` | markdown body, or null; write from stdin with `ticket set --description -`, read it back whole with `ticket show --id` |
+| `description` | markdown body, or null; write from stdin with `ticket add --description -` or `ticket set --description -`, read it back whole with `ticket show --id` |
 | `assignee` | `human`, an agent's name, or null for unowned |
 | `origin` | who filed it — written at add, never changed |
 | `lane` | the **cycle lane**, or null for the default area |
@@ -58,9 +58,9 @@ A board read should not carry every ticket's body, so the rows are summaries —
 
 One ticket, **whole** — the only read that carries the description, and the only lookup that takes an id (`--text` matches title and description, never the id). An unknown id is a domain failure whose error carries the current open list.
 
-### `ticket add --title <string> [--status <value>] [--assignee <name|self>] [--lane <name>] [--origin <name|self>]`
+### `ticket add --title <string> [--status <value>] [--assignee <name|self>] [--lane <name>] [--origin <name|self>] [--description <string|->]`
 
-Title required, trimmed, empty rejected; duplicates allowed. A title alone lands `backlog`, unowned, on top of the default area. `--assignee self` claims it — `add` never assigns implicitly, because agents routinely file tickets *for* the human (`--assignee human`). A lane must already exist. `--origin` stamps who filed it, never changed after: pass `--origin self` when you file — an omitted flag means `human`, the app's own stamp, and your proposal filed under the human's name is the exact mix-up the field ends. When the host exports no `TANDEM_AGENT`, `self` has nothing to resolve to and the add fails: pass your own agent name instead, e.g. `--origin general`.
+Title required, trimmed, empty rejected; duplicates allowed. A title alone lands `backlog`, unowned, on top of the default area. `--description -` reads the body from stdin, so a body'd ticket is **one write**, not an add-then-set round trip; naming the flag means the body must carry text (`""` and an empty pipe are both exit `1`, `Description body is empty…`), and omitting it files a ticket with no body. `--assignee self` claims it — `add` never assigns implicitly, because agents routinely file tickets *for* the human (`--assignee human`). A lane must already exist. `--origin` stamps who filed it, never changed after: pass `--origin self` when you file — an omitted flag means `human`, the app's own stamp, and your proposal filed under the human's name is the exact mix-up the field ends. When the host exports no `TANDEM_AGENT`, `self` has nothing to resolve to and the add fails: pass your own agent name instead, e.g. `--origin general`.
 
 ### `ticket set --id <id> [--title …] [--status …] [--assignee …] [--description …]`
 

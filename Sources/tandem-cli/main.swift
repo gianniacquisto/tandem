@@ -79,13 +79,14 @@ func dispatch(_ args: [String]) -> Int32 {
             let result = try Store().ticket(id: id)
             return try StoreEncoding.ticketResult(result.value, note: result.note)
         }
-    case .ticketAdd(let title, let status, let assignee, let lane, let origin):
+    case .ticketAdd(let title, let status, let assignee, let lane, let origin, let description):
         return run {
             let result = try Store().add(
                 title,
                 lane: lane,
                 status: try status.map { try Status.parse(raw: $0) } ?? .backlog,
                 assignee: try resolveAssignee(assignee),
+                description: try addDescriptionBody(description, stdin: readStandardInput),
                 origin: try resolveOrigin(origin))
             return try StoreEncoding.ticketResult(result.value, note: result.note)
         }
@@ -449,6 +450,17 @@ func resolveOrigin(_ raw: String?) throws -> String {
 func descriptionBody(_ flag: String, stdin: () throws -> String) throws -> String {
     guard flag == "-" else { return flag }
     return try DescriptionBody.required(stdin())
+}
+
+/// The `--description` body of a `ticket add`: no flag is no description, and
+/// anything else — the flag's own value, or the text piped in when it is `-` —
+/// must carry text. A new ticket has no earlier body, so there is no deliberate
+/// empty to mean "clear" the way `ticket set --description ""` does: `""` and an
+/// empty pipe are the same failed write, refused with
+/// `DomainError.emptyDescriptionBody`.
+func addDescriptionBody(_ flag: String?, stdin: () throws -> String) throws -> String? {
+    guard let flag else { return nil }
+    return try DescriptionBody.required(flag == "-" ? stdin() : flag)
 }
 
 /// The body of a `note capture` call: everything on stdin, decoded as UTF-8,

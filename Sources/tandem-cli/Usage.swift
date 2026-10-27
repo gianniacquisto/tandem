@@ -17,7 +17,7 @@ enum Usage {
                               [--archived]
       tandem-cli ticket show --id <id>
       tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
-                             [--lane <name>] [--origin <name|self>]
+                             [--lane <name>] [--origin <name|self>] [--description <string|->]
       tandem-cli ticket set --id <id> [--title <string>] [--status <value>]
                             [--assignee <name|self>] [--description <string|->]
       tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
@@ -82,7 +82,7 @@ enum Usage {
                                   [--archived]
           tandem-cli ticket show --id <id>
           tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
-                                 [--lane <name>] [--origin <name|self>]
+                                 [--lane <name>] [--origin <name|self>] [--description <string|->]
           tandem-cli ticket set --id <id> [--title <string>] [--status <value>]
                                 [--assignee <name|self>] [--description <string|->]
           tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
@@ -201,12 +201,17 @@ enum Usage {
 
         Usage:
           tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
-                                 [--lane <name>] [--origin <name|self>]
+                                 [--lane <name>] [--origin <name|self>] [--description <string|->]
 
         Values:
           status    backlog | refined | ready | in-progress | in-review | done
           assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
           origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it
+
+        `--description -` reads the body from stdin, the way `ticket set` does, so
+        the body lands in the same write as the ticket. Naming the flag means the
+        body must carry text: a new ticket has no earlier body to clear, so `""`
+        and an empty pipe are both refused. Omit the flag for a ticket with none.
         """,
         "ticket set": """
         tandem-cli ticket set — edit one ticket's fields in one write.
