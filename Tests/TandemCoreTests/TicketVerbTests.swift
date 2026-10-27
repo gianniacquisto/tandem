@@ -110,6 +110,61 @@ struct TicketVerbTests {
         #expect(missing.code == 1, "a missing --id is the empty id, a domain failure, not usage")
     }
 
+    // MARK: - `add --description`: the body in the same write
+
+    @Test("`ticket add --description -` lands the body in the same write — no add-then-set round trip")
+    func addCarriesTheBodyFromStdin() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-cli-ticket-verb-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let body = "## Why\n\nmulti-line markdown, quoting-free"
+
+        let added = try cli.run(home: home,
+                                ["ticket", "add", "--title", "A body'd ticket", "--description", "-"],
+                                stdin: body)
+        #expect(added.code == 0)
+        let ticket = try json(added.output)
+        #expect(ticket["description"] as? String == body)
+        #expect(ticket["descriptionLength"] == nil, "add answers the whole ticket, not a summary")
+
+        // The one write landed: the stored row reads back whole...
+        let id = try #require(ticket["id"] as? String)
+        let shown = try cli.run(home: home, ["ticket", "show", "--id", id])
+        #expect(shown.code == 0)
+        #expect(try json(shown.output)["description"] as? String == body)
+
+        // ...and the list summary carries its length, so the row is the same ticket.
+        let listed = try cli.run(home: home, ["ticket", "list", "--filter", "all"])
+        let row = try #require((try json(listed.output)["tickets"] as? [[String: Any]])?.first)
+        #expect(row["descriptionLength"] as? Int == body.count)
+    }
+
+    @Test("`ticket add` refuses an empty description — the `\"\"` flag and an empty pipe alike")
+    func addRefusesAnEmptyDescription() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-cli-ticket-verb-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        // A new ticket has no earlier body, so an empty value is not a clear:
+        // naming `--description` means the body must carry text — the same
+        // refusal an empty `--description -` pipe meets.
+        let emptyFlag = try cli.run(home: home,
+                                    ["ticket", "add", "--title", "No body", "--description", ""])
+        #expect(emptyFlag.code == 1)
+        #expect(emptyFlag.error.contains("empty"))
+        #expect(emptyFlag.output.isEmpty, "stdout stays empty — one JSON object or none")
+
+        let emptyPipe = try cli.run(home: home,
+                                    ["ticket", "add", "--title", "No body", "--description", "-"],
+                                    stdin: "  \n\t ")
+        #expect(emptyPipe.code == 1)
+        #expect(emptyPipe.error.contains("empty"))
+
+        // Nothing was filed: the refusal happens before the write.
+        let listed = try cli.run(home: home, ["ticket", "list", "--filter", "all"])
+        #expect((try json(listed.output)["tickets"] as? [[String: Any]])?.isEmpty == true)
+    }
+
     // MARK: - The alias, retired
 
     @Test("`todo` is an unknown group: usage on stderr, exit 2, nothing on stdout")
@@ -193,6 +248,9 @@ struct TicketVerbTests {
     }
 
     // MARK: - Helpers
+
+    /// The shared harness, for the runs that feed stdin (`add --description -`).
+    private let cli = CLIHarness()
 
     /// A throwaway home: the CLI writes there, never the human's store.
     private func temporaryHome() -> URL {

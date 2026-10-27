@@ -125,7 +125,7 @@ tandem-cli ticket list [--filter open|done|all] [--status <value[,value]>]
                        [--archived]
 tandem-cli ticket show --id <id>
 tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
-                      [--lane <name>] [--origin <name|self>]
+                      [--lane <name>] [--origin <name|self>] [--description <string|->]
 tandem-cli ticket set --id <id> [--title <string>] [--status <value>]
                       [--assignee <name|self>] [--description <string|->]
 tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]

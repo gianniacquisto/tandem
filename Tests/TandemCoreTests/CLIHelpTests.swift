@@ -39,6 +39,28 @@ struct CLIHelpTests {
         }
     }
 
+    @Test("ticket add's help and the root grammar name `--description`")
+    func ticketAddHelpCarriesDescription() throws {
+        let verb = try cli.run(home: home, ["ticket", "add", "--help"])
+        #expect(verb.code == 0)
+        #expect(verb.error == "")
+        #expect(verb.output.contains("--description <string|->"),
+            "the verb's line carries the flag the store takes")
+
+        // The root grammar — and so the README block the grammar gate compares
+        // it to — names it on `ticket add`'s own entry, not only on `set`'s.
+        #expect(grammar(Usage.text).contains(grammar("""
+        tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
+                               [--lane <name>] [--origin <name|self>] [--description <string|->]
+        """)), "`ticket add`'s usage line names `--description`")
+    }
+
+    /// Text with every whitespace run collapsed: a wrapped usage line and its
+    /// one-line spelling compare equal under it.
+    private func grammar(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
     @Test("ticket answer --help carries the write's own grammar")
     func ticketAnswerHelp() throws {
         let result = try cli.run(home: home, ["ticket", "answer", "--help"])
