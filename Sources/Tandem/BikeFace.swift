@@ -547,8 +547,8 @@ struct BikeTreeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Sidebar header: label + new-note. The label is the way home:
-            // clicking it closes the note and shows the front page.
+            // Sidebar header: label + today + new-note. The label is the way
+            // home: clicking it closes the note and shows the front page.
             HStack(spacing: 6) {
                 Button {
                     model.closeNote(silent: false)
@@ -566,9 +566,25 @@ struct BikeTreeView: View {
                 .buttonStyle(.plain)
                 .help("Back to the front page")
                 Spacer()
+                // Today's note, one click: the daily note is the note the
+                // human keeps, and it lives behind a menu dig otherwise.
+                Button {
+                    model.openToday()
+                } label: {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(palette.inkDim)
+                        .frame(width: 20, height: 20)
+                        .background(RoundedRectangle(cornerRadius: Radius.checkbox)
+                            .strokeBorder(palette.line, lineWidth: Line.hairline))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Today's note")
                 Menu {
                     Button("New note") { model.createNote(in: nil) }
                     Button("New folder") { model.createFolder(in: nil) }
+                    Button("Today's note") { model.openToday() }
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 11, weight: .semibold))
