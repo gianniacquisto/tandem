@@ -1,6 +1,8 @@
 # Sessions are records, not tickets: the board holds only work
 
 > **Amended 2026-10-26 by [ADR 0031](0031-one-database-the-store.md):** a session is a row of the store's `sessions` table, not `sessions.json`, and its own `sessions.lock` went with the file. The record, its fields and its five verbs are unchanged. The amendment's text is ADR 0031's.
+>
+> **Amended 2026-10-27 by RET-43:** a re-dispatched pass in an opencode session whose record has already ended gets its own record, keyed `<opencode id>-2`, `<opencode id>-3`, …. The amendment at the end of this page states it.
 
 ADR 0024 made every session file itself as a ticket — `Session — <project> · <session-id>` — and the board refines and moves it like any other ticket. The rule worked: a dead session's ticket became reachable, and the first passes dispatched successors to it. But the convention put a session's row on a work board, and the board now carries sixty-three of them — rows every triage pass must read, refine, dispatch, or close, each one a session's diary wearing a ticket's face. The human's answer to `5C98453A` settles the question the other way: a session is its own artifact — its own file, its own states, never a ticket, never on the board.
 
@@ -32,3 +34,13 @@ ADR 0024 made every session file itself as a ticket — `Session — <project> �
 - **A session that dies is no one's pickup on the board.** Stale work is still work — a ticket claimed by a session that died is picked up by the next triage — but the handle is the record (`session show --session <id>`; a record still saying `running` is settled by the host's session list), not a ticket prefix.
 - **The sixty-three rows already on the board are S5's** — the human's call (`F1CEFA57`), not this change. This PR governs new sessions; it moves no existing row.
 - **The fleet's two documents change in the fleet's own repo** — they cite ADR 0024 by name, so they cannot keep it as the live rule; one author, two PRs, one session.
+
+## Amendment — 2026-10-27 (RET-43): a re-dispatched pass gets its own record
+
+The decision above keys one record to `$OPENCODE_SESSION_ID`, and a record stamps once. The harness breaks that premise: opencode resumes the same session id when a subagent is re-dispatched into a session whose record the pass before it already ended, and the ended row cannot take the resumed pass's usage — ending into it exits 0 having written nothing, so the pass's tokens, cost and model are lost with a success code.
+
+- **A re-dispatched pass gets its own record.** When `$OPENCODE_SESSION_ID`'s record is `ended`, `Scripts/usage-report.sh` mints the pass ending through it a continuation record — the same opencode id with the first free `-<n>` suffix (`-2`, `-3`, …), carrying the ended record's agent, project and tickets — and writes the pass's usage there. The `usage` comment posts on the tickets it carried; the ended record is never rewritten.
+- **Free is decided by minting.** `session start` on an id another pass has just taken returns that record with a note at exit 0 (`Sources/TandemCore/Session.swift`); the wrapper reads the note and takes the next suffix, so two ends racing cannot both write onto `-2`.
+- **Nothing else moves.** A record still stamps once, a running record still takes the usage itself, and `start` on a recorded id still returns it unchanged. `AGENTS.md`'s Session section states the same exception and lands with this amendment.
+
+**Decided against** a per-pass column on the record — a store change, one-way, and not RET-43's — and changing `start`'s stamp-once rule.

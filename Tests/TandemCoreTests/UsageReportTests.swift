@@ -101,6 +101,93 @@ struct UsageReportTests {
         #expect(third["summary"] as? String == "third pass")
     }
 
+    @Test("a pass that loses the suffix race takes the next suffix instead of writing into the winner's record")
+    func theRacingPassTakesTheNextSuffix() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let ticket = try cli.addTicket(home: home, title: "Carried")
+        #expect(try run(home: home, [
+            "session", "start", "--project", "my project", "--agent", "builder", "--brief", "the gate pass",
+        ]).code == 0)
+        #expect(try run(home: home, ["session", "link", "--ticket", ticket]).code == 0)
+        #expect(try run(home: home, [
+            "session", "end", "--outcome", "succeeded", "--summary", "gate pass merged",
+        ]).code == 0)
+
+        let db = try opencodeDatabase(for: sessionID)
+        defer { try? FileManager.default.removeItem(at: db) }
+
+        // The other end of the race wins `-2` between this pass reading the
+        // record and its mint: the shim creates that record, then hands the
+        // wrapper's own `start` through — which answers with the existing
+        // record and a note, at exit 0.
+        let racing = try shim("""
+        if [ "$1" = "session" ] && [ "$2" = "start" ] && [ "$4" = "\(sessionID)-2" ]; then
+            "$REAL" session start --session "\(sessionID)-2" --project tandem --brief "the other pass" >/dev/null
+        fi
+        """)
+
+        let ended = try wrapper(home: home, db: db, cli: racing, ["--outcome", "succeeded"], stdin: "the merge pass\n")
+        #expect(ended.code == 0, "the wrapper ends the pass: \(ended.error)")
+
+        // The winner's record is untouched: no usage, its own brief, still
+        // running — the other pass has not ended yet.
+        let winner = try cli.object(from: try run(home: home, ["session", "show", "--session", "\(sessionID)-2"]).output)
+        #expect(winner["brief"] as? String == "the other pass", "the loser must not mint over the winner's record")
+        #expect(winner["status"] as? String == "running", "the loser must not stamp the winner's record")
+        #expect(winner["model"] == nil, "the loser's usage must not land on the winner's record")
+
+        // The loser's own record carries the usage, and the project's space
+        // survived the mint as one argument.
+        let cont = try cli.object(from: try run(home: home, ["session", "show", "--session", "\(sessionID)-3"]).output)
+        #expect(cont["summary"] as? String == "the merge pass")
+        #expect(cont["project"] as? String == "my project", "a project name with a space stays one argument")
+        #expect(cont["model"] as? String == "opencode-go/deepseek-v4.1-flash", "the usage lands on the pass's own record")
+        #expect(cont["tickets"] as? [String] == [ticket])
+
+        let comments = try cli.comments(home: home, id: ticket)
+        #expect(comments.count == 1)
+        #expect((comments.first?["body"] as? String)?.split(separator: "\n").first.map(String.init)
+            == "Usage — \(sessionID)-3 · opencode-go/deepseek-v4.1-flash")
+    }
+
+    @Test("a link that fails is named on stderr and does not cost the usage")
+    func aFailedLinkIsSurfaced() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let ticket = try cli.addTicket(home: home, title: "Carried")
+        #expect(try run(home: home, [
+            "session", "start", "--project", "tandem", "--agent", "builder", "--brief", "the gate pass",
+        ]).code == 0)
+        #expect(try run(home: home, ["session", "link", "--ticket", ticket]).code == 0)
+        #expect(try run(home: home, [
+            "session", "end", "--outcome", "succeeded", "--summary", "gate pass merged",
+        ]).code == 0)
+
+        let db = try opencodeDatabase(for: sessionID)
+        defer { try? FileManager.default.removeItem(at: db) }
+
+        // The link is the one call that can keep the usage comment off the
+        // ticket; a wrapper that swallows it reports a success nobody can see.
+        let failing = try shim("""
+        if [ "$1" = "session" ] && [ "$2" = "link" ]; then
+            echo "tandem-cli: unknown ticket" >&2
+            exit 1
+        fi
+        """)
+
+        let ended = try wrapper(home: home, db: db, cli: failing, ["--outcome", "succeeded"], stdin: "the merge pass\n")
+        #expect(ended.code == 0, "the usage is still written: \(ended.error)")
+        #expect(ended.error.contains("warning"), "the failed link is named on stderr: \(ended.error)")
+        #expect(ended.error.contains(ticket), "the warning names the ticket whose comment is missing")
+
+        let cont = try cli.object(from: try run(home: home, ["session", "show", "--session", "\(sessionID)-2"]).output)
+        #expect(cont["model"] as? String == "opencode-go/deepseek-v4.1-flash", "the usage lands despite the failed link")
+        #expect(try cli.comments(home: home, id: ticket).isEmpty, "no usage comment — and the wrapper said so")
+    }
+
     @Test("a running record takes the usage itself — the wrapper mints nothing")
     func theRunningRecordTakesTheUsage() throws {
         let home = temporaryHome()
@@ -139,16 +226,16 @@ struct UsageReportTests {
 
     /// Run the wrapper against the throwaway home, with `stdin` piped in — the
     /// summary. The opencode database is the fixture; the CLI is the binary the
-    /// tests run.
+    /// tests run, or the `cli` the test shims a call through.
     private func wrapper(
-        home: URL, db: URL, _ arguments: [String], stdin text: String
+        home: URL, db: URL, cli given: URL? = nil, _ arguments: [String], stdin text: String
     ) throws -> CLIHarness.Result {
         let process = Process()
         process.executableURL = Self.script
         process.arguments = arguments
         var environment = ProcessInfo.processInfo.environment
         environment["TANDEM_HOME"] = home.path
-        environment["TANDEM_CLI"] = cli.url.path
+        environment["TANDEM_CLI"] = (given ?? cli.url).path
         environment["OPENCODE_SESSION_ID"] = sessionID
         environment["OPENCODE_DB"] = db.path
         process.environment = environment
@@ -168,6 +255,24 @@ struct UsageReportTests {
             code: process.terminationStatus,
             output: String(decoding: out, as: UTF8.self),
             error: String(decoding: err, as: UTF8.self))
+    }
+
+    /// A CLI shim: `body` runs first, the real binary (`$REAL`) takes every call
+    /// it does not intercept. The wrapper is a shell script driven by
+    /// `$TANDEM_CLI`, so a race or a failing call is a shim here, not a sleep.
+    private func shim(_ body: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-cli-shim-\(UUID().uuidString)")
+        let script = """
+        #!/bin/sh
+        REAL='\(cli.url.path)'
+        \(body)
+        exec "$REAL" "$@"
+        """
+        try script.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: url.path)
+        return url
     }
 
     /// An opencode database carrying one session row for `session` — the shape

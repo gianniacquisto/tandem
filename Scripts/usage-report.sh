@@ -86,12 +86,6 @@ flags=""
 state=$("$CLI" session show --session "$SESSION" 2>/dev/null) || state=""
 case "$state" in
 *'"status":"ended"'*)
-    # The first `-<n>` suffix this opencode session has not used.
-    ids=$("$CLI" session list 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4) || ids=""
-    n=2
-    while printf '%s\n' "$ids" | grep -Fqx "$SESSION-$n"; do n=$((n + 1)); done
-    cont="$SESSION-$n"
-
     # What the ended record carried, so the pass's record is attributed the
     # same way: its agent (the usage comment's signature), its project, its
     # tickets. The brief is this wrapper's own — the ended record keeps the
@@ -101,15 +95,34 @@ case "$state" in
     carried=$(printf '%s\n' "$state" \
         | sed -n 's/.*"tickets":\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | tr -d '"')
 
-    who=""
-    [ -n "$project" ] && who="$who --project $project"
-    [ -n "$agent" ] && who="$who --agent $agent"
-    printf '%s\n' "Re-dispatched pass in opencode session $SESSION: its record had already ended, so this record carries this pass's usage." \
-        | "$CLI" session start --session "$cont" $who --brief - >/dev/null \
-        || fail "could not open the continuation record $cont."
+    # The record this pass gets: the same opencode id with the first `-<n>`
+    # suffix that is free. Free is decided by minting it, not by reading the
+    # list first — `start` on an id another pass has just taken returns that
+    # record with a note at exit 0 (`Sources/TandemCore/Session.swift:414`), so
+    # the loser of a race reads the note and takes the next suffix instead of
+    # writing its usage into the winner's record. The attribution flags are
+    # passed whole: a project name with a space is one argument, and an empty
+    # `--agent` is the core's own "no agent" (`start` trims it to nil).
+    brief="Re-dispatched pass in opencode session $SESSION: its record had already ended, so this record carries this pass's usage."
+    n=2
+    while :; do
+        cont="$SESSION-$n"
+        minted=$(printf '%s\n' "$brief" \
+            | "$CLI" session start --session "$cont" --project "$project" --agent "$agent" --brief -) \
+            || fail "could not open the continuation record $cont."
+        case "$minted" in
+        *'already recorded'*) n=$((n + 1)) ;;
+        *) break ;;
+        esac
+    done
 
     for ticket in $carried; do
-        "$CLI" session link --ticket "$ticket" --session "$cont" >/dev/null 2>&1 || true
+        # A failed link is the one failure that keeps the usage comment off a
+        # ticket — the board attribution this record exists for. It is named on
+        # stderr, and the usage is still written: a success code with no
+        # comment is the defect, an end with the reason said out loud is not.
+        "$CLI" session link --ticket "$ticket" --session "$cont" >/dev/null \
+            || echo "usage-report: warning: could not link $ticket to $cont — its usage comment will not post." >&2
     done
 
     # stdin is the summary and has not been read yet; it is read here because
