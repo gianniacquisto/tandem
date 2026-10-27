@@ -49,7 +49,7 @@ enum Usage {
       tandem-cli sprint open --lane <name> [--mode serial|parallel] [--session <id>]
       tandem-cli sprint ticket --lane <name> --ticket <id>
       tandem-cli sprint run --lane <name> --note <string|->
-      tandem-cli sprint close --lane <name> [--note <string|->]
+      tandem-cli sprint close --lane <name> [--number <n>] [--note <string|->]
       tandem-cli sprint list [--lane <name>] [--status open|closed]
       tandem-cli sprint show --lane <name> --number <n>
       tandem-cli doctor
@@ -149,7 +149,7 @@ enum Usage {
           tandem-cli sprint open --lane <name> [--mode serial|parallel] [--session <id>]
           tandem-cli sprint ticket --lane <name> --ticket <id>
           tandem-cli sprint run --lane <name> --note <string|->
-          tandem-cli sprint close --lane <name> [--note <string|->]
+          tandem-cli sprint close --lane <name> [--number <n>] [--note <string|->]
           tandem-cli sprint list [--lane <name>] [--status open|closed]
           tandem-cli sprint show --lane <name> --number <n>
 
@@ -437,7 +437,7 @@ enum Usage {
         tandem-cli sprint close — the lane's open sprint, stamped.
 
         Usage:
-          tandem-cli sprint close --lane <name> [--note <string|->]
+          tandem-cli sprint close --lane <name> [--number <n>] [--note <string|->]
 
         `--note -` reads the note from stdin; a close that names no note is the
         stamp alone.

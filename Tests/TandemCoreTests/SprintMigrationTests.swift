@@ -69,7 +69,29 @@ struct SprintMigrationTests {
         ]
     }
 
-    private static func fixture() throws -> Fixture {
+    /// The legacy sprints file a home can arrive with: one open record in `lane`,
+    /// numbered past the five the tickets take so nothing collides.
+    private static func legacyOpenSprint(in lane: String, number: Int) -> [String: Any] {
+        [
+            "version": 1,
+            "sprints": [
+                [
+                    "lane": lane,
+                    "number": number,
+                    "session": NSNull(),
+                    "mode": "serial",
+                    "batch": [String](),
+                    "runs": [String](),
+                    "close": NSNull(),
+                    "status": "open",
+                    "openedAt": "2026-10-21T09:00:00Z",
+                    "closedAt": NSNull(),
+                ]
+            ],
+        ]
+    }
+
+    private static func fixture(openSprintInLane: String? = nil) throws -> Fixture {
         let home = FileManager.default.temporaryDirectory
             .appendingPathComponent("sprint-migration-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
@@ -163,6 +185,11 @@ struct SprintMigrationTests {
         ]
         let data = try JSONSerialization.data(withJSONObject: tickets, options: [.prettyPrinted])
         try data.write(to: home.appendingPathComponent("tickets.json"))
+        if let lane = openSprintInLane {
+            let sprints = try JSONSerialization.data(
+                withJSONObject: legacyOpenSprint(in: lane, number: 5), options: [.prettyPrinted])
+            try sprints.write(to: home.appendingPathComponent("sprints.json"))
+        }
         return Fixture(home: home, cli: CLIHarness())
     }
 
@@ -284,6 +311,34 @@ struct SprintMigrationTests {
         #expect(second.code == 0, "the second run failed: \(second.error)")
         #expect(second.output.contains("wrote 0, skipped 5"), "the second run is a no-op:\n\(second.output)")
         #expect(try Self.records(fixture.cli, home: fixture.home).count == 5)
+    }
+
+    /// The import is a write's own side effect, so the migration triggers it with a
+    /// write that changes nothing: a close aimed at a migrated record, which has
+    /// already closed. Aimed at the lane instead, the close would stamp the lane's
+    /// **open** record — a nil note and a `closedAt` of the migration run (TAN-192).
+    @Test("the migration leaves a lane's open sprint open")
+    func migrationLeavesAnOpenSprintOpen() throws {
+        let fixture = try Self.fixture(openSprintInLane: "Tandem")
+        defer { try? FileManager.default.removeItem(at: fixture.home) }
+
+        let run = try Self.migrate(fixture.cli, home: fixture.home)
+        #expect(run.code == 0, "the migration failed: \(run.error)")
+        #expect(run.output.contains("wrote 5, skipped 0"),
+                "the open record takes number 5, so it blocks no migrated number:\n\(run.output)")
+
+        let records = try Self.records(fixture.cli, home: fixture.home)
+        let open = try #require(records["Tandem#5"], "the lane's open record is still there")
+        #expect(open["status"] as? String == "open", "the live record is not the migration's to close")
+        #expect(open["close"] is NSNull, "its close stays null")
+        #expect(open["closedAt"] is NSNull, "its closedAt is untouched")
+
+        #expect(records["Tandem#1"]?["status"] as? String == "closed",
+                "the records the migration wrote are the closed ones")
+
+        let names = try FileManager.default.contentsOfDirectory(atPath: fixture.home.path)
+        #expect(names.contains { $0.hasPrefix("sprints.json.pre-sqlite-") },
+                "the import ran: the legacy file was copied aside")
     }
 
     /// The script is a script, not a verb: no `sprint` subcommand grows for it.

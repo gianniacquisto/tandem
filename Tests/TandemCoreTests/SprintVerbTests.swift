@@ -221,6 +221,27 @@ struct SprintVerbTests {
         #expect(empty.error.contains("Sprint note is empty"))
     }
 
+    @Test("`sprint close --number` names the record; a closed one answers unchanged")
+    func closeByNameLeavesTheOpenRecordAlone() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        _ = try run(home: home, ["sprint", "open", "--lane", "Tandem"])
+        _ = try run(home: home, ["sprint", "close", "--lane", "Tandem", "--note", "first"])
+        _ = try run(home: home, ["sprint", "open", "--lane", "Tandem"])
+
+        let named = try run(home: home, ["sprint", "close", "--lane", "Tandem", "--number", "1"])
+        #expect(named.code == 0)
+        let record = try cli.object(from: named.output)
+        #expect(record["number"] as? Int == 1, "the number names the record, not the lane's open one")
+        #expect(record["close"] as? String == "first", "the closed record keeps its close")
+        #expect(record["note"] as? String == "Sprint 1 — Tandem is already closed")
+
+        let untouched = try cli.object(
+            from: run(home: home, ["sprint", "show", "--lane", "Tandem", "--number", "2"]).output)
+        #expect(untouched["status"] as? String == "open", "the open record is not the one the flag named")
+    }
+
     // MARK: - The open sprint is the handle
 
     @Test("`sprint ticket`/`run` on a lane with no open sprint is a failure that names it")

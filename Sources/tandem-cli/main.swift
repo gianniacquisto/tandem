@@ -312,12 +312,15 @@ func dispatch(_ args: [String]) -> Int32 {
             let result = try Sprints().run(lane: lane, number: number, note: body)
             return try StoreEncoding.sprintResult(result.value, note: result.note)
         }
-    case .sprintClose(let lane, let note):
+    case .sprintClose(let lane, let number, let note):
         return run {
             // `--note` optional: absent is the stamp alone; `--note -` is
-            // stdin, whose empty body the core refuses.
+            // stdin, whose empty body the core refuses. `--number` names the
+            // record; without it the lane's open one (or, once it has closed,
+            // the lane's newest) is the target.
             let body: String? = try note.map { try sprintNote($0) }
-            let number = try closeSprintNumber(lane: lane)
+            let number = try number.map { try sprintNumber($0) }
+                ?? closeSprintNumber(lane: lane)
             let result = try Sprints().close(lane: lane, number: number, note: body)
             return try StoreEncoding.sprintResult(result.value, note: result.note)
         }
