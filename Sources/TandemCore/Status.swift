@@ -35,6 +35,22 @@ public enum Status: String, Sendable, CaseIterable, Hashable {
     /// names the values in. The retired `refined` is not a stage.
     public static var workflow: [Status] { allCases.filter { $0 != .refined } }
 
+    /// The word every face draws: the board's column header, the sheet's picker, the
+    /// list's row. The wire value is lowercase (`in-progress`); this is the phrase.
+    public var displayName: String {
+        switch self {
+        case .backlog: return "Backlog"
+        case .onHold: return "On hold"
+        // The retired stage. It draws in On hold (see `Status.column`), so the label a
+        // legacy row shows — in the sheet and the ⌘K line — is the column's.
+        case .refined: return "On hold"
+        case .ready: return "Ready"
+        case .inProgress: return "In progress"
+        case .inReview: return "In Review"
+        case .done: return "Done"
+        }
+    }
+
     /// Every wire value the domain accepts, in `allCases` order — the retired word
     /// included, because a caller may still send it and a store may still hold it.
     public static var wireValues: [String] { allCases.map(\.rawValue) }

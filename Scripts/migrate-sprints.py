@@ -15,10 +15,12 @@ What it does:
      read `Sprint 1 — Tandem`), the records do not — and gives each record's first
      run entry the provenance;
   4. writes the records into the home's legacy `sprints.json`, then has the product
-     import it on the next sprint write (the store's own one-time import), and reads
-     them back through `sprint list`. `openedAt` = the ticket's `createdAt`,
-     `closedAt` = its `completedAt`, mode `serial`, the opening session where the
-     ticket names one.
+     import it with a write that changes nothing — `sprint close` aimed at one of the
+     records just written (`--number`), which has already closed — and reads them back
+     through `sprint list`. The store imports a legacy file inside a domain's write
+     transaction, and only there; a read never imports (ADR 0031). `openedAt` = the
+     ticket's `createdAt`, `closedAt` = its `completedAt`, mode `serial`, the opening
+     session where the ticket names one.
 
 Nothing is deleted: the tickets stay archived. A ticket already carried by a record
 (the provenance string is the marker) is skipped, so a second run writes nothing.
@@ -217,9 +219,16 @@ def main(argv):
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2)
             handle.write("\n")
-        # The store imports its legacy file on a sprint write; `close` on a lane whose
-        # newest record is closed is a no-op that still runs the import.
-        cli("sprint", "close", "--lane", written[0]["lane"])
+        # The store imports its legacy file inside the *write* transaction, and only
+        # there: a read never imports (ADR 0031). So trigger the write without a
+        # change — `close` aimed at a record this run just wrote, via `--number`.
+        # Every written record is closed, so `close` answers "already closed" and
+        # writes nothing, and the import has run by the time it returns. Aimed at
+        # the lane (no `--number`) the close resolves the lane's *open* record and
+        # stamps the live sprint with a nil note (TAN-192).
+        written_record = written[0]
+        cli("sprint", "close", "--lane", written_record["lane"],
+            "--number", str(written_record["number"]))
 
         imported = cli("sprint", "list").get("sprints", [])
         by_handle = {(record["lane"], record["number"]): record for record in imported}
