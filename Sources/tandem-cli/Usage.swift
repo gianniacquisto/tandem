@@ -366,7 +366,9 @@ enum Usage {
 
         An absent `--project` is the working directory's last path component, an
         absent `--agent` is $TANDEM_AGENT, an absent `--session` is
-        $OPENCODE_SESSION_ID. `--brief -` reads the brief from stdin.
+        $OPENCODE_SESSION_ID. `--brief` takes the literal brief text, or
+        `--brief -` which reads it from stdin — never a file path, which is
+        refused.
         """,
         "session end": """
         tandem-cli session end — a session record, stamped.

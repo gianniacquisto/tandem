@@ -70,6 +70,33 @@ struct SessionVerbTests {
         #expect(empty.error.contains("Session brief is empty"))
     }
 
+    @Test("`session start` refuses a brief that names a file, and records nothing")
+    func startRefusesABriefThatNamesAFile() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-sess-brief-\(UUID().uuidString).md")
+        try "a brief from a file\n".write(to: file, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        // A path recorded as the brief is the defect (RET-32): the record has no
+        // repair, so the write must not happen at all.
+        let refused = try run(home: home, ["session", "start", "--project", "tandem", "--brief", file.path])
+        #expect(refused.code == 1)
+        #expect(refused.error.contains("--brief -"), "the refusal names the stdin form")
+        #expect(refused.output == "", "a refused start prints no record")
+
+        let shown = try run(home: home, ["session", "show", "--session", sessionID])
+        #expect(shown.code == 1)
+        #expect(shown.error.contains("Unknown session id"), "nothing was recorded")
+
+        // A literal one-line brief names no file, so it stays legal.
+        let literal = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+        #expect(literal.code == 0)
+        #expect(try cli.object(from: literal.output)["brief"] as? String == "spec the sessions work")
+    }
+
     // MARK: - link
 
     @Test("`session link` links a ticket once, and refuses an id the store does not carry")
