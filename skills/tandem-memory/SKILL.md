@@ -5,7 +5,7 @@ description: "Memory and the wiki of work, backed by the Tandem bikeshed (`~/.ta
 
 # Tandem memory
 
-The **bikeshed** (`~/.tandem/bikeshed/`) is the wiki of all work on this Mac and its memory: a plain folder of `[[wikilinked]]` markdown notes, shared by humans and agents and written for the next agent session as reader. It has two layers: the **session records** and the occasional **capture** — a small note filed into a project's saddlebag — and the **curated** notes, which only a consolidation pass writes. This skill orients any session from the bikeshed and records its work back into it.
+The **bikeshed** (`~/.tandem/bikeshed/`) is the wiki of all work on this Mac and its memory: a plain folder of `[[wikilinked]]` markdown notes, shared by humans and agents and written for the next agent session as reader. Three areas hold what it carries: the **saddlebag** of agent captures, the human's **daily notes**, and the **curated** notes, which only a consolidation pass writes. The **session record** is not a folder here — it is a row in `tandem.db` (ADR 0027), and its summary is the work record. This skill orients any session from the bikeshed and records its work back into it.
 
 ## Orient — pick up where the work left off
 

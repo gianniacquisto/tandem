@@ -68,15 +68,31 @@ struct ScaffoldConventionTests {
         }
     }
 
+    @Test("The bikeshed holds three areas, and the session record is not one of them (7CA67B4F)")
+    func bikeshedHoldsThreeAreas() throws {
+        let memory = try Self.file("skills/tandem-memory/SKILL.md")
+        #expect(!memory.lowercased().contains("two layers"), "the skill miscounts the bikeshed's areas")
+        for area in ["saddlebag", "daily notes", "curated"] {
+            #expect(memory.contains(area), "the skill names the \(area) area")
+        }
+        #expect(memory.contains("tandem.db"),
+                "the session record is a row in the store, not a layer of the folder (ADR 0027)")
+        let conventions = try Self.file("skills/tandem-memory/CONVENTIONS.md")
+        #expect(!conventions.contains("Two layers"), "CONVENTIONS heads three areas as two layers")
+        #expect(conventions.contains("Three areas"), "CONVENTIONS counts the areas it lists")
+    }
+
     @Test("The per-event capture cadence is retired — the session record is the record (7CA67B4F)")
     func perEventCaptureCadenceIsRetired() throws {
         let retired = ["Record captures as you work", "at each moment", "at each qualifying moment",
                        "never batch to session end", "don't batch to session end",
-                       "files its captures", "file note captures as you work"]
+                       "files its captures", "file note captures as you work",
+                       "a moment that would be lost when the session ends"]
         for path in ["AGENTS.md",
                      "skills/tandem-memory/SKILL.md",
                      "skills/tandem-memory/WRITE-PROTOCOL.md",
                      "skills/tandem-build/SKILL.md",
+                     "skills/tandem/SKILL.md",
                      "agents/builder.md"] {
             let c = try Self.file(path)
             for phrase in retired {
