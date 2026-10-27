@@ -10,7 +10,7 @@ At the start of a session, before reading or editing project files:
 2. **Match the task to a project line** — that line's wikilink is the project's **Overview** — `projects/<project>/<project>.md`, the anchor of its fixed scaffold (Overview, Decisions, Risks, Processes). A project is always a folder holding its scaffold, its sub-pages, and a hidden saddlebag (`.raw/`).
 3. **Read the Overview** — `Where left off` in full; the project's Decisions, Risks, and Processes pages, and its linked sub-pages, pulled only when the task touches them.
 4. **Follow the note's wikilinks outward** only as the task needs them.
-5. **Check Tandem's open tickets** (`tandem-cli ticket list`) for the open threads.
+5. **Check Tandem's open tickets** (`tandem-cli ticket list`) for the open threads — each row carries its `ref` (`TAN-42`), the handle a later session can quote and resolve.
 
 **Stop** as soon as you can state the project's **current state**, its **next move**, and which **threads are open**. Topic notes and human root notes are read on demand — see Retrieval — never at orientation.
 

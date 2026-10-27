@@ -71,12 +71,13 @@ public enum QuickOpen {
             }
         }
 
-        /// The text the query is matched against: a note's path, a ticket's title, an
+        /// The text the query is matched against: a note's path, a ticket's title and
+        /// ref (ticket 6598E091 — a typed `TAN-42` is how a human names a ticket), an
         /// action's name.
         public var searchText: String {
             switch self {
             case .note(let path): return path
-            case .ticket(let todo): return todo.title
+            case .ticket(let todo): return [todo.ref, todo.title].compactMap { $0 }.joined(separator: " ")
             case .action(_, let name): return name
             }
         }

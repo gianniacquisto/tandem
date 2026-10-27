@@ -128,6 +128,16 @@ public enum DomainError: Error, Sendable, Equatable {
     case duplicateLane(String)
     /// A lane name was referenced but does not exist.
     case unknownLane(String)
+    /// A lane key that is not uppercase alphanumerics (ticket 6598E091).
+    case invalidLaneKey(String)
+    /// A lane key another lane already holds — keys are unique case-insensitively.
+    case duplicateLaneKey(String)
+    /// A lane's key is frozen: some ticket in the lane holds a number, so moving the
+    /// key would move refs a human has already written down. `refs` names them.
+    case frozenLaneKey(key: String, lane: String, refs: [String])
+    /// A raw handle looked like a ref (`KEY-N`) but named nothing: `hint` says whether
+    /// the key is unknown or the number was never issued, with the lane's real range.
+    case unknownRef(ref: String, hint: String)
     /// `complete`/`delete` was called with an id not present in the store. `open` is
     /// the full current open list (in the `list` shape) so the caller recovers in one turn.
     case unknownID(id: String, open: [Ticket])
@@ -208,6 +218,15 @@ public enum DomainError: Error, Sendable, Equatable {
             return "A cycle lane named \"\(name)\" already exists."
         case .unknownLane(let name):
             return "Unknown cycle lane \"\(name)\". Create it first."
+        case .invalidLaneKey(let bad):
+            return "Lane key \"\(bad)\" is not valid. A key is uppercase letters and digits (e.g. TAN)."
+        case .duplicateLaneKey(let key):
+            return "The lane key \"\(key)\" is already in use. Pick another key."
+        case .frozenLaneKey(let key, let lane, let refs):
+            let named = refs.joined(separator: ", ")
+            return "The key \"\(key)\" of lane \"\(lane)\" is frozen — \(named) already carry it. A key cannot move once a ticket in the lane holds a number."
+        case .unknownRef(let ref, let hint):
+            return "Unknown ticket ref \"\(ref)\". \(hint)"
         case .unknownID(let id, _):
             return "Unknown ticket id \"\(id)\". Here is the current open list to pick the right one from:"
         }

@@ -47,62 +47,107 @@ extension Store {
         return OperationResult(contents.knownLanes, note: note)
     }
 
-    /// `addLane(name)`: append a new, empty lane. The name is trimmed; an empty or
-    /// already-used name is rejected. Returns the lane list after the write, so a caller
-    /// (the CLI) reports the state without a second, unlocked read.
-    public func addLane(_ rawName: String) throws -> OperationResult<[String]> {
+    /// `addLane(name, key:)`: append a new, empty lane. The name is trimmed; an empty or
+    /// already-used name is rejected. The **key** (ticket 6598E091) is the `TAN` of
+    /// `TAN-42`: absent means the first three alphanumerics of the name (`Tandem` → `TAN`),
+    /// present is uppercased and must be alphanumerics. Keys are unique across lanes
+    /// case-insensitively. Returns the lane list after the write, so a caller (the CLI)
+    /// reports the state without a second, unlocked read.
+    public func addLane(_ rawName: String, key rawKey: String? = nil) throws -> OperationResult<[String]> {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { throw DomainError.emptyLaneName }
+        let requested = try rawKey.map { try LaneKey.normalize($0) }
         let (lanes, note) = try mutate { contents -> (value: [String], changed: Bool) in
             guard !contents.knownLanes.contains(name) else {
                 throw DomainError.duplicateLane(name)
             }
-            contents.lanes.append(name)
+            let key = try Self.uniqueKey(
+                requested ?? LaneKey.generate(from: name, taken: Set(contents.lanes.map(\.key))),
+                in: contents)
+            contents.lanes.append(Lane(name: name, key: key))
             return (contents.knownLanes, true)
         }
         return OperationResult(lanes, note: note)
     }
 
-    /// `renameLane(from, to)`: rename a lane in place — the lane list and every
+    /// The key `requested` must not be another lane's — compared uppercased, so `prb`
+    /// and `PRB` are one key.
+    private static func uniqueKey(_ requested: String, in contents: StoreContents) throws -> String {
+        let key = requested.uppercased()
+        let taken = contents.lanes.contains { $0.key.uppercased() == key }
+        guard !taken else { throw DomainError.duplicateLaneKey(key) }
+        return key
+    }
+
+    /// `renameLane(from, to, key:)`: rename a lane in place — the lane list and every
     /// ticket that belongs to it, in one write. An unknown `from`, an empty `to`, or a `to`
-    /// already in use is rejected. Renaming to the same name is a no-op. Returns the lane
-    /// list after the write.
-    public func renameLane(_ rawFrom: String, to rawTo: String) throws -> OperationResult<[String]> {
+    /// already in use is rejected. Renaming to the same name is a no-op. The **key**
+    /// survives a rename by default; a `key` may move it only while the lane holds no
+    /// numbered ticket — once a ref is out there, moving the key would move the ref
+    /// (`DomainError.frozenLaneKey` names them). Returns the lane list after the write.
+    public func renameLane(
+        _ rawFrom: String, to rawTo: String, key rawKey: String? = nil
+    ) throws -> OperationResult<[String]> {
         let from = rawFrom.trimmingCharacters(in: .whitespacesAndNewlines)
         let to = rawTo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !to.isEmpty else { throw DomainError.emptyLaneName }
+        let requested = try rawKey.map { try LaneKey.normalize($0) }
         let (lanes, note) = try mutate { contents -> (value: [String], changed: Bool) in
-            guard let i = contents.lanes.firstIndex(of: from) else {
+            guard let i = contents.lanes.firstIndex(where: { $0.name == from }) else {
                 throw DomainError.unknownLane(from)
             }
-            if from == to { return (contents.knownLanes, false) }
+            let current = contents.lanes[i]
+            let newKey: String?
+            if let requested, requested != current.key {
+                let refs = contents.todos
+                    .filter { $0.lane == from && $0.number != nil }
+                    .compactMap(\.ref)
+                guard refs.isEmpty else {
+                    throw DomainError.frozenLaneKey(key: current.key, lane: from, refs: refs)
+                }
+                newKey = try Self.uniqueKey(requested, in: contents)
+            } else {
+                newKey = nil
+            }
+            if from == to {
+                guard let newKey else { return (contents.knownLanes, false) }
+                contents.lanes[i].key = newKey
+                contents.normalize()
+                return (contents.knownLanes, true)
+            }
             guard !contents.knownLanes.contains(to) else {
                 throw DomainError.duplicateLane(to)
             }
-            contents.lanes[i] = to
+            contents.lanes[i].name = to
+            if let newKey { contents.lanes[i].key = newKey }
             for j in contents.todos.indices where contents.todos[j].lane == from {
                 contents.todos[j].lane = to
             }
+            contents.normalize()
             return (contents.knownLanes, true)
         }
         return OperationResult(lanes, note: note)
     }
 
     /// `deleteLane(name)`: remove a lane and move its tickets to the default area —
-    /// **a lane is never a way to delete tickets**. An unknown name is rejected. Returns
-    /// how many tickets moved, plus the lane list after the write.
+    /// **a lane is never a way to delete tickets**. An unknown name is rejected. The
+    /// moved tickets lose their numbers with the lane: the default area carries no ref
+    /// (ticket 6598E091). Returns how many tickets moved, plus the lane list after the
+    /// write.
     public func deleteLane(_ rawName: String) throws -> OperationResult<LaneDeletion> {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         let (deletion, note) = try mutate { contents -> (value: LaneDeletion, changed: Bool) in
-            guard let i = contents.lanes.firstIndex(of: name) else {
+            guard let i = contents.lanes.firstIndex(where: { $0.name == name }) else {
                 throw DomainError.unknownLane(name)
             }
             contents.lanes.remove(at: i)
             var moved = 0
             for j in contents.todos.indices where contents.todos[j].lane == name {
                 contents.todos[j].lane = nil
+                contents.todos[j].number = nil
                 moved += 1
             }
+            contents.normalize()
             return (LaneDeletion(lanes: contents.knownLanes, moved: moved), true)
         }
         return OperationResult(deletion, note: note)
@@ -116,13 +161,13 @@ extension Store {
     public func moveLane(_ rawName: String, to index: Int) throws -> OperationResult<[String]> {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         let (order, note) = try mutate { contents -> (value: [String], changed: Bool) in
-            guard let from = contents.lanes.firstIndex(of: name) else {
+            guard let from = contents.lanes.firstIndex(where: { $0.name == name }) else {
                 throw DomainError.unknownLane(name)
             }
-            contents.lanes.remove(at: from)
+            let lane = contents.lanes.remove(at: from)
             let to = max(0, min(index, contents.lanes.count))
-            contents.lanes.insert(name, at: to)
-            return (contents.lanes, to != from)
+            contents.lanes.insert(lane, at: to)
+            return (contents.lanes.map(\.name), to != from)
         }
         return OperationResult(order, note: note)
     }
@@ -152,7 +197,16 @@ extension Store {
             var todo = Ticket(title: title, assignee: who, origin: filer, lane: lane)
             // Born in a stage: `setStatus` stamps `completedAt` if that stage is done.
             todo.setStatus(status)
-            contents.todos.insert(todo, at: contents.blockStart(of: lane))
+            // A lane carries its tickets' numbers (ticket 6598E091): the new ticket takes
+            // the lane's next one and is born with its ref. The default area has neither.
+            if let lane {
+                todo.number = contents.issueNumber(in: lane)
+                contents.todos.insert(todo, at: contents.blockStart(of: lane))
+                contents.refreshRefs()
+                todo.ref = contents.todos.first { $0.id == todo.id }?.ref
+            } else {
+                contents.todos.insert(todo, at: contents.blockStart(of: nil))
+            }
             return (todo, true)
         }
         return OperationResult(todo, note: note)
@@ -160,9 +214,9 @@ extension Store {
 
     // MARK: - Id resolution
 
-    /// The store's one rule for "which ticket is this id?": the id parsed as a
-    /// UUID, and that ticket's index in `todos` — `nil` when the id is
-    /// malformed or the store does not carry it.
+    /// The store's one rule for "which ticket is this id?": a full UUID, or the
+    /// ticket's **ref** (`TAN-42`, case-insensitive on the key) — and that ticket's
+    /// index in `todos`, `nil` when the handle names nothing.
     ///
     /// **One spelling, so it cannot drift.** Every id-taking operation —
     /// `move`, `place`, `complete`, `set`, `setLink`, `reopen`, `delete`, the
@@ -170,23 +224,53 @@ extension Store {
     /// a caller that only wants to know whether a ticket is on the board
     /// (`ticket(id:)`). The rule used to be written out at each site, and a
     /// second copy of it in the CLI was a third: one question, one answer.
-    static func resolveTicket(_ raw: String, in todos: [Ticket]) -> (uuid: UUID, index: Int)? {
-        guard let uuid = UUID(uuidString: raw),
-              let index = todos.firstIndex(where: { $0.id == uuid })
-        else {
+    ///
+    /// A UUID prefix stays unsupported: the ref is the human handle, and a
+    /// truncated UUID is neither.
+    static func resolveTicket(_ raw: String, in contents: StoreContents) -> (uuid: UUID, index: Int)? {
+        let todos = contents.todos
+        if let uuid = UUID(uuidString: raw),
+           let index = todos.firstIndex(where: { $0.id == uuid }) {
+            return (uuid, index)
+        }
+        guard let ref = TicketRef.parse(raw) else { return nil }
+        guard let index = todos.firstIndex(where: { todo in
+            guard todo.number == ref.number, let lane = todo.lane else { return false }
+            return contents.key(of: lane)?.uppercased() == ref.key
+        }) else {
             return nil
         }
-        return (uuid, index)
+        return (todos[index].id, index)
     }
 
-    /// The ticket a raw id names, or the unknown-id failure — the shape every
-    /// id-taking operation raises, carrying the open list the caller recovers
-    /// from in one turn.
-    static func requireTicket(_ raw: String, in todos: [Ticket]) throws -> (uuid: UUID, index: Int) {
-        guard let found = resolveTicket(raw, in: todos) else {
-            throw DomainError.unknownID(id: raw, open: todos.filter { !$0.done })
+    /// The ticket a raw id or ref names, or the unknown-id failure — the shape every
+    /// id-taking operation raises. A handle that *looks* like a ref but names nothing
+    /// gets the ref-specific failure: it names the lane's real range, so `PRB-99`
+    /// recovers in one turn instead of dumping the board.
+    static func requireTicket(_ raw: String, in contents: StoreContents) throws -> (uuid: UUID, index: Int) {
+        if let found = resolveTicket(raw, in: contents) { return found }
+        if let ref = TicketRef.parse(raw) {
+            throw DomainError.unknownRef(ref: raw, hint: Self.refHint(for: ref, in: contents))
         }
-        return found
+        throw DomainError.unknownID(id: raw, open: contents.todos.filter { !$0.done })
+    }
+
+    /// What the unknown-ref failure says next: whether the key exists at all, and the
+    /// range the lane has issued.
+    private static func refHint(
+        for ref: (key: String, number: Int), in contents: StoreContents
+    ) -> String {
+        guard let lane = contents.lanes.first(where: { $0.key.uppercased() == ref.key }) else {
+            let keys = contents.lanes.map(\.key).filter { !$0.isEmpty }
+            guard !keys.isEmpty else {
+                return "No cycle lane has that key, and no lane carries a key yet."
+            }
+            return "No cycle lane has the key \"\(ref.key)\". The keys in use: \(keys.joined(separator: ", "))."
+        }
+        guard lane.lastNumber > 0 else {
+            return "Lane \"\(lane.name)\" (\(lane.key)) has issued no numbers yet."
+        }
+        return "Lane \"\(lane.name)\" (\(lane.key)) has issued \(lane.key)-1 to \(lane.key)-\(lane.lastNumber)."
     }
 
     /// `ticket(id:)`: the ticket a raw id names — the store's own answer to
@@ -201,7 +285,7 @@ extension Store {
     public func ticket(id raw: String) throws -> OperationResult<Ticket> {
         let (contents, note) = try readAll()
         do {
-            let found = try Self.requireTicket(raw, in: contents.todos)
+            let found = try Self.requireTicket(raw, in: contents)
             return OperationResult(contents.todos[found.index], note: note)
         } catch {
             // A read that recovered a corrupt file says so, even when it fails.
@@ -221,7 +305,7 @@ extension Store {
     /// `lane` is rejected. The agent's `todo move` and the GUI's drag both land here.
     public func move(_ id: String, toLane lane: String?, at index: Int) throws -> OperationResult<Ticket> {
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            let from = try Self.requireTicket(id, in: contents.todos).index
+            let from = try Self.requireTicket(id, in: contents).index
             try contents.validateLane(lane)
             var moved = contents.todos.remove(at: from)
             insert(&moved, into: lane, of: &contents, at: index)
@@ -250,7 +334,7 @@ extension Store {
         at index: Int = .max
     ) throws -> OperationResult<Ticket> {
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            let from = try Self.requireTicket(id, in: contents.todos).index
+            let from = try Self.requireTicket(id, in: contents).index
             try contents.validateLane(lane)
             let before = contents.todos
             var moved = contents.todos.remove(at: from)
@@ -264,16 +348,31 @@ extension Store {
     /// The one place a lane insertion's arithmetic lives: `index` is 0-based within `lane`
     /// and clamped into range, so `Int.max` appends. `move` and `place` differ only in what
     /// they set on the ticket before it goes back in.
+    ///
+    /// The ticket's **number** moves with its lane (ticket 6598E091): a move into another
+    /// lane takes the target lane's next number — the old one is not carried, and the
+    /// target's counter is never reused — while a reorder inside the same lane keeps it.
+    /// The default area has no number at all, so a move there clears it.
     private func insert(
         _ todo: inout Ticket,
         into lane: String?,
         of contents: inout StoreContents,
         at index: Int
     ) {
+        let from = todo.lane
         todo.lane = lane
+        if let lane {
+            if from != lane || todo.number == nil {
+                todo.number = contents.issueNumber(in: lane)
+            }
+        } else {
+            todo.number = nil
+        }
         let start = contents.blockStart(of: lane)
         let count = contents.todos.lazy.filter { $0.lane == lane }.count
         contents.todos.insert(todo, at: start + max(0, min(index, count)))
+        contents.refreshRefs()
+        todo.ref = contents.todos.first { $0.id == todo.id }?.ref
     }
 
     // MARK: - complete
@@ -284,7 +383,7 @@ extension Store {
     /// is `reopen`. The stored order is never changed.
     public func complete(_ id: String) throws -> OperationResult<Ticket> {
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            let i = try Self.requireTicket(id, in: contents.todos).index
+            let i = try Self.requireTicket(id, in: contents).index
             var changed = false
             if contents.todos[i].status != .done {
                 contents.todos[i].setStatus(.done)
@@ -328,7 +427,7 @@ extension Store {
         let newDescription = description.isSet ? Self.normalizeDescription(description.newValue ?? nil) : nil
 
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            let i = try Self.requireTicket(id, in: contents.todos).index
+            let i = try Self.requireTicket(id, in: contents).index
             var todo = contents.todos[i]
             var changed = false
             if let newTitle, todo.title != newTitle {
@@ -390,7 +489,7 @@ extension Store {
         let who = Self.normalizeAssignee(assignee)
         let block = Self.answerBlock(body, at: now)
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            let i = try Self.requireTicket(id, in: contents.todos).index
+            let i = try Self.requireTicket(id, in: contents).index
             var todo = contents.todos[i]
             todo.description = Self.appending(block, to: todo.description)
             todo.setStatus(status, at: now)
@@ -469,7 +568,7 @@ extension Store {
         let trimmed = rawLink?.trimmingCharacters(in: .whitespacesAndNewlines)
         let link = (trimmed?.isEmpty ?? true) ? nil : trimmed
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            let i = try Self.requireTicket(id, in: contents.todos).index
+            let i = try Self.requireTicket(id, in: contents).index
             let changed = contents.todos[i].link != link
             if changed { contents.todos[i].link = link }
             return (contents.todos[i], changed)
@@ -487,7 +586,7 @@ extension Store {
     /// `DomainError.unknownID` carrying the full current open list.
     public func reopen(_ id: String) throws -> OperationResult<Ticket> {
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            let i = try Self.requireTicket(id, in: contents.todos).index
+            let i = try Self.requireTicket(id, in: contents).index
             var changed = false
             if contents.todos[i].status == .done {
                 contents.todos[i].setStatus(.backlog)
@@ -546,7 +645,7 @@ extension Store {
     /// any ticket can be brought back with `set(id, archived: .set(false))`.
     public func archive(_ id: String) throws -> OperationResult<Ticket> {
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
-            let i = try Self.requireTicket(id, in: contents.todos).index
+            let i = try Self.requireTicket(id, in: contents).index
             var changed = false
             if !contents.todos[i].archived {
                 contents.todos[i].archived = true
@@ -563,7 +662,7 @@ extension Store {
     /// An unknown id throws `DomainError.unknownID` (with the open list).
     public func delete(_ id: String) throws -> OperationResult<Void> {
         let (_, note) = try mutate { contents -> (value: Void, changed: Bool) in
-            let i = try Self.requireTicket(id, in: contents.todos).index
+            let i = try Self.requireTicket(id, in: contents).index
             contents.todos.remove(at: i)
             return ((), true)
         }

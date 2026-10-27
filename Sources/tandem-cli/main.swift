@@ -165,14 +165,14 @@ func dispatch(_ args: [String]) -> Int32 {
             let result = try Store().lanes()
             return try StoreEncoding.lanesResult(result.value, note: result.note)
         }
-    case .laneAdd(let name):
+    case .laneAdd(let name, let abbr):
         return run {
-            let result = try Store().addLane(name)
+            let result = try Store().addLane(name, key: abbr)
             return try StoreEncoding.lanesResult(result.value, note: result.note)
         }
-    case .laneRename(let from, let to):
+    case .laneRename(let from, let to, let abbr):
         return run {
-            let result = try Store().renameLane(from, to: to)
+            let result = try Store().renameLane(from, to: to, key: abbr)
             return try StoreEncoding.lanesResult(result.value, note: result.note)
         }
     case .laneDelete(let name):
@@ -294,8 +294,10 @@ func dispatch(_ args: [String]) -> Int32 {
     case .sprintTicket(let lane, let ticket):
         return run {
             // The handle first: the lane's open sprint is resolved before the
-            // board is asked, so a mistyped lane is reported as one.
-            let id = try ticketID(ticket)
+            // board is asked, so a mistyped lane is reported as one. The ticket
+            // resolves through the store's own rule, so a ref (`TAN-42`) works.
+            let resolved = try Store().ticket(id: ticket)
+            let id = resolved.value.id
             let number = try openSprintNumber(lane: lane)
             // An id the store does not carry is the core's own
             // `unknownTicketID` failure — the whole board, archive included.
@@ -579,17 +581,6 @@ func sprintStatus(_ raw: String?) throws -> SprintStatus? {
 func sprintNumber(_ raw: String) throws -> Int {
     guard let number = Int(raw) else { throw DomainError.invalidSprintNumber(raw) }
     return number
-}
-
-/// A ticket id for the batch: parsed as a UUID, the type the core takes. A
-/// value that does not parse is the same unknown-ticket failure a
-/// well-formed id the store does not carry gets — `session link`'s rule,
-/// "a malformed id is the same failure, not a crash".
-func ticketID(_ raw: String) throws -> UUID {
-    guard let id = UUID(uuidString: raw) else {
-        throw DomainError.unknownTicketID(raw)
-    }
-    return id
 }
 
 /// A sprint note: the flag's own value, or the text piped in when the flag
