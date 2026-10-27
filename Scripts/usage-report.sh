@@ -14,8 +14,13 @@
 # --summary -`. stdout carries the end call's JSON only — every message this
 # script adds goes to stderr, where no JSON parser is reading.
 #
+# The record is $OPENCODE_SESSION_ID's; `--session <id>` names another — the
+# record a mid-session verify minted, say — and is read from its own row. The
+# flag is consumed here, never forwarded: `session end` has no such argument.
+#
 # Environment:
-#   OPENCODE_SESSION_ID  the session's id — the db row's key (required)
+#   OPENCODE_SESSION_ID  the session's id — the db row's key (required unless
+#                        `--session` names one)
 #   OPENCODE_DB          the database, default ~/.local/share/opencode/opencode.db
 #   TANDEM_CLI           the CLI to run, default `tandem-cli` from PATH — a dev
 #                        build can be named here while the shipped app owns PATH
@@ -26,6 +31,7 @@ set -eu
 
 DB="${OPENCODE_DB:-$HOME/.local/share/opencode/opencode.db}"
 SESSION="${OPENCODE_SESSION_ID:-}"
+SOURCE="OPENCODE_SESSION_ID"
 CLI="${TANDEM_CLI:-tandem-cli}"
 
 fail() {
@@ -34,10 +40,19 @@ fail() {
     exit 1
 }
 
+# `--session <id>` first, as the one argument this wrapper reads for itself;
+# every other argument stays the caller's and reaches `session end` verbatim.
+if [ "${1:-}" = "--session" ]; then
+    [ $# -ge 2 ] && [ -n "$2" ] || fail "--session needs a session id."
+    SESSION="$2"
+    SOURCE="--session"
+    shift 2
+fi
+
 [ -n "$SESSION" ] || fail "OPENCODE_SESSION_ID is unset — there is no session row to read."
 # The id goes into one SQL string; a quote in it is refused, never escaped.
 case "$SESSION" in
-    *"'"*|*'"'*) fail "OPENCODE_SESSION_ID contains a quote — refusing to query the database." ;;
+    *"'"*|*'"'*) fail "$SOURCE contains a quote — refusing to query the database." ;;
 esac
 [ -f "$DB" ] || fail "no opencode database at $DB."
 
