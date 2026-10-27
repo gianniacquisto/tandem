@@ -83,6 +83,15 @@ struct CLIHelpTests {
         #expect(lane.output.contains("tandem-cli lane add"))
     }
 
+    @Test("session start --help says --brief takes the literal text or `-`")
+    func sessionStartHelpNamesTheBriefForms() throws {
+        let result = try cli.run(home: home, ["session", "start", "--help"])
+        #expect(result.code == 0)
+        #expect(result.error == "", "a help probe is not an error")
+        #expect(result.output.contains("literal"), "the literal text is named as one form")
+        #expect(result.output.contains("`--brief -`"), "stdin is named as the other")
+    }
+
     @Test("lane list --help prints lane list's own usage and exits 0")
     func laneListHelp() throws {
         let result = try cli.run(home: home, ["lane", "list", "--help"])
@@ -90,6 +99,21 @@ struct CLIHelpTests {
         #expect(result.error == "", "a help probe is not an error")
         #expect(result.output.hasPrefix("tandem-cli lane list"),
             "the verb's own line, not the group or root text")
+    }
+
+    /// TAN-196: an agent reads the value list before a write, so the new stage has to
+    /// be in every help text that names the statuses — the root's and the verbs' that
+    /// take `--status`.
+    @Test("the status value list in help carries on-hold")
+    func statusValuesCarryOnHold() throws {
+        let probes = [["--help"], ["ticket", "--help"], ["ticket", "list", "--help"],
+                      ["ticket", "add", "--help"], ["ticket", "set", "--help"],
+                      ["ticket", "answer", "--help"]]
+        for probe in probes {
+            let result = try cli.run(home: home, probe)
+            #expect(result.code == 0, "\(probe)")
+            #expect(result.output.contains("on-hold"), "\(probe)")
+        }
     }
 
     // MARK: - Every verb and group answers

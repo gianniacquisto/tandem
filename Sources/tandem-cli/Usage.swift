@@ -56,7 +56,7 @@ enum Usage {
       tandem-cli --help | -h
 
     Values:
-      status    backlog | refined | ready | in-progress | in-review | done
+      status    backlog | on-hold | refined | ready | in-progress | in-review | done
                 running | ended — a session's status, on `session list`
                 open | closed — a sprint's status, on `sprint list`
       mode      serial | parallel — how a sprint's batch was built
@@ -94,7 +94,7 @@ enum Usage {
           tandem-cli ticket comment list --id <id>
 
         Values:
-          status    backlog | refined | ready | in-progress | in-review | done
+          status    backlog | on-hold | refined | ready | in-progress | in-review | done
           filter    open (default) | done | all
           assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
           origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it
@@ -177,7 +177,7 @@ enum Usage {
                                   [--archived]
 
         Values:
-          status    backlog | refined | ready | in-progress | in-review | done
+          status    backlog | on-hold | refined | ready | in-progress | in-review | done
           filter    open (default) | done | all
           assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
 
@@ -204,7 +204,7 @@ enum Usage {
                                  [--lane <name>] [--origin <name|self>] [--description <string|->]
 
         Values:
-          status    backlog | refined | ready | in-progress | in-review | done
+          status    backlog | on-hold | refined | ready | in-progress | in-review | done
           assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
           origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it
 
@@ -221,7 +221,7 @@ enum Usage {
                                 [--assignee <name|self>] [--description <string|->]
 
         Values:
-          status    backlog | refined | ready | in-progress | in-review | done
+          status    backlog | on-hold | refined | ready | in-progress | in-review | done
           assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
 
         A flag not named leaves its field alone. `--description -` reads the body
@@ -251,7 +251,7 @@ enum Usage {
                                    [--body <string|->]
 
         Values:
-          status    backlog | refined | ready | in-progress | in-review | done
+          status    backlog | on-hold | refined | ready | in-progress | in-review | done
           assignee  a name, `self` ($TANDEM_AGENT), or "" to leave it unowned
 
         One write: a `## Answer — <date>` block appended to the description, then the
@@ -371,7 +371,9 @@ enum Usage {
 
         An absent `--project` is the working directory's last path component, an
         absent `--agent` is $TANDEM_AGENT, an absent `--session` is
-        $OPENCODE_SESSION_ID. `--brief -` reads the brief from stdin.
+        $OPENCODE_SESSION_ID. `--brief` takes the literal brief text, or
+        `--brief -` which reads it from stdin — never a file path, which is
+        refused.
         """,
         "session end": """
         tandem-cli session end — a session record, stamped.

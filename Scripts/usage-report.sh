@@ -14,6 +14,10 @@
 # --summary -`. stdout carries the end call's JSON only — every message this
 # script adds goes to stderr, where no JSON parser is reading.
 #
+# The record is $OPENCODE_SESSION_ID's; `--session <id>` names another — the
+# record a mid-session verify minted, say — and is read from its own row. The
+# flag is consumed here, never forwarded: `session end` has no such argument.
+#
 # **A re-dispatched pass gets its own record (RET-43).** The harness resumes an
 # opencode session whose tandem record the pass before it already ended — a
 # record stamps once, so that one cannot take this pass's usage, and ending
@@ -24,8 +28,15 @@
 # comment posts on the board the pass carried. A running record takes the usage
 # itself, as it always did.
 #
+# **A named record is never continued.** An explicit `--session <id>` is a
+# deliberate target, so the `-<n>` mint does not apply to it: when the record it
+# names is already `ended`, the wrapper fails (exit 1) and says so, instead of
+# writing this pass's usage into a record the caller did not name. The mint
+# belongs to the env-keyed record only — the session the harness resumed.
+#
 # Environment:
-#   OPENCODE_SESSION_ID  the session's id — the db row's key (required)
+#   OPENCODE_SESSION_ID  the session's id — the db row's key (required unless
+#                        `--session` names one)
 #   OPENCODE_DB          the database, default ~/.local/share/opencode/opencode.db
 #   TANDEM_CLI           the CLI to run, default `tandem-cli` from PATH — a dev
 #                        build can be named here while the shipped app owns PATH
@@ -36,6 +47,7 @@ set -eu
 
 DB="${OPENCODE_DB:-$HOME/.local/share/opencode/opencode.db}"
 SESSION="${OPENCODE_SESSION_ID:-}"
+SOURCE="OPENCODE_SESSION_ID"
 CLI="${TANDEM_CLI:-tandem-cli}"
 
 fail() {
@@ -44,10 +56,19 @@ fail() {
     exit 1
 }
 
+# `--session <id>` first, as the one argument this wrapper reads for itself;
+# every other argument stays the caller's and reaches `session end` verbatim.
+if [ "${1:-}" = "--session" ]; then
+    [ $# -ge 2 ] && [ -n "$2" ] || fail "--session needs a session id."
+    SESSION="$2"
+    SOURCE="--session"
+    shift 2
+fi
+
 [ -n "$SESSION" ] || fail "OPENCODE_SESSION_ID is unset — there is no session row to read."
 # The id goes into one SQL string; a quote in it is refused, never escaped.
 case "$SESSION" in
-    *"'"*|*'"'*) fail "OPENCODE_SESSION_ID contains a quote — refusing to query the database." ;;
+    *"'"*|*'"'*) fail "$SOURCE contains a quote — refusing to query the database." ;;
 esac
 [ -f "$DB" ] || fail "no opencode database at $DB."
 
@@ -86,6 +107,12 @@ flags=""
 state=$("$CLI" session show --session "$SESSION" 2>/dev/null) || state=""
 case "$state" in
 *'"status":"ended"'*)
+    # A named record is a deliberate target: the caller asked for this one, so a
+    # `-<n>` row they did not name would hide that it was already finished.
+    if [ "$SOURCE" = "--session" ]; then
+        fail "$SESSION is already ended — a record named with --session is never continued."
+    fi
+
     # What the ended record carried, so the pass's record is attributed the
     # same way: its agent (the usage comment's signature), its project, its
     # tickets. The brief is this wrapper's own — the ended record keeps the
@@ -136,4 +163,9 @@ esac
 
 # The summary travels on stdin, untouched; the usage flags follow; the caller's
 # own arguments go last. exec so the CLI is this script's exit code and stdout.
+# A named record is ended by its name — the flag is consumed above, so it is
+# re-stated here; the env-keyed path runs exactly the call it always did.
+if [ "$SOURCE" = "--session" ]; then
+    exec "$CLI" session end --session "$SESSION" --summary - $flags "$@"
+fi
 exec "$CLI" session end --summary - $flags "$@"
