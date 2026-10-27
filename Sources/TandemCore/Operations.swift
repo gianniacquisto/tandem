@@ -174,18 +174,21 @@ extension Store {
 
     // MARK: - add
 
-    /// `add(title, lane, status, assignee, origin)`: the title is trimmed; empty/whitespace-only
-    /// is rejected with an actionable error. Duplicate titles are allowed. The new ticket
-    /// lands on the **top of its lane** (`nil` is the default area); a lane that is not a
-    /// known lane is rejected. A title alone stays the default — a ticket is never born
-    /// archived, and the assignee rule is the same as `set`'s (see `normalizeAssignee`).
-    /// The filer is stamped here and never touched again: `origin` is the one field
-    /// `set` cannot change (ADR 0020).
+    /// `add(title, lane, status, assignee, description, origin)`: the title is trimmed;
+    /// empty/whitespace-only is rejected with an actionable error. Duplicate titles are
+    /// allowed. The new ticket lands on the **top of its lane** (`nil` is the default
+    /// area); a lane that is not a known lane is rejected. A title alone stays the
+    /// default — a ticket is never born archived, and the assignee rule is the same as
+    /// `set`'s (see `normalizeAssignee`). A description rides the same write, under
+    /// `set`'s rule: trimmed at its edges, an empty result is no description. The filer
+    /// is stamped here and never touched again: `origin` is the one field `set` cannot
+    /// change (ADR 0020).
     public func add(
         _ rawTitle: String,
         lane: String? = nil,
         status: Status = .backlog,
         assignee: String? = nil,
+        description: String? = nil,
         origin: String = "human"
     ) throws -> OperationResult<Ticket> {
         let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -194,7 +197,12 @@ extension Store {
         let filer = Self.normalizeOrigin(origin)
         let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
             try contents.validateLane(lane)
-            var todo = Ticket(title: title, assignee: who, origin: filer, lane: lane)
+            var todo = Ticket(
+                title: title,
+                description: Self.normalizeDescription(description),
+                assignee: who,
+                origin: filer,
+                lane: lane)
             // Born in a stage: `setStatus` stamps `completedAt` if that stage is done.
             todo.setStatus(status)
             // A lane carries its tickets' numbers (ticket 6598E091): the new ticket takes

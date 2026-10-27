@@ -23,7 +23,7 @@ Eight verbs under `ticket` — `list`, `show`, `add`, `set`, `move`, `complete`,
 | `title` | one line, trimmed |
 | `status` | `backlog` (default), `refined`, `ready`, `in-progress`, `in-review`, `done` |
 | `archived` | true when set aside — out of the default views, still in the store |
-| `description` | markdown body, or null; write from stdin with `ticket set --description -`, read it back whole with `ticket show --id` |
+| `description` | markdown body, or null; write from stdin with `ticket add --description -` or `ticket set --description -`, read it back whole with `ticket show --id` |
 | `assignee` | `human`, an agent's name, or null for unowned |
 | `origin` | who filed it — written at add, never changed |
 | `lane` | the **cycle lane**, or null for the default area |
@@ -58,9 +58,9 @@ A board read should not carry every ticket's body, so the rows are summaries —
 
 One ticket, **whole** — the only read that carries the description, and the only lookup that takes an id (`--text` matches title and description, never the id). An unknown id is a domain failure whose error carries the current open list.
 
-### `ticket add --title <string> [--status <value>] [--assignee <name|self>] [--lane <name>] [--origin <name|self>]`
+### `ticket add --title <string> [--status <value>] [--assignee <name|self>] [--lane <name>] [--origin <name|self>] [--description <string|->]`
 
-Title required, trimmed, empty rejected; duplicates allowed. A title alone lands `backlog`, unowned, on top of the default area. `--assignee self` claims it — `add` never assigns implicitly, because agents routinely file tickets *for* the human (`--assignee human`). A lane must already exist. `--origin` stamps who filed it, never changed after: pass `--origin self` when you file — an omitted flag means `human`, the app's own stamp, and your proposal filed under the human's name is the exact mix-up the field ends. When the host exports no `TANDEM_AGENT`, `self` has nothing to resolve to and the add fails: pass your own agent name instead, e.g. `--origin general`.
+Title required, trimmed, empty rejected; duplicates allowed. A title alone lands `backlog`, unowned, on top of the default area. `--description -` reads the body from stdin, so a body'd ticket is **one write**, not an add-then-set round trip; naming the flag means the body must carry text (`""` and an empty pipe are both exit `1`, `Description body is empty…`), and omitting it files a ticket with no body. `--assignee self` claims it — `add` never assigns implicitly, because agents routinely file tickets *for* the human (`--assignee human`). A lane must already exist. `--origin` stamps who filed it, never changed after: pass `--origin self` when you file — an omitted flag means `human`, the app's own stamp, and your proposal filed under the human's name is the exact mix-up the field ends. When the host exports no `TANDEM_AGENT`, `self` has nothing to resolve to and the add fails: pass your own agent name instead, e.g. `--origin general`.
 
 ### `ticket set --id <id> [--title …] [--status …] [--assignee …] [--description …]`
 
@@ -117,7 +117,7 @@ A session is a record, not a ticket (ADR 0027): one record per agent session, a 
 - **Two states** — `running` from `start` to `end`; `ended` carries `endedAt`, `outcome` (`succeeded | failed | interrupted | unknown`), and `summary`. A session that dies leaves a `running` record.
 - **The ticket link is stored** — `link --ticket` appends the ticket id to the record's `tickets`; the record, not the ticket, holds the link.
 - **The note link is derived** — `note capture --session <id>` files the capture under `projects/<project>/.raw/<session>/`, and `show` lists those paths as `notes`. There is no linking verb for notes, and `list` rows omit the field.
-- **`--brief` and `--summary` take stdin** like `--description`: `-` reads stdin, and an empty body is a domain failure — omit the flag to leave the field unset. An unknown `--outcome` or `--status` is a domain failure.
+- **`--brief` and `--summary` take stdin** like `--description`: `-` reads stdin, and an empty body is a domain failure — omit the flag to leave the field unset. `--brief` takes the literal text or `-`, never a file path (a path is refused: pipe the file with `--brief -`). An unknown `--outcome` or `--status` is a domain failure.
 - **Re-`start` on a recorded id** returns the record unchanged with a `note` — nothing is overwritten.
 - **The usage is reported at `end`** — the seven optional flags (`--tokens-input`, `--tokens-output`, `--tokens-reasoning`, `--tokens-cache-read`, `--tokens-cache-write`, `--cost`, `--model`) write what the harness measured beside the outcome; a flag that is absent is absent on the record, never an invented zero. When any usage is present, the end posts **one usage comment, signed by the record's agent (the `--agent` the session started with; `usage` when it carries none), on every ticket the session linked** — a header naming the session id and the model, then one line per reported metric with thousands separators; a piece the harness did not report is left out — and stamps once, so a second `end` cannot double-post it. A session with no linked tickets stores the usage and posts nothing. On this host the numbers come from the wrapper: `Scripts/usage-report.sh --outcome <…>` (summary on stdin) reads the session row from opencode's database and calls `session end` with the flags; the row missing is exit 1 and the pass falls back to a plain `session end`.
 

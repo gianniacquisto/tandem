@@ -31,8 +31,11 @@ public enum Filter: String, Sendable, CaseIterable {
     public var query: TicketQuery {
         switch self {
         case .open:
+            // Every value the domain accepts but `done` — the retired `refined`
+            // included: a row the migration has not reached yet is still work, and must
+            // not fall out of the default view between the reader and the writer (TAN-196).
             return TicketQuery(
-                statuses: Set(Status.workflow.filter { $0 != .done }),
+                statuses: Set(Status.allCases.filter { $0 != .done }),
                 archived: .excluded)
         case .done:
             return TicketQuery(statuses: [.done], archived: .excluded)

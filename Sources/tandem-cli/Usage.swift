@@ -17,7 +17,7 @@ enum Usage {
                               [--archived]
       tandem-cli ticket show --id <id>
       tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
-                             [--lane <name>] [--origin <name|self>]
+                             [--lane <name>] [--origin <name|self>] [--description <string|->]
       tandem-cli ticket set --id <id> [--title <string>] [--status <value>]
                             [--assignee <name|self>] [--description <string|->]
       tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
@@ -49,14 +49,14 @@ enum Usage {
       tandem-cli sprint open --lane <name> [--mode serial|parallel] [--session <id>]
       tandem-cli sprint ticket --lane <name> --ticket <id>
       tandem-cli sprint run --lane <name> --note <string|->
-      tandem-cli sprint close --lane <name> [--note <string|->]
+      tandem-cli sprint close --lane <name> [--number <n>] [--note <string|->]
       tandem-cli sprint list [--lane <name>] [--status open|closed]
       tandem-cli sprint show --lane <name> --number <n>
       tandem-cli doctor
       tandem-cli --help | -h
 
     Values:
-      status    backlog | refined | ready | in-progress | in-review | done
+      status    backlog | on-hold | refined | ready | in-progress | in-review | done
                 running | ended — a session's status, on `session list`
                 open | closed — a sprint's status, on `sprint list`
       mode      serial | parallel — how a sprint's batch was built
@@ -82,7 +82,7 @@ enum Usage {
                                   [--archived]
           tandem-cli ticket show --id <id>
           tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
-                                 [--lane <name>] [--origin <name|self>]
+                                 [--lane <name>] [--origin <name|self>] [--description <string|->]
           tandem-cli ticket set --id <id> [--title <string>] [--status <value>]
                                 [--assignee <name|self>] [--description <string|->]
           tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
@@ -94,7 +94,7 @@ enum Usage {
           tandem-cli ticket comment list --id <id>
 
         Values:
-          status    backlog | refined | ready | in-progress | in-review | done
+          status    backlog | on-hold | refined | ready | in-progress | in-review | done
           filter    open (default) | done | all
           assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
           origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it
@@ -149,7 +149,7 @@ enum Usage {
           tandem-cli sprint open --lane <name> [--mode serial|parallel] [--session <id>]
           tandem-cli sprint ticket --lane <name> --ticket <id>
           tandem-cli sprint run --lane <name> --note <string|->
-          tandem-cli sprint close --lane <name> [--note <string|->]
+          tandem-cli sprint close --lane <name> [--number <n>] [--note <string|->]
           tandem-cli sprint list [--lane <name>] [--status open|closed]
           tandem-cli sprint show --lane <name> --number <n>
 
@@ -177,7 +177,7 @@ enum Usage {
                                   [--archived]
 
         Values:
-          status    backlog | refined | ready | in-progress | in-review | done
+          status    backlog | on-hold | refined | ready | in-progress | in-review | done
           filter    open (default) | done | all
           assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
 
@@ -201,12 +201,17 @@ enum Usage {
 
         Usage:
           tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
-                                 [--lane <name>] [--origin <name|self>]
+                                 [--lane <name>] [--origin <name|self>] [--description <string|->]
 
         Values:
-          status    backlog | refined | ready | in-progress | in-review | done
+          status    backlog | on-hold | refined | ready | in-progress | in-review | done
           assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
           origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it
+
+        `--description -` reads the body from stdin, the way `ticket set` does, so
+        the body lands in the same write as the ticket. Naming the flag means the
+        body must carry text: a new ticket has no earlier body to clear, so `""`
+        and an empty pipe are both refused. Omit the flag for a ticket with none.
         """,
         "ticket set": """
         tandem-cli ticket set — edit one ticket's fields in one write.
@@ -216,7 +221,7 @@ enum Usage {
                                 [--assignee <name|self>] [--description <string|->]
 
         Values:
-          status    backlog | refined | ready | in-progress | in-review | done
+          status    backlog | on-hold | refined | ready | in-progress | in-review | done
           assignee  a name, `self` ($TANDEM_AGENT), or "" for the unassigned
 
         A flag not named leaves its field alone. `--description -` reads the body
@@ -246,7 +251,7 @@ enum Usage {
                                    [--body <string|->]
 
         Values:
-          status    backlog | refined | ready | in-progress | in-review | done
+          status    backlog | on-hold | refined | ready | in-progress | in-review | done
           assignee  a name, `self` ($TANDEM_AGENT), or "" to leave it unowned
 
         One write: a `## Answer — <date>` block appended to the description, then the
@@ -366,7 +371,9 @@ enum Usage {
 
         An absent `--project` is the working directory's last path component, an
         absent `--agent` is $TANDEM_AGENT, an absent `--session` is
-        $OPENCODE_SESSION_ID. `--brief -` reads the brief from stdin.
+        $OPENCODE_SESSION_ID. `--brief` takes the literal brief text, or
+        `--brief -` which reads it from stdin — never a file path, which is
+        refused.
         """,
         "session end": """
         tandem-cli session end — a session record, stamped.
@@ -437,7 +444,7 @@ enum Usage {
         tandem-cli sprint close — the lane's open sprint, stamped.
 
         Usage:
-          tandem-cli sprint close --lane <name> [--note <string|->]
+          tandem-cli sprint close --lane <name> [--number <n>] [--note <string|->]
 
         `--note -` reads the note from stdin; a close that names no note is the
         stamp alone.

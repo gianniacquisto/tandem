@@ -110,6 +110,61 @@ struct TicketVerbTests {
         #expect(missing.code == 1, "a missing --id is the empty id, a domain failure, not usage")
     }
 
+    // MARK: - `add --description`: the body in the same write
+
+    @Test("`ticket add --description -` lands the body in the same write — no add-then-set round trip")
+    func addCarriesTheBodyFromStdin() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-cli-ticket-verb-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let body = "## Why\n\nmulti-line markdown, quoting-free"
+
+        let added = try cli.run(home: home,
+                                ["ticket", "add", "--title", "A body'd ticket", "--description", "-"],
+                                stdin: body)
+        #expect(added.code == 0)
+        let ticket = try json(added.output)
+        #expect(ticket["description"] as? String == body)
+        #expect(ticket["descriptionLength"] == nil, "add answers the whole ticket, not a summary")
+
+        // The one write landed: the stored row reads back whole...
+        let id = try #require(ticket["id"] as? String)
+        let shown = try cli.run(home: home, ["ticket", "show", "--id", id])
+        #expect(shown.code == 0)
+        #expect(try json(shown.output)["description"] as? String == body)
+
+        // ...and the list summary carries its length, so the row is the same ticket.
+        let listed = try cli.run(home: home, ["ticket", "list", "--filter", "all"])
+        let row = try #require((try json(listed.output)["tickets"] as? [[String: Any]])?.first)
+        #expect(row["descriptionLength"] as? Int == body.count)
+    }
+
+    @Test("`ticket add` refuses an empty description — the `\"\"` flag and an empty pipe alike")
+    func addRefusesAnEmptyDescription() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-cli-ticket-verb-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        // A new ticket has no earlier body, so an empty value is not a clear:
+        // naming `--description` means the body must carry text — the same
+        // refusal an empty `--description -` pipe meets.
+        let emptyFlag = try cli.run(home: home,
+                                    ["ticket", "add", "--title", "No body", "--description", ""])
+        #expect(emptyFlag.code == 1)
+        #expect(emptyFlag.error.contains("empty"))
+        #expect(emptyFlag.output.isEmpty, "stdout stays empty — one JSON object or none")
+
+        let emptyPipe = try cli.run(home: home,
+                                    ["ticket", "add", "--title", "No body", "--description", "-"],
+                                    stdin: "  \n\t ")
+        #expect(emptyPipe.code == 1)
+        #expect(emptyPipe.error.contains("empty"))
+
+        // Nothing was filed: the refusal happens before the write.
+        let listed = try cli.run(home: home, ["ticket", "list", "--filter", "all"])
+        #expect((try json(listed.output)["tickets"] as? [[String: Any]])?.isEmpty == true)
+    }
+
     // MARK: - The alias, retired
 
     @Test("`todo` is an unknown group: usage on stderr, exit 2, nothing on stdout")
@@ -192,7 +247,51 @@ struct TicketVerbTests {
         #expect(unknown.error.contains("Unknown ticket id"))
     }
 
+    // MARK: - the on-hold status (TAN-196: the reader ships first)
+
+    @Test("`ticket set --status on-hold` writes the new value and `list --status` finds it")
+    func onHoldWritesAndLists() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let added = try run(home: home, ["ticket", "add", "--title", "Parked on purpose"])
+        let id = try #require((try json(added.output)["id"] as? String))
+
+        let set = try run(home: home, ["ticket", "set", "--id", id, "--status", "on-hold"])
+        #expect(set.code == 0)
+        #expect(try json(set.output)["status"] as? String == "on-hold")
+
+        let listed = try run(home: home, ["ticket", "list", "--status", "on-hold"])
+        #expect(listed.code == 0)
+        let rows = try #require(try json(listed.output)["tickets"] as? [[String: Any]])
+        #expect(rows.count == 1)
+        #expect(rows.first?["status"] as? String == "on-hold")
+    }
+
+    /// The other half of the gate: the build that learns `on-hold` must not stop
+    /// reading or writing the word every existing row and skill still uses.
+    @Test("`ticket set --status refined` still answers in the build that adds on-hold")
+    func refinedStillWrites() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let added = try run(home: home, ["ticket", "add", "--title", "Refined the old way"])
+        let id = try #require((try json(added.output)["id"] as? String))
+
+        let set = try run(home: home, ["ticket", "set", "--id", id, "--status", "refined"])
+        #expect(set.code == 0)
+        #expect(try json(set.output)["status"] as? String == "refined")
+
+        let listed = try run(home: home, ["ticket", "list", "--status", "refined"])
+        #expect(listed.code == 0)
+        let rows = try #require(try json(listed.output)["tickets"] as? [[String: Any]])
+        #expect(rows.first?["status"] as? String == "refined")
+    }
+
     // MARK: - Helpers
+
+    /// The shared harness, for the runs that feed stdin (`add --description -`).
+    private let cli = CLIHarness()
 
     /// A throwaway home: the CLI writes there, never the human's store.
     private func temporaryHome() -> URL {

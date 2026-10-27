@@ -127,7 +127,8 @@ struct QueryTests {
     func parseDefault() throws {
         let query = try TicketQuery.parse()
         #expect(query.archived == .excluded)
-        #expect(query.statuses == Set(Status.workflow.filter { $0 != .done }))
+        #expect(query.statuses == Set(Status.allCases.filter { $0 != .done }),
+                "open is every value the domain accepts but done — the retired refined too")
         #expect(query.assignee == .any)
         #expect(query.lane == .any)
         #expect(query.text == nil)
@@ -172,7 +173,7 @@ struct QueryTests {
     func parseFilterSugar() throws {
         #expect(try TicketQuery.parse(filter: "all").archived == .excluded)
         #expect(try TicketQuery.parse(filter: "done").statuses == [.done])
-        #expect(try TicketQuery.parse(filter: "open").statuses == [.backlog, .refined, .ready, .inProgress, .inReview])
+        #expect(try TicketQuery.parse(filter: "open").statuses == [.backlog, .refined, .onHold, .ready, .inProgress, .inReview])
     }
 
     // MARK: - the CLI's archive axis

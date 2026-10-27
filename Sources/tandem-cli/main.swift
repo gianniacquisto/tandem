@@ -79,13 +79,14 @@ func dispatch(_ args: [String]) -> Int32 {
             let result = try Store().ticket(id: id)
             return try StoreEncoding.ticketResult(result.value, note: result.note)
         }
-    case .ticketAdd(let title, let status, let assignee, let lane, let origin):
+    case .ticketAdd(let title, let status, let assignee, let lane, let origin, let description):
         return run {
             let result = try Store().add(
                 title,
                 lane: lane,
                 status: try status.map { try Status.parse(raw: $0) } ?? .backlog,
                 assignee: try resolveAssignee(assignee),
+                description: try addDescriptionBody(description, stdin: readStandardInput),
                 origin: try resolveOrigin(origin))
             return try StoreEncoding.ticketResult(result.value, note: result.note)
         }
@@ -312,12 +313,15 @@ func dispatch(_ args: [String]) -> Int32 {
             let result = try Sprints().run(lane: lane, number: number, note: body)
             return try StoreEncoding.sprintResult(result.value, note: result.note)
         }
-    case .sprintClose(let lane, let note):
+    case .sprintClose(let lane, let number, let note):
         return run {
             // `--note` optional: absent is the stamp alone; `--note -` is
-            // stdin, whose empty body the core refuses.
+            // stdin, whose empty body the core refuses. `--number` names the
+            // record; without it the lane's open one (or, once it has closed,
+            // the lane's newest) is the target.
             let body: String? = try note.map { try sprintNote($0) }
-            let number = try closeSprintNumber(lane: lane)
+            let number = try number.map { try sprintNumber($0) }
+                ?? closeSprintNumber(lane: lane)
             let result = try Sprints().close(lane: lane, number: number, note: body)
             return try StoreEncoding.sprintResult(result.value, note: result.note)
         }
@@ -448,6 +452,17 @@ func descriptionBody(_ flag: String, stdin: () throws -> String) throws -> Strin
     return try DescriptionBody.required(stdin())
 }
 
+/// The `--description` body of a `ticket add`: no flag is no description, and
+/// anything else — the flag's own value, or the text piped in when it is `-` —
+/// must carry text. A new ticket has no earlier body, so there is no deliberate
+/// empty to mean "clear" the way `ticket set --description ""` does: `""` and an
+/// empty pipe are the same failed write, refused with
+/// `DomainError.emptyDescriptionBody`.
+func addDescriptionBody(_ flag: String?, stdin: () throws -> String) throws -> String? {
+    guard let flag else { return nil }
+    return try DescriptionBody.required(flag == "-" ? stdin() : flag)
+}
+
 /// The body of a `note capture` call: everything on stdin, decoded as UTF-8,
 /// empty allowed (ADR 0016). Invalid UTF-8 is a domain failure, not a usage one.
 func readStandardInput() throws -> String {
@@ -518,13 +533,29 @@ func sessionAgent(_ raw: String?) -> String? {
 /// an unset variable all arrive as the same empty body, and a brief is what
 /// the record is *for* — so it is refused with the core's own
 /// `emptySessionBrief` rather than filed as no brief at all.
+///
+/// A value that names an existing regular file is refused too (RET-32): the flag
+/// never read the file, so the path would be filed as the brief, and a session
+/// start refuses to overwrite a record — there is no repair. Telling the caller
+/// to pipe it is the whole fix. A `~` is expanded first, since no shell does.
 func sessionBrief(_ raw: String) throws -> String {
-    guard raw == "-" else { return raw }
-    let body = try readStandardInput()
-    guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        throw DomainError.emptySessionBrief
+    guard raw != "-" else {
+        let body = try readStandardInput()
+        guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw DomainError.emptySessionBrief
+        }
+        return body
     }
-    return body
+    // `~` is the shell's to expand and no shell runs between the caller and the
+    // flag, so the value is expanded here before the check; a directory (or
+    // anything else that is not a regular file) is not a file, so `--brief
+    // build` stays a literal brief.
+    let path = (raw as NSString).expandingTildeInPath
+    var isDirectory: ObjCBool = false
+    if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue {
+        throw DomainError.briefNamesAFile(path: raw)
+    }
+    return raw
 }
 
 /// A session's summary: absent is no summary, and a `--summary -` body that

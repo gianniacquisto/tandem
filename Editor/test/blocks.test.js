@@ -10,6 +10,7 @@ const plan = (text, opts = {}) =>
     tree: markdownLanguage.parser.parse(text),
     notes: opts.notes ?? [],
     notePath: opts.notePath ?? "n.md",
+    reveal: opts.reveal ?? null,
   });
 
 const widgetAt = (p, from) =>
@@ -224,6 +225,70 @@ test("frontmatter does not abort the walk: structure after it is planned", () =>
   assert.ok(
     p.spans.some((s) => s.from === 24 && s.to === 28 && s.className === "tandem-strong")
   );
+});
+
+// -- reveal: the lines the selection touches render as source --------------------------
+
+test("reveal: a revealed heading line keeps its markers and its class", () => {
+  const p = plan("# One\n\nafter", { reveal: { from: 0, to: 0 } });
+  assert.equal(emptyAt(p, 0, 2), false); // "# " stays source
+  assert.ok(!p.replaces.some((r) => r.from < 2 && r.to > 0));
+  assert.equal(lineClass(p, 0), "tandem-h1");
+});
+
+test("reveal: the untouched lines keep hiding their markers and widgets", () => {
+  const text = "# One\n## Two\nsee [[Note]]";
+  const p = plan(text, { reveal: { from: 0, to: 0 } });
+  assert.equal(emptyAt(p, 0, 2), false); // the caret's line: source
+  assert.ok(emptyAt(p, 6, 9)); // the next heading still hides "## "
+  assert.deepEqual(widgetAt(p, 17), {
+    kind: "wikilink",
+    target: "Note",
+    display: "Note",
+    broken: true,
+  });
+});
+
+test("reveal: a wikilink on a revealed line is source text", () => {
+  const p = plan("see [[Note]]", { reveal: { from: 4, to: 4 } });
+  assert.equal(widgetAt(p, 4), undefined);
+  assert.equal(p.replaces.length, 0);
+});
+
+test("reveal: a revealed line inside a table drops the table widget", () => {
+  const text = "| a | b |\n|---|---|\n| 1 | 2 |";
+  const row = text.indexOf("| 1");
+  const p = plan(text, { reveal: { from: row, to: row } });
+  assert.equal(blockOf(p, "table"), undefined);
+  assert.equal(p.replaces.length, 0); // the table's source lines are visible
+});
+
+test("reveal: a selection touching the frontmatter draws its source", () => {
+  const text = "---\nt: 1\n---\nbody";
+  const p = plan(text, { reveal: { from: 4, to: 4 } });
+  assert.equal(blockOf(p, "frontmatter"), undefined);
+  assert.equal(p.replaces.length, 0);
+});
+
+test("reveal: a selection ending at a line start does not reveal the next line", () => {
+  const text = "# One\n# Two";
+  const p = plan(text, { reveal: { from: 0, to: 6 } }); // 6 is line 1's start
+  assert.equal(emptyAt(p, 0, 2), false); // line 0 revealed
+  assert.ok(emptyAt(p, 6, 8)); // line 1 not
+  assert.equal(lineClass(p, 0), "tandem-h1");
+});
+
+test("reveal: a revealed nested list item carries no depth class", () => {
+  const p = plan("- a\n  - b", { reveal: { from: 6, to: 6 } });
+  assert.equal(lineClass(p, 4) ?? "", ""); // no tandem-li-d1
+  // neither the hidden indent nor the bullet widget survives on that line
+  assert.equal(p.replaces.filter((r) => r.from >= 4).length, 0);
+  assert.deepEqual(widgetAt(p, 0), { kind: "bullet" }); // the outer line still renders
+});
+
+test("reveal: absent or null leaves today's plan exactly", () => {
+  const text = "# One\n[[Note]]\n\n| a |\n|---|\n| b |";
+  assert.deepEqual(plan(text, { reveal: null }), plan(text));
 });
 
 test("no overlapping replaces in any plan", () => {

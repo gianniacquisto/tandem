@@ -52,7 +52,7 @@ import { json } from "@codemirror/lang-json";
 import { python } from "@codemirror/lang-python";
 import { sql } from "@codemirror/lang-sql";
 
-import { planPreview } from "./blocks.js";
+import { planPreview, touchedLineIndices } from "./blocks.js";
 import {
   WikilinkWidget,
   CheckboxWidget,
@@ -193,6 +193,8 @@ function makeWidget(d) {
 // The plan → DecorationSet mapping: replaces (marker hides, with or
 // without a widget), marks (spans; links carry their href as
 // data-href for the click interception), line classes, and block widgets.
+// The selection reveals its own lines: the plan hands the caret's lines
+// back as source.
 function previewDecorations(state) {
   const text = state.doc.toString();
   const plan = planPreview({
@@ -200,6 +202,7 @@ function previewDecorations(state) {
     tree: syntaxTree(state),
     notes: state.field(noteIndexState),
     notePath: state.field(notePathState),
+    reveal: state.selection.main,
   });
 
   const ranges = [];
@@ -256,7 +259,8 @@ export const livePreviewState = StateField.define({
     const reindexed = tr.effects.some(
       (e) => e.is(setNoteIndexEffect) || e.is(setNotePathEffect)
     );
-    return tr.docChanged || reindexed ? previewDecorations(tr.state) : value;
+    // The selection reveals its lines: a caret move alone changes the plan.
+    return tr.docChanged || tr.selection || reindexed ? previewDecorations(tr.state) : value;
   },
   provide: (f) => [EditorView.decorations.from(f)],
 });
@@ -513,15 +517,15 @@ export function wrapSelectionSpec(state, before, after = before) {
 
 // The lines a selection "touches": the selection's start line through its
 // end line, except that a selection ending exactly at a line boundary does
-// not pull in the line after it.
+// not pull in the line after it. The boundary rule lives in blocks.js, next
+// to the plan's reveal that reads it.
 function touchedLines(state) {
   const { from, to } = state.selection.main;
-  const startLine = state.doc.lineAt(from);
-  const endPos = to > from && to === state.doc.lineAt(to).from ? to - 1 : to;
-  const endLine = state.doc.lineAt(endPos).number;
-  const lines = [];
-  for (let n = startLine.number; n <= endLine; n++) lines.push(state.doc.line(n));
-  return lines;
+  const lines = {
+    indexAt: (pos) => state.doc.lineAt(pos).number - 1,
+    from: (i) => state.doc.line(i + 1).from,
+  };
+  return touchedLineIndices(lines, from, to).map((i) => state.doc.line(i + 1));
 }
 
 const leadingSpaces = (text) => /^\s*/.exec(text)[0].length;

@@ -88,8 +88,39 @@ struct TicketModelTests {
 
     @Test("workflow order puts in-review between in-progress and done")
     func workflowOrder() {
-        #expect(Status.workflow == [.backlog, .refined, .ready, .inProgress, .inReview, .done])
-        #expect(Status.wireValues == ["backlog", "refined", "ready", "in-progress", "in-review", "done"])
+        #expect(Status.workflow == [.backlog, .onHold, .ready, .inProgress, .inReview, .done])
+        #expect(Status.wireValues == ["backlog", "on-hold", "refined", "ready", "in-progress", "in-review", "done"])
+        #expect(Status.allCases.contains(.refined), "the retired word stays a value the domain accepts")
+    }
+
+    @Test("on-hold round-trips through the store")
+    func onHoldRoundTrips() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+
+        let added = try store.add("Parked on purpose", status: .onHold).value
+        #expect(added.status == .onHold)
+        #expect(added.done == false)
+
+        // A fresh Store over the same directory reads the new stage back.
+        let read = try #require(try Store(directory: dir).list(.all).value.first)
+        #expect(read.status == .onHold)
+    }
+
+    /// The reader half of the on-hold release gate (TAN-196): the build that adds
+    /// `on-hold` still reads every store written before it, `refined` included.
+    @Test("refined stays a readable status: a stored `refined` reads back as refined")
+    func refinedStaysReadable() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = Store(directory: dir)
+        try writeRaw(#"{"version":1,"todos":[{"id":"00000000-0000-0000-0000-000000000001","title":"parked by the old app","status":"refined","createdAt":"2026-01-01T00:00:00Z","completedAt":null}]}"#, to: store)
+
+        let todo = try #require(try store.list(.all).value.first)
+        #expect(todo.status == .refined)
+        #expect(try Store(directory: dir).list(.all).note == nil, "a retired status is not corruption")
+        #expect(try Status.parse(raw: "refined") == .refined, "the domain still accepts the old word")
     }
 
     @Test("a file written before the ticket fields existed reads as backlog and unassigned")

@@ -23,7 +23,14 @@ enum Command {
         archived: Bool
     )
     case ticketShow(id: String)
-    case ticketAdd(title: String, status: String?, assignee: String?, lane: String?, origin: String?)
+    case ticketAdd(
+        title: String,
+        status: String?,
+        assignee: String?,
+        lane: String?,
+        origin: String?,
+        description: String?
+    )
     case ticketSet(
         id: String,
         title: String?,
@@ -63,7 +70,7 @@ enum Command {
     case sprintOpen(lane: String, mode: String?, session: String?)
     case sprintTicket(lane: String, ticket: String)
     case sprintRun(lane: String, note: String)
-    case sprintClose(lane: String, note: String?)
+    case sprintClose(lane: String, number: String?, note: String?)
     case sprintList(lane: String?, status: String?)
     case sprintShow(lane: String, number: String)
 }
@@ -164,17 +171,19 @@ private func parseTicket(_ args: [String]) throws -> Command {
         // `unknownID` error carries the open list, as `complete` does.
         return .ticketShow(id: flags["--id"] ?? "")
     case "add":
-        try accept(flags, ["--title", "--status", "--assignee", "--lane", "--origin"])
+        try accept(flags, ["--title", "--status", "--assignee", "--lane", "--origin", "--description"])
         // A missing `--title` is not a usage error: it is the empty title the
         // domain rejects (`emptyTitle`), exactly as the MCP server read an
         // absent argument. An absent `--origin` is `nil` (the core's `human`
         // default), not the empty string: there is no "no filer" value to reject.
+        // `--description -` is read from stdin, as on `set`; `main` owns the dash.
         return .ticketAdd(
             title: flags["--title"] ?? "",
             status: flags["--status"],
             assignee: flags["--assignee"],
             lane: flags["--lane"],
-            origin: flags["--origin"])
+            origin: flags["--origin"],
+            description: flags["--description"])
     case "set":
         try accept(flags, ["--id", "--title", "--status", "--assignee", "--description"])
         // Every field is optional: the ones not named are left alone, in one write.
@@ -470,10 +479,15 @@ private func parseSprint(_ args: [String]) throws -> Command {
         // belongs to the adapter.
         return .sprintRun(lane: flags["--lane"] ?? "", note: flags["--note"] ?? "")
     case "close":
-        try accept(flags, ["--lane", "--note"])
+        try accept(flags, ["--lane", "--number", "--note"])
         // `--note` is optional: a close that names no note is the stamp
-        // alone. `--note -` is stdin, as `--note` is on `run`.
-        return .sprintClose(lane: flags["--lane"] ?? "", note: flags["--note"])
+        // alone. `--note -` is stdin, as `--note` is on `run`. `--number` names
+        // the record instead of the lane's open one, so a close can be aimed at
+        // a record that has already closed — a write that changes nothing.
+        return .sprintClose(
+            lane: flags["--lane"] ?? "",
+            number: flags["--number"],
+            note: flags["--note"])
     case "list":
         try accept(flags, ["--lane", "--status"])
         // Absent `--lane` reports every lane; absent `--status` every state.
