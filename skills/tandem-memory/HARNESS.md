@@ -1,6 +1,6 @@
 # Harness bindings — how each host runs this protocol
 
-The protocol in this directory is **host-neutral**: it names the roles, the invariants, and the cadence, so any host that reads `AGENTS.md` can follow it, and it names no host's agent, command, or config file.
+The protocol in this directory is **host-neutral**: it names the roles, the invariants, and the record rule, so any host that reads `AGENTS.md` can follow it, and it names no host's agent, command, or config file.
 
 This file records the other half — how each host implements that protocol: the agent that runs the consolidation pass, what triggers it, how the host is registered, whether its instructions reach child sessions, and the flags its tools need for the hidden layer. Add a section per host.
 

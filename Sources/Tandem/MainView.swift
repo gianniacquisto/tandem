@@ -177,6 +177,8 @@ struct MainView: View {
         .onAppear {
             // Let the menu bar item's "Open Tandem" focus (or reopen) this window.
             WindowManager.shared.openMain = { openWindow(id: "main") }
+            // The File menu's "Today's Note" reaches the bikeshed action the same way.
+            WindowManager.shared.openToday = { openToday() }
             showSetupIfNeeded()
         }
         // The undo toast: one click back from a mis-clicked completion. It floats
@@ -611,14 +613,17 @@ struct MainView: View {
         }
     }
 
-    /// The candidates: the bikeshed's notes and the store's tickets. The core does the
-    /// matching and the ranking; this only gathers what there is to rank.
+    /// The candidates: the bikeshed's notes, the store's tickets, and the app's own
+    /// action — **Today's note**. The core does the matching and the ranking; this
+    /// only gathers what there is to rank.
     private var quickOpenItems: [QuickOpen.Item] {
-        bikeModel.notePaths().map { QuickOpen.Item.note(path: $0) }
+        [.dailyNote]
+            + bikeModel.notePaths().map { QuickOpen.Item.note(path: $0) }
             + model.tickets.map { QuickOpen.Item.ticket($0) }
     }
 
-    /// Opens a quick-open choice: a note in the editor, a ticket in its sheet.
+    /// Opens a quick-open choice: a note in the editor, a ticket in its sheet, an
+    /// action by running it.
     private func openQuickOpenItem(_ item: QuickOpen.Item) {
         quickOpenPresented = false
         switch item {
@@ -628,7 +633,16 @@ struct MainView: View {
             bikeModel.open(path)
         case .ticket(let ticket):
             ticketFor = ticket
+        case .action:
+            openToday()
         }
+    }
+
+    /// The menu's **Today's Note** item and the palette's action share this one
+    /// path: the Bikeshed tab, then open-or-create the day's file.
+    private func openToday() {
+        tab = .bikeshed
+        bikeModel.openToday()
     }
 
     /// ⌘K: the palette opens, or closes if it is already up.

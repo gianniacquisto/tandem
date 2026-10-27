@@ -478,6 +478,26 @@ final class BikeshedModel {
         }
     }
 
+    /// "Today's note": open-or-create the human's daily note —
+    /// `daily/<today>.md` — and put the caret in it.
+    ///
+    /// The daily folder is a plain visible folder, so the tree draws it like any
+    /// other; it is expanded and reloaded for the new file. The app writes nothing
+    /// else: a daily note is the human's, and there is no agent-facing write path
+    /// for it.
+    func openToday() {
+        guard !conflict else { return }
+        do {
+            let path = try bikeshed.openDailyNote().value
+            for folder in DailyNote.harvestFolders { expandedFolders.insert(folder) }
+            lastError = nil
+            reloadTree()
+            open(path)
+        } catch {
+            apply(error: error)
+        }
+    }
+
     /// "New folder": an empty folder inside `parent` (`nil` / `""` = the bikeshed
     /// root) with a collision-free name, then expand `parent` so it shows.
     /// Mirrors `createNote(in:)`. Folder rename/move is out of scope — a note

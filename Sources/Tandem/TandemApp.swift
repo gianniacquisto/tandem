@@ -20,6 +20,11 @@ struct TandemApp: App {
             // The human picks the bikeshed from the app; the choice is
             // persisted and applied live — no restart.
             CommandGroup(after: .newItem) {
+                // The human's daily note: open today's file, creating it the first
+                // time. The same action rides the ⌘K palette.
+                Button("Today's Note") {
+                    WindowManager.shared.openToday?()
+                }
                 Button("Choose Bikeshed…") {
                     chooseBikeshed()
                 }
@@ -93,8 +98,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 /// Bridges the AppKit menu bar's "Open Tandem" to SwiftUI's window management. SwiftUI
 /// sets `openMain` (it holds the `openWindow` action); the menu bar calls it.
+///
+/// `openToday` is the same bridge for the File menu's **Today's Note** — the window
+/// owns the tab and the editor, so the menu cannot reach the bikeshed itself.
 final class WindowManager {
     static let shared = WindowManager()
     private init() {}
     var openMain: (() -> Void)?
+    var openToday: (() -> Void)?
 }

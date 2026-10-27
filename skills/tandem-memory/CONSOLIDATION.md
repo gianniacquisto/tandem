@@ -1,12 +1,12 @@
 # Consolidation — from captures to curated notes
 
-The one writer of the curated Bikeshed: the **consolidation agent** — a distinct, fresh agent the root session **hands the saddlebag to on request** (or a human runs it on demand) — never automatically at session close — and **never** a recording sub-agent. It reads the agents' captures, the human's scratch pad, and the ended session records' summaries as its inputs — distills them, and archives what it consumes (the scratch excepted). This repo names it (`agents/consolidator.md`) and ships the skill that dispatches it (`skills/tandem-consolidate/`); how a host binds those is that host's own wiring → [`HARNESS.md`](HARNESS.md). The capture cadence is [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md); the layout and naming are [`CONVENTIONS.md`](CONVENTIONS.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill to every curated note.
+The one writer of the curated Bikeshed: the **consolidation agent** — a distinct, fresh agent the root session **hands the saddlebag to on request** (or a human runs it on demand) — never automatically at session close — and **never** a recording sub-agent. It reads the agents' captures, the human's daily notes, and the ended session records' summaries as its inputs — distills them, and archives what it consumes (the daily notes excepted — they are read-only and stay where they are). This repo names it (`agents/consolidator.md`) and ships the skill that dispatches it (`skills/tandem-consolidate/`); how a host binds those is that host's own wiring → [`HARNESS.md`](HARNESS.md). The capture rule is [`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md); the layout and naming are [`CONVENTIONS.md`](CONVENTIONS.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill to every curated note.
 
-It is the **only** writer of `Index.md` and the notes under `projects/**` — no working agent may touch them (decision 8). It never writes a capture, and it **never** writes the scratch.
+It is the **only** writer of `Index.md` and the notes under `projects/**` — no working agent may touch them (decision 8). It never writes a capture, and it **never writes, moves or archives a daily note**.
 
-## Read the inputs — the saddlebag, the scratch, the session records
+## Read the inputs — the saddlebag, the daily notes, the session records
 
-The pass reads the agents' saddlebag captures and the human's scratch pad ([`CONVENTIONS.md`](CONVENTIONS.md)) — and, alongside them, the ended session records' summaries (ADR 0027).
+The pass reads the agents' saddlebag captures and the human's daily notes ([`CONVENTIONS.md`](CONVENTIONS.md)) — and, alongside them, the ended session records' summaries (ADR 0027).
 
 **The saddlebag** — pending = every file under `projects/*/.raw/**` that is **not** under `.done/`. The `.raw/` subtree is hidden, so a plain glob or grep skips it:
 
@@ -16,7 +16,9 @@ The pass reads the agents' saddlebag captures and the human's scratch pad ([`CON
 
 Read every pending file — the **whole** saddlebag, not a session's slice. Group by **project** (the `.raw/` folder's parent) and by **kind** (the filename, and where it lands). Drop what the repo or environment reproduces cheaply — a lookup, a file's contents, a command's output. Dedupe repeats within and across sessions.
 
-**The scratch pad** — the visible `scratch/` directory of the human's daily notes. Read it whole, alongside the saddlebag; fold what it holds into the scaffold. It is **read-only to the consolidator**: the pass never edits the scratch and never archives it — it is the human's space, and the human prunes.
+**The daily notes** — the harvest list is `["daily"]` today: the **human-owned** folders at the vault root, and **read-only to the consolidator**. A daily note is `daily/YYYY-MM-DD.md`, one file per day; the human writes and edits it in the app (⌘K or **File → Today's Note**). Read every file dated after the fold marker and fold what it holds into the scaffold page or sub-page of whichever project it concerns. The pass **never edits, moves or archives** a daily note: the human keeps them, and the pass leaves every one byte-identical. A second folder joins by being declared in the same list, with the same contract — and gets its own marker line.
+
+**The fold marker** — the pass's position in the daily notes, one dated line the consolidator owns in `Index.md`: `Human notes folded through 2026-10-26`. Advance it to the day of the last daily note whose content is fully folded, and only after a pass has read everything up to it — once per pass, never ahead of the fold. Nothing is written into the daily files themselves. **Discovery is the list plus the marker date, not mtime**: a touch must not re-fold a note, and an edit to a note dated before the marker is the human's to re-date.
 
 **The session records** — every ended session's summary: `tandem-cli session list --project <project> --status ended`, then `tandem-cli session show --session <id>` for the `summary` field (ADR 0027). The summary is the session's work record — what it did and where it left off; there is no floor `work` capture to read. Records are rows of the store's `sessions` table in `tandem.db` (ADR 0031), never the saddlebag: they are read, not archived.
 
@@ -56,8 +58,8 @@ A `thread` note usually already has a Ticket — the working agent files it the 
 
 ## Consume — archive, never delete
 
-Move each capture it consumed to `projects/<project>/.raw/.done/<session>/<file>`, mirroring the session folder (`mv`, still hidden). Nothing is lost, and the saddlebag stays stateless — pending is simply "any file under `.raw/` not under `.done/`". The human reads the archive with "Show hidden files" in Tandem's Settings — the app's tree then draws the hidden layer, still outside search, backlinks, and wikilinks. The **scratch is the exception**: it is folded, never moved — the pass leaves it byte-identical, and the human prunes it.
+Move each capture it consumed to `projects/<project>/.raw/.done/<session>/<file>`, mirroring the session folder (`mv`, still hidden). Nothing is lost, and the saddlebag stays stateless — pending is simply "any file under `.raw/` not under `.done/`". The human reads the archive with "Show hidden files" in Tandem's Settings — the app's tree then draws the hidden layer, still outside search, backlinks, and wikilinks. The **daily notes are the exception**: they are folded, never moved — the pass leaves every one byte-identical, and the marker just says how far it read.
 
 ## Done when
 
-Every pending capture is folded into the scaffold or dropped as reproducible, the scratch is read and left untouched, every consumed capture is archived under `.done/`, and every project with input carries all four scaffold pages with the touched notes current: a cold session could resume from them alone.
+Every pending capture is folded into the scaffold or dropped as reproducible, every daily note after the marker is read and left byte-identical, the marker is advanced exactly once, every consumed capture is archived under `.done/`, and every project with input carries all four scaffold pages with the touched notes current: a cold session could resume from them alone.

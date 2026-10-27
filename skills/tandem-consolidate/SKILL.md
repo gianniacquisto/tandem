@@ -13,6 +13,14 @@ One consolidation pass over the whole pending raw queue. The captures stay where
 
 So this skill does not consolidate anything itself. It **dispatches** the `consolidator` subagent, and reports what that agent did.
 
+## The human's daily notes
+
+The human keeps daily notes at the vault root: `daily/YYYY-MM-DD.md`, one file per day, written and edited in the app (⌘K or **File → Today's Note**). The harvest list is `["daily"]` today — the human-owned folders, a second one joining by being declared in the same list with the same contract. They are **human-owned and read-only to every agent**: the pass reads each file dated after the fold marker and **never edits, moves or archives** a source file.
+
+The fold position is a dated line the consolidator owns in `Index.md` — `Human notes folded through 2026-10-26` — advanced only after a pass has read everything up to it. Discovery is the list plus the marker date, not mtime. The full protocol is `tandem-memory/CONSOLIDATION.md`.
+
+Agent captures are unchanged: every agent still files with `tandem-cli note capture`, and the daily notes add no agent-facing write path — the absence is the enforcement.
+
 ## What to do
 
 **Pick the mode before any dispatch** — if the human asks for more than one consolidation pass, the human in the session chooses: **serial** (the default, one pass at a time) or **parallel**. Caution: the curated notes have exactly one writer at a time and passes consume the same raw queue, so parallel passes risk write races.
