@@ -83,6 +83,15 @@ struct CLIHelpTests {
         #expect(lane.output.contains("tandem-cli lane add"))
     }
 
+    @Test("session start --help says --brief takes the literal text or `-`")
+    func sessionStartHelpNamesTheBriefForms() throws {
+        let result = try cli.run(home: home, ["session", "start", "--help"])
+        #expect(result.code == 0)
+        #expect(result.error == "", "a help probe is not an error")
+        #expect(result.output.contains("literal"), "the literal text is named as one form")
+        #expect(result.output.contains("`--brief -`"), "stdin is named as the other")
+    }
+
     @Test("lane list --help prints lane list's own usage and exits 0")
     func laneListHelp() throws {
         let result = try cli.run(home: home, ["lane", "list", "--help"])
