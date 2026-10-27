@@ -12,6 +12,11 @@
 //     frontmatter, code language tag, horizontal rule. Block decorations
 //     come from this StateField plan, never a ViewPlugin (spec invariant).
 //
+// Reveal: the lines a selection touches render as source — their marker
+// hides and block widgets are dropped from the plan, so the caret can never
+// sit inside something invisible (Obsidian's rule). `reveal: null` is the
+// fully rendered plan.
+//
 // Invariants: the plan is view-only (invariant 1); every line height is
 // carried by a class, never by token visibility (invariant 2). Nothing is
 // processed inside code — the tree's code ranges (fenced, indented, inline)
@@ -78,13 +83,35 @@ function blockLineRange(lines, text, from, to) {
 const inRange = (pos, r) => (r ? pos >= r[0] && pos < r[1] : false);
 const overlaps = (a, b, c, d) => a < d && c < b;
 
+// The line indices a selection touches: the from-line through the to-line,
+// except that a selection ending exactly at a line start does not pull in the
+// line after it. One rule, used by the plan's reveal and by main.js's line
+// formatting.
+export function touchedLineIndices(lines, from, to) {
+  const start = lines.indexAt(from);
+  const endPos = to > from && to === lines.from(lines.indexAt(to)) ? to - 1 : to;
+  const end = lines.indexAt(endPos);
+  const out = [];
+  for (let i = start; i <= end; i++) out.push(i);
+  return out;
+}
+
 // -- plan -------------------------------------------------------------------
 
-export function planPreview({ text, tree, notes = [], notePath = "" }) {
+export function planPreview({ text, tree, notes = [], notePath = "", reveal = null }) {
   const starts = lineStarts(text);
   const lines = makeLines(text, starts);
   const fm = frontmatterRange(text);
   const fmRange = fm ? [fm.from, fm.to] : null;
+
+  // The revealed lines, as a membership set (line classes) and one span
+  // (marker hides and block widgets): the revealed indices are contiguous.
+  const revealIdx = reveal ? touchedLineIndices(lines, reveal.from, reveal.to) : null;
+  const revealed = revealIdx?.length ? new Set(revealIdx) : null;
+  const revealSpan = revealed
+    ? [lines.from(revealIdx[0]), lines.withBreak(revealIdx[revealIdx.length - 1])[1]]
+    : null;
+  const outsideReveal = (from, to) => !revealSpan || !overlaps(from, to, revealSpan[0], revealSpan[1]);
 
   const replaces = [];
   const spans = [];
@@ -181,16 +208,38 @@ export function planPreview({ text, tree, notes = [], notePath = "" }) {
   //    a table or display-math line, renders). Spans fully inside a replaced
   //    range are unrenderable and dropped too; a span merely crossing a
   //    replaced range survives (the mark continues across the hidden text).
-  const big = replaces.map((r) => [r.from, r.to]);
+  //    The revealed lines' hides go first: a span they swallowed is still
+  //    renderable once its markers are source.
+  const visible = revealSpan ? replaces.filter((r) => outsideReveal(r.from, r.to)) : replaces;
+  const big = visible.map((r) => [r.from, r.to]);
   const inOtherReplace = (f, t) =>
     big.some(([s, e]) => f >= s && t <= e && (f > s || t < e));
+  // A block widget stands in for the source starting at its anchor, so a
+  // revealed line anywhere inside it drops the widget with the hide.
+  const hiddenStarts = new Set(
+    (revealSpan ? replaces.filter((r) => !outsideReveal(r.from, r.to)) : []).map((r) => r.from)
+  );
   return {
-    replaces: replaces.filter((r) => !inOtherReplace(r.from, r.to)),
+    replaces: visible.filter((r) => !inOtherReplace(r.from, r.to)),
     spans: spans.filter((sp) => !inOtherReplace(sp.from, sp.to)),
     lines: [...lineClasses.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([i, set]) => ({ from: lines.from(i), to: lines.to(i), className: [...set].join(" ") })),
-    blocks,
+      .map(([i, set]) => {
+        // A depth class stands in for the indent the hidden source carried:
+        // drawing both double-indents the line.
+        const names = [...set].filter(
+          (n) => !(revealed?.has(i) && n.startsWith("tandem-li-d"))
+        );
+        return names.length
+          ? { from: lines.from(i), to: lines.to(i), className: names.join(" ") }
+          : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.from - b.from),
+    blocks: revealed
+      ? blocks.filter(
+          (b) => !revealed.has(lines.indexAt(b.at)) && !hiddenStarts.has(b.at)
+        )
+      : blocks,
   };
 }
 

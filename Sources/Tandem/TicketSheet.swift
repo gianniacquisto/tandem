@@ -179,7 +179,7 @@ struct TicketSheet: View {
                     ForEach(AssigneePicker.options(roster: roster,
                                                    current: ticket.assignee),
                             id: \.self) { option in
-                        choose(option.map(Self.label(for:)) ?? "Unassigned",
+                        choose(option.flatMap(AssigneeLabel.of) ?? "Unassigned",
                                selected: option == assignee) { assignee = option }
                     }
                 }
@@ -525,16 +525,7 @@ struct TicketSheet: View {
     /// The picker's own label: Unassigned, `human`, or the name with its @ — the
     /// read-only chip's vocabulary, now the picker's value.
     private var assigneeDisplay: String {
-        switch assignee {
-        case nil: return "Unassigned"
-        case .some(let name): return Self.label(for: name)
-        }
-    }
-
-    /// One name as the picker draws it: `human` unadorned (the reserved word),
-    /// an agent as `@name`.
-    static func label(for name: String) -> String {
-        name == TicketQuery.human ? "human" : "@\(name)"
+        AssigneeLabel.of(assignee) ?? "Unassigned"
     }
 
     /// A quiet "label · value ⌄" chip, the sheet's one control shape.
