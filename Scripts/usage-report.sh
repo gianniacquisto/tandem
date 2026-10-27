@@ -14,6 +14,16 @@
 # --summary -`. stdout carries the end call's JSON only — every message this
 # script adds goes to stderr, where no JSON parser is reading.
 #
+# **A re-dispatched pass gets its own record (RET-43).** The harness resumes an
+# opencode session whose tandem record the pass before it already ended — a
+# record stamps once, so that one cannot take this pass's usage, and ending
+# into it exits 0 having written nothing. When the record is already `ended`,
+# the wrapper mints this pass its own record instead: the same opencode id with
+# a `-<n>` suffix (the first `-2`, `-3`, … not taken), carrying the ended
+# record's agent, project and tickets, so the usage lands there and its `usage`
+# comment posts on the board the pass carried. A running record takes the usage
+# itself, as it always did.
+#
 # Environment:
 #   OPENCODE_SESSION_ID  the session's id — the db row's key (required)
 #   OPENCODE_DB          the database, default ~/.local/share/opencode/opencode.db
@@ -68,6 +78,48 @@ flags=""
 [ -n "$cache_write" ] && flags="$flags --tokens-cache-write $cache_write"
 [ -n "$cost" ] && flags="$flags --cost $cost"
 [ -n "$model" ] && flags="$flags --model $model"
+
+# The record this opencode session already has: `running` takes the usage
+# itself (the exec below); `ended` cannot — it stamps once — so this pass gets
+# its own record. A `session show` failure (no record at all) is not this
+# wrapper's business: the `end` below reports it.
+state=$("$CLI" session show --session "$SESSION" 2>/dev/null) || state=""
+case "$state" in
+*'"status":"ended"'*)
+    # The first `-<n>` suffix this opencode session has not used.
+    ids=$("$CLI" session list 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4) || ids=""
+    n=2
+    while printf '%s\n' "$ids" | grep -Fqx "$SESSION-$n"; do n=$((n + 1)); done
+    cont="$SESSION-$n"
+
+    # What the ended record carried, so the pass's record is attributed the
+    # same way: its agent (the usage comment's signature), its project, its
+    # tickets. The brief is this wrapper's own — the ended record keeps the
+    # brief its pass wrote.
+    project=$(printf '%s\n' "$state" | sed -n 's/.*"project":"\([^"]*\)".*/\1/p')
+    agent=$(printf '%s\n' "$state" | sed -n 's/.*"agent":"\([^"]*\)".*/\1/p')
+    carried=$(printf '%s\n' "$state" \
+        | sed -n 's/.*"tickets":\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | tr -d '"')
+
+    who=""
+    [ -n "$project" ] && who="$who --project $project"
+    [ -n "$agent" ] && who="$who --agent $agent"
+    printf '%s\n' "Re-dispatched pass in opencode session $SESSION: its record had already ended, so this record carries this pass's usage." \
+        | "$CLI" session start --session "$cont" $who --brief - >/dev/null \
+        || fail "could not open the continuation record $cont."
+
+    for ticket in $carried; do
+        "$CLI" session link --ticket "$ticket" --session "$cont" >/dev/null 2>&1 || true
+    done
+
+    # stdin is the summary and has not been read yet; it is read here because
+    # the mint above could not share it. A failed end is the script's exit code
+    # (set -e), so the pass sees it.
+    summary=$(cat)
+    printf '%s\n' "$summary" | "$CLI" session end --session "$cont" --summary - $flags "$@"
+    exit 0
+    ;;
+esac
 
 # The summary travels on stdin, untouched; the usage flags follow; the caller's
 # own arguments go last. exec so the CLI is this script's exit code and stdout.
