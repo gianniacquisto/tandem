@@ -38,6 +38,14 @@ const blockAt = (ds, at) =>
 const widgetReplace = (ds, from) =>
   ds.find((d) => d.from === from && d.spec.widget)?.spec.widget;
 
+// The plan renders the selection's lines as source, so a fixture that asserts
+// rendered decorations keeps the caret on a trailing empty line.
+function rendered(doc, opts = {}) {
+  const text = doc.endsWith("\n") ? doc : doc + "\n";
+  const st = createEditorState({ ...opts, doc: text });
+  return st.update({ selection: { anchor: text.length } }).state;
+}
+
 // -- setDocument ---------------------------------------------------------------------
 
 test("setDocument replaces the document, sets the note path, emits no dirty", () => {
@@ -104,7 +112,7 @@ test("revealLine clamps out-of-range lines to the document", () => {
 // -- setNoteIndex -------------------------------------------------------------------
 
 test("setNoteIndex updates the index field and re-resolves links, doc untouched", () => {
-  const st = createEditorState({ doc: "[[note]]" });
+  const st = rendered("[[note]]");
   const tr = st.update(setNoteIndexSpec(["note.md"]));
   const next = tr.state;
   assert.equal(tr.docChanged, false);
@@ -131,14 +139,14 @@ test("a note exactly at the ceiling does not warn (the bound is soft, not strict
 // -- Image targets (remote rewrite, bikeshed resolution) ----------------------------------
 
 test("a remote image carries a remote target (never fetched)", () => {
-  const st = createEditorState({ doc: "![a](https://example.com/p.png)" });
+  const st = rendered("![a](https://example.com/p.png)");
   const img = blockAt(decos(st), 0);
   assert.ok(img.spec.widget instanceof ImageWidget);
   assert.equal(img.spec.widget.target.kind, "remote");
 });
 
 test("a local image resolves against the note's folder in the bikeshed", () => {
-  const st = createEditorState({ doc: "![alt](img/p.png)", notePath: "a/n.md" });
+  const st = rendered("![alt](img/p.png)", { notePath: "a/n.md" });
   const img = blockAt(decos(st), 0);
   assert.ok(img.spec.widget instanceof ImageWidget);
   assert.equal(img.spec.widget.target.kind, "bikeshed");

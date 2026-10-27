@@ -369,6 +369,31 @@ struct LigneRow: View {
                             .overlay(Capsule().strokeBorder(palette.sand, lineWidth: Line.hairline))
                             .help("Archived: out of the default views, still in the store")
                     }
+
+                    // The labels the board's tile already draws, on the title's line:
+                    // Status, ref, assignee. `backlog` is the default, so it stays
+                    // silent — the Open view would otherwise be a wall of one word.
+                    if ticket.status != .backlog {
+                        Text(ticket.status.displayName)
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(palette.inkDim)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .overlay(Capsule().strokeBorder(palette.sand, lineWidth: Line.hairline))
+                    }
+                    if let ref = ticket.ref {
+                        Text(ref)
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundStyle(palette.inkDim)
+                            .lineLimit(1)
+                    }
+                    if let assignee = ticket.assignee, let label = AssigneeLabel.of(assignee) {
+                        Text(label)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(assignee == TicketQuery.human ? palette.emberDeep
+                                                                         : palette.inkDim)
+                            .lineLimit(1)
+                    }
                     Spacer(minLength: 0)
                 }
                 if !editing, let body = ticket.description {
