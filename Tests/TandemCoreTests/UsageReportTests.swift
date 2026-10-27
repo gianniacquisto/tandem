@@ -1,52 +1,413 @@
 import Foundation
 import Testing
 
-/// The usage wrapper (RET-2, spec F68948C0): `Scripts/usage-report.sh` reads one
-/// session row from opencode's database and ends that record with the usage
-/// flags. `--session <id>` names the record — a mid-session verify ends a record
-/// it minted instead of hand-rolling the sqlite read. No flag and the record is
-/// `$OPENCODE_SESSION_ID`'s, byte-for-byte what the wrapper always did.
+/// `Scripts/usage-report.sh` — the harness adapter that ends a Tandem record
+/// with the usage opencode measured (spec `F68948C0`), in two shapes the same
+/// script serves:
 ///
-/// The suite runs the real script against a throwaway sqlite database and a stub
-/// `tandem-cli` that records the arguments it was handed, so the assertions are
-/// on the call the wrapper makes, not on a copy of its reasoning.
-@Suite("The usage report wrapper")
+/// - **A named record (`RET-2`).** A first `--session <id>` ends the record it
+///   names — one a mid-session verify minted, say — and reads that row's usage.
+///   `$OPENCODE_SESSION_ID` stays the record when the flag is absent; the
+///   no-flag path is unchanged.
+/// - **A re-dispatched pass (`RET-43`).** The harness resumes an opencode
+///   session whose tandem record the pass before it already ended. A record
+///   stamps once, so that record cannot take this pass's usage — and exiting 0
+///   without writing it loses the pass. For the env-keyed record the wrapper
+///   mints the pass its own, keyed to the same opencode id with a `-<n>` suffix,
+///   carries the ended record's tickets onto it, and writes the usage there.
+///
+/// The two meet at one rule: an explicit `--session <id>` is a deliberate
+/// target and is never continued — an ended named record is a refusal, not a
+/// mint. A running record takes the usage itself either way.
+@Suite("The usage wrapper")
 struct UsageReportTests {
 
-    private static let root = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent() // tests/TandemCoreTests
-        .deletingLastPathComponent() // tests
+    /// The repo root, from this file's own path: three levels up.
+    private static let script = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent() // Tests/TandemCoreTests
+        .deletingLastPathComponent() // Tests
         .deletingLastPathComponent() // repo root
+        .appendingPathComponent("Scripts/usage-report.sh")
 
-    private struct Run {
-        let arguments: [String]
-        let body: String
-        let errors: String
-        let status: Int32
+    private let cli = CLIHarness()
+
+    /// The id opencode exports — the first record's handle, and the key every
+    /// continuation record extends.
+    private let sessionID = "ses_test"
+
+    // MARK: - the named record
+
+    @Test("`--session <id>` ends that named record, with its usage read from its row")
+    func theFlagNamesTheRecord() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        // Two live records: the environment's, and the one the caller names. A
+        // passing test proves the flag decides, not that the two agree.
+        #expect(try run(home: home, [
+            "session", "start", "--session", "ses_env",
+            "--project", "tandem", "--agent", "builder", "--brief", "the environment's pass",
+        ]).code == 0)
+        #expect(try run(home: home, [
+            "session", "start", "--session", "ses_named",
+            "--project", "tandem", "--agent", "builder", "--brief", "the named pass",
+        ]).code == 0)
+
+        let db = try opencodeDatabase([
+            OpenCodeRow(id: "ses_env", input: 77, cost: 0.5),
+            OpenCodeRow(id: "ses_named", input: 4200, cost: 0.25),
+        ])
+        defer { try? FileManager.default.removeItem(at: db) }
+
+        let ended = try wrapper(
+            home: home, db: db, environment: ["OPENCODE_SESSION_ID": "ses_env"],
+            ["--session", "ses_named", "--outcome", "succeeded"], stdin: "the named end\n")
+        #expect(ended.code == 0, "the wrapper ends the named record: \(ended.error)")
+
+        let named = try cli.object(from: try run(home: home, ["session", "show", "--session", "ses_named"]).output)
+        #expect(named["status"] as? String == "ended")
+        #expect(named["summary"] as? String == "the named end", "the summary is the pass's own")
+        #expect(named["model"] as? String == "opencode-go/deepseek-v4.1-flash", "the named row's usage is written")
+        #expect(named["cost"] as? Double == 0.25, "not the environment row's cost")
+        let tokens = try #require(named["tokens"] as? [String: Any])
+        #expect(tokens["input"] as? Int == 4200, "not the environment row's tokens")
+
+        let environment = try cli.object(
+            from: try run(home: home, ["session", "show", "--session", "ses_env"]).output)
+        #expect(environment["status"] as? String == "running", "the environment's record is untouched")
+        #expect(environment["model"] == nil, "and gains no usage")
     }
 
-    /// One `session_v2` row: the columns the wrapper's query reads.
-    private struct Row {
-        let id: String
-        var input = "1200"
-        var output = "340"
-        var reasoning = "5"
-        var cacheRead = "900"
-        var cacheWrite = "60"
-        var cost = "0.0123"
-        var model = "deepseek-v4.1-flash"
+    @Test("`--session` with no id is refused before the database is touched")
+    func theFlagWithoutAValueFails() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        #expect(try run(home: home, [
+            "session", "start", "--project", "tandem", "--agent", "builder", "--brief", "the pass",
+        ]).code == 0)
+
+        // No database on disk: the refusal is the flag's, not the read's.
+        let refused = try wrapper(
+            home: home, db: home.appendingPathComponent("absent.db"), ["--session"], stdin: "what landed\n")
+        #expect(refused.code == 1)
+        #expect(refused.error.contains("--session"), "the message names the flag: \(refused.error)")
+
+        let record = try cli.object(from: try run(home: home, ["session", "show", "--session", sessionID]).output)
+        #expect(record["status"] as? String == "running", "nothing was ended")
     }
 
-    // MARK: fixture
+    @Test("`--session` naming an ended record is refused — a named record is never continued")
+    func theEndedNamedRecordIsRefused() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
 
-    /// A throwaway opencode database carrying `rows` in `session_v2`, shaped like
-    /// the real one (the model is a JSON object, so `json_extract` finds its id).
-    private static func makeDatabase(_ rows: [Row]) throws -> URL {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("usage-report-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let db = dir.appendingPathComponent("opencode.db")
+        let ticket = try cli.addTicket(home: home, title: "Carried")
+        #expect(try run(home: home, [
+            "session", "start", "--session", "ses_named",
+            "--project", "tandem", "--agent", "builder", "--brief", "the gate pass",
+        ]).code == 0)
+        #expect(try run(home: home, ["session", "link", "--ticket", ticket, "--session", "ses_named"]).code == 0)
+        #expect(try run(home: home, [
+            "session", "end", "--session", "ses_named", "--outcome", "succeeded", "--summary", "gate pass merged",
+        ]).code == 0)
 
+        let db = try opencodeDatabase([OpenCodeRow(id: "ses_named")])
+        defer { try? FileManager.default.removeItem(at: db) }
+
+        // The caller named the record: the mint path does not apply to it, so
+        // the wrapper says the record is finished instead of minting `-2`.
+        let refused = try wrapper(
+            home: home, db: db,
+            ["--session", "ses_named", "--outcome", "succeeded"], stdin: "the merge pass\n")
+        #expect(refused.code == 1, "an explicit target that has ended is a refusal, not a continuation")
+        #expect(refused.error.contains("already ended"), "the message says the record is finished: \(refused.error)")
+
+        let listed = try cli.object(from: try run(home: home, ["session", "list"]).output)
+        let ids = try #require(listed["sessions"] as? [[String: Any]]).compactMap { $0["id"] as? String }
+        #expect(ids == ["ses_named"], "no `-2` was minted for a record the caller named")
+
+        let named = try cli.object(from: try run(home: home, ["session", "show", "--session", "ses_named"]).output)
+        #expect(named["summary"] as? String == "gate pass merged", "the ended record is untouched")
+        #expect(named["model"] == nil, "no usage written into the ended record")
+        #expect(try cli.comments(home: home, id: ticket).isEmpty, "and no usage comment posted")
+    }
+
+    // MARK: - the terminal record
+
+    @Test("a pass whose record already ended gets its own record — `<id>-2` — and the usage lands on it")
+    func theTerminalRecordGetsThePassItsOwnRecord() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let ticket = try cli.addTicket(home: home, title: "Carried")
+        #expect(try run(home: home, [
+            "session", "start", "--project", "tandem", "--agent", "builder", "--brief", "the gate pass",
+        ]).code == 0)
+        #expect(try run(home: home, ["session", "link", "--ticket", ticket]).code == 0)
+        // The gate pass ends, stamped without usage: the record a resumed pass
+        // finds terminal.
+        #expect(try run(home: home, [
+            "session", "end", "--outcome", "succeeded", "--summary", "gate pass merged",
+        ]).code == 0)
+
+        let db = try opencodeDatabase(for: sessionID)
+        defer { try? FileManager.default.removeItem(at: db) }
+
+        let ended = try wrapper(home: home, db: db, ["--outcome", "succeeded"], stdin: "the merge pass\n")
+        #expect(ended.code == 0, "the wrapper ends the pass: \(ended.error)")
+
+        // The pass's record: the same opencode id with the `-2` suffix, carrying
+        // the ended record's agent, project and ticket.
+        let cont = try cli.object(from: try run(home: home, ["session", "show", "--session", "\(sessionID)-2"]).output)
+        #expect(cont["status"] as? String == "ended")
+        #expect(cont["outcome"] as? String == "succeeded")
+        #expect(cont["summary"] as? String == "the merge pass", "the summary is the pass's own")
+        #expect(cont["agent"] as? String == "builder", "the ended record's agent carries over — the usage comment's signature")
+        #expect(cont["project"] as? String == "tandem")
+        #expect(cont["tickets"] as? [String] == [ticket], "the ended record's ticket carries over, so the usage lands on the board")
+        #expect(cont["model"] as? String == "opencode-go/deepseek-v4.1-flash", "the usage is written")
+        #expect(cont["cost"] as? Double == 0.42)
+        let tokens = try #require(cont["tokens"] as? [String: Any])
+        #expect(tokens["input"] as? Int == 12345)
+        #expect(tokens["cacheRead"] as? Int == 89012)
+
+        // The first record is the fact it was: the continuation does not restate
+        // it (a record stamps once).
+        let first = try cli.object(from: try run(home: home, ["session", "show", "--session", sessionID]).output)
+        #expect(first["summary"] as? String == "gate pass merged")
+        #expect(first["model"] == nil, "the terminal record gains no usage")
+
+        // The usage comment is on the carried ticket, signed by the agent.
+        let comments = try cli.comments(home: home, id: ticket)
+        #expect(comments.count == 1)
+        #expect(comments.first?["author"] as? String == "builder")
+        #expect((comments.first?["body"] as? String)?.split(separator: "\n").first.map(String.init)
+            == "Usage — \(sessionID)-2 · opencode-go/deepseek-v4.1-flash",
+                "the comment names the record that carries the usage")
+    }
+
+    @Test("a second re-dispatch in the same opencode session gets the next suffix, not the first pass's record")
+    func theSecondRedispatchGetsTheNextSuffix() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--agent", "builder", "--brief", "the gate pass"])
+        _ = try run(home: home, ["session", "end", "--outcome", "succeeded", "--summary", "gate pass merged"])
+
+        let db = try opencodeDatabase(for: sessionID)
+        defer { try? FileManager.default.removeItem(at: db) }
+
+        #expect(try wrapper(home: home, db: db, ["--outcome", "succeeded"], stdin: "second pass\n").code == 0)
+        #expect(try wrapper(home: home, db: db, ["--outcome", "succeeded"], stdin: "third pass\n").code == 0)
+
+        let listed = try cli.object(from: try run(home: home, ["session", "list"]).output)
+        let ids = try #require(listed["sessions"] as? [[String: Any]]).compactMap { $0["id"] as? String }
+        #expect(Set(ids) == [sessionID, "\(sessionID)-2", "\(sessionID)-3"], "each pass has its own record")
+        let third = try cli.object(from: try run(home: home, ["session", "show", "--session", "\(sessionID)-3"]).output)
+        #expect(third["summary"] as? String == "third pass")
+    }
+
+    @Test("a pass that loses the suffix race takes the next suffix instead of writing into the winner's record")
+    func theRacingPassTakesTheNextSuffix() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let ticket = try cli.addTicket(home: home, title: "Carried")
+        #expect(try run(home: home, [
+            "session", "start", "--project", "my project", "--agent", "builder", "--brief", "the gate pass",
+        ]).code == 0)
+        #expect(try run(home: home, ["session", "link", "--ticket", ticket]).code == 0)
+        #expect(try run(home: home, [
+            "session", "end", "--outcome", "succeeded", "--summary", "gate pass merged",
+        ]).code == 0)
+
+        let db = try opencodeDatabase(for: sessionID)
+        defer { try? FileManager.default.removeItem(at: db) }
+
+        // The other end of the race wins `-2` between this pass reading the
+        // record and its mint: the shim creates that record, then hands the
+        // wrapper's own `start` through — which answers with the existing
+        // record and a note, at exit 0.
+        let racing = try shim("""
+        if [ "$1" = "session" ] && [ "$2" = "start" ] && [ "$4" = "\(sessionID)-2" ]; then
+            "$REAL" session start --session "\(sessionID)-2" --project tandem --brief "the other pass" >/dev/null
+        fi
+        """)
+
+        let ended = try wrapper(home: home, db: db, cli: racing, ["--outcome", "succeeded"], stdin: "the merge pass\n")
+        #expect(ended.code == 0, "the wrapper ends the pass: \(ended.error)")
+
+        // The winner's record is untouched: no usage, its own brief, still
+        // running — the other pass has not ended yet.
+        let winner = try cli.object(from: try run(home: home, ["session", "show", "--session", "\(sessionID)-2"]).output)
+        #expect(winner["brief"] as? String == "the other pass", "the loser must not mint over the winner's record")
+        #expect(winner["status"] as? String == "running", "the loser must not stamp the winner's record")
+        #expect(winner["model"] == nil, "the loser's usage must not land on the winner's record")
+
+        // The loser's own record carries the usage, and the project's space
+        // survived the mint as one argument.
+        let cont = try cli.object(from: try run(home: home, ["session", "show", "--session", "\(sessionID)-3"]).output)
+        #expect(cont["summary"] as? String == "the merge pass")
+        #expect(cont["project"] as? String == "my project", "a project name with a space stays one argument")
+        #expect(cont["model"] as? String == "opencode-go/deepseek-v4.1-flash", "the usage lands on the pass's own record")
+        #expect(cont["tickets"] as? [String] == [ticket])
+
+        let comments = try cli.comments(home: home, id: ticket)
+        #expect(comments.count == 1)
+        #expect((comments.first?["body"] as? String)?.split(separator: "\n").first.map(String.init)
+            == "Usage — \(sessionID)-3 · opencode-go/deepseek-v4.1-flash")
+    }
+
+    @Test("a link that fails is named on stderr and does not cost the usage")
+    func aFailedLinkIsSurfaced() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let ticket = try cli.addTicket(home: home, title: "Carried")
+        #expect(try run(home: home, [
+            "session", "start", "--project", "tandem", "--agent", "builder", "--brief", "the gate pass",
+        ]).code == 0)
+        #expect(try run(home: home, ["session", "link", "--ticket", ticket]).code == 0)
+        #expect(try run(home: home, [
+            "session", "end", "--outcome", "succeeded", "--summary", "gate pass merged",
+        ]).code == 0)
+
+        let db = try opencodeDatabase(for: sessionID)
+        defer { try? FileManager.default.removeItem(at: db) }
+
+        // The link is the one call that can keep the usage comment off the
+        // ticket; a wrapper that swallows it reports a success nobody can see.
+        let failing = try shim("""
+        if [ "$1" = "session" ] && [ "$2" = "link" ]; then
+            echo "tandem-cli: unknown ticket" >&2
+            exit 1
+        fi
+        """)
+
+        let ended = try wrapper(home: home, db: db, cli: failing, ["--outcome", "succeeded"], stdin: "the merge pass\n")
+        #expect(ended.code == 0, "the usage is still written: \(ended.error)")
+        #expect(ended.error.contains("warning"), "the failed link is named on stderr: \(ended.error)")
+        #expect(ended.error.contains(ticket), "the warning names the ticket whose comment is missing")
+
+        let cont = try cli.object(from: try run(home: home, ["session", "show", "--session", "\(sessionID)-2"]).output)
+        #expect(cont["model"] as? String == "opencode-go/deepseek-v4.1-flash", "the usage lands despite the failed link")
+        #expect(try cli.comments(home: home, id: ticket).isEmpty, "no usage comment — and the wrapper said so")
+    }
+
+    @Test("no flag: a running record takes the usage itself — the wrapper mints nothing")
+    func theRunningRecordTakesTheUsage() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--agent", "builder", "--brief", "the pass"])
+
+        let db = try opencodeDatabase(for: sessionID)
+        defer { try? FileManager.default.removeItem(at: db) }
+
+        let ended = try wrapper(home: home, db: db, ["--outcome", "succeeded"], stdin: "the pass landed\n")
+        #expect(ended.code == 0, "\(ended.error)")
+
+        let record = try cli.object(from: try run(home: home, ["session", "show", "--session", sessionID]).output)
+        #expect(record["model"] as? String == "opencode-go/deepseek-v4.1-flash")
+        #expect(record["summary"] as? String == "the pass landed")
+
+        let listed = try cli.object(from: try run(home: home, ["session", "list"]).output)
+        let ids = try #require(listed["sessions"] as? [[String: Any]]).compactMap { $0["id"] as? String }
+        #expect(ids == [sessionID], "no continuation record where the first one is still live")
+    }
+
+    // MARK: - helpers
+
+    /// Run the CLI as the harness would: against the throwaway home, with the
+    /// opencode session id the wrapper resolves — never the test process's own.
+    private func run(home: URL, _ arguments: [String]) throws -> CLIHarness.Result {
+        try cli.run(home: home, arguments, environment: ["OPENCODE_SESSION_ID": sessionID])
+    }
+
+    /// A throwaway home: the CLI writes there, never the human's store.
+    private func temporaryHome() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-usage-wrapper-\(UUID().uuidString)")
+    }
+
+    /// Run the wrapper against the throwaway home, with `stdin` piped in — the
+    /// summary. The opencode database is the fixture; the CLI is the binary the
+    /// tests run, or the `cli` the test shims a call through. `environment`
+    /// overrides the inherited variables one at a time.
+    private func wrapper(
+        home: URL, db: URL, cli given: URL? = nil,
+        environment overrides: [String: String] = [:],
+        _ arguments: [String], stdin text: String
+    ) throws -> CLIHarness.Result {
+        let process = Process()
+        process.executableURL = Self.script
+        process.arguments = arguments
+        var environment = ProcessInfo.processInfo.environment
+        environment["TANDEM_HOME"] = home.path
+        environment["TANDEM_CLI"] = (given ?? cli.url).path
+        environment["OPENCODE_SESSION_ID"] = sessionID
+        environment["OPENCODE_DB"] = db.path
+        for (key, value) in overrides {
+            environment[key] = value
+        }
+        process.environment = environment
+        let input = Pipe()
+        let output = Pipe()
+        let error = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = error
+        try process.run()
+        input.fileHandleForWriting.write(Data(text.utf8))
+        input.fileHandleForWriting.closeFile()
+        let out = output.fileHandleForReading.readDataToEndOfFile()
+        let err = error.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return CLIHarness.Result(
+            code: process.terminationStatus,
+            output: String(decoding: out, as: UTF8.self),
+            error: String(decoding: err, as: UTF8.self))
+    }
+
+    /// A CLI shim: `body` runs first, the real binary (`$REAL`) takes every call
+    /// it does not intercept. The wrapper is a shell script driven by
+    /// `$TANDEM_CLI`, so a race or a failing call is a shim here, not a sleep.
+    private func shim(_ body: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-cli-shim-\(UUID().uuidString)")
+        let script = """
+        #!/bin/sh
+        REAL='\(cli.url.path)'
+        \(body)
+        exec "$REAL" "$@"
+        """
+        try script.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: url.path)
+        return url
+    }
+
+    /// One opencode session row: the shape the wrapper reads — the five token
+    /// counts, a cost and a JSON model. The defaults are the usage the terminal
+    /// record's tests assert.
+    private struct OpenCodeRow {
+        var id: String
+        var input = 12345
+        var cost = 0.42
+    }
+
+    /// An opencode database carrying one row for `session` — the shape the
+    /// wrapper reads.
+    private func opencodeDatabase(for session: String) throws -> URL {
+        try opencodeDatabase([OpenCodeRow(id: session)])
+    }
+
+    /// An opencode database carrying one row per entry, so a test can give the
+    /// named record and the environment's record different usage.
+    private func opencodeDatabase(_ rows: [OpenCodeRow]) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("opencode-\(UUID().uuidString).db")
         var sql = """
         CREATE TABLE session_v2 (
             id TEXT PRIMARY KEY,
@@ -56,160 +417,26 @@ struct UsageReportTests {
             tokens_cache_read INTEGER,
             tokens_cache_write INTEGER,
             cost REAL,
-            model TEXT
-        );
+            model TEXT);
         """
         for row in rows {
             sql += """
-            INSERT INTO session_v2 VALUES (
-                '\(row.id)', \(row.input), \(row.output), \(row.reasoning),
-                \(row.cacheRead), \(row.cacheWrite), \(row.cost),
-                '{"id":"\(row.model)","providerID":"opencode-go"}'
-            );
-
+            INSERT INTO session_v2 VALUES ('\(row.id)', \(row.input), 4567, 567, 89012, 1234, \(row.cost),
+                '{"id":"opencode-go/deepseek-v4.1-flash"}');
             """
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        process.arguments = [db.path]
+        process.arguments = [url.path]
         let input = Pipe()
         process.standardInput = input
         try process.run()
         input.fileHandleForWriting.write(Data(sql.utf8))
-        try input.fileHandleForWriting.close()
+        input.fileHandleForWriting.closeFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
-            throw FixtureError(message: "sqlite3 could not build the fixture database")
+            throw CocoaError(.fileWriteUnknown)
         }
-        return db
-    }
-
-    /// A stub `tandem-cli`: writes each argument on its own line and the summary
-    /// it was handed, then answers like `session end`.
-    private static func stubCLI() throws -> (path: String, arguments: URL, body: URL) {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("usage-cli-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let path = dir.appendingPathComponent("tandem-cli")
-        let arguments = dir.appendingPathComponent("arguments")
-        let body = dir.appendingPathComponent("body")
-        try Data("""
-        #!/bin/sh
-        printf '%s\\n' "$@" > '\(arguments.path)'
-        cat > '\(body.path)'
-        printf '{"status":"ended"}\\n'
-        """.utf8).write(to: path)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path.path)
-        return (path.path, arguments, body)
-    }
-
-    private struct FixtureError: Error { let message: String }
-
-    /// Runs the wrapper with the stub CLI, the fixture database and `environment`
-    /// laid over the caller's, the summary on stdin.
-    private static func run(
-        database: URL,
-        environment: [String: String?],
-        arguments: [String] = ["--outcome", "succeeded"]
-    ) throws -> Run {
-        let stub = try Self.stubCLI()
-        let process = Process()
-        process.executableURL = Self.root.appendingPathComponent("Scripts/usage-report.sh")
-        process.arguments = arguments
-        var env = ProcessInfo.processInfo.environment
-        env["OPENCODE_DB"] = database.path
-        env["TANDEM_CLI"] = stub.path
-        for (key, value) in environment {
-            env[key] = value
-        }
-        process.environment = env
-
-        let input = Pipe()
-        process.standardInput = input
-        let output = Pipe()
-        let errors = Pipe()
-        process.standardOutput = output
-        process.standardError = errors
-        try process.run()
-        input.fileHandleForWriting.write(Data("what landed\n".utf8))
-        try input.fileHandleForWriting.close()
-        process.waitUntilExit()
-
-        _ = output.fileHandleForReading.readDataToEndOfFile()
-        let recorded = (try? String(contentsOf: stub.arguments, encoding: .utf8)) ?? ""
-        return Run(
-            arguments: recorded.split(separator: "\n", omittingEmptySubsequences: false)
-                .dropLast()
-                .map(String.init),
-            body: (try? String(contentsOf: stub.body, encoding: .utf8)) ?? "",
-            errors: String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "",
-            status: process.terminationStatus
-        )
-    }
-
-    /// The `session end` call the wrapper makes for `row`: the usage flags in the
-    /// wrapper's order, then the caller's own arguments.
-    private static func expectedEnd(for row: Row, plus tail: [String] = ["--outcome", "succeeded"]) -> [String] {
-        [
-            "session", "end", "--summary", "-",
-            "--tokens-input", row.input,
-            "--tokens-output", row.output,
-            "--tokens-reasoning", row.reasoning,
-            "--tokens-cache-read", row.cacheRead,
-            "--tokens-cache-write", row.cacheWrite,
-            "--cost", row.cost,
-            "--model", row.model,
-        ] + tail
-    }
-
-    // MARK: the tests
-
-    @Test("`--session <id>` ends that record, with its usage read from its row")
-    func flagNamesTheRecord() throws {
-        let named = Row(id: "ses_named", input: "4200", output: "810", cost: "0.0431", model: "deepseek-v4.1-flash")
-        let database = try Self.makeDatabase([Row(id: "ses_env"), named])
-
-        // The environment names a different record, so a passing test proves the
-        // flag wins rather than the two agreeing.
-        let run = try Self.run(
-            database: database,
-            environment: ["OPENCODE_SESSION_ID": "ses_env"],
-            arguments: ["--session", "ses_named", "--outcome", "succeeded"]
-        )
-
-        #expect(run.status == 0, "stderr: \(run.errors)")
-        #expect(run.arguments == Self.expectedEnd(for: named),
-                "the wrapper ends the named record and never forwards --session")
-        #expect(run.body == "what landed\n", "the summary travels on stdin untouched")
-    }
-
-    @Test("No flag: the environment names the record, exactly as before")
-    func noFlagUsesTheEnvironment() throws {
-        let environment = Row(id: "ses_env", input: "77", output: "88", cost: "0.5")
-        let database = try Self.makeDatabase([environment, Row(id: "ses_other", input: "1", output: "2")])
-
-        let run = try Self.run(
-            database: database,
-            environment: ["OPENCODE_SESSION_ID": "ses_env"]
-        )
-
-        #expect(run.status == 0, "stderr: \(run.errors)")
-        #expect(run.arguments == Self.expectedEnd(for: environment))
-        #expect(run.body == "what landed\n")
-    }
-
-    @Test("`--session` with no id is refused before the database is touched")
-    func flagWithoutAValueFails() throws {
-        let database = try Self.makeDatabase([Row(id: "ses_env")])
-
-        let run = try Self.run(
-            database: database,
-            environment: ["OPENCODE_SESSION_ID": "ses_env"],
-            arguments: ["--session"]
-        )
-
-        #expect(run.status == 1)
-        #expect(run.errors.contains("--session"), "the message names the flag: \(run.errors)")
-        #expect(run.arguments.isEmpty, "nothing was ended")
+        return url
     }
 }
