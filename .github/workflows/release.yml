@@ -15,10 +15,10 @@ name: Release
 #
 # The work is split in three: `test` (the gates) and `build` (the artifact) run
 # in parallel, each on its own runner, and `release` aggregates them. The
-# aggregator keeps the name `release` for one reason: `dev` and `main` require
+# aggregator keeps the name `release` for one reason: `main` requires
 # a status check by that name, and a required check that never reports blocks
-# every merge — so the split renames nothing, the branch protection is
-# untouched, and the merge still waits for both halves, because the aggregator
+# every merge: the name stays, the branch protection is untouched, and the
+# merge still waits for both halves, because the aggregator
 # publishes only when both are green.
 
 on:
@@ -281,7 +281,7 @@ jobs:
           fi
           # The body carries what shipped (7B005267), grouped by kind
           # (BCE67BAE), not a fixed tag line: the generator lists the PRs
-          # merged on dev since the previous tag (titles and labels via gh,
+          # merged on main since the previous tag (titles and labels via gh,
           # the fixed install line as the lead), never writing the bikeshed —
           # that is `--capture`, a local step this runner cannot take.
           notes=$(Scripts/release-notes.sh "$GITHUB_REF_NAME")

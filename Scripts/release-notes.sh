@@ -63,12 +63,13 @@ fi
 
 lead="Tandem $version for macOS 27 (Apple silicon). Install: brew install --cask gianniacquisto/tap/tandem"
 
-# The integration tip a tag names. Under the old order every tag sits on the
-# integration branch, so the tag is its own tip. Under the new order the tag
-# sits on `main`'s head, the release merge, whose second parent is the
-# integration head it shipped, so the range walks from there. The release
-# merge is the PR from `dev` or from a `release/vX.Y.Z` branch; a tag on a
-# board merge (every tag up to v0.32.0) names its own commit.
+# The integration tip a tag names. The tags before the flip sit on `dev`'s
+# head, which is their own tip, or on a `release/vX.Y.Z` merge of `dev` into
+# `main`, which needs its second parent. The tags after it sit on `main`'s
+# head, the merge the batch landed on, and resolve to themselves: `main` is
+# the integration branch now, so there is no second parent to walk. Every
+# shape is read, because the tags before the flip are history the notes still
+# describe.
 integration_tip() {
   case "$(git log -1 --format=%s "$1")" in
     "Merge pull request #"*" from "*"/dev" \

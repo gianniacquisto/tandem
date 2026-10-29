@@ -25,7 +25,7 @@ struct TrunkFlowTests {
     private static let liveInstructions: [(path: String, must: [String], mustNot: [String])] = [
         ("agents/builder.md", ["origin/main"], ["origin/dev"]),
         ("skills/tandem-build/SKILL.md", ["origin/main"], ["origin/dev"]),
-        ("README.md", ["Branch off `main`"], ["Branch off `dev`", "target `dev`"]),
+        ("README.md", ["Branch off `main`"], ["Branch off `dev`", "target `dev`", "?branch=dev"]),
         ("terse/README.md", ["`main`"], ["checkout dev"]),
         ("terse/install.sh", ["on main?"], ["on dev?"]),
     ]
@@ -58,6 +58,60 @@ struct TrunkFlowTests {
                     !text.contains(phrase),
                     "\(row.path) must not carry \(phrase): `dev` is no longer the base (ADR 0019)")
             }
+        }
+    }
+
+    /// Every `SKILL.md` under `skills/`, repo-relative. The listing is read from disk
+    /// so a skill added later is swept without editing this suite.
+    private static func skillDocuments() throws -> [String] {
+        let walk = try #require(
+            FileManager.default.enumerator(
+                at: root.appendingPathComponent("skills"),
+                includingPropertiesForKeys: nil),
+            "skills/ must be readable from the checkout root")
+        var documents: [String] = []
+        for case let url as URL in walk where url.lastPathComponent == "SKILL.md" {
+            documents.append(url.path.replacingOccurrences(of: root.path + "/", with: ""))
+        }
+        return documents.sorted()
+    }
+
+    /// TAN-229: the fixed rows above name the files known today; this sweep reads the
+    /// directory, so a contract added later cannot quietly name `dev`. The release
+    /// document is checked too, because it carries the order the next release reads.
+    @Test("no skill or agent prompt names the integration branch as dev")
+    func noSkillOrAgentPromptNamesDev() throws {
+        let agents = try FileManager.default
+            .contentsOfDirectory(atPath: Self.root.appendingPathComponent("agents").path)
+            .filter { $0.hasSuffix(".md") }
+            .map { "agents/\($0)" }
+        let contracts = agents.sorted() + (try Self.skillDocuments())
+        #expect(
+            contracts.contains("skills/tandem-sprint/SKILL.md"),
+            "the sweep must read the sprint skill: an empty listing proves nothing")
+        for path in contracts {
+            let text = try Self.file(path)
+            #expect(
+                !text.contains("origin/dev"),
+                "\(path) names `origin/dev`: the trunk is `main` (ADR 0019)")
+            #expect(
+                !text.contains("merged into `dev`"),
+                "\(path) says a PR merges into `dev`: `main` takes the merges (ADR 0019)")
+        }
+
+        let releasing = try Self.file("docs/releasing.md")
+        #expect(
+            releasing.contains("`main`'s head is the release"),
+            "docs/releasing.md must name `main` as the branch the tag is cut on")
+        #expect(
+            !releasing.contains("dev→main"),
+            "docs/releasing.md must not carry a dev to main release PR: the split is retired")
+
+        for path in ["README.md", "terse/README.md", "terse/install.sh", "AGENTS.md"] {
+            let text = try Self.file(path)
+            #expect(
+                !text.contains("origin/dev"),
+                "\(path) names `origin/dev`: the trunk is `main` (ADR 0019)")
         }
     }
 

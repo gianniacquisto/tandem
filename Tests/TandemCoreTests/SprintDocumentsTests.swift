@@ -201,10 +201,12 @@ struct SprintDocumentsTests {
             "the demand run points at the rule's home")
     }
 
-    /// TAN-225: the sprint that lands the batch is the pass that ships it. §7 carries
-    /// the release step, and it sits before the close verb because a tag can only be
-    /// cut once the batch is merged and done. The tap bump is still a hand act until
-    /// TAN-224 lands, so the step names it as the one step the close cannot take.
+    /// TAN-225 and TAN-229: the sprint that lands the batch is the pass that ships it.
+    /// §7 carries the release step, it sits before the close verb because a tag can
+    /// only be cut once the batch is merged and done, and since the trunk flip it is
+    /// one act: a tag on `main`'s head, with no `Release vX.Y.Z` PR. The tap bump is
+    /// still a hand act until TAN-224 lands, so the step names it as the one step the
+    /// close cannot take.
     @Test("§7 cuts the release its batch landed, before the close verb")
     func closeCutsTheRelease() throws {
         let skill = try Self.file("skills/tandem-sprint/SKILL.md")
@@ -226,13 +228,16 @@ struct SprintDocumentsTests {
             "the release is the close's first act: a tag needs the batch merged and done")
         #expect(
             section.contains("git tag vX.Y.Z") && section.contains("push origin vX.Y.Z"),
-            "the tag names `main`'s head and is pushed, so the tag run publishes it")
-        let releasePR = try #require(section.range(of: "Release vX.Y.Z"))
-        let tag = try #require(section.range(of: "git tag vX.Y.Z"))
-        #expect(releasePR.lowerBound < tag.lowerBound, "the tag follows the release PR's merge")
+            "the tag is cut and pushed, so the tag run publishes it")
+        let tagLine = try #require(
+            section.split(separator: "\n").first { $0.contains("git tag vX.Y.Z") },
+            "the tag command is on its own line, so its target can be read")
         #expect(
-            section.contains("Release vX.Y.Z"),
-            "the dev to main release PR is part of the step, its merge the human's gate")
+            tagLine.contains("main"),
+            "the tag names `main`'s head: `main` takes the merges, so its head is the release")
+        #expect(
+            !section.contains("Release vX.Y.Z"),
+            "§7 must not carry a `Release vX.Y.Z` PR: the release PR is retired with the split")
         #expect(
             section.contains("Scripts/release-notes.sh vX.Y.Z --capture"),
             "the notes reach the bikeshed from a checkout with the tags")
@@ -250,6 +255,25 @@ struct SprintDocumentsTests {
         #expect(
             releasing.contains("skills/tandem-sprint/SKILL.md"),
             "releasing.md points at the sprint close as the path that cuts the tag")
+    }
+
+    /// TAN-229: ADR 0019 is amended, not rewritten. The new dated section records
+    /// the reversal the trunk flip made, and the two amendments before it stay.
+    @Test("ADR 0019 records the reversal, dated")
+    func adr0019RecordsTheReversal() throws {
+        let adr = try Self.file("docs/adr/0019-integration-branch.md")
+        #expect(
+            adr.contains("## Amendment, 2026-10-29: the split is retired"),
+            "ADR 0019 must carry the dated section that retires the split")
+        #expect(
+            adr.contains("## Amendment, 2026-10-23:"),
+            "an amendment does not rewrite history: the 2026-10-23 amendment stays")
+        #expect(
+            adr.contains("# Integration branch: `dev` takes merges, `main` tracks the latest tag"),
+            "an amendment does not rewrite history: the original title line stays")
+        #expect(
+            adr.contains("A release is a lightweight tag on `main`'s head"),
+            "the amendment must name the tag on `main`'s head as the release")
     }
 
     /// The glossary defines Sprint, and the Avoid list names the retired phrase.
