@@ -45,3 +45,5 @@ The invariant the split bought, that every commit on `main` is shipped, is given
 Both earlier decisions are reversed, and named as reversed here: the original split of 2026-10-20 (`dev` takes merges, `main` tracks the latest tag), and the 2026-10-23 dev→main release-PR amendment. The 2026-10-29 order that put the tag after a release merge is retired in its PR half: the tag still names `main`'s head, now directly.
 
 The retirement of `dev` follows once a tag has shipped from `main`, with its date recorded here by that ticket. Until then `dev` is history: the tags cut before the flip stay on it, and `Scripts/release-notes.sh` still reads them.
+
+Retired 2026-10-29, the day v0.33.0 shipped from `main`'s head (`b203ccb`): its protection rule was deleted and the branch with it, and the tags cut before the flip sit on it as history, so `Scripts/release-notes.sh` still reads them there.

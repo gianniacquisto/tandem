@@ -77,7 +77,7 @@ The app and the agent read and write the same store, and the app watches it: a t
 | The store — one SQLite database, watched live | v0.1.0 (a JSON file until v0.27.0) |
 | The rolling backup `tandem.db.bak` — the one previous good copy | v0.15.0 (a whole-database copy since v0.27.0) |
 | The session record — an agent session's own artifact, in the store | v0.16.0 |
-| A dev build that keeps its own state in `~/.tandem-dev`, so it can never touch yours | v0.9.0 |
+| A development build that keeps its own state in `~/.tandem-dev`, so it can never touch yours | v0.9.0 |
 
 Every picture below, and every word of the app's own copy in it, is `main`'s, the trunk the next release is cut from. An installed build can lag `main` by a release.
 
