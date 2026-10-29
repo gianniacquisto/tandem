@@ -330,6 +330,22 @@ struct ScaffoldConventionTests {
                 "the skills table names the Overview as the orient target (TAN-194)")
     }
 
+    @Test("The setup surfaces run the one install verb, never a hand-made link (TAN-216)")
+    func setupSurfacesRunTheInstallVerb() throws {
+        let command = "tandem-cli setup install"
+        for path in ["README.md", "Sources/Tandem/SetupWizard.swift"] {
+            let text = try Self.file(path)
+            #expect(text.contains(command), "\(path) names `\(command)`")
+        }
+        let setup = try Self.file("skills/tandem-setup/SKILL.md")
+        #expect(setup.contains(command), "the setup skill's door is `\(command)`")
+        for path in ["README.md", "Sources/Tandem/SetupWizard.swift", "skills/tandem-setup/SKILL.md"] {
+            let text = try Self.file(path)
+            #expect(!text.contains(#"ln -s "$PWD/skills"#),
+                    "\(path) still tells a human to link a checkout by hand")
+        }
+    }
+
     @Test("The question's exit is one write — the handoff rule and the sprint's inbox debt (D2522EC3)")
     func questionExitIsStatedOnce() throws {
         let agents = try Self.file("AGENTS.md")

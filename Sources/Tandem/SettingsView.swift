@@ -35,6 +35,10 @@ struct SettingsView: View {
     @State private var roster: [String] = TandemSettings.roster()
     /// The name being added.
     @State private var newRole = ""
+    /// The agent face's state, read from `SetupInstall.status` and never
+    /// derived here; `nil` until the sheet has read it once.
+    @State private var agentState: SetupInstall.State?
+    @State private var agentError: String?
 
     private var palette: Palette { Palette.forScheme(colorScheme) }
 
@@ -64,6 +68,7 @@ struct SettingsView: View {
                         .padding(.top, 10)
                 }
                 rosterSection
+                agentSection
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -81,6 +86,7 @@ struct SettingsView: View {
         }
         .frame(width: 460)
         .background(palette.paper)
+        .onAppear { refreshAgentFace() }
     }
 
     /// The reveal flag: a checkbox row (the app's own line-drawn box) that
@@ -155,6 +161,80 @@ struct SettingsView: View {
                 .font(.system(size: 11.5))
                 .foregroundStyle(palette.inkDim)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - The agent face (TAN-216)
+
+    /// Bundled version, installed version, each host's state, and one Install
+    /// or Repair button. The state is `SetupInstall`'s (`status` and `install`,
+    /// the functions behind `tandem-cli setup install`), so Settings adds no
+    /// second writer, and nothing is written to a host without the press.
+    private var agentSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Agent")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(palette.inkDim)
+            Rectangle().fill(palette.sand).frame(height: Line.hairline)
+                .padding(.vertical, 10)
+            if let agentState {
+                AgentFaceSummary(state: agentState, palette: palette)
+            } else {
+                Text("Reading the agent face…")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(palette.inkDim)
+            }
+            HStack(spacing: 10) {
+                TextButton(title: agentState?.hasTrouble == true ? "Repair" : "Install",
+                           palette: palette) { installAgentFace() }
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 8)
+            if let agentError {
+                Text(agentError)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(palette.emberDeep)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
+            }
+            Text("Runs `tandem-cli setup install`: the bundled skills, the four "
+                 + "agent prompts and AGENTS.md go into Tandem's home, and the "
+                 + "host links point at that copy. Nothing is written to a host "
+                 + "until you press it.")
+                .font(.system(size: 11.5))
+                .foregroundStyle(palette.inkDim)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+            Rectangle().fill(palette.sand).frame(height: Line.hairline)
+                .padding(.top, 12)
+        }
+    }
+
+    /// The state read through `SetupInstall.status(home:environment:)`, the same
+    /// function `tandem-cli setup status` prints.
+    private func refreshAgentFace() {
+        agentState = SetupInstall.status(
+            home: TandemHome.directory,
+            environment: ProcessInfo.processInfo.environment).state
+    }
+
+    /// The one write: `SetupInstall.install` at its defaults (OpenCode, no
+    /// force), so a checkout link stays and a real file is never touched. The
+    /// report's own state replaces the row, so the sheet shows what landed.
+    private func installAgentFace() {
+        let environment = ProcessInfo.processInfo.environment
+        do {
+            let report = try SetupInstall.install(
+                home: TandemHome.directory,
+                environment: environment,
+                bundle: SetupInstall.bundledFace(environment: environment),
+                force: false,
+                hosts: [.opencode])
+            agentState = report.state
+            agentError = nil
+        } catch {
+            agentError = (error as? any TandemError)?.message ?? error.localizedDescription
+            refreshAgentFace()
         }
     }
 
