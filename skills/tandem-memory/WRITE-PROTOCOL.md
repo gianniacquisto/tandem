@@ -2,6 +2,8 @@
 
 When and what a session records, so the next session picks up without re-deriving what this one learned. The record is the **session summary**; a **capture** files only what a summary cannot carry, and a **consolidation pass** promotes captures into the **curated** notes. This file is the working agent's capture rule and the curated shape it writes toward; the pass's own protocol is [`CONSOLIDATION.md`](CONSOLIDATION.md); the layout is [`CONVENTIONS.md`](CONVENTIONS.md); the read walk is [`READ-PROTOCOL.md`](READ-PROTOCOL.md); the write boundary is [`CONCURRENCY.md`](CONCURRENCY.md). Apply the installed `writing-for-agents` skill while writing every note — it is the writing discipline, not restated here.
 
+The repo's prose rules live in [`AGENTS.md`](../../AGENTS.md), including no em dash (U+2014) in a note or a capture.
+
 ## The record — the session summary; a capture for one real re-derivation cost
 
 The work record is the **session summary**: at session end (or when context nears exhaustion), `tandem-cli session end --summary -` records what was done and where the session left off (ADR 0027) — a sub-agent's minimum deliverable before it returns, too. The consolidation pass reads the ended session records' summaries ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
