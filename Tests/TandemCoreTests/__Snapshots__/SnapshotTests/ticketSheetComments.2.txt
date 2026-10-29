@@ -1,0 +1,68 @@
+h=--- v=--- _TtGC7SwiftUI13NSHostingViewGVS_15ModifiedContentV6Tandem11TicketSheetVS_12_FrameLayout__ f=(0,0,580,700) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- SwiftUI.KeyViewProxy f=(298.5,134.5,32.5,13) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- SwiftUI.KeyViewProxy f=(475.5,134,84.5,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- SwiftUI.KeyViewProxy f=(20,191,540,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- SwiftUI.KeyViewProxy f=(20,246,540,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- SwiftUI.KeyViewProxy f=(501,272,59,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- SwiftUI.KeyViewProxy f=(519.5,506,40.5,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- SwiftUI.KeyViewProxy f=(525,554,25,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- SwiftUI.KeyViewProxy f=(430.5,586,66,24) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- SwiftUI.KeyViewProxy f=(506.5,586,53.5,24) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10c24PlatformTextFieldAdaptor__ f=(29,27,522,18) b=(-) => <NSViewBackingLayer>
+    h=-&- v=-&- SwiftUI.AppKitTextField "Land the store change" f=(-2,0,526,18) b=(-) => <NSViewBackingLayer>
+      h=--- v=--- _TtC6AppKitP33_72EBFCF981BE77E1C6F26FD717D0893922NSTextFieldSimpleLabel f=(0,0,526,18) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorGVVS_P10c18AppKitPopUpAdaptor12PlatformViewVVS_22MenuStyleConfiguration5Label____ f=(20,64.5,57.5,13) b=(-) => <NSViewBackingLayer>
+    h=-&- v=-&- _TtGCVV7SwiftUIP10c18AppKitPopUpAdaptor12PlatformView18SwiftUIPopupButtonVVS_22MenuStyleConfiguration5Label___ "Status" f=(-5,0,62.5,13) b=(-) => <NSViewBackingLayer>
+      h=--- v=--- NSButtonImageView f=(8,2,15,9) b=(-) => <NSViewBackingLayer>
+      h=--- v=--- NSButtonTextField "Status" f=(24.5,0,37,13) b=(-) => <NSViewBackingLayer>
+        h=--- v=--- _TtC6AppKitP33_72EBFCF981BE77E1C6F26FD717D0893922NSTextFieldSimpleLabel f=(0,0,37,13) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorGVVS_P10c18AppKitPopUpAdaptor12PlatformViewVVS_22MenuStyleConfiguration5Label____ f=(91.5,64.5,49.5,13) b=(-) => <NSViewBackingLayer>
+    h=-&- v=-&- _TtGCVV7SwiftUIP10c18AppKitPopUpAdaptor12PlatformView18SwiftUIPopupButtonVVS_22MenuStyleConfiguration5Label___ "Lane" f=(-5,0,54.5,13) b=(-) => <NSViewBackingLayer>
+      h=--- v=--- NSButtonImageView f=(8,2,15,9) b=(-) => <NSViewBackingLayer>
+      h=--- v=--- NSButtonTextField "Lane" f=(24.5,0,29,13) b=(-) => <NSViewBackingLayer>
+        h=--- v=--- _TtC6AppKitP33_72EBFCF981BE77E1C6F26FD717D0893922NSTextFieldSimpleLabel f=(0,0,29,13) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorGVVS_P10c18AppKitPopUpAdaptor12PlatformViewVVS_22MenuStyleConfiguration5Label____ f=(155,64.5,70.5,13) b=(-) => <NSViewBackingLayer>
+    h=-&- v=-&- _TtGCVV7SwiftUIP10c18AppKitPopUpAdaptor12PlatformView18SwiftUIPopupButtonVVS_22MenuStyleConfiguration5Label___ "Assignee" f=(-5,0,75.5,13) b=(-) => <NSViewBackingLayer>
+      h=--- v=--- NSButtonImageView f=(8,2,15,9) b=(-) => <NSViewBackingLayer>
+      h=--- v=--- NSButtonTextField "Assignee" f=(24.5,0,50,13) b=(-) => <NSViewBackingLayer>
+        h=--- v=--- _TtC6AppKitP33_72EBFCF981BE77E1C6F26FD717D0893922NSTextFieldSimpleLabel f=(0,0,50,13) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(298.5,64.5,32.5,13) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(475.5,64,84.5,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(20,121,540,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(20,176,540,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(501,202,59,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtCC7SwiftUI17HostingScrollView17PlatformContainer f=(28,236,524,186) b=(-) => <NSViewBackingLayer>
+    h=--- v=--- SwiftUI.HostingScrollView f=(0,0,524,186) b=(-) => <NSViewBackingLayer>
+      h=-&- v=-&- SwiftUI.HostingClipView f=(0,0,524,186) b=(-) => <NSViewBackingLayer>
+        h=--- v=--- _TtC7SwiftUIP33_6B9589E2B2301F373BAB5CF17408C38412DocumentView f=(0,0,524,186.5) b=(-) => <NSViewBackingLayer>
+          h=--- v=--- _TtCC7SwiftUI17HostingScrollView22PlatformGroupContainer f=(0,0,524,186.5) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(0,4,87.5,18) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(0,29,189,15) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(7.5,50.5,8,15) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(21.5,50.5,141.5,15) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(7.5,70,8,15) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(21.5,70,85,15) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(8,98,34,14) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(8,115,245,15) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(0,146.5,77,18) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(0,171.5,155.5,15) b=(-) => <NSViewBackingLayer>
+      h=--- v=--- NSScroller f=(507,0,17,186) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(519.5,442,40.5,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtCC7SwiftUI17HostingScrollView17PlatformContainer f=(20,462,540,128) b=(-) => <NSViewBackingLayer>
+    h=--- v=--- SwiftUI.HostingScrollView f=(0,0,540,128) b=(-) => <NSViewBackingLayer>
+      h=-&- v=-&- SwiftUI.HostingClipView f=(0,0,540,128) b=(-) => <NSViewBackingLayer>
+        h=--- v=--- _TtC7SwiftUIP33_6B9589E2B2301F373BAB5CF17408C38412DocumentView f=(0,0,540,143) b=(-) => <NSViewBackingLayer>
+          h=--- v=--- _TtCC7SwiftUI17HostingScrollView22PlatformGroupContainer f=(0,0,540,143) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(16.5,26,7.5,15) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(29.5,26,105.5,15) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(16.5,45,7.5,15) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(29.5,45,177.5,15) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(17,98,32.5,13) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- SwiftUI.AppKitTextInteractionView f=(17,114,284.5,14) b=(-) => <NSViewBackingLayer>
+      h=--- v=--- NSScroller f=(523,0,17,128) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10c24PlatformTextFieldAdaptor__ f=(29,622,469,15) b=(-) => <NSViewBackingLayer>
+    h=-&- v=-&- SwiftUI.AppKitTextField f=(-2,0,473,15) b=(-) => <NSViewBackingLayer>
+      h=--- v=--- _TtC6AppKitP33_72EBFCF981BE77E1C6F26FD717D0893922NSTextFieldSimpleLabel f=(0,0,473,15) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(525,624,25,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(430.5,656,66,24) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(506.5,656,53.5,24) b=(-) => <NSViewBackingLayer>

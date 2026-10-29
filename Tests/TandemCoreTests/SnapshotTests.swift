@@ -114,10 +114,16 @@ struct SnapshotTests {
             _ = try store.add("Rename the cask token", status: .backlog)
             let middle = try store.add(
                 "Land the store change", lane: "Tandem", status: .ready,
-                description: "The table and the verb land together.\n\n"
-                    + "## Blocked on\n\nThe snapshot seam has to be in place first.").value
+                description: "## What landed\n\n"
+                    + "The `Store` write stays **one lock**.\n\n"
+                    + "- The snapshot seam first\n"
+                    + "- Then the table\n\n"
+                    + "```swift\nlet seam = Store(directory: home)\n```\n\n"
+                    + "## Blocked on\n\nThe seam has to land first.").value
             let leaf = try store.add("Wait on the store change", lane: "Tandem",
-                                     status: .ready).value
+                                     status: .ready,
+                                     description: "## Waiting\n\n"
+                                         + "The store change has to land before this one.").value
             _ = try store.block(middle.ref!, on: seam.ref!)
             _ = try store.block(leaf.ref!, on: middle.ref!)
         }
@@ -198,9 +204,10 @@ struct SnapshotTests {
         assertSnapshot(of: hosting, as: .stableDescription())
     }
 
-    /// The ticket sheet: title, the three pickers, the filer, the ref, the body, and the
-    /// dependency sections, on the fixture's middle ticket, which both waits on one and
-    /// holds one up (TAN-232).
+    /// The ticket sheet: title, the three pickers, the filer, the ref, the rendered
+    /// description, and the dependency sections, on the fixture's middle ticket, which
+    /// carries a heading, a styled paragraph, a bullet list and a fenced block, and both
+    /// waits on one ticket and holds one up (TAN-232, TAN-219).
     @Test("the ticket sheet")
     func ticketSheet() throws {
         let ticket = try #require(Fixture.model.tickets.first {
@@ -220,6 +227,37 @@ struct SnapshotTests {
         // The sheet sizes itself (580 wide, 560 tall with no comments to draw).
         let size = CGSize(width: 580, height: 560)
         let hosting = host(view, size: size)
+        assertSnapshot(of: hosting, as: .image(at: 2, size: size))
+        assertSnapshot(of: hosting, as: .stableDescription(tolerance: 5))
+    }
+
+    /// The ticket sheet with a comment log drawn: one comment carrying a bullet list and
+    /// one a fenced block, so the comment row's rendered markdown has a picture (TAN-219).
+    @Test("the ticket sheet, comments rendered")
+    func ticketSheetComments() throws {
+        let ticket = try #require(Fixture.model.tickets.first {
+            !$0.blockedBy.isEmpty && !$0.blocks.isEmpty
+        })
+        let log = [
+            Comment(author: "refiner", at: Date(timeIntervalSince1970: 1_793_264_400),
+                    body: "- Render for reading\n- Keep the source one click away"),
+            Comment(author: "builder", at: Date(timeIntervalSince1970: 1_793_268_000),
+                    body: "```swift\nlet blocks = TicketMarkdown.blocks(body)\n```"),
+        ]
+        let view = TicketSheet(ticket: ticket,
+                               palette: .day,
+                               lanes: Fixture.model.lanes,
+                               roster: TandemSettings.defaultRoster,
+                               onSave: { _ in },
+                               onCancel: {},
+                               onComment: { _ in .refused(message: "fixture") },
+                               onRefreshComments: { .list(log) },
+                               onOpenLink: { _ in },
+                               onOpenTicket: { _ in },
+                               onPromote: { .refused(message: "fixture") })
+        // A sheet with a log to draw is 700 tall.
+        let size = CGSize(width: 580, height: 700)
+        let hosting = hostSettled(view, size: size)
         assertSnapshot(of: hosting, as: .image(at: 2, size: size))
         assertSnapshot(of: hosting, as: .stableDescription(tolerance: 5))
     }
@@ -321,6 +359,37 @@ struct SnapshotTests {
         pinOverlayScrollers(in: hosting)
         hosting.layoutSubtreeIfNeeded()
         return hosting
+    }
+
+    /// The same host, with the view put in a window and the main run loop spun: the
+    /// sheet's comment log arrives on a `.task`, and a face whose content is a read
+    /// must be drawn after it lands, or the snapshot records an empty log (TAN-219).
+    /// It spins until the log's scroll view exists (the description's is already one),
+    /// with a ceiling so a broken read fails the picture rather than hanging.
+    private func hostSettled<V: View>(_ view: V, size: CGSize) -> NSView {
+        let hosting = NSHostingView(rootView: view.frame(width: size.width, height: size.height))
+        hosting.frame = NSRect(origin: .zero, size: size)
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = hosting
+        window.orderFront(nil)
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline, scrollViews(in: hosting) < 2 {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+        hosting.layoutSubtreeIfNeeded()
+        pinOverlayScrollers(in: hosting)
+        hosting.layoutSubtreeIfNeeded()
+        window.orderOut(nil)
+        return hosting
+    }
+
+    /// The scroll views under `view`, the comment list's included. The sheet's
+    /// rendered description is one; the log is the second.
+    private func scrollViews(in view: NSView) -> Int {
+        view.subviews.reduce(view is NSScrollView ? 1 : 0) { count, subview in
+            count + scrollViews(in: subview)
+        }
     }
 
     /// CI's runner has no trackpad, and macOS then prefers legacy scroll bars: the text
