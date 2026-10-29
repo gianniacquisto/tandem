@@ -67,11 +67,14 @@ lead="Tandem $version for macOS 27 (Apple silicon). Install: brew install --cask
 # integration branch, so the tag is its own tip. Under the new order the tag
 # sits on `main`'s head, the release merge, whose second parent is the
 # integration head it shipped, so the range walks from there. The release
-# merge is the PR from a `release/vX.Y.Z` branch; a tag on a board merge
-# (every tag up to v0.32.0) names its own commit.
+# merge is the PR from `dev` or from a `release/vX.Y.Z` branch; a tag on a
+# board merge (every tag up to v0.32.0) names its own commit.
 integration_tip() {
   case "$(git log -1 --format=%s "$1")" in
-    "Merge pull request #"*"release/v"* | "Merge branch 'release/v"*)
+    "Merge pull request #"*" from "*"/dev" \
+      | "Merge pull request #"*" from "*"/release/"* \
+      | "Merge branch 'dev'"* \
+      | "Merge branch 'release/"*)
       git rev-parse "$1^2" ;;
     *)
       git rev-parse "$1" ;;

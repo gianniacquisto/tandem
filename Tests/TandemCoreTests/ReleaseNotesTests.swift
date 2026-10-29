@@ -414,56 +414,61 @@ struct ReleaseNotesTests {
         // The transition the next release runs: v0.2.0 is tagged on the dev
         // head (#10), its release PR (#21) moves `main` untagged, #11 lands on
         // dev, and v0.3.0 names the merge that shipped it. A range from the
-        // tag itself sees only that merge, whose branch is `release/v0.3.0`,
-        // so every release would land in Other.
-        let dir = try Self.makeRepo()
-        try Self.git(dir, "checkout", "-b", "dev", "--quiet")
-        try Self.merge(
-            dir,
-            "board/feat-a",
-            subject: "Merge pull request #10 from gianniacquisto/board/feat-a",
-            into: "dev")
-        try Self.git(dir, "tag", "v0.2.0")
-        try Self.git(dir, "checkout", "main", "--quiet")
-        try Self.git(
-            dir, "merge", "--no-ff", "--no-edit", "-m",
-            "Merge pull request #21 from gianniacquisto/release/v0.2.0",
-            "v0.2.0", "--quiet")
-        try Self.git(dir, "checkout", "dev", "--quiet")
-        try Self.merge(
-            dir,
-            "board/feat-c",
-            subject: "Merge pull request #11 from gianniacquisto/board/feat-c",
-            into: "dev")
-        try Self.git(dir, "checkout", "-b", "release/v0.3.0", "--quiet")
-        try Self.git(dir, "checkout", "main", "--quiet")
-        try Self.git(
-            dir, "merge", "--no-ff", "--no-edit", "-m",
-            "Merge pull request #22 from gianniacquisto/release/v0.3.0",
-            "release/v0.3.0", "--quiet")
-        try Self.git(dir, "tag", "v0.3.0")
-        let gh = try Self.stubGH([.init(number: 11, title: "Add the release picker")])
+        // tag itself sees only that merge, so every release would land in
+        // Other. The release PR comes from `dev` (the instructions say so) or
+        // from `release/vX.Y.Z`; both must resolve to the second parent.
+        for source in ["dev", "release/v0.3.0"] {
+            let dir = try Self.makeRepo()
+            try Self.git(dir, "checkout", "-b", "dev", "--quiet")
+            try Self.merge(
+                dir,
+                "board/feat-a",
+                subject: "Merge pull request #10 from gianniacquisto/board/feat-a",
+                into: "dev")
+            try Self.git(dir, "tag", "v0.2.0")
+            try Self.git(dir, "checkout", "main", "--quiet")
+            try Self.git(
+                dir, "merge", "--no-ff", "--no-edit", "-m",
+                "Merge pull request #21 from gianniacquisto/dev",
+                "v0.2.0", "--quiet")
+            try Self.git(dir, "checkout", "dev", "--quiet")
+            try Self.merge(
+                dir,
+                "board/feat-c",
+                subject: "Merge pull request #11 from gianniacquisto/board/feat-c",
+                into: "dev")
+            if source != "dev" {
+                try Self.git(dir, "checkout", "-b", source, "--quiet")
+            }
+            try Self.git(dir, "checkout", "main", "--quiet")
+            try Self.git(
+                dir, "merge", "--no-ff", "--no-edit", "-m",
+                "Merge pull request #22 from gianniacquisto/\(source)",
+                source, "--quiet")
+            try Self.git(dir, "tag", "v0.3.0")
+            let gh = try Self.stubGH([.init(number: 11, title: "Add the release picker")])
 
-        let run = try Self.runScript(in: dir, gh: gh, tag: "v0.3.0")
+            let run = try Self.runScript(in: dir, gh: gh, tag: "v0.3.0")
 
-        #expect(run.status == 0)
-        #expect(run.body == """
-        \(Self.lead.replacingOccurrences(of: "0.2.0", with: "0.3.0"))
+            #expect(run.status == 0, "\(source)")
+            #expect(run.body == """
+            \(Self.lead.replacingOccurrences(of: "0.2.0", with: "0.3.0"))
 
-        ## Features
+            ## Features
 
-        - #11 Add the release picker
-        """ + "\n")
-        #expect(!run.body.contains("#21"), "the release PR is the merge, not something it shipped")
-        #expect(!run.body.contains("#22"), "the release PR is the merge, not something it shipped")
-        #expect(!run.body.contains("#10"), "the previous release's PRs belong to its own notes")
-        #expect(!run.body.contains("Other"), "the release branch must not be the only thing read")
+            - #11 Add the release picker
+            """ + "\n", "\(source)")
+            #expect(!run.body.contains("#21"), "a release PR from `\(source)` shipped nothing of its own")
+            #expect(!run.body.contains("#22"), "a release PR from `\(source)` shipped nothing of its own")
+            #expect(!run.body.contains("#10"), "the previous release's PRs belong to its own notes")
+            #expect(!run.body.contains("Other"), "the release merge must not be the only thing read")
+        }
     }
 
     @Test("A dev tag on a merge whose branch mentions release still ranges from the tag")
     func devTagOnReleaseNamedBranchRangesFromTheTag() throws {
         // v0.32.0's shape: the tag sits on a board merge from
-        // `board/tan-225-sprint-close-release`. Only a merge from a
+        // `board/tan-225-sprint-close-release`. Only a merge from `dev` or a
         // `release/vX.Y.Z` branch is the release merge, so this tag is its
         // own tip and the PRs before it are still listed.
         let dir = try Self.makeRepo()
