@@ -1,5 +1,7 @@
 # Distribution: prebuilt cask, in-bundle MCP binary, no formula
 
+> **Amended 2026-10-29 by [ADR 0034](0034-agent-face-in-the-artifact.md):** the prebuilt artifact now also carries `Contents/Resources/agent/` (the skills, the agent prompts and `AGENTS.md`, plus a `VERSION` marker), so a skill and the CLI it drives ship from one tag; `tandem-cli setup install` writes it into the Tandem home. The one-cask distribution decision is unchanged. The amendment's text is ADR 0034's.
+
 The formula+cask pair (ADR 0002) gave Tandem two brew records under one name: after every release `brew upgrade` moves the formula forward and the cask's recorded version lags — brew flags Tandem as outdated although the running app is current — and the cask was an artifact that mirrored the formula's url/sha256 without ever downloading from it. Tandem is now a public, user-friendliness-first app, so we decided: **one brew record** — a cask that downloads a **prebuilt** `Tandem.app` (a zip) from a GitHub release built by CI on each tag; the MCP server ships **inside the app bundle** and agent configs point at that in-bundle path; the formula is removed; distribution is brew-only; the floor is macOS 27 (arm64-only); signing stays ad-hoc for now.
 
 ## Why a prebuilt cask, not the alternatives

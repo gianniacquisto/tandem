@@ -32,7 +32,8 @@ struct SetupDiagnosticsTests {
             .init(name: "agents", path: "/Users/tester/.agents/skills/tandem", found: true),
             .init(name: "claude", path: "/Users/tester/.claude/skills/tandem", found: false),
         ],
-        opencodeHasSkills: Bool = true
+        opencodeHasSkills: Bool = true,
+        agentFace: SetupInstall.State? = nil
     ) -> SetupDiagnostics.Facts {
         SetupDiagnostics.Facts(
             homePath: "/Users/tester/.tandem-dev",
@@ -56,7 +57,23 @@ struct SetupDiagnosticsTests {
             appVersion: appVersion,
             appQuarantined: appQuarantined,
             skillHosts: skillHosts,
-            opencodeHasSkills: opencodeHasSkills)
+            opencodeHasSkills: opencodeHasSkills,
+            agentFace: agentFace)
+    }
+
+    /// The agent face's state, as `SetupInstall.state` would return it.
+    private func agentFace(
+        opencode: String = "installed",
+        warnings: [SetupInstall.Warning] = []
+    ) -> SetupInstall.State {
+        SetupInstall.State(
+            bundledVersion: "1.0", installedVersion: "1.0",
+            hosts: [
+                .init(host: "opencode", state: opencode, links: 2, expectedLinks: 2),
+                .init(host: "claude", state: "absent", links: 0, expectedLinks: 0),
+                .init(host: "agents", state: "absent", links: 0, expectedLinks: 0),
+            ],
+            warnings: warnings)
     }
 
     @Test("a healthy machine passes, with the checks in the pinned order")
@@ -258,6 +275,47 @@ struct SetupDiagnosticsTests {
         #expect(skills.contains("agents found"))
         #expect(skills.contains("claude not found"))
         #expect(skills.contains("opencode configured"))
+    }
+
+    @Test("the skills check names the installed route and the checkout route, both ok, with the setup hint")
+    func skillsNamesBothRoutes() {
+        let installed = SetupDiagnostics.report(facts(agentFace: agentFace(opencode: "installed")))
+        let installedSkills = installed.checks.first { $0.name == "skills" }
+        #expect(installedSkills?.ok == true)
+        #expect(installedSkills?.detail.contains("opencode configured (installed)") == true)
+        #expect(installedSkills?.detail.contains("tandem-cli setup install") == true)
+
+        let checkout = SetupDiagnostics.report(facts(agentFace: agentFace(opencode: "checkout")))
+        let checkoutSkills = checkout.checks.first { $0.name == "skills" }
+        #expect(checkoutSkills?.ok == true, "a checkout route is the normal dev-machine state")
+        #expect(checkoutSkills?.detail.contains("opencode configured (checkout)") == true)
+        #expect(checkoutSkills?.detail.contains("tandem-cli setup install") == true)
+    }
+
+    @Test("the agent-face row is green on a clean install and red with the count on a fixture carrying one dead-link")
+    func agentFaceRow() {
+        let clean = SetupDiagnostics.report(facts(agentFace: agentFace()))
+        let cleanRow = clean.checks.first { $0.name == "agent-face" }
+        #expect(cleanRow?.ok == true)
+        #expect(cleanRow?.detail == "no warnings")
+        #expect(clean.ok)
+
+        let info = SetupInstall.Warning(
+            code: .foreignLink, severity: .info, path: "/Users/tester/.config/opencode/skills/tandem",
+            detail: "a checkout route", hint: "none: a checkout route is expected on a dev machine")
+        let warned = SetupDiagnostics.report(facts(agentFace: agentFace(warnings: [info])))
+        #expect(warned.checks.first { $0.name == "agent-face" }?.ok == true,
+                "an informational warning does not turn doctor red")
+
+        let dead = SetupInstall.Warning(
+            code: .deadLink, severity: .warn, path: "/Users/tester/.config/opencode/skills/alpha",
+            detail: "gone", hint: "tandem-cli setup install")
+        let red = SetupDiagnostics.report(facts(agentFace: agentFace(warnings: [dead])))
+        let row = red.checks.first { $0.name == "agent-face" }
+        #expect(row?.ok == false)
+        #expect(row?.detail.contains("1 warning: dead-link") == true)
+        #expect(row?.detail.contains("tandem-cli setup install") == true)
+        #expect(!red.ok, "a warn stands, so the report fails")
     }
 
     @Test("the home check names which branch of the rule this process takes")

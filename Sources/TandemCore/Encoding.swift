@@ -157,6 +157,19 @@ public enum StoreEncoding {
         return text
     }
 
+    /// A `setup` verb's report (ADR 0034): one JSON document, the same shape for
+    /// `install`, `uninstall` and `status`: the verb, whether the manifest was
+    /// used, the per-path actions, and the state with its warnings.
+    public static func setupReport(_ report: SetupInstall.Report) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(report)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw StoreIOError.io("could not serialize setup report to UTF-8")
+        }
+        return text
+    }
+
     /// The `note stats` result: the memory-health readout as one JSON object —
     /// `{"bikeshed": …, "projects": […], "totals": {…}}`, keys sorted like every
     /// other result. Both queue-age timestamps are present as `null` when a

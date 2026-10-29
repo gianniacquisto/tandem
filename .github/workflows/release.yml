@@ -135,6 +135,15 @@ jobs:
           test -f "$editor/style.css"
           test -d "$editor/fonts"
           test -f "$editor/LICENSES.md"
+          # The agent face travels in the artifact (ADR 0034). The loops read the
+          # checkout, so a skill added to skills/ is asserted without a count in
+          # YAML going stale.
+          agent="$app/Contents/Resources/agent"
+          test -f "$agent/AGENTS.md"
+          test -f "$agent/VERSION"
+          test "$(cat "$agent/VERSION")" = "$version"
+          for f in skills/*/SKILL.md; do test -f "$agent/$f"; done
+          for f in agents/*.md; do test -f "$agent/$f"; done
 
       - name: "Verify: ad-hoc signature"
         run: codesign --verify --strict dist/Tandem.app

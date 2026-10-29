@@ -52,6 +52,9 @@ enum Usage {
       tandem-cli sprint close --lane <name> [--number <n>] [--note <string|->]
       tandem-cli sprint list [--lane <name>] [--status open|closed]
       tandem-cli sprint show --lane <name> --number <n>
+      tandem-cli setup install [--host <opencode|claude|agents>] [--force]
+      tandem-cli setup uninstall [--host <opencode|claude|agents>]
+      tandem-cli setup status
       tandem-cli doctor
       tandem-cli --help | -h
 
@@ -157,11 +160,54 @@ enum Usage {
           mode      serial | parallel — how a sprint's batch was built
           status    open | closed — a sprint's status, on `sprint list`
         """,
+        "setup": """
+        tandem-cli setup: the agent face, installed and inspected.
+
+        Usage:
+          tandem-cli setup install [--host <opencode|claude|agents>] [--force]
+          tandem-cli setup uninstall [--host <opencode|claude|agents>]
+          tandem-cli setup status
+        """,
     ]
 
     /// `<group> <verb> --help`: the verb's line, plus the flag semantics the
     /// root's terse lines leave out. Keyed by the full verb name (`doctor` too).
     static let verbs: [String: String] = [
+        "setup install": """
+        tandem-cli setup install: the bundled agent face, installed and wired.
+
+        Usage:
+          tandem-cli setup install [--host <opencode|claude|agents>] [--force]
+
+        Writes <TandemHome>/agent/ from the bundled face, links every skill and
+        prompt into each named host, and adds the host's instruction route. An
+        absent `--host` is opencode; a comma-separated list names more. A real
+        file at a host path is never overwritten; a link pointing elsewhere, a
+        checkout included, is left alone unless `--force`. One JSON report;
+        exit 1 when a warning is an error, the report still on stdout.
+        """,
+        "setup uninstall": """
+        tandem-cli setup uninstall: remove what `setup install` wrote.
+
+        Usage:
+          tandem-cli setup uninstall [--host <opencode|claude|agents>]
+
+        Removes the links and instruction edits agent-install.json records, then
+        the installed face and the manifest. An absent `--host` is a full run;
+        naming one narrows to that host. A real file, and a link repointed by
+        hand, are left and the report says so. Without a manifest the face is
+        removed and the host links are reported unattributed.
+        """,
+        "setup status": """
+        tandem-cli setup status: the agent face's state.
+
+        Usage:
+          tandem-cli setup status
+
+        Reports the bundled and installed versions, each host's state (installed,
+        checkout, real-file, absent) and the warnings list. Exit 0 always; the
+        warnings are the diagnosis.
+        """,
         "doctor": """
         tandem-cli doctor — the shared setup's read-only diagnostic.
 

@@ -335,6 +335,27 @@ func dispatch(_ args: [String]) -> Int32 {
             let result = try Sprints().show(lane: lane, number: try sprintNumber(number))
             return try StoreEncoding.sprintResult(result.value, note: result.note)
         }
+    case .setupInstall(let hosts, let force):
+        return runSetup(exitOnError: true) {
+            let environment = ProcessInfo.processInfo.environment
+            return try SetupInstall.install(
+                home: TandemHome.directory, environment: environment,
+                bundle: SetupInstall.bundledFace(environment: environment), force: force,
+                hosts: try SetupInstall.hosts(from: hosts))
+        }
+    case .setupUninstall(let hosts):
+        return runSetup(exitOnError: true) {
+            let environment = ProcessInfo.processInfo.environment
+            return try SetupInstall.uninstall(
+                home: TandemHome.directory, environment: environment,
+                hosts: try SetupInstall.uninstallHosts(from: hosts))
+        }
+    case .setupStatus:
+        return runSetup(exitOnError: false) {
+            let environment = ProcessInfo.processInfo.environment
+            return SetupInstall.status(
+                home: TandemHome.directory, environment: environment)
+        }
     }
 }
 
@@ -393,6 +414,22 @@ func runDoctor() -> Int32 {
         return 1
     }
     return 0
+}
+
+/// A `setup` verb's report (ADR 0034): one JSON document on stdout whatever the
+/// exit code, because the report is the diagnosis. `install` and `uninstall`
+/// exit 1 when a warning is an error (`unwritable`); `status` exits 0 always.
+/// A thrown failure keeps the other verbs' contract: message on stderr, exit 1,
+/// no JSON on stdout.
+func runSetup(exitOnError: Bool, _ body: () throws -> SetupInstall.Report) -> Int32 {
+    do {
+        let report = try body()
+        print(try StoreEncoding.setupReport(report))
+        return exitOnError && report.state.hasError ? 1 : 0
+    } catch {
+        FileHandle.standardError.write(Data((tandemErrorText(error) + "\n").utf8))
+        return 1
+    }
 }
 
 /// A raw flag as an `Edit`: absent is `.unchanged`, present is `.set` of the converted

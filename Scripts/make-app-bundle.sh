@@ -4,9 +4,11 @@
 # configs reference) + Contents/Info.plist (versioned) + Contents/Resources/AppIcon.icns +
 # Contents/Resources/TandemBike.jpg (brand photo, ticket 03) +
 # Contents/Resources/tandem_Tandem.bundle (the editor page, ticket 08) +
-# Contents/Resources/NOTICE.txt (upstream license notice), ad-hoc signed. The
-# release workflow runs this to assemble the release artifact; the cask downloads
-# it (ADR 0003).
+# Contents/Resources/NOTICE.txt (upstream license notice) +
+# Contents/Resources/agent (the skills, the agent prompts and AGENTS.md, with a
+# VERSION marker: the agent face `tandem-cli setup install` writes from, ADR 0034),
+# ad-hoc signed. The release workflow runs this to assemble the release artifact;
+# the cask downloads it (ADR 0003).
 #
 # Usage: Scripts/make-app-bundle.sh <built-Tandem-binary> <built-tandem-cli-binary> <version> <output-dir>
 # Produces <output-dir>/Tandem.app
@@ -40,6 +42,18 @@ cp "$root/NOTICE.txt" "$app/Contents/Resources/NOTICE.txt"
 bundle="$(dirname "$binary")/tandem_Tandem.bundle"
 [ -d "$bundle" ] || { echo "error: $bundle is missing (the build did not emit the editor resource bundle)" >&2; exit 1; }
 cp -R "$bundle" "$app/Contents/Resources/tandem_Tandem.bundle"
+
+# The agent face (ADR 0034): the artifact carries the skills, the agent prompts
+# and AGENTS.md, version-locked to the binary, so a skill and the CLI it drives
+# are always the same release. VERSION is the marker the installer compares
+# against the installed copy. This lands before the signature, so the ad-hoc
+# seal covers these files and the strict verify below still passes.
+agent="$app/Contents/Resources/agent"
+mkdir -p "$agent"
+cp -R "$root/skills" "$agent/skills"
+cp -R "$root/agents" "$agent/agents"
+cp "$root/AGENTS.md" "$agent/AGENTS.md"
+printf '%s' "$version" > "$agent/VERSION"
 
 # Ad-hoc signature: all Apple Silicon requires for a locally built binary.
 codesign --force --sign - "$app"

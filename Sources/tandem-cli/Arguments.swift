@@ -73,6 +73,9 @@ enum Command {
     case sprintClose(lane: String, number: String?, note: String?)
     case sprintList(lane: String?, status: String?)
     case sprintShow(lane: String, number: String)
+    case setupInstall(hosts: String?, force: Bool)
+    case setupUninstall(hosts: String?)
+    case setupStatus
 }
 
 /// A usage failure — no arguments, an unknown subcommand, an unknown flag, or a
@@ -108,6 +111,8 @@ func parseCommand(_ args: [String]) throws -> Command {
         return try parseSession(Array(args.dropFirst()))
     case "sprint":
         return try parseSprint(Array(args.dropFirst()))
+    case "setup":
+        return try parseSetup(Array(args.dropFirst()))
     default:
         throw UsageError()
     }
@@ -503,12 +508,44 @@ private func parseSprint(_ args: [String]) throws -> Command {
     }
 }
 
+// MARK: - setup
+
+/// `setup install|uninstall|status` (ADR 0034): the agent face's writer, its
+/// uninstaller and its readout. `--host` takes one name or a comma-separated
+/// list, the way `ticket list --status` does; an absent one is `opencode` on
+/// install, the full run on uninstall. `--force` is the install's only switch.
+private func parseSetup(_ args: [String]) throws -> Command {
+    guard let verb = args.first else { throw UsageError() }
+    if verb == "--help" || verb == "-h" { return .groupHelp(group: "setup") }
+    let rest = Array(args.dropFirst())
+    if asksHelp(rest) {
+        return try helpCommand(group: "setup", verb: verb, known: [
+            "install", "uninstall", "status",
+        ])
+    }
+    let flags = try parseFlags(rest)
+    switch verb {
+    case "install":
+        try accept(flags, ["--host", "--force"])
+        return .setupInstall(hosts: flags["--host"], force: flags["--force"] != nil)
+    case "uninstall":
+        try accept(flags, ["--host"])
+        return .setupUninstall(hosts: flags["--host"])
+    case "status":
+        try accept(flags, [])
+        return .setupStatus
+    default:
+        throw UsageError()
+    }
+}
+
 // MARK: - Flags
 
-/// The flags that take no value: a switch, there or not there. `--archived` is the
-/// only one — the archive axis of `ticket list`. Every other flag takes a value, so
-/// `--archived` never swallows the token after it.
-private let switchFlags: Set<String> = ["--archived"]
+/// The flags that take no value: a switch, there or not there. `--archived` (the
+/// archive axis of `ticket list`) and `--force` (replace a checkout link) are the
+/// two. Every other flag takes a value, so a switch never swallows the token
+/// after it.
+private let switchFlags: Set<String> = ["--archived", "--force"]
 
 /// Parse `tokens` as `--flag value` pairs. A flag's value is the next token
 /// when one exists and `""` when the flag is last: a missing value is the

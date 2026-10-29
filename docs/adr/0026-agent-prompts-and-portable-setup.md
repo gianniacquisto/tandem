@@ -1,5 +1,7 @@
 # An agent prompt lives with the project that owns its job, and the setup names no machine
 
+> **Amended 2026-10-29 by [ADR 0034](0034-agent-face-in-the-artifact.md):** the setup bullet's two claims move. The face now travels in the artifact and is installed at `<TandemHome>/agent/` by `tandem-cli setup install`, and OpenCode is wired by one `instructions` entry in its config rather than by convention alone; the former `~/.config/opencode/AGENTS.md` route is the `double-load` warning. A checkout still wins where one exists (the working tree is the deployment). The rest of this record stands. The amendment's text is ADR 0034's.
+
 The prompts for the passes that run on Tandem — `reviewer`, `retro`, `consolidator` — lived outside this repo: `reviewer` and `retro` as files in the `fleet` repo, `consolidator` as a real file in `~/.config/opencode/agents/`, held by nothing but the filesystem. All three are Tandem's own passes. They read the board through `tandem-cli`, they file into the bikeshed, and they enforce the ticket model's gates. None of them is a model switch.
 
 They were also, in their own text, bound to one machine: the consolidator read `~/projects/tandem/skills/…`, the retro read `~/projects/matt-pocock-skills/…`, and the host was wired by hand — a symlink here, a command file there. A clone of the repo on a second Mac could not reproduce the workflow, because the workflow was not in the repo.
