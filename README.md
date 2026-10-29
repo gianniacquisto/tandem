@@ -177,7 +177,7 @@ Not a ticket: `session start` opens a record of one agent session's run — the 
 | skill | what it is for | since |
 | --- | --- | --- |
 | `tandem` | the CLI contract an agent reads before it touches the store | v0.9.0 |
-| `tandem-memory` | the bikeshed as the agent's memory: orient from the Hub, record the session, consolidate into the curated notes on request | v0.6.0, the capture-and-consolidation protocol in v0.11.0 |
+| `tandem-memory` | the bikeshed as the agent's memory: orient from the project's **Overview**, record the session, consolidate into the curated notes on request | v0.6.0, the capture-and-consolidation protocol in v0.11.0 |
 | `tandem-sprint` | the SDLC in one invocation — the loop refine → build → review → retro: orient, triage with refine filling the batch, the batch through `tandem-build`, retro at the close | v0.15.0 |
 | `tandem-build` | the sprint's build phase: each batch ticket claimed, built in its own worktree, gated through review, recorded | v0.15.0 (as `tandem-sprint`; renamed 2026-10-24) |
 | `tandem-refine` | dispatches the refiner to shape a backlog ticket into a buildable brief | v0.16.0 |
