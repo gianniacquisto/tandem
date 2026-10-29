@@ -18,7 +18,17 @@ import TandemCore
 // `NSHostingView` at a fixed size, and asserts two artefacts: the PNG (`.image(at:size:)`,
 // the library's image snapshot pinned to a 2x render so the pixel size is the same on a
 // Retina Mac and a headless runner) and the AppKit view tree as text
-// (`.recursiveDescription`), whose frames read in a text diff without opening an image.
+// (`.stableDescription`), whose frames read in a text diff without opening an image.
+//
+// **Why the text dump is normalised**: the raw `.recursiveDescription` carries two fields
+// that are not layout, and CI's `xcode-27` runner disagreed with this Mac on both while
+// every frame matched (TAN-218). Swift mangles an eight-hex local type discriminator into
+// some class names, and that number is a property of the toolchain, so a Swift update
+// re-diffs every line carrying one. The bracketed flag column records live AppKit state
+// (`L` needsLayout, `U` needsUpdateConstraints, `W` wantsLayer), so it records whether a
+// layout pass had settled on that machine. `.stableDescription` strips the discriminator
+// and the flag column, and drops the legend that documents the flags; class names, tree
+// shape, hidden state and every `f=` frame stay, so a layout change still moves the file.
 // The text dump is the AppKit layer only: SwiftUI draws its own text into layers, not
 // into `NSView`s, and the AX tree is unreadable from inside the test process (AX is
 // disabled for it, `-25208`).
@@ -167,7 +177,7 @@ struct SnapshotTests {
         let size = CGSize(width: 1000, height: 640)
         let hosting = host(view, size: size)
         assertSnapshot(of: hosting, as: .image(at: 2, size: size))
-        assertSnapshot(of: hosting, as: .recursiveDescription)
+        assertSnapshot(of: hosting, as: .stableDescription)
     }
 
     /// The ticket sheet: title, the three pickers, the filer, the ref, the body.
@@ -190,7 +200,7 @@ struct SnapshotTests {
         let size = CGSize(width: 580, height: 560)
         let hosting = host(view, size: size)
         assertSnapshot(of: hosting, as: .image(at: 2, size: size))
-        assertSnapshot(of: hosting, as: .recursiveDescription)
+        assertSnapshot(of: hosting, as: .stableDescription)
     }
 
     /// The sessions face: two projects, a running record and two ended ones.
@@ -203,7 +213,7 @@ struct SnapshotTests {
         let size = CGSize(width: 900, height: 520)
         let hosting = host(view, size: size)
         assertSnapshot(of: hosting, as: .image(at: 2, size: size))
-        assertSnapshot(of: hosting, as: .recursiveDescription)
+        assertSnapshot(of: hosting, as: .stableDescription)
     }
 
     /// The sprints face: an open sprint and a closed one, grouped by lane.
@@ -216,7 +226,31 @@ struct SnapshotTests {
         let size = CGSize(width: 900, height: 520)
         let hosting = host(view, size: size)
         assertSnapshot(of: hosting, as: .image(at: 2, size: size))
-        assertSnapshot(of: hosting, as: .recursiveDescription)
+        assertSnapshot(of: hosting, as: .stableDescription)
+    }
+
+    // MARK: - The normalised text dump
+
+    /// The two machine-dependent fields, removed. The eight-hex discriminator follows a
+    /// `$` inside some mangled class names; the flag column is the first bracketed field on
+    /// a line, and the legend that documents it is the trailing paragraph.
+    @Test("the text dump keeps frames and drops the toolchain discriminator and the live flags")
+    func stableTextDump() {
+        let raw = [
+            #"[   AF    ! WlU ] h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10$1ba81981832PlatformViewRepresentableAdaptorVS_P10$1ba863fec24PlatformTextFieldAdaptor__ f=(51,21,817,15) b=(-) => <NSViewBackingLayer>"#,
+            #"  [  HAF    ! W U ] h=--- v=--- NSScroller f=(0,0,0,100) b=(-) => <NSViewBackingLayer>"#,
+            "A=autoresizesSubviews, C=canDrawConcurrently, D=needsDisplay",
+        ].joined(separator: "\n")
+
+        let stable = Snapshotting<NSView, String>.stable(raw)
+
+        #expect(!stable.contains("$1ba81981832"))
+        #expect(!stable.contains("WlU"))
+        #expect(!stable.contains("A=autoresizesSubviews"))
+        #expect(stable.contains("f=(51,21,817,15)"))
+        #expect(stable.contains("f=(0,0,0,100)"))
+        #expect(stable.contains("NSScroller"))
+        #expect(stable.contains("h=--- v=---"))
     }
 
     // MARK: - Hosting
@@ -226,6 +260,41 @@ struct SnapshotTests {
         hosting.frame = NSRect(origin: .zero, size: size)
         hosting.layoutSubtreeIfNeeded()
         return hosting
+    }
+}
+
+
+// MARK: - A stable text dump
+
+extension Snapshotting where Value == NSView, Format == String {
+    /// The AppKit tree with the fields that are not layout removed, so the same layout
+    /// records the same text on this Mac and on CI's runner. See the note at the top.
+    static var stableDescription: Snapshotting<NSView, String> {
+        let base = Snapshotting<NSView, String>.recursiveDescription
+        return Snapshotting(
+            pathExtension: base.pathExtension,
+            diffing: base.diffing,
+            asyncSnapshot: { view in base.snapshot(view).map(stable) }
+        )
+    }
+
+    static func stable(_ description: String) -> String {
+        description
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.hasPrefix("A=autoresizesSubviews") }
+            .map { line -> String in
+                var line = line.replacingOccurrences(
+                    of: #"\$[0-9a-fA-F]{8}"#, with: "", options: .regularExpression)
+                let indent = String(line.prefix { $0 == " " })
+                let rest = line.dropFirst(indent.count)
+                if rest.first == "[", let close = rest.firstIndex(of: "]") {
+                    var tail = rest[rest.index(after: close)...]
+                    if tail.first == " " { tail = tail.dropFirst() }
+                    return indent + tail
+                }
+                return line
+            }
+            .joined(separator: "\n")
     }
 }
 

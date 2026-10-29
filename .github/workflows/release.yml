@@ -59,7 +59,16 @@ jobs:
           # behaviour. Serial execution removes that artificial contention; each
           # test's own threads still exercise the lock. (The self-hosted 10-core
           # Mac had the headroom for the default parallel run.)
-          swift test --no-parallel
+          mkdir -p "$RUNNER_TEMP/attachments"
+          swift test --no-parallel --attachments-path "$RUNNER_TEMP/attachments"
+
+      - name: "Probe: upload snapshot attachments"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-attachments
+          path: ${{ runner.temp }}/attachments
+          if-no-files-found: ignore
 
       - name: "Gate: the README's CLI grammar matches Usage.swift"
         run: |

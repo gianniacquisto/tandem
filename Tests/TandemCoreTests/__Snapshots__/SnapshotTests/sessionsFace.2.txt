@@ -1,11 +1,10 @@
-[   AF    ! WlU ] h=--- v=--- _TtGC7SwiftUI13NSHostingViewGVS_15ModifiedContentV6Tandem16SessionsFaceViewVS_12_FrameLayout__ f=(0,0,900,520) b=(-) => <NSViewBackingLayer>
-  [   A     ! WlU ] h=--- v=--- _TtCC7SwiftUI17HostingScrollView17PlatformContainer f=(0,41,900,479) b=(-) => <NSViewBackingLayer>
-    [   AF    ! wLU ] h=--- v=--- SwiftUI.HostingScrollView f=(0,0,900,479) b=(-) => <NSViewBackingLayer>
-      [   AF    ! wLU ] h=--- v=--- SwiftUI.HostingClipView f=(0,0,900,479) b=(-) => <NSViewBackingLayer>
-        [   AF    ! wLU ] h=--- v=--- _TtC7SwiftUIP33_6B9589E2B2301F373BAB5CF17408C38412DocumentView f=(0,0,0,0) b=(-) => <NSViewBackingLayer>
-          [   AF    ! W U ] h=--- v=--- _TtCC7SwiftUI17HostingScrollView22PlatformGroupContainer f=(0,0,0,0) b=(-) => <NSViewBackingLayer>
-            [   AF    ! W U ] h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(0,42,900,45) b=(-) => <NSViewBackingLayer>
-            [   AF    ! W U ] h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(0,88,900,45) b=(-) => <NSViewBackingLayer>
-            [   AF    ! W U ] h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(0,169,900,45) b=(-) => <NSViewBackingLayer>
-      [  HAF    ! W U ] h=--- v=--- NSScroller f=(0,0,0,100) b=(-) => <NSViewBackingLayer>
-A=autoresizesSubviews, C=canDrawConcurrently, D=needsDisplay, F=flipped, G=gstate, H=hidden (h=by ancestor), L=needsLayout (l=child needsLayout), U=needsUpdateConstraints (u=child needsUpdateConstraints), O=opaque, P=preservesContentDuringLiveResize, S=scaled/rotated, W=wantsLayer (w=ancestor wantsLayer), V=needsVibrancy (v=allowsVibrancy), #=has surface
+h=--- v=--- _TtGC7SwiftUI13NSHostingViewGVS_15ModifiedContentV6Tandem16SessionsFaceViewVS_12_FrameLayout__ f=(0,0,900,520) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtCC7SwiftUI17HostingScrollView17PlatformContainer f=(0,41,900,479) b=(-) => <NSViewBackingLayer>
+    h=--- v=--- SwiftUI.HostingScrollView f=(0,0,900,479) b=(-) => <NSViewBackingLayer>
+      h=--- v=--- SwiftUI.HostingClipView f=(0,0,900,479) b=(-) => <NSViewBackingLayer>
+        h=--- v=--- _TtC7SwiftUIP33_6B9589E2B2301F373BAB5CF17408C38412DocumentView f=(0,0,0,0) b=(-) => <NSViewBackingLayer>
+          h=--- v=--- _TtCC7SwiftUI17HostingScrollView22PlatformGroupContainer f=(0,0,0,0) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(0,42,900,45) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(0,88,900,45) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(0,169,900,45) b=(-) => <NSViewBackingLayer>
+      h=--- v=--- NSScroller f=(0,0,0,100) b=(-) => <NSViewBackingLayer>
