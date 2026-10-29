@@ -201,6 +201,57 @@ struct SprintDocumentsTests {
             "the demand run points at the rule's home")
     }
 
+    /// TAN-225: the sprint that lands the batch is the pass that ships it. §7 carries
+    /// the release step, and it sits before the close verb because a tag can only be
+    /// cut once the batch is merged and done. The tap bump is still a hand act until
+    /// TAN-224 lands, so the step names it as the one step the close cannot take.
+    @Test("§7 cuts the release its batch landed, before the close verb")
+    func closeCutsTheRelease() throws {
+        let skill = try Self.file("skills/tandem-sprint/SKILL.md")
+        let heading = try #require(
+            skill.range(of: "## 7. Close"),
+            "the sprint skill must still carry the close as §7")
+        let tail = skill[heading.lowerBound...]
+        let board = tail.range(of: "\n## The board")
+        let section = String(board.map { tail[..<$0.lowerBound] } ?? tail)
+
+        let release = try #require(
+            section.range(of: "Cut the release"),
+            "§7 must carry the release step; nothing else cuts the tag its batch landed")
+        let closeVerb = try #require(
+            section.range(of: "sprint close --lane"),
+            "§7 still closes the record with the verb")
+        #expect(
+            release.lowerBound < closeVerb.lowerBound,
+            "the release is the close's first act: a tag needs the batch merged and done")
+        #expect(
+            section.contains("git tag vX.Y.Z") && section.contains("push origin vX.Y.Z"),
+            "the tag names `main`'s head and is pushed, so the tag run publishes it")
+        let releasePR = try #require(section.range(of: "Release vX.Y.Z"))
+        let tag = try #require(section.range(of: "git tag vX.Y.Z"))
+        #expect(releasePR.lowerBound < tag.lowerBound, "the tag follows the release PR's merge")
+        #expect(
+            section.contains("Release vX.Y.Z"),
+            "the dev to main release PR is part of the step, its merge the human's gate")
+        #expect(
+            section.contains("Scripts/release-notes.sh vX.Y.Z --capture"),
+            "the notes reach the bikeshed from a checkout with the tags")
+        #expect(
+            section.contains("TAP_TOKEN"),
+            "the tap bump is a hand act until TAN-224 lands, and the step must say so")
+        #expect(
+            section.contains("cuts no tag"),
+            "a sprint that landed nothing cuts no tag, and the close says so in one line")
+        #expect(
+            section.contains("names the tag"),
+            "the close note names the tag its batch shipped in")
+
+        let releasing = try Self.file("docs/releasing.md")
+        #expect(
+            releasing.contains("skills/tandem-sprint/SKILL.md"),
+            "releasing.md points at the sprint close as the path that cuts the tag")
+    }
+
     /// The glossary defines Sprint, and the Avoid list names the retired phrase.
     @Test("the glossary defines Sprint and avoids the old phrase")
     func glossaryDefinesSprint() throws {
