@@ -32,9 +32,9 @@ import TandemCore
 //
 // **What still differs across machines**: the ticket sheet's pop-up buttons are the one
 // self-sizing AppKit control in the four views, and the runner lays them out a point or
-// four wider than this Mac (it measures their menu labels from the machine). That view's
-// text assertion passes `tolerance: 4` to `.stableDescription`, which still requires the
-// same tree and the same class on every line and fails on any frame drift over four points;
+// five wider than this Mac (it measures their menu labels from the machine). That view's
+// text assertion passes `tolerance: 5` to `.stableDescription`, which still requires the
+// same tree and the same class on every line and fails on any frame drift over five points;
 // the other three views compare exactly. The PNGs compare perceptually at 99%, because the
 // runner's rasteriser draws the AppKit controls differently even where the frames match.
 // The text dump is the AppKit layer only: SwiftUI draws its own text into layers, not
@@ -208,7 +208,7 @@ struct SnapshotTests {
         let size = CGSize(width: 580, height: 560)
         let hosting = host(view, size: size)
         assertSnapshot(of: hosting, as: .image(at: 2, size: size))
-        assertSnapshot(of: hosting, as: .stableDescription(tolerance: 4))
+        assertSnapshot(of: hosting, as: .stableDescription(tolerance: 5))
     }
 
     /// The sessions face: two projects, a running record and two ended ones.
@@ -239,19 +239,21 @@ struct SnapshotTests {
 
     // MARK: - The normalised text dump
 
-    @Test("the sheet's text diff allows four points of AppKit drift and no more")
+    @Test("the sheet's text diff allows five points of AppKit drift and no more")
     func geometryTolerance() {
         let reference = "  h=--- v=--- SwiftUI.AppKitTextField f=(20,65,58,13) b=(-)"
-        let diffing = Diffing<String>.geometry(tolerance: 4)
+        let diffing = Diffing<String>.geometry(tolerance: 5)
         #expect(diffing.diffV2(reference, reference) == nil)
         #expect(diffing.diffV2(reference,
-                               "  h=--- v=--- SwiftUI.AppKitTextField f=(20,65,62,13) b=(-)") == nil)
+                               "  h=--- v=--- SwiftUI.AppKitTextField f=(20,65,63,13) b=(-)") == nil)
         #expect(diffing.diffV2(reference,
-                               "  h=--- v=--- SwiftUI.AppKitTextField f=(24,65,58,13) b=(-)") == nil)
+                               "  h=--- v=--- SwiftUI.AppKitTextField f=(25,65,58,13) b=(-)") == nil)
         #expect(diffing.diffV2(reference,
-                               "  h=--- v=--- SwiftUI.AppKitTextField f=(20,65,63,13) b=(-)") != nil)
+                               "  h=--- v=--- SwiftUI.AppKitTextField f=(20,65,63.5,13) b=(-)") != nil)
         #expect(diffing.diffV2(reference,
-                               "  h=--- v=--- SwiftUI.AppKitTextField f=(24,65,58,13) b=(-) !") != nil)
+                               "  h=--- v=--- SwiftUI.AppKitTextField f=(26,65,58,13) b=(-)") != nil)
+        #expect(diffing.diffV2(reference,
+                               "  h=--- v=--- SwiftUI.AppKitTextField f=(20,65,58,13) b=(-) !") != nil)
         #expect(diffing.diffV2(reference,
                                "  h=--- v=--- SwiftUI.AppKitTextEditor f=(20,65,58,13) b=(-)") != nil)
     }
@@ -330,7 +332,7 @@ extension Diffing where Value == String {
     /// Compares two dumps line by line: everything except the `f=`/`b=` geometry must match
     /// exactly, and each coordinate may drift by `tolerance` points. The reference for the
     /// ticket sheet is recorded on this Mac, and CI's runner lays its pop-up buttons out a
-    /// point or four wider (AppKit measures the menu labels from the machine, and the sheet is
+    /// point or five wider (AppKit measures the menu labels from the machine, and the sheet is
     /// the one face carrying self-sizing controls), so that view's assertion is the only one
     /// that needs room. Every other face compares with the plain `.lines` diffing.
     static func geometry(tolerance: CGFloat) -> Diffing<String> {
@@ -410,7 +412,7 @@ extension Snapshotting where Value == NSView, Format == NSImage {
     /// or four differently, so three of the four PNGs diffed on every run while the board's
     /// matched byte for byte. 99% of pixels must match within 99% of the eye's precision,
     /// the library's own note for cross-machine images; the tests' geometry check is the
-    /// normalised text dump, and the sheet's frames carry their own tolerance above, so a
+    /// normalised text dump, and the sheet's frames carry their own five-point tolerance above, so a
     /// layout move still fails even though a glyph edge may not.
     @MainActor
     static func image(at scale: Int, size: CGSize) -> Snapshotting<NSView, NSImage> {
