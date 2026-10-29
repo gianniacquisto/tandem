@@ -63,3 +63,11 @@ Why the writer waited for the reader (TAN-196): a build that does not name a val
 The board's columns are now exactly the six stages. No value folds into another column, so a lane's header count and its cells agree by construction, and `Status.column` is the stage itself.
 
 Consequences: `refined` in the ADRs above and in the skill prose before this date is history, not vocabulary; the live instructions say `ready` for a finished brief and `on-hold` for parked work. No envelope bump: the store's `status` column is a plain string whose set of values narrowed, and the migration is the seam that makes the narrowing true.
+
+## Amendment, 2026-10-29: the comment read resolves a ref, and an unknown id fails
+
+`ticket comment list` takes an id the way every other id-taking verb does (TAN-222). The read resolves a full UUID or the ticket's ref (`TAN-221`), case-insensitive on the key, through `Operations.resolveTicket`, so the write path's rule and the read's are one rule. The earlier sentence in this record, "on `list` it is an empty list, never an error", is superseded: an id that names nothing, whether a malformed UUID or a ref no ticket carries, is the domain failure the write path raises (`Unknown ticket id` with the open list, or `Unknown ticket ref` with the lane's range), and an empty list means the ticket exists and carries no comments.
+
+Why: the read was the odd verb, and its silence was indistinguishable from "no comments" for a ticket with a full log, which is exactly the answer a reader cannot check.
+
+Consequence: a deleted ticket's log still stays on disk, as this record says, but no verb reads it now, because a read starts from the board. The write path is unchanged; it already resolved refs.

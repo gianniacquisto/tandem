@@ -61,8 +61,9 @@ public enum StoreEncoding {
     }
 
     /// The `ticket comment list` result: `{"comments": [...]}` in append order,
-    /// with a top-level `note` when non-nil. An unknown ticket is a successful
-    /// empty list, not an error — the log outlives the store's entries.
+    /// with a top-level `note` when non-nil. The ticket is resolved before the
+    /// read, so an unknown id is the domain failure and never reaches this
+    /// encoding; an empty list is a ticket that exists and carries no comments.
     public static func commentsResult(_ comments: [Comment], note: String?) throws -> String {
         var object: [String: Any] = ["comments": try comments.map { try commentObject($0) }]
         if let note { object["note"] = note }

@@ -335,8 +335,8 @@ final class TandemModel {
     // MARK: - Comments (the sidecar)
 
     /// The ticket's discussion: the sidecar's log, oldest first — the core's read
-    /// path (`Store.commentRead(ticketID:)`), which is empty for a ticket with no
-    /// log and never an error for one.
+    /// path (`Store.commentRead(ticketID:)`), which is empty for a ticket that
+    /// carries no comments and a failure for an id that names none.
     ///
     /// A damaged log *is* an error, and it stays one: the log is append-only, so a
     /// bad line is repair, not recovery. The sheet says so where the conversation

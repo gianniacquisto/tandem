@@ -160,6 +160,10 @@ _Avoid_: bot, client, automation, user
 The role that gates a pull request: it reads the ticket, the diff, the checks and the repo's rules, then either merges a two-way door with low blast radius or hands the change to the human. Dispatched for one PR, it ends with a verdict.
 _Avoid_: approver, critic, merge bot
 
+**Review lens**:
+One checklist the reviewer applies to a pull request, named by the ticket's brief in its `## Lenses` section: `code`, `security`, `ui-design`, `ux`, or `architecture`, one table in `skills/review-lenses/SKILL.md`. A lens is not a role and not an agent, and the gate stays one: one merge authority, one verdict line. A brief with no `## Lenses` is read with `code` alone.
+_Avoid_: reviewer type, reviewer persona, review mode, sub-reviewer
+
 **Retro**:
 The role that reads one session and files what it finds as backlog tickets — the tickets are the output, the report is a receipt. It runs at every sprint close, on the sprint session's own transcript, and is still invocable alone on a session the human names. It never fixes what it finds, because a retro that changes the work cannot report on it honestly.
 _Avoid_: retrospective agent, postmortem, session analyst

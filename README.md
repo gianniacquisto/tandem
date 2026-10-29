@@ -186,6 +186,7 @@ Not a ticket: `session start` opens a record of one agent session's run — the 
 | `tandem-setup` | installs the whole agent face on a host | v0.16.0 |
 | `tandem-consolidate` | dispatches the consolidator pass | v0.16.0 |
 | `tandem-tidy` | the board hygiene pass: sweeps open tickets against landed work, completes the done or moot with evidence, archives, reports the oddities | unreleased |
+| `review-lenses` | the checklists the reviewer applies to a PR, named by the brief's `## Lenses`: `code`, `security`, `ui-design`, `ux`, `architecture` | unreleased |
 
 `skills/grilling/`, `skills/tdd/` and `skills/writing-for-agents/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), so a clone of this repo is the whole workflow; `skills/retro/` is adapted from the same collection, its output filed as tickets on the board.
 

@@ -61,7 +61,7 @@ grep -n "instructions\|skills" "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/openc
 
 ```sh
 opencode api agent.list   # builder, consolidator, refiner, reviewer
-opencode api skill.list   # grilling, retro, tdd, tandem, tandem-build, tandem-consolidate, tandem-memory, tandem-refine, tandem-setup, tandem-sprint, tandem-tidy, tandem-team, writing-for-agents
+opencode api skill.list   # grilling, retro, review-lenses, tdd, tandem, tandem-build, tandem-consolidate, tandem-memory, tandem-refine, tandem-setup, tandem-sprint, tandem-tidy, tandem-team, writing-for-agents
 tandem-cli doctor         # the skills check reads "opencode configured"
 ```
 

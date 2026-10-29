@@ -105,14 +105,113 @@ struct CommentsTests {
             atPath: store.commentsDirectory.path))
     }
 
-    @Test("an unknown id on list is an empty list, not an error")
-    func unknownIDOnListIsEmpty() throws {
+    @Test("a ticket with no comments answers an empty list, and no directory is made")
+    func existingTicketWithoutCommentsIsEmpty() throws {
         let (store, dir) = try tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
-        _ = try makeTicket(store)
+        let ticket = try makeTicket(store)
 
-        #expect(try store.list(ticketID: "00000000-0000-0000-0000-000000000000").value.isEmpty)
-        #expect(try store.list(ticketID: "not a uuid").value.isEmpty)
+        #expect(try store.list(ticketID: ticket.id.uuidString).value.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: store.commentsDirectory.path))
+    }
+
+    @Test("an unknown id on list is the domain failure, not an empty log")
+    func unknownIDOnListFails() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try store.addLane("Probe", key: "PRB")
+        let ticket = try store.add("A ticket", lane: "Probe").value
+
+        // A well-formed UUID that names no ticket: the same `unknownID` append raises.
+        let unknown = "00000000-0000-0000-0000-000000000000"
+        do {
+            _ = try store.list(ticketID: unknown)
+            Issue.record("expected unknownID")
+        } catch let DomainError.unknownID(id, open) {
+            #expect(id == unknown)
+            #expect(open.map(\.id) == [ticket.id])
+        }
+        // A handle that is not even a UUID is unknown too.
+        do {
+            _ = try store.list(ticketID: "not a uuid")
+            Issue.record("expected unknownID")
+        } catch let DomainError.unknownID(id, _) {
+            #expect(id == "not a uuid")
+        }
+        // A ref that names nothing gets the ref-specific failure, like every other verb.
+        do {
+            _ = try store.list(ticketID: "PRB-99")
+            Issue.record("expected unknownRef")
+        } catch let DomainError.unknownRef(ref, hint) {
+            #expect(ref == "PRB-99")
+            #expect(hint.contains("PRB-"))
+        }
+    }
+
+    @Test("list resolves a ref to the ticket's log, in either case")
+    func listResolvesARef() throws {
+        let (store, dir) = try tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try store.addLane("Probe", key: "PRB")
+        let ticket = try store.add("A ticket", lane: "Probe").value
+        #expect(ticket.ref == "PRB-1")
+        _ = try store.append(ticketID: ticket.id.uuidString,
+                             author: "builder", body: "did you mean X?")
+
+        let byUUID = try store.list(ticketID: ticket.id.uuidString).value
+        #expect(byUUID.map(\.body) == ["did you mean X?"])
+        for ref in ["PRB-1", "prb-1"] {
+            #expect(try store.list(ticketID: ref).value == byUUID, "\(ref) answers the same log")
+        }
+    }
+
+    @Test("the CLI answers a ref and its UUID with byte-identical comment list output")
+    func refAndUUIDAnswerTheSameBytes() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-comment-ref-cli-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let cli = CLIHarness()
+
+        #expect(try cli.run(home: home, ["lane", "add", "--name", "Probe", "--abbr", "PRB"]).code == 0)
+        let added = try cli.run(home: home, ["ticket", "add", "--title", "A ticket", "--lane", "Probe"])
+        #expect(added.code == 0, "\(added.error)")
+        let id = try #require(try cli.object(from: added.output)["id"] as? String)
+        #expect(try cli.run(home: home, [
+            "ticket", "comment", "add", "--id", "PRB-1", "--body", "did you mean X?",
+        ]).code == 0)
+
+        let byRef = try cli.run(home: home, ["ticket", "comment", "list", "--id", "PRB-1"])
+        let byUUID = try cli.run(home: home, ["ticket", "comment", "list", "--id", id])
+        #expect(byRef.code == 0, "\(byRef.error)")
+        #expect(byUUID.code == 0, "\(byUUID.error)")
+        #expect(byRef.output == byUUID.output)
+        #expect(try cli.comments(home: home, id: id).first?["body"] as? String == "did you mean X?")
+    }
+
+    @Test("an unknown id on the CLI's comment list exits 1 and writes no log")
+    func unknownIDOnTheCLIListExitsOne() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tandem-comment-unknown-cli-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let cli = CLIHarness()
+        let id = try cli.addTicket(home: home, title: "A ticket")
+
+        for unknown in ["00000000-0000-0000-0000-000000000000", "not a uuid"] {
+            let result = try cli.run(home: home, ["ticket", "comment", "list", "--id", unknown])
+            #expect(result.code == 1, "\(unknown) is a domain failure")
+            #expect(result.error.contains("Unknown ticket id"), "\(result.error)")
+            #expect(result.output.isEmpty, "no empty log on stdout")
+        }
+        // A ref that names nothing fails the way `ticket show` does.
+        let ref = try cli.run(home: home, ["ticket", "comment", "list", "--id", "TAN-99"])
+        #expect(ref.code == 1)
+        #expect(ref.error.contains("Unknown ticket ref"), "\(ref.error)")
+        #expect(ref.output.isEmpty)
+
+        // The ticket's own log is still empty, and the read created nothing.
+        #expect(try cli.comments(home: home, id: id).isEmpty)
+        #expect(!FileManager.default.fileExists(
+            atPath: home.appendingPathComponent("comments").path))
     }
 
     @Test("a comment survives an edit of the ticket")
