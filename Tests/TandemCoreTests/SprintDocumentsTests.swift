@@ -151,6 +151,56 @@ struct SprintDocumentsTests {
             "the dead-sprint clause stays the sprint skill's")
     }
 
+    /// The close settles the lane's open set before it writes the close: no ticket is
+    /// left `in-progress` behind a dead claim, `in-review` keeps its PR number, `human`
+    /// only while a question is open. TAN-149.
+    @Test("the close settles the lane's open set before it stamps")
+    func closeSettlesTheLanesOpenSet() throws {
+        let skill = try Self.file("skills/tandem-sprint/SKILL.md")
+        let clause = try #require(
+            skill.range(of: "The lane's open set is settled before the close is written"),
+            "the close carries the settle sweep, in the closing section")
+        let closeLine = try #require(
+            skill.range(of: "`sprint close --lane \"$lane\" --note -`"),
+            "the close verb is still shown")
+        #expect(
+            clause.lowerBound < closeLine.lowerBound,
+            "the sweep runs before the close is written, not after it stamps")
+        #expect(
+            skill.contains("`on-hold` when it is parked on purpose"),
+            "a parked ticket goes to `on-hold`, not back to `ready`")
+        #expect(
+            skill.contains("a ticket this sprint drew but did not finish"),
+            "an unfinished batch ticket says so instead of sitting behind a dead claim")
+        #expect(
+            skill.contains("keeps its PR number in the log"),
+            "an `in-review` ticket leaves the merge or the escalation as its only open move")
+        #expect(
+            skill.contains("`human` stays only where a question is actually open"),
+            "an answered ticket is not left in the human's queue")
+        #expect(
+            skill.contains("One comment per ticket the close moves, none where nothing moved"),
+            "the sweep comments on what it moved, and stays quiet where nothing did")
+        #expect(
+            skill.contains("signed as the role that owned the pass"),
+            "the comment is signed by the role whose work it reports")
+        #expect(
+            skill.contains("The close note names what was settled"),
+            "the close note carries the sweep, so the next session does not redo it")
+    }
+
+    /// Tidy's liveness line is the close sweep invoked on demand, not a second rule.
+    @Test("tidy's liveness line points at the close sweep")
+    func tidyLivenessLineIsTheCloseSweepOnDemand() throws {
+        let skill = try Self.file("skills/tandem-tidy/SKILL.md")
+        #expect(
+            skill.contains("the same rule invoked on demand"),
+            "tidy runs the sprint's close sweep on demand, it invents no verdict of its own")
+        #expect(
+            skill.contains("skills/tandem-sprint/SKILL.md"),
+            "the demand run points at the rule's home")
+    }
+
     /// The glossary defines Sprint, and the Avoid list names the retired phrase.
     @Test("the glossary defines Sprint and avoids the old phrase")
     func glossaryDefinesSprint() throws {
