@@ -286,7 +286,24 @@ struct SnapshotTests {
         let hosting = NSHostingView(rootView: view.frame(width: size.width, height: size.height))
         hosting.frame = NSRect(origin: .zero, size: size)
         hosting.layoutSubtreeIfNeeded()
+        pinOverlayScrollers(in: hosting)
+        hosting.layoutSubtreeIfNeeded()
         return hosting
+    }
+
+    /// CI's runner has no trackpad, and macOS then prefers legacy scroll bars: the text
+    /// editor's clip view loses the scroller's 17 points and the sheet's frames move
+    /// (TAN-218; one run diffed the clip view at 507 instead of 524). The preference is
+    /// the pointer's, not the layout's, and a snapshot must not follow the machine, so
+    /// every scroll view inside the hosted face is pinned to the overlay style this Mac
+    /// draws anyway.
+    private func pinOverlayScrollers(in view: NSView) {
+        for subview in view.subviews {
+            if let scrollView = subview as? NSScrollView {
+                scrollView.scrollerStyle = .overlay
+            }
+            pinOverlayScrollers(in: subview)
+        }
     }
 }
 
