@@ -93,16 +93,18 @@ struct SnapshotTests {
 
         // MARK: The data
 
-        /// Two lanes, five tickets, every workflow stage the board draws a column for.
+        /// Two lanes, seven tickets, every workflow stage the board draws a column for,
+        /// and a two-link dependency chain (TAN-232) so one sheet carries both the
+        /// `Blocked by` and the `Blocks` sections.
         private static func seedStore(at home: URL) throws {
             let store = Store(directory: home)
             _ = try store.addLane("Tandem")
             _ = try store.addLane("Fleet")
-            _ = try store.add("Land the snapshot seam", lane: "Tandem",
+            let seam = try store.add("Land the snapshot seam", lane: "Tandem",
                               status: .inProgress, assignee: "builder",
                               description: "Render the four faces and compare them to "
                                   + "committed baselines, so a layout change a diff "
-                                  + "cannot show fails swift test.")
+                                  + "cannot show fails swift test.").value
             _ = try store.add("Refine the driver question", lane: "Tandem",
                               status: .backlog, assignee: "human")
             _ = try store.add("Widen the editor column", lane: "Tandem",
@@ -110,6 +112,14 @@ struct SnapshotTests {
             _ = try store.add("Sweep the open tickets", lane: "Fleet",
                               status: .done, assignee: "builder")
             _ = try store.add("Rename the cask token", status: .backlog)
+            let middle = try store.add(
+                "Land the store change", lane: "Tandem", status: .ready,
+                description: "The table and the verb land together.\n\n"
+                    + "## Blocked on\n\nThe snapshot seam has to be in place first.").value
+            let leaf = try store.add("Wait on the store change", lane: "Tandem",
+                                     status: .ready).value
+            _ = try store.block(middle.ref!, on: seam.ref!)
+            _ = try store.block(leaf.ref!, on: middle.ref!)
         }
 
         /// Three records: one still running, two ended with their outcomes.
@@ -188,11 +198,13 @@ struct SnapshotTests {
         assertSnapshot(of: hosting, as: .stableDescription())
     }
 
-    /// The ticket sheet: title, the three pickers, the filer, the ref, the body.
+    /// The ticket sheet: title, the three pickers, the filer, the ref, the body, and the
+    /// dependency sections, on the fixture's middle ticket, which both waits on one and
+    /// holds one up (TAN-232).
     @Test("the ticket sheet")
     func ticketSheet() throws {
         let ticket = try #require(Fixture.model.tickets.first {
-            $0.status == .inProgress
+            !$0.blockedBy.isEmpty && !$0.blocks.isEmpty
         })
         let view = TicketSheet(ticket: ticket,
                                palette: .day,
@@ -203,12 +215,32 @@ struct SnapshotTests {
                                onComment: { _ in .refused(message: "fixture") },
                                onRefreshComments: { .list([]) },
                                onOpenLink: { _ in },
+                               onOpenTicket: { _ in },
                                onPromote: { .refused(message: "fixture") })
         // The sheet sizes itself (580 wide, 560 tall with no comments to draw).
         let size = CGSize(width: 580, height: 560)
         let hosting = host(view, size: size)
         assertSnapshot(of: hosting, as: .image(at: 2, size: size))
         assertSnapshot(of: hosting, as: .stableDescription(tolerance: 5))
+    }
+
+    /// The main-window row: the block's capsule sits on the title's line, beside the
+    /// `archived` and Status capsules (TAN-232). Without this face the row's marker has
+    /// no seam at all.
+    @Test("the ticket row")
+    func ticketRow() throws {
+        let ticket = try #require(Fixture.model.tickets.first { $0.blocked })
+        let view = LigneRow(ticket: ticket,
+                            palette: .day,
+                            onComplete: {},
+                            onReopen: {},
+                            onEdit: { _ in },
+                            onDelete: {},
+                            onOpenLink: { _ in })
+        let size = CGSize(width: 640, height: 56)
+        let hosting = host(view, size: size)
+        assertSnapshot(of: hosting, as: .image(at: 2, size: size))
+        assertSnapshot(of: hosting, as: .stableDescription())
     }
 
     /// The sessions face: two projects, a running record and two ended ones.

@@ -370,6 +370,20 @@ struct LigneRow: View {
                             .help("Archived: out of the default views, still in the store")
                     }
 
+                    // A ticket waiting on an open blocker says so on the title's line
+                    // (TAN-232): the list is the face a human reads most, so the block
+                    // cannot live only on the board. The card and the row carry the
+                    // incoming side; the far side is read on the blocker's own face.
+                    if ticket.blocked {
+                        Text("blocked")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(palette.emberDeep)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .overlay(Capsule().strokeBorder(palette.ember, lineWidth: Line.hairline))
+                            .help(ticket.blockedReason ?? "Waiting on an open blocker")
+                    }
+
                     // The labels the board's tile already draws, on the title's line:
                     // Status, ref, assignee. `backlog` is the default, so it stays
                     // silent — the Open view would otherwise be a wall of one word.

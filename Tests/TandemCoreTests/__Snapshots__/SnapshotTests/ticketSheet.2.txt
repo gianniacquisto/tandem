@@ -1,6 +1,6 @@
 h=--- v=--- _TtGC7SwiftUI13NSHostingViewGVS_15ModifiedContentV6Tandem11TicketSheetVS_12_FrameLayout__ f=(0,0,580,560) b=(-) => <NSViewBackingLayer>
   h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10c24PlatformTextFieldAdaptor__ f=(29,27,522,18) b=(-) => <NSViewBackingLayer>
-    h=-&- v=-&- SwiftUI.AppKitTextField "Land the snapshot seam" f=(-2,0,526,18) b=(-) => <NSViewBackingLayer>
+    h=-&- v=-&- SwiftUI.AppKitTextField "Land the store change" f=(-2,0,526,18) b=(-) => <NSViewBackingLayer>
       h=--- v=--- _TtC6AppKitP33_72EBFCF981BE77E1C6F26FD717D0893922NSTextFieldSimpleLabel f=(0,0,526,18) b=(-) => <NSViewBackingLayer>
   h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorGVVS_P10c18AppKitPopUpAdaptor12PlatformViewVVS_22MenuStyleConfiguration5Label____ f=(20,65,58,13) b=(-) => <NSViewBackingLayer>
     h=-&- v=-&- _TtGCVV7SwiftUIP10c18AppKitPopUpAdaptor12PlatformView18SwiftUIPopupButtonVVS_22MenuStyleConfiguration5Label___ "Status" f=(-5,0,63,13) b=(-) => <NSViewBackingLayer>
@@ -19,15 +19,19 @@ h=--- v=--- _TtGC7SwiftUI13NSHostingViewGVS_15ModifiedContentV6Tandem11TicketShe
         h=--- v=--- _TtC6AppKitP33_72EBFCF981BE77E1C6F26FD717D0893922NSTextFieldSimpleLabel f=(0,0,50.5,13) b=(-) => <NSViewBackingLayer>
   h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(299,65,33,13) b=(-) => <NSViewBackingLayer>
   h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(475,64,85,14) b=(-) => <NSViewBackingLayer>
-  h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_23AppKitTextEditorAdaptor__ f=(28,136,524,280) b=(-) => <NSViewBackingLayer>
-    h=-&- v=-&- SwiftUI.TextEditorScrollView f=(0,0,524,280) b=(-) => <NSViewBackingLayer>
-      h=-&- v=-&- NSClipView f=(0,0,524,280) b=(-) => <NSViewBackingLayer>
-        h=-&- v=-&- SwiftUI.PlatformTextView f=(0,0,524,280) b=(-) => <NSViewBackingLayer>
-          h=-&- v=-&- _NSTextSelectionView f=(0,0,524,280) b=(-) => <NSViewBackingLayer>
-          h=-&- v=-&- _NSTextRenderingSurfacesGroupView f=(0,0,524,280) b=(-) => <NSViewBackingLayer>
-          h=-&- v=-&- _NSTextContentView f=(0,0,524,280) b=(-) => <NSViewBackingLayer>
-            h=--- v=--- _NSTextViewportElementView f=(2,-2,516,34) b=(-3,-2,-,-) => <NSViewBackingLayer>
-      h=--- v=--- NSScroller f=(507,0,17,280) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(20,121,540,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(20,176,540,14) b=(-) => <NSViewBackingLayer>
+  h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_23AppKitTextEditorAdaptor__ f=(28,235,524,181) b=(-) => <NSViewBackingLayer>
+    h=-&- v=-&- SwiftUI.TextEditorScrollView f=(0,0,524,181) b=(-) => <NSViewBackingLayer>
+      h=-&- v=-&- NSClipView f=(0,0,524,181) b=(-) => <NSViewBackingLayer>
+        h=-&- v=-&- SwiftUI.PlatformTextView f=(0,0,524,181) b=(-) => <NSViewBackingLayer>
+          h=-&- v=-&- _NSTextSelectionView f=(0,0,524,181) b=(-) => <NSViewBackingLayer>
+          h=-&- v=-&- _NSTextRenderingSurfacesGroupView f=(0,0,524,181) b=(-) => <NSViewBackingLayer>
+          h=-&- v=-&- _NSTextContentView f=(0,0,524,181) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _NSTextViewportElementView f=(2,-2,286,19) b=(-3,-2,-,-) => <NSViewBackingLayer>
+            h=--- v=--- _NSTextViewportElementView f=(2,28,108,19) b=(-3,-2,-,-) => <NSViewBackingLayer>
+            h=--- v=--- _NSTextViewportElementView f=(2,58,331,19) b=(-3,-2,-,-) => <NSViewBackingLayer>
+      h=--- v=--- NSScroller f=(507,0,17,181) b=(-) => <NSViewBackingLayer>
   h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(519,436,41,14) b=(-) => <NSViewBackingLayer>
   h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10c24PlatformTextFieldAdaptor__ f=(29,482,469,15) b=(-) => <NSViewBackingLayer>
     h=-&- v=-&- SwiftUI.AppKitTextField f=(-2,0,473,15) b=(-) => <NSViewBackingLayer>

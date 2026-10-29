@@ -295,4 +295,115 @@ struct SQLiteSeamTests {
         _ = try store.reopen(id)
         #expect(store.backupHealth() == .absent)
     }
+
+    // MARK: - The dependency table (TAN-232)
+
+    /// A version-4 home, the shape the installed build leaves: the schema migrations
+    /// up to 4 applied, one lane and two numbered tickets, and the ticket domain's
+    /// import marker so the database is the store.
+    private func v4Home(in dir: URL) throws -> (first: UUID, second: UUID) {
+        let db = try SQLiteDatabase(url: dir.appendingPathComponent("tandem.db"))
+        defer { db.close() }
+        try StoreSchema.migrate(db, migrations: Array(StoreSchema.migrations.prefix(4)))
+        #expect(try StoreSchema.version(of: db) == 4)
+        try StoreSchema.markImported(StoreSchema.ticketsDomain, from: nil, at: .now, in: db)
+        try db.run("INSERT INTO lanes (name, key, lastNumber, position) VALUES (?, ?, ?, ?)",
+                   [.text("Tandem"), .text("TAN"), .int(2), .int(0)])
+        let first = UUID()
+        let second = UUID()
+        let rows: [(UUID, String, Int)] = [(first, "waits", 1), (second, "finishes", 2)]
+        for (id, title, number) in rows {
+            try db.run("""
+                INSERT INTO tickets
+                    (id, title, description, status, archived, lane, assignee, origin, link,
+                     position, createdAt, completedAt, number)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, [
+                    .text(id.uuidString), .text(title), .null, .text(Status.backlog.rawValue),
+                    .int(0), .text("Tandem"), .null, .text("human"), .null,
+                    .int(number - 1), .text(Timestamp.encode(Date(timeIntervalSince1970: 1_790_000_000))),
+                    .null, .int(number),
+                ])
+        }
+        return (first, second)
+    }
+
+    @Test("a v4 database reads with no edges and the read writes nothing")
+    func v4ReadsWithNoEdges() throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try v4Home(in: dir)
+        let before = try entries(in: dir)
+
+        let tickets = try Store(directory: dir).list(.all).value
+        #expect(tickets.count == 2)
+        #expect(tickets.allSatisfy { $0.blockedBy.isEmpty && $0.blocks.isEmpty })
+        #expect(tickets.allSatisfy { !$0.blocked })
+        #expect(try Store(directory: dir).schemaVersion() == 4, "a read never migrates")
+        #expect(try entries(in: dir) == before, "the read created no backup and no table")
+        // The lane's refs still read, so the new table is the only difference.
+        #expect(tickets.compactMap(\.ref).sorted() == ["TAN-1", "TAN-2"])
+    }
+
+    @Test("the first write on a v4 home creates ticket_dependencies and records v5")
+    func firstWriteOnV4CreatesTheTable() throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ids = try v4Home(in: dir)
+        let store = Store(directory: dir)
+
+        _ = try store.block(ids.first.uuidString, on: ids.second.uuidString)
+
+        #expect(store.schemaVersion() == StoreSchema.currentVersion)
+        #expect(StoreSchema.currentVersion == 5, "the dependency table moves the schema")
+
+        let db = try SQLiteDatabase(url: store.databaseURL, mode: .readOnly)
+        defer { db.close() }
+        let tables = Set(try db.rows(
+            "SELECT name FROM sqlite_master WHERE type = 'table'") { $0.text(0) })
+        #expect(tables.contains("ticket_dependencies"))
+        let versions = try db.rows("SELECT version FROM schema_migrations ORDER BY version") {
+            $0.int(0)
+        }
+        #expect(versions == Array(1...5))
+        let edges = try db.rows("SELECT ticket_id, depends_on_id FROM ticket_dependencies") {
+            ($0.text(0), $0.text(1))
+        }
+        #expect(edges.count == 1)
+        #expect(edges.first?.0 == ids.first.uuidString)
+        #expect(edges.first?.1 == ids.second.uuidString)
+    }
+
+    @Test("a migrating write rolls tandem.db.bak to v4 before the migration commits")
+    func migratingWriteKeepsAV4Backup() throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ids = try v4Home(in: dir)
+        let store = Store(directory: dir)
+
+        _ = try store.block(ids.first.uuidString, on: ids.second.uuidString)
+        // A second write, so the migration's own backup is not the one just taken.
+        _ = try store.unblock(ids.first.uuidString)
+
+        let backup = try SQLiteDatabase(url: store.backupURL, mode: .readOnly)
+        defer { backup.close() }
+        #expect(try StoreSchema.version(of: backup) == 5,
+                "the write after the migration rolls the migrated state")
+
+        // The migration's pre-image is what the first write rolled: rebuild one and
+        // check it. `tandem.db.bak` after the first write was the v4 database.
+        let fresh = try makeDir()
+        defer { try? FileManager.default.removeItem(at: fresh) }
+        let freshIDs = try v4Home(in: fresh)
+        let freshStore = Store(directory: fresh)
+        _ = try freshStore.block(freshIDs.first.uuidString, on: freshIDs.second.uuidString)
+        let pre = try SQLiteDatabase(url: freshStore.backupURL, mode: .readOnly)
+        defer { pre.close() }
+        #expect(try StoreSchema.version(of: pre) == 4, "the pre-migration image is v4")
+        let tables = Set(try pre.rows(
+            "SELECT name FROM sqlite_master WHERE type = 'table'") { $0.text(0) })
+        #expect(!tables.contains("ticket_dependencies"),
+                "the backup predates the table, so the old build can restore it")
+        _ = fresh
+    }
 }

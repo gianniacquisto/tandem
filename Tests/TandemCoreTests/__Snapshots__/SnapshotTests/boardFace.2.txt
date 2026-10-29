@@ -30,8 +30,14 @@ h=--- v=--- _TtGC7SwiftUI13NSHostingViewGVS_15ModifiedContentV6Tandem9BoardFaceV
             h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(32,129,18,18) b=(-) => <NSViewBackingLayer>
             h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(181,118,154,48) b=(-) => <NSViewBackingLayer>
               h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,154,48) b=(-) => <NSViewBackingLayer>
-            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(343,118,153,48) b=(-) => <NSViewBackingLayer>
-              h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,153,48) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(343,118,153,173) b=(-) => <NSViewBackingLayer>
+              h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,153,173) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(347,122,145,72) b=(-) => <NSViewBackingLayer>
+              h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,145,72) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(355,129,18,18) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(347,200,145,87) b=(-) => <NSViewBackingLayer>
+              h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,145,87) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(355,207,18,18) b=(-) => <NSViewBackingLayer>
             h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(504,118,153,96) b=(-) => <NSViewBackingLayer>
               h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,153,96) b=(-) => <NSViewBackingLayer>
             h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(508,122,145,88) b=(-) => <NSViewBackingLayer>
@@ -44,19 +50,19 @@ h=--- v=--- _TtGC7SwiftUI13NSHostingViewGVS_15ModifiedContentV6Tandem9BoardFaceV
             h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(677,129,18,18) b=(-) => <NSViewBackingLayer>
             h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(827,118,153,48) b=(-) => <NSViewBackingLayer>
               h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,153,48) b=(-) => <NSViewBackingLayer>
-            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(20,247,153,48) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(20,324,153,48) b=(-) => <NSViewBackingLayer>
               h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,153,48) b=(-) => <NSViewBackingLayer>
-            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(181,247,154,48) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(181,324,154,48) b=(-) => <NSViewBackingLayer>
               h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,154,48) b=(-) => <NSViewBackingLayer>
-            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(343,247,153,48) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(343,324,153,48) b=(-) => <NSViewBackingLayer>
               h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,153,48) b=(-) => <NSViewBackingLayer>
-            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(504,247,153,48) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(504,324,153,48) b=(-) => <NSViewBackingLayer>
               h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,153,48) b=(-) => <NSViewBackingLayer>
-            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(665,247,154,48) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(665,324,154,48) b=(-) => <NSViewBackingLayer>
               h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,154,48) b=(-) => <NSViewBackingLayer>
-            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(827,247,153,81) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(827,324,153,81) b=(-) => <NSViewBackingLayer>
               h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,153,81) b=(-) => <NSViewBackingLayer>
-            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(831,251,145,73) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtGC7SwiftUI22AppKitPlatformViewHostGVS_P10832PlatformViewRepresentableAdaptorVS_P10423DraggingDestinationView__ f=(831,328,145,73) b=(-) => <NSViewBackingLayer>
               h=-&- v=-&- _TtC7SwiftUIP33_9FEAD73C8B0BC1AFBEE663AAA2C9BA4C32_PlatformDraggingDestinationView f=(0,0,145,73) b=(-) => <NSViewBackingLayer>
-            h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(839,258,18,18) b=(-) => <NSViewBackingLayer>
+            h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(839,335,18,18) b=(-) => <NSViewBackingLayer>
       h=--- v=--- NSScroller f=(0,0,0,100) b=(-) => <NSViewBackingLayer>

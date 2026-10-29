@@ -26,7 +26,7 @@ enum StoreSchema {
     }
 
     /// The version this build writes and reads.
-    static let currentVersion = 4
+    static let currentVersion = 5
 
     /// Every migration, in order. Append only — a shipped version's DDL never changes.
     static let migrations: [Migration] = [
@@ -165,6 +165,27 @@ enum StoreSchema {
         Migration(version: 4, name: "on-hold replaces the retired spelling") { db in
             try db.run("UPDATE tickets SET status = ? WHERE status = ?",
                        [.text(Status.onHold.rawValue), .text(Status.retiredOnHold)])
+        },
+        // Ticket dependencies (TAN-232): one row per edge, both ends a ticket's UUID.
+        // A **table**, not a column of refs: a dependency fans out, the draw filters on
+        // it, and the far side (`blocks`) is read from the same rows, a new table costs
+        // one guarded read on an un-migrated home where a new column would break every
+        // read. No foreign key, like every table here: the write is delete-all-then-
+        // insert, which a live FK would refuse mid-transaction, and the invariants are
+        // the core's. No backfill: the store holds no edges yet, and the prose sections
+        // that do are migrated as data once this build has landed.
+        Migration(version: 5, name: "ticket dependencies") { db in
+            try db.execute("""
+                CREATE TABLE IF NOT EXISTS ticket_dependencies (
+                    ticket_id     TEXT NOT NULL,
+                    depends_on_id TEXT NOT NULL,
+                    PRIMARY KEY (ticket_id, depends_on_id)
+                )
+                """)
+            try db.execute("""
+                CREATE INDEX IF NOT EXISTS ticket_dependencies_on
+                ON ticket_dependencies (depends_on_id)
+                """)
         }
     ]
 
@@ -369,12 +390,42 @@ enum StoreSchema {
         // only the derived `ref` is refreshed; a v2 database reads as its migration will
         // leave it.
         contents.prepare()
+        // The dependency edges (TAN-232) read only on a database that has their table.
+        // Below v5 every ticket reads with empty lists and nothing else changes, a read
+        // never migrates, so an installed build's home still lists.
+        if version >= 5 {
+            let edges = try db.rows("""
+                SELECT ticket_id, depends_on_id FROM ticket_dependencies ORDER BY rowid
+                """) { row -> (UUID, UUID)? in
+                guard let ticket = UUID(uuidString: row.text(0)),
+                      let dependsOn = UUID(uuidString: row.text(1))
+                else { return nil }
+                return (ticket, dependsOn)
+            }
+            var byTicket: [UUID: [UUID]] = [:]
+            for edge in edges.compactMap({ $0 }) {
+                byTicket[edge.0, default: []].append(edge.1)
+            }
+            for i in contents.todos.indices {
+                let waiting = byTicket[contents.todos[i].id] ?? []
+                // The store fills only the key; the block's ref, title and status are
+                // derived from the tickets it just read, so one read answers both ends.
+                contents.todos[i].blockedBy = waiting.map {
+                    TicketBlock(id: $0, ref: nil, title: "", status: .backlog)
+                }
+            }
+            contents.refreshBlocked()
+        }
         return contents
     }
 
     /// Replace the ticket domain with `contents`: one transaction's worth of rows, the
     /// positions rewritten from the array exactly as the file's order was.
     static func writeContents(_ contents: StoreContents, to db: SQLiteDatabase) throws {
+        // The edges are rewritten with the tickets in this one transaction (TAN-232): the
+        // store writes the whole ticket domain every time, so an edge left out here would
+        // be silently dropped by the next write of any ticket.
+        try db.run("DELETE FROM ticket_dependencies")
         try db.run("DELETE FROM tickets")
         try db.run("DELETE FROM lanes")
         for (position, lane) in contents.lanes.enumerated() {
@@ -402,6 +453,14 @@ enum StoreSchema {
                     ticket.completedAt.map { .text(Timestamp.encode($0)) } ?? .null,
                     .intOrNull(ticket.number)
                 ])
+        }
+        for ticket in contents.todos {
+            for edge in ticket.blockedBy {
+                try db.run("""
+                    INSERT OR IGNORE INTO ticket_dependencies (ticket_id, depends_on_id)
+                    VALUES (?, ?)
+                    """, [.text(ticket.id.uuidString), .text(edge.id.uuidString)])
+            }
         }
     }
 
