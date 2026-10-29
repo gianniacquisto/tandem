@@ -29,6 +29,14 @@ import TandemCore
 // layout pass had settled on that machine. `.stableDescription` strips the discriminator
 // and the flag column, and drops the legend that documents the flags; class names, tree
 // shape, hidden state and every `f=` frame stay, so a layout change still moves the file.
+//
+// **What still differs across machines**: the ticket sheet's pop-up buttons are the one
+// self-sizing AppKit control in the four views, and the runner lays them out a point or
+// four wider than this Mac (it measures their menu labels from the machine). That view's
+// text assertion passes `tolerance: 4` to `.stableDescription`, which still requires the
+// same tree and the same class on every line and fails on any frame drift over four points;
+// the other three views compare exactly. The PNGs compare perceptually at 99%, because the
+// runner's rasteriser draws the AppKit controls differently even where the frames match.
 // The text dump is the AppKit layer only: SwiftUI draws its own text into layers, not
 // into `NSView`s, and the AX tree is unreadable from inside the test process (AX is
 // disabled for it, `-25208`).
@@ -177,7 +185,7 @@ struct SnapshotTests {
         let size = CGSize(width: 1000, height: 640)
         let hosting = host(view, size: size)
         assertSnapshot(of: hosting, as: .image(at: 2, size: size))
-        assertSnapshot(of: hosting, as: .stableDescription)
+        assertSnapshot(of: hosting, as: .stableDescription())
     }
 
     /// The ticket sheet: title, the three pickers, the filer, the ref, the body.
@@ -200,7 +208,7 @@ struct SnapshotTests {
         let size = CGSize(width: 580, height: 560)
         let hosting = host(view, size: size)
         assertSnapshot(of: hosting, as: .image(at: 2, size: size))
-        assertSnapshot(of: hosting, as: .stableDescription)
+        assertSnapshot(of: hosting, as: .stableDescription(tolerance: 4))
     }
 
     /// The sessions face: two projects, a running record and two ended ones.
@@ -213,7 +221,7 @@ struct SnapshotTests {
         let size = CGSize(width: 900, height: 520)
         let hosting = host(view, size: size)
         assertSnapshot(of: hosting, as: .image(at: 2, size: size))
-        assertSnapshot(of: hosting, as: .stableDescription)
+        assertSnapshot(of: hosting, as: .stableDescription())
     }
 
     /// The sprints face: an open sprint and a closed one, grouped by lane.
@@ -226,10 +234,27 @@ struct SnapshotTests {
         let size = CGSize(width: 900, height: 520)
         let hosting = host(view, size: size)
         assertSnapshot(of: hosting, as: .image(at: 2, size: size))
-        assertSnapshot(of: hosting, as: .stableDescription)
+        assertSnapshot(of: hosting, as: .stableDescription())
     }
 
     // MARK: - The normalised text dump
+
+    @Test("the sheet's text diff allows four points of AppKit drift and no more")
+    func geometryTolerance() {
+        let reference = "  h=--- v=--- SwiftUI.AppKitTextField f=(20,65,58,13) b=(-)"
+        let diffing = Diffing<String>.geometry(tolerance: 4)
+        #expect(diffing.diffV2(reference, reference) == nil)
+        #expect(diffing.diffV2(reference,
+                               "  h=--- v=--- SwiftUI.AppKitTextField f=(20,65,62,13) b=(-)") == nil)
+        #expect(diffing.diffV2(reference,
+                               "  h=--- v=--- SwiftUI.AppKitTextField f=(24,65,58,13) b=(-)") == nil)
+        #expect(diffing.diffV2(reference,
+                               "  h=--- v=--- SwiftUI.AppKitTextField f=(20,65,63,13) b=(-)") != nil)
+        #expect(diffing.diffV2(reference,
+                               "  h=--- v=--- SwiftUI.AppKitTextField f=(24,65,58,13) b=(-) !") != nil)
+        #expect(diffing.diffV2(reference,
+                               "  h=--- v=--- SwiftUI.AppKitTextEditor f=(20,65,58,13) b=(-)") != nil)
+    }
 
     /// The two machine-dependent fields, removed. The eight-hex discriminator follows a
     /// `$` inside some mangled class names; the flag column is the first bracketed field on
@@ -269,11 +294,11 @@ struct SnapshotTests {
 extension Snapshotting where Value == NSView, Format == String {
     /// The AppKit tree with the fields that are not layout removed, so the same layout
     /// records the same text on this Mac and on CI's runner. See the note at the top.
-    static var stableDescription: Snapshotting<NSView, String> {
+    static func stableDescription(tolerance: CGFloat = 0) -> Snapshotting<NSView, String> {
         let base = Snapshotting<NSView, String>.recursiveDescription
         return Snapshotting(
             pathExtension: base.pathExtension,
-            diffing: base.diffing,
+            diffing: tolerance > 0 ? Diffing<String>.geometry(tolerance: tolerance) : base.diffing,
             asyncSnapshot: { view in base.snapshot(view).map(stable) }
         )
     }
@@ -299,6 +324,78 @@ extension Snapshotting where Value == NSView, Format == String {
 }
 
 
+// MARK: - A text diff that lets the geometry drift
+
+extension Diffing where Value == String {
+    /// Compares two dumps line by line: everything except the `f=`/`b=` geometry must match
+    /// exactly, and each coordinate may drift by `tolerance` points. The reference for the
+    /// ticket sheet is recorded on this Mac, and CI's runner lays its pop-up buttons out a
+    /// point or four wider (AppKit measures the menu labels from the machine, and the sheet is
+    /// the one face carrying self-sizing controls), so that view's assertion is the only one
+    /// that needs room. Every other face compares with the plain `.lines` diffing.
+    static func geometry(tolerance: CGFloat) -> Diffing<String> {
+        .diff(
+            toData: { Data($0.utf8) },
+            fromData: { String(decoding: $0, as: UTF8.self) },
+            diffV2: { reference, recorded in
+                let expected = reference.split(separator: "\n", omittingEmptySubsequences: false)
+                let actual = recorded.split(separator: "\n", omittingEmptySubsequences: false)
+                guard expected.count == actual.count else {
+                    return (
+                        "The dump has \(actual.count) lines; the reference has \(expected.count).",
+                        []
+                    )
+                }
+                for (index, pair) in zip(expected, actual).enumerated() {
+                    let left = String(pair.0)
+                    let right = String(pair.1)
+                    let line = index + 1
+                    guard skeleton(left) == skeleton(right) else {
+                        return ("Line \(line) changed:\n\n- \(left)\n+ \(right)", [])
+                    }
+                    if let drift = geometryDrift(left, right, tolerance: tolerance) {
+                        return (
+                            "Line \(line) moved by \(drift) points (tolerance \(tolerance)):"
+                                + "\n\n- \(left)\n+ \(right)",
+                            []
+                        )
+                    }
+                }
+                return nil
+            }
+        )
+    }
+}
+
+/// The line with its geometry replaced by a fixed token, so a frame move does not read as a
+/// change to the class or the hidden state.
+private func skeleton(_ line: String) -> String {
+    line.replacing(/[fb]=\([^)]*\)/, with: "GEOM")
+}
+
+/// The first coordinate pair that drifted further than `tolerance`, or `nil` when every
+/// number still matches within it. A `-` placeholder in `b=` must match a `-` exactly.
+private func geometryDrift(_ left: String, _ right: String, tolerance: CGFloat) -> CGFloat? {
+    let expected = left.matches(of: /[fb]=\(([^)]*)\)/).map { String($0.output.1) }
+    let actual = right.matches(of: /[fb]=\(([^)]*)\)/).map { String($0.output.1) }
+    guard expected.count == actual.count else { return .infinity }
+    for (a, b) in zip(expected, actual) {
+        let expectedParts = a.split(separator: ",")
+        let actualParts = b.split(separator: ",")
+        guard expectedParts.count == actualParts.count else { return .infinity }
+        for (x, y) in zip(expectedParts, actualParts) {
+            guard let expectedValue = Double(x), let actualValue = Double(y) else {
+                if x != y { return .infinity }
+                continue
+            }
+            let drift = abs(expectedValue - actualValue)
+            if drift > Double(tolerance) { return CGFloat(drift) }
+        }
+    }
+    return nil
+}
+
+
 // MARK: - A 2x image snapshot
 
 extension Snapshotting where Value == NSView, Format == NSImage {
@@ -307,9 +404,18 @@ extension Snapshotting where Value == NSView, Format == NSImage {
     /// headless runner), which would make the committed PNG's pixel size a property of the
     /// machine. This renders into a bitmap of a named scale instead, so the baseline is
     /// the same file everywhere, and still sharp.
+    ///
+    /// The comparison is perceptual, not exact (TAN-218). The baseline is recorded on this
+    /// Mac, and CI's runner rasterises the AppKit controls and measures their labels a point
+    /// or four differently, so three of the four PNGs diffed on every run while the board's
+    /// matched byte for byte. 99% of pixels must match within 99% of the eye's precision,
+    /// the library's own note for cross-machine images; the tests' geometry check is the
+    /// normalised text dump, and the sheet's frames carry their own tolerance above, so a
+    /// layout move still fails even though a glyph edge may not.
     @MainActor
     static func image(at scale: Int, size: CGSize) -> Snapshotting<NSView, NSImage> {
-        Snapshotting<NSImage, NSImage>.image.pullback { view in
+        Snapshotting<NSImage, NSImage>.image(precision: 0.99, perceptualPrecision: 0.99)
+            .pullback { view in
             let initial = view.frame.size
             view.frame.size = size
             view.layoutSubtreeIfNeeded()
