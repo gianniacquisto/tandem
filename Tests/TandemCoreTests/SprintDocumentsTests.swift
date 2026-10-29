@@ -100,6 +100,22 @@ struct SprintDocumentsTests {
             "the run log and the close are fields on the record, not a description")
     }
 
+    /// The session is a record (ADR 0027), so triage names `session start` rather
+    /// than a ticket filed in the default area: §2's last sentence outlived the switch.
+    @Test("triage names the session record, not a session ticket")
+    func triageNamesTheSessionRecord() throws {
+        let skill = try Self.file("skills/tandem-sprint/SKILL.md")
+        #expect(
+            !skill.contains("session ticket"),
+            "a session is a record, not a ticket (ADR 0027)")
+        #expect(
+            !skill.contains("files its own session ticket in the default area"),
+            "the clause survived the sessions switch and must go")
+        #expect(
+            skill.contains("tandem-cli session start"),
+            "§2 names the record the session starts")
+    }
+
     /// A dead sprint is found from the record: `sprint list --status open`, and the
     /// record's `session` field. The stale-session signals stay, read against that id.
     @Test("the dead-sprint rule reads the record, not a ticket title")
