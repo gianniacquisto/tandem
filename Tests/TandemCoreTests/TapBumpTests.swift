@@ -156,22 +156,31 @@ struct TapBumpTests {
 
     /// `git rev-list --count main`, the fixture origin's history length.
     private static func commitCount(_ origin: URL) throws -> String {
+        try capture(origin, ["rev-list", "--count", "main"])
+    }
+
+    /// `git -C <dir> <args>` stdout, trimmed.
+    private static func capture(_ dir: URL, _ arguments: [String]) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["rev-list", "--count", "main"]
-        process.currentDirectoryURL = origin
+        process.arguments = arguments
+        process.currentDirectoryURL = dir
         let output = Pipe()
         process.standardOutput = output
         try process.run()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
-            throw FixtureError(message: "git rev-list failed in \(origin.path)")
+            throw FixtureError(message: "git \(arguments.joined(separator: " ")) failed in \(dir.path)")
         }
         let text = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         return text.trimmingCharacters(in: .newlines)
     }
 
-    private static func run(_ arguments: [String], token: String? = nil) throws -> Run {
+    private static func run(
+        _ arguments: [String],
+        token: String? = nil,
+        environment extra: [String: String] = [:]
+    ) throws -> Run {
         let process = Process()
         process.executableURL = Self.root.appendingPathComponent("Scripts/bump-tap.sh")
         process.currentDirectoryURL = Self.root
@@ -179,6 +188,7 @@ struct TapBumpTests {
         var environment = ProcessInfo.processInfo.environment
         environment.removeValue(forKey: "TAP_TOKEN")
         if let token { environment["TAP_TOKEN"] = token }
+        for (key, value) in extra { environment[key] = value }
         process.environment = environment
         let output = Pipe()
         let errors = Pipe()
@@ -222,6 +232,54 @@ struct TapBumpTests {
         #expect(try Self.commitCount(origin) == "2")
         #expect(try Self.log(origin, "%s") == "tandem 0.35.0")
         #expect(try Self.log(origin, "%cn") == "github-actions[bot]")
+    }
+
+    @Test("without a tap dir it clones through the token and strips it")
+    func itClonesThroughTheTokenAndStripsIt() throws {
+        let (_, origin) = try Self.makeTap(cask: Self.cask034)
+        let token = "tap-token-fixture"
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tap-bump-clone-\(UUID().uuidString)")
+        let bin = fixture.appendingPathComponent("bin")
+        let brewPrefix = fixture.appendingPathComponent("brew")
+        let brew = bin.appendingPathComponent("brew")
+        try Self.write("#!/bin/sh\necho \"\(brewPrefix.path)\"\n", to: brew)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: brew.path)
+
+        // Only the tokenised URL resolves, and it resolves to the fixture origin:
+        // a push through anything else cannot authenticate, which is the
+        // runner's fresh-clone path.
+        let gitconfig = fixture.appendingPathComponent("gitconfig")
+        try Self.write("""
+        [url "\(origin.path)"]
+        \tinsteadOf = https://x-access-token:\(token)@github.com/gianniacquisto/homebrew-tap.git
+
+        """, to: gitconfig)
+        let sums = try Self.checksums([(Self.digest035, "Tandem-0.35.0.zip")])
+        let path = "\(bin.path):\(ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin")"
+
+        let run = try Self.run(
+            ["v0.35.0", sums.path],
+            token: token,
+            environment: [
+                "GIT_CONFIG_GLOBAL": gitconfig.path,
+                "GIT_TERMINAL_PROMPT": "0",
+                "PATH": path,
+            ]
+        )
+
+        #expect(run.status == 0, "\(run.errors)")
+        let tap = brewPrefix.appendingPathComponent("Library/Taps/gianniacquisto/homebrew-tap")
+        let bumped = try String(contentsOf: tap.appendingPathComponent("Casks/tandem.rb"), encoding: .utf8)
+        #expect(bumped == Self.cask035)
+        #expect(try Self.commitCount(origin) == "2")
+        #expect(try Self.log(origin, "%s") == "tandem 0.35.0")
+        // The push authenticated through the tokenised remote; the clone's own
+        // config carries the plain URL and no trace of the token afterwards.
+        #expect(try Self.capture(tap, ["remote", "get-url", "origin"])
+            == "https://github.com/gianniacquisto/homebrew-tap.git")
+        let config = try String(contentsOf: tap.appendingPathComponent(".git/config"), encoding: .utf8)
+        #expect(!config.contains(token))
     }
 
     @Test("a cask already at the tag's version pushes nothing")

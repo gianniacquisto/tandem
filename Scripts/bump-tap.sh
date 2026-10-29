@@ -15,10 +15,11 @@
 # The tap clone is brew's: `$(brew --prefix)/Library/Taps/gianniacquisto/
 # homebrew-tap`, because brew loads a cask only from the tap tree (`brew audit`
 # refuses a bare path). Absent, it is cloned from `--remote`, whose default
-# carries TAP_TOKEN in the URL GitHub masks; the token is stripped from the
-# remote immediately after, so it lives nowhere on disk. Present, it is fetched
-# and reset to `origin/main`, the path a re-bump of a past tag takes on a
-# developer machine.
+# carries TAP_TOKEN in the URL GitHub masks; the push then authenticates through
+# that same tokenised URL, and a trap strips the token from the clone before the
+# script exits on any path, so it lives nowhere on disk afterwards. Present, it
+# is fetched and reset to `origin/main`, the path a re-bump of a past tag takes
+# on a developer machine.
 #
 # TAP_TOKEN is required only for the clone: unset or empty with no `--remote`
 # fails before anything is cloned, naming the secret. A missing token is a red
@@ -131,6 +132,19 @@ if [ "$verify" -eq 1 ] && ! command -v brew >/dev/null 2>&1; then
   exit 2
 fi
 
+# The clone's remote carries the token, so the push must authenticate through it
+# before it goes away. The trap strips it on every exit path, failed clone
+# included: a developer re-bump with a `--remote` that carries the token leaves
+# no credential in the clone's .git/config.
+token_remote=
+strip_token() {
+  [ -n "$token_remote" ] || return 0
+  if [ -d "$tap_dir/.git" ]; then
+    git -C "$tap_dir" remote set-url origin https://github.com/gianniacquisto/homebrew-tap.git || :
+  fi
+  token_remote=
+}
+
 if [ ! -d "$tap_dir" ]; then
   if [ -z "$remote" ]; then
     if [ -z "${TAP_TOKEN:-}" ]; then
@@ -141,9 +155,9 @@ if [ ! -d "$tap_dir" ]; then
     remote="https://x-access-token:${TAP_TOKEN}@github.com/gianniacquisto/homebrew-tap.git"
   fi
   mkdir -p "$(dirname "$tap_dir")"
+  token_remote=$remote
+  trap strip_token EXIT
   git clone --quiet "$remote" "$tap_dir"
-  # The token lives nowhere on disk after this line.
-  git -C "$tap_dir" remote set-url origin https://github.com/gianniacquisto/homebrew-tap.git
 else
   git -C "$tap_dir" fetch --quiet origin
   git -C "$tap_dir" reset --hard --quiet origin/main
@@ -187,6 +201,12 @@ git -C "$tap_dir" \
   -c user.name=github-actions[bot] \
   -c user.email=41898282+github-actions[bot]@users.noreply.github.com \
   commit --quiet -m "tandem $version"
-git -C "$tap_dir" push origin HEAD:main
+if [ -n "$token_remote" ]; then
+  # The clone's push authenticates through the tokenised URL; the EXIT trap
+  # rewrites origin to the plain one afterwards, on success or failure alike.
+  git -C "$tap_dir" push --quiet "$token_remote" HEAD:main
+else
+  git -C "$tap_dir" push --quiet origin HEAD:main
+fi
 
 echo "bump-tap.sh: pushed tandem $version to the tap"
