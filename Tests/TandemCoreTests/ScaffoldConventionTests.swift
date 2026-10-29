@@ -19,6 +19,18 @@ struct ScaffoldConventionTests {
         try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
     }
 
+    /// The retired orient wordings: the scaffold's anchor is the Overview, never
+    /// the Hub or a "curated note". Both apostrophes fold to the ASCII one, so a
+    /// file written with the typographic form cannot pass the pin silently
+    /// (TAN-194).
+    private static let staleOrientPhrases = ["the project's curated note", "orient from the Hub"]
+
+    private static func namesAStaleOrientPhrase(_ text: String) -> Bool {
+        let folded = text.replacingOccurrences(of: "\u{2018}", with: "'")
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+        return staleOrientPhrases.contains { folded.contains($0) }
+    }
+
     @Test("CONVENTIONS states the fixed scaffold — the four pages, on demand, no persona partition")
     func conventionsStateTheScaffold() throws {
         let c = try Self.file("skills/tandem-memory/CONVENTIONS.md")
@@ -123,15 +135,32 @@ struct ScaffoldConventionTests {
                 "the Risks page holds one line per open risk")
         let conventions = try Self.file("skills/tandem-memory/CONVENTIONS.md")
         #expect(conventions.contains("one line per open risk"))
+        // The README's skills table carries the same orient wording. It is read
+        // whole like the skills page, not fixtured: the pin is the phrase, not
+        // the prose around it (TAN-194).
         for path in ["AGENTS.md",
                      "skills/tandem-memory/SKILL.md",
                      "skills/tandem-sprint/SKILL.md",
-                     "skills/tandem-tidy/SKILL.md"] {
+                     "skills/tandem-tidy/SKILL.md",
+                     "README.md"] {
             let orient = try Self.file(path)
-            #expect(!orient.contains("the project's curated note"),
+            #expect(!Self.namesAStaleOrientPhrase(orient),
                     "\(path): the orient step names the Overview, the scaffold's anchor")
             #expect(orient.contains("**Overview**"), "\(path): the orient step names the Overview")
         }
+    }
+
+    @Test("The stale orient phrases are apostrophe-agnostic (TAN-194)")
+    func staleOrientPhraseIsApostropheAgnostic() throws {
+        for apostrophe in ["'", "\u{2019}", "\u{2018}"] {
+            let stale = "orient from the project\(apostrophe)s curated note"
+            #expect(Self.namesAStaleOrientPhrase(stale),
+                    "the pin must catch the stale wording written with \(apostrophe)")
+        }
+        #expect(Self.namesAStaleOrientPhrase("orient from the Hub"),
+                "the Hub wording is retired too")
+        #expect(!Self.namesAStaleOrientPhrase("orient from the project's **Overview**"),
+                "the scaffold's wording is not the stale phrase")
     }
 
     @Test("CONSOLIDATION reads the inputs, creates the scaffold on demand, leaves the daily notes untouched")
@@ -202,6 +231,8 @@ struct ScaffoldConventionTests {
                 "the README names the Overview's path")
         #expect(readme.contains("`## Threads`"),
                 "the Overview's Threads section is where what is open lives")
+        #expect(readme.contains("orient from the project's **Overview**"),
+                "the skills table names the Overview as the orient target (TAN-194)")
     }
 
     @Test("The question's exit is one write — the handoff rule and the sprint's inbox debt (D2522EC3)")
