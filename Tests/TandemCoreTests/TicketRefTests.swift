@@ -226,17 +226,38 @@ struct TicketRefTests {
         try StoreSchema.markImported(StoreSchema.ticketsDomain, from: nil, at: Date(), in: db)
     }
 
+    /// The migration fixtures' ids, spelled in full. `add` gives the ticket it makes a
+    /// random UUID, so a selector that matched the last two characters let that ticket
+    /// stand in for a fixture row about once in 256 runs (TAN-223): match the whole id.
+    private enum Fixture {
+        static let a1 = UUID(uuidString: "00000000-0000-0000-0000-0000000000A1")!
+        static let a2 = UUID(uuidString: "00000000-0000-0000-0000-0000000000A2")!
+        static let b1 = UUID(uuidString: "00000000-0000-0000-0000-0000000000B1")!
+        static let b2 = UUID(uuidString: "00000000-0000-0000-0000-0000000000B2")!
+        static let loose = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        static let decoy = UUID(uuidString: "00000000-0000-0000-0000-00000000DEA2")!
+    }
+
+    /// The row carrying exactly this id, never the first row that resembles it.
+    private func row(_ tickets: [Ticket], _ id: UUID) -> Ticket? {
+        tickets.first { $0.id == id }
+    }
+
     @Test("the migration numbers each lane by createdAt, leaves the default area null")
     func migrationBackfills() throws {
         let dir = try tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
-        // Alpha: two tickets and a tie broken by id. Beta: one. Plus a loose one.
+        // Alpha: two tickets and a tie broken by id. Beta: one. Plus a loose one, and a
+        // row whose id ends in `A2` but is not the fixture: it stands in for the random
+        // UUID `add` gives the new ticket, which landed on `A2` once in 256 runs while
+        // the assertions selected rows by their last two characters (TAN-223).
         try version2Store(at: dir, rows: [
-            ("00000000-0000-0000-0000-0000000000B2", "Alpha", "2026-02-01T00:00:00Z"),
-            ("00000000-0000-0000-0000-0000000000A2", "Alpha", "2026-01-01T00:00:00Z"),
-            ("00000000-0000-0000-0000-000000000001", nil, "2026-01-15T00:00:00Z"),
-            ("00000000-0000-0000-0000-0000000000A1", "Alpha", "2026-01-01T00:00:00Z"),
-            ("00000000-0000-0000-0000-0000000000B1", "Beta", "2026-03-01T00:00:00Z"),
+            (Fixture.b2.uuidString, "Alpha", "2026-02-01T00:00:00Z"),
+            (Fixture.a2.uuidString, "Alpha", "2026-01-01T00:00:00Z"),
+            (Fixture.decoy.uuidString, nil, "2026-01-20T00:00:00Z"),
+            (Fixture.loose.uuidString, nil, "2026-01-15T00:00:00Z"),
+            (Fixture.a1.uuidString, "Alpha", "2026-01-01T00:00:00Z"),
+            (Fixture.b1.uuidString, "Beta", "2026-03-01T00:00:00Z"),
         ])
 
         // A read before any write must not fail: the store is still v2, and the read
@@ -244,23 +265,25 @@ struct TicketRefTests {
         let store = Store(directory: dir)
         let before = try store.list(.all).value
         #expect(store.schemaVersion() == 2, "a read never migrates")
-        #expect(before.first { $0.id.uuidString.hasSuffix("A1") }?.ref == "ALP-1",
+        #expect(row(before, Fixture.a1)?.ref == "ALP-1",
                 "the createdAt tie is broken by UUID: A1 sorts first")
-        #expect(before.first { $0.id.uuidString.hasSuffix("A2") }?.ref == "ALP-2")
-        #expect(before.first { $0.id.uuidString.hasSuffix("B2") }?.ref == "ALP-3")
-        #expect(before.first { $0.id.uuidString.hasSuffix("B1") }?.ref == "BET-1")
-        #expect(before.first { $0.id.uuidString.hasSuffix("0001") }?.number == nil,
+        #expect(row(before, Fixture.a2)?.ref == "ALP-2")
+        #expect(row(before, Fixture.b2)?.ref == "ALP-3")
+        #expect(row(before, Fixture.b1)?.ref == "BET-1")
+        #expect(row(before, Fixture.loose)?.number == nil,
                 "the default area carries no number")
-        #expect(before.first { $0.id.uuidString.hasSuffix("0001") }?.ref == nil)
+        #expect(row(before, Fixture.loose)?.ref == nil)
+        #expect(row(before, Fixture.decoy)?.ref == nil, "the decoy is not the ALP-2 fixture")
 
         // The first write migrates; the numbers it writes are the ones the read showed.
         _ = try store.add("new")
         #expect(store.schemaVersion() == StoreSchema.currentVersion)
         let after = try store.list(.all).value
-        #expect(after.first { $0.id.uuidString.hasSuffix("A1") }?.ref == "ALP-1")
-        #expect(after.first { $0.id.uuidString.hasSuffix("A2") }?.ref == "ALP-2")
-        #expect(after.first { $0.id.uuidString.hasSuffix("B2") }?.ref == "ALP-3")
-        #expect(after.first { $0.id.uuidString.hasSuffix("B1") }?.ref == "BET-1")
+        #expect(row(after, Fixture.a1)?.ref == "ALP-1")
+        #expect(row(after, Fixture.a2)?.ref == "ALP-2")
+        #expect(row(after, Fixture.b2)?.ref == "ALP-3")
+        #expect(row(after, Fixture.b1)?.ref == "BET-1")
+        #expect(row(after, Fixture.decoy)?.ref == nil, "the decoy is not the ALP-2 fixture")
     }
 
     @Test("a second open does not renumber — the migration is idempotent")
