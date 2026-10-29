@@ -35,3 +35,13 @@ The order above put the tag first and the merge second, which left a window: the
 The tag now follows the merge. The release act is: open the `Release vX.Y.Z` PR from `dev`, merge it once its `release` check is green, then tag `main`'s head and push the tag. The tag run publishes and re-attests the tree the PR run already built. `main`'s head is the release merge, so the tag names that merge and `main`'s head is literally the latest release tag again; a merge landing on `dev` after the PR cannot move anything the tag names, because `main` only moves by release PR.
 
 Tags cut before this amendment stay on `dev` and are correct history: v0.32.0 is the last one, and nothing moves it. `Scripts/release-notes.sh` reads both orders: each tag resolves to the integration tip it names, the second parent when the tag sits on a release merge and the tag itself otherwise, so `<prevTip>..<newTip> --first-parent --merges` lists the same PRs a `dev`-tagged release listed. `docs/releasing.md` step 1 and `skills/tandem-sprint/SKILL.md` §7 state the new order.
+
+## Amendment, 2026-10-29: the split is retired
+
+The two amendments above are reversed. `main` is the trunk: it takes the merges, and it is GitHub's default branch again. A release is a lightweight tag on `main`'s head, cut by the sprint close from a checkout on the landed head; the tag run publishes it, and installs come from the tag, never from the branch head. The `Release vX.Y.Z` PR is retired with the split: once the tag names the head of the branch that takes the merges, there is no release line to move, and a PR with no diff but a merge is one more act the flip exists to remove.
+
+The invariant the split bought, that every commit on `main` is shipped, is given up. Its replacement is a gap of at most one sprint: a merge lands on `main` and ships in the next tag, and a sprint that lands nothing cuts no tag.
+
+Both earlier decisions are reversed, and named as reversed here: the original split of 2026-10-20 (`dev` takes merges, `main` tracks the latest tag), and the 2026-10-23 dev→main release-PR amendment. The 2026-10-29 order that put the tag after a release merge is retired in its PR half: the tag still names `main`'s head, now directly.
+
+The retirement of `dev` follows once a tag has shipped from `main`, with its date recorded here by that ticket. Until then `dev` is history: the tags cut before the flip stay on it, and `Scripts/release-notes.sh` still reads them.

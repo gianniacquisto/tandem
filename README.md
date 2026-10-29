@@ -1,6 +1,6 @@
 # Tandem
 
-[![CI](https://github.com/gianniacquisto/tandem/actions/workflows/release.yml/badge.svg?branch=dev)](https://github.com/gianniacquisto/tandem/actions/workflows/release.yml)
+[![CI](https://github.com/gianniacquisto/tandem/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/gianniacquisto/tandem/actions/workflows/release.yml)
 [![Release](https://img.shields.io/github/v/release/gianniacquisto/tandem)](https://github.com/gianniacquisto/tandem/releases/latest)
 [![macOS](https://img.shields.io/badge/macOS-27%2B%20%2B%20Apple%20silicon-lightgrey.svg)](https://github.com/gianniacquisto/tandem/releases/latest)
 [![Licence](https://img.shields.io/badge/licence-MIT-sage.svg)](LICENSE)

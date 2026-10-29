@@ -599,17 +599,22 @@ struct ReleaseNotesTests {
         #expect(releasing.contains("--capture"), "docs/releasing.md must name the bikeshed step")
         #expect(releasing.contains("note capture"), "docs/releasing.md must name the verb the note goes through")
         #expect(releasing.contains("Release"), "docs/releasing.md must name the note's shape")
-        // The order the ticket flips: the release PR merges first, the tag names
-        // the head it left on `main`. A live instruction that tags `dev` is the
-        // race v0.32.0 lost, so it must not survive anywhere in the step.
-        let mergeStep = try #require(releasing.range(of: "merge it once its `release` check is green"))
-        let tagStep = try #require(releasing.range(of: "Tag `main`'s head"))
-        #expect(mergeStep.lowerBound < tagStep.lowerBound, "the tag follows the merge")
+        // The order TAN-229 flips: the tag is the release, cut on the trunk's
+        // head, and there is no release PR to merge first. A live instruction
+        // that tags `dev` is the race v0.32.0 lost, so it must not survive.
+        let tagStep = try #require(
+            releasing.range(of: "Tag `main`'s head"),
+            "docs/releasing.md must tag `main`'s head")
+        #expect(
+            !releasing.contains("Release vX.Y.Z"),
+            "the release PR is retired with the split")
         #expect(!releasing.contains("Tag the `dev` head"), "no live instruction tags the dev head")
+        #expect(!releasing.contains("dev→main"), "no live instruction moves a dev release line")
         let adr = try String(
             contentsOf: Self.root.appendingPathComponent("docs/adr/0019-integration-branch.md"),
             encoding: .utf8
         )
-        #expect(adr.contains("the tag follows the merge"), "ADR 0019 records the flip")
+        #expect(adr.contains("the tag follows the merge"), "the earlier amendment keeps its history")
+        #expect(adr.contains("the split is retired"), "ADR 0019 records the reversal")
     }
 }
