@@ -10,7 +10,7 @@ description: "The roster — which agent fills which role, what to write in --as
 | `human` | the human | the decision gate: a preference, a spend, an irreversible or outward-facing act; the release | — |
 | `builder` | the `builder` subagent, one per ticket | branch, build, verify, PR | `agents/builder.md` |
 | `refiner` | the `refiner` subagent | `backlog` → `ready` (`on-hold` when parked) | `agents/refiner.md`, dispatched by `skills/tandem-refine/` |
-| `reviewer` | the `reviewer` subagent | the merge gate | `agents/reviewer.md` |
+| `reviewer` | the `reviewer` subagent | the merge gate, read through the ticket's lenses: `code`, `security`, `ui-design`, `ux`, `architecture` | `agents/reviewer.md`, `skills/review-lenses/` |
 | `consolidator` | the `consolidator` subagent | the sole writer of the curated bikeshed notes | `agents/consolidator.md`, dispatched by `skills/tandem-consolidate/` |
 | `sprint` | the session's own agent | runs the loop — refine, build, review, retro, close | `skills/tandem-sprint/` (build phase: `skills/tandem-build/`) |
 

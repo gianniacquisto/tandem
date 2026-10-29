@@ -10,6 +10,10 @@ import Testing
 /// in the `test` job of the Release workflow, so an edit that names `dev` again in an
 /// instruction fails CI. The rows are byte-exact phrases on purpose, so a failure names
 /// the file and the sentence the next builder would re-derive from.
+///
+/// A row pins the files known today; the sweep reads the directories, so a contract
+/// added later is held to the same matcher without editing this suite. Only a document
+/// that records the retirement (ADR 0019) is out of it: history is allowed to say `dev`.
 @Suite("Trunk flow")
 struct TrunkFlowTests {
 
@@ -36,11 +40,21 @@ struct TrunkFlowTests {
         ("AGENTS.md", []),
     ]
 
+    /// A `dev` that names no branch, subtracted before the word scan, so a shell redirect
+    /// or a state directory is not read as an instruction: `/dev/null` is the null device.
+    /// `~/.tandem-dev` and `development` need no entry here, because the token rule below
+    /// never yields a bare `dev` from either.
+    private static let notBranchNames = ["/dev/null"]
+
     /// Every occurrence of the retired branch's name as a standalone word: a token of
     /// letters, digits, `-` and `_` that reads `dev`. `~/.tandem-dev`, the dev-mode state
     /// directory, is one token and not a branch name, and neither is `development`.
     private static func namedDev(_ text: String) -> [String] {
-        text.split { !($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
+        var scrub = text
+        for context in Self.notBranchNames {
+            scrub = scrub.replacingOccurrences(of: context, with: " ")
+        }
+        return scrub.split { !($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
             .map(String.init)
             .filter { $0.lowercased() == "dev" }
     }
@@ -90,43 +104,60 @@ struct TrunkFlowTests {
         return documents.sorted()
     }
 
-    /// TAN-229: the fixed rows above name the files known today; this sweep reads the
-    /// directory, so a contract added later cannot quietly name `dev`. The release
-    /// document is checked too, because it carries the order the next release reads.
-    @Test("no skill or agent prompt names the integration branch as dev")
-    func noSkillOrAgentPromptNamesDev() throws {
+    /// The contracts the sweep holds to the named rows' matcher: every agent prompt and
+    /// every `SKILL.md`, read from disk so an addition is swept without editing this suite.
+    private static func sweptDocuments() throws -> [String] {
         let agents = try FileManager.default
-            .contentsOfDirectory(atPath: Self.root.appendingPathComponent("agents").path)
+            .contentsOfDirectory(atPath: root.appendingPathComponent("agents").path)
             .filter { $0.hasSuffix(".md") }
             .map { "agents/\($0)" }
-        let contracts = agents.sorted() + (try Self.skillDocuments())
+        return agents.sorted() + (try skillDocuments())
+    }
+
+    /// TAN-229: the fixed rows above name the files known today; this sweep reads the
+    /// directory, so a contract added later cannot quietly name `dev`. TAN-231: it holds
+    /// each discovered file to the rows' own matcher, not to three phrasings, so a new
+    /// instruction shape fails instead of shipping. ADR 0019 is out of the sweep: it
+    /// records the retirement, and history is allowed to name the branch.
+    @Test("no skill or agent prompt names the integration branch as dev")
+    func noSkillOrAgentPromptNamesDev() throws {
+        let contracts = try Self.sweptDocuments()
         #expect(
             contracts.contains("skills/tandem-sprint/SKILL.md"),
             "the sweep must read the sprint skill: an empty listing proves nothing")
         for path in contracts {
-            let text = try Self.file(path)
+            let named = Self.namedDev(try Self.file(path))
             #expect(
-                !text.contains("origin/dev"),
-                "\(path) names `origin/dev`: the trunk is `main` (ADR 0019)")
-            #expect(
-                !text.contains("merged into `dev`"),
-                "\(path) says a PR merges into `dev`: `main` takes the merges (ADR 0019)")
+                named.isEmpty,
+                "\(path) names `dev` \(named.count) time(s): the branch was deleted, the trunk is `main` (ADR 0019)")
         }
 
         let releasing = try Self.file("docs/releasing.md")
         #expect(
             releasing.contains("`main`'s head is the release"),
             "docs/releasing.md must name `main` as the branch the tag is cut on")
-        #expect(
-            !releasing.contains("dev→main"),
-            "docs/releasing.md must not carry a dev to main release PR: the split is retired")
+    }
 
-        for path in ["README.md", "terse/README.md", "terse/install.sh", "AGENTS.md"] {
-            let text = try Self.file(path)
-            #expect(
-                !text.contains("origin/dev"),
-                "\(path) names `origin/dev`: the trunk is `main` (ADR 0019)")
-        }
+    /// TAN-231: both halves of the guard, from strings this repo does not contain, so the
+    /// sweep is proven to catch a phrasing it was never written against and the ADR
+    /// exemption is proven to be about the path, not about the wording.
+    @Test("a new phrasing of the retired branch fails the sweep, and ADR 0019 passes")
+    func sweepCatchesEveryPhrasing() throws {
+        let fixture = "Open the PR: branch off `dev`, then merge it."
+        #expect(
+            !Self.namedDev(fixture).isEmpty,
+            "a contract that says to branch off `dev` must fail the sweep, whatever its wording")
+        #expect(
+            Self.namedDev("2>/dev/null").isEmpty,
+            "`/dev/null` is the null device, not a branch: the sweep must not fail on a shell redirect")
+
+        let history = try Self.file("docs/adr/0019-integration-branch.md")
+        #expect(
+            !Self.namedDev(history).isEmpty,
+            "ADR 0019 must still name the branch: it records the retirement")
+        #expect(
+            !(try Self.sweptDocuments()).contains("docs/adr/0019-integration-branch.md"),
+            "ADR 0019 stays out of the sweep: it records the retirement, it does not instruct")
     }
 
     @Test("the builder prompt and the build skill agree on the base")
