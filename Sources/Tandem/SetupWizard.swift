@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 import TandemCore
 
 /// Whether the setup sheet is up. A tiny app-lifetime bridge (the
@@ -37,12 +36,14 @@ struct SetupWizardView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var step: Step = .welcome
-    @State private var copiedID: String?
     @State private var error: String?
+    /// What the last install reported, drawn under the button. `nil` until the
+    /// human presses it: nothing is written to a host without that press.
+    @State private var agentReport: SetupInstall.Report?
 
     private var palette: Palette { Palette.forScheme(colorScheme) }
 
-    /// The in-bundle agent CLI (ADR 0009) — the stable path the human copies.
+    /// The in-bundle agent CLI (ADR 0009).
     private let cliPath = "/Applications/Tandem.app/Contents/MacOS/tandem-cli"
 
     enum Step: Int, CaseIterable, Identifiable {
@@ -148,20 +149,32 @@ struct SetupWizardView: View {
     private var agent: some View {
         VStack(alignment: .leading, spacing: 14) {
             heading("Connect your agent")
-            Text("Your agent reads and writes the same list through tandem-cli, "
-                 + "the command line Tandem bundles. Copy its path:")
+            Text("Tandem ships the skills and the four agent prompts your host "
+                 + "reads. One press installs them and wires OpenCode up, the same "
+                 + "`tandem-cli setup install` you can run yourself.")
                 .bodyText(palette)
-            codeField(cliPath, id: "cli")
-            Text("Then teach your agent the Tandem skill.")
-                .font(.system(size: 13))
-                .foregroundStyle(palette.ink)
-            Text("Claude Code — link the skill into your personal skills directory:")
-                .bodyText(palette)
-            codeField("ln -s \"$PWD/skills/tandem\" ~/.claude/skills/tandem",
-                      id: "claude")
-            Text("OpenCode — add this checkout's skills folder to opencode.json:")
-                .bodyText(palette)
-            codeField(#"{ "skills": ["/path/to/tandem/skills"] }"#, id: "opencode")
+            HStack(spacing: 10) {
+                PrimaryButton(title: agentReport == nil ? "Install agent face"
+                                                       : "Install again",
+                              palette: palette) { installAgentFace() }
+                    .frame(width: 160)
+                Spacer(minLength: 0)
+            }
+            if let agentReport {
+                AgentFaceSummary(state: agentReport.state, palette: palette)
+            }
+            if let error {
+                LigneBanner(palette: palette,
+                            systemImage: "xmark.circle.fill",
+                            title: error,
+                            onDismiss: { self.error = nil })
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Your agent reaches the same list through tandem-cli, at \(cliPath).")
+                .font(.system(size: 12))
+                .foregroundStyle(palette.inkDim)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -229,6 +242,24 @@ struct SetupWizardView: View {
         }
     }
 
+    /// The Part A install, run in-process: `SetupInstall.install` is the
+    /// function behind `tandem-cli setup install`, so the app adds no second
+    /// writer (ADR 0034). A throw is the wizard's banner, never a silent pass.
+    private func installAgentFace() {
+        let environment = ProcessInfo.processInfo.environment
+        do {
+            agentReport = try SetupInstall.install(
+                home: TandemHome.directory,
+                environment: environment,
+                bundle: SetupInstall.bundledFace(environment: environment),
+                force: false,
+                hosts: [.opencode])
+            error = nil
+        } catch {
+            self.error = (error as? any TandemError)?.message ?? error.localizedDescription
+        }
+    }
+
     // MARK: - Pieces
 
     private var bikeMark: some View {
@@ -274,37 +305,6 @@ struct SetupWizardView: View {
         }
         .padding(.vertical, 10)
     }
-
-    /// A paste-ready, selectable line with a Copy button (which flips to
-    /// "Copied" for a moment so the click has a visible answer).
-    private func codeField(_ text: String, id: String) -> some View {
-        HStack(spacing: 10) {
-            Text(text)
-                .font(.system(size: 11.5, design: .monospaced))
-                .foregroundStyle(palette.ink)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            OutlineButton(title: copiedID == id ? "Copied" : "Copy",
-                          palette: palette) { copy(text, id: id) }
-        }
-        .padding(.horizontal, 11)
-        .frame(height: 36)
-        .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
-        .overlay(RoundedRectangle(cornerRadius: Radius.control)
-            .strokeBorder(palette.line, lineWidth: Line.hairline))
-    }
-
-    private func copy(_ text: String, id: String) {
-        let board = NSPasteboard.general
-        board.clearContents()
-        board.setString(text, forType: .string)
-        copiedID = id
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            if copiedID == id { copiedID = nil }
-        }
-    }
 }
 
 // MARK: - shared pieces (Ligne register; no literals outside the theme)
@@ -318,7 +318,7 @@ private extension Text {
     }
 }
 
-/// A quiet hairline button — the wizard's secondary action (Choose…, Copy).
+/// A quiet hairline button — the wizard's secondary action (Choose…).
 /// `TextButton` is text-only; this one carries the control box.
 private struct OutlineButton: View {
     var title: String
@@ -343,5 +343,65 @@ private struct OutlineButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+    }
+}
+
+// MARK: - the agent face's state, drawn the same on both surfaces (TAN-216)
+
+/// What `SetupInstall` reports, in the app's register: the bundled and
+/// installed versions, each host's state, and every warning with the hint that
+/// says what to do. The wizard's agent step and Settings' Agent section both
+/// draw this view, so the two cannot say different things about one install,
+/// and neither re-derives a state of its own.
+struct AgentFaceSummary: View {
+    var state: SetupInstall.State
+    var palette: Palette
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            row("Bundled", state.bundledVersion ?? "none")
+            row("Installed", state.installedVersion ?? "not installed")
+            ForEach(Array(state.hosts.enumerated()), id: \.offset) { _, host in
+                row(host.host, hostState(host))
+            }
+            ForEach(Array(state.warnings.enumerated()), id: \.offset) { _, warning in
+                Text("\(warning.code.rawValue): \(warning.hint)")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(warning.severity == .info ? palette.inkDim
+                                                              : palette.emberDeep)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
+            }
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
+        .overlay(RoundedRectangle(cornerRadius: Radius.control)
+            .strokeBorder(palette.line, lineWidth: Line.hairline))
+    }
+
+    private func row(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text(label)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(palette.inkDim)
+                .frame(width: 76, alignment: .leading)
+            Text(value)
+                .font(.system(size: 11.5))
+                .foregroundStyle(palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// The four states `SetupInstall.state` produces, in words a human reads
+    /// without the ADR open.
+    private func hostState(_ host: SetupInstall.HostState) -> String {
+        switch host.state {
+        case "installed":  return "installed, \(host.links) of \(host.expectedLinks) links"
+        case "checkout":   return "checkout links, left alone"
+        case "real-file":  return "a real file is in the way"
+        default:           return "not wired"
+        }
     }
 }
