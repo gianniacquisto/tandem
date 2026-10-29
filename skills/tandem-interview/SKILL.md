@@ -11,12 +11,12 @@ The round format is the grilling skill's (`skills/grilling/SKILL.md`): number th
 
 ## The pass
 
-1. **Find the queue** — `tandem-cli ticket list --filter open --assignee human` is the starting set; skim the open board for `refined` + open questions that name the human even when unowned.
+1. **Find the queue** — `tandem-cli ticket list --filter open --assignee human` is the starting set; skim the open board for `on-hold` + open questions that name the human even when unowned.
 2. **Order by cost** — single-decision tickets first, the open-ended reviews last — a ticket whose brief says it is its own grilling session, e.g. `4147A3ED`.
 3. **One ticket per round.** Read the brief whole (`tandem-cli ticket show --id <id>`), then put that ticket's frontier to the human in one message — the grilling skill's round format: number the questions, give a recommended answer each, word so "yes" accepts. Never queue two tickets' questions into one round.
 4. **A decision may reshape the tree.** When the human's answer spawns sub-decisions (e.g. `BE30574F`'s `lane-number` ref scheme), ask the spawned frontier before moving on — but only what that answer unblocked.
 5. **Record per ticket, as you go** — one `tandem-cli ticket comment add` per settled ticket, signed by the runner's role, carrying the answer, the stated cost of overriding a brief's recommendation, and what the done-state now reads. A correction to a false brief premise goes in the same comment.
-6. **Close the ticket's human hold** — `tandem-cli ticket answer --id <id> --status <next> [--assignee <owner>] --body -` records the decision in the body and moves the pair in one write: the status the decision earns (`ready` when the brief survives the decision; **stay `refined` when the decision contradicts the written brief**, so the refiner rewrites from the comment) and the next owner, omitted when nobody owns it yet. The comment from step 5 stays the record of the round; the answer block is the question's exit.
+6. **Close the ticket's human hold** — `tandem-cli ticket answer --id <id> --status <next> [--assignee <owner>] --body -` records the decision in the body and moves the pair in one write: the status the decision earns (`ready` when the brief survives the decision; **`backlog` when the decision contradicts the written brief**, so the refiner rewrites from the comment) and the next owner, omitted when nobody owns it yet. The comment from step 5 stays the record of the round; the answer block is the question's exit.
 7. **Spawn follow-ups** — file the tickets a decision creates, with the decision embedded, before ending.
 8. **Close with the table** — one summary of every ticket, its decision, and its new status; flag the answers that overrode recommendations.
 

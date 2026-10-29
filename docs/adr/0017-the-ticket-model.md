@@ -51,3 +51,15 @@ The archive is one axis, but the two faces read it differently. The app's `All` 
 Why the CLI alone: the archive is the human's to keep tidy, while an agent's read is a question about live work. The faces ask different questions, so they answer them differently, and the archive stays one axis in the query rather than becoming two filters. The axis itself is unchanged — `TicketQuery.Archived` is still three-valued, and `.only` is what the CLI's bare `--archived` asks for.
 
 The flag is a switch, not a value: `--archived` takes none, and the CLI's flag grammar grows its first one.
+
+## Amendment, 2026-10-29: `on-hold` replaces "To refine", and the retired spelling goes
+
+Status's parked slot is **`on-hold`** (displayed **On hold**), the column that used to be "To refine". Refinement is a pass, not a resting place: a ticket whose brief is complete and whose questions are answered is `ready`, and `on-hold` holds only work parked on purpose, a blocker or a human decision pending. The refiner and the sprint's triage send a clean brief straight to `ready`, and triage promotes every ticket it reads that already carries one, so `ready` stays fed without a person remembering to move it.
+
+The old spelling that named the same slot is retired from the domain and the wire: `Status` no longer carries the case, no face offers it, and `ticket set --status <old word>` is refused by the name of the live values. Schema **v4** replaces the stored rows in one `UPDATE` in one transaction, so a second open is a no-op. A store the migration has not reached yet reads the old word as `on-hold`, never as `backlog`, and the first write persists it; that read seam is the one place the word survives in `Sources`, on purpose, because it is the migration's edge and not a value any face offers.
+
+Why the writer waited for the reader (TAN-196): a build that does not name a value decodes it as `backlog`, so a row written `on-hold` by a build the installed app does not carry would be written back as `backlog` by the next human edit. The reader shipped in 0.30.0 and this Mac runs 0.31.0, so the gate was reachability, as it was for the sixth Status.
+
+The board's columns are now exactly the six stages. No value folds into another column, so a lane's header count and its cells agree by construction, and `Status.column` is the stage itself.
+
+Consequences: `refined` in the ADRs above and in the skill prose before this date is history, not vocabulary; the live instructions say `ready` for a finished brief and `on-hold` for parked work. No envelope bump: the store's `status` column is a plain string whose set of values narrowed, and the migration is the seam that makes the narrowing true.

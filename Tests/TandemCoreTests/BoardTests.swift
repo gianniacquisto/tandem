@@ -39,17 +39,17 @@ struct BoardTests {
         #expect(rows[0].tickets(.done).isEmpty)
     }
 
-    /// TAN-196: the retired `refined` row is still a ticket, so it draws in the column
-    /// the word folds into — On hold — and the lane header's count is the cells' sum.
-    @Test("a refined row draws beside the on-hold rows, and the header count matches the cells")
-    func refinedFoldsIntoOnHold() {
-        let parked = Ticket(title: "parked the old way", status: .refined, lane: "Tandem")
-        let held = Ticket(title: "parked the new way", status: .onHold, lane: "Tandem")
-        let rows = TicketBoard.rows(from: [parked, held], lanes: ["Tandem"])
+    /// TAN-195: every Status is a drawn column once the retired word is gone, so a row's
+    /// cell and the lane header's count cannot disagree.
+    @Test("a row draws every ticket in its own column, and the header count matches the cells")
+    func everyStatusIsAColumn() {
+        let parked = Ticket(title: "parked on purpose", status: .onHold, lane: "Tandem")
+        let briefed = Ticket(title: "briefed", status: .ready, lane: "Tandem")
+        let rows = TicketBoard.rows(from: [parked, briefed], lanes: ["Tandem"])
 
         let row = rows[1]
-        #expect(row.tickets(.onHold).map { $0.title } == ["parked the old way", "parked the new way"])
-        #expect(row.tickets(.refined).isEmpty, "refined is a readable status, not a drawn column")
+        #expect(row.tickets(.onHold).map { $0.title } == ["parked on purpose"])
+        #expect(row.tickets(.ready).map { $0.title } == ["briefed"])
         let drawn = Status.workflow.reduce(0) { $0 + row.tickets($1).count }
         #expect(drawn == row.count, "the lane header counts exactly what the cells draw")
     }

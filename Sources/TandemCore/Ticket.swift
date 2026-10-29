@@ -31,7 +31,7 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
     /// Set aside: out of the default views, still in the store. Any ticket can be
     /// archived; archiving a done ticket is how a list is cleared without deleting.
     public var archived: Bool
-    /// The body: markdown, written by the session that refined the ticket. `nil` when the
+    /// The body: markdown, written by the session that shaped the ticket. `nil` when the
     /// title says everything. Trimmed at write time; an empty result means `nil`.
     public var description: String?
     /// The human (`human`), or an agent's name. `nil` when nobody is on it.
@@ -146,7 +146,7 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
         // recoverable where calling the whole file corrupt is not.
         let legacyDone = try c.decodeIfPresent(Bool.self, forKey: .done)
         let storedStatus = try c.decodeIfPresent(String.self, forKey: .status)
-        let status = storedStatus.flatMap(Status.init(rawValue:)) ?? .backlog
+        let status = storedStatus.map(Status.stored(raw:)) ?? .backlog
         if let legacyDone {
             self.status = legacyDone ? .done : (status == .done ? .backlog : status)
         } else {

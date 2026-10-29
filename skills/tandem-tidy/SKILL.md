@@ -5,7 +5,7 @@ description: "Board hygiene pass — sweeps the open tickets against work that a
 
 # Tandem tidy
 
-A maintenance pass over the board, not the SDLC kickoff: it opens no sprint and dispatches no refiner — shaping unrefined tickets is the sprint's triage (`skills/tandem-sprint/SKILL.md` §2) and the refiner's (`skills/tandem-refine/`). Tidy owns one write class of its own: **complete with evidence** — a ticket already satisfied by landed work leaves the open set, its proof in a signed comment.
+A maintenance pass over the board, not the SDLC kickoff: it opens no sprint and dispatches no refiner — shaping tickets that have no brief is the sprint's triage (`skills/tandem-sprint/SKILL.md` §2) and the refiner's (`skills/tandem-refine/`). Tidy owns one write class of its own: **complete with evidence** — a ticket already satisfied by landed work leaves the open set, its proof in a signed comment.
 
 ## 0. Orient
 
@@ -25,7 +25,7 @@ This is the same rule invoked on demand, not a second rule with its own verdict:
 
 ## 2. The evidence sweep
 
-For every open ticket with no live claim — `backlog` excepted, unrefined capture being triage's input, not tidy's — check the ticket against work that already landed. The evidence sources, in the order they settle most tickets:
+For every open ticket with no live claim — `backlog` excepted, a ticket still missing its brief being triage's input, not tidy's — check the ticket against work that already landed. The evidence sources, in the order they settle most tickets:
 
 - the project's git log — commits and merged PRs carrying the ticket's subject;
 - the board's done tickets — `--text` searches descriptions, and a done sibling often did the work;

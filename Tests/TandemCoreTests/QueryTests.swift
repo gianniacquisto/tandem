@@ -29,7 +29,7 @@ struct QueryTests {
     private var board: [Ticket] {
         [
             ticket("capture the idea"),
-            ticket("refined work", status: .refined, assignee: "core", lane: "Core"),
+            ticket("parked work", status: .onHold, assignee: "core", lane: "Core"),
             ticket("ready work", status: .ready, assignee: "ui", lane: "Core"),
             ticket("in flight", status: .inProgress, description: "Parse the flags in the core",
                    assignee: "ui", lane: "CLI"),
@@ -48,7 +48,7 @@ struct QueryTests {
     @Test("the default query hides the archive and nothing else")
     func defaultHidesArchived() {
         #expect(titles(TicketQuery()) == [
-            "capture the idea", "refined work", "ready work", "in flight", "finished",
+            "capture the idea", "parked work", "ready work", "in flight", "finished",
         ])
     }
 
@@ -69,7 +69,7 @@ struct QueryTests {
 
     @Test("the lane axis selects a name, or the unnamed default area")
     func laneAxis() {
-        #expect(titles(TicketQuery(lane: .named("Core"))) == ["refined work", "ready work"])
+        #expect(titles(TicketQuery(lane: .named("Core"))) == ["parked work", "ready work"])
         #expect(titles(TicketQuery(lane: .unnamed)) == ["capture the idea"])
         #expect(titles(TicketQuery(lane: .any)) == titles(TicketQuery()))
     }
@@ -115,7 +115,7 @@ struct QueryTests {
     @Test("the shipped filter keeps meaning what it means: open, done, all")
     func filterSugar() {
         #expect(Filter.open.apply(to: board).map(\.title) == [
-            "capture the idea", "refined work", "ready work", "in flight",
+            "capture the idea", "parked work", "ready work", "in flight",
         ])
         #expect(Filter.done.apply(to: board).map(\.title) == ["finished"])
         #expect(Filter.all.apply(to: board).count == 7, "all is everything, the archive included")
@@ -128,7 +128,7 @@ struct QueryTests {
         let query = try TicketQuery.parse()
         #expect(query.archived == .excluded)
         #expect(query.statuses == Set(Status.allCases.filter { $0 != .done }),
-                "open is every value the domain accepts but done — the retired refined too")
+                "open is every value the domain accepts but done")
         #expect(query.assignee == .any)
         #expect(query.lane == .any)
         #expect(query.text == nil)
@@ -137,7 +137,7 @@ struct QueryTests {
     @Test("parse takes comma-separated statuses — a repeated flag keeps only the last")
     func parseStatuses() throws {
         #expect(try TicketQuery.parse(status: "ready,in-progress").statuses == [.ready, .inProgress])
-        #expect(try TicketQuery.parse(status: " ready , refined ").statuses == [.ready, .refined])
+        #expect(try TicketQuery.parse(status: " ready , on-hold ").statuses == [.ready, .onHold])
         #expect(try TicketQuery.parse(status: "ready").statuses == [.ready])
     }
 
@@ -160,6 +160,23 @@ struct QueryTests {
         }
     }
 
+    @Test("the retired word is not a status the query accepts")
+    func retiredWordRefused() {
+        do {
+            _ = try TicketQuery.parse(status: "refined")
+            Issue.record("Expected invalidStatus to be thrown")
+        } catch let error as DomainError {
+            guard case .invalidStatus(let bad) = error else {
+                Issue.record("Expected invalidStatus, got \(error)")
+                return
+            }
+            #expect(bad == "refined")
+            #expect(error.message.contains("on-hold"), "the refusal lists the live values")
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
     @Test("parse treats an empty value as the empty field")
     func parseEmptyValues() throws {
         #expect(try TicketQuery.parse(assignee: "").assignee == .unassigned)
@@ -173,7 +190,7 @@ struct QueryTests {
     func parseFilterSugar() throws {
         #expect(try TicketQuery.parse(filter: "all").archived == .excluded)
         #expect(try TicketQuery.parse(filter: "done").statuses == [.done])
-        #expect(try TicketQuery.parse(filter: "open").statuses == [.backlog, .refined, .onHold, .ready, .inProgress, .inReview])
+        #expect(try TicketQuery.parse(filter: "open").statuses == [.backlog, .onHold, .ready, .inProgress, .inReview])
     }
 
     // MARK: - the CLI's archive axis
@@ -184,7 +201,7 @@ struct QueryTests {
             #expect(try TicketQuery.parse(filter: filter).archived == .excluded)
         }
         #expect(titles(try TicketQuery.parse()) == [
-            "capture the idea", "refined work", "ready work", "in flight",
+            "capture the idea", "parked work", "ready work", "in flight",
         ])
     }
 
@@ -236,12 +253,12 @@ struct QueryTests {
     @Test("an answered ticket leaves the inbox; an unanswered one stays")
     func inboxExcludesAnswered() {
         let tickets = [
-            ticket("still asking", status: .refined,
+            ticket("still asking", status: .onHold,
                    description: "## Why\n\nwhich option?", assignee: "human"),
-            ticket("decided", status: .refined,
+            ticket("decided", status: .onHold,
                    description: "## Why\n\nwhich option?\n\n## Answer — 2026-10-26\nA",
                    assignee: "human"),
-            ticket("inline mention", status: .refined,
+            ticket("inline mention", status: .onHold,
                    description: "The `## Answer` is recorded on `F1CEFA57`", assignee: "human"),
         ]
         #expect(TicketQuery.inbox.apply(to: tickets).map(\.title) == [
@@ -251,7 +268,7 @@ struct QueryTests {
 
     @Test("only the inbox hides answered tickets — the agents' read keeps them as debt")
     func answeredStaysInTheAgentsRead() {
-        let answered = ticket("decided", status: .refined,
+        let answered = ticket("decided", status: .onHold,
                               description: "## Answer — 2026-10-26\nA",
                               assignee: "human")
         #expect(TicketQuery(assignee: .named("human")).apply(to: [answered]).count == 1)
