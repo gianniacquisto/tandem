@@ -1,5 +1,7 @@
 # A setup verb outside the domains: `tandem-cli doctor`
 
+> **Amended 2026-10-29 by [ADR 0034](0034-agent-face-in-the-artifact.md):** the check list is eight: `agent-face` joins as the last row, and it can fail, unlike the informational rows ADR 0018 kept out. The report shape, the names, the order and the exit codes are unchanged; the row reads `SetupInstall.state`, the same producer as `setup status`. The amendment's text is ADR 0034's.
+
 > **Amended 2026-10-26 by [ADR 0031](0031-one-database-the-store.md):** the check list is seven — `comments` joined — and `lock` keeps its name and its non-destructive rule but probes a write transaction instead of a sidecar `flock`; the `store` row names `tandem.db` and its schema version. The names, the order, the report shape and the exit codes are unchanged. The amendment's text is ADR 0031's.
 
 [ADR 0009](0009-cli-agent-face.md) fixed the agent surface to `todo list|add|complete` plus `note rename`, under the rule "verbs are cheap to add and expensive to withdraw". Adding one therefore needs an argument. `doctor` is not a domain verb: it reads no todo and writes nothing. It reports *the machine's setup* — where the state lives, and whether the store, the bikeshed, the lock, the installed app, and the agent skill are sound — so it earns a place **outside** the `todo` / `note` namespaces, as a bare `tandem-cli doctor`.

@@ -26,6 +26,14 @@ _Avoid_: top bar element, status bar, tray, badge
 The main window's ⌘K palette: one ranked list over the bikeshed's notes and the store's tickets — a note opens in the editor, a ticket in its sheet. The match is the store's own comparison, so the palette and the list find the same things.
 _Avoid_: command palette, launcher, fuzzy finder, spotlight
 
+**Agent face**:
+Tandem's skills, agent prompts and `AGENTS.md` as one set: shipped inside the app, installed at `<TandemHome>/agent/`, and read from there by every host. One copy, version-locked to the binary; `tandem-cli setup install` is its only writer.
+_Avoid_: prompt pack, agent assets, skill bundle
+
+**Host**:
+A program that reads the agent face: OpenCode, Claude Code, or any agent that loads skills and prompts from a directory. Each host has its own paths, and `tandem-cli setup install --host` names the ones to wire.
+_Avoid_: client, harness, runtime
+
 ### The domain
 
 **Ticket**:

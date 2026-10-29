@@ -158,6 +158,26 @@ struct CLIHelpTests {
         }
     }
 
+    @Test("setup --help, and each setup verb's --help, print their own grammar")
+    func setupHelp() throws {
+        let group = try cli.run(home: home, ["setup", "--help"])
+        #expect(group.code == 0)
+        #expect(group.error == "")
+        #expect(group.output.contains("tandem-cli setup install"))
+        #expect(group.output.contains("tandem-cli setup uninstall"))
+        #expect(group.output.contains("tandem-cli setup status"))
+
+        for verb in ["install", "uninstall", "status"] {
+            let result = try cli.run(home: home, ["setup", verb, "--help"])
+            #expect(result.code == 0, "setup \(verb) --help")
+            #expect(result.error == "", "setup \(verb) --help")
+            #expect(result.output.contains("tandem-cli setup \(verb)"), "setup \(verb)")
+        }
+        let install = try cli.run(home: home, ["setup", "install", "--help"])
+        #expect(install.output.contains("--force"), "--force is a switch the help names")
+        #expect(install.output.contains("--host"))
+    }
+
     @Test("`-h` answers below the root too")
     func shortSpellingAnswers() throws {
         let result = try cli.run(home: home, ["ticket", "list", "-h"])

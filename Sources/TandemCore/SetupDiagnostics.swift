@@ -114,6 +114,10 @@ public enum SetupDiagnostics {
         /// directory), or the host's own skills directory holds the linked `tandem` skill
         /// — the route the `tandem-setup` skill takes.
         public var opencodeHasSkills: Bool
+        /// The agent face's state (ADR 0034), from `SetupInstall.state`: the row
+        /// that names every `dead-link`, `stale-face` and `half-installed` warning
+        /// once. `nil` in a test that injects no state, which reads as no warnings.
+        public var agentFace: SetupInstall.State?
 
         public init(homePath: String, homeSource: TandemHome.Source,
                     storePath: String, storeVersion: Int? = nil,
@@ -125,7 +129,8 @@ public enum SetupDiagnostics {
                     commentsPath: String, commentsState: CommentsState,
                     commentRows: Int = 0, commentsImported: Bool = false,
                     appPresent: Bool, appVersion: String?, appQuarantined: Bool,
-                    skillHosts: [SkillHost], opencodeHasSkills: Bool) {
+                    skillHosts: [SkillHost], opencodeHasSkills: Bool,
+                    agentFace: SetupInstall.State? = nil) {
             self.homePath = homePath
             self.homeSource = homeSource
             self.storePath = storePath
@@ -148,12 +153,14 @@ public enum SetupDiagnostics {
             self.appQuarantined = appQuarantined
             self.skillHosts = skillHosts
             self.opencodeHasSkills = opencodeHasSkills
+            self.agentFace = agentFace
         }
     }
 
     /// The check order, pinned: the CLI documents and tests it. The first four
-    /// can fail; the last three are informational.
-    static let checkNames = ["home", "store", "bikeshed", "comments", "lock", "app", "skills"]
+    /// and the last can fail; the middle three are informational.
+    static let checkNames = ["home", "store", "bikeshed", "comments", "lock", "app",
+                             "skills", "agent-face"]
 
     /// Assemble the report from observed `facts`. Pure.
     public static func report(_ facts: Facts) -> Report {
@@ -238,6 +245,8 @@ public enum SetupDiagnostics {
 
         checks.append(Check(name: "skills", ok: true,
                             detail: skillDetail(facts)))
+
+        checks.append(agentFaceCheck(facts))
 
         return Report(ok: checks.allSatisfy { $0.ok }, checks: checks)
     }
@@ -368,7 +377,16 @@ public enum SetupDiagnostics {
             appVersion: appVersion,
             appQuarantined: appPresent && hasQuarantine(appPath),
             skillHosts: skillHosts(),
-            opencodeHasSkills: opencodeHasSkills())
+            opencodeHasSkills: opencodeHasSkills(),
+            agentFace: SetupInstall.state(
+                home: TandemHome.directory,
+                environment: ProcessInfo.processInfo.environment,
+                bundle: SetupInstall.bundle(
+                    environment: ProcessInfo.processInfo.environment,
+                    executablePath: TandemHome.executablePath,
+                    isDebugBuild: TandemHome.isDebugBuild),
+                executablePath: TandemHome.executablePath,
+                isDebugBuild: TandemHome.isDebugBuild))
     }
 
     /// Recursive count of `nodes`' notes.
@@ -378,14 +396,35 @@ public enum SetupDiagnostics {
         }
     }
 
-    private static func skillDetail(_ facts: Facts) -> String {
+    /// The `skills` row: the host list, the OpenCode route, and the one install
+    /// line. The route's state comes from the same `SetupInstall.state` the
+    /// `agent-face` row reads, so `doctor` and `setup status` cannot disagree.
+    /// `opencode configured` stays the substring the skill and the tests carry.
+    static func skillDetail(_ facts: Facts) -> String {
         let hosts = facts.skillHosts.map { host in
             "\(host.name) \(host.found ? "found" : "not found")"
         }.joined(separator: ", ")
-        let opencode = facts.opencodeHasSkills
+        var opencode = facts.opencodeHasSkills
             ? "opencode configured"
             : "opencode not configured"
-        return "\(hosts); \(opencode) — install: ln -s \"$PWD/skills/tandem\" <host>/tandem"
+        if let host = facts.agentFace?.hosts.first(where: { $0.host == "opencode" }),
+           host.state == "installed" || host.state == "checkout" {
+            opencode += " (\(host.state))"
+        }
+        return "\(hosts); \(opencode); install: tandem-cli setup install"
+    }
+
+    /// The `agent-face` row (ADR 0034): red while any `warn` or `error` stands,
+    /// naming the count, the first code and its hint. Informational warnings do
+    /// not turn `doctor` red: a checkout route is the normal state on a dev machine.
+    static func agentFaceCheck(_ facts: Facts) -> Check {
+        let trouble = facts.agentFace?.warnings.filter { $0.severity != .info } ?? []
+        guard let first = trouble.first else {
+            return Check(name: "agent-face", ok: true, detail: "no warnings")
+        }
+        let count = trouble.count == 1 ? "1 warning" : "\(trouble.count) warnings"
+        return Check(name: "agent-face", ok: false,
+                     detail: "\(count): \(first.code.rawValue), \(first.hint)")
     }
 
     private static func skillHosts() -> [SkillHost] {

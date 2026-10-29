@@ -161,6 +161,9 @@ tandem-cli sprint run --lane <name> --note <string|->
 tandem-cli sprint close --lane <name> [--number <n>] [--note <string|->]
 tandem-cli sprint list [--lane <name>] [--status open|closed]
 tandem-cli sprint show --lane <name> --number <n>
+tandem-cli setup install [--host <opencode|claude|agents>] [--force]
+tandem-cli setup uninstall [--host <opencode|claude|agents>]
+tandem-cli setup status
 tandem-cli doctor
 ```
 
