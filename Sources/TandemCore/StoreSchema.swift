@@ -268,6 +268,17 @@ enum StoreSchema {
         }
     }
 
+    /// The applied version a pending migration would move past, or `nil` when there is
+    /// nothing to migrate or nothing to keep a copy of. The writers take their rolling
+    /// backup from this before `migrate` runs, because each migration commits in its own
+    /// transaction: a copy rolled after it already holds the new version (TAN-221).
+    /// A database with no seam yet (a file whose first write was killed before the seam
+    /// landed) has no version and needs no pre-image: the JSON it still has is the truth.
+    static func pendingMigrationVersion(of db: SQLiteDatabase) throws -> Int? {
+        guard try needsMigration(db, migrations: migrations) else { return nil }
+        return (try? version(of: db)) ?? nil
+    }
+
     /// Whether the seam's tables are all present and the last migration is applied. Read
     /// without a transaction on purpose: a stale "yes" is impossible (a later version
     /// only comes from a committed migration and the version is re-read inside the

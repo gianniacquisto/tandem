@@ -133,8 +133,18 @@ public struct Store: Sendable {
         let outcome: (value: T, changed: Bool) = try Self.translate {
             try FileManager.default.createDirectory(
                 at: directory, withIntermediateDirectories: true)
+            let databaseExisted = databaseExists
             let db = try SQLiteDatabase(url: databaseURL, mode: .readWrite)
             defer { db.close() }
+            // A migration commits in its own transaction, so the pre-migration image is
+            // rolled here, before it runs: rolled afterwards, `.bak` would already hold
+            // the new version and the previous build would have nothing to restore
+            // (TAN-221). The write below does not roll a second, post-migration copy.
+            let migrating = databaseExisted
+                ? try StoreSchema.pendingMigrationVersion(of: db) != nil : false
+            if migrating {
+                try Self.backUpDatabase(at: databaseURL, to: backupURL)
+            }
             try StoreSchema.migrate(db)
             var result: (value: T, changed: Bool)?
             try db.transaction {
@@ -153,8 +163,9 @@ public struct Store: Sendable {
                     // The copy is taken through its own read-only connection: a WAL
                     // reader sees the last committed state while this write waits, and
                     // the backup API does not run against a connection holding the write
-                    // lock. The first write has no earlier state to roll.
-                    if !firstWrite {
+                    // lock. The first write has no earlier state to roll, and a migrating
+                    // write already rolled its pre-image above.
+                    if !firstWrite && !migrating {
                         try Self.backUpDatabase(at: databaseURL, to: backupURL)
                     }
                     try StoreSchema.writeContents(contents, to: db)
