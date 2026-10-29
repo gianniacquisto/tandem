@@ -26,7 +26,7 @@ enum StoreSchema {
     }
 
     /// The version this build writes and reads.
-    static let currentVersion = 3
+    static let currentVersion = 4
 
     /// Every migration, in order. Append only — a shipped version's DDL never changes.
     static let migrations: [Migration] = [
@@ -156,6 +156,15 @@ enum StoreSchema {
                 try db.run("UPDATE lanes SET lastNumber = ? WHERE name = ?",
                            [.int(ids.count), .text(name)])
             }
+        },
+        // On hold's retired spelling (TAN-195): the domain and the wire carry `on-hold`
+        // alone, so every row that still spells the old word becomes `on-hold`. One
+        // UPDATE in one transaction; the version row is what makes a second open a
+        // no-op. Appended rather than folded into v1, because a shipped migration's DDL
+        // is history.
+        Migration(version: 4, name: "on-hold replaces the retired spelling") { db in
+            try db.run("UPDATE tickets SET status = ? WHERE status = ?",
+                       [.text(Status.onHold.rawValue), .text(Status.retiredOnHold)])
         }
     ]
 
@@ -331,8 +340,9 @@ enum StoreSchema {
                 id: id,
                 title: row.text(1),
                 // A status this build does not know reads as backlog, never a failure —
-                // the same lenient rule the file's decoder kept.
-                status: Status(rawValue: row.text(2)) ?? .backlog,
+                // the same lenient rule the file's decoder kept, the retired on-hold
+                // spelling included until the migration replaces it.
+                status: Status.stored(raw: row.text(2)),
                 archived: row.int(3) != 0,
                 description: row.textOrNil(4),
                 assignee: row.textOrNil(5),

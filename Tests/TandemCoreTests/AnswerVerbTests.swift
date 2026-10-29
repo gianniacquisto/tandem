@@ -23,7 +23,7 @@ struct AnswerVerbTests {
         let id = try cli.addTicket(home: home, title: "Which option?")
         let brief = "## Why\n\nWhich option?\n\n## What\n\nPick one."
         let set = try run(home: home, [
-            "ticket", "set", "--id", id, "--status", "refined", "--assignee", "human",
+            "ticket", "set", "--id", id, "--status", "on-hold", "--assignee", "human",
             "--description", brief,
         ])
         #expect(set.code == 0)
@@ -96,7 +96,7 @@ struct AnswerVerbTests {
         defer { try? FileManager.default.removeItem(at: home) }
 
         let id = try cli.addTicket(home: home, title: "Question")
-        _ = try run(home: home, ["ticket", "set", "--id", id, "--status", "refined",
+        _ = try run(home: home, ["ticket", "set", "--id", id, "--status", "on-hold",
                                  "--assignee", "human", "--description", "## Why\n\nWhich?"])
 
         for (args, stdin) in [

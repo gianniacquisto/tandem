@@ -28,11 +28,10 @@ public struct BoardLane: Identifiable, Sendable, Equatable {
 }
 
 extension Status {
-    /// The board column a ticket draws in: the stage itself, except the retired
-    /// `refined`, which folds into **On hold** (TAN-196). `workflow` stays the drawn
-    /// stages, so no header, menu or ⌘K line offers the retired word while a row a
-    /// pre-migration store still holds stays visible, counted, and droppable.
-    public var column: Status { self == .refined ? .onHold : self }
+    /// The board column a ticket draws in. Every stage is a column of its own: the retired
+    /// spelling folded into **On hold** while it was readable (TAN-196), and the migration
+    /// that replaced the rows (TAN-195) left no value outside the drawn stages.
+    public var column: Status { self }
 }
 
 /// The board's geometry, in the core: which rows to draw and what sits in each cell.
