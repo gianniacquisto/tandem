@@ -10,7 +10,7 @@ link() { # link <source> <target> <label>
   local src=$1 target=$2 label=$3
   if [ -L "$target" ]; then
     if [ ! -e "$target" ]; then
-      out "dangling $label (its target is missing — is this repo on dev?)"
+      out "dangling $label (its target is missing: is this repo on main?)"
       return
     fi
     if [ "$(readlink "$target")" = "$src" ]; then

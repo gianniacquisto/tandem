@@ -79,7 +79,7 @@ The app and the agent read and write the same store, and the app watches it: a t
 | The session record — an agent session's own artifact, in the store | v0.16.0 |
 | A dev build that keeps its own state in `~/.tandem-dev`, so it can never touch yours | v0.9.0 |
 
-Every picture below, and every word of the app's own copy in it, is `dev`'s — the branch the next release is cut from. An installed build can lag `dev` by a release.
+Every picture below, and every word of the app's own copy in it, is `main`'s, the trunk the next release is cut from. An installed build can lag `main` by a release.
 
 The board: the same tickets, laid out by where they are in the workflow.
 
@@ -166,7 +166,7 @@ The Statuses are `backlog`, `on-hold`, `ready`, `in-progress`, `in-review` and `
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 
-That block is `dev`'s grammar, the branch the next release is cut from — `tandem-cli --help` prints the whole of it, and `--help` on any subcommand or verb prints that subcommand's own usage (`tandem-cli note capture --help` the `note capture` line) on stdout, exit 0.
+That block is `main`'s grammar, the trunk the next release is cut from: `tandem-cli --help` prints the whole of it, and `--help` on any subcommand or verb prints that subcommand's own usage (`tandem-cli note capture --help` the `note capture` line) on stdout, exit 0.
 
 ### A session is its own record
 
@@ -240,7 +240,7 @@ Tandem's store was `tickets.json` until v0.27.0, with the comments, sessions, sp
 
 The tracker is the **Tandem board**, not GitHub issues — the tracker contract is the `tandem` skill (`skills/tandem/SKILL.md`).
 
-- **Branch off `dev`.** `dev` takes merges; `main` is the release line, and its head is always the latest release tag ([ADR 0019](docs/adr/0019-integration-branch.md)). Pull requests target `dev`.
+- **Branch off `main`.** `main` is the trunk: it takes merges, and a release is a lightweight tag on its head, so installs come from the tag ([ADR 0019](docs/adr/0019-integration-branch.md), amended 2026-10-29). Pull requests target `main`.
 - **Merge, don't rewrite.** Prefer merge commits over rebases, and avoid force pushes and other destructive git actions unless absolutely necessary — when a force push is unavoidable, `--force-with-lease`, never bare `--force`.
 - **Run the gates.** `swift test` for the core suite, and in `Editor/`: `npm ci && node --test`. The committed editor bundle is prebuilt, and CI checks that the committed bytes are exactly what the pinned inputs regenerate.
 - **Use the project's words.** [GLOSSARY.md](GLOSSARY.md) is the vocabulary; the ADRs are the decisions. Respect the ADRs in the area your change touches, and amend one in the same pull request when you change what it decided.
