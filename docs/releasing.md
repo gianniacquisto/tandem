@@ -2,6 +2,8 @@
 
 Two repos: the main repo holds the source; [`gianniacquisto/homebrew-tap`](https://github.com/gianniacquisto/homebrew-tap) holds the [Homebrew cask](https://github.com/gianniacquisto/homebrew-tap/blob/main/Casks/tandem.rb) that installs the prebuilt app. brew only reads taps from its fixed tap directory, so on any dev machine the working copy is wherever brew keeps the clone — `brew tap gianniacquisto/tap` creates it at `$(brew --prefix)/Library/Taps/gianniacquisto/homebrew-tap`. That directory is an ordinary git clone of the tap repo: branch, commit, and push from there (`brew update` keeps it current).
 
+The sprint close cuts this tag for the batch it landed: the release step in [`skills/tandem-sprint/SKILL.md`](../skills/tandem-sprint/SKILL.md) §7 runs the acts below, so the sprint that lands the work is the pass that ships it.
+
 To cut a release:
 
 1. Cut the release on the integration branch, then move the release line to it by PR (three acts):
