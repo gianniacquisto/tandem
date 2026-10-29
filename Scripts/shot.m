@@ -49,6 +49,11 @@ int tandem_shot(long windowNumber, const char *pngPath) {
     return 1;
   }
 
+  // The rep's size in points is the view's bounds, not its pixel count: without
+  // this line the rep is `bounds * scale` points wide, and cacheDisplay draws the
+  // view at one point per pixel into the bottom-left quarter of the bitmap.
+  rep.size = bounds;
+
   [view cacheDisplayInRect:view.bounds toBitmapImageRep:rep];
   NSData *png = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
   if (!png || ![png writeToFile:@(pngPath) atomically:YES]) {
