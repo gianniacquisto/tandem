@@ -129,6 +129,14 @@ enum StoreMigration {
             at: directory, withIntermediateDirectories: true)
         let db = try SQLiteDatabase(url: database, mode: .readWrite)
         defer { db.close() }
+        // Same order as the ticket store's write: a migration commits in its own
+        // transaction, so the pre-migration image is rolled before it (TAN-221).
+        let migrating = databaseExisted
+            ? try StoreSchema.pendingMigrationVersion(of: db) != nil : false
+        if migrating {
+            try Store.backUpDatabase(
+                at: database, to: directory.appendingPathComponent("tandem.db.bak"))
+        }
         try StoreSchema.migrate(db)
         var result: (value: T, note: String?)?
         try db.transaction {
@@ -141,7 +149,7 @@ enum StoreMigration {
             }
             let step = try body(db)
             if step.changed {
-                if databaseExisted {
+                if databaseExisted && !migrating {
                     try Store.backUpDatabase(
                         at: database,
                         to: directory.appendingPathComponent("tandem.db.bak"))

@@ -72,6 +72,94 @@ struct StoreMigrationTests {
         #expect(store.storeFileURL.lastPathComponent == "tickets.json")
     }
 
+    /// TAN-195: schema v4 replaces the retired on-hold spelling in every stored row. One
+    /// transaction, one version row: a second open finds the marker and changes nothing.
+    @Test("a v4 migration maps the retired spelling to on-hold once, and a second open is a no-op")
+    func retiredSpellingMigratesToOnHold() throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("tandem.db")
+
+        // A v3 store as the installed build left it: one row still spells the old word.
+        let seed = try SQLiteDatabase(url: url, mode: .readWrite)
+        try StoreSchema.migrate(
+            seed, migrations: StoreSchema.migrations.filter { $0.version <= 3 })
+        try seed.run("""
+            INSERT INTO tickets (id, title, status, archived, origin, position, createdAt)
+            VALUES (?, ?, ?, 0, 'human', 0, ?)
+            """, [.text(UUID().uuidString), .text("parked the old way"),
+                  .text("refined"), .text(Timestamp.encode(Date()))])
+        try seed.run("""
+            INSERT INTO store_imports (domain, source, importedAt) VALUES (?, NULL, ?)
+            """, [.text(StoreSchema.ticketsDomain), .text(Timestamp.encode(Date()))])
+        seed.close()
+
+        // A read of the un-migrated store never falls back to `backlog`.
+        let store = Store(directory: dir)
+        #expect(try ticket(store, titled: "parked the old way").status == .onHold)
+
+        // The first write migrates: the row on disk carries the live word, and every
+        // version is recorded exactly once.
+        _ = try store.add("a new one")
+        let db = try SQLiteDatabase(url: url, mode: .readOnly)
+        defer { db.close() }
+        #expect(try db.scalarString(
+            "SELECT status FROM tickets WHERE title = 'parked the old way'") == "on-hold")
+        let versions = try db.rows("SELECT version FROM schema_migrations ORDER BY version") {
+            $0.int(0)
+        }
+        #expect(versions == Array(1...StoreSchema.currentVersion))
+
+        // Re-running the seam finds nothing to apply.
+        let reopen = try SQLiteDatabase(url: url, mode: .readWrite)
+        try StoreSchema.migrate(reopen)
+        #expect(try reopen.scalarInt("SELECT COUNT(*) FROM schema_migrations")
+                == StoreSchema.currentVersion)
+        reopen.close()
+    }
+
+    /// TAN-221: a migration commits in its own transaction, so the rolling backup has to
+    /// be taken before it runs. Rolled afterwards, `.bak` already holds the new version
+    /// and a build from before the migration has nothing to restore.
+    @Test("the first post-upgrade write's backup is the pre-migration image")
+    func migrationBackupHoldsThePreMigrationStore() throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("tandem.db")
+
+        // A v3 store as the installed build left it: imported, with a row that still
+        // spells the retired word.
+        let seed = try SQLiteDatabase(url: url, mode: .readWrite)
+        try StoreSchema.migrate(
+            seed, migrations: StoreSchema.migrations.filter { $0.version <= 3 })
+        try seed.run("""
+            INSERT INTO tickets (id, title, status, archived, origin, position, createdAt)
+            VALUES (?, ?, ?, 0, 'human', 0, ?)
+            """, [.text(UUID().uuidString), .text("parked the old way"),
+                  .text("refined"), .text(Timestamp.encode(Date()))])
+        try seed.run("""
+            INSERT INTO store_imports (domain, source, importedAt) VALUES (?, NULL, ?)
+            """, [.text(StoreSchema.ticketsDomain), .text(Timestamp.encode(Date()))])
+        seed.close()
+
+        // The first write after the upgrade migrates and appends.
+        let store = Store(directory: dir)
+        _ = try store.add("a new one")
+        #expect(store.schemaVersion() == StoreSchema.currentVersion)
+
+        // The one generation the format keeps is the store before the migration: v3,
+        // the retired spelling, and none of this write's rows.
+        let backup = try SQLiteDatabase(url: store.backupURL, mode: .readOnly)
+        defer { backup.close() }
+        #expect(try StoreSchema.version(of: backup) == 3,
+                "the backup is the pre-v4 image")
+        #expect(try backup.scalarString(
+            "SELECT status FROM tickets WHERE title = 'parked the old way'") == "refined",
+                "the backup predates the spelling migration")
+        #expect(try backup.scalarInt("SELECT COUNT(*) FROM tickets") == 1,
+                "the backup predates this write")
+    }
+
     @Test("a home with only the legacy todos.json reads it (both shapes, forever)")
     func readFallbackLegacyName() throws {
         let dir = try makeDir()

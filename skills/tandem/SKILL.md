@@ -21,7 +21,7 @@ Eight verbs under `ticket` — `list`, `show`, `add`, `set`, `move`, `complete`,
 | `ref` | the human handle, `TAN-42` — a lane key plus a per-lane number, null in the default area; pass it **anywhere `--id` is taken** |
 | `number` | the number inside the lane (`42`), null in the default area |
 | `title` | one line, trimmed |
-| `status` | `backlog` (default), `refined`, `ready`, `in-progress`, `in-review`, `done` |
+| `status` | `backlog` (default), `on-hold`, `ready`, `in-progress`, `in-review`, `done` |
 | `archived` | true when set aside — out of the default views, still in the store |
 | `description` | markdown body, or null; write from stdin with `ticket add --description -` or `ticket set --description -`, read it back whole with `ticket show --id` |
 | `assignee` | `human`, an agent's name, or null for unowned |

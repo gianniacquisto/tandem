@@ -26,7 +26,7 @@ enum StoreSchema {
     }
 
     /// The version this build writes and reads.
-    static let currentVersion = 3
+    static let currentVersion = 4
 
     /// Every migration, in order. Append only — a shipped version's DDL never changes.
     static let migrations: [Migration] = [
@@ -156,6 +156,15 @@ enum StoreSchema {
                 try db.run("UPDATE lanes SET lastNumber = ? WHERE name = ?",
                            [.int(ids.count), .text(name)])
             }
+        },
+        // On hold's retired spelling (TAN-195): the domain and the wire carry `on-hold`
+        // alone, so every row that still spells the old word becomes `on-hold`. One
+        // UPDATE in one transaction; the version row is what makes a second open a
+        // no-op. Appended rather than folded into v1, because a shipped migration's DDL
+        // is history.
+        Migration(version: 4, name: "on-hold replaces the retired spelling") { db in
+            try db.run("UPDATE tickets SET status = ? WHERE status = ?",
+                       [.text(Status.onHold.rawValue), .text(Status.retiredOnHold)])
         }
     ]
 
@@ -259,6 +268,17 @@ enum StoreSchema {
         }
     }
 
+    /// The applied version a pending migration would move past, or `nil` when there is
+    /// nothing to migrate or nothing to keep a copy of. The writers take their rolling
+    /// backup from this before `migrate` runs, because each migration commits in its own
+    /// transaction: a copy rolled after it already holds the new version (TAN-221).
+    /// A database with no seam yet (a file whose first write was killed before the seam
+    /// landed) has no version and needs no pre-image: the JSON it still has is the truth.
+    static func pendingMigrationVersion(of db: SQLiteDatabase) throws -> Int? {
+        guard try needsMigration(db, migrations: migrations) else { return nil }
+        return (try? version(of: db)) ?? nil
+    }
+
     /// Whether the seam's tables are all present and the last migration is applied. Read
     /// without a transaction on purpose: a stale "yes" is impossible (a later version
     /// only comes from a committed migration and the version is re-read inside the
@@ -331,8 +351,9 @@ enum StoreSchema {
                 id: id,
                 title: row.text(1),
                 // A status this build does not know reads as backlog, never a failure —
-                // the same lenient rule the file's decoder kept.
-                status: Status(rawValue: row.text(2)) ?? .backlog,
+                // the same lenient rule the file's decoder kept, the retired on-hold
+                // spelling included until the migration replaces it.
+                status: Status.stored(raw: row.text(2)),
                 archived: row.int(3) != 0,
                 description: row.textOrNil(4),
                 assignee: row.textOrNil(5),

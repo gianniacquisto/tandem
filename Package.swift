@@ -21,7 +21,11 @@ let package = Package(
         // the in-process bikeshed index — wikilink scanning, backlinks, search (spec:
         // "Package and modules"). Same GFM dialect the CM6 editor highlights.
         // NOTICE.txt stays in the repo root (spec: "Its NOTICE stays with the app").
-        .package(url: "https://github.com/apple/swift-markdown.git", from: "0.9.0")
+        .package(url: "https://github.com/apple/swift-markdown.git", from: "0.9.0"),
+        // swift-snapshot-testing (MIT): renders a view and compares it to a committed
+        // baseline image, so a layout change a diff cannot show fails `swift test`
+        // (TAN-218, the snapshot half of TAN-210). Test-only: no product target sees it.
+        .package(url: "https://github.com/pointfreeco/swift-snapshot-testing.git", from: "1.19.7")
     ],
     targets: [
         // The core module: domain model + Store + operations. Concurrency-clean (Swift 6).
@@ -56,12 +60,18 @@ let package = Package(
             name: "tandem-cli",
             dependencies: ["TandemCore"]
         ),
-        // The single test seam: the core module, and the CLI adapter — the
-        // `tandem-cli` product is a dependency so the seam can run the binary
-        // SwiftPM built beside the test bundle.
+        // The single test seam: the core module, the CLI adapter, and the app's views.
+        // `tandem-cli` and `Tandem` are dependencies so the seam can run the binary
+        // SwiftPM built beside the test bundle, and can render the views it snapshots
+        // (TAN-218).
         .testTarget(
             name: "TandemCoreTests",
-            dependencies: ["TandemCore", "tandem-cli"]
+            dependencies: [
+                "TandemCore",
+                "tandem-cli",
+                "Tandem",
+                .product(name: "SnapshotTesting", package: "swift-snapshot-testing")
+            ]
         )
     ]
 )

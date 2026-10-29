@@ -11,6 +11,10 @@ This project's memory is the Tandem **bikeshed** (`~/.tandem/bikeshed/`), reache
 
 The full protocol is in the skill: `SKILL.md`, `CONVENTIONS.md` (the page roles and the freshness rule), `WRITE-PROTOCOL.md`, `CONSOLIDATION.md`.
 
+## Prose
+
+No em dash (U+2014) in anything an agent writes: use a comma, a colon, a full stop, or a hyphen instead. The ban covers PR bodies, review replies and issue comments; ticket titles, descriptions and comments; bikeshed notes and captures; commit messages, code comments and docs. Before filing a comment or opening a PR, run `grep -n $'\u2014' <file>` on what you wrote and expect no hits. The dashes already in the tree stay: a prose change does not sweep them.
+
 ## Sessions
 
 A session is a record, not a ticket (ADR 0027): a row of the store's `sessions` table in `tandem.db` at Tandem's home, never a ticket on the board. One record per session, keyed by `$OPENCODE_SESSION_ID`, and one more per resumed pass — `<id>-2`, `<id>-3`, … — when the harness re-dispatches into a session whose record has already ended (the bullet below). The CLI's five verbs are `session start`, `session link`, `session end`, `session list` and `session show`; the two states are `running` and `ended`.

@@ -162,7 +162,7 @@ tandem-cli sprint show --lane <name> --number <n>
 tandem-cli doctor
 ```
 
-The Statuses are `backlog`, `on-hold`, `refined`, `ready`, `in-progress`, `in-review` and `done` (`refined` is the retired name of `on-hold` and stays readable until the migration); a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A ticket in a lane carries a **ref** — the lane's key and a per-lane number, `TAN-42` — and every `--id` (or `--ticket`) accepts it beside the full UUID; the default area's tickets have none, and a lane's key is frozen once its tickets carry numbers. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status. A sprint keeps its own vocabulary too — `open` and `closed`, with a batch built `serial` or `parallel` — and never borrows the board's Status either.
+The Statuses are `backlog`, `on-hold`, `ready`, `in-progress`, `in-review` and `done` (`on-hold` is the parked slot: a blocker, a human decision pending); a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A ticket in a lane carries a **ref** — the lane's key and a per-lane number, `TAN-42` — and every `--id` (or `--ticket`) accepts it beside the full UUID; the default area's tickets have none, and a lane's key is frozen once its tickets carry numbers. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status. A sprint keeps its own vocabulary too — `open` and `closed`, with a batch built `serial` or `parallel` — and never borrows the board's Status either.
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 
@@ -177,7 +177,7 @@ Not a ticket: `session start` opens a record of one agent session's run — the 
 | skill | what it is for | since |
 | --- | --- | --- |
 | `tandem` | the CLI contract an agent reads before it touches the store | v0.9.0 |
-| `tandem-memory` | the bikeshed as the agent's memory: orient from the Hub, record the session, consolidate into the curated notes on request | v0.6.0, the capture-and-consolidation protocol in v0.11.0 |
+| `tandem-memory` | the bikeshed as the agent's memory: orient from the project's **Overview**, record the session, consolidate into the curated notes on request | v0.6.0, the capture-and-consolidation protocol in v0.11.0 |
 | `tandem-sprint` | the SDLC in one invocation — the loop refine → build → review → retro: orient, triage with refine filling the batch, the batch through `tandem-build`, retro at the close | v0.15.0 |
 | `tandem-build` | the sprint's build phase: each batch ticket claimed, built in its own worktree, gated through review, recorded | v0.15.0 (as `tandem-sprint`; renamed 2026-10-24) |
 | `tandem-refine` | dispatches the refiner to shape a backlog ticket into a buildable brief | v0.16.0 |
