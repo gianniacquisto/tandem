@@ -63,6 +63,27 @@ fi
 
 lead="Tandem $version for macOS 27 (Apple silicon). Install: brew install --cask gianniacquisto/tap/tandem"
 
+# The integration tip a tag names. Under the old order every tag sits on the
+# integration branch, so the tag is its own tip. Under the new order the tag
+# sits on `main`'s head, the release merge, whose second parent is the
+# integration head it shipped, so the range walks from there. The release
+# merge is the PR from `dev` or from a `release/vX.Y.Z` branch; a tag on a
+# board merge (every tag up to v0.32.0) names its own commit.
+integration_tip() {
+  case "$(git log -1 --format=%s "$1")" in
+    "Merge pull request #"*" from "*"/dev" \
+      | "Merge pull request #"*" from "*"/release/"* \
+      | "Merge branch 'dev'"* \
+      | "Merge branch 'release/"*)
+      git rev-parse "$1^2" ;;
+    *)
+      git rev-parse "$1" ;;
+  esac
+}
+
+prevTip=$(integration_tip "$prev")
+newTip=$(integration_tip "$new")
+
 # The kind a merged PR belongs to. Labels outrank the title's words because a
 # label is someone's stated intent; the words are the fallback.
 classify() {
@@ -91,8 +112,8 @@ classify() {
 # The integration branch's own merges between the tags: the PR merges.
 # --first-parent keeps the union merges a PR branch carries when the
 # integration branch moves under it ("Merge dev into board/…") out of the
-# list — they are not something the release ships.
-subjects=$(git log "$prev..$new" --first-parent --merges --format='%s')
+# list, and the tip resolution above keeps the release merge itself out.
+subjects=$(git log "$prevTip..$newTip" --first-parent --merges --format='%s')
 
 if [ -z "$subjects" ]; then
   printf '%s\n' "$lead"

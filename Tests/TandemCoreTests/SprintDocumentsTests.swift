@@ -226,7 +226,10 @@ struct SprintDocumentsTests {
             "the release is the close's first act: a tag needs the batch merged and done")
         #expect(
             section.contains("git tag vX.Y.Z") && section.contains("push origin vX.Y.Z"),
-            "the tag is cut on the dev head the batch landed and pushed")
+            "the tag names `main`'s head and is pushed, so the tag run publishes it")
+        let releasePR = try #require(section.range(of: "Release vX.Y.Z"))
+        let tag = try #require(section.range(of: "git tag vX.Y.Z"))
+        #expect(releasePR.lowerBound < tag.lowerBound, "the tag follows the release PR's merge")
         #expect(
             section.contains("Release vX.Y.Z"),
             "the dev to main release PR is part of the step, its merge the human's gate")
