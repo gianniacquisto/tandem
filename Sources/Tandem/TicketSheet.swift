@@ -58,6 +58,11 @@ struct TicketSheet: View {
     var onRefreshComments: () async -> CommentRead
     /// Opens a linked note (the window owns the tab switch). `nil` hides the button.
     var onOpenLink: ((String) -> Void)? = nil
+    /// Re-targets the sheet at another ticket: a blocker or a dependent clicked in the
+    /// dependency sections (TAN-232). It carries the id, not a `Ticket`: the host owns
+    /// the model, so the host resolves the id to the ticket it opens. `nil` draws the
+    /// rows unclickable.
+    var onOpenTicket: ((UUID) -> Void)? = nil
     /// Promotes the ticket to a bikeshed note. `nil` hides the button.
     var onPromote: (() -> PromotionOutcome)? = nil
 
@@ -99,6 +104,7 @@ struct TicketSheet: View {
          onComment: @escaping (String) -> CommentPostOutcome,
          onRefreshComments: @escaping () async -> CommentRead,
          onOpenLink: ((String) -> Void)? = nil,
+         onOpenTicket: ((UUID) -> Void)? = nil,
          onPromote: (() -> PromotionOutcome)? = nil) {
         self.ticket = ticket
         self.palette = palette
@@ -109,6 +115,7 @@ struct TicketSheet: View {
         self.onComment = onComment
         self.onRefreshComments = onRefreshComments
         self.onOpenLink = onOpenLink
+        self.onOpenTicket = onOpenTicket
         self.onPromote = onPromote
         _title = State(initialValue: ticket.title)
         _status = State(initialValue: ticket.status)
@@ -233,6 +240,14 @@ struct TicketSheet: View {
 
             Rectangle().fill(palette.sand).frame(height: Line.hairline)
 
+            // The dependency sections (TAN-232), above the body: what the ticket waits
+            // on, why, and what it holds up. The refs and the reason are drawn from one
+            // value (`blockedBy` plus the body's section), so a reason cannot describe an
+            // edge that is not there.
+            if !ticket.blockedBy.isEmpty || !ticket.blocks.isEmpty {
+                dependencySection
+            }
+
             Text("Description — markdown, saved with the ticket")
                 .font(.system(size: 10.5))
                 .foregroundStyle(palette.inkDim)
@@ -295,6 +310,75 @@ struct TicketSheet: View {
             for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await refreshComments() }
         }
+    }
+
+    // MARK: - The dependency sections (TAN-232)
+
+    /// `Blocked by` above `Blocks`, each one clickable row per edge carrying the ref, the
+    /// title and the status, with the body's reason under them. The incoming side is
+    /// drawn first because it is what explains why the ticket has not moved; the far side
+    /// is the other half of the same edges, and the sheet is where both ends meet.
+    @ViewBuilder
+    private var dependencySection: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if !ticket.blockedBy.isEmpty {
+                Text("Blocked by")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(palette.inkDim)
+                ForEach(ticket.blockedBy, id: \.id) { block in
+                    dependencyRow(block)
+                }
+            }
+            // The reason is the body's `## Blocked on` section, read rather than copied:
+            // it is where a wait that is not a ticket says what it waits on.
+            if let reason = ticket.blockedReason {
+                Text(reason)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(palette.emberDeep)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !ticket.blocks.isEmpty {
+                Text("Blocks")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(palette.inkDim)
+                ForEach(ticket.blocks, id: \.id) { block in
+                    dependencyRow(block)
+                }
+            }
+        }
+    }
+
+    /// One edge: the ref, the title and the status. A click re-targets the sheet at that
+    /// ticket; the host resolves the id, because the sheet has no model.
+    private func dependencyRow(_ block: TicketBlock) -> some View {
+        Button {
+            onOpenTicket?(block.id)
+        } label: {
+            HStack(spacing: 6) {
+                if let ref = block.ref {
+                    Text(ref)
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundStyle(palette.inkDim)
+                }
+                Text(block.title)
+                    .font(.system(size: 11))
+                    .foregroundStyle(block.status == .done ? palette.inkDim : palette.ink)
+                    .lineLimit(1)
+                Text(block.status.displayName)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(palette.inkDim)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .overlay(Capsule().strokeBorder(palette.sand, lineWidth: Line.hairline))
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        // A row is clickable only where the host gave the sheet somewhere to go; it stays
+        // legible either way, because the ref, title and status are the fact being shown.
+        .allowsHitTesting(onOpenTicket != nil)
+        .help(onOpenTicket == nil ? "" : "Open \(block.ref ?? block.title)")
     }
 
     // MARK: - The discussion (the sidecar's log, and the human's composer)

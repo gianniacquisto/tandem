@@ -239,6 +239,10 @@ public enum StoreEncoding {
         var object = try ticketObject(ticket)
         object["descriptionLength"] = (object["description"] as? String)?.count ?? 0
         object.removeValue(forKey: "description")
+        // The block's reason is body text, like the description, so the summary keeps the
+        // edge (`blocked`, `blockedBy`, `blocks`) and drops why (TAN-232). The body stays
+        // out of a list; `ticket show` carries it.
+        object.removeValue(forKey: "blockedReason")
         return object
     }
 

@@ -20,7 +20,8 @@ enum Command {
         status: String?,
         assignee: String?,
         lane: String?,
-        archived: Bool
+        archived: Bool,
+        blocked: Bool
     )
     case ticketShow(id: String)
     case ticketAdd(
@@ -39,6 +40,8 @@ enum Command {
         description: String?
     )
     case ticketMove(id: String, lane: String?, index: String?)
+    case ticketBlock(id: String, on: String)
+    case ticketUnblock(id: String, on: String?)
     case ticketComplete(id: String)
     case ticketAnswer(id: String, status: String, assignee: String?, body: String)
     case ticketArchive(id: String?)
@@ -135,9 +138,9 @@ private func helpCommand(group: String, verb: String, known: [String]) throws ->
 
 // MARK: - ticket
 
-/// `ticket list|show|add|set|move|complete|answer|archive|comment` — the ticket verbs
-/// (the agent surface). An absent flag is `nil` (the core's default); a flag with no
-/// value is `""`, which the core rejects or reads as the empty field. That is
+/// `ticket list|show|add|set|move|block|unblock|complete|answer|archive|comment`, the
+/// ticket verbs (the agent surface). An absent flag is `nil` (the core's default); a flag
+/// with no value is `""`, which the core rejects or reads as the empty field. That is
 /// the one rule every verb below follows, so no verb repeats a validation the
 /// core already owns.
 private func parseTicket(_ args: [String]) throws -> Command {
@@ -154,22 +157,25 @@ private func parseTicket(_ args: [String]) throws -> Command {
     }
     if asksHelp(rest) {
         return try helpCommand(group: "ticket", verb: verb, known: [
-            "list", "show", "add", "set", "move", "complete", "answer", "archive",
+            "list", "show", "add", "set", "move", "block", "unblock", "complete",
+            "answer", "archive",
         ])
     }
     let flags = try parseFlags(rest)
     switch verb {
     case "list":
-        try accept(flags, ["--filter", "--text", "--status", "--assignee", "--lane", "--archived"])
-        // `--archived` is a switch: the archive axis of the query, the one flag that
-        // takes no value.
+        try accept(flags, ["--filter", "--text", "--status", "--assignee", "--lane",
+                           "--archived", "--blocked"])
+        // `--archived` and `--blocked` are switches: the archive and the block axes of
+        // the query, the two flags that take no value. `--blocked` is a plain AND axis.
         return .ticketList(
             filter: flags["--filter"],
             text: flags["--text"],
             status: flags["--status"],
             assignee: flags["--assignee"],
             lane: flags["--lane"],
-            archived: flags["--archived"] != nil)
+            archived: flags["--archived"] != nil,
+            blocked: flags["--blocked"] != nil)
     case "show":
         try accept(flags, ["--id"])
         // One ticket by id, whole. A missing `--id` is the empty id whose
@@ -211,6 +217,15 @@ private func parseTicket(_ args: [String]) throws -> Command {
         // A missing `--id` is likewise the empty id whose `unknownID` error
         // carries the open list.
         return .ticketComplete(id: flags["--id"] ?? "")
+    case "block":
+        try accept(flags, ["--id", "--on"])
+        // `--on` takes the same handle `--id` does. An absent one is the empty handle,
+        // which the store answers as the unknown id it is, the missing-`--title` rule.
+        return .ticketBlock(id: flags["--id"] ?? "", on: flags["--on"] ?? "")
+    case "unblock":
+        try accept(flags, ["--id", "--on"])
+        // Without `--on` every edge the ticket has is released; with it, that one.
+        return .ticketUnblock(id: flags["--id"] ?? "", on: flags["--on"])
     case "answer":
         try accept(flags, ["--id", "--status", "--assignee", "--body"])
         // The answer and the hold close in one write: the block goes into the
@@ -541,11 +556,11 @@ private func parseSetup(_ args: [String]) throws -> Command {
 
 // MARK: - Flags
 
-/// The flags that take no value: a switch, there or not there. `--archived` (the
-/// archive axis of `ticket list`) and `--force` (replace a checkout link) are the
-/// two. Every other flag takes a value, so a switch never swallows the token
-/// after it.
-private let switchFlags: Set<String> = ["--archived", "--force"]
+/// The flags that take no value: a switch, there or not there. `--archived` is the
+/// archive axis of `ticket list`, `--blocked` the block axis (TAN-232), and
+/// `--force` replaces a checkout link (TAN-215). Every other flag takes a value, so
+/// no switch ever swallows the token after it.
+private let switchFlags: Set<String> = ["--archived", "--blocked", "--force"]
 
 /// Parse `tokens` as `--flag value` pairs. A flag's value is the next token
 /// when one exists and `""` when the flag is last: a missing value is the

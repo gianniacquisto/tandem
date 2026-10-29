@@ -25,6 +25,12 @@ public struct TicketQuery: Sendable, Equatable {
     /// `ticket list --assignee human`, is where an answered ticket still wearing
     /// `human` shows up as the bookkeeping debt an actor owes an `answer`.
     public var excludeAnswered: Bool
+    /// Only the tickets that are waiting on an open blocker (`Ticket.blocked`,
+    /// TAN-232). A plain AND axis, unlike the archive's three-valued view: alone it is
+    /// the blocked tickets, and named with a status it is the blocked ones in that
+    /// status. Nothing else draws differently, the flag narrows a read, it does not
+    /// reorder one.
+    public var blockedOnly: Bool
 
     public init(
         text: String? = nil,
@@ -32,7 +38,8 @@ public struct TicketQuery: Sendable, Equatable {
         assignee: Assignee = .any,
         lane: Lane = .any,
         archived: Archived = .excluded,
-        excludeAnswered: Bool = false
+        excludeAnswered: Bool = false,
+        blockedOnly: Bool = false
     ) {
         self.text = text
         self.statuses = statuses
@@ -40,6 +47,7 @@ public struct TicketQuery: Sendable, Equatable {
         self.lane = lane
         self.archived = archived
         self.excludeAnswered = excludeAnswered
+        self.blockedOnly = blockedOnly
     }
 
     /// The assignee axis: anyone, the unassigned tickets, or one named owner.
@@ -106,6 +114,7 @@ extension TicketQuery {
         case .included: break
         }
         if !statuses.isEmpty, !statuses.contains(todo.status) { return false }
+        if blockedOnly, !todo.blocked { return false }
         if excludeAnswered, DescriptionBody.answered(todo.description) { return false }
         switch assignee {
         case .any: break
@@ -160,7 +169,8 @@ extension TicketQuery {
         status rawStatus: String? = nil,
         assignee rawAssignee: String? = nil,
         lane rawLane: String? = nil,
-        archived includeArchived: Bool = false
+        archived includeArchived: Bool = false,
+        blocked blockedOnly: Bool = false
     ) throws -> TicketQuery {
         guard let filter = Filter.parse(raw: rawFilter) else {
             throw DomainError.invalidFilter(rawFilter ?? "")
@@ -182,6 +192,7 @@ extension TicketQuery {
         if let rawStatus { query.statuses = try parseStatuses(rawStatus) }
         if let rawAssignee { query.assignee = parseAssignee(rawAssignee) }
         if let rawLane { query.lane = parseLane(rawLane) }
+        query.blockedOnly = blockedOnly
         return query
     }
 

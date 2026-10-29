@@ -22,8 +22,61 @@ import Foundation
 /// The custom `Codable` conformance pins the on-disk and on-the-wire date format to
 /// ISO-8601 UTC (e.g. `2026-10-09T14:03:22Z`) regardless of the encoder/decoder's
 /// configured date strategy — so the store file and the CLI's JSON always agree.
-public struct Ticket: Identifiable, Codable, Hashable, Sendable {
+
+/// One end of a dependency edge, as a ticket reads it: the other ticket's id, its ref,
+/// its title and its status (TAN-232).
+///
+/// The edge is stored once, in `ticket_dependencies`, holding both tickets' UUIDs; this
+/// value is what the store derives from that row on every read, the way `ref` is
+/// derived, so a reader sees who it waits on, what that ticket is called, and whether
+/// the block has lifted, without opening a second read. It is never stored.
+public struct TicketBlock: Codable, Hashable, Sendable {
+    /// The other ticket's id, the edge's key, and what a click resolves back to.
     public let id: UUID
+    /// The other ticket's ref (`TAN-42`), `nil` in the default area.
+    public let ref: String?
+    /// The other ticket's title.
+    public let title: String
+    /// The other ticket's status: the block lifts when this is `done`, and it reads as
+    /// history after that.
+    public let status: Status
+
+    public init(id: UUID, ref: String?, title: String, status: Status) {
+        self.id = id
+        self.ref = ref
+        self.title = title
+        self.status = status
+    }
+
+    /// The wire shape: the id as a string, the status as its stored word, the same
+    /// spelling `Ticket` writes, so a reader that knows the board's vocabulary reads an
+    /// edge without a second decoder.
+    private enum CodingKeys: String, CodingKey {
+        case id, ref, title, status
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(UUID.self, forKey: .id)
+        self.ref = try c.decodeIfPresent(String.self, forKey: .ref)
+        self.title = try c.decode(String.self, forKey: .title)
+        self.status = Status.stored(raw: try c.decode(String.self, forKey: .status))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        if let ref {
+            try c.encode(ref, forKey: .ref)
+        } else {
+            try c.encodeNil(forKey: .ref)
+        }
+        try c.encode(title, forKey: .title)
+        try c.encode(status.rawValue, forKey: .status)
+    }
+}
+
+public struct Ticket: Identifiable, Codable, Hashable, Sendable {    public let id: UUID
     public var title: String
     /// Where the ticket is in the workflow. Transitions are free-form: the value is
     /// validated, never the move.
@@ -58,12 +111,30 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
     /// An optional link to a Bikeshed note: a bikeshed-root-relative path like
     /// `projects/App.md`, or `nil` for an unlinked ticket. Set in the GUI only ([ADR 0010]).
     public var link: String?
+    /// What this ticket waits on, in the order the edges were set (TAN-232). **Derived,
+    /// never stored:** the store fills it from `ticket_dependencies` on every read, so the
+    /// edge is written once and read from both ends. An edge to a done ticket stays here,
+    /// reading as history with its status.
+    public var blockedBy: [TicketBlock]
+    /// Who waits on this ticket, in the order set, the far end of the same edges.
+    /// **Derived, never stored.**
+    public var blocks: [TicketBlock]
     public let createdAt: Date
     public var completedAt: Date?
 
     /// The legacy v1 field, derived (see the type's note). It is never stored in memory,
     /// so there is no state in which it disagrees with `status`.
     public var done: Bool { status == .done }
+
+    /// Whether this ticket is waiting: any edge whose blocker is not `done`. **Derived,
+    /// never stored**, exactly like `done`: a block lifts the moment its blocker reaches
+    /// `done`, with no write to the dependent, and the prose section is never a second
+    /// predicate.
+    public var blocked: Bool { blockedBy.contains { $0.status != .done } }
+
+    /// Why it waits: the body's `## Blocked on` section, read from the description and
+    /// never copied into a column, so a human's edit cannot drift from it (TAN-232).
+    public var blockedReason: String? { DescriptionBody.blockedReason(description) }
 
     public init(
         id: UUID = UUID(),
@@ -77,6 +148,8 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
         number: Int? = nil,
         ref: String? = nil,
         link: String? = nil,
+        blockedBy: [TicketBlock] = [],
+        blocks: [TicketBlock] = [],
         createdAt: Date = .now,
         completedAt: Date? = nil
     ) {
@@ -91,6 +164,8 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
         self.number = number
         self.ref = ref
         self.link = link
+        self.blockedBy = blockedBy
+        self.blocks = blocks
         self.createdAt = createdAt
         self.completedAt = completedAt
     }
@@ -126,6 +201,10 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
         /// stored half; `ref` is derived by the store on read and written on the wire
         /// only, so it always agrees with the lane's current key.
         case number, ref
+        /// The dependency fields (TAN-232). `blockedBy` and `blocks` are derived by the
+        /// store on every read; `blocked` and `blockedReason` are computed on the value.
+        /// All four ride the wire so one read answers the whole question.
+        case blocked, blockedBy, blockedReason, blocks
         /// The v1 key for the lane — read beside `lane` and kept forever.
         case lane = "section"
         /// The renamed key, what the writer emits.
@@ -172,6 +251,11 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
         self.number = try c.decodeIfPresent(Int.self, forKey: .number)
         self.ref = try c.decodeIfPresent(String.self, forKey: .ref)
         self.link = try c.decodeIfPresent(String.self, forKey: .link)
+        // The dependency edges (TAN-232): the store fills `blockedBy` on read, and a
+        // wire round-trip keeps it. `blocked`/`blockedReason` are computed, so a decoded
+        // value never carries a stale copy of either.
+        self.blockedBy = try c.decodeIfPresent([TicketBlock].self, forKey: .blockedBy) ?? []
+        self.blocks = try c.decodeIfPresent([TicketBlock].self, forKey: .blocks) ?? []
 
         let createdRaw = try c.decode(String.self, forKey: .createdAt)
         guard let createdAt = Timestamp.decode(createdRaw) else {
@@ -239,6 +323,17 @@ public struct Ticket: Identifiable, Codable, Hashable, Sendable {
         } else {
             try c.encodeNil(forKey: .link)
         }
+        // The dependency fields ride every whole-ticket result, `null`/`[]` included, so
+        // the shape never varies by ticket (TAN-232). A summary drops `blockedReason`
+        // beside the description: it is body text, and the body stays out of a list.
+        try c.encode(blocked, forKey: .blocked)
+        try c.encode(blockedBy, forKey: .blockedBy)
+        if let reason = blockedReason {
+            try c.encode(reason, forKey: .blockedReason)
+        } else {
+            try c.encodeNil(forKey: .blockedReason)
+        }
+        try c.encode(blocks, forKey: .blocks)
         try c.encode(Timestamp.encode(createdAt), forKey: .createdAt)
         if let completedAt {
             try c.encode(Timestamp.encode(completedAt), forKey: .completedAt)

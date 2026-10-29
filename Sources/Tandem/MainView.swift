@@ -163,7 +163,14 @@ struct MainView: View {
                 onComment: { model.postComment(ticket.id.uuidString, body: $0) },
                 onRefreshComments: { await model.comments(for: ticket.id.uuidString) },
                 onOpenLink: openLinkedNote,
+                onOpenTicket: { id in
+                    // A blocker clicked on the sheet re-targets it at that ticket (TAN-232).
+                    if let target = model.tickets.first(where: { $0.id == id }) {
+                        ticketFor = target
+                    }
+                },
                 onPromote: { promote(ticket) })
+                .id(ticket.id)
         }
         .sheet(isPresented: $setup.isPresented) {
             SetupWizardView(

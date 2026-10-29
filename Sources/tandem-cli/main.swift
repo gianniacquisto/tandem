@@ -59,7 +59,8 @@ func dispatch(_ args: [String]) -> Int32 {
         return 0
     case .doctor:
         return runDoctor()
-    case .ticketList(let filter, let text, let status, let assignee, let lane, let archived):
+    case .ticketList(let filter, let text, let status, let assignee, let lane, let archived,
+                     let blocked):
         return run {
             let query = try TicketQuery.parse(
                 filter: filter,
@@ -67,7 +68,8 @@ func dispatch(_ args: [String]) -> Int32 {
                 status: status,
                 assignee: try resolveAssignee(assignee),
                 lane: lane,
-                archived: archived)
+                archived: archived,
+                blocked: blocked)
             let result = try Store().list(query)
             return try StoreEncoding.listResult(result.value, note: result.note)
         }
@@ -111,6 +113,19 @@ func dispatch(_ args: [String]) -> Int32 {
     case .ticketMove(let id, let lane, let index):
         return run {
             let result = try Store().move(id, toLane: lane, at: try parseIndex(index))
+            return try StoreEncoding.ticketResult(result.value, note: result.note)
+        }
+    case .ticketBlock(let id, let on):
+        return run {
+            // One edge, written at the two UUIDs; every refusal (self, cycle, a done or
+            // archived blocker, an unknown handle) is the store's, at write time.
+            let result = try Store().block(id, on: on)
+            return try StoreEncoding.ticketResult(result.value, note: result.note)
+        }
+    case .ticketUnblock(let id, let on):
+        return run {
+            // With `--on`, one edge; without, every edge the ticket has.
+            let result = try Store().unblock(id, on: on)
             return try StoreEncoding.ticketResult(result.value, note: result.note)
         }
     case .ticketComplete(let id):

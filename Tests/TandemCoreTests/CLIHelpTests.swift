@@ -209,4 +209,42 @@ struct CLIHelpTests {
         #expect(!result.output.contains("tandem-cli sprint open"),
                 "one verb's help does not carry the whole grammar")
     }
+
+    // MARK: - Ticket dependencies (TAN-232)
+
+    @Test("ticket block --help and ticket unblock --help print their own usage and exit 0")
+    func dependencyVerbHelp() throws {
+        for verb in ["block", "unblock"] {
+            let result = try cli.run(home: home, ["ticket", verb, "--help"])
+            #expect(result.code == 0, "verb \(verb)")
+            #expect(result.error == "", "verb \(verb)")
+            #expect(result.output.hasPrefix("tandem-cli ticket \(verb)"), "verb \(verb)")
+            #expect(result.output.contains("--on"), "verb \(verb) names the blocker flag")
+        }
+        let block = try cli.run(home: home, ["ticket", "block", "--help"])
+        #expect(block.output.contains("--id <id> --on <id>"), "the block line is the write's")
+        let unblock = try cli.run(home: home, ["ticket", "unblock", "--help"])
+        #expect(unblock.output.contains("[--on <id>]"), "the far side's clear is optional")
+    }
+
+    @Test("the root grammar carries the three dependency lines")
+    func rootGrammarNamesTheDependencyVerbs() {
+        let root = grammar(Usage.text)
+        #expect(root.contains(grammar("""
+        tandem-cli ticket block --id <id> --on <id>
+        """)))
+        #expect(root.contains(grammar("""
+        tandem-cli ticket unblock --id <id> [--on <id>]
+        """)))
+        #expect(root.contains("[--archived] [--blocked]"),
+                "`ticket list`'s line carries the new switch")
+        #expect(grammar(Usage.groups["ticket"] ?? "").contains(
+            grammar("tandem-cli ticket block --id <id> --on <id>")))
+        #expect(grammar(Usage.verbs["ticket list"] ?? "").contains("[--archived] [--blocked]"))
+        // The README's grammar block is the same text; `Scripts/check-readme-grammar.sh`
+        // is the CI half of this assertion.
+        let verbs = Array(Usage.verbs.keys)
+        #expect(verbs.contains("ticket block"))
+        #expect(verbs.contains("ticket unblock"))
+    }
 }
