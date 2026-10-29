@@ -2,13 +2,14 @@ import Foundation
 import Testing
 
 /// The trunk is `main` (ADR 0019, amended 2026-10-29): every agent contract a future
-/// builder reads names `origin/main` as the base, and none of them names `origin/dev`.
+/// builder reads names `origin/main` as the base, and none of them names `dev` at all,
+/// because the branch was deleted (`dev`'s last tag, v0.33.0, shipped from `main`).
 ///
 /// The seam is the repo's own files read from the checkout root, the one
 /// `SprintDocumentsTests` uses: a prose change has no higher seam, and this suite runs
-/// in the `test` job of the Release workflow, so an edit that puts `origin/dev` back
-/// into an instruction fails CI. The rows are byte-exact phrases on purpose, so a
-/// failure names the file and the sentence the next builder would re-derive from.
+/// in the `test` job of the Release workflow, so an edit that names `dev` again in an
+/// instruction fails CI. The rows are byte-exact phrases on purpose, so a failure names
+/// the file and the sentence the next builder would re-derive from.
 @Suite("Trunk flow")
 struct TrunkFlowTests {
 
@@ -21,14 +22,44 @@ struct TrunkFlowTests {
         try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
     }
 
-    /// One row per live instruction: the file, what it must say, what it must not.
-    private static let liveInstructions: [(path: String, must: [String], mustNot: [String])] = [
-        ("agents/builder.md", ["origin/main"], ["origin/dev"]),
-        ("skills/tandem-build/SKILL.md", ["origin/main"], ["origin/dev"]),
-        ("README.md", ["Branch off `main`"], ["Branch off `dev`", "target `dev`", "?branch=dev"]),
-        ("terse/README.md", ["`main`"], ["checkout dev"]),
-        ("terse/install.sh", ["on main?"], ["on dev?"]),
+    /// One row per live instruction: the file and what it must say. `dev` is checked for
+    /// every row, in every sentence: a live instruction that names the retired branch
+    /// sends the next builder to a branch that no longer exists.
+    private static let liveInstructions: [(path: String, must: [String])] = [
+        ("agents/builder.md", ["origin/main"]),
+        ("skills/tandem-build/SKILL.md", ["origin/main"]),
+        ("skills/tandem-sprint/SKILL.md", ["origin/main"]),
+        ("README.md", ["Branch off `main`"]),
+        ("docs/releasing.md", ["`main`'s head is the release"]),
+        ("terse/README.md", ["`main`"]),
+        ("terse/install.sh", ["on main?"]),
+        ("AGENTS.md", []),
     ]
+
+    /// Every occurrence of the retired branch's name as a standalone word: a token of
+    /// letters, digits, `-` and `_` that reads `dev`. `~/.tandem-dev`, the dev-mode state
+    /// directory, is one token and not a branch name, and neither is `development`.
+    private static func namedDev(_ text: String) -> [String] {
+        text.split { !($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
+            .map(String.init)
+            .filter { $0.lowercased() == "dev" }
+    }
+
+    @Test("no live instruction names the retired branch")
+    func noLiveInstructionNamesDev() throws {
+        for row in Self.liveInstructions {
+            let text = try Self.file(row.path)
+            for phrase in row.must {
+                #expect(
+                    text.contains(phrase),
+                    "\(row.path) must carry \(phrase): the trunk is `main` (ADR 0019)")
+            }
+            let named = Self.namedDev(text)
+            #expect(
+                named.isEmpty,
+                "\(row.path) names `dev` \(named.count) time(s): the branch was deleted, the trunk is `main` (ADR 0019)")
+        }
+    }
 
     /// The branch names a file mentions as `origin/<name>`, cleaned of the punctuation
     /// around them (`origin/main...origin/<branch>` names one).
@@ -42,23 +73,6 @@ struct TrunkFlowTests {
                 .map(String.init)
                 .filter { !$0.isEmpty }
         )
-    }
-
-    @Test("no live instruction branches from dev")
-    func noLiveInstructionBranchesFromDev() throws {
-        for row in Self.liveInstructions {
-            let text = try Self.file(row.path)
-            for phrase in row.must {
-                #expect(
-                    text.contains(phrase),
-                    "\(row.path) must carry \(phrase): the trunk is `main` (ADR 0019)")
-            }
-            for phrase in row.mustNot {
-                #expect(
-                    !text.contains(phrase),
-                    "\(row.path) must not carry \(phrase): `dev` is no longer the base (ADR 0019)")
-            }
-        }
     }
 
     /// Every `SKILL.md` under `skills/`, repo-relative. The listing is read from disk
