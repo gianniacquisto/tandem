@@ -268,24 +268,24 @@ struct TicketVerbTests {
         #expect(rows.first?["status"] as? String == "on-hold")
     }
 
-    /// The other half of the gate: the build that learns `on-hold` must not stop
-    /// reading or writing the word every existing row and skill still uses.
-    @Test("`ticket set --status refined` still answers in the build that adds on-hold")
-    func refinedStillWrites() throws {
+    /// TAN-195 retires the word: the reader era accepted `refined` beside `on-hold`, and
+    /// the writer build refuses it by name instead of storing a status nothing draws.
+    @Test("`ticket set --status refined` is refused and the ticket keeps its stage")
+    func retiredStatusIsRefused() throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
 
-        let added = try run(home: home, ["ticket", "add", "--title", "Refined the old way"])
+        let added = try run(home: home, ["ticket", "add", "--title", "Parked the old way"])
         let id = try #require((try json(added.output)["id"] as? String))
 
         let set = try run(home: home, ["ticket", "set", "--id", id, "--status", "refined"])
-        #expect(set.code == 0)
-        #expect(try json(set.output)["status"] as? String == "refined")
+        #expect(set.code == 1)
+        #expect(set.error.contains("status must be one of"))
+        #expect(set.error.contains("on-hold"), "the refusal lists the live values")
 
-        let listed = try run(home: home, ["ticket", "list", "--status", "refined"])
-        #expect(listed.code == 0)
-        let rows = try #require(try json(listed.output)["tickets"] as? [[String: Any]])
-        #expect(rows.first?["status"] as? String == "refined")
+        let shown = try run(home: home, ["ticket", "show", "--id", id])
+        #expect(try json(shown.output)["status"] as? String == "backlog",
+                "a refused status writes nothing")
     }
 
     // MARK: - Helpers
