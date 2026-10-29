@@ -217,4 +217,32 @@ struct SprintDocumentsTests {
         #expect(lower.contains("not a ticket"), "the entry says what a sprint is not")
         #expect(entry.contains("_Avoid_: sprint ticket"), "the retired phrase is the Avoid line")
     }
+
+    /// The close's precondition (TAN-220): the sprint closes only after every batch
+    /// ticket is merged and `done`. An escalation does not lift it; the sprint waits.
+    @Test("the close opens with the precondition that the batch is merged and done")
+    func closeWaitsForTheBatch() throws {
+        let skill = try Self.file("skills/tandem-sprint/SKILL.md")
+        let close = try #require(
+            skill.components(separatedBy: "\n## ").first { $0.hasPrefix("7. Close") },
+            "the sprint skill carries §7")
+        let precondition = try #require(
+            close.range(of: "**The precondition:"),
+            "the close opens with its precondition")
+        let closeVerb = try #require(
+            close.range(of: "sprint close --lane"),
+            "§7 still shows the close verb")
+        #expect(
+            precondition.lowerBound < closeVerb.lowerBound,
+            "the precondition comes before the close verb, not after it")
+        #expect(
+            close.contains("merged and `done`"),
+            "the precondition is the merge and the board write, both")
+        #expect(
+            close.contains("does not lift it"),
+            "an escalation does not lift the precondition")
+        #expect(
+            close.contains("waits on the human"),
+            "the sprint waits on the human rather than closing")
+    }
 }
