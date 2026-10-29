@@ -217,4 +217,60 @@ struct SprintDocumentsTests {
         #expect(lower.contains("not a ticket"), "the entry says what a sprint is not")
         #expect(entry.contains("_Avoid_: sprint ticket"), "the retired phrase is the Avoid line")
     }
+
+    /// The close's precondition (TAN-220): the sprint closes only after every batch
+    /// ticket is merged and `done`. An escalation does not lift it; the sprint waits.
+    @Test("the close opens with the precondition that the batch is merged and done")
+    func closeWaitsForTheBatch() throws {
+        let skill = try Self.file("skills/tandem-sprint/SKILL.md")
+        let close = try #require(
+            skill.components(separatedBy: "\n## ").first { $0.hasPrefix("7. Close") },
+            "the sprint skill carries §7")
+        let body = close
+            .drop(while: { $0 != "\n" })
+            .drop(while: { $0.isNewline })
+        let opening = try #require(
+            body.components(separatedBy: "\n\n").first,
+            "§7 carries an opening paragraph")
+        #expect(
+            opening.hasPrefix("**The precondition:"),
+            "the precondition opens the close step, ahead of the settle sweep and the close verb")
+        #expect(
+            opening.contains("merged and `done`"),
+            "the precondition is the merge and the board write, both")
+        #expect(
+            opening.contains("does not lift it"),
+            "an escalation does not lift the precondition")
+        #expect(
+            opening.contains("waits on the human"),
+            "the sprint waits on the human rather than closing")
+        #expect(
+            opening.contains("merge and the board write"),
+            "the close comes after the merge and the board write")
+    }
+
+    /// TAN-220's Done when: no live instruction keeps the old escalation wording,
+    /// in the skill the sprint hands its build phase to as much as in §7.
+    @Test("no live instruction keeps the old escalation wording")
+    func noLiveInstructionKeepsTheOldWording() throws {
+        let sprint = try Self.file("skills/tandem-sprint/SKILL.md")
+        let build = try Self.file("skills/tandem-build/SKILL.md")
+        for (name, text) in [("tandem-sprint", sprint), ("tandem-build", build)] {
+            #expect(
+                !text.contains("does not stop the sprint"),
+                "\(name) must not say an escalation leaves the sprint running")
+            #expect(
+                !text.contains("the close names it"),
+                "\(name) must not say the close only names an escalated ticket")
+        }
+        #expect(
+            build.contains("leaves the batch"),
+            "an escalated ticket still leaves the batch")
+        #expect(
+            build.contains("the sprint waits"),
+            "the sprint waits for the escalated ticket")
+        #expect(
+            build.contains("after the merge and the board write"),
+            "the close comes after the merge and the board write")
+    }
 }
