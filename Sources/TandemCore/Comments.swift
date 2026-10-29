@@ -110,14 +110,13 @@ extension Store {
 
     /// `list(ticketID:)`: the ticket's comments in append order, or an empty
     /// list for a ticket that has no log. The ticket must exist: the id is
-    /// resolved the store's one way (`TAN-42` or a UUID, `Operations.resolveTicket`),
-    /// so an id that names nothing is the same domain failure `append` and
-    /// `complete` raise, and an empty log is the answer only for a ticket on
-    /// the board that carries no comments. The database answers once the
-    /// comments domain has been imported; until then, and on a home that has
-    /// no database, the JSON log is read whole. A damaged line in the fallback
-    /// is a loud failure: the log is append-only, so a bad line is repair, not
-    /// recovery.
+    /// resolved the way `append` resolves it, and an id that names nothing is
+    /// the same domain failure `append` and `complete` raise, with an empty log
+    /// the answer only for a ticket on the board that carries no comments. The
+    /// database answers once the comments domain has been imported; until
+    /// then, and on a home that has no database, the JSON log is read whole. A
+    /// damaged line in the fallback is a loud failure: the log is append-only,
+    /// so a bad line is repair, not recovery.
     public func list(ticketID: String) throws -> OperationResult<[Comment]> {
         let (contents, _) = try readAll()
         let id = try Self.requireTicket(ticketID, in: contents).uuid
