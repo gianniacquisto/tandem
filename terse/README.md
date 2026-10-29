@@ -32,7 +32,7 @@ ln -s "$PWD/TERSE.md" ~/.codex/AGENTS.md   # only if you have no global AGENTS.m
 
 Codex reads a single global file and has no import syntax. If `~/.codex/AGENTS.md` already exists, paste the body of `TERSE.md` into it under a `## Style` heading instead of replacing it.
 
-These links point into a Git working tree, so this checkout has to stay on a branch that contains it (`dev` in this repo). Check out an older branch and the plugin and the switch both dangle: terse goes off silently and `/terse` cannot run. `install.sh` reports a dangling link; the fix is `git -C <this checkout> checkout dev`.
+These links point into a Git working tree, so this checkout has to stay on a branch that contains it (`main` in this repo). Check out an older branch and the plugin and the switch both dangle: terse goes off silently and `/terse` cannot run. `install.sh` reports a dangling link; the fix is `git -C <this checkout> checkout main`.
 
 ## The switch (OpenCode)
 
