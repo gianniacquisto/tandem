@@ -56,6 +56,10 @@ _Avoid_: state, stage, step
 A ticket set aside: out of the default views, still in the store. Any ticket can be archived, and archiving a done ticket is how a list is cleared without deleting. The app's archive view is where one is brought back; the board does not draw archived tickets at all.
 _Avoid_: closed, deleted, cleared, hidden
 
+**Blocked**:
+A ticket waiting on another ticket: a `ticket_dependencies` edge from the dependent to its blocker, derived onto both faces (`blockedBy` on the dependent, `blocks` on the blocker), so the board can order, skip and draw it (ADR 0035). The state is derived, never stored: a block lifts the moment its blocker reaches `done`, with no write to the dependent. Why it waits is the body's `## Blocked on` section, read not copied; a wait that is not a ticket stays prose, with the ticket parked `on-hold`.
+_Avoid_: blocked on (as a field), dependency column, gated (that is the gate's word), waiting (as a state)
+
 **Cycle lane**:
 The named area a ticket belongs to: the board's row and the list's grouping. Every ticket sits in one lane, or in the unnamed default area, which stays first.
 _Avoid_: section, swimlane, epic, list (Trello's word)

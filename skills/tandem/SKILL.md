@@ -13,7 +13,7 @@ description: "Read and write the shared Tandem ticket list, manage its cycle lan
 
 ## Tickets
 
-Eight verbs under `ticket` — `list`, `show`, `add`, `set`, `move`, `complete`, `answer`, `archive` — plus `comment` with sub-verbs of its own. Every object they return has the same shape:
+Ten verbs under `ticket`: `list`, `show`, `add`, `set`, `move`, `block`, `unblock`, `complete`, `answer` and `archive`, plus `comment` with sub-verbs of its own. Every object they return has the same shape:
 
 | field | meaning |
 | --- | --- |
@@ -28,6 +28,10 @@ Eight verbs under `ticket` — `list`, `show`, `add`, `set`, `move`, `complete`,
 | `origin` | who filed it — written at add, never changed |
 | `lane` | the **cycle lane**, or null for the default area |
 | `done` | derived from `status == "done"`, kept on the wire for older readers — read `status`, not this |
+| `blocked` | derived: true while any ticket it waits on (`blockedBy`) is not `done`; a block lifts with no write to the dependent (ADR 0035) |
+| `blockedBy` | what it waits on: one `{id, ref, title, status}` per edge, in the order set; an edge to a done ticket stays as history |
+| `blocks` | who waits on it: the far end of the same edges, in stored order |
+| `blockedReason` | the body's `## Blocked on` section, read rather than copied; `show` carries it, the list summary does not (body text stays out of a list) |
 | `link` | a bikeshed note path, or null; a human sets it in the app |
 | `createdAt`, `completedAt` | ISO-8601 UTC; `completedAt` is null unless done |
 
@@ -37,9 +41,9 @@ A ticket in a declared lane also carries a **ref**: the lane's key and a per-lan
 
 `status` is the truth, and a change is free-form — any status to any other, backwards included — because the board records what is true, not a process.
 
-`list` returns these objects as **summaries**: every field except `description`, which becomes `descriptionLength` (its character count, `0` when there is none). `show`, `add`, `set`, `move` and `complete` return the whole object.
+`list` returns these objects as **summaries**: every field except `description`, which becomes `descriptionLength` (its character count, `0` when there is none), and `blockedReason`, which is body text like the description. `blocked`, `blockedBy` and `blocks` ride the summary, so the draw is one read. `show`, `add`, `set`, `move`, `block`, `unblock` and `complete` return the whole object.
 
-### `ticket list [--filter open|done|all] [--status <v[,v]>] [--assignee <name|self>] [--lane <name>] [--text <string>] [--archived]`
+### `ticket list [--filter open|done|all] [--status <v[,v]>] [--assignee <name|self>] [--lane <name>] [--text <string>] [--archived] [--blocked]`
 
 The tickets in view, in stored order (the order the human arranged; new tickets land on top). Every filter is optional and they combine:
 
@@ -49,6 +53,7 @@ The tickets in view, in stored order (the order the human arranged; new tickets 
 - `--lane` — a cycle lane name, or `""` for the default area.
 - `--text` — a case- and accent-insensitive substring of the title **or the description**.
 - `--archived` — no value. Alone it is the archive; with a filter, the archive joins it.
+- `--blocked`, no value. A plain AND axis: alone it is the tickets waiting on an open blocker, and with `--status ready` it is the blocked ready ones. A row whose only blocker is `done` is not blocked.
 
 An empty result is a success: `{"tickets":[]}`.
 
@@ -69,6 +74,16 @@ Change the fields you name in **one write**; everything unnamed is left alone. `
 ### `ticket move --id <id> [--lane <name>] [--index <number>]`
 
 Move between lanes and/or within one. `--index` is 0-based inside the target lane; omit to append. `--lane ""` moves to the default area; the lane must exist.
+
+### `ticket block --id <id> --on <id>` / `ticket unblock --id <id> [--on <id>]`
+
+Record that one ticket **waits on** another, as an edge in the store, so the board can order, draw and refuse a blocked ticket (ADR 0035). `--on` takes the same handle `--id` does, a ref (`TAN-42`) or a UUID; an absent one is the empty handle and fails as the unknown id it is. The same edge twice is a no-op, not an error. The write is refused, with nothing written, when the edge would make a ticket wait on itself, when it would **close a cycle** (the message names the loop: `TAN-5 -> TAN-7 -> TAN-5`), when the blocker is **done** (the block would lift the moment it was written), and when it is **archived** (the block could never be seen to lift). Archiving a blocker later is allowed.
+
+`unblock` with `--on` removes that one edge; without it, every edge the ticket has, so a dependent is released in one call. A missing edge is a no-op. Neither verb touches status, assignee or the ticket's place.
+
+The block is physical: `ticket show` carries `blocked`, `blockedBy`, `blockedReason` and `blocks`; the board card draws `Blocked, TAN-42`; the list row a `blocked` capsule; and the ticket sheet a `Blocked by` and a `Blocks` section. The sprint's batch draw skips a blocked ticket whatever its status, and says so in one line (see `skills/tandem-sprint/SKILL.md` §2). **Why it waits is the body's `## Blocked on` section**, read not copied: write the reason there, and the ids in the edge.
+
+A wait that is not a ticket (a person, a release, a credential) stays prose in `## Blocked on`, and the ticket is parked `on-hold`: the draw never takes an `on-hold` row, and `blockedReason` still shows the section. Do not file a placeholder ticket for it.
 
 ### `ticket complete --id <id>`
 

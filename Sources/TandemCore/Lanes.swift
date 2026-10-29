@@ -159,6 +159,7 @@ struct StoreContents: Sendable {
         let keys = orderedKeys
         todos = keys.flatMap { key in todos.filter { $0.lane == key } }
         refreshRefs()
+        refreshBlocked()
     }
 
     /// Makes the ref scheme true for contents that predate it, idempotently: every
@@ -171,6 +172,7 @@ struct StoreContents: Sendable {
         assignKeys()
         numberUnnumbered()
         refreshRefs()
+        refreshBlocked()
     }
 
     /// A lane a ticket names but the lane list does not carry (a hand edit) is declared,
@@ -232,6 +234,36 @@ struct StoreContents: Sendable {
                 continue
             }
             todos[i].ref = TicketRef.render(key: key, number: number)
+        }
+    }
+
+    /// The dependency half, derived from the tickets just read or written (TAN-232): each
+    /// ticket's `blockedBy` names the other ticket as it is now (its ref, its title, its
+    /// status), and `blocks` is the same edges read from the far end.
+    ///
+    /// Called wherever `refreshRefs` is, so the read path and the write path fill the
+    /// fields identically and a `block` result carries the edge it just wrote. The edge's
+    /// key is the UUID, so a lane move or a key move updates the display without touching
+    /// the edge. A target the contents do not carry cannot be named and cannot be shown,
+    /// so it is dropped here; `delete` strips the far end in the same write.
+    mutating func refreshBlocked() {
+        var shown: [UUID: TicketBlock] = [:]
+        for todo in todos {
+            shown[todo.id] = TicketBlock(id: todo.id, ref: todo.ref,
+                                         title: todo.title, status: todo.status)
+        }
+        for i in todos.indices {
+            todos[i].blockedBy = todos[i].blockedBy.compactMap { shown[$0.id] }
+        }
+        var far: [UUID: [TicketBlock]] = [:]
+        for todo in todos {
+            guard let self2 = shown[todo.id] else { continue }
+            for edge in todo.blockedBy {
+                far[edge.id, default: []].append(self2)
+            }
+        }
+        for i in todos.indices {
+            todos[i].blocks = far[todos[i].id] ?? []
         }
     }
 

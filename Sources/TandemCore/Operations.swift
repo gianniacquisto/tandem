@@ -584,6 +584,111 @@ extension Store {
         return OperationResult(todo, note: note)
     }
 
+    // MARK: - block / unblock (TAN-232)
+
+    /// `block(id, on:)`: makes one ticket wait on another, one edge, written to
+    /// `ticket_dependencies` and read from both ends by the store. The keys are the two
+    /// UUIDs, so a lane move, a lane delete or a key move changes the displayed ref and
+    /// never the edge.
+    ///
+    /// **The refusals are the store's, and they are all at write time**: a ticket cannot
+    /// wait on itself, on a done ticket (the block would lift on write), or on an
+    /// archived one (the block could never be seen to lift), and an edge that would close
+    /// a cycle names the loop it would make. An unknown handle keeps the store's own
+    /// `unknownRef` / `unknownID` answer, so a new verb inherits the range message. An
+    /// edge that is already there is a **no-op, not an error**: the `complete` rule,
+    /// and nothing is written.
+    ///
+    /// Nothing else about either ticket moves: `status`, `assignee`, `completedAt` and
+    /// the stored order are untouched. Archiving a blocker later is allowed: the edge
+    /// then names an archived status on both tickets, the dependent does not draw, and
+    /// an app-only human is not handed a refusal with no in-app remedy.
+    public func block(_ id: String, on rawBlocker: String) throws -> OperationResult<Ticket> {
+        let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
+            let dependent = try Self.requireTicket(id, in: contents)
+            let blocker = try Self.requireTicket(rawBlocker, in: contents)
+            let dependentName = Self.displayName(contents.todos[dependent.index])
+            let blockerName = Self.displayName(contents.todos[blocker.index])
+
+            guard dependent.uuid != blocker.uuid else {
+                throw DomainError.ticketBlocksItself(ref: dependentName)
+            }
+            if contents.todos[dependent.index].blockedBy.contains(where: { $0.id == blocker.uuid }) {
+                return (contents.todos[dependent.index], false)
+            }
+            let blockerTicket = contents.todos[blocker.index]
+            guard !blockerTicket.done else {
+                throw DomainError.ticketBlockerDone(ref: blockerName)
+            }
+            guard !blockerTicket.archived else {
+                throw DomainError.ticketBlockerArchived(ref: blockerName)
+            }
+            if let path = Self.path(from: blocker.uuid, to: dependent.uuid, in: contents) {
+                throw DomainError.ticketCycle(
+                    path: [dependentName] + path.map { Self.displayName(contents.todos[$0]) })
+            }
+
+            // The key, appended last: the order the edges were set is the order read.
+            contents.todos[dependent.index].blockedBy.append(
+                TicketBlock(id: blocker.uuid, ref: nil, title: "", status: .backlog))
+            contents.refreshBlocked()
+            return (contents.todos[dependent.index], true)
+        }
+        return OperationResult(todo, note: note)
+    }
+
+    /// `unblock(id, on:)`: releases a ticket, one edge when a blocker is named, every
+    /// edge when it is not, so a dependent can be released in one call. A missing edge is
+    /// a no-op, like `complete` on a done ticket, and nothing else about the ticket moves.
+    /// An unknown handle is the store's own failure, as on `block`.
+    public func unblock(_ id: String, on rawBlocker: String? = nil) throws -> OperationResult<Ticket> {
+        let (todo, note) = try mutate { contents -> (value: Ticket, changed: Bool) in
+            let dependent = try Self.requireTicket(id, in: contents)
+            let before = contents.todos[dependent.index].blockedBy
+            if let rawBlocker {
+                let blocker = try Self.requireTicket(rawBlocker, in: contents)
+                contents.todos[dependent.index].blockedBy.removeAll { $0.id == blocker.uuid }
+            } else {
+                contents.todos[dependent.index].blockedBy.removeAll()
+            }
+            let changed = contents.todos[dependent.index].blockedBy != before
+            if changed { contents.refreshBlocked() }
+            return (contents.todos[dependent.index], changed)
+        }
+        return OperationResult(todo, note: note)
+    }
+
+    /// A ticket as a failure names it: its ref, or its title in the default area, which
+    /// carries neither a number nor a ref.
+    static func displayName(_ ticket: Ticket) -> String {
+        ticket.ref ?? ticket.title
+    }
+
+    /// The chain of edges from `start` forward through `blockedBy` to `target`, as
+    /// indices into `contents.todos`, the loop an edge into `target` would close, with
+    /// `start` first and `target` last. `nil` when `target` is not reachable, so the edge
+    /// is safe. A dependency graph is a DAG by construction; the visited set keeps a
+    /// hand-edited store's cycle from looping forever.
+    private static func path(
+        from start: UUID, to target: UUID, in contents: StoreContents
+    ) -> [Int]? {
+        var looked: [UUID: Int] = [:]
+        for (index, todo) in contents.todos.enumerated() { looked[todo.id] = index }
+        guard let first = looked[start] else { return nil }
+        var visited: Set<UUID> = []
+        func walk(_ index: Int) -> [Int]? {
+            let todo = contents.todos[index]
+            if todo.id == target { return [index] }
+            guard visited.insert(todo.id).inserted else { return nil }
+            for edge in todo.blockedBy {
+                guard let next = looked[edge.id] else { continue }
+                if let tail = walk(next) { return [index] + tail }
+            }
+            return nil
+        }
+        return walk(first)
+    }
+
     // MARK: - reopen
 
     /// `reopen(id)`: the inverse of `complete`. Idempotent — a ticket that is not done is
@@ -671,7 +776,14 @@ extension Store {
     public func delete(_ id: String) throws -> OperationResult<Void> {
         let (_, note) = try mutate { contents -> (value: Void, changed: Bool) in
             let i = try Self.requireTicket(id, in: contents).index
-            contents.todos.remove(at: i)
+            let removed = contents.todos.remove(at: i)
+            // The edges go with it, on both ends, in this same write (TAN-232): a
+            // dependent that waited on the deleted ticket is released, and the deleted
+            // ticket's own edges leave with it. Only a hand-edited database can hold a
+            // dangling edge after this.
+            for j in contents.todos.indices {
+                contents.todos[j].blockedBy.removeAll { $0.id == removed.id }
+            }
             return ((), true)
         }
         return OperationResult((), note: note)

@@ -284,4 +284,54 @@ struct QueryTests {
             _ = try TicketQuery.parse(status: "")
         }
     }
+
+    // MARK: - the blocked axis (TAN-232)
+
+    /// A ticket waiting on `blockerIDs`, whose statuses are `statuses`, the derived
+    /// `blocked` reads the edge alone, exactly as the store fills it.
+    private func waiting(
+        _ title: String,
+        status: Status = .backlog,
+        on blockers: [(UUID, Status)]
+    ) -> Ticket {
+        Ticket(
+            title: title,
+            status: status,
+            blockedBy: blockers.map { id, blockerStatus in
+                TicketBlock(id: id, ref: nil, title: "blocker", status: blockerStatus)
+            })
+    }
+
+    @Test("--blocked keeps the blocked rows and drops the rest")
+    func blockedKeepsTheBlockedRows() {
+        let open: Set<Status> = [.ready, .inProgress]
+        let tickets = [
+            waiting("waits on open work", status: .ready, on: [(UUID(), .inProgress)]),
+            ticket("free work", status: .ready),
+            waiting("waits on finished work", status: .ready, on: [(UUID(), .done)]),
+        ]
+        #expect(TicketQuery(blockedOnly: true).apply(to: tickets).map(\.title)
+            == ["waits on open work"])
+        #expect(TicketQuery(statuses: open, blockedOnly: true)
+            .apply(to: tickets).map(\.title) == ["waits on open work"])
+    }
+
+    @Test("--blocked combines with --status")
+    func blockedCombinesWithStatus() throws {
+        let query = try TicketQuery.parse(status: "ready", blocked: true)
+        #expect(query.blockedOnly)
+        let tickets = [
+            waiting("blocked and ready", status: .ready, on: [(UUID(), .backlog)]),
+            waiting("blocked and backlog", status: .backlog, on: [(UUID(), .backlog)]),
+            ticket("ready and free", status: .ready),
+        ]
+        #expect(query.apply(to: tickets).map(\.title) == ["blocked and ready"])
+    }
+
+    @Test("a row whose blocker is done is not blocked")
+    func doneBlockerIsLifted() {
+        let lifted = waiting("lifted", status: .ready, on: [(UUID(), .done)])
+        #expect(lifted.blocked == false)
+        #expect(TicketQuery(blockedOnly: true).apply(to: [lifted]).isEmpty)
+    }
 }

@@ -142,6 +142,17 @@ public enum DomainError: Error, Sendable, Equatable {
     /// A raw handle looked like a ref (`KEY-N`) but named nothing: `hint` says whether
     /// the key is unknown or the number was never issued, with the lane's real range.
     case unknownRef(ref: String, hint: String)
+    /// `block` was asked to make a ticket wait on itself (TAN-232). `ref` is the
+    /// ticket's ref, or its title in the default area, which has no ref.
+    case ticketBlocksItself(ref: String)
+    /// `block` would have closed a cycle. `path` is the whole loop, first ticket first
+    /// and the first one repeated at the end: `TAN-5 -> TAN-7 -> TAN-5`.
+    case ticketCycle(path: [String])
+    /// `block` named a blocker that is already done, so the block would lift on write.
+    case ticketBlockerDone(ref: String)
+    /// `block` named a blocker that is archived, so the block could never be seen to
+    /// lift.
+    case ticketBlockerArchived(ref: String)
     /// `complete`/`delete` was called with an id not present in the store. `open` is
     /// the full current open list (in the `list` shape) so the caller recovers in one turn.
     case unknownID(id: String, open: [Ticket])
@@ -233,6 +244,17 @@ public enum DomainError: Error, Sendable, Equatable {
             return "The key \"\(key)\" of lane \"\(lane)\" is frozen — \(named) already carry it. A key cannot move once a ticket in the lane holds a number."
         case .unknownRef(let ref, let hint):
             return "Unknown ticket ref \"\(ref)\". \(hint)"
+        case .ticketBlocksItself(let ref):
+            return "\(ref) cannot block on itself. Name the ticket that has to finish first."
+        case .ticketCycle(let path):
+            return "That edge would close a cycle: \(path.joined(separator: " -> ")). "
+                 + "Two tickets cannot wait on each other; unblock one of them first."
+        case .ticketBlockerDone(let ref):
+            return "\(ref) is done, so the block would lift the moment it is written. "
+                 + "Block on the ticket that is still open."
+        case .ticketBlockerArchived(let ref):
+            return "\(ref) is archived, so the block could never be seen to lift. "
+                 + "Bring it back to the board first."
         case .unknownID(let id, _):
             return "Unknown ticket id \"\(id)\". Here is the current open list to pick the right one from:"
         }

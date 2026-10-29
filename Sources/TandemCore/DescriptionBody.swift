@@ -47,4 +47,31 @@ public enum DescriptionBody {
                     .hasPrefix("## answer")
             }
     }
+
+    /// Why a ticket waits: the text under a line whose trimmed start is
+    /// `## Blocked on`, up to the next `## ` heading, trimmed, `nil` when the body
+    /// carries no such line, or the section is empty (TAN-232).
+    ///
+    /// **Line-anchored, for `answered`'s reason.** The heading is the section; a body
+    /// that mentions it inline ("a `## Blocked on` section cannot be read by the
+    /// board") is prose about the convention, not a block. The section survives the
+    /// edge as the reason the edge cannot name, a wait on a person, a release, a
+    /// credential, so the reader of `ticket show` learns why without a second read.
+    public static func blockedReason(_ description: String?) -> String? {
+        guard let description else { return nil }
+        let lines = description.components(separatedBy: .newlines)
+        guard let heading = lines.firstIndex(where: { line in
+            line.trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .hasPrefix("## blocked on")
+        }) else { return nil }
+        var body: [String] = []
+        for line in lines[(heading + 1)...] {
+            if line.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("## ") { break }
+            body.append(line)
+        }
+        let text = body.joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
 }

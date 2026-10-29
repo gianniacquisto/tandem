@@ -54,6 +54,7 @@ Report-only, each named in the reply for the human to rule on:
 - **A session-titled ticket** — `Session — …` on the open board violates ADR 0027 (a session is a record, never a ticket); report it, complete it only when its status is already `done`.
 - **The unowned live ticket** — `in-progress` with no assignee and no session behind it; treat as a dead claim (§1) when no record claims it.
 - **The gate that landed** — a ticket whose named blocker is now done or merged; it is ripe to draw and the reply says so, its status untouched.
+- **A lifted block**: a ticket whose `blockedBy` names an edge whose blocker is `done` (the derived `blocked` is already false, so the draw takes it; the edge reads as history). Report it and lift it with `ticket unblock --id <id> --on <blocker>` so the face stops naming a wait that is over. Never lift one whose blocker is still open: that is a block, not an oddity.
 
 ## 5. The report
 

@@ -121,7 +121,16 @@ struct BoardFace: View {
                 onComment: { model.postComment(ticket.id.uuidString, body: $0) },
                 onRefreshComments: { await model.comments(for: ticket.id.uuidString) },
                 onOpenLink: onOpenLink,
+                onOpenTicket: { id in
+                    // A blocker clicked on the sheet re-targets it at that ticket; the
+                    // sheet's own `@State` is seeded in `init`, so the new identity is
+                    // what makes it read the new body (see `.id`).
+                    if let target = model.tickets.first(where: { $0.id == id }) {
+                        ticketFor = target
+                    }
+                },
                 onPromote: { onPromote(ticket) })
+                .id(ticket.id)
         }
     }
 
@@ -242,6 +251,17 @@ private struct BoardTicket: View {
 
     private var palette: Palette { context.palette }
 
+    /// The block's one-line marker (TAN-232): `Blocked, TAN-42` when exactly one open
+    /// blocker has a ref to name, `Blocked` when it has none or there are several. The
+    /// card carries the incoming side only, a card is one ticket's own state, and the
+    /// far side is read on the blocker's own face.
+    private var blockLabel: String? {
+        guard ticket.blocked else { return nil }
+        let open = ticket.blockedBy.filter { $0.status != .done }
+        guard open.count == 1, let ref = open[0].ref else { return "Blocked" }
+        return "Blocked, \(ref)"
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             Button {
@@ -297,6 +317,17 @@ private struct BoardTicket: View {
                         .font(.system(size: 9.5, design: .monospaced))
                         .foregroundStyle(palette.inkDim)
                         .lineLimit(1)
+                }
+                // The block's marker (TAN-232): its own line under the ref, because the
+                // ref line is already tight and the blocker's name is what makes the
+                // marker worth reading. `Blocked` alone when the blocker has no ref to
+                // name, or there are several.
+                if let blockLabel {
+                    Text(blockLabel)
+                        .font(.system(size: 9.5, design: .monospaced))
+                        .foregroundStyle(palette.emberDeep)
+                        .lineLimit(1)
+                        .help(ticket.blockedReason ?? "Waiting on an open blocker")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

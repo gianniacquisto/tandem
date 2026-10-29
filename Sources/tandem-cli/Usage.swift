@@ -14,13 +14,15 @@ enum Usage {
     Usage:
       tandem-cli ticket list [--filter open|done|all] [--status <value[,value]>]
                               [--assignee <name|self>] [--lane <name>] [--text <string>]
-                              [--archived]
+                              [--archived] [--blocked]
       tandem-cli ticket show --id <id>
       tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
                              [--lane <name>] [--origin <name|self>] [--description <string|->]
       tandem-cli ticket set --id <id> [--title <string>] [--status <value>]
                             [--assignee <name|self>] [--description <string|->]
       tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
+      tandem-cli ticket block --id <id> --on <id>
+      tandem-cli ticket unblock --id <id> [--on <id>]
       tandem-cli ticket complete --id <id>
       tandem-cli ticket answer --id <id> --status <value> [--assignee <name|self>]
                                [--body <string|->]
@@ -79,13 +81,15 @@ enum Usage {
         Usage:
           tandem-cli ticket list [--filter open|done|all] [--status <value[,value]>]
                                   [--assignee <name|self>] [--lane <name>] [--text <string>]
-                                  [--archived]
+                                  [--archived] [--blocked]
           tandem-cli ticket show --id <id>
           tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
                                  [--lane <name>] [--origin <name|self>] [--description <string|->]
           tandem-cli ticket set --id <id> [--title <string>] [--status <value>]
                                 [--assignee <name|self>] [--description <string|->]
           tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
+          tandem-cli ticket block --id <id> --on <id>
+          tandem-cli ticket unblock --id <id> [--on <id>]
           tandem-cli ticket complete --id <id>
           tandem-cli ticket answer --id <id> --status <value> [--assignee <name|self>]
                                    [--body <string|->]
@@ -174,7 +178,7 @@ enum Usage {
         Usage:
           tandem-cli ticket list [--filter open|done|all] [--status <value[,value]>]
                                   [--assignee <name|self>] [--lane <name>] [--text <string>]
-                                  [--archived]
+                                  [--archived] [--blocked]
 
         Values:
           status    backlog | on-hold | ready | in-progress | in-review | done
@@ -183,6 +187,10 @@ enum Usage {
 
         `--archived` is a switch and takes no value: alone it is the archive as its
         own view; named with a filter, the archive joins that filter.
+
+        `--blocked` is a switch too, and a plain AND axis: alone it is the tickets
+        waiting on an open blocker; with `--status ready` it is the blocked ready
+        ones.
         """,
         "ticket show": """
         tandem-cli ticket show — one ticket, whole.
@@ -236,6 +244,27 @@ enum Usage {
         Values:
           lane      a lane name, or "" for the default area
           index     0-based within the lane; omitted appends to it
+        """,
+        "ticket block": """
+        tandem-cli ticket block, a ticket waits on another.
+
+        Usage:
+          tandem-cli ticket block --id <id> --on <id>
+
+        `--on` takes the same handle `--id` does: the blocker's ref (`TAN-42`) or its
+        UUID. The write is refused, and nothing is written, when the edge would make a
+        ticket wait on itself, when it would close a cycle, and when the blocker is
+        done or archived: a block that would lift on write, or could never be seen to
+        lift, is not a block.
+        """,
+        "ticket unblock": """
+        tandem-cli ticket unblock: a ticket stops waiting.
+
+        Usage:
+          tandem-cli ticket unblock --id <id> [--on <id>]
+
+        With `--on`, that one edge is removed; without it, every edge the ticket has,
+        so a dependent is released in one call. A missing edge is a no-op.
         """,
         "ticket complete": """
         tandem-cli ticket complete — a ticket is done.
