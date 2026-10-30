@@ -18,7 +18,8 @@ What it does:
      comments and their authors; sessions with their usage (and `skills` when
      both homes carry the column); sprints with their batch and runs; lanes;
      settings. Every mutation row's `author` is `import-legacy`, because the
-     import is the write;
+     import is the write; a comment's `author` is the comment's own, copied
+     from the source;
   4. copies `<source>/bikeshed` to `<target>/bikeshed` byte for byte, scaffold,
      daily notes and `.raw/` included: the notes are file text, not schema;
   5. verifies the result: every ticket by ref, status, assignee, title and
@@ -57,8 +58,10 @@ ACTOR = "import-legacy"
 
 # The schema's own version declaration, so the stamp is read, not guessed.
 VERSION_DECLARATION = re.compile(r"CURRENT_VERSION\s*:\s*i64\s*=\s*(\d+)\s*;")
-# A Rust string literal in schema.rs. The DDL is plain multi-line text there.
-RUST_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"', re.S)
+# The schema is Rust source, not a DDL fixture: if its double quotes do not pair
+# (a stray one in the prose of a comment), every literal after it would re-pair
+# silently, so the scan below answers with its own message instead of a
+# downstream "carries no DDL".
 # The statements this script re-applies: the versioned shape, never the data a
 # migration derives (the import writes final rows, so its backfills have nothing
 # left to do).
@@ -85,18 +88,84 @@ def rust_unescape(text):
     return "".join(out)
 
 
+def unpaired_quote(text):
+    """Whether the file's double quotes pair, escapes and char literals aside."""
+    index = 0
+    count = 0
+    while index < len(text):
+        character = text[index]
+        if character == "\\":
+            index += 2
+        elif character == "'" and index + 2 < len(text) and text[index + 2] == "'":
+            index += 3
+        elif (
+            character == "'"
+            and index + 3 < len(text)
+            and text[index + 1] == "\\"
+            and text[index + 3] == "'"
+        ):
+            index += 4
+        else:
+            if character == '"':
+                count += 1
+            index += 1
+    return count % 2 == 1
+
+
+def string_literals(text, path):
+    """A Rust file's string literals, comments skipped so prose quotes are inert."""
+    literals = []
+    index = 0
+    while index < len(text):
+        character = text[index]
+        if text.startswith("//", index):
+            newline = text.find("\n", index)
+            index = len(text) if newline < 0 else newline + 1
+        elif text.startswith("/*", index):
+            end = text.find("*/", index + 2)
+            if end < 0:
+                raise ImportError(f"{path} has an unclosed block comment")
+            index = end + 2
+        elif character == '"':
+            end = index + 1
+            while end < len(text) and text[end] != '"':
+                end += 2 if text[end] == "\\" else 1
+            if end >= len(text):
+                raise ImportError(
+                    f"{path} has an unpaired string quote; its DDL cannot be paired"
+                )
+            literals.append(text[index + 1:end])
+            index = end + 1
+        elif character == "'" and index + 2 < len(text) and text[index + 2] == "'":
+            index += 3
+        elif (
+            character == "'"
+            and index + 3 < len(text)
+            and text[index + 1] == "\\"
+            and text[index + 3] == "'"
+        ):
+            index += 4
+        else:
+            index += 1
+    return literals
+
+
 def read_schema(path):
     """The target version and the DDL `schema.rs` defines, in file order."""
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as error:
         raise ImportError(f"could not read the store schema at {path}: {error}")
+    if unpaired_quote(text):
+        raise ImportError(
+            f"{path} has an unpaired double quote; its string literals cannot be paired"
+        )
     declared = VERSION_DECLARATION.search(text)
     if declared is None:
         raise ImportError(f"{path} declares no CURRENT_VERSION")
     statements = []
-    for match in RUST_LITERAL.finditer(text):
-        body = rust_unescape(match.group(1)).strip()
+    for literal in string_literals(text, path):
+        body = rust_unescape(literal).strip()
         if SHAPE_STATEMENT.match(body):
             statements.append(body)
     if not statements:
@@ -425,6 +494,8 @@ def main(argv):
     source_database = source / "tandem.db"
     if not source.is_dir() or not source_database.is_file():
         raise ImportError(f"no tandem.db at {source_database}")
+    if target.exists() and not target.is_dir():
+        raise ImportError(f"--target {target} is a file, not a directory")
     if target.exists() and any(target.iterdir()):
         raise ImportError(f"--target {target} is not empty")
 
