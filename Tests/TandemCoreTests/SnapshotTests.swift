@@ -315,7 +315,8 @@ struct SnapshotTests {
 
     /// The roll-down under a ticket row: the records behind it, newest first,
     /// each with its agent, model, start time, cost, the tokens it reported and
-    /// the ticket it carried, which opens its sheet.
+    /// the ticket it carried, which opens its sheet. The start time is pinned to
+    /// UTC and `en_US`, so the line reads the same on any runner.
     @Test("the usage roll-down")
     func usageRollDown() throws {
         let row = try #require(
@@ -324,6 +325,7 @@ struct SnapshotTests {
                                     tickets: Fixture.model.tickets,
                                     palette: .day,
                                     timeZone: TimeZone(secondsFromGMT: 0)!,
+                                    locale: Locale(identifier: "en_US"),
                                     onOpenTicket: { _ in })
         let size = CGSize(width: 660, height: 96)
         let hosting = host(view, size: size)
@@ -331,18 +333,21 @@ struct SnapshotTests {
         assertSnapshot(of: hosting, as: .stableDescription())
     }
 
-    /// The roll-down names a record's start in the zone it is handed, never the
-    /// machine's: the face hands the machine's zone, this test hands UTC, so the
-    /// baseline reads the same on a runner in any zone.
-    @Test("a record's start is drawn in the zone it is given")
+    /// The roll-down names a record's start in the zone and locale it is handed,
+    /// never the machine's: the face hands the machine's, this test pins both, so
+    /// the baseline reads the same on a runner set to any zone or language.
+    @Test("a record's start is drawn in the zone and locale it is given")
     func startedAtZone() {
         let date = Date(timeIntervalSince1970: 1_793_178_000)
         let utc = TimeZone(secondsFromGMT: 0)!
         let brussels = TimeZone(identifier: "Europe/Brussels")!
-        #expect(UsageFormat.startedAt(date, in: utc) != UsageFormat.startedAt(date, in: brussels))
+        let english = Locale(identifier: "en_GB")
+        #expect(UsageFormat.startedAt(date, in: utc, locale: english)
+                != UsageFormat.startedAt(date, in: brussels, locale: english))
         var expected = Date.FormatStyle.dateTime.month(.abbreviated).day().hour().minute()
         expected.timeZone = utc
-        #expect(UsageFormat.startedAt(date, in: utc) == date.formatted(expected))
+        expected.locale = english
+        #expect(UsageFormat.startedAt(date, in: utc, locale: english) == date.formatted(expected))
     }
 
     /// A home with no record at all: the empty face in the app's own
@@ -555,8 +560,8 @@ extension Snapshotting where Value == NSView, Format == NSImage {
     /// the library's own note for cross-machine images; the tests' geometry check is the
     /// normalised text dump, and the sheet's frames carry their own five-point tolerance above, so a
     /// layout move still fails even though a glyph edge may not. A record's start in the usage
-    /// roll-down is pinned to UTC (the face hands the machine's zone in the app), so the hour a
-    /// runner with a different zone draws is the same one the baseline records.
+    /// roll-down is pinned to UTC and `en_US` (the face hands the machine's zone and locale in
+    /// the app), so a runner set to another zone or language draws the baseline's line.
     @MainActor
     static func image(at scale: Int, size: CGSize) -> Snapshotting<NSView, NSImage> {
         Snapshotting<NSImage, NSImage>.image(precision: 0.99, perceptualPrecision: 0.99)

@@ -197,6 +197,7 @@ struct UsageFaceView: View {
                                          tickets: tickets,
                                          palette: palette,
                                          timeZone: .current,
+                                         locale: .current,
                                          onOpenTicket: onOpenTicket)
                     }
                     Rectangle().fill(palette.sand)
@@ -298,9 +299,11 @@ struct UsageRecordsView: View {
     var row: UsageRow
     var tickets: [Ticket]
     var palette: Palette
-    /// The zone a record's start is named in. The face hands the machine's;
-    /// a snapshot hands UTC, so its baseline reads the same on every runner.
+    /// The zone and locale a record's start is named in. The face hands the
+    /// machine's; a snapshot pins both, so its baseline reads the same on every
+    /// runner.
     var timeZone: TimeZone
+    var locale: Locale
     var onOpenTicket: (Ticket) -> Void
 
     var body: some View {
@@ -337,7 +340,7 @@ struct UsageRecordsView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 8)
-                Text(UsageFormat.startedAt(session.startedAt, in: timeZone))
+                Text(UsageFormat.startedAt(session.startedAt, in: timeZone, locale: locale))
                     .monospacedDigit()
                     .foregroundStyle(palette.inkDim)
                     .help(SessionSheet.utc(session.startedAt))
@@ -417,12 +420,13 @@ enum UsageFormat {
         String(format: "$%.2f", cost)
     }
 
-    /// A record's start, in the zone the face was handed: the month, day, hour
-    /// and minute, never the seconds. The zone is a parameter because a
+    /// A record's start, in the zone and locale the face was handed: the month,
+    /// day, hour and minute, never the seconds. Both are parameters because a
     /// snapshot must not follow the machine.
-    static func startedAt(_ date: Date, in zone: TimeZone) -> String {
+    static func startedAt(_ date: Date, in zone: TimeZone, locale: Locale) -> String {
         var style = Date.FormatStyle.dateTime.month(.abbreviated).day().hour().minute()
         style.timeZone = zone
+        style.locale = locale
         return date.formatted(style)
     }
 
