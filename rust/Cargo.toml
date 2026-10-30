@@ -36,3 +36,9 @@ ts-rs = "12.0"
 # store keys its rows by that text (PRT-5). `v4` is the generator a new ticket
 # needs; parsing and rendering are the same crate's.
 uuid = { version = "1.29", features = ["v4"] }
+# `access(2)` is the writability probe `setup`'s `unwritable` warning makes, and
+# `getxattr` is `doctor`'s quarantine test (PRT-10). Both are libc calls the
+# standard library does not expose; the crate is already in the lock file as
+# `rusqlite`'s transitive dependency. Unix only: Windows has no portable
+# equivalent, and the probe there assumes a present path is writable.
+libc = "0.2"

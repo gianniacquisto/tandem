@@ -13,19 +13,18 @@
 //! - **A fresh copy of the fixture home per case.** Nothing carries between
 //!   cases, and no run sees `~/.tandem`: the child gets an `env_clear`ed
 //!   environment whose `HOME` and `TANDEM_HOME` are directories this test made.
-//! - **Ids, timestamps and the two sandbox paths are names, nothing else.**
-//!   `<id>`, `<timestamp>`, `<tandem-home>`, `<home>`. The manifest says so, in
-//!   its own `normalize` list; a value that differs between machines and is not
-//!   in that list is a difference this test reports.
+//! - **Ids, timestamps, the two sandbox paths and the store's schema version
+//!   are names, nothing else.** `<id>`, `<timestamp>`, `<tandem-home>`,
+//!   `<home>`, `<schema>`. The manifest says so, in its own `normalize` list; a
+//!   value that differs between machines and is not in that list is a
+//!   difference this test reports.
 //! - **A case's `mask` is the case admitting what the machine owns.** `doctor`'s
 //!   `app` and `skills` rows read this machine, not the fixture home, so their
 //!   names still compare and their detail is `<environment>`.
 //!
-//! **Only `setup` and `doctor` may go unanswered, and they are named.** They are
-//! PRT-10's; their cases are skipped, with the group named in the output. Every
-//! other group must answer, and one that stops parsing is a failure here: a
-//! per-case skip on "does not answer" would let a regressed `ticket` pass
-//! silently, which is the opposite of what the goldens are for.
+//! **Every group must answer.** A group that stops parsing fails here on its
+//! cases, never silently: the skip PRT-9's rung carried for `setup` and `doctor`
+//! went with PRT-10, which ported them.
 //!
 //! **`TANDEM_GOLDENS_BINARY` checks the harness.** The goldens are the Swift
 //! binary's own answers, so pointing this test at it must match every case; that
@@ -88,43 +87,6 @@ fn case_name(case: &Value) -> String {
     )
 }
 
-// MARK: - The grammar gate
-
-/// Whether the binary answers a case's group at all.
-///
-/// `cli` is the root itself and always answers. A group answers when its
-/// `--help` does. `doctor` is the exception: PRT-3's stub answers `--help` with
-/// one row, so the report's own length is what tells the stub from PRT-10's eight
-/// checks, and the goldens stay unrun until it is the report.
-/// The groups the binary may still leave unanswered. PRT-10 owns both; the rest
-/// of the grammar landed with PRT-9 and must keep answering.
-const UNPORTED: [&str; 2] = ["setup", "doctor"];
-
-fn answers(binary: &Path, group: &str) -> bool {
-    let sandbox = std::env::temp_dir();
-    let home = sandbox.join(format!("tandem-goldens-probe-{}", std::process::id()));
-    let run = |args: &[&str]| {
-        Command::new(binary)
-            .args(args)
-            .env_clear()
-            .env("HOME", &sandbox)
-            .env("TANDEM_HOME", &home)
-            .stdin(Stdio::null())
-            .output()
-    };
-    match group {
-        "cli" => true,
-        "doctor" => match run(&["doctor"]) {
-            Ok(output) => serde_json::from_slice::<Value>(&output.stdout)
-                .ok()
-                .and_then(|report| report["checks"].as_array().map(Vec::len))
-                .is_some_and(|rows| rows == 8),
-            Err(_) => false,
-        },
-        _ => run(&[group, "--help"]).is_ok_and(|output| output.status.success()),
-    }
-}
-
 // MARK: - Normalization
 
 /// Replace a sandbox path with its name, in both spellings the child may report:
@@ -142,6 +104,7 @@ fn transform(text: &str, rule: &Value, prefixes: &[(String, String)]) -> String 
         "prefix" => normalize_prefixes(text, prefixes),
         "uuid" => replace_uuids(text, rule["as"].as_str().unwrap_or("<id>")),
         "timestamp" => replace_timestamps(text, rule["as"].as_str().unwrap_or("<timestamp>")),
+        "schema" => replace_schema_version(text, rule["as"].as_str().unwrap_or("<schema>")),
         _ => text.to_owned(),
     }
 }
@@ -269,6 +232,35 @@ fn replace_timestamps(text: &str, name: &str) -> String {
             at += character.len_utf8();
         }
     }
+    out
+}
+
+/// The store row's schema version is the one number the two stores do not
+/// share: the port's schema is its own (docs/port.md, Store), so a `v5` and a
+/// `v3` are the same verdict. The rule names the number and compares everything
+/// around it; it fires only after the store row's `tandem.db` and its `v`,
+/// never on another `v<n>`.
+fn replace_schema_version(text: &str, name: &str) -> String {
+    const MARKER: &str = "tandem.db \u{2014} ";
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(at) = rest.find(MARKER) {
+        let after = at + MARKER.len();
+        out.push_str(&rest[..after]);
+        let Some(version) = rest[after..].strip_prefix('v') else {
+            rest = &rest[after..];
+            continue;
+        };
+        let digits = version.chars().take_while(char::is_ascii_digit).count();
+        if digits == 0 {
+            out.push('v');
+            rest = version;
+            continue;
+        }
+        out.push_str(name);
+        rest = &version[digits..];
+    }
+    out.push_str(rest);
     out
 }
 
@@ -577,22 +569,8 @@ fn goldens_match_the_binary() {
     let goldens = repo_root().join("Fixtures/goldens");
     let mut failures = Vec::new();
 
-    let mut skipped: Vec<String> = Vec::new();
     for case in cases(&manifest) {
         let name = case_name(case);
-        let group = case["group"].as_str().unwrap_or("?");
-        if !answers(&binary(), group) {
-            if UNPORTED.contains(&group) {
-                skipped.push(group.to_string());
-            } else {
-                failures.push(format!(
-                    "{name}: the `{group}` group does not answer, and it is not one of the \
-                     groups still unported ({})",
-                    UNPORTED.join(", ")
-                ));
-            }
-            continue;
-        }
         let sandbox = Sandbox::new(&name);
         let environment = sandbox.environment(&manifest, case);
         setup_steps(case, &sandbox, &environment);
@@ -644,20 +622,6 @@ fn goldens_match_the_binary() {
         }
     }
 
-    skipped.sort();
-    skipped.dedup();
-    if !skipped.is_empty() {
-        eprintln!(
-            "skipped: the binary does not answer {} yet, so those cases stay unrun; a later PR \
-             turns them on with no change here.",
-            skipped
-                .iter()
-                .map(|group| format!("`{group}`"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-    }
-
     assert!(
         failures.is_empty(),
         "{} of {} case(s) differ from the goldens:\n{}",
@@ -690,6 +654,22 @@ fn a_timestamp_is_its_name() {
         replace_timestamps("dated 2026-10-30 only", "<timestamp>"),
         "dated 2026-10-30 only",
         "a date is not a stamp: the fixture home's daily note keeps it"
+    );
+}
+
+#[test]
+fn a_schema_version_is_its_name() {
+    assert_eq!(
+        replace_schema_version(
+            "<tandem-home>/tandem.db \u{2014} v5; 1 open, 0 done",
+            "<schema>"
+        ),
+        "<tandem-home>/tandem.db \u{2014} <schema>; 1 open, 0 done"
+    );
+    assert_eq!(
+        replace_schema_version("schema v5 is refused", "<schema>"),
+        "schema v5 is refused",
+        "only the store row's number is the port's own"
     );
 }
 

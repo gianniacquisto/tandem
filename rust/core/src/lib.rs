@@ -17,10 +17,19 @@
 //!   rather than rows: the tree, the note operations, the wikilink scanner, the
 //!   derived readers (search, backlinks, health, front page, stats) and the
 //!   capture layer. It shares the store's locked-write mechanics and no SQL.
+//!
+//! - [`setup`]: the agent face's one writer (PRT-10, ADR 0034): the installed
+//!   copy, the host links, the manifest and the warning model `setup status` and
+//!   `doctor` both read.
+//!
+//! - [`diagnostics`]: ADR 0014's eight-row setup report, a pure assembly over
+//!   injected facts with one impure gatherer.
 
 pub mod bikeshed;
+pub mod diagnostics;
 pub mod domain;
 pub mod rpc;
+pub mod setup;
 pub mod store;
 pub mod wire;
 
