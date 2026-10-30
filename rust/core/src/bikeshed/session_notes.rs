@@ -11,6 +11,7 @@ use crate::domain::error::DomainResult;
 use crate::domain::operation::Operation;
 
 use super::Bikeshed;
+use super::slash_path;
 use super::stats::files;
 
 impl Bikeshed {
@@ -19,12 +20,11 @@ impl Bikeshed {
         let mut found = Vec::new();
         for (project, url) in self.project_folders() {
             let raw = url.join(".raw");
-            let root = raw.to_string_lossy().to_string();
             for file in files(&raw, true, false) {
-                let path = file.to_string_lossy().to_string();
-                let Some(relative) = path.strip_prefix(&format!("{root}/")) else {
+                let Ok(relative) = file.strip_prefix(&raw) else {
                     continue;
                 };
+                let relative = slash_path(relative);
                 let components: Vec<&str> = relative.split('/').collect();
                 // The session folder is a directory: a file's own name is never
                 // the session.

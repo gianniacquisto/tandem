@@ -314,12 +314,12 @@ impl Bikeshed {
     }
 
     /// The bikeshed-root-relative path of a path inside the vault, in the vault's
-    /// own spelling.
+    /// own spelling: `/`-separated on every platform, never the host's `\`.
     fn relative_path(&self, url: &Path) -> String {
         let root = standardize(&self.directory);
         let full = standardize(url);
         match full.strip_prefix(&root) {
-            Ok(relative) => relative.to_string_lossy().to_string(),
+            Ok(relative) => slash_path(relative),
             Err(_) => full
                 .file_name()
                 .map(|name| name.to_string_lossy().to_string())
@@ -875,6 +875,16 @@ fn standardize(path: &Path) -> PathBuf {
         }
     }
     out
+}
+
+/// A path as the vault spells it: `/`-separated on every platform, because a
+/// vault-relative path is the contract's, not the host's. A Windows `\` would
+/// make a capture's dedupe key, a move's mapping and a session's notes miss.
+pub(crate) fn slash_path(path: &Path) -> String {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// The components of a destination folder path, checked for hygiene. The vault

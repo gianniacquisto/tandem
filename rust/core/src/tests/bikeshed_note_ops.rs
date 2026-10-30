@@ -373,7 +373,11 @@ fn write_new_never_overwrites_and_suffixes_the_free_variant() {
 #[test]
 fn pre_existing_name_violators_are_tolerated() {
     let vault = Vault::new("ops-violators");
+    // `#` is legal on every platform and is one wikilink separator.
     vault.stage("bad#name.md", "an agent wrote this");
+    // `|` is the grammar's other separator but an illegal Windows filename, so
+    // the pipe half is staged only where the host can hold it.
+    #[cfg(not(windows))]
     vault.stage("bad|pipe.md", "another one");
     let bikeshed = vault.bikeshed();
 
@@ -382,10 +386,13 @@ fn pre_existing_name_violators_are_tolerated() {
         .map(|(path, _)| path)
         .collect();
     paths.sort();
+    #[cfg(not(windows))]
     assert_eq!(
         paths,
         vec!["bad#name.md".to_string(), "bad|pipe.md".to_string()]
     );
+    #[cfg(windows)]
+    assert_eq!(paths, vec!["bad#name.md".to_string()]);
 
     assert_eq!(
         bikeshed.read("bad#name.md").unwrap().value.text,
