@@ -1,0 +1,62 @@
+name: Rust
+
+# The port's first CI: the workspace's four gates on the three platforms the
+# port targets, path-filtered so the Swift pipeline never waits on it and this
+# one never waits on a Swift change.
+#
+# The checks this publishes are what `main`'s protection names:
+# `rust (macos-latest)`, `rust (ubuntu-latest)`, `rust (windows-latest)`.
+#
+# No third-party action: `rust-toolchain.toml` names the channel and the two
+# components, rustup ships on every hosted runner, and nothing here reads a
+# secret or prints an environment.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rust/**"
+      - ".github/workflows/rust.yml"
+  pull_request:
+    paths:
+      - "rust/**"
+      - ".github/workflows/rust.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: rust
+
+jobs:
+  rust:
+    name: rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Install the pinned toolchain
+        # rustup reads `rust/rust-toolchain.toml` on first proxy use and
+        # installs that channel with `rustfmt` and `clippy`; naming it here
+        # keeps the download visible and the gate steps free of setup.
+        run: cargo --version
+
+      - name: "Gate: cargo fmt --check"
+        run: cargo fmt --all --check
+
+      - name: "Gate: cargo clippy -D warnings"
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: "Gate: cargo build"
+        run: cargo build
+
+      - name: "Gate: cargo test"
+        run: cargo test

@@ -1,0 +1,16 @@
+[package]
+name = "tandem-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Tandem's domain, store adapter and wire."
+
+[lib]
+name = "tandem_core"
+
+[dependencies]
+comrak.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+ts-rs.workspace = true

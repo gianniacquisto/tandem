@@ -1,0 +1,7 @@
+# One toolchain for the machine and the three CI runners: rustup installs this
+# channel and these two components on first use, so `cargo fmt` and
+# `cargo clippy` mean the same thing locally and in the PR's run.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

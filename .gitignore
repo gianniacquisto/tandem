@@ -6,5 +6,7 @@ DerivedData/
 *.xcworkspace/xcuserdata/
 
 # Fixture homes are scratch state: created on demand, never committed.
+# The port's home is the one exception: it is content both implementations read.
 /Fixtures/*
 !/Fixtures/README.md
+!/Fixtures/port/
