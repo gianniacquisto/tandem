@@ -36,7 +36,7 @@ pub use config::{InstructionEdit, apply, instruction_edit};
 pub use face::{install_face, partial_detail, prompts, skills, version_text};
 pub use install::{install, status, status_with, sync_link, uninstall};
 pub use manifest::{Manifest, manifest, write_manifest};
-pub use paths::{Context, Environment, absolute_target, normalize, resolved, text};
+pub use paths::{Context, Environment, absolute_target, normalize, remove_link, resolved, text};
 pub use state::{
     ExpectedLink, classify, expected_links, is_inside_face, is_inside_face_lexical, is_tandems,
     ordered, state,

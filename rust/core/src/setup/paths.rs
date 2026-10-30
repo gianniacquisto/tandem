@@ -139,6 +139,33 @@ pub fn absolute_target(target: &Path, link: &Path) -> PathBuf {
     normalize(&parent.join(target))
 }
 
+/// Remove a symbolic link, whatever it points at.
+///
+/// Unix has one `unlink(2)` for a file link and a directory link alike. Windows
+/// does not: a directory symlink is removed with `RemoveDirectoryW`, a file
+/// symlink with `DeleteFileW`, and asking the wrong one fails with access
+/// denied. The target's type decides, and a dead link's own attributes still
+/// carry the directory bit.
+pub fn remove_link(path: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        // The target's type picks the call. A link whose target is gone can
+        // still read as the other type, so a failed call is the signal to try
+        // the other one rather than to give up.
+        let directory = std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir())
+            || std::fs::metadata(path).is_ok_and(|metadata| metadata.is_dir());
+        if directory {
+            std::fs::remove_dir(path).or_else(|_| std::fs::remove_file(path))
+        } else {
+            std::fs::remove_file(path).or_else(|_| std::fs::remove_dir(path))
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        std::fs::remove_file(path)
+    }
+}
+
 /// A path with its symlinks resolved when it exists, and its lexical spelling
 /// when it does not. The two spellings of one directory must compare equal:
 /// `fs::canonicalize` keeps macOS's `/private` prefix, so the face is resolved

@@ -143,7 +143,9 @@ pub fn install_face(bundle: &Path, face: &Path, version: &str) -> Result<()> {
 /// may have left a link in its place.
 pub fn remove_any(path: &Path) -> std::io::Result<()> {
     let metadata = fs::symlink_metadata(path)?;
-    if metadata.is_dir() && !metadata.file_type().is_symlink() {
+    if metadata.file_type().is_symlink() {
+        super::paths::remove_link(path)
+    } else if metadata.is_dir() {
         fs::remove_dir_all(path)
     } else {
         fs::remove_file(path)

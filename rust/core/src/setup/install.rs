@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use super::config::{apply, instruction_edit};
 use super::face::{install_face, version_text};
 use super::manifest::{Link, Manifest, manifest, record_link, write_manifest};
-use super::paths::{absolute_target, resolved, text};
+use super::paths::{absolute_target, remove_link, resolved, text};
 use super::state::{current_state, expected_links, is_inside_face, is_inside_face_lexical, state};
 use super::{Context, Environment, Host, PathAction, Report, Result, SetupError, is_directory};
 
@@ -210,7 +210,7 @@ pub fn sync_link(path: &Path, target: &str, force: bool, context: &Context) -> R
         }
     } else {
         // A dead link is not a decision: replace it.
-        fs::remove_file(path)?;
+        remove_link(path)?;
         symlink(target, path)?;
         return Ok(PathAction::new(path_text, "replaced"));
     }
@@ -221,7 +221,7 @@ pub fn sync_link(path: &Path, target: &str, force: bool, context: &Context) -> R
             format!("points elsewhere: {}", text(&resolved(&absolute))),
         ));
     }
-    fs::remove_file(path)?;
+    remove_link(path)?;
     symlink(target, path)?;
     Ok(PathAction::new(path_text, "replaced"))
 }
@@ -267,7 +267,7 @@ fn remove_recorded_link(link: &Link, context: &Context) -> Result<PathAction> {
             format!("points elsewhere: {}", text(&resolved_target)),
         ));
     }
-    fs::remove_file(&path)?;
+    remove_link(&path)?;
     Ok(PathAction::new(link.path.clone(), "removed"))
 }
 

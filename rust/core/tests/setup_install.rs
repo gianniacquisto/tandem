@@ -525,6 +525,25 @@ fn install_writes_exactly_the_adr_file_list() {
     }
 }
 
+/// A skill link is a directory link, and Windows removes one with
+/// `RemoveDirectoryW` while a file link needs `DeleteFileW`: the one primitive
+/// both shapes go through is pinned here, and the target must survive.
+#[test]
+fn a_directory_link_is_removed_as_a_link() {
+    let f = fixture(&["alpha"], &[], "1.0");
+    let target = f.root.join("target");
+    fs::create_dir_all(&target).unwrap();
+    let path = f.root.join("link");
+    link(&path, &target);
+
+    setup::remove_link(&path).expect("the link is removable");
+    assert!(
+        fs::symlink_metadata(&path).is_err(),
+        "the link itself is gone"
+    );
+    assert!(target.is_dir(), "the target survives");
+}
+
 // MARK: - The resolver
 
 #[test]
@@ -570,10 +589,10 @@ fn status_reports_each_state() {
     let checkout = f.root.join("checkout/skills/alpha");
     fs::create_dir_all(&checkout).unwrap();
     let claude = f.home.join(".claude/skills/alpha");
-    fs::remove_file(&claude).unwrap();
+    setup::remove_link(&claude).unwrap();
     link(&claude, &checkout);
     let agents = f.home.join(".agents/skills/beta");
-    fs::remove_file(&agents).unwrap();
+    setup::remove_link(&agents).unwrap();
     fs::write(&agents, "the human's own\n").unwrap();
 
     let wired = state(&f, None);
@@ -690,7 +709,7 @@ fn uninstall_leaves_a_repointed_link_and_says_so() {
     let path = f.home.join(".config/opencode/skills/alpha");
     let checkout = f.root.join("checkout/skills/alpha");
     fs::create_dir_all(&checkout).unwrap();
-    fs::remove_file(&path).unwrap();
+    setup::remove_link(&path).unwrap();
     link(&path, &checkout);
 
     let report =
@@ -968,7 +987,7 @@ fn a_host_link_whose_target_is_gone_warns_dead_link() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
     install(&f, &[Host::Opencode], false).expect("the install runs");
     let path = f.home.join(".config/opencode/skills/alpha");
-    fs::remove_file(&path).unwrap();
+    setup::remove_link(&path).unwrap();
     link(&path, &f.face().join("skills/ghost"));
     let dead = warnings(&f, None)
         .into_iter()
@@ -1001,7 +1020,7 @@ fn a_checkout_link_is_info_and_warns_shadowing_beside_a_current_install() {
     );
 
     install(&f, &[Host::Opencode], true).expect("the forced install");
-    fs::remove_file(&path).unwrap();
+    setup::remove_link(&path).unwrap();
     link(&path, &checkout);
     let shadowed = warnings(&f, None)
         .into_iter()
@@ -1016,7 +1035,7 @@ fn a_real_file_at_a_host_path_warns_blocked_path() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
     install(&f, &[Host::Opencode], false).expect("the install runs");
     let path = f.home.join(".config/opencode/agents/builder.md");
-    fs::remove_file(&path).unwrap();
+    setup::remove_link(&path).unwrap();
     fs::write(&path, "mine\n").unwrap();
     let blocked = warnings(&f, None)
         .into_iter()
@@ -1140,9 +1159,9 @@ fn warnings_sort_by_severity_then_code_then_path_and_one_path_carries_one_code()
     install(&f, &[Host::Opencode], false).expect("the install runs");
     let alpha = f.home.join(".config/opencode/skills/alpha");
     let beta = f.home.join(".config/opencode/skills/beta");
-    fs::remove_file(&alpha).unwrap();
+    setup::remove_link(&alpha).unwrap();
     link(&alpha, &f.face().join("skills/ghost"));
-    fs::remove_file(&beta).unwrap();
+    setup::remove_link(&beta).unwrap();
     fs::remove_file(f.opencode_config()).unwrap();
 
     let list = warnings(&f, None);
@@ -1205,7 +1224,7 @@ fn a_dead_link_to_a_retired_skill_is_one_dead_link_not_also_an_orphan() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
     install(&f, &[Host::Opencode], false).expect("the install runs");
     let path = f.home.join(".config/opencode/skills/alpha");
-    fs::remove_file(&path).unwrap();
+    setup::remove_link(&path).unwrap();
     link(&path, &f.face().join("skills/retired"));
     fs::remove_file(f.manifest()).unwrap();
 
@@ -1223,7 +1242,7 @@ fn status_and_install_print_the_same_warning_list() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
     install(&f, &[Host::Opencode], false).expect("the install runs");
     let path = f.home.join(".config/opencode/skills/alpha");
-    fs::remove_file(&path).unwrap();
+    setup::remove_link(&path).unwrap();
     link(&path, &f.root.join("checkout/alpha"));
 
     let installed = install(&f, &[Host::Opencode], false).expect("the second install");

@@ -193,7 +193,7 @@ fn setup_status_prints_the_warnings_and_exits_zero() {
     sandbox.write_bundle("1.0");
     run(&sandbox, &["setup", "install"], Some(&sandbox.bundle()));
     let path = sandbox.user().join(".config/opencode/skills/alpha");
-    fs::remove_file(&path).unwrap();
+    tandem_core::setup::remove_link(&path).unwrap();
     link(&path, &sandbox.tandem_home().join("agent/skills/ghost"));
 
     let output = run(&sandbox, &["setup", "status"], Some(&sandbox.bundle()));
@@ -218,7 +218,7 @@ fn setup_install_prints_the_same_warnings_as_status() {
     sandbox.write_bundle("1.0");
     let installed = run(&sandbox, &["setup", "install"], Some(&sandbox.bundle()));
     let path = sandbox.user().join(".config/opencode/skills/alpha");
-    fs::remove_file(&path).unwrap();
+    tandem_core::setup::remove_link(&path).unwrap();
     link(&path, &sandbox.tandem_home().join("agent/skills/ghost"));
 
     let again = run(&sandbox, &["setup", "install"], Some(&sandbox.bundle()));
