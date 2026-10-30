@@ -280,44 +280,88 @@ mod locked {
         );
     }
 
-    /// The window bounds a holder, not this process's own queue: a writer that
-    /// waits behind another writer of this process is served when that writer
-    /// finishes, however long it held. Without the queue the two threads raced
-    /// `try_lock`, so the waiter could spend the whole window losing a lock that
-    /// stood free between the holder's writes, and answer `Locked`
-    /// (`rust (windows-latest)`, run 41099651828).
+    /// A nested acquisition is a body that takes the same lock file again: it
+    /// queues behind itself, so it must answer `Locked` at the window like any
+    /// other writer that cannot be served, never hang. The wait is bounded on
+    /// both halves (`Queue::take` and the `flock` retry), so this case bounds
+    /// the test at three windows instead of relying on the suite's timeout.
     #[test]
-    fn a_waiter_is_served_after_an_in_process_holder_that_holds_past_the_window() {
+    fn a_nested_acquisition_answers_locked_at_the_window_instead_of_hanging() {
+        let sandbox = Sandbox::new("nested");
+        let storage = storage(&sandbox);
+        let (answered, waiting) = std::sync::mpsc::channel();
+        // Detached, not scoped: a scoped thread that hangs takes the test with
+        // it, and the point of this case is the answer.
+        std::thread::spawn({
+            let storage = storage.clone();
+            move || {
+                let started = Instant::now();
+                let outcome = storage.with_lock(|| storage.with_lock(|| Ok(())));
+                let _ = answered.send((
+                    matches!(outcome, Err(StoreError::Locked)),
+                    started.elapsed(),
+                ));
+            }
+        });
+
+        let (locked, elapsed) = waiting
+            .recv_timeout(super::super::locked::LOCK_TIMEOUT * 3)
+            .expect("a nested acquisition answers at the window, it does not hang");
+        assert!(
+            locked,
+            "a nested acquisition answers Locked, not Ok: it took {elapsed:?}"
+        );
+        assert!(
+            elapsed >= super::super::locked::LOCK_TIMEOUT,
+            "the nested acquisition answered before the window: {elapsed:?}"
+        );
+    }
+
+    /// Two spellings of one lock file are one queue, or the fairness guarantee
+    /// is lost for writers that spell their home differently (a symlink, a `.`
+    /// or `..` segment, a different case on Windows): both would take ticket 0
+    /// and race the `flock` again.
+    #[test]
+    fn two_spellings_of_one_home_share_one_queue() {
         use std::sync::{Arc, Barrier};
         use std::thread;
 
-        let sandbox = Sandbox::new("queue");
-        let storage = storage(&sandbox);
-        let holder = storage.clone();
-        let holding = Arc::new(Barrier::new(2));
+        let sandbox = Sandbox::new("spellings");
+        let root = sandbox.root();
+        let plain = root.join("tandem.lock");
+        let dotted = root.join(".").join("tandem.lock");
+        assert_eq!(
+            super::super::locked::queue_key(&plain),
+            super::super::locked::queue_key(&dotted),
+            "two spellings of one lock file must key one queue"
+        );
 
+        // And they exclude each other: the dotted spelling waits out a holder
+        // on the plain one instead of taking a second lock.
+        let holder =
+            super::super::locked::LockedDirectory::new(plain, ".tandem-", root.to_path_buf());
+        let waiter =
+            super::super::locked::LockedDirectory::new(dotted, ".tandem-", root.to_path_buf());
+        let holding = Arc::new(Barrier::new(2));
+        let held_for = Duration::from_millis(300);
         thread::scope(|scope| {
             scope.spawn(|| {
                 holder
                     .with_lock(|| {
                         holding.wait();
-                        thread::sleep(
-                            super::super::locked::LOCK_TIMEOUT + Duration::from_millis(250),
-                        );
+                        thread::sleep(held_for);
                         Ok(())
                     })
                     .expect("the holder's body runs");
             });
-            // The barrier says the holder is inside the lock, so the waiter
-            // below queues behind a held lock instead of racing for a free one.
             holding.wait();
 
             let started = Instant::now();
-            storage
+            waiter
                 .with_lock(|| Ok(()))
-                .expect("a writer of this process is served, never turned away by its own queue");
+                .expect("a writer on the other spelling is served, not locked out");
             assert!(
-                started.elapsed() >= super::super::locked::LOCK_TIMEOUT,
+                started.elapsed() >= held_for,
                 "the waiter did not wait for the holder: {:?}",
                 started.elapsed()
             );

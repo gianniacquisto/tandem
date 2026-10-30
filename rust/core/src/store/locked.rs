@@ -11,8 +11,11 @@
 //! One thing the Swift mechanism did not need and this one does: `flock` has no
 //! queue, so threads of one process that want the same lock race `try_lock`
 //! and the loser can lose every flip for the whole window. [`Queue`] gives this
-//! process's writers a turn order, and the window then bounds waiting for a
-//! holder rather than waiting for luck.
+//! process's writers a turn order, so a waiter is served when the holder
+//! releases instead of racing it, and the window bounds the wait rather than the
+//! luck. The window is the bound on both halves: a writer that cannot be served
+//! within it, queued or blocked by a foreign holder, answers `Locked` exactly as
+//! it did before the queue.
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions, TryLockError};
@@ -26,11 +29,10 @@ use super::{Result, StoreError};
 
 /// How long a writer waits for the sidecar lock before answering "locked".
 ///
-/// The window bounds a *holder*: another process, or this process's own writer
-/// inside its critical section. It does not bound this process's queue
-/// ([`Queue`]): a writer behind another writer of this process is served when
-/// that writer finishes, so the window never covers a race for a lock this
-/// process is about to release.
+/// The window bounds the whole wait: this process's queue ([`Queue`]) and then
+/// the `flock` retry. The queue is what keeps a waiter from spending it racing a
+/// lock this process is about to release, so the window covers one turn per
+/// writer ahead instead of a coin flip per release.
 pub(crate) const LOCK_TIMEOUT: Duration = Duration::from_millis(2_000);
 
 /// A temp older than this is a crash's leftover, never an in-flight write's.
@@ -71,12 +73,13 @@ pub(crate) const BIKESHED_TEMP_PREFIX: &str = ".note-";
 /// `a_concurrent_edit_is_not_reverted_by_another_writers_snapshot`). A ticket
 /// queue removes the race: the holder closes its handle, which is what releases
 /// the `flock`, *before* it serves the next ticket, so the waiter it wakes
-/// finds the lock free. What is left for the window is a holder outside this
-/// process, which is what the window was written for.
+/// finds the lock free.
 ///
-/// The queue holds no reentrancy: a body that writes to the same home queues
-/// behind itself and never returns, so the store's write bodies never nest.
-/// (Before the queue, that nesting answered `Locked` after the window.)
+/// The wait is bounded like the lock's: a ticket that is not served within
+/// [`LOCK_TIMEOUT`] answers `Locked` and is skipped, so a body that takes the
+/// same lock file again (a nested acquisition) answers at the window instead of
+/// hanging. The store's write bodies never nest; this is the guard that makes
+/// that constraint fail loudly if one ever does.
 struct Queue {
     turn: Mutex<Turn>,
     served: Condvar,
@@ -100,57 +103,87 @@ impl Queue {
         }
     }
 
-    /// Take a ticket and wait until it is served.
-    fn take(&self) -> u64 {
+    /// Take a ticket and wait until it is served, or answer `Locked` when
+    /// `deadline` passes: a ticket that is never served (a nested acquisition, a
+    /// holder that never releases) must not hang the process.
+    fn take(&self, deadline: Instant) -> Result<u64> {
         let mut turn = lock(&self.turn);
         let ticket = turn.next;
         turn.next += 1;
-        while turn.serving != ticket {
+        loop {
+            if turn.serving == ticket {
+                return Ok(ticket);
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                // Leave without stranding the queue: tickets are served in
+                // order, so a ticket that timed out is skipped and the writers
+                // behind it are served when their turn comes.
+                turn.serving = turn.serving.max(ticket + 1);
+                drop(turn);
+                self.served.notify_all();
+                return Err(StoreError::Locked);
+            }
             turn = self
                 .served
-                .wait(turn)
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                .wait_timeout(turn, deadline - now)
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .0;
         }
-        ticket
     }
 
     /// Serve the ticket after `ticket`: writers queue in ticket order, so the
-    /// ticket that released is the one that was being served.
+    /// ticket that released is the one that was being served. A ticket that
+    /// timed out may have served later ones already, so this never moves the
+    /// queue backwards.
     fn release(&self, ticket: u64) {
         let mut turn = lock(&self.turn);
-        turn.serving = ticket + 1;
+        turn.serving = turn.serving.max(ticket + 1);
         drop(turn);
         self.served.notify_all();
     }
 }
 
-/// Every lock file this process has a queue for.
+/// Every lock file this process has a queue for, keyed by [`queue_key`].
 static QUEUES: OnceLock<Mutex<HashMap<PathBuf, Arc<Queue>>>> = OnceLock::new();
 
+/// The key a lock file's queue is filed under: its directory canonicalized, so
+/// two spellings of one lock file (a symlinked home, a `.` or `..` segment, a
+/// different case on Windows) share one queue. The file itself may not exist
+/// yet, so the directory is what canonicalizes; a directory that cannot
+/// canonicalize keeps the path as spelled.
+pub(crate) fn queue_key(lock_file: &Path) -> PathBuf {
+    let Some(name) = lock_file.file_name() else {
+        return lock_file.to_path_buf();
+    };
+    let directory = lock_file.parent().unwrap_or_else(|| Path::new("."));
+    match directory.canonicalize() {
+        Ok(directory) => directory.join(name),
+        Err(_) => lock_file.to_path_buf(),
+    }
+}
+
 /// The queue for one lock file, created on first use.
-fn queue_for(lock_file: &Path) -> Arc<Queue> {
+fn queue_for(key: &Path) -> Arc<Queue> {
     let mut queues = lock(QUEUES.get_or_init(|| Mutex::new(HashMap::new())));
     queues
-        .entry(lock_file.to_path_buf())
+        .entry(key.to_path_buf())
         .or_insert_with(|| Arc::new(Queue::new()))
         .clone()
 }
 
 /// Drop a lock file's queue once no writer of this process holds or waits on
 /// it, so a process that writes to many homes keeps no entry per home.
-fn forget(lock_file: &Path, queue: &Arc<Queue>) {
+fn forget(key: &Path, queue: &Arc<Queue>) {
     let Some(queues) = QUEUES.get() else {
         return;
     };
     let mut queues = lock(queues);
     // The registry's clone and this one, and `queue_for` cannot clone it under
     // this same lock: the entry is safe to remove.
-    if Arc::strong_count(queue) == 2
-        && queues
-            .get(lock_file)
-            .is_some_and(|held| Arc::ptr_eq(held, queue))
+    if Arc::strong_count(queue) == 2 && queues.get(key).is_some_and(|held| Arc::ptr_eq(held, queue))
     {
-        queues.remove(lock_file);
+        queues.remove(key);
     }
 }
 
@@ -335,20 +368,27 @@ impl LockedDirectory {
                     self.lock_file.display()
                 ))
             })?;
-        let queue = queue_for(&self.lock_file);
+        let key = queue_key(&self.lock_file);
+        let queue = queue_for(&key);
         #[cfg(test)]
         let started = Instant::now();
-        let ticket = queue.take();
+        // One window for the whole wait, as before the queue: the turn in the
+        // queue and then the `flock`. The queue only decides who is served
+        // first, never how long a writer may wait.
+        let deadline = Instant::now() + LOCK_TIMEOUT;
+        let ticket = match queue.take(deadline) {
+            Ok(ticket) => ticket,
+            Err(error) => {
+                forget(&key, &queue);
+                return Err(error);
+            }
+        };
         let held = LockGuard {
             file: Some(file),
             queue,
             ticket,
-            lock_file: self.lock_file.clone(),
+            key,
         };
-        // The window starts once this writer's turn comes: waiting in the queue
-        // is waiting for this process's own writers, which the window does not
-        // bound. What it bounds is the holder now in front of us.
-        let deadline = Instant::now() + LOCK_TIMEOUT;
         loop {
             match held.file().try_lock() {
                 Ok(()) => {
@@ -441,7 +481,7 @@ pub(crate) struct LockGuard {
     file: Option<File>,
     queue: Arc<Queue>,
     ticket: u64,
-    lock_file: PathBuf,
+    key: PathBuf,
 }
 
 impl LockGuard {
@@ -457,7 +497,7 @@ impl Drop for LockGuard {
         // lock still held and spend the window racing the release.
         drop(self.file.take());
         self.queue.release(self.ticket);
-        forget(&self.lock_file, &self.queue);
+        forget(&self.key, &self.queue);
     }
 }
 
