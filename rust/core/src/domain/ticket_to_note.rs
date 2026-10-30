@@ -15,9 +15,9 @@
 //! write takes the note back off the disk, so a promotion either lands whole or not
 //! at all.
 //!
-//! [`Notes`] is the seam the bikeshed lands behind (PRT-7): the domain must not
-//! touch a file, and this operation is the one place a note is written from the
-//! board's side.
+//! [`Notes`] is the seam the bikeshed lands behind: the domain must not touch a
+//! file, and this operation is the one place a note is written from the board's
+//! side.
 
 use super::board::Board;
 use super::error::DomainError;

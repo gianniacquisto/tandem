@@ -44,6 +44,10 @@ pub(crate) const TEMP_PREFIX: &str = ".tandem-";
 
 const TEMP_SUFFIX: &str = ".tmp";
 
+/// The bikeshed's temp prefix: its notes are written beside the note, so the
+/// sweep recurses into the tree.
+pub(crate) const BIKESHED_TEMP_PREFIX: &str = ".note-";
+
 /// One domain's locked directory: the sidecar lockfile, the temp naming and the
 /// tree the orphan sweep walks.
 #[derive(Debug, Clone)]
@@ -51,6 +55,9 @@ pub(crate) struct LockedDirectory {
     lock_file: PathBuf,
     temp_prefix: String,
     root: PathBuf,
+    /// True for the bikeshed, whose temps sit beside each note in a nested
+    /// tree; false for the store, one flat file per directory.
+    recursive: bool,
 }
 
 impl LockedDirectory {
@@ -59,6 +66,7 @@ impl LockedDirectory {
             lock_file,
             temp_prefix: temp_prefix.into(),
             root,
+            recursive: false,
         }
     }
 
@@ -67,24 +75,37 @@ impl LockedDirectory {
         Self::new(home.join("tandem.lock"), TEMP_PREFIX, home.to_path_buf())
     }
 
+    /// The bikeshed's sidecar: `<home>/bikeshed.lock` (outside the vault) and the
+    /// vault as its root, swept recursively (ADR 0004).
+    pub(crate) fn for_bikeshed(root: PathBuf, lock_file: PathBuf) -> Self {
+        Self {
+            lock_file,
+            temp_prefix: BIKESHED_TEMP_PREFIX.to_string(),
+            root,
+            recursive: true,
+        }
+    }
+
     /// Acquire the exclusive lock and run `body` under it, after sweeping the
     /// tree's stale temps. The lock is released when `body` returns or throws;
     /// `flock` releases on process death, so there is no stale lock to recover.
     pub(crate) fn with_lock<T>(&self, body: impl FnOnce() -> Result<T>) -> Result<T> {
-        let _lock = self.acquire()?;
-        self.sweep_orphans();
+        let _lock = self.lock()?;
         body()
+    }
+
+    /// Acquire the lock and sweep, handing back the guard that holds it. A
+    /// caller with its own error vocabulary (the bikeshed) translates the two
+    /// failures itself and keeps the body's errors its own.
+    pub(crate) fn lock(&self) -> Result<LockGuard> {
+        let file = self.acquire()?;
+        self.sweep_orphans();
+        Ok(LockGuard { _file: file })
     }
 
     /// Write `bytes` to `target` through a same-directory temp, then commit it.
     /// Missing parent folders are created, so a first write into a deeper path
     /// lands the same way a file's did (ADR 0001).
-    ///
-    /// [`LockedDirectory`]'s bytes convenience has no caller in the SQLite
-    /// store yet: the bikeshed (PRT-7) is the file tree that needs it, and the
-    /// behavior is kept now because the port is ported, not rewritten
-    /// (docs/port.md, parity). Its suite is the seam's own.
-    #[allow(dead_code)]
     pub(crate) fn atomic_write(&self, bytes: &[u8], target: &Path) -> Result<()> {
         let parent = target.parent().unwrap_or_else(|| Path::new("."));
         fs::create_dir_all(parent).map_err(|error| {
@@ -104,7 +125,6 @@ impl LockedDirectory {
     }
 
     /// The temp file an atomic write of `target` stages in.
-    #[allow(dead_code)]
     pub(crate) fn temp_for(&self, target: &Path) -> PathBuf {
         sibling(target, &self.temp_prefix)
     }
@@ -237,31 +257,66 @@ impl LockedDirectory {
         }
     }
 
-    /// Remove `<prefix>*<suffix>` files older than [`ORPHAN_MAX_AGE`] in the
-    /// root, flat: the store's temps sit beside the database, and the bikeshed
-    /// is another domain's tree (its recursive sweep lands with PRT-7).
+    /// Remove `<prefix>*<suffix>` files older than [`ORPHAN_MAX_AGE`]: flat for
+    /// the store, whose temps sit beside the database, and recursive for the
+    /// bikeshed, whose temps sit beside each note in the tree.
     fn sweep_orphans(&self) {
+        let cutoff = SystemTime::now()
+            .checked_sub(ORPHAN_MAX_AGE)
+            .unwrap_or(UNIX_EPOCH);
+        if self.recursive {
+            self.sweep_tree(&self.root, cutoff);
+            return;
+        }
         let Ok(entries) = fs::read_dir(&self.root) else {
             return;
         };
-        let cutoff = SystemTime::now() - ORPHAN_MAX_AGE;
         for entry in entries.flatten() {
-            let name = entry.file_name();
-            let Some(name) = name.to_str() else { continue };
-            if !name.starts_with(&self.temp_prefix) || !name.ends_with(TEMP_SUFFIX) {
-                continue;
-            }
-            let Ok(metadata) = entry.metadata() else {
+            self.sweep_entry(&entry, cutoff);
+        }
+    }
+
+    /// Walk `directory` and sweep every stale temp under it. A missing or
+    /// unreadable directory is an empty level, never an error.
+    fn sweep_tree(&self, directory: &Path, cutoff: SystemTime) {
+        let Ok(entries) = fs::read_dir(directory) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let Ok(kind) = entry.file_type() else {
                 continue;
             };
-            let Ok(modified) = metadata.modified() else {
-                continue;
-            };
-            if modified < cutoff {
-                let _ = fs::remove_file(entry.path());
+            if kind.is_dir() {
+                self.sweep_tree(&entry.path(), cutoff);
+            } else {
+                self.sweep_entry(&entry, cutoff);
             }
         }
     }
+
+    /// Remove one entry when it is this domain's temp and older than the cutoff.
+    fn sweep_entry(&self, entry: &fs::DirEntry, cutoff: SystemTime) {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { return };
+        if !name.starts_with(&self.temp_prefix) || !name.ends_with(TEMP_SUFFIX) {
+            return;
+        }
+        let Ok(metadata) = entry.metadata() else {
+            return;
+        };
+        let Ok(modified) = metadata.modified() else {
+            return;
+        };
+        if modified < cutoff {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// The lock held for the length of one write. Dropping it closes the sidecar,
+/// which releases the `flock`.
+pub(crate) struct LockGuard {
+    _file: File,
 }
 
 /// A temp path beside `target`, unique across processes and calls.

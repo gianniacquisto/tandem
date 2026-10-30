@@ -26,7 +26,7 @@
 mod actor;
 pub(crate) mod board_rows;
 mod home;
-mod locked;
+pub(crate) mod locked;
 pub(crate) mod records;
 mod rows;
 // Reachable from the records suite, which builds a v2 home to prove a read of

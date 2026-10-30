@@ -9,21 +9,50 @@
 //!   `SprintMigrationTests`, `SprintVerbTests`: `sprints`
 //! - `UsageReportTests`: `usage_report`
 //! - the harness read (`Scripts/usage-report.sh` today): `harness`
+//! - the bikeshed's nineteen Swift suites, one Rust module each:
+//!   `bikeshed_path`, `bikeshed_wikilink`, `bikeshed_backlink`, `bikeshed_front`,
+//!   `bikeshed_health`, `bikeshed_stats`, `bikeshed_search`, `bikeshed_move`,
+//!   `bikeshed_rename`, `bikeshed_note_ops`, `bikeshed_capture`,
+//!   `bikeshed_conflict`, `bikeshed_crash_recovery`, `bikeshed_locking`,
+//!   `bikeshed_hidden_layer`, `bikeshed_scale`, `bikeshed_session_notes`,
+//!   `daily_note`, `scaffold_convention`; `fixture_bikeshed` reads the
+//!   committed fixture vault.
 //!
 //! Each module is one suite, so `cargo test <suite>` runs it alone.
 
 mod harness;
+mod scaffold_convention;
 mod sessions;
 mod sprints;
 mod support;
 mod usage_report;
 
+mod bikeshed_backlink;
+mod bikeshed_capture;
+mod bikeshed_conflict;
+mod bikeshed_crash_recovery;
+mod bikeshed_front;
+mod bikeshed_health;
+mod bikeshed_hidden_layer;
+mod bikeshed_locking;
+mod bikeshed_move;
+mod bikeshed_note_ops;
+mod bikeshed_path;
+mod bikeshed_rename;
+mod bikeshed_scale;
+mod bikeshed_search;
+mod bikeshed_session_notes;
+mod bikeshed_stats;
+mod bikeshed_support;
+mod bikeshed_wikilink;
+mod daily_note;
+mod fixture_bikeshed;
+
 #[cfg(test)]
 mod sha {
     //! The pinned set has to resolve on every runner, not only on the machine
-    //! that first fetched it. `sha2` has no consumer yet (note content hashes
-    //! are PRT-7's), so this test is what keeps it in `Cargo.lock` and proves
-    //! the crate answers.
+    //! that first fetched it. The bikeshed hashes note bytes with `sha2`; this
+    //! test pins the crate's own answer beside them.
 
     use sha2::{Digest, Sha256};
 
