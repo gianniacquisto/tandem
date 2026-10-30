@@ -1490,6 +1490,12 @@ fn bundled_sqlite_answers() {
     assert!(!version.is_empty(), "SQLite reports its version");
 }
 
+// The restore below renames the backup over the store while a watch holds the
+// file open. Windows refuses to remove or rename a file another handle has
+// open (SQLite's VFS does not ask for `FILE_SHARE_DELETE`), so the case is
+// exercised on unix only, the same gate the pipe test in `cli/tests/rpc.rs`
+// carries. PRT-26 names the Windows restore path.
+#[cfg(unix)]
 #[test]
 fn a_restored_store_is_watched_without_reopening() {
     let sandbox = Sandbox::new("watch-restore");
