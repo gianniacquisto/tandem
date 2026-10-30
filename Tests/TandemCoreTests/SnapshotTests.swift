@@ -323,11 +323,26 @@ struct SnapshotTests {
         let view = UsageRecordsView(row: row,
                                     tickets: Fixture.model.tickets,
                                     palette: .day,
+                                    timeZone: TimeZone(secondsFromGMT: 0)!,
                                     onOpenTicket: { _ in })
         let size = CGSize(width: 660, height: 96)
         let hosting = host(view, size: size)
         assertSnapshot(of: hosting, as: .image(at: 2, size: size))
         assertSnapshot(of: hosting, as: .stableDescription())
+    }
+
+    /// The roll-down names a record's start in the zone it is handed, never the
+    /// machine's: the face hands the machine's zone, this test hands UTC, so the
+    /// baseline reads the same on a runner in any zone.
+    @Test("a record's start is drawn in the zone it is given")
+    func startedAtZone() {
+        let date = Date(timeIntervalSince1970: 1_793_178_000)
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let brussels = TimeZone(identifier: "Europe/Brussels")!
+        #expect(UsageFormat.startedAt(date, in: utc) != UsageFormat.startedAt(date, in: brussels))
+        var expected = Date.FormatStyle.dateTime.month(.abbreviated).day().hour().minute()
+        expected.timeZone = utc
+        #expect(UsageFormat.startedAt(date, in: utc) == date.formatted(expected))
     }
 
     /// A home with no record at all: the empty face in the app's own
@@ -539,7 +554,9 @@ extension Snapshotting where Value == NSView, Format == NSImage {
     /// matched byte for byte. 99% of pixels must match within 99% of the eye's precision,
     /// the library's own note for cross-machine images; the tests' geometry check is the
     /// normalised text dump, and the sheet's frames carry their own five-point tolerance above, so a
-    /// layout move still fails even though a glyph edge may not.
+    /// layout move still fails even though a glyph edge may not. A record's start in the usage
+    /// roll-down is pinned to UTC (the face hands the machine's zone in the app), so the hour a
+    /// runner with a different zone draws is the same one the baseline records.
     @MainActor
     static func image(at scale: Int, size: CGSize) -> Snapshotting<NSView, NSImage> {
         Snapshotting<NSImage, NSImage>.image(precision: 0.99, perceptualPrecision: 0.99)

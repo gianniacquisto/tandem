@@ -134,7 +134,7 @@ struct UsageFaceView: View {
         var parts = ["Ticket rows total \(UsageFormat.money(report.ticketTotal))"]
         if report.overlap > 0 {
             parts.append(
-                "\(UsageFormat.money(report.overlap)) of that is counted on each ticket a shared record carried")
+                "\(UsageFormat.money(report.overlap)) of that is overlap: a shared record's cost per extra ticket")
         }
         if let loose = report.ticket.first(where: { $0.id == usageReportNoTicketID }) {
             parts.append(
@@ -196,6 +196,7 @@ struct UsageFaceView: View {
                         UsageRecordsView(row: row,
                                          tickets: tickets,
                                          palette: palette,
+                                         timeZone: .current,
                                          onOpenTicket: onOpenTicket)
                     }
                     Rectangle().fill(palette.sand)
@@ -297,6 +298,9 @@ struct UsageRecordsView: View {
     var row: UsageRow
     var tickets: [Ticket]
     var palette: Palette
+    /// The zone a record's start is named in. The face hands the machine's;
+    /// a snapshot hands UTC, so its baseline reads the same on every runner.
+    var timeZone: TimeZone
     var onOpenTicket: (Ticket) -> Void
 
     var body: some View {
@@ -333,8 +337,7 @@ struct UsageRecordsView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 8)
-                Text(session.startedAt.formatted(
-                    .dateTime.month(.abbreviated).day().hour().minute()))
+                Text(UsageFormat.startedAt(session.startedAt, in: timeZone))
                     .monospacedDigit()
                     .foregroundStyle(palette.inkDim)
                     .help(SessionSheet.utc(session.startedAt))
@@ -412,6 +415,15 @@ enum UsageFormat {
     /// ticket's log carries.
     static func money(_ cost: Double) -> String {
         String(format: "$%.2f", cost)
+    }
+
+    /// A record's start, in the zone the face was handed: the month, day, hour
+    /// and minute, never the seconds. The zone is a parameter because a
+    /// snapshot must not follow the machine.
+    static func startedAt(_ date: Date, in zone: TimeZone) -> String {
+        var style = Date.FormatStyle.dateTime.month(.abbreviated).day().hour().minute()
+        style.timeZone = zone
+        return date.formatted(style)
     }
 
     /// A token count with thousands separators, en_US grouping; a piece no
