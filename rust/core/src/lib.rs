@@ -8,9 +8,11 @@
 //! - [`wire`]: the JSON the agent face prints and the app reads. The
 //!   TypeScript declarations are generated from the same types (`ts-rs`).
 //!
-//! The domain itself lands at this level, one module per aggregate, with
-//! PRT-5 to PRT-7.
+//! - [`domain`]: the board, pure over the adapter: tickets, lanes, comments,
+//!   order and the dependency edge (PRT-5). The bikeshed and the records follow at
+//!   this level with PRT-6 and PRT-7.
 
+pub mod domain;
 pub mod store;
 pub mod wire;
 

@@ -24,13 +24,14 @@
 //!   crash's.
 
 mod actor;
+pub(crate) mod board_rows;
 mod home;
 mod locked;
 mod rows;
 mod schema;
 #[cfg(test)]
 mod tests;
-mod timestamp;
+pub(crate) mod timestamp;
 mod write;
 
 use std::fmt;
