@@ -10,9 +10,12 @@
 //!
 //! The rules this test shares with the capture:
 //!
-//! - **A fresh copy of the fixture home per case.** Nothing carries between
-//!   cases, and no run sees `~/.tandem`: the child gets an `env_clear`ed
-//!   environment whose `HOME` and `TANDEM_HOME` are directories this test made.
+//! - **A fresh copy of the fixture home per case, without its committed
+//!   store.** The goldens were captured on an empty board beside the fixture
+//!   bikeshed, so the sandbox leaves `tandem.db` behind; `fixture_db.rs` owns
+//!   that file where it sits. Nothing carries between cases, and no run sees
+//!   `~/.tandem`: the child gets an `env_clear`ed environment whose `HOME` and
+//!   `TANDEM_HOME` are directories this test made.
 //! - **Ids, timestamps, the two sandbox paths and the store's schema version
 //!   are names, nothing else.** `<id>`, `<timestamp>`, `<tandem-home>`,
 //!   `<home>`, `<schema>`. The manifest says so, in its own `normalize` list; a
@@ -363,6 +366,10 @@ impl Sandbox {
         fs::create_dir_all(&home).expect("the sandbox home is creatable");
         fs::create_dir_all(&user).expect("the sandbox user home is creatable");
         copy_dir(&repo_root().join("Fixtures/port/Home"), &home);
+        // The committed store is the fixture home's own, and `fixture_db.rs`
+        // reads it where it sits. Every golden was captured on an empty board
+        // beside the fixture bikeshed, so the copy starts without the store.
+        let _ = fs::remove_file(home.join("tandem.db"));
         Self { root, home, user }
     }
 

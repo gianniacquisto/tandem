@@ -49,6 +49,10 @@ fn sandbox_copy(name: &str) -> (PathBuf, Board) {
     let _ = fs::remove_dir_all(&root);
     let home = root.join("home");
     copy_tree(&fixture_home(), &home);
+    // The committed store is the fixture home's own, and `fixture_db.rs` reads
+    // it where it sits. This case is a fresh board beside a real bikeshed, so
+    // the copy starts without the store.
+    let _ = fs::remove_file(home.join("tandem.db"));
     let home = Home::resolve(Some(&home), None, &root.join("user"));
     let board = Board::with_actor(Store::new(home), Actor::Human);
     (root, board)
@@ -58,6 +62,7 @@ fn sandbox_copy(name: &str) -> (PathBuf, Board) {
 fn the_board_lives_a_whole_life_against_the_fixture_home() {
     let (root, board) = sandbox_copy("lifecycle");
     let fixture = fixture_home();
+    let committed = fs::read(fixture.join("tandem.db")).expect("the committed store reads");
 
     // Created, in a lane that issues a ref.
     board.add_lane("Port", Some("PRT")).unwrap();
@@ -193,12 +198,24 @@ fn the_board_lives_a_whole_life_against_the_fixture_home() {
     assert_eq!(rows.first().and_then(|row| row.key.clone()), None);
     assert!(rows.iter().any(|row| row.key.as_deref() == Some("Port")));
 
-    // The committed fixture is content, not scratch: not a byte of it moved.
-    assert!(
-        !fixture.join("tandem.db").exists(),
+    // The committed fixture is content, not scratch: not a byte of it moved,
+    // and the read left no journal or backup beside the store.
+    assert_eq!(
+        fs::read(fixture.join("tandem.db")).expect("the committed store reads"),
+        committed,
         "no run writes into the fixture home"
     );
-    assert!(!fixture.join("tandem.db.bak").exists());
+    for sidecar in [
+        "tandem.db.bak",
+        "tandem.db-wal",
+        "tandem.db-shm",
+        "tandem.db-journal",
+    ] {
+        assert!(
+            !fixture.join(sidecar).exists(),
+            "a run left {sidecar} in the fixture home"
+        );
+    }
     let _ = fs::remove_dir_all(&root);
 }
 

@@ -1,14 +1,47 @@
 //! Ported from `UsageReportTests`: the derivation's arithmetic, its four row
 //! sets, the coverage and the overlap, against frozen numbers.
 //!
-//! The numbers below are written down as literals on purpose. The committed
-//! fixture home (`Fixtures/port/Home`) carries no `tandem.db` yet (its README
-//! says the store arrives with PRT-4), so the frozen set is the shape that home
-//! describes, built in memory: six relations over four records, and every total
-//! asserted against the number a reader can compute by hand.
+//! The numbers below are written down as literals on purpose, and the records
+//! they sum are the committed fixture home's own: the report is read through the
+//! store adapter from `Fixtures/port/Home/tandem.db`, so the totals are frozen
+//! on an artifact a reader can open, not on a shape this suite builds for
+//! itself. The home holds two days, two models, two agents, one two-ticket
+//! record, one ticketless one and one written before the usage fields existed:
+//! four records in all.
 
-use crate::domain::session::{Session, SessionOutcome, SessionStatus, SessionTokens};
+use std::path::{Path, PathBuf};
+
+use crate::domain::session::{Session, SessionOutcome, SessionStatus, SessionTokens, Sessions};
 use crate::domain::usage::{Calendar, NO_TICKET_LABEL, UsageReport, UsageTicket, usage_report};
+use crate::domain::{Board, Filter};
+use crate::store::{Actor, Home, Store};
+
+/// The two board tickets the fixture home carries, by the ids the sessions link.
+/// A ticket's id is a UUID, so the frozen rows key on these and not on a
+/// nickname: the row a record lands in is the id the record carried.
+const TICKET_ONE: &str = "00000000-0000-4000-8000-000000000001";
+const TICKET_TWO: &str = "00000000-0000-4000-8000-000000000002";
+
+/// The committed home, built from this crate's manifest so the suite reads it
+/// wherever cargo runs it from.
+fn fixture_home() -> PathBuf {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR")); // <repo>/rust/core
+    manifest
+        .parent()
+        .and_then(Path::parent)
+        .unwrap_or_else(|| panic!("{} sits two levels below the repo root", manifest.display()))
+        .join("Fixtures")
+        .join("port")
+        .join("Home")
+}
+
+fn fixture_store() -> Store {
+    Store::new(Home::resolve(
+        Some(&fixture_home()),
+        None,
+        Path::new("/nonexistent-user-home"),
+    ))
+}
 
 fn tokens(
     input: Option<i64>,
@@ -53,70 +86,28 @@ fn session(
     }
 }
 
-/// The frozen home: two days, two models, two agents, two tickets and one
-/// ticketless record, four in all.
+/// The frozen home's records, as the store adapter reads them: two days, two
+/// models, two agents, two tickets and one ticketless record, four in all. The
+/// last one carries no usage, so it counts as a record and adds to no sum, and
+/// its missing model and agent get rows of their own.
 fn frozen() -> Vec<Session> {
-    vec![
-        session(
-            "ses_a",
-            "2026-10-30T09:00:00Z",
-            Some("builder"),
-            Some("deepseek-v4.1-flash"),
-            Some(SessionTokens {
-                input: Some(1000),
-                output: Some(500),
-                reasoning: Some(100),
-                cache_read: Some(200),
-                cache_write: Some(50),
-            }),
-            Some(0.25),
-            &["t1"],
-        ),
-        session(
-            "ses_b",
-            "2026-10-30T11:00:00Z",
-            Some("reviewer"),
-            Some("deepseek-v4.1-flash"),
-            tokens(Some(2000), Some(1000), Some(0)),
-            Some(0.75),
-            &["t1", "t2"],
-        ),
-        session(
-            "ses_c",
-            "2026-10-31T08:00:00Z",
-            Some("builder"),
-            Some("gemma4:e4b-mlx"),
-            tokens(Some(3000), None, None),
-            Some(1.5),
-            &[],
-        ),
-        // The record that carries no usage: it counts as a record and adds to no
-        // sum, and its missing model and agent get rows of their own.
-        session(
-            "ses_d",
-            "2026-10-31T09:00:00Z",
-            None,
-            None,
-            None,
-            None,
-            &["t2"],
-        ),
-    ]
+    Sessions::new(&fixture_store())
+        .list(None, None)
+        .expect("the fixture home's records read")
 }
 
+/// The board tickets the fixture home carries, as the report labels its rows.
 fn tickets() -> Vec<UsageTicket> {
-    vec![
-        UsageTicket {
-            id: "t1".to_string(),
-            reference: Some("PRT-1".to_string()),
-            title: "the board".to_string(),
-        },
-        UsageTicket {
-            id: "t2".to_string(),
-            reference: Some("PRT-2".to_string()),
-            title: "the records".to_string(),
-        },
-    ]
+    Board::with_actor(fixture_store(), Actor::Human)
+        .list_filter(Filter::All)
+        .expect("the fixture home's board reads")
+        .into_iter()
+        .map(|ticket| UsageTicket {
+            id: ticket.id.to_string(),
+            reference: ticket.reference,
+            title: ticket.title,
+        })
+        .collect()
 }
 
 fn report() -> UsageReport {
@@ -229,8 +220,8 @@ fn the_ticket_rows_are_whole_per_ticket_and_the_ticketless_row_is_last() {
     assert_eq!(
         rows,
         vec![
-            ("t1", "PRT-1: the board", 2, 2, 1.0),
-            ("t2", "PRT-2: the records", 2, 1, 0.75),
+            (TICKET_ONE, "FIX-1: the board", 2, 2, 1.0),
+            (TICKET_TWO, "FIX-2: the records", 2, 1, 0.75),
             ("no-ticket", NO_TICKET_LABEL, 1, 1, 1.5),
         ],
         "a multi-ticket record lands whole in each row, and the ticketless row is last whatever it costs"
