@@ -12,8 +12,11 @@
 //!   stream as a change event, because the child reads the store and not a
 //!   cache of its own;
 //! - a malformed frame answers an error frame and leaves the child answering;
-//! - a closed stdin ends the child, releases the sidecar lock and leaves no
-//!   temp behind, so nothing outlives the app that spawned it.
+//! - a closed stdin ends the child, leaves the store readable and no temp
+//!   behind, so nothing outlives the app that spawned it;
+//! - after ADR 0031's restore (a rollback-journal backup renamed over the
+//!   store) the child re-attaches and reports the restored revision instead of
+//!   going silent on the pre-restore board.
 
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -239,6 +242,65 @@ fn a_write_from_another_process_arrives_as_a_change_event() {
         event["revision"], moved,
         "the stream carries the revision the listing is a snapshot of"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_restored_store_re_attaches_and_reports_the_restored_revision() {
+    let sandbox = Sandbox::new("restore");
+    let mut session = Session::start(&sandbox);
+
+    session.send(json!({"id": 1, "method": "ticket.add", "params": {"title": "One"}}));
+    session.receive_where(|frame| frame["id"] == 1);
+    session.send(json!({"id": 2, "method": "ticket.add", "params": {"title": "Two"}}));
+    session.receive_where(|frame| frame["id"] == 2);
+
+    session.send(json!({"id": 3, "method": "ticket.list", "params": {}}));
+    let before = revision(&session.receive_where(|frame| frame["id"] == 3));
+
+    // ADR 0031's restore, while the child runs: the backup is the
+    // pre-second-write state and is written in rollback-journal mode.
+    let home = sandbox.home();
+    let _ = std::fs::remove_file(home.join("tandem.db-wal"));
+    let _ = std::fs::remove_file(home.join("tandem.db-shm"));
+    std::fs::remove_file(home.join("tandem.db")).expect("the database is removable");
+    std::fs::rename(home.join("tandem.db.bak"), home.join("tandem.db"))
+        .expect("the backup moves over the path");
+
+    // The child notices the replacement, re-attaches to the rollback-journal
+    // store and reports the restored revision, which is earlier than the one it
+    // held: the app re-lists instead of staying on the pre-restore board.
+    let event = session.receive_where(|frame| {
+        frame["event"] == "changed" && frame["revision"].as_i64().is_some_and(|at| at < before)
+    });
+    let restored = event["revision"]
+        .as_i64()
+        .expect("the event carries a revision");
+
+    session.send(json!({"id": 4, "method": "ticket.list", "params": {}}));
+    let after = session.receive_where(|frame| frame["id"] == 4);
+    assert_eq!(
+        revision(&after),
+        restored,
+        "the listing is the restored state"
+    );
+    assert_eq!(
+        after["result"]["tickets"][0]["title"], "One",
+        "the backup predates the second write"
+    );
+
+    // The held watch does not block the next write's switch back to WAL, and
+    // the stream carries the write's revision.
+    session.send(json!({"id": 5, "method": "ticket.add", "params": {"title": "After"}}));
+    let added = session.receive_where(|frame| frame["id"] == 5);
+    let moved = revision(&added);
+    assert!(
+        moved > restored,
+        "the write moved past the restored revision"
+    );
+    let event =
+        session.receive_where(|frame| frame["event"] == "changed" && frame["revision"] == moved);
+    assert_eq!(event["revision"], moved);
 }
 
 #[test]

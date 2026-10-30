@@ -137,6 +137,10 @@ pub struct Store {
     /// exact number its rows are at, without a second transaction that another
     /// writer could move.
     last_revision: Arc<AtomicI64>,
+    /// How many times `watch` has opened a connection. Test-facing: the point
+    /// of the watch is that a held connection is reused, not reopened a tick.
+    #[cfg(test)]
+    watch_opens: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Store {
@@ -144,6 +148,8 @@ impl Store {
         Self {
             home,
             last_revision: Arc::new(AtomicI64::new(0)),
+            #[cfg(test)]
+            watch_opens: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
 
@@ -219,20 +225,25 @@ impl Store {
     /// this instead of opening a connection per tick: an idle child runs one
     /// query on one connection, not ~25 opens a second.
     ///
-    /// Only a WAL store is watchable. An open reader in rollback mode can block
-    /// the one-time `journal_mode=WAL` a writer runs on the first write, so the
-    /// watch waits for that switch rather than racing it.
+    /// **Any readable store is watchable, WAL or not.** ADR 0031's restore
+    /// renames the rollback-journal backup over `tandem.db`; refusing a
+    /// non-WAL file would leave the stream blind until the next write switched
+    /// WAL back, and the app showing the pre-restore board. The revision lives
+    /// in `store_meta`, which reads in either journal mode, so the watch
+    /// attaches and reports the restored number. A file with no revision row
+    /// yet (a fresh home mid-first-write, or a pre-v4 file) answers `None`; the
+    /// caller retries, and holding a reader there would only race the first
+    /// write's one-time WAL switch.
     pub fn watch(&self) -> Result<Option<RevisionWatch>> {
         let database = self.database();
         if !database.exists() {
             return Ok(None);
         }
+        #[cfg(test)]
+        self.watch_opens.fetch_add(1, Ordering::Relaxed);
         let connection = open_read_only(&database)?;
         schema::refuse_legacy(&connection)?;
-        let mode: String = connection
-            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
-            .map_err(translate)?;
-        if !mode.eq_ignore_ascii_case("wal") {
+        if schema::revision(&connection)? == 0 {
             return Ok(None);
         }
         let file = StoreFile::of(&database)?;
@@ -241,6 +252,13 @@ impl Store {
             database,
             file,
         }))
+    }
+
+    /// How many connections `watch` has opened. Test-facing, so a case can pin
+    /// that a held watch is reused rather than reopened on every tick.
+    #[cfg(test)]
+    pub(crate) fn watch_opens(&self) -> u64 {
+        self.watch_opens.load(Ordering::Relaxed)
     }
 
     /// A write: one `BEGIN IMMEDIATE` transaction with the caller's inserts
@@ -386,12 +404,12 @@ impl RevisionWatch {
 }
 
 /// The identity of the file a watch holds, enough to tell that the path now
-/// names a different file. `dev`/`ino` decide on Unix; on Windows the length
-/// and modification time of a renamed-over database differ.
+/// names a different file without mistaking a write for a replacement.
+/// `dev`/`ino` decide on Unix; elsewhere the creation time does, because a
+/// renamed-over database is a different file and a write never recreates it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct StoreFile {
-    len: u64,
-    modified: Option<std::time::SystemTime>,
+    created: Option<std::time::SystemTime>,
     #[cfg(unix)]
     dev: u64,
     #[cfg(unix)]
@@ -404,8 +422,7 @@ impl StoreFile {
             StoreError::Io(format!("could not stat {}: {error}", path.display()))
         })?;
         Ok(Self {
-            len: metadata.len(),
-            modified: metadata.modified().ok(),
+            created: metadata.created().ok(),
             #[cfg(unix)]
             dev: std::os::unix::fs::MetadataExt::dev(&metadata),
             #[cfg(unix)]
