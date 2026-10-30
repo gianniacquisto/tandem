@@ -75,8 +75,14 @@ pub enum DomainError {
     AlreadyLinked { path: String },
     /// `start` was given an empty or whitespace-only brief.
     EmptySessionBrief,
+    /// `--brief` named a regular file: the flag never read it, so the path would
+    /// be filed as the brief, and a session start has no repair.
+    BriefNamesAFile(String),
     /// A session id was empty or whitespace-only.
     EmptySessionId,
+    /// No session id was given and the environment names none: an invented
+    /// handle is a record nothing can look up again.
+    SessionIdUnset,
     /// A `--summary -` body was empty or whitespace-only: an empty pipe, not a
     /// session that ended without saying anything.
     EmptySessionSummary,
@@ -98,6 +104,16 @@ pub enum DomainError {
     NoOpenSprint(String),
     /// A `--skills` value that is not comma-separated `name=count` pairs.
     InvalidSkills(String),
+    /// A usage flag (`--tokens-input`, `--cost`, …) was given a value that is not
+    /// a non-negative number.
+    InvalidUsageFlag { flag: String, value: String },
+    /// `sprint show` was given a number that is not a whole number.
+    InvalidSprintNumber(String),
+    /// `ticket move` was given a position that is not a whole number.
+    InvalidIndex(String),
+    /// `--assignee self` / `--origin self` was used and `TANDEM_AGENT` names no
+    /// agent.
+    AgentNameUnset,
     /// A caller-supplied timestamp is not the store's own ISO-8601 UTC form. A
     /// stamp the write cannot read is a record every later read fails on.
     InvalidStamp(String),
@@ -216,8 +232,15 @@ impl DomainError {
             Self::EmptySessionBrief => "Session brief is empty. Provide a non-empty brief, what \
                  the session is for and what done looks like, and try again."
                 .to_string(),
+            Self::BriefNamesAFile(path) => format!(
+                "\"{path}\" is a file, not a brief. `--brief` takes the literal brief text, or \
+                 `--brief -` to read it from stdin; pipe the file instead."
+            ),
             Self::EmptySessionId => "Session id is empty. Provide a non-empty session id, the \
                  handle a session is known by, and try again."
+                .to_string(),
+            Self::SessionIdUnset => "Cannot resolve the session id: set OPENCODE_SESSION_ID to \
+                 this session's id, or pass --session <id>."
                 .to_string(),
             Self::EmptySessionSummary => "Session summary is empty. Provide a non-empty summary \
                  on stdin, or omit --summary to end the session without one."
@@ -266,6 +289,18 @@ impl DomainError {
                 "--skills must be comma-separated name=count pairs, each a name and a \
                  non-negative whole count (got \"{bad}\")."
             ),
+            Self::InvalidUsageFlag { flag, value } => {
+                format!("--{flag} must be a non-negative number (got \"{value}\").")
+            }
+            Self::InvalidSprintNumber(bad) => {
+                format!("number must be a whole number (got \"{bad}\").")
+            }
+            Self::InvalidIndex(bad) => {
+                format!("index must be a whole number (got \"{bad}\").")
+            }
+            Self::AgentNameUnset => "Cannot resolve self: set TANDEM_AGENT to this agent's \
+                 name, or pass a name instead of self."
+                .to_string(),
             Self::InvalidStamp(bad) => format!(
                 "\"{bad}\" is not a timestamp. Stamps are ISO-8601 UTC, \
                  YYYY-MM-DDTHH:MM:SSZ; omit the value to use the current time."

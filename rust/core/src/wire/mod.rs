@@ -5,8 +5,16 @@
 //! twice. `ts-rs` derives the TypeScript declarations from the same structs,
 //! so the app cannot ship a shape the core does not answer (PRT-12).
 
+mod views;
+
 use serde::Serialize;
 use ts_rs::TS;
+
+pub use views::{
+    ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
+    NotePathView, SessionDetailView, SessionList, SessionResult, SprintList, SprintResult,
+    TicketBlockView, TicketDetail, TicketList, TicketSummary,
+};
 
 /// What `doctor` answers: ADR 0014's shape, `{"ok": bool, "checks": [...]}`.
 ///

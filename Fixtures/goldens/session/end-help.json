@@ -16,7 +16,7 @@
     "                         [--tokens-input <n>] [--tokens-output <n>]",
     "                         [--tokens-reasoning <n>] [--tokens-cache-read <n>]",
     "                         [--tokens-cache-write <n>] [--cost <dollars>]",
-    "                         [--model <name>]",
+    "                         [--model <name>] [--skills <name=count[,name=count]>]",
     "",
     "Values:",
     "  outcome   succeeded | failed | interrupted | unknown — how a session ended",
