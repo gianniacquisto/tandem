@@ -16,7 +16,7 @@ mod usage;
 
 use std::env;
 use std::io::{self, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -858,7 +858,8 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
 
     match command {
         NoteCommand::Rename(args) => {
-            home.ensure().map_err(home_failure)?;
+            home.ensure()
+                .map_err(|error| home_failure(home.directory(), error))?;
             let result = vault
                 .rename(
                     args.from.as_deref().unwrap_or(""),
@@ -871,7 +872,8 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
             })
         }
         NoteCommand::Capture(args) => {
-            home.ensure().map_err(home_failure)?;
+            home.ensure()
+                .map_err(|error| home_failure(home.directory(), error))?;
             let kind =
                 CaptureKind::parse(args.kind.as_deref().unwrap_or("")).map_err(capture_failure)?;
             let project = args.project.clone().unwrap_or_else(project_default);
@@ -1129,14 +1131,15 @@ fn print<T: serde::Serialize>(value: &T) -> Result<(), Failure> {
 }
 
 fn write_store(home: &Home) -> Result<Store, Failure> {
-    home.ensure().map_err(home_failure)?;
+    home.ensure()
+        .map_err(|error| home_failure(home.directory(), error))?;
     Ok(Store::new(home.clone()))
 }
 
-fn home_failure(error: io::Error) -> Failure {
+fn home_failure(path: &Path, error: io::Error) -> Failure {
     Failure::message(format!(
         "Cannot create the Tandem home at {}: {error}. Try again.",
-        error
+        path.display()
     ))
 }
 

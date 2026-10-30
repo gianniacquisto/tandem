@@ -21,13 +21,11 @@
 //!   `app` and `skills` rows read this machine, not the fixture home, so their
 //!   names still compare and their detail is `<environment>`.
 //!
-//! **A group the binary does not answer yet is skipped, by name.** PRT-9 lands
-//! the grammar groups; `setup` and `doctor` are PRT-10's, and a group whose help
-//! the binary does not answer is unrun rather than failed. The skip names the
-//! group and the case count, so the gap is a line in the output and not a silent
-//! pass; the first PR that answers a group turns its cases on, with no change
-//! here. A group that answers and then fails is a port that regressed, and the
-//! case names the verb.
+//! **Only `setup` and `doctor` may go unanswered, and they are named.** They are
+//! PRT-10's; their cases are skipped, with the group named in the output. Every
+//! other group must answer, and one that stops parsing is a failure here: a
+//! per-case skip on "does not answer" would let a regressed `ticket` pass
+//! silently, which is the opposite of what the goldens are for.
 //!
 //! **`TANDEM_GOLDENS_BINARY` checks the harness.** The goldens are the Swift
 //! binary's own answers, so pointing this test at it must match every case; that
@@ -98,6 +96,10 @@ fn case_name(case: &Value) -> String {
 /// `--help` does. `doctor` is the exception: PRT-3's stub answers `--help` with
 /// one row, so the report's own length is what tells the stub from PRT-10's eight
 /// checks, and the goldens stay unrun until it is the report.
+/// The groups the binary may still leave unanswered. PRT-10 owns both; the rest
+/// of the grammar landed with PRT-9 and must keep answering.
+const UNPORTED: [&str; 2] = ["setup", "doctor"];
+
 fn answers(binary: &Path, group: &str) -> bool {
     let sandbox = std::env::temp_dir();
     let home = sandbox.join(format!("tandem-goldens-probe-{}", std::process::id()));
@@ -577,12 +579,20 @@ fn goldens_match_the_binary() {
 
     let mut skipped: Vec<String> = Vec::new();
     for case in cases(&manifest) {
+        let name = case_name(case);
         let group = case["group"].as_str().unwrap_or("?");
         if !answers(&binary(), group) {
-            skipped.push(group.to_string());
+            if UNPORTED.contains(&group) {
+                skipped.push(group.to_string());
+            } else {
+                failures.push(format!(
+                    "{name}: the `{group}` group does not answer, and it is not one of the \
+                     groups still unported ({})",
+                    UNPORTED.join(", ")
+                ));
+            }
             continue;
         }
-        let name = case_name(case);
         let sandbox = Sandbox::new(&name);
         let environment = sandbox.environment(&manifest, case);
         setup_steps(case, &sandbox, &environment);
