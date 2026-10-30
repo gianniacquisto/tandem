@@ -53,6 +53,12 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
     public var cost: Double?
     /// The model that spent the tokens, reported once by `end`.
     public var model: String?
+    /// The skills the pass loaded, and how many times each, stamped once by
+    /// `end`. `nil` means no skill was recorded, which is also what every record
+    /// written before the field says; it is never a reported zero, so the same
+    /// rule the usage triple follows holds here: absent is absent, and a record
+    /// with skills carries only the ones it names.
+    public var skills: [String: Int]?
 
     public init(
         id: String,
@@ -67,7 +73,8 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
         endedAt: Date? = nil,
         tokens: SessionTokens? = nil,
         cost: Double? = nil,
-        model: String? = nil
+        model: String? = nil,
+        skills: [String: Int]? = nil
     ) {
         self.id = id
         self.project = project
@@ -82,6 +89,7 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
         self.tokens = tokens
         self.cost = cost
         self.model = model
+        self.skills = skills
     }
 
     /// Stamp the record as ended: the outcome, the end time, the summary — and
@@ -94,6 +102,7 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
         tokens: SessionTokens? = nil,
         cost: Double? = nil,
         model: String? = nil,
+        skills: [String: Int]? = nil,
         at now: Date = .now
     ) {
         guard status == .running else { return }
@@ -103,6 +112,7 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
         self.tokens = tokens
         self.cost = cost
         self.model = model
+        self.skills = skills
         self.status = .ended
     }
 
@@ -120,7 +130,7 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
     /// varies from one session to the next.
     private enum CodingKeys: String, CodingKey {
         case id, project, agent, brief, summary, status, outcome, tickets, startedAt, endedAt
-        case tokens, cost, model
+        case tokens, cost, model, skills
     }
 
     public init(from decoder: Decoder) throws {
@@ -177,6 +187,7 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
         self.tokens = try c.decodeIfPresent(SessionTokens.self, forKey: .tokens)
         self.cost = try c.decodeIfPresent(Double.self, forKey: .cost)
         self.model = try c.decodeIfPresent(String.self, forKey: .model)
+        self.skills = try c.decodeIfPresent([String: Int].self, forKey: .skills)
 
         let startedRaw = try c.decode(String.self, forKey: .startedAt)
         guard let startedAt = Timestamp.decode(startedRaw) else {
@@ -235,6 +246,9 @@ public struct Session: Identifiable, Codable, Sendable, Equatable {
         }
         if let model {
             try c.encode(model, forKey: .model)
+        }
+        if let skills {
+            try c.encode(skills, forKey: .skills)
         }
     }
 }
@@ -425,18 +439,18 @@ public struct Sessions: Sendable {
         return OperationResult(session, note: note)
     }
 
-    /// `end(id:outcome:summary:tokens:cost:model:at:onStamp:)`: stamp a session
+    /// `end(id:outcome:summary:tokens:cost:model:skills:at:onStamp:)`: stamp a session
     /// as ended, **once**.
     ///
     /// The outcome, the end time, the summary and the usage are written
     /// together; the summary is trimmed, and an empty result is no summary
-    /// (`nil`). The usage — the token counts, the cost and the model the
-    /// harness reported — is written beside the outcome and is as immutable
-    /// as it: a record that has already ended is **returned unchanged** — the
-    /// first outcome and the first usage stand, with a note — so a second
-    /// `end` cannot restate how a session ended nor what it spent. An empty id
-    /// is `DomainError.emptySessionID`; an id the file does not carry is
-    /// `DomainError.unknownSession`.
+    /// (`nil`). The usage (the token counts, the cost and the model the harness
+    /// reported) and the skills the pass loaded are written beside the outcome
+    /// and are as immutable as it: a record that has already ended is
+    /// **returned unchanged**, the first outcome and the first usage stand,
+    /// with a note, so a second `end` cannot restate how a session ended nor
+    /// what it spent. An empty id is `DomainError.emptySessionID`; an id the
+    /// file does not carry is `DomainError.unknownSession`.
     ///
     /// `onStamp` is the one hook a caller can use to act on the stamp itself —
     /// the usage comment the CLI posts on the linked tickets (`spec
@@ -458,6 +472,7 @@ public struct Sessions: Sendable {
         tokens: SessionTokens? = nil,
         cost: Double? = nil,
         model: String? = nil,
+        skills: [String: Int]? = nil,
         at: Date? = nil,
         onStamp: ((Session) throws -> Void)? = nil
     ) throws -> OperationResult<Session> {
@@ -475,7 +490,8 @@ public struct Sessions: Sendable {
             var record = sessions[index]
             record.end(
                 outcome: outcome, summary: said,
-                tokens: tokens, cost: cost, model: model, at: Self.when(at))
+                tokens: tokens, cost: cost, model: model, skills: skills,
+                at: Self.when(at))
             sessions[index] = record
             stamped = true
             return (record, true, nil)
@@ -660,13 +676,19 @@ public struct Sessions: Sendable {
     // MARK: - Rows (private)
 
     private static func read(from db: SQLiteDatabase) throws -> [Session] {
-        try db.rows("""
-            SELECT id, project, agent, brief, status, outcome, summary,
-                   startedAt, endedAt, tokensInput, tokensOutput, tokensReasoning,
-                   tokensCacheRead, tokensCacheWrite, seconds, cost, model, tickets
-            FROM sessions
-            ORDER BY rowid
-            """) { row -> Session in
+        // **A read never migrates**, so a v5 database still lists (ADR 0031): its
+        // `sessions` table has no `skills` column, and the query leaves it out.
+        // The column arrives with v6's migration, on the first write.
+        let version = try StoreSchema.version(of: db) ?? 0
+        let withSkills = version >= 6
+        let columns = withSkills
+            ? "id, project, agent, brief, status, outcome, summary, "
+            + "startedAt, endedAt, tokensInput, tokensOutput, tokensReasoning, "
+            + "tokensCacheRead, tokensCacheWrite, seconds, cost, model, tickets, skills"
+            : "id, project, agent, brief, status, outcome, summary, "
+            + "startedAt, endedAt, tokensInput, tokensOutput, tokensReasoning, "
+            + "tokensCacheRead, tokensCacheWrite, seconds, cost, model, tickets"
+        return try db.rows("SELECT \(columns) FROM sessions ORDER BY rowid") { row -> Session in
             guard let startedAt = Timestamp.decode(row.text(7)) else {
                 throw StoreIOError.io(
                     "a session row carries an unreadable startedAt \(row.text(7))")
@@ -718,7 +740,21 @@ public struct Sessions: Sendable {
                 endedAt: endedAt,
                 tokens: hasTokens ? tokens : nil,
                 cost: row.realOrNil(15),
-                model: row.textOrNil(16))
+                model: row.textOrNil(16),
+                skills: withSkills ? try Self.skills(from: row.textOrNil(18)) : nil)
+        }
+    }
+
+    /// The skills column: a JSON object of skill name to count, or `nil` when the
+    /// row carries none. A map this build cannot read is a store I/O failure, the
+    /// rule the ticket list follows: a record that says it loaded skills must not
+    /// silently read as one that loaded none.
+    private static func skills(from raw: String?) throws -> [String: Int]? {
+        guard let raw else { return nil }
+        do {
+            return try JSONDecoder().decode([String: Int].self, from: Data(raw.utf8))
+        } catch {
+            throw StoreIOError.io("a session row carries an unreadable skill map: \(error)")
         }
     }
 
@@ -735,8 +771,9 @@ public struct Sessions: Sendable {
                 INSERT INTO sessions
                     (id, project, agent, brief, status, outcome, summary,
                      startedAt, endedAt, tokensInput, tokensOutput, tokensReasoning,
-                     tokensCacheRead, tokensCacheWrite, seconds, cost, model, tickets)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     tokensCacheRead, tokensCacheWrite, seconds, cost, model, tickets,
+                     skills)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, [
                     .text(session.id),
                     .text(session.project),
@@ -755,7 +792,12 @@ public struct Sessions: Sendable {
                     seconds.map { .real($0) } ?? .null,
                     session.cost.map { .real($0) } ?? .null,
                     .textOrNull(session.model),
-                    .text(tickets)
+                    .text(tickets),
+                    // Absent is absent: a record that loaded no skill carries a
+                    // NULL, never an empty object dressed up as a report.
+                    session.skills.map {
+                        .text(String(decoding: try encoder.encode($0), as: UTF8.self))
+                    } ?? .null
                 ])
         }
     }

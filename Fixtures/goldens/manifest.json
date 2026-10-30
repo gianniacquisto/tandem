@@ -711,6 +711,16 @@
     },
     {
       "group": "session",
+      "case": "end-skills",
+      "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder",
+                     "--brief", "A brief the golden keeps."]}
+      ],
+      "argv": ["session", "end", "--outcome", "succeeded", "--summary", "What landed.",
+               "--skills", "grilling=2,tandem-memory=1"]
+    },
+    {
+      "group": "session",
       "case": "start-help",
       "argv": ["session", "start", "--help"]
     },

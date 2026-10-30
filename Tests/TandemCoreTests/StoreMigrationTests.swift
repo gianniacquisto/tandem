@@ -160,6 +160,58 @@ struct StoreMigrationTests {
                 "the backup predates this write")
     }
 
+    /// TAN-241: the skills column arrives at v6, and a v5 home reads before it migrates.
+    /// A read never migrates (ADR 0031), so the query leaves the column out below the
+    /// version that has it; the first write migrates, and the existing rows read as
+    /// `nil` (absent), never as an empty map.
+    @Test("a v5 store reads its session rows, then migrates to v6 with every record and no skills invented")
+    func sessionsMigrateToV6WithoutInventingSkills() throws {
+        let dir = try makeDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("tandem.db")
+
+        // A v5 store as the installed build left it: one ended session, imported.
+        let seed = try SQLiteDatabase(url: url, mode: .readWrite)
+        try StoreSchema.migrate(
+            seed, migrations: StoreSchema.migrations.filter { $0.version <= 5 })
+        try seed.run("""
+            INSERT INTO sessions
+                (id, project, agent, brief, status, outcome, summary, startedAt, endedAt,
+                 tickets)
+            VALUES (?, 'tandem', 'builder', 'Build the core.', 'ended', 'succeeded', 'Built it.',
+                    ?, ?, '[]')
+            """, [.text("ses_v5"), .text("2026-10-03T10:00:00Z"), .text("2026-10-03T11:00:00Z")])
+        try seed.run("""
+            INSERT INTO store_imports (domain, source, importedAt) VALUES (?, NULL, ?)
+            """, [.text(StoreSchema.sessionsDomain), .text(Timestamp.encode(Date()))])
+        seed.close()
+
+        // The read before the migration answers, and writes nothing.
+        let sessions = Sessions(directory: dir)
+        let read = try sessions.show(id: "ses_v5").value
+        #expect(read.summary == "Built it.")
+        #expect(read.skills == nil, "no column, no skills, and nothing invented")
+        let before = try SQLiteDatabase(url: url, mode: .readOnly)
+        #expect(try StoreSchema.version(of: before) == 5, "a read never migrates")
+        before.close()
+
+        // The first write migrates: v6, the records intact, the column NULL, and the
+        // one generation of backup is the pre-migration store.
+        _ = try sessions.link(id: "ses_v5", ticket: UUID())
+        let db = try SQLiteDatabase(url: url, mode: .readOnly)
+        defer { db.close() }
+        #expect(try StoreSchema.version(of: db) == 6)
+        #expect(try db.scalarInt("SELECT COUNT(*) FROM sessions") == 1)
+        #expect(try db.scalarString("SELECT skills FROM sessions WHERE id = 'ses_v5'") == nil,
+                "a record from before the column carries no skill, not an empty map")
+        #expect(try sessions.show(id: "ses_v5").value.skills == nil)
+
+        let backup = try SQLiteDatabase(
+            url: dir.appendingPathComponent("tandem.db.bak"), mode: .readOnly)
+        defer { backup.close() }
+        #expect(try StoreSchema.version(of: backup) == 5, "the backup is the pre-v6 image")
+    }
+
     @Test("a home with only the legacy todos.json reads it (both shapes, forever)")
     func readFallbackLegacyName() throws {
         let dir = try makeDir()

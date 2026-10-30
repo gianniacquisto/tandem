@@ -411,6 +411,80 @@ struct SessionVerbTests {
         #expect(negative.error.contains("--cost"))
     }
 
+    // MARK: - skills
+
+    @Test("`session end --skills` stamps the counts, and `session show` reads them back")
+    func endStoresTheSkillCounts() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+        let ended = try run(home: home, [
+            "session", "end", "--outcome", "succeeded", "--summary", "spec filed",
+            "--skills", "grilling=2,tandem-memory=1",
+        ])
+        #expect(ended.code == 0, "the flag is accepted: \(ended.error)")
+
+        let shown = try run(home: home, ["session", "show"])
+        let skills = try #require(try cli.object(from: shown.output)["skills"] as? [String: Any])
+        #expect(skills["grilling"] as? Int == 2)
+        #expect(skills["tandem-memory"] as? Int == 1)
+        #expect(skills.count == 2, "nothing beyond what the flag named")
+    }
+
+    @Test("a record ended with no `--skills`, or an empty one, prints no `skills` key")
+    func absentSkillsAreAbsentOnTheWire() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+        #expect(try run(home: home, [
+            "session", "end", "--outcome", "succeeded", "--summary", "spec filed",
+        ]).code == 0)
+        let absent = try run(home: home, ["session", "show"])
+        #expect(try cli.object(from: absent.output)["skills"] == nil, "no flag, no skills key")
+
+        // An empty value is the absence of a report, never an empty map.
+        _ = try run(home: home, ["session", "start", "--session", "ses_two", "--project", "tandem", "--brief", "another pass"])
+        #expect(try run(home: home, [
+            "session", "end", "--session", "ses_two", "--outcome", "succeeded",
+            "--summary", "spec filed", "--skills", "",
+        ]).code == 0)
+        let empty = try run(home: home, ["session", "show", "--session", "ses_two"])
+        #expect(try cli.object(from: empty.output)["skills"] == nil, "an empty flag is no skills, not `{}`")
+    }
+
+    @Test("a malformed `--skills` is a domain failure naming the flag, and ends nothing")
+    func malformedSkillsFlagsAreDomainFailures() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        _ = try run(home: home, ["session", "start", "--project", "tandem", "--brief", "spec the sessions work"])
+
+        for value in [
+            "grilling",          // no `=`
+            "=2",                // a name that trims to empty
+            "grilling=",         // no count
+            "grilling=abc",      // a count that is not a whole number
+            "grilling=0",        // a count below 1
+            "grilling=-1",       // negative
+            "grilling=2,",       // a trailing comma names an empty pair
+            "grilling=2,grilling=1",  // a duplicate name is refused, never summed
+        ] {
+            let refused = try run(home: home, [
+                "session", "end", "--outcome", "succeeded", "--summary", "spec filed",
+                "--skills", value,
+            ])
+            #expect(refused.code == 1, "`\(value)` is refused")
+            #expect(refused.error.contains("--skills"), "the refusal names the flag: \(refused.error)")
+            #expect(refused.output == "", "a refused end prints no record")
+        }
+
+        let shown = try run(home: home, ["session", "show"])
+        #expect(try cli.object(from: shown.output)["status"] as? String == "running",
+                "every refusal left the record running")
+    }
+
     // MARK: - list and show
 
     @Test("`session list` lists the records newest first, and filters by status")

@@ -241,7 +241,7 @@ func dispatch(_ args: [String]) -> Int32 {
     case .sessionEnd(
         let session, let outcome, let summary,
         let tokensInput, let tokensOutput, let tokensReasoning,
-        let tokensCacheRead, let tokensCacheWrite, let cost, let model):
+        let tokensCacheRead, let tokensCacheWrite, let cost, let model, let skills):
         return run {
             // The usage flags (spec `F68948C0`): absent is absent on the
             // record, so an `end` without them is today's behaviour. When
@@ -254,6 +254,7 @@ func dispatch(_ args: [String]) -> Int32 {
                 cacheRead: tokensCacheRead, cacheWrite: tokensCacheWrite)
             let usageCost = try usageCost(cost)
             let usageModel = usageModel(model)
+            let skillCounts = try usageSkills(skills)
             let reported = tokens != nil || usageCost != nil || usageModel != nil
             let result = try Sessions().end(
                 id: try sessionID(session),
@@ -262,6 +263,7 @@ func dispatch(_ args: [String]) -> Int32 {
                 tokens: tokens,
                 cost: usageCost,
                 model: usageModel,
+                skills: skillCounts,
                 onStamp: reported ? { try postUsageComments(for: $0) } : nil)
             return try StoreEncoding.sessionResult(result.value, note: result.note)
         }
@@ -744,6 +746,33 @@ func usageCost(_ raw: String?) throws -> Double? {
         throw DomainError.invalidUsageFlag(flag: "cost", value: raw)
     }
     return value
+}
+
+/// The skill counts the `--skills` flag reports: `name=count` pairs, comma
+/// separated. Absent, or empty, is no skills on the record, never an empty map.
+/// An entry that is not one `name=count` pair, a name that trims to empty, a
+/// count that is not a whole number of at least 1, or a name named twice, is a
+/// domain failure naming the flag: an entry says a skill was loaded, so a count
+/// of zero is not a value, it is the absence of one, and a duplicate would
+/// otherwise drop one of the two counts.
+func usageSkills(_ raw: String?) throws -> [String: Int]? {
+    guard let raw else { return nil }
+    if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return nil }
+    func refuse() -> DomainError {
+        DomainError.invalidUsageFlag(flag: "skills", value: raw)
+    }
+    var counts: [String: Int] = [:]
+    for pair in raw.split(separator: ",", omittingEmptySubsequences: false) {
+        let sides = pair.split(separator: "=", omittingEmptySubsequences: false)
+        guard sides.count == 2 else { throw refuse() }
+        let name = sides[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { throw refuse() }
+        let digits = sides[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let count = Int(digits), count >= 1 else { throw refuse() }
+        guard counts[name] == nil else { throw refuse() }
+        counts[name] = count
+    }
+    return counts
 }
 
 /// The model the `--model` flag reports: absent is absent; an empty value is

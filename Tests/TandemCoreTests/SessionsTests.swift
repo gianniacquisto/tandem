@@ -375,6 +375,55 @@ struct SessionsTests {
         #expect(stamped.count == 1)
     }
 
+    // MARK: - skills
+
+    @Test("end writes the skill counts beside the usage, and a second end cannot restate them")
+    func endWritesTheSkillsOnce() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
+
+        let ended = try sessions.end(
+            id: "ses_1", outcome: .succeeded, summary: "Built it.",
+            skills: ["grilling": 2, "tandem-memory": 1])
+        #expect(ended.value.skills == ["grilling": 2, "tandem-memory": 1])
+
+        let again = try sessions.end(
+            id: "ses_1", outcome: .failed, summary: "Again.", skills: ["retro": 3])
+        #expect(again.value.skills == ["grilling": 2, "tandem-memory": 1],
+                "the first stamp is the fact, the skill map included")
+    }
+
+    @Test("a record ended without skills reads back as nil, never an empty map")
+    func absentSkillsAreNil() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try sessions.start(id: "ses_1", project: "tandem", brief: "Build the core.")
+        _ = try sessions.end(id: "ses_1", outcome: .succeeded, summary: "Built it.")
+
+        #expect(try sessions.show(id: "ses_1").value.skills == nil)
+        #expect(try sessions.list().value.first?.skills == nil, "the round trip invents nothing")
+    }
+
+    @Test("the skills survive the round trip through the file")
+    func skillsSurviveTheFile() throws {
+        let (sessions, dir) = try tempSessions()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try writeFile(dir, [
+            record(id: "ses_1", project: "tandem", status: "ended",
+                   outcome: "succeeded", startedAt: "2026-10-23T10:00:00Z",
+                   endedAt: "2026-10-23T11:00:00Z",
+                   extra: ["skills": ["grilling": 2, "tandem-memory": 1]]),
+        ])
+
+        // The read-fallback answers, then the first write imports the map into the
+        // `skills` column and the record reads the same on the other side.
+        #expect(try sessions.show(id: "ses_1").value.skills == ["grilling": 2, "tandem-memory": 1])
+        _ = try sessions.link(id: "ses_1", ticket: UUID())
+        #expect(try sessions.show(id: "ses_1").value.skills == ["grilling": 2, "tandem-memory": 1],
+                "the import carries the map, not just the usage beside it")
+    }
+
     // MARK: - link
 
     @Test("link appends a ticket once, and keeps the link order")
