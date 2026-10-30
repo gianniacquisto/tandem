@@ -346,6 +346,23 @@ struct ScaffoldConventionTests {
         }
     }
 
+    @Test("AGENTS.md states the install as the setup and the checkout as the override (TAN-233)")
+    func agentsStatesTheInstallRoute() throws {
+        let agents = try Self.file("AGENTS.md")
+        #expect(!agents.contains("linked rather than copied"),
+                "the face ships in the bundle; a link into a checkout is not the install (ADR 0034)")
+        #expect(!agents.contains("a clone of this repo, anywhere, plus the app, is the whole setup"),
+                "the cask plus `tandem-cli setup install` is the setup; the clone is the override")
+        #expect(agents.contains("Contents/Resources/agent"),
+                "the bundle's copy of the face is the source `setup install` writes from")
+        #expect(agents.contains("<TandemHome>/agent/"),
+                "the installed copy is what the host's links resolve into")
+        #expect(agents.contains("tandem-cli setup install"),
+                "AGENTS.md names the verb that materialises the install")
+        #expect(agents.contains("--force"),
+                "the checkout route is the override, behind the flag")
+    }
+
     @Test("The question's exit is one write — the handoff rule and the sprint's inbox debt (D2522EC3)")
     func questionExitIsStatedOnce() throws {
         let agents = try Self.file("AGENTS.md")
