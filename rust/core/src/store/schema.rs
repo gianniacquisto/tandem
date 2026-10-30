@@ -23,8 +23,9 @@ use rusqlite::{Connection, params};
 
 use super::{Actor, Result, StoreError, timestamp, translate};
 
-/// The version this build writes and reads.
-pub const CURRENT_VERSION: i64 = 2;
+/// The version this build writes and reads. Always the last version applied, so
+/// the constant is the migration count.
+pub const CURRENT_VERSION: i64 = 3;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -45,6 +46,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: 2,
         name: "the board and comment indexes",
         apply: version_two,
+    },
+    Migration {
+        version: SKILLS_VERSION,
+        name: "the session skill counts",
+        apply: version_three,
     },
 ];
 
@@ -143,6 +149,22 @@ CREATE INDEX IF NOT EXISTS tickets_lane_position ON tickets (lane, position);
 CREATE INDEX IF NOT EXISTS comments_ticket ON comments (ticket_id);
 ";
 
+/// The version that adds `sessions.skills`, and the newest version a read of an
+/// older file has to know about: the column is additive, so a file below this
+/// version is readable with the column absent (TAN-241).
+pub(crate) const SKILLS_VERSION: i64 = 3;
+
+/// Version 3: the skill counts a session's pass loaded, stored as one JSON
+/// object in a nullable column (TAN-241). **Additive**: an INSERT that names its
+/// columns without `skills` leaves NULL, and the counts are absent on every
+/// record written before the column existed. Absent is absent, never an empty
+/// object.
+///
+/// Additive is not the same as backward compatible: a build that only knows v2
+/// refuses the home this migration marks v3 (`refuse_legacy`), which is the
+/// revert path a merge of this change has.
+const VERSION_THREE: &str = "ALTER TABLE sessions ADD COLUMN skills TEXT;";
+
 fn version_one(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_ONE)
 }
@@ -151,11 +173,22 @@ fn version_two(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_TWO)
 }
 
+fn version_three(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(VERSION_THREE)
+}
+
 /// Apply every migration newer than the recorded version, in order, one
 /// transaction each. The version is read inside the transaction that records
 /// it, so two writers opening a fresh home apply each migration once: the
 /// second sees the first's row and applies nothing.
 pub(crate) fn migrate(connection: &Connection, actor: &Actor) -> Result<()> {
+    if CURRENT_VERSION != MIGRATIONS.len() as i64 {
+        return Err(StoreError::Io(format!(
+            "this build is schema v{CURRENT_VERSION} but ships {} migrations: the constant and \
+             the list must agree",
+            MIGRATIONS.len()
+        )));
+    }
     migrate_with(connection, MIGRATIONS, actor)
 }
 
@@ -166,21 +199,11 @@ pub(crate) fn migrate_with(
     migrations: &[Migration],
     actor: &Actor,
 ) -> Result<()> {
-    let latest = migrations
-        .iter()
-        .map(|migration| migration.version)
-        .max()
-        .unwrap_or(0);
-    debug_assert!(
-        migrations
-            .windows(2)
-            .all(|pair| pair[0].version < pair[1].version),
-        "a migration list is in version order, append only"
-    );
+    require_contiguous(migrations)?;
     // A cheap pre-check so an up-to-date database pays no write transaction per
     // write. It only decides whether there is work: the version that counts is
     // read inside each migration's transaction below.
-    if !needs_migration(connection, latest)? {
+    if !needs_migration(connection)? {
         return Ok(());
     }
     for migration in migrations {
@@ -227,9 +250,25 @@ pub(crate) fn version(connection: &Connection) -> Result<Option<i64>> {
         .map_err(translate)
 }
 
-/// Whether a file is newer than this build reads. The seam's version is the
-/// fact, not a table's shape: a v5 home answers here before anything writes.
+/// Whether a file is the Swift store's or newer than this build reads.
+///
+/// **The seam's actor is what tells the two stores apart.** The Swift store's
+/// `schema_migrations` carries `version` and `appliedAt`; every version this
+/// port writes carries its `author` (PRT-4), so a seam without that column is
+/// the Swift store's, whatever its version says. The number alone cannot decide
+/// it any more: the port's versions have moved past the Swift store's v5, so a
+/// v5 file would otherwise read as merely behind this build and be migrated.
+///
+/// A Rust file whose seam is past [`CURRENT_VERSION`] is refused on the version,
+/// as before: that is a newer build's store, and this one cannot read it.
 pub fn refuse_legacy(connection: &Connection) -> Result<()> {
+    if has_table(connection, "schema_migrations")?
+        && !has_column(connection, "schema_migrations", "author")?
+    {
+        return Err(StoreError::Legacy {
+            version: version(connection)?.unwrap_or(0),
+        });
+    }
     match version(connection)? {
         Some(applied) if applied > CURRENT_VERSION => Err(StoreError::Legacy { version: applied }),
         _ => Ok(()),
@@ -244,11 +283,41 @@ pub(crate) fn behind(connection: &Connection) -> Result<bool> {
     }
 }
 
-fn needs_migration(connection: &Connection, latest: i64) -> Result<bool> {
+/// Whether the file carries the session record's skill column.
+///
+/// **A read asks this instead of migrating**, because a read never writes
+/// (ADR 0031): a home the previous build wrote answers its records with the
+/// additive column NULL, rather than failing on a column it does not have.
+pub(crate) fn has_skills(connection: &Connection) -> Result<bool> {
+    Ok(version(connection)?.unwrap_or(0) >= SKILLS_VERSION)
+}
+
+/// Whether a store is behind the version this build writes.
+fn needs_migration(connection: &Connection) -> Result<bool> {
     if !has_table(connection, "schema_migrations")? {
-        return Ok(latest > 0);
+        return Ok(CURRENT_VERSION > 0);
     }
-    Ok(version(connection)?.unwrap_or(0) < latest)
+    Ok(version(connection)?.unwrap_or(0) < CURRENT_VERSION)
+}
+
+/// A migration list is exactly `1..=len`, in order: no hole, no renumbering.
+///
+/// **The seam walks a list, so a hole is a version nothing ever applied**, and
+/// every later build would read a store whose shape skipped a step. The rule is
+/// checked here rather than in a suite alone, because a suite only guards the
+/// list this build ships; this guards every list, a test's own included.
+fn require_contiguous(migrations: &[Migration]) -> Result<()> {
+    for (index, migration) in migrations.iter().enumerate() {
+        let expected = index as i64 + 1;
+        if migration.version != expected {
+            return Err(StoreError::Io(format!(
+                "the migrations are not contiguous (version {} sits where {expected} belongs): \
+                 a migration continues the count, it never leaves a hole",
+                migration.version
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// The seam's own table, created outside the versioned migrations because it is
@@ -263,6 +332,17 @@ fn create_seam(connection: &Connection) -> Result<()> {
                 author     TEXT NOT NULL
             )",
         )
+        .map_err(translate)
+}
+
+pub(crate) fn has_column(connection: &Connection, table: &str, column: &str) -> Result<bool> {
+    connection
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info(?1) WHERE name = ?2",
+            params![table, column],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|count| count > 0)
         .map_err(translate)
 }
 

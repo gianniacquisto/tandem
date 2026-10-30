@@ -27,8 +27,11 @@ mod actor;
 pub(crate) mod board_rows;
 mod home;
 mod locked;
+pub(crate) mod records;
 mod rows;
-mod schema;
+// Reachable from the records suite, which builds a v2 home to prove a read of
+// an older file never fails on a column a later migration adds.
+pub(crate) mod schema;
 #[cfg(test)]
 mod tests;
 pub(crate) mod timestamp;
@@ -43,7 +46,11 @@ use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 
 pub use actor::{Actor, ENVIRONMENT as ACTOR_ENVIRONMENT};
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
-pub use rows::{NewComment, NewDependency, NewLane, NewSession, NewSetting, NewSprint, NewTicket};
+pub use records::local_day;
+pub use rows::{
+    NewComment, NewDependency, NewLane, NewSession, NewSetting, NewSprint, NewTicket, SessionRow,
+    SprintRow,
+};
 pub use schema::CURRENT_VERSION;
 pub use write::Write;
 
@@ -186,6 +193,26 @@ impl Store {
                 }
             }
         })
+    }
+
+    /// Every session row, in stored order. An empty result is a successful
+    /// empty list, and a home with no database yet reads empty rather than
+    /// failing: the first write creates the store.
+    pub fn sessions(&self) -> Result<Vec<SessionRow>> {
+        Ok(self.read(records::session_rows)?.unwrap_or_default())
+    }
+
+    /// Every sprint row, in stored order.
+    pub fn sprints(&self) -> Result<Vec<SprintRow>> {
+        Ok(self.read(records::sprint_rows)?.unwrap_or_default())
+    }
+
+    /// Whether the board carries a ticket id, archive included. A read, never a
+    /// write: the sprint's batch check asks the store, it does not touch it.
+    pub fn carries_ticket(&self, id: &str) -> Result<bool> {
+        Ok(self
+            .read(|connection| records::ticket_carried(connection, id))?
+            .unwrap_or(false))
     }
 
     /// The applied migration version, or `None` when there is no database yet.

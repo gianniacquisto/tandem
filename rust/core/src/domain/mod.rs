@@ -1,5 +1,7 @@
-//! The board's domain: tickets, lanes, comments, order and the dependency edge
-//! (PRT-5, ported from `Sources/TandemCore/`).
+//! The domain's aggregates, ported from `Sources/TandemCore/`: the board's
+//! tickets, lanes, comments, order and dependency edge (PRT-5), and the records'
+//! sessions, sprints, usage derivation and harness read (PRT-6). The bikeshed
+//! follows with PRT-7.
 //!
 //! The domain is pure over the store adapter: no argv, no JSON, no file I/O. It
 //! reads one [`Contents`], changes it, and hands the difference to
@@ -28,16 +30,21 @@ pub mod contents;
 pub mod description;
 pub mod edit;
 pub mod error;
+pub mod harness;
 pub mod label;
 pub mod lane;
 pub mod layout;
 pub mod markdown;
+pub mod operation;
 pub mod ordering;
 pub mod query;
+pub mod session;
+pub mod sprint;
 pub mod text;
 pub mod ticket;
 pub mod ticket_to_note;
 pub mod undo;
+pub mod usage;
 
 pub use board::{AddTicket, Board, SetFields};
 pub use comment::{Comment, CommentRead};

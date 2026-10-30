@@ -410,6 +410,61 @@ mod schema {
         );
     }
 
+    /// The list is contiguous: version `n` sits at index `n - 1`, and the
+    /// build's constant is the count. A hole is caught here, by this build's own
+    /// suite, before it can be caught by a home that skipped a step.
+    #[test]
+    fn the_migration_list_is_contiguous() {
+        let versions: Vec<i64> = MIGRATIONS
+            .iter()
+            .map(|migration| migration.version)
+            .collect();
+        assert_eq!(
+            versions,
+            (1..=CURRENT_VERSION).collect::<Vec<_>>(),
+            "every version from 1 to CURRENT_VERSION, in order"
+        );
+        assert_eq!(
+            MIGRATIONS.len() as i64,
+            CURRENT_VERSION,
+            "the constant is the migration count"
+        );
+    }
+
+    /// And a list with a hole is refused by the seam itself, not only by the
+    /// assertion above: any caller, a suite's own list included, gets named.
+    #[test]
+    fn a_migration_list_with_a_hole_is_refused() {
+        let sandbox = Sandbox::new("migrate-hole");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        let migrations = [
+            Migration {
+                version: 1,
+                name: "the store",
+                apply: good,
+            },
+            Migration {
+                version: 3,
+                name: "after the hole",
+                apply: good,
+            },
+        ];
+
+        match migrate_with(&connection, &migrations, &Actor::Human) {
+            Err(StoreError::Io(message)) => assert!(
+                message.contains("not contiguous"),
+                "the refusal names the rule: {message}"
+            ),
+            other => panic!("a hole must fail the open, got {other:?}"),
+        }
+        assert_eq!(
+            version(&connection).unwrap(),
+            None,
+            "nothing is applied before the list is refused"
+        );
+    }
+
     #[test]
     fn a_fresh_homes_first_write_creates_the_database_at_the_current_version() {
         let sandbox = Sandbox::new("fresh");
@@ -629,7 +684,7 @@ mod schema {
         setting(&sandbox.store(), &Actor::Human, "k", "v");
 
         let connection = sandbox.connection();
-        assert_eq!(version(&connection).unwrap(), Some(2));
+        assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
         assert!(
             has_index(&connection, "tickets_lane_position"),
             "v2 adds the board's index"
@@ -637,6 +692,10 @@ mod schema {
         assert!(
             has_index(&connection, "comments_ticket"),
             "v2 adds the comment read's index"
+        );
+        assert!(
+            super::super::schema::has_column(&connection, "sessions", "skills").unwrap(),
+            "v3 adds the session record's skill counts"
         );
         let title: String = connection
             .query_row("SELECT title FROM tickets", [], |row| row.get(0))
@@ -884,6 +943,7 @@ mod actor {
                     tokens_cache_write: Some(0),
                     seconds: Some(1.5),
                     cost: Some(0.01),
+                    skills: Some("{\"thinking\":2}"),
                 })?;
                 write.insert_sprint(NewSprint {
                     lane: "Port",

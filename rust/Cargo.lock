@@ -1014,6 +1014,7 @@ dependencies = [
  "comrak",
  "rusqlite",
  "serde",
+ "serde_json",
  "sha2",
  "ts-rs",
  "uuid",
