@@ -71,17 +71,33 @@ impl BikeshedPath {
     }
 
     /// `path` as a filesystem path under `root`, or `None` for a vault escape:
-    /// an empty path, any empty component, and any `.` or `..` component.
+    /// an empty path, any empty component, any `.` or `..` component, and any
+    /// component the host would reinterpret as a path of its own.
+    ///
+    /// Each string component must be exactly one [`Component::Normal`]. A `\` is
+    /// a Windows separator and `C:` a drive, so `PathBuf::push` would replace
+    /// part of the root or append `..` segments the OS then resolves: a
+    /// component carrying either is refused here, on every host, so appending
+    /// it can never leave `root`.
     pub fn url(root: &Path, path: &str) -> Option<PathBuf> {
         let components: Vec<&str> = path.split('/').collect();
         if components.is_empty() {
             return None;
         }
-        if components
-            .iter()
-            .any(|component| component.is_empty() || *component == "." || *component == "..")
-        {
-            return None;
+        for component in &components {
+            if component.is_empty() || *component == "." || *component == ".." {
+                return None;
+            }
+            if component.contains('\\') {
+                return None;
+            }
+            let mut parts = Path::new(component).components();
+            if !matches!(
+                (parts.next(), parts.next()),
+                (Some(Component::Normal(_)), None)
+            ) {
+                return None;
+            }
         }
         let mut url = standardize(root);
         for component in components {
@@ -835,10 +851,11 @@ fn is_note_name(name: &str) -> bool {
 }
 
 fn strip_md(name: &str) -> &str {
-    if name.len() >= 3 && name[name.len() - 3..].eq_ignore_ascii_case(".md") {
-        &name[..name.len() - 3]
-    } else {
-        name
+    // Split at the last dot and compare the extension, so a non-ASCII stem is
+    // never sliced mid-character (Swift drops three characters, not bytes).
+    match name.rsplit_once('.') {
+        Some((stem, extension)) if extension.eq_ignore_ascii_case("md") => stem,
+        _ => name,
     }
 }
 

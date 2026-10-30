@@ -59,3 +59,29 @@ fn the_resolved_path_is_standardized_regardless_of_the_roots_shape() {
 fn a_component_containing_a_slash_cannot_smuggle_a_path() {
     assert_eq!(BikeshedPath::url(&root(), "a/../b.md"), None);
 }
+
+#[test]
+fn a_windows_shaped_traversal_component_is_refused() {
+    // A `\` is a Windows separator and `C:` a drive: `push` would reinterpret
+    // either as a path of its own, so no such component may reach the vault.
+    for bad in [
+        "..\\..\\evil.md",
+        "a\\..\\..\\evil.md",
+        "C:\\evil.md",
+        "\\Users\\me\\evil.md",
+        "sub\\file.md",
+    ] {
+        assert_eq!(BikeshedPath::url(&root(), bad), None, "refused: {bad}");
+    }
+}
+
+#[test]
+fn a_non_ascii_name_is_not_sliced_mid_character() {
+    assert_eq!(BikeshedPath::name("naive"), "naive");
+    assert_eq!(BikeshedPath::name("naïve"), "naïve");
+    assert_eq!(BikeshedPath::name("éé"), "éé");
+    assert_eq!(BikeshedPath::name("naïve.md"), "naïve");
+    assert_eq!(BikeshedPath::name("éé.MD"), "éé");
+    assert_eq!(BikeshedPath::name("a/b/naïve.md"), "naïve");
+    assert_eq!(BikeshedPath::name(".md"), "");
+}

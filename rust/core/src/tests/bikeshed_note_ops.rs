@@ -130,6 +130,8 @@ fn create_allows_spaces_but_rejects_hash_pipe_and_malformed_paths() {
         "../escape.md",
         "a/../b.md",
         "./dot.md",
+        "..\\..\\evil.md",
+        "a\\..\\..\\evil.md",
         "",
     ] {
         assert_eq!(
