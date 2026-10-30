@@ -297,8 +297,8 @@ private struct BoardTicket: View {
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let body = ticket.description {
-                    Text(body)
+                if let excerpt = TicketMarkdown.excerpt(ticket.description) {
+                    Text(excerpt)
                         .font(.system(size: 10.5))
                         .foregroundStyle(palette.inkDim)
                         .lineLimit(1)

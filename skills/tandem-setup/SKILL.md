@@ -1,74 +1,54 @@
 ---
 name: tandem-setup
-description: "Set up Tandem's agent face on this machine — link the skills, the agent prompts and the AGENTS.md into the agent host, and check that tandem-cli is on PATH. Reach for it when the user wants to install or repair Tandem's setup, when they have just cloned the repo on a new machine, or when the skills and the agents are missing from the host."
+description: "Set up Tandem's agent face on this machine: install the bundled skills, agent prompts and AGENTS.md into the agent host with `tandem-cli setup install`, and report what it did. Reach for it when the user wants to install or repair Tandem's setup, when they have just installed the app on a new machine, or when the skills and the agents are missing from the host."
 ---
 
 # Tandem setup
 
-Nothing is copied — the host gets **symlinks** into the checkout, so an edit in the repo is an edit the host sees. A checkout on a branch without the files leaves the links dangling; this pass reports that.
+The artifact carries the agent face: every skill, the four prompts and `AGENTS.md`. `tandem-cli setup` is its only writer (ADR 0034). Install copies the face once to `<TandemHome>/agent/` and points the host's paths at that copy. Nothing is copied or linked by hand.
 
-## Find the repo
+## Install
 
-The checkout holds `skills/tandem/SKILL.md` and `agents/`. In order: the human named it; the working directory; this skill's own file resolved (`pwd -P` — the repo is two levels up):
+Read the state first, then install:
 
 ```sh
-here="$(cd "$(dirname "<the path you read this file from>")" && pwd -P)"
-repo="$(cd "$here/../.." && pwd -P)"
-test -f "$repo/skills/tandem/SKILL.md" && test -d "$repo/agents" && echo "repo: $repo"
+tandem-cli setup status
+tandem-cli setup install
 ```
 
-## Link
+A bare `setup install` writes OpenCode: `~/.config/opencode/skills/<name>` for every skill, `~/.config/opencode/agents/<name>.md` for every prompt, and one `instructions` entry in `~/.config/opencode/opencode.json` naming `<TandemHome>/agent/AGENTS.md`. `--host claude` or `--host agents` names another host, and a host is written only when it is named.
 
-For OpenCode, three kinds of link: every skill, every agent prompt, and this repo's `AGENTS.md`. The host discovers all three by convention (`~/.config/opencode/{skills,agents}/` + `AGENTS.md`) — nothing goes in `opencode.json`. Idempotent, and never overwrites a real file:
+Report the JSON the run prints: each host's `state` (`installed`, `checkout`, `real-file` or `absent`), the `installedVersion` beside `bundledVersion`, and every warning with its `hint`. That report is the answer.
 
-```sh
-host="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"; mkdir -p "$host/skills" "$host/agents"
-link() { # link <source> <target> <label> — replace a dead link, skip a real file, skip a deliberate pointer
-  if [ -L "$2" ]; then
-    if [ ! -e "$2" ]; then ln -sfn "$1" "$2"; echo "replaced $3 (its target was gone)"
-    elif [ "$(readlink "$2")" = "$1" ]; then echo "ok       $3"
-    else echo "skip     $3 (points elsewhere: $(readlink "$2"))"; fi
-  elif [ -e "$2" ]; then echo "skip     $3 (a real file is there — move it aside, then re-run)"
-  else ln -s "$1" "$2"; echo "linked   $3"; fi
-}
-for dir in "$repo"/skills/*/; do [ -f "$dir/SKILL.md" ] || continue
-  name="$(basename "$dir")"; link "$repo/skills/$name" "$host/skills/$name" "skills/$name"; done
-for file in "$repo"/agents/*.md; do [ -e "$file" ] || continue
-  name="$(basename "$file")"; link "$repo/agents/$name" "$host/agents/$name" "agents/$name"; done
-link "$repo/AGENTS.md" "$host/AGENTS.md" "AGENTS.md"
-```
+- `blocked-path`: a real file sits where a link would go. Tell the human the path; moving it is theirs, and install never replaces it, `--force` included.
+- `double-load`: `~/.config/opencode/AGENTS.md` still exists beside the `instructions` entry. Removing it is the human's call.
+- `unwritable`: nothing was written. The hint names the fix.
 
-Another host: link the skills where it reads them and ask the human where its agent prompts go.
+## The checkout route
 
-## The CLI
+On a machine working on Tandem itself, the host's links already resolve into the checkout. Install leaves them and reports each as `foreign-link` (`info`): that is the normal state there, and `tandem-cli doctor` stays green. `tandem-cli setup install --force` replaces them with the installed copy, and only when the human asks.
 
-The prompts call `tandem-cli` by name; the app bundles it and the cask links it into Homebrew's `bin`:
+## tandem-cli on PATH
+
+The cask links the bundled binary into Homebrew's `bin`, so `tandem-cli` is on PATH after the install. Where it is not:
 
 ```sh
-command -v tandem-cli || echo "missing — brew install --cask gianniacquisto/tap/tandem"
+command -v tandem-cli || echo "missing: brew install --cask gianniacquisto/tap/tandem"
 ln -s "/Applications/Tandem.app/Contents/MacOS/tandem-cli" "$(brew --prefix)/bin/tandem-cli"   # if the link is missing
-```
-
-## Duplicate routes
-
-If the host config still lists this checkout under `instructions` or `skills`, the host loads the same files twice. Remove the entries that point at this checkout; leave every other entry alone:
-
-```sh
-grep -n "instructions\|skills" "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/opencode.json" 2>/dev/null
 ```
 
 ## Verify
 
 ```sh
-opencode api agent.list   # builder, consolidator, refiner, reviewer
-opencode api skill.list   # grilling, retro, review-lenses, tdd, tandem, tandem-build, tandem-consolidate, tandem-memory, tandem-refine, tandem-setup, tandem-sprint, tandem-tidy, tandem-team, writing-for-agents
-tandem-cli doctor         # the skills check reads "opencode configured"
+opencode api agent.list   # the four prompts
+opencode api skill.list   # every skill the artifact ships; the host's list is the authority
+tandem-cli doctor         # the skills row reads "opencode configured", the agent-face row counts the warnings
 ```
 
-A change to a skill or to `AGENTS.md` is picked up by a new session. An agent prompt is read when the server starts — live only after a host restart. Compare `opencode api agent.list` (what the server read) with the file to tell which is live.
+`opencode api skill.list` is the authority for the set: it lists what the host actually read, so a skill added to the artifact appears there without this file changing. A change to a skill or to `AGENTS.md` is picked up by a new session. An agent prompt is read when the server starts, so it is live only after a host restart: compare `opencode api agent.list` with `<TandemHome>/agent/agents/` to tell which is live.
 
 ## Done when
 
-- The host lists every agent prompt and every skill this repo ships, and `tandem-cli doctor` reads "opencode configured".
+- The host lists every agent prompt and every skill the artifact ships, and `tandem-cli doctor` reads "opencode configured".
 - Nothing in the host config points at a path that does not exist, and no file was overwritten.
-- The report says what was linked, what was skipped and why, and what is left for the human — a skip is a done setup; silence is not.
+- The report says what was linked, what was skipped and why, and what is left for the human: a skip is a done setup; silence is not.

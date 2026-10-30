@@ -410,8 +410,8 @@ struct LigneRow: View {
                     }
                     Spacer(minLength: 0)
                 }
-                if !editing, let body = ticket.description {
-                    Text(body)
+                if !editing, let excerpt = TicketMarkdown.excerpt(ticket.description) {
+                    Text(excerpt)
                         .font(.system(size: 11))
                         .foregroundStyle(palette.inkDim)
                         .lineLimit(2)

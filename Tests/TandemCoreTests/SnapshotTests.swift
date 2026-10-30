@@ -114,10 +114,16 @@ struct SnapshotTests {
             _ = try store.add("Rename the cask token", status: .backlog)
             let middle = try store.add(
                 "Land the store change", lane: "Tandem", status: .ready,
-                description: "The table and the verb land together.\n\n"
-                    + "## Blocked on\n\nThe snapshot seam has to be in place first.").value
+                description: "## What landed\n\n"
+                    + "The `Store` write stays **one lock**.\n\n"
+                    + "- The snapshot seam first\n"
+                    + "- Then the table\n\n"
+                    + "```swift\nlet seam = Store(directory: home)\n```\n\n"
+                    + "## Blocked on\n\nThe seam has to land first.").value
             let leaf = try store.add("Wait on the store change", lane: "Tandem",
-                                     status: .ready).value
+                                     status: .ready,
+                                     description: "## Waiting\n\n"
+                                         + "The store change has to land before this one.").value
             _ = try store.block(middle.ref!, on: seam.ref!)
             _ = try store.block(leaf.ref!, on: middle.ref!)
         }
@@ -198,9 +204,10 @@ struct SnapshotTests {
         assertSnapshot(of: hosting, as: .stableDescription())
     }
 
-    /// The ticket sheet: title, the three pickers, the filer, the ref, the body, and the
-    /// dependency sections, on the fixture's middle ticket, which both waits on one and
-    /// holds one up (TAN-232).
+    /// The ticket sheet: title, the three pickers, the filer, the ref, the rendered
+    /// description, and the dependency sections, on the fixture's middle ticket, which
+    /// carries a heading, a styled paragraph, a bullet list and a fenced block, and both
+    /// waits on one ticket and holds one up (TAN-232, TAN-219).
     @Test("the ticket sheet")
     func ticketSheet() throws {
         let ticket = try #require(Fixture.model.tickets.first {

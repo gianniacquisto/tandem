@@ -24,7 +24,8 @@ fixture home. A refusal exits non-zero and writes nothing.
 | `tickets-tab.png` | the main window's **Tickets** tab: the quick-add, the Open/Done/All/Archived counts, the search field and the lane-grouped list |
 | `tickets-search-empty.png` | the same tab with a search that matches nothing — "No ticket title matches your search." |
 | `board.png` | the **Board** view: Status columns across, cycle lanes down, a ticket drawn where its Status and lane meet |
-| `ticket-sheet.png` | the ticket sheet: the title, the Status and lane, the description, the ticket's comment log, and the composer the human writes in |
+| `ticket-sheet.png` | the ticket sheet: the title, the Status and lane, the description rendered from its markdown (headings, bullets, a code block), the ticket's comment log, and the composer the human writes in |
+| `ticket-sheet-source.png` | the same sheet with `Edit source` on: the stored markdown in the monospaced field, the toggle reading `Preview` |
 | `bikeshed-send-to-tickets.png` | the Bikeshed face with a note open: the title bar's **Send to tickets** button |
 | `bikeshed.png` | the Bikeshed face with a note open: the notes tree, the editor, the backlinks and the Health panel |
 | `sessions-tab.png` | the main window's **Sessions** tab: the session records grouped by project, a `running` one and an `ended · succeeded` one |

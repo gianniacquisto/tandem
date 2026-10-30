@@ -12,8 +12,11 @@ import TandemCore
 /// stage, and lane together. Double-clicking a ticket (anywhere but its title, which keeps
 /// inline rename) opens this; so does "Open ticket…" in the menu.
 ///
-/// The body is markdown as stored — no rendering, so nothing can hide a character an agent
-/// wrote — and Save is the same instruction the CLI's `set` makes, not a parallel write.
+/// The body is markdown, and it opens **rendered**: headings, bullets, code and the rest
+/// drawn by `MarkdownDocumentView`, because a refined ticket is markdown by construction
+/// and `## Why` read literally is the screen's worst line (TAN-219). The stored bytes stay
+/// one click away under `Edit source`, the same field the sheet always had, and `Save`
+/// writes those bytes, the same instruction the CLI's `set` makes, not a parallel write.
 /// Assignee is a picker over the roster (ticket 4B7CD193): the names the Settings view
 /// keeps, plus Unassigned and `human` — the picker's constants — plus the ticket's own
 /// assignee when it is off-roster. A choice rides the same single `set(id, …)` write the
@@ -73,6 +76,10 @@ struct TicketSheet: View {
     /// the picker, written by Save through `TicketEdits.assignee`.
     @State private var assignee: String?
     @State private var bodyText: String
+    /// Whether the description panel draws the rendered document (`Preview`) or the
+    /// stored markdown in its monospaced field (`Edit source`). The sheet opens on the
+    /// side the body asks for: prose to read, or an empty field to write in.
+    @State private var previewing: Bool
     /// The ticket's note link. Seeded from the ticket, then owned by the sheet: a
     /// promotion writes a new link the open ticket does not know about yet.
     @State private var link: String?
@@ -122,6 +129,7 @@ struct TicketSheet: View {
         _lane = State(initialValue: ticket.lane)
         _assignee = State(initialValue: ticket.assignee)
         _bodyText = State(initialValue: ticket.description ?? "")
+        _previewing = State(initialValue: !TicketMarkdown.blocks(ticket.description).isEmpty)
         _link = State(initialValue: ticket.link)
         // The seed read no longer happens here: the sheet reads the log itself,
         // once, when it appears (`readSeed`), on the background hop the read
@@ -248,18 +256,41 @@ struct TicketSheet: View {
                 dependencySection
             }
 
-            Text("Description — markdown, saved with the ticket")
-                .font(.system(size: 10.5))
-                .foregroundStyle(palette.inkDim)
-            TextEditor(text: $bodyText)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(palette.ink)
-                .scrollContentBackground(.hidden)
-                .focused($focus, equals: .body)
+            // The description: rendered for reading, the stored markdown one click away.
+            // The toggle sits in the comments header's register: a plain quiet button,
+            // not a fourth keyboard shortcut beside the sheet's three load-bearing ones.
+            HStack(spacing: 8) {
+                Text("Description — markdown, saved with the ticket")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(palette.inkDim)
+                Spacer(minLength: 0)
+                Button(previewing ? "Edit source" : "Preview") { previewing.toggle() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(palette.inkDim)
+                    .help(previewing ? "Show the stored markdown" : "Render the markdown")
+            }
+            if previewing {
+                ScrollView {
+                    MarkdownDocumentView(blocks: TicketMarkdown.blocks(bodyText),
+                                         palette: palette)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 .padding(8)
                 .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
                 .overlay(RoundedRectangle(cornerRadius: Radius.control)
                     .strokeBorder(palette.line, lineWidth: Line.hairline))
+            } else {
+                TextEditor(text: $bodyText)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(palette.ink)
+                    .scrollContentBackground(.hidden)
+                    .focused($focus, equals: .body)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.parchment))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.control)
+                        .strokeBorder(palette.line, lineWidth: Line.hairline))
+            }
 
             // The discussion, under the body: the log the CLI's `todo comment add`
             // appends to, and the human's own composer at the foot of it.
@@ -289,8 +320,9 @@ struct TicketSheet: View {
         .frame(width: 580, height: sheetHeight)
         .background(palette.paper)
         .onAppear {
-            // A ticket with a body opens for reading it; a terse one opens for writing it.
-            focus = ticket.description == nil ? .title : .body
+            // A ticket with a body opens for reading it, rendered, and no field takes
+            // the caret; a terse one opens for writing it, in the source field.
+            if !previewing { focus = .body }
         }
         // The seed: the log is read **once**, when the sheet opens — not on
         // every re-render. It is a read like any other, so it takes the
@@ -445,8 +477,9 @@ struct TicketSheet: View {
         }
     }
 
-    /// The composer's field: the human's own comment, in markdown as stored — no
-    /// rendering, so nothing can hide a character the human wrote.
+    /// The composer's field: the human's own comment, in markdown as typed. It stays the
+    /// raw field whatever the log above does: this is the input, not a document, and a
+    /// render under the caret would answer a keystroke with a reflow (TAN-219).
     private var commentComposer: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Add a comment — appended to the log, signed as you")
@@ -564,9 +597,9 @@ struct TicketSheet: View {
         }
     }
 
-    /// One comment: who said it, when, and what they said. The body is markdown as
-    /// stored, like the description — no rendering, so nothing can hide a character
-    /// an agent wrote.
+    /// One comment: who said it, when, and what they said. The body is rendered like the
+    /// description, at the sheet's smaller size: a comment is a document an agent wrote,
+    /// and it reads best as one.
     private func commentRow(_ comment: Comment) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
@@ -581,11 +614,8 @@ struct TicketSheet: View {
                     .foregroundStyle(palette.inkDim)
                 Spacer(minLength: 0)
             }
-            Text(comment.body)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(palette.ink)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
+            MarkdownDocumentView(blocks: TicketMarkdown.blocks(comment.body),
+                                 palette: palette, base: 12)
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 7)

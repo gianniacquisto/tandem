@@ -195,23 +195,20 @@ Not a ticket: `session start` opens a record of one agent session's run — the 
 
 ### Setting a host up
 
-Ask your agent to set up Tandem — the `tandem-setup` skill does the whole thing:
-
-- links every skill in `skills/` into the host's skills directory — `~/.config/opencode/skills/` for OpenCode, `~/.claude/skills/` for Claude Code;
-- links the agent prompts in `agents/` — `builder.md`, `consolidator.md`, `refiner.md` and `reviewer.md` — into `~/.config/opencode/agents/`;
-- links this repo's `AGENTS.md` into `~/.config/opencode/AGENTS.md`;
-- checks that `tandem-cli` is on PATH;
-- reports what it linked, what it skipped and why, and what is left over in the host's own config.
-
-Links, not copies: an edit in the repo is an edit the host sees. The setup never overwrites a real file.
-
-**There is no `opencode.json` step any more.** The host finds the skills by convention; adding this checkout's `skills/` directory to a `skills` array is a second route to the same files, and a host that reads both loads them twice. If an older setup left those entries behind, `tandem-setup` reports them and removes them.
-
-Nothing in this repo names a path on one machine. A clone of it, anywhere, plus the installed app, is the whole setup. For another host, the same idea by hand — link the skills into the directory that host reads them from:
+The app carries its own agent face: every skill, the four prompts (`builder`, `consolidator`, `refiner`, `reviewer`) and `AGENTS.md`. One command installs it into a host, so a checkout is not a prerequisite:
 
 ```sh
-ln -s "$PWD/skills/tandem" ~/.claude/skills/tandem
+tandem-cli setup status    # the bundled and installed versions, each host's state, the warnings
+tandem-cli setup install   # OpenCode: the skills, the four prompts and the AGENTS.md instruction
 ```
+
+Install writes the face once to `<TandemHome>/agent/` and points the host's paths at that copy with symlinks, so an upgrade is one directory replace and no re-linking. `--host claude` or `--host agents` names another host, and only a named host is written. A real file where a link would go is never touched: the report names the path, and its hint says to move it.
+
+The app reaches the same install, the same `SetupInstall` the verb calls: the setup wizard's agent step runs it in one press and shows each host's state and the installed version, and Settings' Agent section shows the bundled and installed versions with the same host list and one Install or Repair button. Nothing is written to a host until you press it.
+
+On a machine working on Tandem itself, the host's links already resolve into the checkout. Install leaves them and reports each as a skip (`foreign-link`), and `tandem-cli doctor` stays green either way. `--force` replaces them with the installed copy.
+
+Nothing in this repo names a path on one machine: the installed app is the whole setup, and a clone of it anywhere behaves the same. A host the three `--host` names do not cover is the human's call: it reads the installed copy under `<TandemHome>/agent/skills/`.
 
 ## The store
 

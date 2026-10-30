@@ -298,3 +298,15 @@ jobs:
             --title "Tandem $version" \
             --notes "$notes" \
             "dist/Tandem-$version.zip" dist/SHA256SUMS
+
+      - name: Bump the tap cask (tag runs only)
+        # The second half of the release, in the same run (ADR 0036): the tap's
+        # Casks/tandem.rb is rewritten from dist/SHA256SUMS and pushed with the
+        # TAP_TOKEN PAT, so no release waits for a human commit. Last on
+        # purpose, so a red tap step can never take a published release with it,
+        # and tag-gated so pull-request runs never touch another repo. Unset or
+        # rejected TAP_TOKEN fails here, loudly, naming the secret (TAN-224).
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: Scripts/bump-tap.sh "$GITHUB_REF_NAME" dist/SHA256SUMS --verify
