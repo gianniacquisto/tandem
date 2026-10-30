@@ -60,3 +60,20 @@ jobs:
 
       - name: "Gate: cargo test"
         run: cargo test
+
+      - name: "Gate: the two contention cases, ten times (Windows)"
+        # These are the cases that flaked on this runner, both on the sidecar
+        # lock's window: run 41080330208 (`concurrent_writers_keep_every_row`)
+        # and run 41099651828 (`a_concurrent_edit_is_not_reverted_by_another_writers_snapshot`,
+        # which answered `Locked`). The queue in `store::locked` gives this
+        # process's writers a turn order, so a waiter is served when the holder
+        # releases instead of racing it; ten runs in one job are the evidence,
+        # and a failure here is a red gate, not a re-run to notice.
+        if: runner.os == 'Windows'
+        run: |
+          for ($run = 1; $run -le 10; $run++) {
+            cargo test -p tandem-core --lib -- store::tests::writes::concurrent_writers_keep_every_row --exact
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cargo test -p tandem-core --test board -- a_concurrent_edit_is_not_reverted_by_another_writers_snapshot --exact
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }

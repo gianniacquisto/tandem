@@ -7,16 +7,30 @@
 //! or not at all, and a temp older than a minute is a crash's, not a writer's.
 //! This module is the mechanism only. It owns no schema and no domain
 //! vocabulary; the store translates its two failures into the store's words.
+//!
+//! One thing the Swift mechanism did not need and this one does: `flock` has no
+//! queue, so threads of one process that want the same lock race `try_lock`
+//! and the loser can lose every flip for the whole window. [`Queue`] gives this
+//! process's writers a turn order, and the window then bounds waiting for a
+//! holder rather than waiting for luck.
 
+use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use super::{Result, StoreError};
 
 /// How long a writer waits for the sidecar lock before answering "locked".
+///
+/// The window bounds a *holder*: another process, or this process's own writer
+/// inside its critical section. It does not bound this process's queue
+/// ([`Queue`]): a writer behind another writer of this process is served when
+/// that writer finishes, so the window never covers a race for a lock this
+/// process is about to release.
 pub(crate) const LOCK_TIMEOUT: Duration = Duration::from_millis(2_000);
 
 /// A temp older than this is a crash's leftover, never an in-flight write's.
@@ -47,6 +61,106 @@ const TEMP_SUFFIX: &str = ".tmp";
 /// The bikeshed's temp prefix: its notes are written beside the note, so the
 /// sweep recurses into the tree.
 pub(crate) const BIKESHED_TEMP_PREFIX: &str = ".note-";
+
+/// The turn order of this process's writers, one queue per lock file.
+///
+/// `flock` has no queue: two threads that both spin on `try_lock` are a coin
+/// flip per release, and the loser of every flip spends the whole window and
+/// answers `Locked` while the lock stood free between the holder's writes
+/// (`rust (windows-latest)` run 41099651828,
+/// `a_concurrent_edit_is_not_reverted_by_another_writers_snapshot`). A ticket
+/// queue removes the race: the holder closes its handle, which is what releases
+/// the `flock`, *before* it serves the next ticket, so the waiter it wakes
+/// finds the lock free. What is left for the window is a holder outside this
+/// process, which is what the window was written for.
+///
+/// The queue holds no reentrancy: a body that writes to the same home queues
+/// behind itself and never returns, so the store's write bodies never nest.
+/// (Before the queue, that nesting answered `Locked` after the window.)
+struct Queue {
+    turn: Mutex<Turn>,
+    served: Condvar,
+}
+
+struct Turn {
+    /// The ticket the next arrival takes.
+    next: u64,
+    /// The ticket allowed to run.
+    serving: u64,
+}
+
+impl Queue {
+    fn new() -> Self {
+        Self {
+            turn: Mutex::new(Turn {
+                next: 0,
+                serving: 0,
+            }),
+            served: Condvar::new(),
+        }
+    }
+
+    /// Take a ticket and wait until it is served.
+    fn take(&self) -> u64 {
+        let mut turn = lock(&self.turn);
+        let ticket = turn.next;
+        turn.next += 1;
+        while turn.serving != ticket {
+            turn = self
+                .served
+                .wait(turn)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
+        ticket
+    }
+
+    /// Serve the ticket after `ticket`: writers queue in ticket order, so the
+    /// ticket that released is the one that was being served.
+    fn release(&self, ticket: u64) {
+        let mut turn = lock(&self.turn);
+        turn.serving = ticket + 1;
+        drop(turn);
+        self.served.notify_all();
+    }
+}
+
+/// Every lock file this process has a queue for.
+static QUEUES: OnceLock<Mutex<HashMap<PathBuf, Arc<Queue>>>> = OnceLock::new();
+
+/// The queue for one lock file, created on first use.
+fn queue_for(lock_file: &Path) -> Arc<Queue> {
+    let mut queues = lock(QUEUES.get_or_init(|| Mutex::new(HashMap::new())));
+    queues
+        .entry(lock_file.to_path_buf())
+        .or_insert_with(|| Arc::new(Queue::new()))
+        .clone()
+}
+
+/// Drop a lock file's queue once no writer of this process holds or waits on
+/// it, so a process that writes to many homes keeps no entry per home.
+fn forget(lock_file: &Path, queue: &Arc<Queue>) {
+    let Some(queues) = QUEUES.get() else {
+        return;
+    };
+    let mut queues = lock(queues);
+    // The registry's clone and this one, and `queue_for` cannot clone it under
+    // this same lock: the entry is safe to remove.
+    if Arc::strong_count(queue) == 2
+        && queues
+            .get(lock_file)
+            .is_some_and(|held| Arc::ptr_eq(held, queue))
+    {
+        queues.remove(lock_file);
+    }
+}
+
+/// A mutex whose poisoning cannot lose a ticket: no thread panics while it
+/// holds this state, only between operations on it.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// One domain's locked directory: the sidecar lockfile, the temp naming and the
 /// tree the orphan sweep walks.
@@ -98,9 +212,9 @@ impl LockedDirectory {
     /// caller with its own error vocabulary (the bikeshed) translates the two
     /// failures itself and keeps the body's errors its own.
     pub(crate) fn lock(&self) -> Result<LockGuard> {
-        let file = self.acquire()?;
+        let held = self.acquire()?;
         self.sweep_orphans();
-        Ok(LockGuard { _file: file })
+        Ok(held)
     }
 
     /// Write `bytes` to `target` through a same-directory temp, then commit it.
@@ -199,9 +313,10 @@ impl LockedDirectory {
         Ok(())
     }
 
-    /// The exclusive `flock` with bounded retry. The returned file holds the
-    /// lock; dropping it releases.
-    fn acquire(&self) -> Result<File> {
+    /// The exclusive `flock`, behind this process's queue, with the bounded
+    /// retry for a holder outside it. The returned guard releases both when it
+    /// drops.
+    fn acquire(&self) -> Result<LockGuard> {
         fs::create_dir_all(&self.root).map_err(|error| {
             StoreError::Io(format!(
                 "could not create the directory {}: {error}",
@@ -220,31 +335,37 @@ impl LockedDirectory {
                     self.lock_file.display()
                 ))
             })?;
-        let deadline = Instant::now() + LOCK_TIMEOUT;
+        let queue = queue_for(&self.lock_file);
         #[cfg(test)]
         let started = Instant::now();
+        let ticket = queue.take();
+        let held = LockGuard {
+            file: Some(file),
+            queue,
+            ticket,
+            lock_file: self.lock_file.clone(),
+        };
+        // The window starts once this writer's turn comes: waiting in the queue
+        // is waiting for this process's own writers, which the window does not
+        // bound. What it bounds is the holder now in front of us.
+        let deadline = Instant::now() + LOCK_TIMEOUT;
         loop {
-            match file.try_lock() {
+            match held.file().try_lock() {
                 Ok(()) => {
                     #[cfg(test)]
                     LONGEST_WAIT_MS
                         .fetch_max(started.elapsed().as_millis() as u64, Ordering::Relaxed);
-                    return Ok(file);
+                    return Ok(held);
                 }
                 Err(TryLockError::WouldBlock) => {
                     if Instant::now() >= deadline {
                         return Err(StoreError::Locked);
                     }
-                    // Yield, do not sleep. The holder releases and reacquires
-                    // the lock within tens of microseconds, so a retry that
-                    // pauses for milliseconds misses the gap between two writes
-                    // and can be excluded for the whole queue: measured on the
-                    // Windows runner, a waiter answered `Locked` after the full
-                    // window while the lock stood free between every write, and
-                    // on Ubuntu it waited 95 ms of a 117 ms queue. Yielding
-                    // competes for the gap, so a waiter is turned away for about
-                    // one write and not for the queue, and the deadline still
-                    // bounds it.
+                    // Yield, do not sleep. A holder outside this process
+                    // releases and reacquires within tens of microseconds, so a
+                    // retry that pauses for milliseconds misses the gap between
+                    // two writes and can be excluded for the whole queue. The
+                    // deadline still bounds it.
                     thread::yield_now();
                 }
                 Err(TryLockError::Error(error)) => {
@@ -313,10 +434,31 @@ impl LockedDirectory {
     }
 }
 
-/// The lock held for the length of one write. Dropping it closes the sidecar,
-/// which releases the `flock`.
+/// The lock held for the length of one write: the sidecar's `flock` and the
+/// queue ticket that release hands on. Dropping it closes the file, which is
+/// what releases the `flock`, and only then serves the next ticket.
 pub(crate) struct LockGuard {
-    _file: File,
+    file: Option<File>,
+    queue: Arc<Queue>,
+    ticket: u64,
+    lock_file: PathBuf,
+}
+
+impl LockGuard {
+    fn file(&self) -> &File {
+        self.file.as_ref().expect("the held lock keeps its file")
+    }
+}
+
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        // Closing the handle releases the `flock`, and it has to be closed
+        // before the next ticket is served: a waiter woken first would find the
+        // lock still held and spend the window racing the release.
+        drop(self.file.take());
+        self.queue.release(self.ticket);
+        forget(&self.lock_file, &self.queue);
+    }
 }
 
 /// A temp path beside `target`, unique across processes and calls.

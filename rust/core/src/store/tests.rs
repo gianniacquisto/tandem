@@ -280,6 +280,50 @@ mod locked {
         );
     }
 
+    /// The window bounds a holder, not this process's own queue: a writer that
+    /// waits behind another writer of this process is served when that writer
+    /// finishes, however long it held. Without the queue the two threads raced
+    /// `try_lock`, so the waiter could spend the whole window losing a lock that
+    /// stood free between the holder's writes, and answer `Locked`
+    /// (`rust (windows-latest)`, run 41099651828).
+    #[test]
+    fn a_waiter_is_served_after_an_in_process_holder_that_holds_past_the_window() {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        let sandbox = Sandbox::new("queue");
+        let storage = storage(&sandbox);
+        let holder = storage.clone();
+        let holding = Arc::new(Barrier::new(2));
+
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                holder
+                    .with_lock(|| {
+                        holding.wait();
+                        thread::sleep(
+                            super::super::locked::LOCK_TIMEOUT + Duration::from_millis(250),
+                        );
+                        Ok(())
+                    })
+                    .expect("the holder's body runs");
+            });
+            // The barrier says the holder is inside the lock, so the waiter
+            // below queues behind a held lock instead of racing for a free one.
+            holding.wait();
+
+            let started = Instant::now();
+            storage
+                .with_lock(|| Ok(()))
+                .expect("a writer of this process is served, never turned away by its own queue");
+            assert!(
+                started.elapsed() >= super::super::locked::LOCK_TIMEOUT,
+                "the waiter did not wait for the holder: {:?}",
+                started.elapsed()
+            );
+        });
+    }
+
     #[test]
     fn an_ordered_write_keeps_the_old_file_until_the_commit() {
         let sandbox = Sandbox::new("ordered");
@@ -1196,6 +1240,13 @@ mod writes {
         let store = sandbox.store();
         setting(&store, &Actor::Human, "seed", "1");
 
+        // The timing assumption: the sidecar lock is the only thing these two
+        // threads contend for, and this process's queue (`locked::Queue`) serves
+        // a waiter when the holder releases, so a writer waits one write of the
+        // other and never spends the 2 s window racing a lock that stands free
+        // between them (`rust (windows-latest)` run 41080330208). No ordering
+        // between the threads is assumed: the count is read after the scope
+        // joins both.
         thread::scope(|scope| {
             for group in ["a", "b"] {
                 let store = &store;

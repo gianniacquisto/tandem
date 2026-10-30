@@ -19,9 +19,9 @@
 //!   [`StoreError::Locked`], and a rolling backup of the pre-write state
 //!   (ADR 0018). Reads open read-only and never write.
 //! - **The write discipline** (the `locked` module): the `flock` sidecar with bounded
-//!   retry, same-directory temps with `fsync` + rename, and the orphan sweep.
-//!   A lock that is not held is a lock; a temp older than a minute is a
-//!   crash's.
+//!   retry behind this process's own turn queue, same-directory temps with
+//!   `fsync` + rename, and the orphan sweep. A lock that is not held is a lock;
+//!   a temp older than a minute is a crash's.
 
 mod actor;
 pub(crate) mod board_rows;
