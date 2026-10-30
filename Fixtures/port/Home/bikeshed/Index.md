@@ -5,6 +5,6 @@ test to read a vault without duplicating the human's.
 
 ## Projects
 
-**Fixture** — a project that exists only to be read.
+**Fixture**: a project that exists only to be read.
 
-- [[fixture]] — the overview every fixture read finds.
+- [[fixture]]: the overview every fixture read finds.

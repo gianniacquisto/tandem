@@ -29,6 +29,17 @@ pub enum HomeSource {
     Default,
 }
 
+impl HomeSource {
+    /// The word the report uses for this branch: why the home resolved there.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Flag => "flag",
+            Self::Environment => "environment",
+            Self::Default => "default",
+        }
+    }
+}
+
 /// The directory a process keeps its state in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Home {
@@ -78,9 +89,11 @@ impl Home {
 
     /// Create the home if this is the first run to reach it.
     ///
-    /// A run is a run in a home, so the run makes sure there is one. Nothing
-    /// inside it is written here: the store and the bikeshed own their files.
-    /// An existing home is left untouched, so a read never changes a mtime.
+    /// Only a verb that writes calls this: `doctor` is read-only (ADR 0014)
+    /// and reports the home it resolved without creating it. Nothing inside
+    /// the directory is written here: the store and the bikeshed own their
+    /// files. An existing home is left untouched, so a read never changes a
+    /// mtime.
     pub fn ensure(&self) -> io::Result<()> {
         fs::create_dir_all(&self.directory)
     }
@@ -202,6 +215,25 @@ mod tests {
         let home = Home::resolve(Some(Path::new("Fixtures/port/Home")), None, &user_home());
         let expected = std::env::current_dir().unwrap().join("Fixtures/port/Home");
         assert_eq!(home.directory(), expected);
+    }
+
+    #[test]
+    fn ensure_creates_the_home_the_writing_verbs_use() {
+        let root = std::env::temp_dir().join(format!("tandem-ensure-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let home = Home::resolve(Some(&root), None, &user_home());
+
+        home.ensure().expect("the home is creatable");
+        assert!(root.is_dir(), "the first writer creates the home");
+        fs::write(root.join("marker"), b"kept").expect("the marker is writable");
+
+        home.ensure().expect("an existing home is not an error");
+        assert_eq!(
+            fs::read(root.join("marker")).unwrap(),
+            b"kept",
+            "an existing home is left as it was"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

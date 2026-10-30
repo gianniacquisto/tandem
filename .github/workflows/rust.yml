@@ -7,7 +7,7 @@ name: Rust
 # The checks this publishes are what `main`'s protection names:
 # `rust (macos-latest)`, `rust (ubuntu-latest)`, `rust (windows-latest)`.
 #
-# No third-party action: `rust-toolchain.toml` names the channel and the two
+# No third-party action: `rust-toolchain.toml` pins the version and the two
 # components, rustup ships on every hosted runner, and nothing here reads a
 # secret or prints an environment.
 
@@ -43,10 +43,10 @@ jobs:
       - name: Check out the source
         uses: actions/checkout@v4
 
-      - name: Install the pinned toolchain
+      - name: Warm the toolchain proxy
         # rustup reads `rust/rust-toolchain.toml` on first proxy use and
-        # installs that channel with `rustfmt` and `clippy`; naming it here
-        # keeps the download visible and the gate steps free of setup.
+        # installs the pinned version with `rustfmt` and `clippy`; naming it
+        # here keeps the download visible and the gate steps free of setup.
         run: cargo --version
 
       - name: "Gate: cargo fmt --check"

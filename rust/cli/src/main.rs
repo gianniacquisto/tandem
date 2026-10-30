@@ -2,8 +2,8 @@
 //!
 //! One binary (`docs/port.md`, Target shape): the verbs agents call and the
 //! core the app trusts are the same executable, so they cannot drift. This rung
-//! carries the home plumbing and the `doctor` stub: the verbs land with PRT-9
-//! and the eight checks with PRT-10.
+//! carries the home plumbing and `doctor`'s pinned report with its `home` row:
+//! the verbs land with PRT-9 and the other seven checks with PRT-10.
 //!
 //! What lives here is what belongs to a process rather than to the domain:
 //! argv, the environment, the two streams and the exit code.
@@ -15,7 +15,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use serde::Serialize;
 use tandem_core::store::{self, Home};
-use tandem_core::wire::HomeReport;
+use tandem_core::wire::{DoctorCheck, DoctorReport};
 
 #[derive(Parser)]
 #[command(
@@ -34,7 +34,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Report the home this run resolved.
+    /// Report whether this machine's Tandem setup is sound (ADR 0014).
     Doctor,
 }
 
@@ -52,14 +52,28 @@ fn run(cli: Cli) -> Result<(), String> {
     let user_home = store::user_home().map_err(|error| error.to_string())?;
     let environment = env::var(store::ENVIRONMENT).ok();
     let home = Home::resolve(cli.home.as_deref(), environment.as_deref(), &user_home);
-    home.ensure()
-        .map_err(|error| format!("{}: {error}", home.directory().display()))?;
 
     match cli.command {
-        Command::Doctor => print(&HomeReport {
-            home: home.directory().display().to_string(),
-            source: home.source(),
-        }),
+        Command::Doctor => print(&report(&home)),
+    }
+}
+
+/// ADR 0014's report, with the one row this rung can answer: `home` names the
+/// directory the run resolved and why. `home` is informational, so it cannot
+/// fail and the report is `ok`; a writing verb creates the home, never this
+/// read-only one.
+fn report(home: &Home) -> DoctorReport {
+    DoctorReport {
+        ok: true,
+        checks: vec![DoctorCheck {
+            name: "home".to_string(),
+            ok: true,
+            detail: format!(
+                "{} ({})",
+                home.directory().display(),
+                home.source().as_str()
+            ),
+        }],
     }
 }
 

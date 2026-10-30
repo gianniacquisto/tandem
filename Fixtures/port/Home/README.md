@@ -11,5 +11,5 @@ the real `~/.tandem`, which the shipped Swift app owns until cutover
 The store arrives with PRT-4: this ticket commits the folder and its bikeshed,
 not `tandem.db`.
 
-- `bikeshed/` — the vault: `Index.md`, `projects/<project>/<project>.md`, and
+- `bikeshed/` is the vault: `Index.md`, `projects/<project>/<project>.md`, and
   one `daily/` note.
