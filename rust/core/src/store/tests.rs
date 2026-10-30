@@ -8,6 +8,7 @@
 //! allowed to know the storage; everything above it talks to `Store` only.
 
 use std::fs;
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime};
@@ -86,6 +87,17 @@ fn setting(store: &Store, actor: &Actor, key: &str, value: &str) {
         .expect("the write lands");
 }
 
+/// Backdate a file, so the orphan sweep reads it as a crash's leftover rather
+/// than as a write in flight.
+fn aged(path: &Path, seconds: u64) {
+    let file = OpenOptions::new()
+        .write(true)
+        .open(path)
+        .expect("the temp opens");
+    let when = SystemTime::now() - Duration::from_secs(seconds);
+    file.set_modified(when).expect("the temp's age is set");
+}
+
 fn author_of(connection: &Connection, table: &str) -> Vec<String> {
     let sql = format!("SELECT author FROM {table} ORDER BY rowid");
     let mut statement = connection.prepare(&sql).expect("the table answers");
@@ -130,15 +142,6 @@ mod locked {
     fn storage(sandbox: &Sandbox) -> super::super::locked::LockedDirectory {
         fs::create_dir_all(sandbox.root()).expect("the root is creatable");
         super::super::locked::LockedDirectory::for_store(sandbox.root())
-    }
-
-    fn aged(path: &Path, seconds: u64) {
-        let file = OpenOptions::new()
-            .write(true)
-            .open(path)
-            .expect("the temp opens");
-        let when = SystemTime::now() - Duration::from_secs(seconds);
-        file.set_modified(when).expect("the temp's age is set");
     }
 
     #[test]
@@ -590,6 +593,54 @@ mod gate {
             .recv_timeout(Duration::from_secs(5))
             .expect("the queued writer runs once the gate is free");
         queued.join().expect("the queued writer finishes");
+    }
+
+    #[test]
+    fn a_held_gate_times_out_as_locked() {
+        let sandbox = Sandbox::new("gate-deadline");
+        let home = sandbox.home_path();
+        fs::create_dir_all(&home).unwrap();
+        let gate = write_gate(&home);
+        let held = gate.lock().expect("the test takes the gate");
+
+        // The engine is free while this thread holds the gate, so only the
+        // gate's own deadline can turn the queued writer away.
+        let store = sandbox.store();
+        let (tx, answered) = mpsc::channel();
+        let queued = thread::spawn(move || {
+            let started = Instant::now();
+            let outcome = store.write(&Actor::Human, |write| {
+                write.insert_setting(NewSetting {
+                    key: "blocked",
+                    value: "1",
+                })
+            });
+            tx.send((outcome, started.elapsed()))
+                .expect("the parent is listening");
+        });
+
+        let (outcome, elapsed) = answered
+            .recv_timeout(Duration::from_secs(15))
+            .expect("a held gate must answer within the store's window");
+        drop(held);
+        queued.join().expect("the queued writer finishes");
+
+        assert!(
+            matches!(outcome, Err(StoreError::Locked)),
+            "a held gate must time out as locked: {outcome:?}"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(1_500),
+            "the writer waited the store's window (elapsed {elapsed:?})"
+        );
+        assert!(
+            elapsed < Duration::from_secs(15),
+            "the writer did not wait far past the window (elapsed {elapsed:?})"
+        );
+        assert!(
+            !sandbox.database().exists(),
+            "a write turned away at the gate opened no database"
+        );
     }
 }
 
@@ -1455,6 +1506,36 @@ mod writes {
 
         let after = fs::metadata(sandbox.backup()).unwrap().modified().unwrap();
         assert_eq!(after, before, "a read rolls no backup");
+    }
+
+    #[test]
+    fn the_next_write_sweeps_a_backup_temp_a_kill_left_behind() {
+        let sandbox = Sandbox::new("backup-orphan");
+        let store = sandbox.store();
+        setting(&store, &Actor::Human, "one", "1");
+
+        // A writer killed mid-backup leaves its same-directory temp: nothing
+        // renames it and no read removes it, so the next write sweeps it.
+        let killed = sandbox.home_path().join(".tandem-backup-4242-1-0.tmp");
+        fs::write(&killed, b"half a copy").unwrap();
+        aged(&killed, 120);
+        // A temp young enough to belong to a writer still running is not a
+        // kill's, and the sweep must leave it alone.
+        let in_flight = sandbox.home_path().join(".tandem-backup-4243-2-0.tmp");
+        fs::write(&in_flight, b"a copy in progress").unwrap();
+
+        setting(&store, &Actor::Human, "two", "2");
+
+        assert!(
+            !killed.exists(),
+            "the next write left the killed backup's temp at {}",
+            killed.display()
+        );
+        assert!(
+            in_flight.exists(),
+            "the sweep removed a temp a live writer may still hold"
+        );
+        let _ = fs::remove_file(&in_flight);
     }
 
     #[test]
