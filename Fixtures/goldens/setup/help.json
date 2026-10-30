@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "setup",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli setup: the agent face, installed and inspected.",
+    "",
+    "Usage:",
+    "  tandem-cli setup install [--host <opencode|claude|agents>] [--force]",
+    "  tandem-cli setup uninstall [--host <opencode|claude|agents>]",
+    "  tandem-cli setup status"
+  ],
+  "stdoutKind": "text"
+}

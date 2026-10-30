@@ -1,0 +1,49 @@
+{
+  "argv": [
+    "session",
+    "end",
+    "--outcome",
+    "succeeded",
+    "--summary",
+    "What landed.",
+    "--tokens-input",
+    "10",
+    "--tokens-output",
+    "20",
+    "--tokens-reasoning",
+    "5",
+    "--tokens-cache-read",
+    "3",
+    "--tokens-cache-write",
+    "1",
+    "--cost",
+    "0.5",
+    "--model",
+    "golden-model"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "agent": "builder",
+    "brief": "A brief the golden keeps.",
+    "cost": 0.5,
+    "endedAt": "<timestamp>",
+    "id": "golden-session",
+    "model": "golden-model",
+    "outcome": "succeeded",
+    "project": "fixture",
+    "startedAt": "<timestamp>",
+    "status": "ended",
+    "summary": "What landed.",
+    "tickets": [],
+    "tokens": {
+      "cacheRead": 3,
+      "cacheWrite": 1,
+      "input": 10,
+      "output": 20,
+      "reasoning": 5
+    }
+  },
+  "stdoutKind": "json"
+}

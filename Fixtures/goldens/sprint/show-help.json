@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "sprint",
+    "show",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli sprint show — one sprint record.",
+    "",
+    "Usage:",
+    "  tandem-cli sprint show --lane <name> --number <n>"
+  ],
+  "stdoutKind": "text"
+}

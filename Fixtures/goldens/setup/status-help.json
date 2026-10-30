@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "setup",
+    "status",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli setup status: the agent face's state.",
+    "",
+    "Usage:",
+    "  tandem-cli setup status",
+    "",
+    "Reports the bundled and installed versions, each host's state (installed,",
+    "checkout, real-file, absent) and the warnings list. Exit 0 always; the",
+    "warnings are the diagnosis."
+  ],
+  "stdoutKind": "text"
+}

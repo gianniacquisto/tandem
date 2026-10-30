@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "lane",
+    "add",
+    "--name",
+    "Cycle"
+  ],
+  "exit": 1,
+  "stderr": [
+    "A cycle lane named \"Cycle\" already exists."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

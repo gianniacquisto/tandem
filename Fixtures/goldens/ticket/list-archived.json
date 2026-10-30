@@ -1,0 +1,36 @@
+{
+  "argv": [
+    "ticket",
+    "list",
+    "--filter",
+    "all",
+    "--archived"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "tickets": [
+      {
+        "archived": true,
+        "assignee": null,
+        "blocked": false,
+        "blockedBy": [],
+        "blocks": [],
+        "completedAt": "<timestamp>",
+        "createdAt": "<timestamp>",
+        "descriptionLength": 0,
+        "done": true,
+        "id": "<id>",
+        "lane": "Tandem",
+        "link": null,
+        "number": 1,
+        "origin": "human",
+        "ref": "TAN-1",
+        "status": "done",
+        "title": "Fixture ticket"
+      }
+    ]
+  },
+  "stdoutKind": "json"
+}

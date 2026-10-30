@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "session",
+    "link",
+    "--ticket",
+    "TAN-1"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Unknown ticket ref \"TAN-1\". No cycle lane has that key, and no lane carries a key yet."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

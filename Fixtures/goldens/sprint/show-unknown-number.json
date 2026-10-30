@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "sprint",
+    "show",
+    "--lane",
+    "Cycle",
+    "--number",
+    "9"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Unknown sprint \"Sprint 9 — Cycle\". Here are the sprints lane \"Cycle\" holds: 1."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

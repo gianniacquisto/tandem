@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "note",
+    "stats",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli note stats — the memory-health readout.",
+    "",
+    "Usage:",
+    "  tandem-cli note stats [--project <name>]",
+    "",
+    "An absent `--project` reports every project."
+  ],
+  "stdoutKind": "text"
+}

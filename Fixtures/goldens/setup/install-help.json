@@ -1,0 +1,24 @@
+{
+  "argv": [
+    "setup",
+    "install",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli setup install: the bundled agent face, installed and wired.",
+    "",
+    "Usage:",
+    "  tandem-cli setup install [--host <opencode|claude|agents>] [--force]",
+    "",
+    "Writes <TandemHome>/agent/ from the bundled face, links every skill and",
+    "prompt into each named host, and adds the host's instruction route. An",
+    "absent `--host` is opencode; a comma-separated list names more. A real",
+    "file at a host path is never overwritten; a link pointing elsewhere, a",
+    "checkout included, is left alone unless `--force`. One JSON report;",
+    "exit 1 when a warning is an error, the report still on stdout."
+  ],
+  "stdoutKind": "text"
+}

@@ -1,0 +1,28 @@
+{
+  "argv": [
+    "session",
+    "end",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli session end — a session record, stamped.",
+    "",
+    "Usage:",
+    "  tandem-cli session end [--session <id>] [--outcome <value>]",
+    "                         [--summary <string|->]",
+    "                         [--tokens-input <n>] [--tokens-output <n>]",
+    "                         [--tokens-reasoning <n>] [--tokens-cache-read <n>]",
+    "                         [--tokens-cache-write <n>] [--cost <dollars>]",
+    "                         [--model <name>]",
+    "",
+    "Values:",
+    "  outcome   succeeded | failed | interrupted | unknown — how a session ended",
+    "",
+    "A flag not named is absent on the record. `--summary -` reads from stdin;",
+    "an absent `--outcome` is `unknown`."
+  ],
+  "stdoutKind": "text"
+}

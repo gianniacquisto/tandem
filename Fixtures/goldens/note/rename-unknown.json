@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "note",
+    "rename",
+    "--from",
+    "projects/fixture/nope.md",
+    "--to",
+    "projects/fixture/overview.md"
+  ],
+  "exit": 1,
+  "stderr": [
+    "No note at \"projects/fixture/nope.md\" in the bikeshed. List the bikeshed to see what is there."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

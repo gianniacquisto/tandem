@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "ticket",
+    "block",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli ticket block, a ticket waits on another.",
+    "",
+    "Usage:",
+    "  tandem-cli ticket block --id <id> --on <id>",
+    "",
+    "`--on` takes the same handle `--id` does: the blocker's ref (`TAN-42`) or its",
+    "UUID. The write is refused, and nothing is written, when the edge would make a",
+    "ticket wait on itself, when it would close a cycle, and when the blocker is",
+    "done or archived: a block that would lift on write, or could never be seen to",
+    "lift, is not a block."
+  ],
+  "stdoutKind": "text"
+}

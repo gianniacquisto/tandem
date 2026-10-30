@@ -1,0 +1,54 @@
+{
+  "argv": [
+    "doctor"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "checks": [
+      {
+        "detail": "<tandem-home> (TANDEM_HOME override)",
+        "name": "home",
+        "ok": true
+      },
+      {
+        "detail": "<tandem-home>/tandem.db — absent (a valid empty store); no backup yet",
+        "name": "store",
+        "ok": true
+      },
+      {
+        "detail": "<tandem-home>/bikeshed — 3 note(s)",
+        "name": "bikeshed",
+        "ok": true
+      },
+      {
+        "detail": "<tandem-home>/tandem.db — none yet; the first comment writes a row",
+        "name": "comments",
+        "ok": true
+      },
+      {
+        "detail": "free",
+        "name": "lock",
+        "ok": true
+      },
+      {
+        "detail": "<environment>",
+        "name": "app",
+        "ok": true
+      },
+      {
+        "detail": "<environment>",
+        "name": "skills",
+        "ok": true
+      },
+      {
+        "detail": "no warnings",
+        "name": "agent-face",
+        "ok": true
+      }
+    ],
+    "ok": true
+  },
+  "stdoutKind": "json"
+}

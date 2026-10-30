@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "lane",
+    "delete",
+    "--name",
+    "Cycle"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Unknown cycle lane \"Cycle\". Create it first."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

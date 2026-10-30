@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "ticket",
+    "answer",
+    "--id",
+    "CYC-1",
+    "--status",
+    "ready",
+    "--assignee",
+    "self",
+    "--body",
+    "The answer stands."
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "archived": false,
+    "assignee": "golden-agent",
+    "blocked": false,
+    "blockedBy": [],
+    "blockedReason": null,
+    "blocks": [],
+    "completedAt": null,
+    "createdAt": "<timestamp>",
+    "description": "## Answer — 2026-10-30\n\nThe answer stands.",
+    "done": false,
+    "id": "<id>",
+    "lane": "Cycle",
+    "link": null,
+    "number": 1,
+    "origin": "human",
+    "ref": "CYC-1",
+    "status": "ready",
+    "title": "Fixture ticket"
+  },
+  "stdoutKind": "json"
+}

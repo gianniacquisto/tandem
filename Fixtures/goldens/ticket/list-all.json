@@ -1,0 +1,54 @@
+{
+  "argv": [
+    "ticket",
+    "list",
+    "--filter",
+    "all"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "tickets": [
+      {
+        "archived": false,
+        "assignee": null,
+        "blocked": false,
+        "blockedBy": [],
+        "blocks": [],
+        "completedAt": null,
+        "createdAt": "<timestamp>",
+        "descriptionLength": 0,
+        "done": false,
+        "id": "<id>",
+        "lane": "Cycle",
+        "link": null,
+        "number": 2,
+        "origin": "human",
+        "ref": "CYC-2",
+        "status": "backlog",
+        "title": "Second ticket"
+      },
+      {
+        "archived": false,
+        "assignee": null,
+        "blocked": false,
+        "blockedBy": [],
+        "blocks": [],
+        "completedAt": "<timestamp>",
+        "createdAt": "<timestamp>",
+        "descriptionLength": 0,
+        "done": true,
+        "id": "<id>",
+        "lane": "Cycle",
+        "link": null,
+        "number": 1,
+        "origin": "human",
+        "ref": "CYC-1",
+        "status": "done",
+        "title": "Fixture ticket"
+      }
+    ]
+  },
+  "stdoutKind": "json"
+}

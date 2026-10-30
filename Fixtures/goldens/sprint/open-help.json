@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "sprint",
+    "open",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli sprint open — a sprint record, opened.",
+    "",
+    "Usage:",
+    "  tandem-cli sprint open --lane <name> [--mode serial|parallel] [--session <id>]",
+    "",
+    "Values:",
+    "  mode      serial | parallel — how a sprint's batch was built",
+    "",
+    "An absent `--session` is $OPENCODE_SESSION_ID."
+  ],
+  "stdoutKind": "text"
+}

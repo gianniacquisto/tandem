@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "lane",
+    "list",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli lane list — the store's declared lanes, empty ones included.",
+    "",
+    "Usage:",
+    "  tandem-cli lane list"
+  ],
+  "stdoutKind": "text"
+}

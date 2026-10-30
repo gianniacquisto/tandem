@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "lane",
+    "rename",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli lane rename — a lane's name, and its key.",
+    "",
+    "Usage:",
+    "  tandem-cli lane rename --from <name> --to <name> [--abbr <key>]",
+    "",
+    "The key survives a rename; `--abbr` moves it, and a lane with a numbered ticket",
+    "refuses — the refs a human already wrote would move with it."
+  ],
+  "stdoutKind": "text"
+}

@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "session",
+    "start",
+    "--project",
+    "fixture"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Cannot resolve the session id: set OPENCODE_SESSION_ID to this session's id, or pass --session <id>."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

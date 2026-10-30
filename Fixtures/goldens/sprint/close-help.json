@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "sprint",
+    "close",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli sprint close — the lane's open sprint, stamped.",
+    "",
+    "Usage:",
+    "  tandem-cli sprint close --lane <name> [--number <n>] [--note <string|->]",
+    "",
+    "`--note -` reads the note from stdin; a close that names no note is the",
+    "stamp alone."
+  ],
+  "stdoutKind": "text"
+}
