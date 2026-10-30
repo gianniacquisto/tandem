@@ -106,8 +106,9 @@ trap cleanup EXIT
 
 # MARK: - The manifest is the contract, so it is checked before it is obeyed
 
-for case_json in $(jq -r '[.cases[] | .group + "/" + .case] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$manifest"); do
-    die "the manifest names $case_json twice"
+for duplicate in $(jq -r '[.cases[] | .group + "/" + .case]
+    | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$manifest"); do
+    die "the manifest names $duplicate twice"
 done
 
 missing_groups=$(jq -r '(["ticket", "lane", "note", "session", "sprint", "setup", "doctor"]
