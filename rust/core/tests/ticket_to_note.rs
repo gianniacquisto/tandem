@@ -22,12 +22,22 @@ use tandem_core::domain::{
 
 /// The note writer the promotion talks to: the same create-never-overwrite rule the
 /// bikeshed keeps, without a filesystem.
+/// The seam's hook: what another face does to the board while a note is written.
+type BeforeWrite = Box<dyn Fn(&str)>;
+
 #[derive(Default)]
 struct MemNotes {
     cells: RefCell<BTreeMap<String, String>>,
+    /// Runs just before a note is written: the seam where another face can change
+    /// the ticket while the promotion is between its read and its link write.
+    hook: RefCell<Option<BeforeWrite>>,
 }
 
 impl MemNotes {
+    fn before_write(&self, hook: impl Fn(&str) + 'static) {
+        *self.hook.borrow_mut() = Some(Box::new(hook));
+    }
+
     fn stage(&self, path: &str, text: &str) {
         self.cells
             .borrow_mut()
@@ -49,6 +59,9 @@ impl MemNotes {
 
 impl Notes for MemNotes {
     fn write_new(&self, path: &str, text: &str) -> Result<String, String> {
+        if let Some(hook) = self.hook.borrow().as_ref() {
+            hook(path);
+        }
         let mut cells = self.cells.borrow_mut();
         let mut candidate = path.to_string();
         let mut suffix = 2;
@@ -228,6 +241,40 @@ fn promoting_a_linked_ticket_again_is_refused_and_the_note_is_left_alone() {
     assert_eq!(
         board.list_filter(Filter::All).unwrap()[0].link.as_deref(),
         Some(first.path.as_str())
+    );
+}
+
+/// The Swift promotion re-checks the link inside its transaction
+/// (`TicketToNote.swift:59-68`): the note and the link are two writes, and another
+/// face may have linked the ticket in between. That link is the human's prose now,
+/// so the promotion is refused and the note it wrote is taken back.
+#[test]
+fn a_link_set_while_the_note_is_written_is_refused_and_the_note_taken_back() {
+    let sandbox = Sandbox::new("promote-race");
+    let board = sandbox.board();
+    let notes = MemNotes::default();
+    let added = board.add("Write the ADR", AddTicket::default()).unwrap();
+    let id = added.id.to_string();
+
+    let linked_board = board.clone();
+    let linked_id = id.clone();
+    notes.before_write(move |_path| {
+        linked_board
+            .set_link(&linked_id, Some("hand/written.md"))
+            .expect("the other face links the ticket");
+    });
+
+    assert_eq!(
+        promote(&board, &notes, &id),
+        Err(DomainError::AlreadyLinked {
+            path: "hand/written.md".to_string()
+        })
+    );
+    assert!(notes.paths().is_empty(), "the note it wrote is taken back");
+    assert_eq!(
+        board.ticket(&id).unwrap().link.as_deref(),
+        Some("hand/written.md"),
+        "the human's link wins"
     );
 }
 

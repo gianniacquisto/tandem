@@ -599,3 +599,74 @@ fn the_returned_ticket_is_the_one_a_read_returns() {
 fn uuid_string() -> String {
     uuid::Uuid::new_v4().to_string()
 }
+
+// MARK: - A row the store cannot read (`StoreSchema.readContents`)
+
+/// A ticket row's id is the key the diff matches on. A row with text that is not a
+/// UUID is a store this build cannot read, not a ticket with no id: the Swift reader
+/// threw on the same text (`StoreSchema.swift:354-359`), and a nil id would make two
+/// rows one row the next time the board was written.
+#[test]
+fn a_row_with_an_unreadable_id_is_a_domain_error_not_a_ticket_with_no_id() {
+    let (sandbox, board) = temp_board();
+    board.add("good", AddTicket::default()).unwrap();
+
+    let connection = rusqlite::Connection::open(sandbox.database()).unwrap();
+    connection
+        .execute(
+            "INSERT INTO tickets
+                (id, title, description, status, archived, lane, number, origin,
+                 assignee, link, position, created_at, completed_at, author)
+             VALUES ('not-a-uuid', 'bad', NULL, 'backlog', 0, NULL, NULL, 'human',
+                     NULL, NULL, 99, '2026-01-01T00:00:00Z', NULL, 'human')",
+            [],
+        )
+        .unwrap();
+    drop(connection);
+
+    let error = board.list_filter(Filter::All).unwrap_err();
+    assert!(matches!(
+        error,
+        tandem_core::domain::DomainError::Unreadable(_)
+    ));
+    assert!(
+        error.message().contains("tickets.id"),
+        "the failure names the row: {}",
+        error.message()
+    );
+    // A write refuses the same row: it reads the board inside its transaction, so a
+    // silent repair cannot reach the store.
+    assert!(board.add("another", AddTicket::default()).is_err());
+}
+
+/// A timestamp is the same rule: an unreadable `created_at` is a store this build
+/// cannot read, not a ticket filed at the epoch (which would silently renumber it).
+#[test]
+fn a_row_with_an_unreadable_timestamp_is_a_domain_error() {
+    let (sandbox, board) = temp_board();
+    board.add("good", AddTicket::default()).unwrap();
+
+    let connection = rusqlite::Connection::open(sandbox.database()).unwrap();
+    connection
+        .execute(
+            "INSERT INTO tickets
+                (id, title, description, status, archived, lane, number, origin,
+                 assignee, link, position, created_at, completed_at, author)
+             VALUES ('00000000-0000-0000-0000-0000000000aa', 'bad', NULL, 'backlog',
+                     0, NULL, NULL, 'human', NULL, NULL, 99, 'yesterday', NULL, 'human')",
+            [],
+        )
+        .unwrap();
+    drop(connection);
+
+    let error = board.list_filter(Filter::All).unwrap_err();
+    assert!(matches!(
+        error,
+        tandem_core::domain::DomainError::Unreadable(_)
+    ));
+    assert!(
+        error.message().contains("created_at"),
+        "the failure names the column: {}",
+        error.message()
+    );
+}

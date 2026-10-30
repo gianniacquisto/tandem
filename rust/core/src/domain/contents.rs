@@ -35,7 +35,7 @@ impl Contents {
     /// The board as the store holds it, with the refs, the lane keys and the
     /// dependency halves made true: a read runs the same preparation a write does,
     /// and still writes nothing.
-    pub(crate) fn from_rows(rows: &BoardRows) -> Self {
+    pub(crate) fn from_rows(rows: &BoardRows) -> Result<Self, DomainError> {
         let mut lanes: Vec<Lane> = rows
             .lanes
             .iter()
@@ -45,17 +45,21 @@ impl Contents {
                 last_number: lane.last_number,
             })
             .collect();
-        let tickets: Vec<Ticket> = rows.tickets.iter().map(ticket_from_row).collect();
+        let tickets: Vec<Ticket> = rows
+            .tickets
+            .iter()
+            .map(ticket_from_row)
+            .collect::<Result<_, _>>()?;
         let edges: Vec<(Uuid, Uuid)> = rows
             .edges
             .iter()
-            .filter_map(|edge| {
-                Some((
-                    Uuid::parse_str(&edge.ticket_id).ok()?,
-                    Uuid::parse_str(&edge.depends_on_id).ok()?,
+            .map(|edge| {
+                Ok((
+                    row_id(&edge.ticket_id, "ticket_dependencies.ticket_id")?,
+                    row_id(&edge.depends_on_id, "ticket_dependencies.depends_on_id")?,
                 ))
             })
-            .collect();
+            .collect::<Result<_, DomainError>>()?;
         // A lane a ticket names but the lane list does not carry (a hand edit) is
         // declared so it can be keyed and numbered, in first-appearance order.
         for ticket in &tickets {
@@ -71,7 +75,7 @@ impl Contents {
         };
         contents.normalize();
         contents.prepare();
-        contents
+        Ok(contents)
     }
 
     /// The board as rows, in stored order, ready for the adapter's diff.
@@ -410,9 +414,16 @@ impl Contents {
     }
 }
 
-fn ticket_from_row(row: &TicketRow) -> Ticket {
-    Ticket {
-        id: Uuid::parse_str(&row.id).unwrap_or_else(|_| Uuid::nil()),
+/// The id a row's text names, or the failure that says which row could not be
+/// read. The Swift reader threw on the same text (`StoreSchema.readContents`).
+fn row_id(text: &str, column: &str) -> Result<Uuid, DomainError> {
+    Uuid::parse_str(text)
+        .map_err(|_| DomainError::Unreadable(format!("{column} carries an invalid id \"{text}\"")))
+}
+
+fn ticket_from_row(row: &TicketRow) -> Result<Ticket, DomainError> {
+    Ok(Ticket {
+        id: row_id(&row.id, "tickets.id")?,
         title: row.title.clone(),
         status: Status::stored(&row.status),
         archived: row.archived,
@@ -425,9 +436,21 @@ fn ticket_from_row(row: &TicketRow) -> Ticket {
         link: row.link.clone(),
         blocked_by: Vec::new(),
         blocks: Vec::new(),
-        created_at: timestamp::decode(&row.created_at).unwrap_or(0),
-        completed_at: row.completed_at.as_deref().and_then(timestamp::decode),
-    }
+        created_at: timestamp::decode(&row.created_at).ok_or_else(|| {
+            DomainError::Unreadable(format!(
+                "a ticket row carries an unreadable created_at \"{}\"",
+                row.created_at
+            ))
+        })?,
+        completed_at: match row.completed_at.as_deref() {
+            Some(raw) => Some(timestamp::decode(raw).ok_or_else(|| {
+                DomainError::Unreadable(format!(
+                    "a ticket row carries an unreadable completed_at \"{raw}\""
+                ))
+            })?),
+            None => None,
+        },
+    })
 }
 
 fn ticket_to_row(ticket: &Ticket, position: i64) -> TicketRow {

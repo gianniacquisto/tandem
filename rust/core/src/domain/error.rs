@@ -18,6 +18,11 @@ pub enum DomainError {
     Locked,
     /// The store itself failed: an unreadable file, a full disk.
     Io(String),
+    /// A row this build cannot read: a ticket's id or timestamp is not the shape
+    /// the store writes. A row that is silently repaired (a nil id, a zero time) is
+    /// a ticket that moved or vanished, and the diff matches rows by id, so the
+    /// repair would land in the queue of a different ticket.
+    Unreadable(String),
     /// `add` was called with an empty or whitespace-only title.
     EmptyTitle,
     /// `add_from_note` was given no text to title a ticket from.
@@ -76,6 +81,10 @@ impl DomainError {
                 "The Tandem store is locked by another process. Please retry.".to_string()
             }
             Self::Io(detail) => format!("Tandem store error: {detail}. Try again."),
+            Self::Unreadable(detail) => format!(
+                "The store holds a row this build cannot read ({detail}). Restore the backup \
+                 at tandem.db.bak, or import the home again."
+            ),
             Self::EmptyTitle => {
                 "Title is empty. Provide a non-empty ticket title and try again.".to_string()
             }

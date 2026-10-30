@@ -540,6 +540,25 @@ impl Board {
         })
     }
 
+    /// The promotion's link write: point a ticket at the note that was just
+    /// written, **refusing a ticket that acquired a link since the promotion's own
+    /// read**. The Swift promotion re-checks inside its transaction
+    /// (`TicketToNote.swift:59-68`) because the note and the link are two writes
+    /// with a store write between them: another face may have linked the ticket in
+    /// that window, and that note is the human's prose now.
+    pub(crate) fn link_from_note(&self, handle: &str, path: &str) -> Result<Ticket, DomainError> {
+        self.mutate(|contents| {
+            let index = contents.require_ticket(handle)?.1;
+            if let Some(existing) = &contents.tickets[index].link {
+                return Err(DomainError::AlreadyLinked {
+                    path: existing.clone(),
+                });
+            }
+            contents.tickets[index].link = Some(path.to_string());
+            Ok((contents.tickets[index].clone(), true))
+        })
+    }
+
     /// `set_link(id, to)`: point a ticket at a bikeshed note, or clear the link.
     /// The link is trimmed; an empty value unlinks. An unchanged link writes
     /// nothing.
@@ -707,7 +726,15 @@ impl Board {
         let refused: std::cell::RefCell<Option<DomainError>> = std::cell::RefCell::new(None);
         let outcome = self.store.write(&self.actor, |write| {
             let rows = write.board_rows()?;
-            let contents = Contents::from_rows(&rows);
+            let contents = match Contents::from_rows(&rows) {
+                Ok(contents) => contents,
+                Err(error) => {
+                    *refused.borrow_mut() = Some(error);
+                    return Err(crate::store::StoreError::Io(
+                        "the board holds a row this build cannot read".to_string(),
+                    ));
+                }
+            };
             let id = match contents.require_ticket(&handle) {
                 Ok((id, _)) => id,
                 Err(error) => {
@@ -767,28 +794,56 @@ impl Board {
     /// The board as one value, with the refs and the edges made true.
     fn load(&self) -> Result<Contents, DomainError> {
         let rows = self.store.board_rows()?.unwrap_or_default();
-        Ok(Contents::from_rows(&rows))
+        Contents::from_rows(&rows)
     }
 
-    /// One transaction: read the board, let `body` change it, and write the
-    /// difference when it says something changed. A no-op body writes no row, so a
-    /// store's bytes (and its mtime) are untouched by a call that changed nothing.
+    /// One transaction: read the board **inside** it, let `body` change it, and
+    /// write the difference when it says something changed. A no-op body writes no
+    /// row, so a store's bytes are untouched by a call that changed nothing.
+    ///
+    /// **The read is inside the transaction**, the way the Swift store's `mutate`
+    /// is (`Store.swift:130-175`): the write lock is held before the rows are read,
+    /// so two writers over one home serialise their read-modify-write. A snapshot
+    /// taken before the lock would hand the same lane number to both writers and a
+    /// stale diff would write an untouched row back over a concurrent edit.
+    ///
+    /// A domain failure is not the store's to carry, so `body`'s failure is parked
+    /// and handed back once the transaction has rolled back.
     fn mutate<T>(
         &self,
         body: impl FnOnce(&mut Contents) -> Result<(T, bool), DomainError>,
     ) -> Result<T, DomainError> {
-        let before = self.store.board_rows()?.unwrap_or_default();
-        let mut contents = Contents::from_rows(&before);
-        let (value, changed) = body(&mut contents)?;
-        if !changed {
-            return Ok(value);
+        let refused: std::cell::RefCell<Option<DomainError>> = std::cell::RefCell::new(None);
+        let outcome = self.store.write(&self.actor, |write| {
+            let before = write.board_rows()?;
+            let mut contents = match Contents::from_rows(&before) {
+                Ok(contents) => contents,
+                Err(error) => {
+                    *refused.borrow_mut() = Some(error);
+                    return Err(crate::store::StoreError::Io(
+                        "the board holds a row this build cannot read".to_string(),
+                    ));
+                }
+            };
+            let (value, changed) = match body(&mut contents) {
+                Ok(step) => step,
+                Err(error) => {
+                    *refused.borrow_mut() = Some(error);
+                    return Err(crate::store::StoreError::Io(
+                        "the board refused the write".to_string(),
+                    ));
+                }
+            };
+            if changed {
+                contents.normalize();
+                write.save_board(&before, &contents.to_rows())?;
+            }
+            Ok(value)
+        });
+        if let Some(error) = refused.into_inner() {
+            return Err(error);
         }
-        contents.normalize();
-        let after = contents.to_rows();
-        self.store
-            .write(&self.actor, |write| write.save_board(&before, &after))
-            .map_err(map_store_error)?;
-        Ok(value)
+        outcome.map_err(map_store_error)
     }
 }
 

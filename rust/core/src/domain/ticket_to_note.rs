@@ -78,7 +78,7 @@ impl<'a> TicketToNote<'a> {
             .map_err(DomainError::Io)?;
         let linked = self
             .board
-            .set_link(&ticket.id.to_string(), Some(&path))
+            .link_from_note(&ticket.id.to_string(), &path)
             .inspect_err(|_| {
                 // The ticket did not take the link, so the note it was meant for is
                 // not wanted either: take it back off the disk.

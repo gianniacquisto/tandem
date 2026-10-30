@@ -321,3 +321,119 @@ fn an_unknown_lane_or_id_is_rejected_and_the_store_is_left_alone() {
         before
     );
 }
+
+// MARK: - One transaction (the Swift `mutate`, `Store.swift:130-175`)
+
+/// The read-modify-write is one transaction: the write lock is held before the
+/// rows are read, so two writers over one home cannot hand out the same lane number
+/// or write a stale row back over the other's.
+#[test]
+fn two_writers_over_one_home_keep_every_row_and_issue_every_ref_once() {
+    let sandbox = Sandbox::new("board-writers");
+    let board = sandbox.board();
+    board.add_lane("Tandem", Some("TAN")).unwrap();
+    let store = sandbox.store();
+
+    std::thread::scope(|scope| {
+        for group in ["a", "b"] {
+            let store = store.clone();
+            scope.spawn(move || {
+                let board =
+                    Board::with_actor(store, tandem_core::store::Actor::Agent(group.to_string()));
+                for index in 0..20 {
+                    board
+                        .add(
+                            &format!("{group}-{index}"),
+                            AddTicket {
+                                lane: Some("Tandem"),
+                                ..AddTicket::default()
+                            },
+                        )
+                        .unwrap_or_else(|error| panic!("{group}-{index} answered {error}"));
+                }
+            });
+        }
+    });
+
+    let all = sandbox
+        .board()
+        .list_filter(tandem_core::domain::Filter::All)
+        .unwrap();
+    assert_eq!(all.len(), 40, "no writer lost a row");
+    let mut refs: Vec<String> = all
+        .iter()
+        .filter_map(|ticket| ticket.reference.clone())
+        .collect();
+    assert_eq!(refs.len(), 40, "every row carries a ref");
+    refs.sort();
+    let mut expected: Vec<String> = (1..=40).map(|number| format!("TAN-{number}")).collect();
+    expected.sort();
+    assert_eq!(refs, expected, "every number is issued exactly once");
+}
+
+/// A writer's snapshot cannot be stale: adding a ticket shifts the stored order of
+/// every ticket after it, and the write that carries the new order writes those
+/// rows back. Read outside the transaction, that write reverts an edit another
+/// writer made in between.
+#[test]
+fn a_concurrent_edit_is_not_reverted_by_another_writers_snapshot() {
+    let sandbox = Sandbox::new("board-revert");
+    let board = sandbox.board();
+    board.add_lane("Tandem", Some("TAN")).unwrap();
+    let edited = board
+        .add(
+            "original",
+            AddTicket {
+                lane: Some("Tandem"),
+                ..AddTicket::default()
+            },
+        )
+        .unwrap();
+    let store = sandbox.store();
+    let id = edited.id.to_string();
+
+    std::thread::scope(|scope| {
+        let editor = store.clone();
+        let edited_id = id.clone();
+        scope.spawn(move || {
+            let board = Board::with_actor(
+                editor,
+                tandem_core::store::Actor::Agent("editor".to_string()),
+            );
+            for index in 0..20 {
+                board
+                    .set(
+                        &edited_id,
+                        tandem_core::domain::SetFields {
+                            title: tandem_core::domain::Edit::Set(&format!("edited {index}")),
+                            ..tandem_core::domain::SetFields::default()
+                        },
+                    )
+                    .unwrap();
+            }
+        });
+        let adder = store.clone();
+        scope.spawn(move || {
+            let board =
+                Board::with_actor(adder, tandem_core::store::Actor::Agent("adder".to_string()));
+            for index in 0..20 {
+                board
+                    .add(
+                        &format!("added {index}"),
+                        AddTicket {
+                            lane: Some("Tandem"),
+                            ..AddTicket::default()
+                        },
+                    )
+                    .unwrap();
+            }
+        });
+    });
+
+    let reread = sandbox.board().ticket(&id).unwrap();
+    assert!(
+        reread.title.starts_with("edited "),
+        "the concurrent edit was written back over: {}",
+        reread.title
+    );
+}
