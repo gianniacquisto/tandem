@@ -1,5 +1,7 @@
 # The store is one database: `tandem.db`, WAL, and an import marker
 
+> **Amended 2026-10-30 by the Rust port (PRT-4):** v1 of the ported schema ships `schema_migrations` alone. `store_imports` arrives with PRT-18's one-off import of the real home, which owns that amendment: there is nothing to import until that script runs, and a marker table no writer writes is a second truth waiting to disagree. The rest of this record stands, including the marker's rule for the domains the port lands later.
+
 The store was a JSON file, and its protocol was a set of file tricks: an exclusive `flock` on a sidecar (`~/.tandem/tandem.lock`), a same-directory temp file, an `fsync`, a `rename`, a versioned envelope ([ADR 0001](0001-store-protocol.md)), a rolling copy ([ADR 0018](0018-rolling-store-backup.md)), and a quarantine-and-restart for anything that would not decode. One file per domain grew beside it — `tickets.json`, `comments/<id>.jsonl`, `sessions.json`, `sprints.json`, `settings.json` — each with its own reader, its own recovery path, and no way to ask a question across them. The ask (`6B96343A`) was counts and migrations: tokens, cost, seconds, open and done, answerable as numbers rather than by loading a file; and a home whose first bad write is recoverable rather than a wipe.
 
 We decided: **one SQLite database per Tandem home**, `<home>/tandem.db`, read and written by the app and by every `tandem-cli` invocation, and no second source of truth. The bikeshed stays a folder of markdown: notes are prose, not rows.
