@@ -1,6 +1,6 @@
 # The port: one binary, one app, three platforms
 
-**Status**: decided 2026-10-30. The epic is `PRT-1` on the board; the decision record is [ADR 0036](adr/0036-one-stack-rust-core-electron-ui.md). This file is the spec: what the target looks like, what is deliberately not built, and what "done" means. The epic mirrors it and carries the work.
+**Status**: decided 2026-10-30. The epic is `PRT-1` on the board; the decision record is [ADR 0037](adr/0037-one-stack-rust-core-electron-ui.md). This file is the spec: what the target looks like, what is deliberately not built, and what "done" means. The epic mirrors it and carries the work.
 
 Tandem today is a macOS-only product by construction: `Package.swift` targets `.macOS(.v27)`, the GUI is 8,934 lines of SwiftUI and AppKit, and nothing in the domain needs the Mac. The core is 11,377 lines with no AppKit or SwiftUI import, the CLI is 1,995 lines of Foundation over it, the store is SQLite behind a version seam, and the agent face speaks JSON. Only the presentation layer is Mac-bound, so only the presentation layer gets rewritten.
 
