@@ -18,10 +18,19 @@
 //! - **One write, one transaction.** WAL, a ~2 s busy window that surfaces as
 //!   [`StoreError::Locked`], and a rolling backup of the pre-write state
 //!   (ADR 0018). Reads open read-only and never write.
-//! - **The write discipline** (the `locked` module): the `flock` sidecar with bounded
-//!   retry, same-directory temps with `fsync` + rename, and the orphan sweep.
-//!   A lock that is not held is a lock; a temp older than a minute is a
-//!   crash's.
+//! - **A revision per write** (the `schema` module). `store_meta.revision`
+//!   moves inside the write's transaction, so a listing and the event that
+//!   follows it name the same number, and a receipt cannot carry a number a
+//!   concurrent writer moved (PRT-11).
+//! - **No sidecar lock.** The store takes no `flock` and writes no lock file:
+//!   a `BEGIN IMMEDIATE` transaction is the writer and the ~2 s busy window is
+//!   the contention bound across processes (ADR 0031), so a `tandem.lock`
+//!   beside a home is inert. Two threads of one process queue on a process-local
+//!   gate (one mutex per canonical home, no file), so the engine only arbitrates
+//!   across processes. The `locked` module keeps the sidecar, the same-directory
+//!   temp with `fsync` + rename and the orphan sweep for the bikeshed; the store
+//!   borrows only the temp, the commit and the directory sync for the rolling
+//!   backup.
 
 mod actor;
 pub(crate) mod board_rows;
@@ -37,11 +46,12 @@ mod tests;
 pub(crate) mod timestamp;
 mod write;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
@@ -64,12 +74,32 @@ use write::BackupState;
 /// "locked".
 const BUSY_TIMEOUT: Duration = Duration::from_millis(2_000);
 
+/// The process-local write gate: one mutex per canonical home.
+///
+/// Across processes, SQLite's `BEGIN IMMEDIATE` and the busy window are the
+/// contention bound (ADR 0031). Inside one process that is not enough: two
+/// threads that reach the engine together race the busy handler instead of
+/// queueing, and on the Windows runner a writer answered `Locked` after the
+/// full window while its sibling held the write for a few milliseconds. The
+/// gate makes those writers queue, deterministically and with no file at all:
+/// it is keyed on the canonical home, it lives only in this process, and a
+/// stale `tandem.lock` has nothing to do with it.
+fn write_gate(home: &Path) -> Arc<Mutex<()>> {
+    static GATES: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+    let gates = GATES.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+    let mut gates = gates
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    Arc::clone(gates.entry(key).or_default())
+}
+
 /// What a store failure is, in the store's words. Every engine failure that is
 /// not contention becomes [`StoreError::Io`] with the engine's detail, exactly
 /// as the Swift store translates `SQLiteError` (ADR 0007).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoreError {
-    /// The sidecar lock or the write transaction was held past the window.
+    /// The write transaction was held past the window.
     Locked,
     /// Anything else: an unreadable file, a full disk, a failed migration.
     Io(String),
@@ -205,11 +235,17 @@ impl Store {
         if !mode.eq_ignore_ascii_case("wal") {
             return Ok(None);
         }
-        Ok(Some(RevisionWatch { connection }))
+        let file = StoreFile::of(&database)?;
+        Ok(Some(RevisionWatch {
+            connection,
+            database,
+            file,
+        }))
     }
 
-    /// A write: the sidecar lock, one `BEGIN IMMEDIATE` transaction, and the
-    /// caller's inserts recorded under `actor`.
+    /// A write: one `BEGIN IMMEDIATE` transaction with the caller's inserts
+    /// recorded under `actor`, and no sidecar lock: the engine's write lock and
+    /// the busy window are the contention bound (ADR 0031).
     pub fn write<T>(&self, actor: &Actor, body: impl FnOnce(&Write<'_>) -> Result<T>) -> Result<T> {
         self.home.ensure().map_err(|error| {
             StoreError::Io(format!(
@@ -217,63 +253,63 @@ impl Store {
                 self.home.directory().display()
             ))
         })?;
-        let locked = LockedDirectory::for_store(self.home.directory());
-        locked.with_lock(|| {
-            let database = self.database();
-            let existed = database.exists();
-            let connection = open(&database)?;
-            // Refuse before any table is written and before the journal mode
-            // moves. A clean v5 file is left byte for byte; one carrying a hot
-            // journal has that journal rolled back by this open itself, which
-            // changes no row and no schema.
-            schema::refuse_legacy(&connection)?;
-            switch_to_wal(&connection)?;
-            // A migration commits in its own transaction, so the pre-migration
-            // image is rolled here, before it runs: rolled afterwards, `.bak`
-            // would already hold the new version and a previous build would
-            // have nothing to restore.
-            let migrating = existed && schema::behind(&connection)?;
-            if migrating {
-                backup_database(&database, &self.backup())?;
-            }
-            schema::migrate(&connection, actor)?;
+        // Two threads of this process queue here; across processes the engine's
+        // write lock and the busy window are the bound (ADR 0031).
+        let gate = write_gate(self.home.directory());
+        let _gate = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let database = self.database();
+        let existed = database.exists();
+        let connection = open(&database)?;
+        // Refuse before any table is written and before the journal mode
+        // moves. A clean v5 file is left byte for byte; one carrying a hot
+        // journal has that journal rolled back by this open itself, which
+        // changes no row and no schema.
+        schema::refuse_legacy(&connection)?;
+        switch_to_wal(&connection)?;
+        // A migration commits in its own transaction, so the pre-migration
+        // image is rolled here, before it runs: rolled afterwards, `.bak`
+        // would already hold the new version and a previous build would
+        // have nothing to restore.
+        let migrating = existed && schema::behind(&connection)?;
+        if migrating {
+            backup_database(&database, &self.backup())?;
+        }
+        schema::migrate(&connection, actor)?;
 
-            begin_immediate(&connection)?;
-            let changes_before = connection.total_changes();
-            let write = Write {
-                connection: &connection,
-                actor,
-                backup: BackupState {
-                    database: &database,
-                    target: self.backup(),
-                    armed: existed && !migrating,
-                    taken: std::cell::Cell::new(false),
-                },
-            };
-            match body(&write) {
-                Ok(value) => {
-                    // The revision moves with the rows, inside the same
-                    // transaction, and is read back before the commit: the
-                    // receipt carries the number its own rows are at, never a
-                    // later one a second transaction could pair with them. The
-                    // UPDATE statements guard on the values, so a write that
-                    // touched a row without changing it (a same-value set) is
-                    // not a change event.
-                    let revision = if connection.total_changes() > changes_before {
-                        schema::bump_revision(&connection)?
-                    } else {
-                        schema::revision(&connection)?
-                    };
-                    commit(&connection)?;
-                    self.last_revision.store(revision, Ordering::Relaxed);
-                    Ok(value)
-                }
-                Err(error) => {
-                    let _ = connection.execute_batch("ROLLBACK");
-                    Err(error)
-                }
+        begin_immediate(&connection)?;
+        let changes_before = connection.total_changes();
+        let write = Write {
+            connection: &connection,
+            actor,
+            backup: BackupState {
+                database: &database,
+                target: self.backup(),
+                armed: existed && !migrating,
+                taken: std::cell::Cell::new(false),
+            },
+        };
+        match body(&write) {
+            Ok(value) => {
+                // The revision moves with the rows, inside the same
+                // transaction, and is read back before the commit: the receipt
+                // carries the number its own rows are at, never a later one a
+                // second transaction could pair with them. The UPDATE statements
+                // guard on the values, so a write that touched a row without
+                // changing it (a same-value set) is not a change event.
+                let revision = if connection.total_changes() > changes_before {
+                    schema::bump_revision(&connection)?
+                } else {
+                    schema::revision(&connection)?
+                };
+                commit(&connection)?;
+                self.last_revision.store(revision, Ordering::Relaxed);
+                Ok(value)
             }
-        })
+            Err(error) => {
+                let _ = connection.execute_batch("ROLLBACK");
+                Err(error)
+            }
+        }
     }
 
     /// Every session row, in stored order. An empty result is a successful
@@ -325,14 +361,56 @@ impl Store {
 }
 
 /// A read-only connection the change watch keeps open and polls.
+///
+/// ADR 0031's restore replaces `tandem.db` by rename, so a connection held for
+/// the process's life would keep reading the retired inode after a restore and
+/// the stream would go silent. The watch therefore remembers the file it opened
+/// and answers an error once the path names another one; the caller reopens.
 pub struct RevisionWatch {
     connection: Connection,
+    database: PathBuf,
+    file: StoreFile,
 }
 
 impl RevisionWatch {
     /// The store's revision as this connection currently sees it.
     pub fn revision(&self) -> Result<i64> {
+        if StoreFile::of(&self.database)? != self.file {
+            return Err(StoreError::Io(format!(
+                "{} was replaced; the watch reopens",
+                self.database.display()
+            )));
+        }
         schema::revision(&self.connection)
+    }
+}
+
+/// The identity of the file a watch holds, enough to tell that the path now
+/// names a different file. `dev`/`ino` decide on Unix; on Windows the length
+/// and modification time of a renamed-over database differ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StoreFile {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+    #[cfg(unix)]
+    dev: u64,
+    #[cfg(unix)]
+    ino: u64,
+}
+
+impl StoreFile {
+    fn of(path: &Path) -> Result<Self> {
+        let metadata = fs::metadata(path).map_err(|error| {
+            StoreError::Io(format!("could not stat {}: {error}", path.display()))
+        })?;
+        Ok(Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+            #[cfg(unix)]
+            dev: std::os::unix::fs::MetadataExt::dev(&metadata),
+            #[cfg(unix)]
+            ino: std::os::unix::fs::MetadataExt::ino(&metadata),
+        })
     }
 }
 

@@ -87,25 +87,36 @@ impl Store {
     /// One ticket's comments in append order, or `None` when there is no
     /// database yet.
     pub(crate) fn comment_rows(&self, ticket_id: &str) -> Result<Option<Vec<CommentRow>>> {
-        self.read(|connection| {
-            let mut statement = connection
-                .prepare(
-                    "SELECT author, at, body FROM comments WHERE ticket_id = ?1 ORDER BY rowid",
-                )
-                .map_err(translate)?;
-            let rows = statement
-                .query_map([ticket_id], |row| {
-                    Ok(CommentRow {
-                        author: row.get(0)?,
-                        at: row.get(1)?,
-                        body: row.get(2)?,
-                    })
-                })
-                .map_err(translate)?;
-            rows.collect::<std::result::Result<Vec<_>, _>>()
-                .map_err(translate)
-        })
+        self.read(|connection| read_comments(connection, ticket_id))
     }
+
+    /// One ticket's comments and the revision they are a snapshot of, in one
+    /// read transaction: the payload and its number cannot be split.
+    pub(crate) fn comment_snapshot(
+        &self,
+        ticket_id: &str,
+    ) -> Result<Option<(Vec<CommentRow>, i64)>> {
+        self.read_snapshot(|connection| read_comments(connection, ticket_id))
+    }
+}
+
+/// One ticket's comments in append order, on any connection: the store's read
+/// path and a snapshot's own transaction both use it.
+fn read_comments(connection: &rusqlite::Connection, ticket_id: &str) -> Result<Vec<CommentRow>> {
+    let mut statement = connection
+        .prepare("SELECT author, at, body FROM comments WHERE ticket_id = ?1 ORDER BY rowid")
+        .map_err(translate)?;
+    let rows = statement
+        .query_map([ticket_id], |row| {
+            Ok(CommentRow {
+                author: row.get(0)?,
+                at: row.get(1)?,
+                body: row.get(2)?,
+            })
+        })
+        .map_err(translate)?;
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(translate)
 }
 
 /// The board as one read, on any connection: the store's read path and a write's

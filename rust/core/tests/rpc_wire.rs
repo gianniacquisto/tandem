@@ -236,6 +236,39 @@ fn a_domain_failure_answers_an_error_and_leaves_the_store_alone() {
 }
 
 #[test]
+fn every_read_reply_carries_the_revision_of_its_own_snapshot() {
+    let sandbox = Sandbox::new("rpc-read-revisions");
+    let store = sandbox.store();
+
+    let added = handle(&store, &frame(1, "ticket.add", json!({"title": "One"})));
+    let id = added["result"]["ticket"]["id"].as_str().expect("an id");
+    handle(
+        &store,
+        &frame(2, "ticket.comment.add", json!({"id": id, "body": "A note"})),
+    );
+
+    // No write between these reads, so every reply must name the same
+    // revision, and it is the one the listing is a snapshot of.
+    let listed = handle(&store, &frame(3, "ticket.list", json!({})));
+    let revision = listed["result"]["revision"].clone();
+    assert_ne!(revision, json!(0));
+
+    let shown = handle(&store, &frame(4, "ticket.show", json!({"id": id})));
+    assert_eq!(shown["result"]["revision"], revision, "ticket.show");
+    assert_eq!(shown["result"]["ticket"]["title"], "One");
+
+    let comments = handle(&store, &frame(5, "ticket.comment.list", json!({"id": id})));
+    assert_eq!(
+        comments["result"]["revision"], revision,
+        "ticket.comment.list"
+    );
+    assert_eq!(comments["result"]["comments"][0]["body"], "A note");
+
+    let lanes = handle(&store, &frame(6, "lane.list", json!({})));
+    assert_eq!(lanes["result"]["revision"], revision, "lane.list");
+}
+
+#[test]
 fn a_watch_connection_sees_a_later_write_without_reopening() {
     let sandbox = Sandbox::new("rpc-watch");
     let store = sandbox.store();
@@ -258,6 +291,36 @@ fn a_watch_connection_sees_a_later_write_without_reopening() {
     assert!(
         watch.revision().expect("the watch reads") > before,
         "the reused connection sees a commit made after it opened"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_watch_notices_the_store_was_replaced() {
+    let sandbox = Sandbox::new("rpc-watch-restore");
+    let store = sandbox.store();
+    handle(&store, &frame(1, "ticket.add", json!({"title": "One"})));
+    handle(&store, &frame(2, "ticket.add", json!({"title": "Two"})));
+
+    let watch = store
+        .watch()
+        .expect("the store is watchable")
+        .expect("a WAL store hands back one connection");
+    assert!(watch.revision().expect("the watch reads") > 0);
+
+    // ADR 0031's restore: remove the journal files and the database, then move
+    // the backup over the path. The held connection must notice that the path
+    // now names another file instead of reading the retired inode.
+    let home = sandbox.home().directory().to_path_buf();
+    let _ = std::fs::remove_file(home.join("tandem.db-wal"));
+    let _ = std::fs::remove_file(home.join("tandem.db-shm"));
+    std::fs::remove_file(home.join("tandem.db")).expect("the database is removable");
+    std::fs::rename(home.join("tandem.db.bak"), home.join("tandem.db"))
+        .expect("the backup moves over the path");
+
+    assert!(
+        watch.revision().is_err(),
+        "a watch whose file was replaced answers an error and reopens"
     );
 }
 

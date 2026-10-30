@@ -2,6 +2,7 @@
 import type { CommentView } from "./CommentView";
 
 /**
- * `ticket.comment.list`: every comment, append order.
+ * `ticket.comment.list`: every comment, append order, at the revision the log
+ * was read in.
  */
 export type CommentListReply = { revision: number, comments: Array<CommentView>, };

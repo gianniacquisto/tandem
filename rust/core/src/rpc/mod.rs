@@ -53,6 +53,16 @@ const MAX_FRAME: usize = 4 * 1024 * 1024;
 /// notices, and one query a tick is what an idle child costs.
 const WATCH_INTERVAL: Duration = Duration::from_millis(40);
 
+/// The longest wait after a refused or unreadable store. A legacy or broken
+/// home must not be reopened 25 times a second: the watch doubles its wait on
+/// every refusal up to this cap, and resets on a successful open.
+const WATCH_BACKOFF_MAX: Duration = Duration::from_secs(5);
+
+/// One step of the watch's backoff: twice the wait, capped.
+fn backoff(wait: Duration) -> Duration {
+    (wait * 2).min(WATCH_BACKOFF_MAX)
+}
+
 // MARK: - The stream
 
 /// One transport for the protocol's frames: a line in, a line out.
@@ -168,18 +178,37 @@ pub fn serve<S: Stream>(stream: S, store: Store, actor: Actor) -> io::Result<()>
                 .as_ref()
                 .and_then(|watch| watch.revision().ok())
                 .unwrap_or(0);
+            let mut wait = WATCH_INTERVAL;
             while !stop.load(Ordering::Relaxed) {
-                thread::sleep(WATCH_INTERVAL);
+                thread::sleep(wait);
                 if watch.is_none() {
-                    watch = store.watch().ok().flatten();
+                    match store.watch() {
+                        Ok(Some(found)) => {
+                            watch = Some(found);
+                            wait = WATCH_INTERVAL;
+                        }
+                        // No store yet (or the first write's WAL switch is in
+                        // flight): look again at the normal cadence.
+                        Ok(None) => {
+                            wait = WATCH_INTERVAL;
+                            continue;
+                        }
+                        // A refused store (a legacy file, an unreadable one)
+                        // must not spin: back off until it changes.
+                        Err(_) => {
+                            wait = backoff(wait);
+                            continue;
+                        }
+                    }
                 }
                 let Some(current) = watch.as_ref() else {
                     continue;
                 };
                 let Ok(revision) = current.revision() else {
                     // The connection is unusable (the store was replaced or
-                    // removed): drop it and open a new one on the next tick.
+                    // removed): drop it and reopen with the backoff.
                     watch = None;
+                    wait = backoff(wait);
                     continue;
                 };
                 if revision == last {
@@ -317,8 +346,11 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
             }))
         }
         Method::TicketShow(params) => {
-            let ticket = board.ticket(named(&params.id)).map_err(domain)?;
-            ticket_view(&ticket, store)
+            let (ticket, revision) = board.ticket_snapshot(named(&params.id)).map_err(domain)?;
+            Ok(Reply::Ticket(TicketReply {
+                revision,
+                ticket: TicketDetail::new(&ticket),
+            }))
         }
         Method::TicketAdd(params) => {
             let status = match params.status.as_deref() {
@@ -443,16 +475,17 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
             }))
         }
         Method::TicketCommentList(params) => {
-            let comments = board.comments(named(&params.id)).map_err(domain)?;
+            let (comments, revision) =
+                board.comments_snapshot(named(&params.id)).map_err(domain)?;
             Ok(Reply::CommentList(CommentListReply {
-                revision: revision(store)?,
+                revision,
                 comments: comments.iter().map(CommentView::new).collect(),
             }))
         }
-        Method::LaneList(_) => Ok(Reply::LaneList(LaneListReply {
-            revision: revision(store)?,
-            lanes: board.lanes().map_err(domain)?,
-        })),
+        Method::LaneList(_) => {
+            let (lanes, revision) = board.lanes_snapshot().map_err(domain)?;
+            Ok(Reply::LaneList(LaneListReply { revision, lanes }))
+        }
         Method::LaneAdd(params) => {
             let lanes = board
                 .add_lane(params.name.as_deref().unwrap_or(""), params.abbr.as_deref())
@@ -494,13 +527,6 @@ fn named(value: &Option<String>) -> &str {
     value.as_deref().unwrap_or("")
 }
 
-/// The revision a reply carries, in the store's words when it fails.
-fn revision(store: &Store) -> Result<i64, WireError> {
-    store
-        .revision()
-        .map_err(|error| WireError::store(error.to_string()))
-}
-
 /// A ticket receipt: the ticket a write answered and the revision that write
 /// produced, read inside its transaction (`Store::last_revision`). A concurrent
 /// writer cannot pair the ticket with a later number.
@@ -511,16 +537,22 @@ fn ticket_receipt(ticket: &crate::domain::Ticket, store: &Store) -> Reply {
     })
 }
 
-/// A ticket read: the ticket and the store's revision at reply time. No write
-/// happened here, so the number is the store's current one.
-fn ticket_view(ticket: &crate::domain::Ticket, store: &Store) -> Result<Reply, WireError> {
-    Ok(Reply::Ticket(TicketReply {
-        revision: revision(store)?,
-        ticket: TicketDetail::new(ticket),
-    }))
-}
-
 /// A domain refusal, in the words the CLI prints on stderr.
 fn domain(error: DomainError) -> WireError {
     WireError::domain(error.message())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_refused_store_backs_off_to_a_cap() {
+        let mut wait = WATCH_INTERVAL;
+        for _ in 0..16 {
+            wait = backoff(wait);
+        }
+        assert_eq!(wait, WATCH_BACKOFF_MAX);
+        assert!(WATCH_BACKOFF_MAX > WATCH_INTERVAL);
+    }
 }

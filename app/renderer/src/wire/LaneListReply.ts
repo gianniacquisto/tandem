@@ -2,5 +2,8 @@
 
 /**
  * `lane.list`, `lane.add`, `lane.rename`: every lane, render order.
+ *
+ * The `revision` is the number the lanes are a snapshot of: the write's own for
+ * a mutation, the read transaction's for `lane.list`.
  */
 export type LaneListReply = { revision: number, lanes: Array<string>, };

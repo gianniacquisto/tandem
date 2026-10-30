@@ -3,5 +3,8 @@ import type { TicketDetail } from "./TicketDetail";
 
 /**
  * A whole ticket: `ticket.show`, and every ticket write's receipt.
+ *
+ * The `revision` is the number the ticket is a snapshot of: the write's own for
+ * a receipt, the read transaction's for `ticket.show`.
  */
 export type TicketReply = { revision: number, ticket: TicketDetail, };

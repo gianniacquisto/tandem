@@ -125,12 +125,36 @@ impl Board {
         Ok(self.load()?.known_lanes())
     }
 
+    /// [`lanes`](Self::lanes) and the revision its names are a snapshot of, read
+    /// in one transaction.
+    pub fn lanes_snapshot(&self) -> Result<(Vec<String>, i64), DomainError> {
+        let Some((rows, revision)) = self.store.board_snapshot()? else {
+            return Ok((Vec::new(), 0));
+        };
+        let contents = Contents::from_rows(&rows)?;
+        Ok((contents.known_lanes(), revision))
+    }
+
     /// `ticket(id)`: the ticket a handle names, or the failure every id-taking
     /// operation raises. A lock-free read.
     pub fn ticket(&self, handle: &str) -> Result<Ticket, DomainError> {
         let contents = self.load()?;
         let (_, index) = contents.require_ticket(handle)?;
         Ok(contents.tickets[index].clone())
+    }
+
+    /// [`ticket`](Self::ticket) and the revision its row is a snapshot of, read
+    /// in one transaction.
+    pub fn ticket_snapshot(&self, handle: &str) -> Result<(Ticket, i64), DomainError> {
+        let Some((rows, revision)) = self.store.board_snapshot()? else {
+            return Err(DomainError::UnknownId {
+                id: handle.to_string(),
+                open: Vec::new(),
+            });
+        };
+        let contents = Contents::from_rows(&rows)?;
+        let (_, index) = contents.require_ticket(handle)?;
+        Ok((contents.tickets[index].clone(), revision))
     }
 
     /// `comments(id)`: the ticket's comments in append order, or an empty list.
@@ -140,6 +164,22 @@ impl Board {
         let contents = self.load()?;
         let (id, _) = contents.require_ticket(handle)?;
         self.comment_rows(id)
+    }
+
+    /// [`comments`](Self::comments) and the revision they are a snapshot of,
+    /// read in one transaction: the handle is resolved first, then the log and
+    /// its number come from one read.
+    pub fn comments_snapshot(&self, handle: &str) -> Result<(Vec<Comment>, i64), DomainError> {
+        let contents = self.load()?;
+        let (id, _) = contents.require_ticket(handle)?;
+        let Some((rows, revision)) = self.store.comment_snapshot(&id.to_string())? else {
+            return Ok((Vec::new(), 0));
+        };
+        let comments = rows
+            .into_iter()
+            .map(comment_from_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((comments, revision))
     }
 
     /// The app's read path: the log, or why it could not be read. The two failures
@@ -783,21 +823,7 @@ impl Board {
             .store
             .comment_rows(&id.to_string())?
             .unwrap_or_default();
-        rows.into_iter()
-            .map(|row| {
-                let at = timestamp::decode(&row.at).ok_or_else(|| {
-                    DomainError::Io(format!(
-                        "a comment row carries an unreadable timestamp \"{}\"",
-                        row.at
-                    ))
-                })?;
-                Ok(Comment {
-                    author: row.author,
-                    at,
-                    body: row.body,
-                })
-            })
-            .collect()
+        rows.into_iter().map(comment_from_row).collect()
     }
 
     // MARK: - The read-modify-write
@@ -861,6 +887,22 @@ impl Board {
 /// A store failure as the domain's two words.
 fn map_store_error(error: crate::store::StoreError) -> DomainError {
     error.into()
+}
+
+/// One comment row as the domain reads it: its stamp decoded or the row named
+/// as unreadable. The read path and the snapshot path share this conversion.
+fn comment_from_row(row: crate::store::board_rows::CommentRow) -> Result<Comment, DomainError> {
+    let at = timestamp::decode(&row.at).ok_or_else(|| {
+        DomainError::Io(format!(
+            "a comment row carries an unreadable timestamp \"{}\"",
+            row.at
+        ))
+    })?;
+    Ok(Comment {
+        author: row.author,
+        at,
+        body: row.body,
+    })
 }
 
 /// The key `requested` must not be another lane's, compared uppercased.

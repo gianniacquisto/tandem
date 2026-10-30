@@ -11,12 +11,14 @@
 //! - **A frame is one JSON object on one line.** A request carries `id`,
 //!   `method` and `params`; a response echoes `id` and carries `result` or
 //!   `error`; a change event carries `event` and the store's new `revision`.
-//! - **Every listing is a full snapshot plus a revision.** There is no paging:
-//!   the human's board is cheap to send whole, and a revision makes the copy
-//!   correct. **The listing's revision is authoritative**: the tickets are the
+//! - **Every reply that carries a revision is a snapshot at that number.** There
+//!   is no paging: the human's board is cheap to send whole, and a revision
+//!   makes the copy correct. A read reply reads its rows and its number in one
+//!   read transaction; a write receipt reads the number inside the write's own
+//!   transaction. **The reply's revision is authoritative**: the payload is the
 //!   store at exactly that number. An event is a hint to re-read, never a state
 //!   to patch in: it can name an intermediate revision (a migration is a commit
-//!   of its own) and it can be superseded before the client lists.
+//!   of its own) and it can be superseded before the client reads.
 //! - **A method is a domain verb, never a row.** The names are the CLI's
 //!   grammar (`ticket.add` is `ticket add`), and [`METHODS`] is the table the
 //!   parity test walks: every message names a CLI verb, so no UI-only write can
@@ -284,6 +286,9 @@ pub struct TicketListReply {
 }
 
 /// A whole ticket: `ticket.show`, and every ticket write's receipt.
+///
+/// The `revision` is the number the ticket is a snapshot of: the write's own for
+/// a receipt, the read transaction's for `ticket.show`.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketReply {
@@ -299,7 +304,8 @@ pub struct CommentReply {
     pub comment: CommentView,
 }
 
-/// `ticket.comment.list`: every comment, append order.
+/// `ticket.comment.list`: every comment, append order, at the revision the log
+/// was read in.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CommentListReply {
@@ -308,6 +314,9 @@ pub struct CommentListReply {
 }
 
 /// `lane.list`, `lane.add`, `lane.rename`: every lane, render order.
+///
+/// The `revision` is the number the lanes are a snapshot of: the write's own for
+/// a mutation, the read transaction's for `lane.list`.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct LaneListReply {
