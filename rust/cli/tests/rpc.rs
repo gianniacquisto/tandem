@@ -296,14 +296,22 @@ fn closing_stdin_exits_the_child_and_leaves_no_lock_or_temp() {
         "the child is reaped"
     );
 
-    // The sidecar lock is free. The file itself is the store's (it names the
-    // lock), so the claim is that nothing holds it.
+    // The write path takes the sidecar lock (PRT-23 tracks retiring it for the
+    // store), and the child must leave it free. The file is asserted, not
+    // assumed: a missing lock file would make the free-lock check vacuous.
     let lock = home.join("tandem.lock");
-    if lock.exists() {
-        let file = fs::File::open(&lock).expect("the lock file opens");
-        file.try_lock()
-            .expect("the lock is free once the child has exited");
-    }
+    assert!(
+        lock.exists(),
+        "the write path's sidecar exists at {}",
+        lock.display()
+    );
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&lock)
+        .expect("the lock file opens");
+    file.try_lock()
+        .expect("the lock is free once the child has exited");
 
     let leftovers: Vec<String> = fs::read_dir(&home)
         .expect("the home exists")

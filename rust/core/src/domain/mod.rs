@@ -47,7 +47,7 @@ pub mod ticket_to_note;
 pub mod undo;
 pub mod usage;
 
-pub use board::{AddTicket, Board, SetFields};
+pub use board::{AddTicket, Board, SetFields, resolve_assignee, resolve_origin};
 pub use comment::{Comment, CommentRead};
 pub use contents::Contents;
 pub use description::DescriptionBody;

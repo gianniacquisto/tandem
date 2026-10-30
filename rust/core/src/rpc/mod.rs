@@ -11,12 +11,14 @@
 //!   same domain calls the CLI's verbs make. A malformed frame is an error
 //!   frame and never a panic: stdin is untrusted input, and the child may hold
 //!   the store's lock on the next request.
-//! - **The watch**: a thread polls the store's revision and pushes
-//!   [`Event::Changed`] when any writer moves it, this process's own writes
-//!   included. Polling the revision (rather than watching a file) is what makes
-//!   "another process under the lock" observable on every platform. An event is
-//!   a hint to re-read: it may name an intermediate revision (a migration is a
-//!   commit of its own) and the listing's revision is the authoritative one.
+//! - **The watch**: a thread polls the store's revision on one read-only
+//!   connection it keeps open, and pushes [`Event::Changed`] when any writer
+//!   moves it, this process's own writes included. Polling the revision (rather
+//!   than watching a file) is what makes "another process under the lock"
+//!   observable on every platform; reusing the connection is what keeps an idle
+//!   child from opening one a tick. An event is a hint to re-read: it may name
+//!   an intermediate revision (a migration is a commit of its own) and the
+//!   listing's revision is the authoritative one.
 //!
 //! The lifecycle is stdin's: when the parent closes the pipe, the read returns
 //! end of file, the loop ends, the watch stops and the process exits. The app
@@ -30,7 +32,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use crate::domain::{AddTicket, Board, DomainError, Edit, Status, TicketQuery};
+use crate::domain::{
+    AddTicket, Board, DescriptionBody, DomainError, Edit, Status, TicketQuery, resolve_assignee,
+    resolve_origin,
+};
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, Event, LaneDeletionReply, LaneListReply, Method,
@@ -43,9 +48,9 @@ use crate::wire::{CommentView, TicketDetail, TicketSummary};
 /// growing this process's heap one line at a time.
 const MAX_FRAME: usize = 4 * 1024 * 1024;
 
-/// How often the watch asks the store whether the revision moved. Short enough
-/// that the face updates before a human notices, long enough that an idle child
-/// is idle.
+/// How often the watch asks the store whether the revision moved, on the one
+/// connection it keeps open. Short enough that the face updates before a human
+/// notices, and one query a tick is what an idle child costs.
 const WATCH_INTERVAL: Duration = Duration::from_millis(40);
 
 // MARK: - The stream
@@ -154,11 +159,27 @@ pub fn serve<S: Stream>(stream: S, store: Store, actor: Actor) -> io::Result<()>
         let stream = Arc::clone(&stream);
         let store = store.clone();
         let stop = Arc::clone(&stop);
-        let mut last = store.revision().unwrap_or(0);
         thread::spawn(move || {
+            // One read-only connection, reused: an idle child runs one query
+            // per tick, not an open and a close. The watch waits for the store
+            // to exist and for its one-time WAL switch (`Store::watch`).
+            let mut watch = store.watch().ok().flatten();
+            let mut last = watch
+                .as_ref()
+                .and_then(|watch| watch.revision().ok())
+                .unwrap_or(0);
             while !stop.load(Ordering::Relaxed) {
                 thread::sleep(WATCH_INTERVAL);
-                let Ok(revision) = store.revision() else {
+                if watch.is_none() {
+                    watch = store.watch().ok().flatten();
+                }
+                let Some(current) = watch.as_ref() else {
+                    continue;
+                };
+                let Ok(revision) = current.revision() else {
+                    // The connection is unusable (the store was replaced or
+                    // removed): drop it and open a new one on the next tick.
+                    watch = None;
                     continue;
                 };
                 if revision == last {
@@ -278,17 +299,18 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
     let board = Board::with_actor(store.clone(), actor.clone());
     match method {
         Method::TicketList(params) => {
+            let assignee = resolve_assignee(params.assignee.as_deref(), actor).map_err(domain)?;
             let query = TicketQuery::parse(
                 params.filter.as_deref(),
                 params.text.as_deref(),
                 params.status.as_deref(),
-                params.assignee.as_deref(),
+                assignee.as_deref(),
                 params.lane.as_deref(),
                 params.archived,
                 params.blocked,
             )
             .map_err(domain)?;
-            let (tickets, revision) = snapshot(&board, &query, store)?;
+            let (tickets, revision) = board.list_snapshot(&query).map_err(domain)?;
             Ok(Reply::TicketList(TicketListReply {
                 revision,
                 tickets: tickets.iter().map(TicketSummary::new).collect(),
@@ -296,12 +318,18 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
         }
         Method::TicketShow(params) => {
             let ticket = board.ticket(named(&params.id)).map_err(domain)?;
-            ticket_reply(&ticket, store)
+            ticket_view(&ticket, store)
         }
         Method::TicketAdd(params) => {
             let status = match params.status.as_deref() {
                 Some(raw) => Status::parse(raw).map_err(domain)?,
                 None => Status::Backlog,
+            };
+            let assignee = resolve_assignee(params.assignee.as_deref(), actor).map_err(domain)?;
+            let origin = resolve_origin(params.origin.as_deref(), actor).map_err(domain)?;
+            let description = match params.description.as_deref() {
+                None => None,
+                Some(raw) => Some(DescriptionBody::required(raw).map_err(domain)?),
             };
             let ticket = board
                 .add(
@@ -309,21 +337,23 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
                     AddTicket {
                         lane: params.lane.as_deref(),
                         status,
-                        assignee: params.assignee.as_deref(),
-                        description: params.description.as_deref(),
-                        origin: params.origin.as_deref().unwrap_or("human"),
+                        assignee: assignee.as_deref(),
+                        description: description.as_deref(),
+                        origin: &origin,
                     },
                 )
                 .map_err(domain)?;
-            ticket_reply(&ticket, store)
+            Ok(ticket_receipt(&ticket, store))
         }
         Method::TicketSet(params) => {
             let status = match params.status.as_deref() {
                 Some(raw) => Edit::Set(Status::parse(raw).map_err(domain)?),
                 None => Edit::Unchanged,
             };
+            let resolved_assignee =
+                resolve_assignee(params.assignee.as_deref(), actor).map_err(domain)?;
             let assignee = match params.assignee.as_deref() {
-                Some(raw) => Edit::Set(Some(raw)),
+                Some(_) => Edit::Set(resolved_assignee.as_deref()),
                 None => Edit::Unchanged,
             };
             let description = match params.description.as_deref() {
@@ -345,7 +375,7 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
                     },
                 )
                 .map_err(domain)?;
-            ticket_reply(&ticket, store)
+            Ok(ticket_receipt(&ticket, store))
         }
         Method::TicketMove(params) => {
             let at = match params.index {
@@ -355,45 +385,46 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
             let ticket = board
                 .move_ticket(named(&params.id), params.lane.as_deref(), at)
                 .map_err(domain)?;
-            ticket_reply(&ticket, store)
+            Ok(ticket_receipt(&ticket, store))
         }
         Method::TicketBlock(params) => {
             let ticket = board
                 .block(named(&params.id), params.on.as_deref().unwrap_or(""))
                 .map_err(domain)?;
-            ticket_reply(&ticket, store)
+            Ok(ticket_receipt(&ticket, store))
         }
         Method::TicketUnblock(params) => {
             let ticket = board
                 .unblock(named(&params.id), params.on.as_deref())
                 .map_err(domain)?;
-            ticket_reply(&ticket, store)
+            Ok(ticket_receipt(&ticket, store))
         }
         Method::TicketComplete(params) => {
             let ticket = board.complete(named(&params.id)).map_err(domain)?;
-            ticket_reply(&ticket, store)
+            Ok(ticket_receipt(&ticket, store))
         }
         Method::TicketAnswer(params) => {
+            let assignee = resolve_assignee(params.assignee.as_deref(), actor).map_err(domain)?;
             let ticket = board
                 .answer(
                     named(&params.id),
                     Status::parse(params.status.as_deref().unwrap_or("")).map_err(domain)?,
-                    params.assignee.as_deref(),
+                    assignee.as_deref(),
                     params.body.as_deref().unwrap_or(""),
                     crate::store::timestamp::unix_now(),
                 )
                 .map_err(domain)?;
-            ticket_reply(&ticket, store)
+            Ok(ticket_receipt(&ticket, store))
         }
         Method::TicketArchive(params) => match params.id.as_deref() {
             Some(id) => {
                 let ticket = board.archive(id).map_err(domain)?;
-                ticket_reply(&ticket, store)
+                Ok(ticket_receipt(&ticket, store))
             }
             None => {
                 let archived = board.archive_done().map_err(domain)?;
                 Ok(Reply::Archived(ArchivedReply {
-                    revision: revision(store)?,
+                    revision: store.last_revision(),
                     archived,
                 }))
             }
@@ -407,7 +438,7 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
                 )
                 .map_err(domain)?;
             Ok(Reply::Comment(CommentReply {
-                revision: revision(store)?,
+                revision: store.last_revision(),
                 comment: CommentView::new(&comment),
             }))
         }
@@ -427,7 +458,7 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
                 .add_lane(params.name.as_deref().unwrap_or(""), params.abbr.as_deref())
                 .map_err(domain)?;
             Ok(Reply::LaneList(LaneListReply {
-                revision: revision(store)?,
+                revision: store.last_revision(),
                 lanes,
             }))
         }
@@ -440,7 +471,7 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
                 )
                 .map_err(domain)?;
             Ok(Reply::LaneList(LaneListReply {
-                revision: revision(store)?,
+                revision: store.last_revision(),
                 lanes,
             }))
         }
@@ -449,7 +480,7 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
                 .delete_lane(params.name.as_deref().unwrap_or(""))
                 .map_err(domain)?;
             Ok(Reply::LaneDeletion(LaneDeletionReply {
-                revision: revision(store)?,
+                revision: store.last_revision(),
                 lanes: deletion.lanes,
                 moved: deletion.moved,
             }))
@@ -470,33 +501,23 @@ fn revision(store: &Store) -> Result<i64, WireError> {
         .map_err(|error| WireError::store(error.to_string()))
 }
 
-/// A ticket receipt: the ticket the write answered and the revision after it.
-fn ticket_reply(ticket: &crate::domain::Ticket, store: &Store) -> Result<Reply, WireError> {
+/// A ticket receipt: the ticket a write answered and the revision that write
+/// produced, read inside its transaction (`Store::last_revision`). A concurrent
+/// writer cannot pair the ticket with a later number.
+fn ticket_receipt(ticket: &crate::domain::Ticket, store: &Store) -> Reply {
+    Reply::Ticket(TicketReply {
+        revision: store.last_revision(),
+        ticket: TicketDetail::new(ticket),
+    })
+}
+
+/// A ticket read: the ticket and the store's revision at reply time. No write
+/// happened here, so the number is the store's current one.
+fn ticket_view(ticket: &crate::domain::Ticket, store: &Store) -> Result<Reply, WireError> {
     Ok(Reply::Ticket(TicketReply {
         revision: revision(store)?,
         ticket: TicketDetail::new(ticket),
     }))
-}
-
-/// A listing that is a snapshot of one revision: read the revision, read the
-/// board, read the revision again, and accept the pair only when the store did
-/// not move in between. A writer that keeps winning is answered with the last
-/// read, whose revision the client will also see in the change event.
-fn snapshot(
-    board: &Board,
-    query: &TicketQuery,
-    store: &Store,
-) -> Result<(Vec<crate::domain::Ticket>, i64), WireError> {
-    let mut attempt = 0;
-    loop {
-        attempt += 1;
-        let before = revision(store)?;
-        let tickets = board.list(query).map_err(domain)?;
-        let after = revision(store)?;
-        if before == after || attempt >= 5 {
-            return Ok((tickets, after));
-        }
-    }
 }
 
 /// A domain refusal, in the words the CLI prints on stderr.

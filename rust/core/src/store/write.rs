@@ -183,7 +183,15 @@ impl Write<'_> {
                 tokens_output = ?11, tokens_reasoning = ?12, tokens_cache_read = ?13,
                 tokens_cache_write = ?14, seconds = ?15, cost = ?16, model = ?17,
                 tickets = ?18, skills = ?19, author = ?20
-             WHERE id = ?1",
+             WHERE id = ?1
+               AND (project IS NOT ?2 OR agent IS NOT ?3 OR brief IS NOT ?4
+                    OR status IS NOT ?5 OR outcome IS NOT ?6 OR summary IS NOT ?7
+                    OR started_at IS NOT ?8 OR ended_at IS NOT ?9
+                    OR tokens_input IS NOT ?10 OR tokens_output IS NOT ?11
+                    OR tokens_reasoning IS NOT ?12 OR tokens_cache_read IS NOT ?13
+                    OR tokens_cache_write IS NOT ?14 OR seconds IS NOT ?15
+                    OR cost IS NOT ?16 OR model IS NOT ?17 OR tickets IS NOT ?18
+                    OR skills IS NOT ?19 OR author IS NOT ?20)",
             params![
                 session.id,
                 session.project,
@@ -263,7 +271,11 @@ impl Write<'_> {
             "UPDATE sprints SET
                 session = ?3, mode = ?4, batch = ?5, runs = ?6, close = ?7,
                 status = ?8, opened_at = ?9, closed_at = ?10, author = ?11
-             WHERE lane = ?1 AND number = ?2",
+             WHERE lane = ?1 AND number = ?2
+               AND (session IS NOT ?3 OR mode IS NOT ?4 OR batch IS NOT ?5
+                    OR runs IS NOT ?6 OR close IS NOT ?7 OR status IS NOT ?8
+                    OR opened_at IS NOT ?9 OR closed_at IS NOT ?10
+                    OR author IS NOT ?11)",
             params![
                 sprint.lane,
                 sprint.number,

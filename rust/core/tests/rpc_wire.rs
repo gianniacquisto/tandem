@@ -13,6 +13,7 @@ mod support;
 
 use serde_json::{Value, json};
 use support::Sandbox;
+use tandem_core::domain::DomainError;
 use tandem_core::store::Actor;
 use tandem_core::wire::rpc::{METHODS, Request};
 
@@ -21,7 +22,11 @@ fn frame(id: u64, method: &str, params: Value) -> String {
 }
 
 fn handle(store: &tandem_core::store::Store, frame: &str) -> Value {
-    let answer = tandem_core::rpc::handle(frame, store, &Actor::Human);
+    handle_as(store, frame, &Actor::Human)
+}
+
+fn handle_as(store: &tandem_core::store::Store, frame: &str, actor: &Actor) -> Value {
+    let answer = tandem_core::rpc::handle(frame, store, actor);
     serde_json::from_str(&answer)
         .unwrap_or_else(|error| panic!("the answer is one JSON frame ({error}): {answer}"))
 }
@@ -70,6 +75,82 @@ fn a_mutation_moves_the_revision_and_the_next_listing_carries_it() {
     assert_eq!(
         listed["result"]["tickets"][0]["descriptionLength"], 0,
         "a list row is the summary shape"
+    );
+}
+
+#[test]
+fn self_is_the_agent_on_the_wire_and_the_human_is_refused() {
+    let sandbox = Sandbox::new("rpc-self");
+    let store = sandbox.store();
+    let reviewer = Actor::Agent("reviewer".to_string());
+
+    let added = handle_as(
+        &store,
+        &frame(
+            1,
+            "ticket.add",
+            json!({"title": "Mine", "assignee": "self", "origin": "self"}),
+        ),
+        &reviewer,
+    );
+    assert_eq!(added["result"]["ticket"]["assignee"], "reviewer");
+    assert_eq!(added["result"]["ticket"]["origin"], "reviewer");
+
+    let listed = handle_as(
+        &store,
+        &frame(2, "ticket.list", json!({"assignee": "self"})),
+        &reviewer,
+    );
+    assert_eq!(
+        listed["result"]["tickets"][0]["title"], "Mine",
+        "the filter resolves self the same way the write did"
+    );
+
+    // Without an agent there is no name `self` can mean, and the refusal is the
+    // CLI's own (`AgentNameUnset`).
+    let refused = handle(
+        &store,
+        &frame(
+            3,
+            "ticket.add",
+            json!({"title": "Other", "assignee": "self"}),
+        ),
+    );
+    assert_eq!(refused["error"]["code"], "domain");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("TANDEM_AGENT"),
+        "the refusal names the variable: {refused}"
+    );
+}
+
+#[test]
+fn an_empty_description_on_add_is_the_cli_refusal() {
+    let sandbox = Sandbox::new("rpc-empty-description");
+    let store = sandbox.store();
+
+    let refused = handle(
+        &store,
+        &frame(
+            1,
+            "ticket.add",
+            json!({"title": "Bodyless", "description": ""}),
+        ),
+    );
+    assert_eq!(refused["error"]["code"], "domain");
+    assert_eq!(
+        refused["error"]["message"],
+        DomainError::EmptyDescriptionBody.message(),
+        "the wire answers the CLI's own refusal"
+    );
+
+    let listed = handle(&store, &frame(2, "ticket.list", json!({})));
+    assert_eq!(
+        listed["result"]["tickets"],
+        json!([]),
+        "the refused write left the board alone"
     );
 }
 
@@ -155,6 +236,32 @@ fn a_domain_failure_answers_an_error_and_leaves_the_store_alone() {
 }
 
 #[test]
+fn a_watch_connection_sees_a_later_write_without_reopening() {
+    let sandbox = Sandbox::new("rpc-watch");
+    let store = sandbox.store();
+    assert!(
+        store
+            .watch()
+            .expect("a missing store is not an error")
+            .is_none(),
+        "there is nothing to watch before the first write"
+    );
+
+    handle(&store, &frame(1, "ticket.add", json!({"title": "One"})));
+    let watch = store
+        .watch()
+        .expect("the store is watchable")
+        .expect("a WAL store hands back one connection");
+    let before = watch.revision().expect("the watch reads");
+
+    handle(&store, &frame(2, "ticket.add", json!({"title": "Two"})));
+    assert!(
+        watch.revision().expect("the watch reads") > before,
+        "the reused connection sees a commit made after it opened"
+    );
+}
+
+#[test]
 fn the_revision_moves_once_per_write_that_changes_a_row() {
     let sandbox = Sandbox::new("rpc-revision");
     let store = sandbox.store();
@@ -164,6 +271,11 @@ fn the_revision_moves_once_per_write_that_changes_a_row() {
     let once = store.revision().expect("the store reads");
     assert!(once > 0);
     assert_eq!(first["result"]["revision"], once);
+    assert_eq!(
+        store.last_revision(),
+        once,
+        "the receipt's revision was read inside the write's transaction"
+    );
 
     handle(&store, &frame(2, "ticket.add", json!({"title": "Two"})));
     assert_eq!(store.revision().expect("the store reads"), once + 1);

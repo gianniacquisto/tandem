@@ -108,6 +108,17 @@ impl Board {
         self.list(&filter.query())
     }
 
+    /// `list(query)` and the revision its rows are a snapshot of, read in one
+    /// transaction: a listing cannot pair rows with a number a writer moved
+    /// between the two statements (PRT-11).
+    pub fn list_snapshot(&self, query: &TicketQuery) -> Result<(Vec<Ticket>, i64), DomainError> {
+        let Some((rows, revision)) = self.store.board_snapshot()? else {
+            return Ok((Vec::new(), 0));
+        };
+        let contents = Contents::from_rows(&rows)?;
+        Ok((query.apply(&contents.tickets), revision))
+    }
+
     /// The lane names in render order (the default area is implicit and unnamed).
     /// Includes any name that appears only on a ticket, so a face can draw it.
     pub fn lanes(&self) -> Result<Vec<String>, DomainError> {
@@ -983,6 +994,34 @@ fn appending(section: &str, description: Option<&str>) -> String {
     match description::normalize(description) {
         Some(existing) => format!("{existing}\n\n{section}"),
         None => section.to_string(),
+    }
+}
+
+/// The name `self` stands for: the agent running the call, never the human.
+fn self_name(actor: &Actor) -> Result<String, DomainError> {
+    match actor {
+        Actor::Agent(name) => Ok(name.clone()),
+        Actor::Human => Err(DomainError::AgentNameUnset),
+    }
+}
+
+/// `--assignee self` is the agent running this command, on the CLI and on the
+/// wire alike: one rule, so the same value cannot mean two things. Any other
+/// value passes through, including `""`, which selects the unowned tickets.
+pub fn resolve_assignee(raw: Option<&str>, actor: &Actor) -> Result<Option<String>, DomainError> {
+    match raw {
+        Some("self") => Ok(Some(self_name(actor)?)),
+        other => Ok(other.map(str::to_string)),
+    }
+}
+
+/// `--origin self` is the agent; an absent value is the human. Any other value
+/// passes through to the domain's spelling rule.
+pub fn resolve_origin(raw: Option<&str>, actor: &Actor) -> Result<String, DomainError> {
+    match raw {
+        Some("self") => self_name(actor),
+        Some(other) => Ok(other.to_string()),
+        None => Ok(HUMAN.to_string()),
     }
 }
 

@@ -25,7 +25,9 @@ use clap::{Args, Parser, Subcommand};
 use tandem_core::bikeshed::{Bikeshed, CaptureKind};
 use tandem_core::domain::session::{SessionOutcome, SessionTokens, Sessions, parse_skills};
 use tandem_core::domain::sprint::{SprintMode, Sprints};
-use tandem_core::domain::{AddTicket, Board, DomainError, Edit, SetFields, Status, TicketQuery};
+use tandem_core::domain::{
+    AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Status, TicketQuery,
+};
 use tandem_core::store::{self, Actor, Home, Store};
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, DoctorCheck, DoctorReport,
@@ -1189,31 +1191,18 @@ fn capture_session_default() -> String {
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()[..8].to_string())
 }
 
-/// `--assignee self` is the agent running this command: its name is
-/// `$TANDEM_AGENT`. Any other value passes through, including `""`, which
-/// selects the unowned tickets.
+/// `--assignee self` is the agent running this command: the core's rule, shared
+/// with the wire's `ticket.list` and `ticket.add`, so the same value cannot mean
+/// two things. Any other value passes through, including `""`, which selects the
+/// unowned tickets.
 fn resolve_assignee(raw: Option<&str>) -> Result<Option<String>, Failure> {
-    match raw {
-        Some("self") => Ok(Some(agent_name()?)),
-        other => Ok(other.map(str::to_string)),
-    }
+    tandem_core::domain::resolve_assignee(raw, &Actor::current()).map_err(Failure::domain)
 }
 
-/// `--origin self` is the agent; an absent flag is the human. Any other value
-/// passes through to the domain, which owns the spelling rule.
+/// `--origin self` is the agent; an absent flag is the human. The core owns the
+/// rule, the same one the wire calls.
 fn resolve_origin(raw: Option<&str>) -> Result<String, Failure> {
-    match raw {
-        Some("self") => Ok(agent_name()?),
-        Some(other) => Ok(other.to_string()),
-        None => Ok("human".to_string()),
-    }
-}
-
-fn agent_name() -> Result<String, Failure> {
-    match env::var("TANDEM_AGENT") {
-        Ok(name) if !name.trim().is_empty() => Ok(name),
-        _ => Err(Failure::domain(DomainError::AgentNameUnset)),
-    }
+    tandem_core::domain::resolve_origin(raw, &Actor::current()).map_err(Failure::domain)
 }
 
 /// A session record's handle: `--session`, else `$OPENCODE_SESSION_ID`. The
@@ -1248,23 +1237,21 @@ fn description_body(flag: &str) -> Result<String, Failure> {
 }
 
 /// `--description` on `ticket add`: no flag is no description, and a named flag
-/// must carry text. A new ticket has no earlier body to clear.
+/// must carry text. A new ticket has no earlier body to clear. The refusal is
+/// the core's (`DescriptionBody::required`), the same one the wire's
+/// `ticket.add` makes.
 fn add_description_body(flag: Option<&str>) -> Result<Option<String>, Failure> {
     match flag {
         None => Ok(None),
         Some("-") => {
             let body = read_standard_input()?;
-            if body.trim().is_empty() {
-                return Err(Failure::domain(DomainError::EmptyDescriptionBody));
-            }
-            Ok(Some(body))
+            Ok(Some(
+                DescriptionBody::required(&body).map_err(Failure::domain)?,
+            ))
         }
-        Some(body) => {
-            if body.trim().is_empty() {
-                return Err(Failure::domain(DomainError::EmptyDescriptionBody));
-            }
-            Ok(Some(body.to_string()))
-        }
+        Some(body) => Ok(Some(
+            DescriptionBody::required(body).map_err(Failure::domain)?,
+        )),
     }
 }
 

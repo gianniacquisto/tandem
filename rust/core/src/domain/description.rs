@@ -5,8 +5,9 @@
 //! text is trimmed at its edges and an empty result means "no description". The
 //! stdin path is a different thing: an empty pipe, a failed heredoc and an unset
 //! variable all arrive as the same empty body, and writing it would erase the brief
-//! the session-ticket protocol exists to preserve (ADR 0024). So a stdin body must
-//! carry text, and the refusal belongs to the stdin path alone.
+//! the session-ticket protocol exists to preserve (ADR 0024). So a named body must
+//! carry text, on stdin and on the wire alike: the CLI's `ticket add --description`
+//! and the rpc's `ticket.add` refuse the same empty value with the same error.
 
 use super::error::DomainError;
 

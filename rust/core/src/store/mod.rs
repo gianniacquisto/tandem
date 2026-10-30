@@ -40,6 +40,8 @@ mod write;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
@@ -100,11 +102,19 @@ pub type Result<T> = std::result::Result<T, StoreError>;
 #[derive(Debug, Clone)]
 pub struct Store {
     home: Home,
+    /// The revision of the last write this store performed, read inside that
+    /// write's transaction and shared by every clone. A receipt can carry the
+    /// exact number its rows are at, without a second transaction that another
+    /// writer could move.
+    last_revision: Arc<AtomicI64>,
 }
 
 impl Store {
     pub fn new(home: Home) -> Self {
-        Self { home }
+        Self {
+            home,
+            last_revision: Arc::new(AtomicI64::new(0)),
+        }
     }
 
     pub fn home(&self) -> &Home {
@@ -139,6 +149,63 @@ impl Store {
         // table the port does not have.
         schema::refuse_legacy(&connection)?;
         body(&connection).map(Some)
+    }
+
+    /// A read and the revision it is a snapshot of, in **one** read
+    /// transaction: the first `SELECT` takes the snapshot, the second sees the
+    /// same one, so a listing cannot pair rows with a revision a writer moved
+    /// between two statements.
+    pub(crate) fn read_snapshot<T>(
+        &self,
+        body: impl FnOnce(&Connection) -> Result<T>,
+    ) -> Result<Option<(T, i64)>> {
+        let database = self.database();
+        if !database.exists() {
+            return Ok(None);
+        }
+        let connection = open_read_only(&database)?;
+        schema::refuse_legacy(&connection)?;
+        connection
+            .execute_batch("BEGIN DEFERRED")
+            .map_err(translate)?;
+        let outcome = (|| {
+            let revision = schema::revision(&connection)?;
+            let value = body(&connection)?;
+            Ok((value, revision))
+        })();
+        match outcome {
+            Ok(value) => {
+                connection.execute_batch("COMMIT").map_err(translate)?;
+                Ok(Some(value))
+            }
+            Err(error) => {
+                let _ = connection.execute_batch("ROLLBACK");
+                Err(error)
+            }
+        }
+    }
+
+    /// A read-only connection kept open for the change watch. The watch polls
+    /// this instead of opening a connection per tick: an idle child runs one
+    /// query on one connection, not ~25 opens a second.
+    ///
+    /// Only a WAL store is watchable. An open reader in rollback mode can block
+    /// the one-time `journal_mode=WAL` a writer runs on the first write, so the
+    /// watch waits for that switch rather than racing it.
+    pub fn watch(&self) -> Result<Option<RevisionWatch>> {
+        let database = self.database();
+        if !database.exists() {
+            return Ok(None);
+        }
+        let connection = open_read_only(&database)?;
+        schema::refuse_legacy(&connection)?;
+        let mode: String = connection
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .map_err(translate)?;
+        if !mode.eq_ignore_ascii_case("wal") {
+            return Ok(None);
+        }
+        Ok(Some(RevisionWatch { connection }))
     }
 
     /// A write: the sidecar lock, one `BEGIN IMMEDIATE` transaction, and the
@@ -186,12 +253,19 @@ impl Store {
             match body(&write) {
                 Ok(value) => {
                     // The revision moves with the rows, inside the same
-                    // transaction: a write that changed nothing (a re-run that
-                    // answers its note) is not a change event.
-                    if connection.total_changes() > changes_before {
-                        schema::bump_revision(&connection)?;
-                    }
+                    // transaction, and is read back before the commit: the
+                    // receipt carries the number its own rows are at, never a
+                    // later one a second transaction could pair with them. The
+                    // UPDATE statements guard on the values, so a write that
+                    // touched a row without changing it (a same-value set) is
+                    // not a change event.
+                    let revision = if connection.total_changes() > changes_before {
+                        schema::bump_revision(&connection)?
+                    } else {
+                        schema::revision(&connection)?
+                    };
                     commit(&connection)?;
+                    self.last_revision.store(revision, Ordering::Relaxed);
                     Ok(value)
                 }
                 Err(error) => {
@@ -231,6 +305,13 @@ impl Store {
         }
     }
 
+    /// The revision of the last write this store performed, read inside that
+    /// write's transaction. A receipt carries this number, so its payload and
+    /// its revision cannot be split by a concurrent writer.
+    pub fn last_revision(&self) -> i64 {
+        self.last_revision.load(Ordering::Relaxed)
+    }
+
     /// The store's revision: the number every listing carries and every change
     /// event repeats (PRT-11).
     ///
@@ -240,6 +321,18 @@ impl Store {
     /// row change and the revision together or sees neither.
     pub fn revision(&self) -> Result<i64> {
         Ok(self.read(schema::revision)?.unwrap_or(0))
+    }
+}
+
+/// A read-only connection the change watch keeps open and polls.
+pub struct RevisionWatch {
+    connection: Connection,
+}
+
+impl RevisionWatch {
+    /// The store's revision as this connection currently sees it.
+    pub fn revision(&self) -> Result<i64> {
+        schema::revision(&self.connection)
     }
 }
 

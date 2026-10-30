@@ -78,6 +78,12 @@ impl Store {
         self.read(read_board)
     }
 
+    /// The board and the revision it is a snapshot of, read in one transaction:
+    /// a listing's rows and its number cannot be split by a concurrent writer.
+    pub(crate) fn board_snapshot(&self) -> Result<Option<(BoardRows, i64)>> {
+        self.read_snapshot(read_board)
+    }
+
     /// One ticket's comments in append order, or `None` when there is no
     /// database yet.
     pub(crate) fn comment_rows(&self, ticket_id: &str) -> Result<Option<Vec<CommentRow>>> {
@@ -201,7 +207,9 @@ impl Write<'_> {
                 Some(old) if old == new => {}
                 Some(_) => self.execute(
                     "UPDATE lanes SET key = ?2, last_number = ?3, position = ?4, author = ?5
-                     WHERE name = ?1",
+                     WHERE name = ?1
+                       AND (key IS NOT ?2 OR last_number IS NOT ?3
+                            OR position IS NOT ?4 OR author IS NOT ?5)",
                     params![
                         new.name,
                         new.key,
@@ -231,7 +239,14 @@ impl Write<'_> {
                             archived = ?5, lane = ?6, number = ?7, origin = ?8,
                             assignee = ?9, link = ?10, position = ?11,
                             created_at = ?12, completed_at = ?13, author = ?14
-                     WHERE id = ?1",
+                     WHERE id = ?1
+                       AND (title IS NOT ?2 OR description IS NOT ?3
+                            OR status IS NOT ?4 OR archived IS NOT ?5
+                            OR lane IS NOT ?6 OR number IS NOT ?7
+                            OR origin IS NOT ?8 OR assignee IS NOT ?9
+                            OR link IS NOT ?10 OR position IS NOT ?11
+                            OR created_at IS NOT ?12 OR completed_at IS NOT ?13
+                            OR author IS NOT ?14)",
                     params![
                         new.id,
                         new.title,
