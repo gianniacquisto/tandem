@@ -1138,6 +1138,7 @@ mod writes {
                 scope.spawn(move || {
                     for index in 0..10 {
                         let key = format!("{group}-{index}");
+                        let started = Instant::now();
                         store
                             .write(&Actor::Agent(group.to_string()), |write| {
                                 write.insert_setting(NewSetting {
@@ -1145,7 +1146,14 @@ mod writes {
                                     value: "1",
                                 })
                             })
-                            .expect("a concurrent write lands");
+                            .unwrap_or_else(|error| {
+                                panic!(
+                                    "{key} answered {error} after {:?}; the longest wait for the \
+                                     sidecar lock in this process was {:?}",
+                                    started.elapsed(),
+                                    crate::store::locked::longest_wait()
+                                )
+                            });
                     }
                 });
             }
@@ -1165,6 +1173,7 @@ mod writes {
         setting(&store, &Actor::Human, "seed", "1");
 
         let mut last_seen = 1;
+        let mut reads = 0;
         thread::scope(|scope| {
             let writer = scope.spawn(|| {
                 for index in 0..20 {
@@ -1180,6 +1189,11 @@ mod writes {
                 }
             });
 
+            // The invariant under test is here, inside the loop: every read is a
+            // complete committed state, monotone and never ahead of the writer.
+            // It is not that this loop saw the final write: it exits when the
+            // writer's thread ends, and its last read may precede the writer's
+            // last commit.
             while !writer.is_finished() {
                 let count = store
                     .read(|connection| {
@@ -1195,12 +1209,31 @@ mod writes {
                     count >= last_seen,
                     "a read lost committed rows: {last_seen} -> {count}"
                 );
+                assert!(
+                    count <= 21,
+                    "a read saw rows the writer had not committed: {count}"
+                );
                 last_seen = count;
+                reads += 1;
             }
             writer.join().expect("the writer finishes");
         });
 
-        assert_eq!(last_seen, 21, "the reader saw the last committed state");
+        assert!(reads > 0, "the reader never ran");
+        let total = store
+            .read(|connection| {
+                connection
+                    .query_row("SELECT COUNT(*) FROM settings", [], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .map_err(|error| StoreError::Io(error.to_string()))
+            })
+            .expect("the read after the join answers")
+            .unwrap_or(0);
+        assert_eq!(
+            total, 21,
+            "every row the writer committed is in the store once it finished"
+        );
     }
 }
 

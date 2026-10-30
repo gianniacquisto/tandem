@@ -22,6 +22,22 @@ pub(crate) const LOCK_TIMEOUT: Duration = Duration::from_millis(2_000);
 /// A temp older than this is a crash's leftover, never an in-flight write's.
 pub(crate) const ORPHAN_MAX_AGE: Duration = Duration::from_secs(60);
 
+/// The longest wait for the sidecar lock this process has seen, in
+/// milliseconds.
+///
+/// Test-facing, and it exists so a red contended write names the cost rather
+/// than only the answer: two seconds of starvation (a waiter that never wins
+/// the gap) and one two-second `fsync` both surface as [`StoreError::Locked`]
+/// and need different fixes.
+#[cfg(test)]
+static LONGEST_WAIT_MS: AtomicU64 = AtomicU64::new(0);
+
+/// The longest this process has waited for the sidecar lock.
+#[cfg(test)]
+pub(crate) fn longest_wait() -> Duration {
+    Duration::from_millis(LONGEST_WAIT_MS.load(Ordering::Relaxed))
+}
+
 /// The store's temp prefix: its own files only, so the sweep cannot touch the
 /// bikeshed's.
 pub(crate) const TEMP_PREFIX: &str = ".tandem-";
@@ -185,9 +201,16 @@ impl LockedDirectory {
                 ))
             })?;
         let deadline = Instant::now() + LOCK_TIMEOUT;
+        #[cfg(test)]
+        let started = Instant::now();
         loop {
             match file.try_lock() {
-                Ok(()) => return Ok(file),
+                Ok(()) => {
+                    #[cfg(test)]
+                    LONGEST_WAIT_MS
+                        .fetch_max(started.elapsed().as_millis() as u64, Ordering::Relaxed);
+                    return Ok(file);
+                }
                 Err(TryLockError::WouldBlock) => {
                     if Instant::now() >= deadline {
                         return Err(StoreError::Locked);
