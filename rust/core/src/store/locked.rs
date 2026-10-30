@@ -68,8 +68,8 @@ pub(crate) const BIKESHED_TEMP_PREFIX: &str = ".note-";
 /// The wait is bounded like the lock's: a ticket that is not served within
 /// [`LOCK_TIMEOUT`] answers `Locked` and is skipped, so a body that takes the
 /// same lock file again (a nested acquisition) answers at the window instead of
-/// hanging. The store's write bodies never nest; this is the guard that makes
-/// that constraint fail loudly if one ever does.
+/// hanging. The bikeshed's write bodies never nest; this is the guard that
+/// makes that constraint fail loudly if one ever does.
 struct Queue {
     turn: Mutex<Turn>,
     served: Condvar,
