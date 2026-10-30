@@ -14,21 +14,22 @@ use serde_json::Value;
 
 const BINARY: &str = env!("CARGO_BIN_EXE_tandem");
 
-/// The committed fixture home (`Fixtures/port/Home`), canonical so the
-/// comparison is against the path the child reports, not against `..`.
+/// The committed fixture home (`Fixtures/port/Home`), built lexically from the
+/// manifest directory so the comparison is against the same spelling the child
+/// reports: no `..` and no symlink resolution, both of which differ by platform.
 fn fixture_home() -> PathBuf {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("Fixtures")
-        .join("port")
-        .join("Home");
-    fs::canonicalize(&path).unwrap_or_else(|error| {
-        panic!(
-            "the fixture home is committed at Fixtures/port/Home ({}): {error}",
-            path.display()
-        )
-    })
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR")); // <repo>/rust/cli
+    let root = manifest
+        .parent()
+        .and_then(Path::parent)
+        .unwrap_or_else(|| panic!("{} sits two levels below the repo root", manifest.display()));
+    let path = root.join("Fixtures").join("port").join("Home");
+    assert!(
+        path.join("bikeshed").is_dir(),
+        "the fixture home is committed at Fixtures/port/Home ({})",
+        path.display()
+    );
+    path
 }
 
 /// A throwaway directory that is this test's `HOME` and nothing else.
