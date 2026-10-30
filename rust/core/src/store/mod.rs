@@ -22,11 +22,12 @@
 //!   a `BEGIN IMMEDIATE` transaction is the writer and the ~2 s busy window is
 //!   the contention bound across processes (ADR 0031), so a `tandem.lock`
 //!   beside a home is inert. Two threads of one process queue on a process-local
-//!   gate (one mutex per canonical home, no file), so the engine only arbitrates
-//!   across processes. The `locked` module keeps the sidecar, the same-directory
-//!   temp with `fsync` + rename and the orphan sweep for the bikeshed; the store
-//!   borrows only the temp, the commit and the directory sync for the rolling
-//!   backup.
+//!   gate (one mutex per canonical home, no file), and a thread that cannot
+//!   enter it in the same ~2 s window answers "locked", so in-process
+//!   contention is bounded exactly as the engine bounds it across processes.
+//!   The `locked` module keeps the sidecar for the bikeshed; the store borrows
+//!   the same-directory temp, the commit, the directory sync and the orphan
+//!   sweep, which clears a backup temp a killed writer left behind.
 
 mod actor;
 pub(crate) mod board_rows;
@@ -47,8 +48,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, TryLockError};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 
@@ -91,12 +93,40 @@ fn write_gate(home: &Path) -> Arc<Mutex<()>> {
     Arc::clone(gates.entry(key).or_default())
 }
 
+/// Enter the gate within the store's window, or answer the store's one word
+/// for contention.
+///
+/// The gate is bounded by [`BUSY_TIMEOUT`], the same window the engine gives a
+/// writer in another process: the sidecar's 2 s window used to bound
+/// in-process contention too, and a thread that cannot enter in that window
+/// gets [`StoreError::Locked`] rather than waiting for the writer ahead of it
+/// to finish. The holder is a local thread mid-write, and its work is bounded
+/// by the same window it was given.
+fn enter_gate(gate: &Mutex<()>) -> Result<MutexGuard<'_, ()>> {
+    let deadline = Instant::now() + BUSY_TIMEOUT;
+    loop {
+        match gate.try_lock() {
+            Ok(guard) => return Ok(guard),
+            Err(TryLockError::Poisoned(poisoned)) => return Ok(poisoned.into_inner()),
+            Err(TryLockError::WouldBlock) => {
+                if Instant::now() >= deadline {
+                    return Err(StoreError::Locked);
+                }
+                // Yield, do not sleep: a local write holds the gate for
+                // milliseconds, so a retry that pauses misses the gap it frees,
+                // and the deadline still bounds the wait.
+                thread::yield_now();
+            }
+        }
+    }
+}
+
 /// What a store failure is, in the store's words. Every engine failure that is
 /// not contention becomes [`StoreError::Io`] with the engine's detail, exactly
 /// as the Swift store translates `SQLiteError` (ADR 0007).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoreError {
-    /// The write transaction was held past the window.
+    /// The gate or the write transaction was held past the window.
     Locked,
     /// Anything else: an unreadable file, a full disk, a failed migration.
     Io(String),
@@ -172,7 +202,9 @@ impl Store {
 
     /// A write: one `BEGIN IMMEDIATE` transaction with the caller's inserts
     /// recorded under `actor`, and no sidecar lock: the engine's write lock and
-    /// the busy window are the contention bound (ADR 0031).
+    /// the busy window are the contention bound across processes, and the
+    /// process-local gate queues this process's own threads within the same
+    /// window (ADR 0031).
     pub fn write<T>(&self, actor: &Actor, body: impl FnOnce(&Write<'_>) -> Result<T>) -> Result<T> {
         self.home.ensure().map_err(|error| {
             StoreError::Io(format!(
@@ -180,10 +212,15 @@ impl Store {
                 self.home.directory().display()
             ))
         })?;
-        // Two threads of this process queue here; across processes the engine's
-        // write lock and the busy window are the bound (ADR 0031).
+        // Two threads of this process queue here, each turned away as "locked"
+        // after the store's window; across processes the engine's write lock
+        // and the busy window are the bound (ADR 0031).
         let gate = write_gate(self.home.directory());
-        let _gate = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _gate = enter_gate(&gate)?;
+        // A writer killed mid-backup leaves its temp beside the database, and
+        // nothing renames it: the sweep under the gate clears it, the same rule
+        // the bikeshed's vault applies to its notes' temps (ADR 0031).
+        LockedDirectory::for_store(self.home.directory()).sweep_orphans();
         let database = self.database();
         let existed = database.exists();
         let connection = open(&database)?;
