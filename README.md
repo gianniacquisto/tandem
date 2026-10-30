@@ -7,7 +7,7 @@
 
 ![The tandem bike — the app's brand mark and icon](Resources/TandemBike.jpg)
 
-**Tandem is a native macOS board for you and your AI coding agents.** One ticket list, one board by status and lane, an inbox for what the agents owe you, and the bikeshed — a folder of markdown notes — that doubles as the agents' memory. Your agent and you share one list: it files tickets you see, and it sees the ones you close. Everything runs on your Mac: one SQLite database and a folder of markdown notes you own. No account, no server, no network.
+**Tandem is a native macOS board for you and your AI coding agents.** One ticket list, one board by status and lane, an inbox for what the agents owe you, and the bikeshed — a folder of markdown notes — that doubles as the agents' memory. Your agent and you share one list: it files tickets you see, and it sees the ones you close. Everything runs on your Mac today: one SQLite database and a folder of markdown notes you own, with no account to create. A hosted core is a later deployment shape, so the boundary is today's, not the product's.
 
 ## Install
 
@@ -44,8 +44,8 @@ One JSON report of where your state lives and whether it is healthy: the home di
 | macOS | 27 (Golden Gate) or later |
 | Hardware | Apple silicon |
 | Agent hosts | OpenCode (skills, agent prompts, `AGENTS.md`), Claude Code (skills), and any host that reads skills from a directory |
-| Network | none — the app and the CLI are local |
-| Accounts | none — the state is files in your home directory |
+| Network | none today, the app and the CLI are local |
+| Accounts | none today, the state is files in your home directory |
 
 ## What it does
 
@@ -233,7 +233,7 @@ Tandem's store was `tickets.json` until v0.27.0, with the comments, sessions, sp
 
 ## What it is not yet
 
-- **Not a service.** No account, no server, no sync, no network. The state is one SQLite database and a folder of notes in your home directory.
+- **Not a service yet.** There is no account to create and nothing syncs; the state is one SQLite database and a folder of notes in your home directory. A hosted core for several humans is a later deployment shape, not a feature you have now.
 - **Not a team tool yet.** One Mac, one store. There is no shared board and no realtime collaboration; the bikeshed is not shareable either.
 - **Not cross-platform.** macOS 27 or later, on Apple silicon.
 - **Not a tracker with edges.** The board has no labels, no blocking edges and no child tickets — see [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
