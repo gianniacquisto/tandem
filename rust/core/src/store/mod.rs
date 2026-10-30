@@ -141,7 +141,9 @@ pub struct Store {
     last_revision: Arc<AtomicI64>,
     /// How many times `watch` has opened a connection. Test-facing: the point
     /// of the watch is that a held connection is reused, not reopened a tick.
-    #[cfg(test)]
+    /// Unix only, because the case that reads it replaces the store under the
+    /// held watch, which Windows refuses to do (PRT-26).
+    #[cfg(all(test, unix))]
     watch_opens: Arc<std::sync::atomic::AtomicU64>,
 }
 
@@ -150,7 +152,7 @@ impl Store {
         Self {
             home,
             last_revision: Arc::new(AtomicI64::new(0)),
-            #[cfg(test)]
+            #[cfg(all(test, unix))]
             watch_opens: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
@@ -241,7 +243,7 @@ impl Store {
         if !database.exists() {
             return Ok(None);
         }
-        #[cfg(test)]
+        #[cfg(all(test, unix))]
         self.watch_opens.fetch_add(1, Ordering::Relaxed);
         let connection = open_read_only(&database)?;
         schema::refuse_legacy(&connection)?;
@@ -258,7 +260,7 @@ impl Store {
 
     /// How many connections `watch` has opened. Test-facing, so a case can pin
     /// that a held watch is reused rather than reopened on every tick.
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(crate) fn watch_opens(&self) -> u64 {
         self.watch_opens.load(Ordering::Relaxed)
     }
