@@ -20,8 +20,9 @@ repository = "https://github.com/gianniacquisto/tandem"
 tandem-core = { path = "core" }
 
 # `bundled`: one SQLite on every platform, compiled from the crate, no distro
-# library (PRT-4).
-rusqlite = { version = "0.41", features = ["bundled"] }
+# library (PRT-4). `backup`: the rolling backup is one complete generation
+# through the engine's own API, never a half-copied file (ADR 0018).
+rusqlite = { version = "0.41", features = ["bundled", "backup"] }
 # GFM closest to the `cmark-gfm` the Swift core uses (PRT-7).
 comrak = "0.59"
 clap = { version = "4.6", features = ["derive"] }
