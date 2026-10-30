@@ -3,5 +3,11 @@ import type { TicketSummary } from "./TicketSummary";
 
 /**
  * `ticket.list`: the full snapshot and the revision it is a snapshot of.
+ *
+ * The `revision` is authoritative: these tickets are the store at exactly this
+ * number, and no earlier. A change event may carry a smaller number (an
+ * intermediate commit the client saw before it listed) or a larger one (a write
+ * that landed after the list); either way the client compares this number, not
+ * the event's, and re-lists on the next event.
  */
 export type TicketListReply = { revision: number, tickets: Array<TicketSummary>, };

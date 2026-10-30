@@ -180,7 +180,12 @@ fn a_pipe_session_snapshots_mutates_and_reports_the_change() {
     assert!(written > 0, "the write moved the revision");
     assert_eq!(added["result"]["ticket"]["title"], "First");
 
-    let event = session.receive_where(|frame| frame["event"] == "changed");
+    // The listing's revision is authoritative, and an event is a hint to
+    // re-read. A first write on a fresh home also migrates, and a migration is
+    // a commit of its own, so the stream may carry an intermediate revision
+    // before this one: match the number the write produced.
+    let event =
+        session.receive_where(|frame| frame["event"] == "changed" && frame["revision"] == written);
     assert_eq!(
         event["revision"], written,
         "the event carries the revision the write produced"
@@ -214,21 +219,26 @@ fn a_write_from_another_process_arrives_as_a_change_event() {
         .expect("the CLI writes the same home");
     assert!(status.success(), "the other writer's verb succeeds");
 
-    let event = session.receive_where(|frame| {
-        frame["event"] == "changed" && frame["revision"].as_i64().is_some_and(|at| at > before)
-    });
-    let moved = event["revision"]
-        .as_i64()
-        .expect("the event carries a revision");
-
+    // The listing is authoritative: it names the revision its tickets are a
+    // snapshot of. An event may have carried an earlier number, because the
+    // other process's first write on a fresh home also migrates, and a
+    // migration commits on its own. So list first, then pin that the stream
+    // carries exactly the revision the listing answered.
     session.send(json!({"id": 2, "method": "ticket.list", "params": {}}));
     let after = session.receive_where(|frame| frame["id"] == 2);
-    assert_eq!(
-        revision(&after),
-        moved,
-        "the snapshot is the event's revision"
+    let moved = revision(&after);
+    assert!(
+        moved > before,
+        "the other process moved the revision ({before} to {moved})"
     );
     assert_eq!(after["result"]["tickets"][0]["title"], "Outside");
+
+    let event =
+        session.receive_where(|frame| frame["event"] == "changed" && frame["revision"] == moved);
+    assert_eq!(
+        event["revision"], moved,
+        "the stream carries the revision the listing is a snapshot of"
+    );
 }
 
 #[test]

@@ -13,7 +13,10 @@
 //!   `error`; a change event carries `event` and the store's new `revision`.
 //! - **Every listing is a full snapshot plus a revision.** There is no paging:
 //!   the human's board is cheap to send whole, and a revision makes the copy
-//!   correct.
+//!   correct. **The listing's revision is authoritative**: the tickets are the
+//!   store at exactly that number. An event is a hint to re-read, never a state
+//!   to patch in: it can name an intermediate revision (a migration is a commit
+//!   of its own) and it can be superseded before the client lists.
 //! - **A method is a domain verb, never a row.** The names are the CLI's
 //!   grammar (`ticket.add` is `ticket add`), and [`METHODS`] is the table the
 //!   parity test walks: every message names a CLI verb, so no UI-only write can
@@ -267,6 +270,12 @@ pub enum Reply {
 }
 
 /// `ticket.list`: the full snapshot and the revision it is a snapshot of.
+///
+/// The `revision` is authoritative: these tickets are the store at exactly this
+/// number, and no earlier. A change event may carry a smaller number (an
+/// intermediate commit the client saw before it listed) or a larger one (a write
+/// that landed after the list); either way the client compares this number, not
+/// the event's, and re-lists on the next event.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketListReply {
@@ -366,11 +375,13 @@ impl WireError {
 
 // MARK: - Events
 
-/// The store moved, and the revision it moved to.
+/// The store moved, and a revision it reached.
 ///
 /// Pushed when any writer commits: this stream's own write, the CLI in a
-/// terminal, another process under the lock. A client answers by re-reading the
-/// snapshot it holds, never by patching it from the event.
+/// terminal, another process under the lock. The event is a hint, not a state:
+/// it can name an intermediate revision (a migration commits on its own) and it
+/// can be superseded before the client reads. The client re-lists, and the
+/// listing's `revision` is authoritative (`TicketListReply`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "event", rename_all = "camelCase")]
 pub enum Event {

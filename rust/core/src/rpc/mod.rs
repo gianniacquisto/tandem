@@ -14,7 +14,9 @@
 //! - **The watch**: a thread polls the store's revision and pushes
 //!   [`Event::Changed`] when any writer moves it, this process's own writes
 //!   included. Polling the revision (rather than watching a file) is what makes
-//!   "another process under the lock" observable on every platform.
+//!   "another process under the lock" observable on every platform. An event is
+//!   a hint to re-read: it may name an intermediate revision (a migration is a
+//!   commit of its own) and the listing's revision is the authoritative one.
 //!
 //! The lifecycle is stdin's: when the parent closes the pipe, the read returns
 //! end of file, the loop ends, the watch stops and the process exits. The app
