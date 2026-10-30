@@ -1742,9 +1742,10 @@ fn bundled_sqlite_answers() {
 
 // The restore below renames the backup over the store while a watch holds the
 // file open. Windows refuses to remove or rename a file another handle has
-// open (SQLite's VFS does not ask for `FILE_SHARE_DELETE`), so the case is
-// exercised on unix only, the same gate the pipe test in `cli/tests/rpc.rs`
-// carries. PRT-26 names the Windows restore path.
+// open (SQLite's VFS does not ask for `FILE_SHARE_DELETE`), so the restore is
+// app-closed there (README, ADR 0031) and this case is exercised on unix only,
+// the same gate the pipe test in `cli/tests/rpc.rs` carries. The rollback-
+// journal watch the restore leaves is covered on every platform below.
 #[cfg(unix)]
 #[test]
 fn a_restored_store_is_watched_without_reopening() {
@@ -1795,4 +1796,62 @@ fn a_restored_store_is_watched_without_reopening() {
     // switch back to WAL.
     setting(&store, &Actor::Human, "three", "3");
     assert!(restored.revision().expect("the watch reads") > revision);
+}
+
+// ADR 0031's restore leaves `tandem.db` in rollback-journal mode. Windows runs
+// that restore with the app closed, so the watch meets the restored file on a
+// fresh open rather than by a rename under a held handle. This case puts the
+// store in the restore's journal mode and opens the watch on it, which runs
+// where the rename cannot (PRT-26).
+#[test]
+fn a_rollback_journal_store_answers_the_watch() {
+    let sandbox = Sandbox::new("watch-rollback");
+    let store = sandbox.store();
+    setting(&store, &Actor::Human, "one", "1");
+    setting(&store, &Actor::Human, "two", "2");
+    let revision = store.revision().expect("the store reads");
+
+    // The restore's shape: no WAL beside the database. `journal_mode=DELETE`
+    // checkpoints the WAL and removes it when the last connection closes,
+    // which is what the backup file already is.
+    {
+        let connection = Connection::open(sandbox.database()).expect("the store opens");
+        let mode: String = connection
+            .query_row("PRAGMA journal_mode=DELETE", [], |row| row.get(0))
+            .expect("the store leaves WAL mode");
+        assert_eq!(
+            mode.to_lowercase(),
+            "delete",
+            "the store is in rollback-journal mode"
+        );
+    }
+    assert!(
+        !sandbox.home_path().join("tandem.db-wal").exists(),
+        "a rollback-journal store has no WAL beside it"
+    );
+
+    let watch = store
+        .watch()
+        .expect("the restored store opens")
+        .expect("a rollback-journal store is watchable");
+    assert_eq!(
+        watch.revision().expect("store_meta reads without WAL"),
+        revision,
+        "the watch reports the restored revision"
+    );
+    for _ in 0..10 {
+        assert_eq!(
+            watch.revision().expect("the watch keeps reading"),
+            revision,
+            "a held watch answers every tick"
+        );
+    }
+
+    // The first write switches WAL back on under the held watch, and the
+    // watch reports the revision it landed.
+    setting(&store, &Actor::Human, "three", "3");
+    assert!(
+        watch.revision().expect("the watch reads") > revision,
+        "the watch follows the write that restores WAL"
+    );
 }

@@ -296,6 +296,10 @@ fn a_write_from_another_process_arrives_as_a_change_event() {
     );
 }
 
+// The restore renames over a file the child holds open, which Windows refuses
+// (PRT-26), so this case is unix-only. The app-closed restore and the
+// rollback-journal watch are covered in
+// `core/src/store/tests.rs::a_rollback_journal_store_answers_the_watch`.
 #[cfg(unix)]
 #[test]
 fn a_restored_store_re_attaches_and_reports_the_restored_revision() {
