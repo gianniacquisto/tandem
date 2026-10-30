@@ -225,6 +225,8 @@ rm -f ~/.tandem/tandem.db-wal ~/.tandem/tandem.db-shm ~/.tandem/tandem.db
 mv ~/.tandem/tandem.db.bak ~/.tandem/tandem.db
 ```
 
+Close the app and every `tandem-cli` child before those two commands. On Windows they cannot run under a live watch: SQLite's VFS opens `tandem.db` without `FILE_SHARE_DELETE`, so removing or moving it while the app holds it open answers `os error 32`, "The process cannot access the file because it is being used by another process." The app opens the restored store on its next start, and its watch attaches to the rollback-journal file. On macOS and Linux a running app re-attaches without a restart, because a rename over the file is allowed there.
+
 See [ADR 0018](docs/adr/0018-rolling-store-backup.md).
 
 ### Moving off the JSON store
