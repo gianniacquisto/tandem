@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "lane",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli lane — the lane lifecycle.",
+    "",
+    "Usage:",
+    "  tandem-cli lane list",
+    "  tandem-cli lane add --name <name> [--abbr <key>]",
+    "  tandem-cli lane rename --from <name> --to <name> [--abbr <key>]",
+    "  tandem-cli lane delete --name <name>",
+    "",
+    "Values:",
+    "  key       a lane's ref key: uppercase letters and digits, unique across lanes;",
+    "            omitted, the first three letters of the name (Tandem → TAN)"
+  ],
+  "stdoutKind": "text"
+}

@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "note",
+    "rename",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli note rename — a note's path, wikilinks rewritten.",
+    "",
+    "Usage:",
+    "  tandem-cli note rename --from <path> --to <path>"
+  ],
+  "stdoutKind": "text"
+}

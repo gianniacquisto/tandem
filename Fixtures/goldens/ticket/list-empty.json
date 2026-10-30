@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "ticket",
+    "list"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "tickets": []
+  },
+  "stdoutKind": "json"
+}

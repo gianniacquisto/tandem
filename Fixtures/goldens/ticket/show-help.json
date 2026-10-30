@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "ticket",
+    "show",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli ticket show — one ticket, whole.",
+    "",
+    "Usage:",
+    "  tandem-cli ticket show --id <id>",
+    "",
+    "`ticket list` prints summaries (`descriptionLength` in place of the body);",
+    "this is the read that carries the description.",
+    "",
+    "`--id` takes the ticket's ref (`TAN-42`) as well as its UUID — the same handle",
+    "every id-taking verb accepts."
+  ],
+  "stdoutKind": "text"
+}

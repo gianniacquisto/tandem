@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "note",
+    "capture",
+    "--kind",
+    "fact",
+    "--project",
+    "fixture"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "A fact the golden keeps.\n",
+  "stdout": {
+    "note": "An identical capture (same project, kind, and body) is already pending at \"projects/fixture/.raw/golden-session/<timestamp>-fact-a-fact-the-golden-keeps.md\" — nothing new was filed.",
+    "path": "projects/fixture/.raw/golden-session/<timestamp>-fact-a-fact-the-golden-keeps.md"
+  },
+  "stdoutKind": "json"
+}

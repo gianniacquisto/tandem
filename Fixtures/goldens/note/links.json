@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "note",
+    "links"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "broken": [],
+    "counts": {
+      "broken": 0,
+      "links": 1,
+      "notes": 3,
+      "orphans": 1
+    },
+    "orphans": [
+      "daily/2026-10-30.md"
+    ]
+  },
+  "stdoutKind": "json"
+}

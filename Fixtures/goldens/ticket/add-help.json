@@ -1,0 +1,28 @@
+{
+  "argv": [
+    "ticket",
+    "add",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli ticket add — a new ticket.",
+    "",
+    "Usage:",
+    "  tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]",
+    "                         [--lane <name>] [--origin <name|self>] [--description <string|->]",
+    "",
+    "Values:",
+    "  status    backlog | on-hold | ready | in-progress | in-review | done",
+    "  assignee  a name, `self` ($TANDEM_AGENT), or \"\" for the unassigned",
+    "  origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it",
+    "",
+    "`--description -` reads the body from stdin, the way `ticket set` does, so",
+    "the body lands in the same write as the ticket. Naming the flag means the",
+    "body must carry text: a new ticket has no earlier body to clear, so `\"\"`",
+    "and an empty pipe are both refused. Omit the flag for a ticket with none."
+  ],
+  "stdoutKind": "text"
+}

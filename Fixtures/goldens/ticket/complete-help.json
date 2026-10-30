@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "ticket",
+    "complete",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli ticket complete — a ticket is done.",
+    "",
+    "Usage:",
+    "  tandem-cli ticket complete --id <id>"
+  ],
+  "stdoutKind": "text"
+}

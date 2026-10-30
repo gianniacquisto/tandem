@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "ticket",
+    "show",
+    "--id",
+    "CYC-9"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Unknown ticket ref \"CYC-9\". No cycle lane has that key, and no lane carries a key yet."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

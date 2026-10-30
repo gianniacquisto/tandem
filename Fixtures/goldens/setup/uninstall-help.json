@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "setup",
+    "uninstall",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli setup uninstall: remove what `setup install` wrote.",
+    "",
+    "Usage:",
+    "  tandem-cli setup uninstall [--host <opencode|claude|agents>]",
+    "",
+    "Removes the links and instruction edits agent-install.json records, then",
+    "the installed face and the manifest. An absent `--host` is a full run;",
+    "naming one narrows to that host. A real file, and a link repointed by",
+    "hand, are left and the report says so. Without a manifest the face is",
+    "removed and the host links are reported unattributed."
+  ],
+  "stdoutKind": "text"
+}

@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "ticket",
+    "comment",
+    "list",
+    "--id",
+    "TAN-1"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "comments": [
+      {
+        "at": "<timestamp>",
+        "author": "golden-agent",
+        "body": "A comment the golden keeps."
+      }
+    ]
+  },
+  "stdoutKind": "json"
+}

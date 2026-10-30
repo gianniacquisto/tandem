@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "sprint",
+    "run",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli sprint run — the open sprint's run log.",
+    "",
+    "Usage:",
+    "  tandem-cli sprint run --lane <name> --note <string|->",
+    "",
+    "`--note -` reads the note from stdin."
+  ],
+  "stdoutKind": "text"
+}

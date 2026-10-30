@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "ticket",
+    "move",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli ticket move — a ticket's lane and position.",
+    "",
+    "Usage:",
+    "  tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]",
+    "",
+    "Values:",
+    "  lane      a lane name, or \"\" for the default area",
+    "  index     0-based within the lane; omitted appends to it"
+  ],
+  "stdoutKind": "text"
+}

@@ -1,0 +1,24 @@
+{
+  "argv": [
+    "session",
+    "start",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli session start — a session record, opened.",
+    "",
+    "Usage:",
+    "  tandem-cli session start [--project <name>] [--agent <name>] [--session <id>]",
+    "                            [--brief <string|->]",
+    "",
+    "An absent `--project` is the working directory's last path component, an",
+    "absent `--agent` is $TANDEM_AGENT, an absent `--session` is",
+    "$OPENCODE_SESSION_ID. `--brief` takes the literal brief text, or",
+    "`--brief -` which reads it from stdin — never a file path, which is",
+    "refused."
+  ],
+  "stdoutKind": "text"
+}

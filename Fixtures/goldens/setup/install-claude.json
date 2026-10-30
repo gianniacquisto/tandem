@@ -1,0 +1,51 @@
+{
+  "argv": [
+    "setup",
+    "install",
+    "--host",
+    "claude"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "manifest": "used",
+    "paths": [
+      {
+        "action": "linked",
+        "path": "<home>/.claude/skills/golden-skill"
+      },
+      {
+        "action": "linked",
+        "path": "<home>/.claude/CLAUDE.md"
+      }
+    ],
+    "state": {
+      "bundledVersion": "0.0.0-golden",
+      "hosts": [
+        {
+          "expectedLinks": 2,
+          "host": "opencode",
+          "links": 0,
+          "state": "absent"
+        },
+        {
+          "expectedLinks": 1,
+          "host": "claude",
+          "links": 1,
+          "state": "installed"
+        },
+        {
+          "expectedLinks": 1,
+          "host": "agents",
+          "links": 0,
+          "state": "absent"
+        }
+      ],
+      "installedVersion": "0.0.0-golden",
+      "warnings": []
+    },
+    "verb": "install"
+  },
+  "stdoutKind": "json"
+}

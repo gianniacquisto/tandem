@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "note",
+    "rename",
+    "--from",
+    "projects/fixture/fixture.md",
+    "--to",
+    "projects/fixture/overview.md"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "path": "projects/fixture/overview.md"
+  },
+  "stdoutKind": "json"
+}

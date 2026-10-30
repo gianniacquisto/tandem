@@ -1,0 +1,31 @@
+{
+  "argv": [
+    "ticket",
+    "list",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli ticket list — the filtered ticket list, summaries.",
+    "",
+    "Usage:",
+    "  tandem-cli ticket list [--filter open|done|all] [--status <value[,value]>]",
+    "                          [--assignee <name|self>] [--lane <name>] [--text <string>]",
+    "                          [--archived] [--blocked]",
+    "",
+    "Values:",
+    "  status    backlog | on-hold | ready | in-progress | in-review | done",
+    "  filter    open (default) | done | all",
+    "  assignee  a name, `self` ($TANDEM_AGENT), or \"\" for the unassigned",
+    "",
+    "`--archived` is a switch and takes no value: alone it is the archive as its",
+    "own view; named with a filter, the archive joins that filter.",
+    "",
+    "`--blocked` is a switch too, and a plain AND axis: alone it is the tickets",
+    "waiting on an open blocker; with `--status ready` it is the blocked ready",
+    "ones."
+  ],
+  "stdoutKind": "text"
+}

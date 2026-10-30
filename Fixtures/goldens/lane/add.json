@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "lane",
+    "add",
+    "--name",
+    "Cycle"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "lanes": [
+      "Cycle"
+    ]
+  },
+  "stdoutKind": "json"
+}

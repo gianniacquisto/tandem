@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "sprint",
+    "close",
+    "--lane",
+    "Cycle"
+  ],
+  "exit": 1,
+  "stderr": [
+    "No sprint is open in lane \"Cycle\". Run `sprint open --lane <lane>` first, or check the lane, and try again."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

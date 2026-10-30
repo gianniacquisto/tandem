@@ -1,0 +1,24 @@
+{
+  "argv": [
+    "lane",
+    "add",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli lane add — a new lane.",
+    "",
+    "Usage:",
+    "  tandem-cli lane add --name <name> [--abbr <key>]",
+    "",
+    "Values:",
+    "  key       a lane's ref key: uppercase letters and digits, unique across lanes;",
+    "            omitted, the first three letters of the name (Tandem → TAN)",
+    "",
+    "The key is the `TAN` of a ticket ref (`TAN-42`): it is frozen once a ticket in",
+    "the lane holds a number."
+  ],
+  "stdoutKind": "text"
+}

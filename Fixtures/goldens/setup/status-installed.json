@@ -1,0 +1,40 @@
+{
+  "argv": [
+    "setup",
+    "status"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "manifest": "used",
+    "paths": [],
+    "state": {
+      "bundledVersion": "0.0.0-golden",
+      "hosts": [
+        {
+          "expectedLinks": 2,
+          "host": "opencode",
+          "links": 2,
+          "state": "installed"
+        },
+        {
+          "expectedLinks": 1,
+          "host": "claude",
+          "links": 0,
+          "state": "absent"
+        },
+        {
+          "expectedLinks": 1,
+          "host": "agents",
+          "links": 0,
+          "state": "absent"
+        }
+      ],
+      "installedVersion": "0.0.0-golden",
+      "warnings": []
+    },
+    "verb": "status"
+  },
+  "stdoutKind": "json"
+}

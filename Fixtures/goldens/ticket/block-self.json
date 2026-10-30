@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "ticket",
+    "block",
+    "--id",
+    "CYC-1",
+    "--on",
+    "CYC-1"
+  ],
+  "exit": 1,
+  "stderr": [
+    "CYC-1 cannot block on itself. Name the ticket that has to finish first."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

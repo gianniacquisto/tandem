@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "ticket",
+    "comment",
+    "list",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli ticket comment list — the log, in append order.",
+    "",
+    "Usage:",
+    "  tandem-cli ticket comment list --id <id>"
+  ],
+  "stdoutKind": "text"
+}

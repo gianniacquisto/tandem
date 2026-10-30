@@ -1,0 +1,28 @@
+{
+  "argv": [
+    "session",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli session — the session record.",
+    "",
+    "Usage:",
+    "  tandem-cli session start [--project <name>] [--agent <name>] [--session <id>]",
+    "                            [--brief <string|->]",
+    "  tandem-cli session end [--session <id>] [--outcome <value>] [--summary <string|->]",
+    "                         [--tokens-input <n>] [--tokens-output <n>]",
+    "                         [--tokens-reasoning <n>] [--tokens-cache-read <n>]",
+    "                         [--tokens-cache-write <n>] [--cost <dollars>]",
+    "                         [--model <name>]",
+    "  tandem-cli session link --ticket <id> [--session <id>]",
+    "  tandem-cli session list [--project <name>] [--status <value>]",
+    "  tandem-cli session show [--session <id>]",
+    "",
+    "Values:",
+    "  status    running | ended — a session's status, on `session list`"
+  ],
+  "stdoutKind": "text"
+}
