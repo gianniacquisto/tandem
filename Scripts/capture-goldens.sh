@@ -202,6 +202,10 @@ while IFS= read -r case_json; do
     sb=$work/$group/$name
     mkdir -p "$sb/user"
     cp -R "$home" "$sb/Home"
+    # The fixture home carries its committed store for `fixture_db.rs`; every
+    # golden was captured on an empty board beside the fixture bikeshed, so the
+    # sandbox starts without it (the Rust harness does the same).
+    rm -f "$sb/Home/tandem.db"
     case $sb in
     "$work"/*) ;;
     *) die "refusing a sandbox outside $work: $sb" ;;
