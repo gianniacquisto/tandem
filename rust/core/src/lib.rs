@@ -20,6 +20,7 @@
 
 pub mod bikeshed;
 pub mod domain;
+pub mod rpc;
 pub mod store;
 pub mod wire;
 

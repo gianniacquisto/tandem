@@ -172,6 +172,7 @@ impl Store {
             schema::migrate(&connection, actor)?;
 
             begin_immediate(&connection)?;
+            let changes_before = connection.total_changes();
             let write = Write {
                 connection: &connection,
                 actor,
@@ -184,6 +185,12 @@ impl Store {
             };
             match body(&write) {
                 Ok(value) => {
+                    // The revision moves with the rows, inside the same
+                    // transaction: a write that changed nothing (a re-run that
+                    // answers its note) is not a change event.
+                    if connection.total_changes() > changes_before {
+                        schema::bump_revision(&connection)?;
+                    }
                     commit(&connection)?;
                     Ok(value)
                 }
@@ -222,6 +229,17 @@ impl Store {
             Some(version) => Ok(version),
             None => Ok(None),
         }
+    }
+
+    /// The store's revision: the number every listing carries and every change
+    /// event repeats (PRT-11).
+    ///
+    /// A home with no database yet reads 0, and a file written before the
+    /// revision existed reads 0 too: a read migrates nothing (ADR 0031). The
+    /// number moves inside the write's transaction, so a reader either sees the
+    /// row change and the revision together or sees neither.
+    pub fn revision(&self) -> Result<i64> {
+        Ok(self.read(schema::revision)?.unwrap_or(0))
     }
 }
 

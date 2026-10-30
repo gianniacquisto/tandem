@@ -89,6 +89,8 @@ enum Command {
     },
     /// Report whether this machine's Tandem setup is sound (ADR 0014).
     Doctor,
+    /// Speak the app's JSON protocol on stdin and stdout (PRT-11).
+    Rpc,
 }
 
 #[derive(Subcommand)]
@@ -503,6 +505,7 @@ fn help_text(cli: &Cli) -> &'static str {
     let name = match &cli.command {
         None => return usage::ROOT,
         Some(Command::Doctor) => return usage::verb("doctor").unwrap_or(usage::ROOT),
+        Some(Command::Rpc) => return usage::RPC,
         Some(Command::Ticket { command }) => match command {
             None => return usage::group("ticket").unwrap_or(usage::ROOT),
             Some(TicketCommand::Comment { command: None }) => "ticket comment",
@@ -609,6 +612,7 @@ fn run(cli: &Cli) -> Result<(), Failure> {
 
     match command {
         Command::Doctor => print(&report(&home)),
+        Command::Rpc => rpc(&home),
         Command::Ticket { command } => ticket(&home, command.as_ref()),
         Command::Lane { command } => lane(&home, command.as_ref()),
         Command::Note { command } => note(&home, command.as_ref()),
@@ -1514,6 +1518,20 @@ fn close_sprint_number(sprints: &Sprints, lane: &str) -> Result<i64, Failure> {
         .ok_or_else(|| Failure::domain(DomainError::NoOpenSprint(lane.to_string())))
 }
 
+// MARK: - rpc
+
+/// The app's door: frames on stdin, frames on stdout, and an exit on a closed
+/// stdin. The protocol lives in the core (`tandem_core::rpc`); this arm is only
+/// the process that owns the two streams.
+fn rpc(home: &Home) -> Result<(), Failure> {
+    tandem_core::rpc::serve(
+        tandem_core::rpc::StdioStream::new(),
+        Store::new(home.clone()),
+        Actor::current(),
+    )
+    .map_err(|error| Failure::message(format!("The rpc stream failed: {error}. Try again.")))
+}
+
 // MARK: - doctor
 
 /// ADR 0014's report, with the one row this rung can answer: `home` names the
@@ -1532,5 +1550,28 @@ fn report(home: &Home) -> DoctorReport {
                 home.source().as_str()
             ),
         }],
+    }
+}
+
+// MARK: - The wire's parity gate
+
+/// The machine half of parity item 3 (`docs/port.md`): every method the wire
+/// speaks names a CLI verb, and the grammar answers it. A mutation message
+/// without a verb is a UI-only write, which the contract forbids.
+#[cfg(test)]
+mod wire_parity {
+    use super::*;
+
+    #[test]
+    fn every_wire_method_names_a_cli_verb() {
+        for (tag, verb) in tandem_core::wire::rpc::METHODS {
+            let argv = std::iter::once("tandem").chain(verb.split(' '));
+            Cli::try_parse_from(argv).unwrap_or_else(|error| {
+                panic!(
+                    "the wire's `{tag}` names the CLI verb `{verb}`, which the grammar does not \
+                     answer: {error}"
+                )
+            });
+        }
     }
 }

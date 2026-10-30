@@ -16,6 +16,7 @@
 //!   says so, and the note is how it says it.
 
 use serde::Serialize;
+use ts_rs::TS;
 
 use crate::domain::session::Session;
 use crate::domain::sprint::Sprint;
@@ -23,7 +24,7 @@ use crate::domain::{Comment, LaneDeletion, Ticket, TicketBlock};
 use crate::store::timestamp::encode;
 
 /// One end of a dependency edge: the other ticket's id, ref, title and status.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketBlockView {
     pub id: String,
@@ -46,7 +47,7 @@ impl TicketBlockView {
 }
 
 /// A whole ticket: `ticket show`, and the receipt `add`/`set`/`complete` print.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketDetail {
     pub archived: bool,
@@ -68,7 +69,7 @@ pub struct TicketDetail {
     pub reference: Option<String>,
     pub status: String,
     pub title: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
 
@@ -105,7 +106,7 @@ impl TicketDetail {
 }
 
 /// A list row: the ticket's shape with the body projected to its length.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketSummary {
     pub archived: bool,
@@ -164,7 +165,7 @@ pub struct TicketList {
 }
 
 /// One comment: the object `ticket comment add` prints and a list row.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 pub struct CommentView {
     pub at: String,
     pub author: String,

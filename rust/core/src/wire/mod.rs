@@ -7,6 +7,9 @@
 
 mod views;
 
+pub mod rpc;
+pub mod typescript;
+
 use std::path::Path;
 
 use serde::Serialize;
