@@ -107,7 +107,11 @@ impl LockedDirectory {
         before_commit: impl FnOnce() -> Result<()>,
     ) -> Result<()> {
         let outcome = (|| {
-            let file = File::open(temp).map_err(|error| {
+            // The sync handle carries write access: Windows' `FlushFileBuffers`
+            // needs `GENERIC_WRITE` and answers "Access is denied" on the
+            // read-only handle `File::open` would give, and that is every
+            // commit, on every write, since the backup rides this path.
+            let file = OpenOptions::new().write(true).open(temp).map_err(|error| {
                 StoreError::Io(format!(
                     "could not open the temp at {}: {error}",
                     temp.display()

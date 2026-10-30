@@ -324,6 +324,31 @@ mod locked {
 
     #[cfg(unix)]
     #[test]
+    fn a_commit_syncs_a_temp_it_cannot_open_for_reading() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let sandbox = Sandbox::new("write-only-temp");
+        let storage = storage(&sandbox);
+        let target = sandbox.root().join("tandem.db.bak");
+        fs::write(&target, b"old").unwrap();
+        let temp = sandbox.root().join(".tandem-write-only.tmp");
+        fs::write(&temp, b"new").unwrap();
+        // Windows' `FlushFileBuffers` needs a handle carrying write access, so a
+        // commit that opens its temp read-only cannot sync it there. A temp with
+        // no read permission is the same requirement, provable on unix: the
+        // commit must sync through a handle opened for writing.
+        fs::set_permissions(&temp, fs::Permissions::from_mode(0o200)).unwrap();
+
+        storage
+            .commit(&temp, &target, || Ok(()))
+            .expect("the commit syncs a write-only temp and lands");
+
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"new");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn a_directory_fsync_over_an_unopenable_directory_fails() {
         let sandbox = Sandbox::new("fsync");
         // The root sits behind a regular file, so open(2) fails with ENOTDIR.
