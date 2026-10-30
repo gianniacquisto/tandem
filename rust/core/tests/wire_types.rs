@@ -3,8 +3,13 @@
 //!
 //! `tandem_core::wire::typescript::files()` renders every exported type the
 //! same way the exporter does; the committed files under
-//! `app/renderer/src/wire/` must be byte-identical. A field added to a Rust
-//! struct without regenerating is a red test here, not a shape the app ships.
+//! `app/renderer/src/wire/` must be identical, line endings aside. A field
+//! added to a Rust struct without regenerating is a red test here, not a shape
+//! the app ships.
+//!
+//! Line endings are not the contract. Git may check the files out with CRLF
+//! (Windows does), while the generator writes LF; comparing the bytes would
+//! call a clean checkout stale. Both sides are normalized to LF first.
 //!
 //! Regenerate with:
 //!
@@ -15,6 +20,12 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// The file's text with CRLF folded to LF: a checkout's line endings are not
+/// part of the generated contract, and Windows checks the files out with CRLF.
+fn normalized(text: &str) -> String {
+    text.replace("\r\n", "\n")
+}
 
 fn wire_directory() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -45,8 +56,8 @@ fn the_typescript_types_are_current() {
             )
         });
         assert_eq!(
-            actual,
-            *body,
+            normalized(&actual),
+            normalized(body),
             "{} is stale; run `cargo run -p tandem-core --example export-wire`",
             path.display()
         );
