@@ -30,6 +30,7 @@
 
 mod actor;
 pub(crate) mod board_rows;
+mod diagnostics;
 mod home;
 pub(crate) mod locked;
 pub(crate) mod records;
@@ -52,6 +53,7 @@ use std::time::Duration;
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 
 pub use actor::{Actor, ENVIRONMENT as ACTOR_ENVIRONMENT};
+pub use diagnostics::{BackupHealth, CommentsHealth, CommentsState, Health, comments_state};
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
 pub use records::local_day;
 pub use rows::{
