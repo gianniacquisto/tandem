@@ -37,9 +37,9 @@ pub fn encode(seconds: i64) -> String {
 /// The instant `text` names, or `None` when it is not `YYYY-MM-DDTHH:MM:SSZ`.
 /// A row the store cannot read is an error at its reader, never a silent zero.
 ///
-/// The read side is PRT-5's: no PRT-4 caller decodes a timestamp yet, and the
-/// encoder's inverse is kept now so the shape is proved by this rung's suite.
-#[allow(dead_code)]
+/// The read side is the domain's: the record aggregates decode a row's stamps
+/// and derive the span between them (PRT-6), so a row the store cannot read
+/// fails at its reader rather than at a later render.
 pub fn decode(text: &str) -> Option<i64> {
     let bytes = text.as_bytes();
     if bytes.len() != 20

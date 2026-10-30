@@ -116,9 +116,9 @@ impl Write<'_> {
                 (id, project, agent, brief, status, outcome, summary, started_at,
                  ended_at, tokens_input, tokens_output, tokens_reasoning,
                  tokens_cache_read, tokens_cache_write, seconds, cost, model,
-                 tickets, author)
+                 tickets, skills, author)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-                     ?15, ?16, ?17, ?18, ?19)",
+                     ?15, ?16, ?17, ?18, ?19, ?20)",
             params![
                 session.id,
                 session.project,
@@ -138,6 +138,57 @@ impl Write<'_> {
                 session.cost,
                 session.model,
                 session.tickets,
+                session.skills,
+                self.actor.as_str(),
+            ],
+        )
+    }
+
+    /// Whether the sessions table carries an id. The records domain is a
+    /// read-modify-write in one transaction, so it asks inside the write rather
+    /// than trusting an earlier read.
+    pub fn session_exists(&self, id: &str) -> Result<bool> {
+        self.connection
+            .query_row("SELECT COUNT(*) FROM sessions WHERE id = ?1", [id], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map(|count| count > 0)
+            .map_err(super::translate)
+    }
+
+    /// Replace a session row's mutable half: a record is created once, linked
+    /// to and stamped once, so every write after `start` is this one. The
+    /// author moves with the row: the last write's actor is the row's author.
+    pub fn update_session(&self, session: NewSession<'_>) -> Result<()> {
+        self.before_mutation()?;
+        self.execute(
+            "UPDATE sessions SET
+                project = ?2, agent = ?3, brief = ?4, status = ?5, outcome = ?6,
+                summary = ?7, started_at = ?8, ended_at = ?9, tokens_input = ?10,
+                tokens_output = ?11, tokens_reasoning = ?12, tokens_cache_read = ?13,
+                tokens_cache_write = ?14, seconds = ?15, cost = ?16, model = ?17,
+                tickets = ?18, skills = ?19, author = ?20
+             WHERE id = ?1",
+            params![
+                session.id,
+                session.project,
+                session.agent,
+                session.brief,
+                session.status,
+                session.outcome,
+                session.summary,
+                session.started_at,
+                session.ended_at,
+                session.tokens_input,
+                session.tokens_output,
+                session.tokens_reasoning,
+                session.tokens_cache_read,
+                session.tokens_cache_write,
+                session.seconds,
+                session.cost,
+                session.model,
+                session.tickets,
+                session.skills,
                 self.actor.as_str(),
             ],
         )
@@ -171,6 +222,46 @@ impl Write<'_> {
         self.execute(
             "INSERT INTO settings (key, value, author) VALUES (?1, ?2, ?3)",
             params![setting.key, setting.value, self.actor.as_str()],
+        )
+    }
+
+    /// Whether the sprints table carries a (lane, number). The sprints domain is
+    /// a read-modify-write in one transaction, so it asks inside the write.
+    pub fn sprint_exists(&self, lane: &str, number: i64) -> Result<bool> {
+        self.connection
+            .query_row(
+                "SELECT COUNT(*) FROM sprints WHERE lane = ?1 AND number = ?2",
+                params![lane, number],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|count| count > 0)
+            .map_err(super::translate)
+    }
+
+    /// Replace a sprint row: `open` creates it, and `ticket`, `run` and
+    /// `close` each write the whole record back, because a sprint's batch and
+    /// run log are ordered lists that a column update cannot append to
+    /// truthfully.
+    pub fn update_sprint(&self, sprint: NewSprint<'_>) -> Result<()> {
+        self.before_mutation()?;
+        self.execute(
+            "UPDATE sprints SET
+                session = ?3, mode = ?4, batch = ?5, runs = ?6, close = ?7,
+                status = ?8, opened_at = ?9, closed_at = ?10, author = ?11
+             WHERE lane = ?1 AND number = ?2",
+            params![
+                sprint.lane,
+                sprint.number,
+                sprint.session,
+                sprint.mode,
+                sprint.batch,
+                sprint.runs,
+                sprint.close,
+                sprint.status,
+                sprint.opened_at,
+                sprint.closed_at,
+                self.actor.as_str(),
+            ],
         )
     }
 

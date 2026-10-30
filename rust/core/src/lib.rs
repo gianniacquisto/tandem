@@ -8,28 +8,18 @@
 //! - [`wire`]: the JSON the agent face prints and the app reads. The
 //!   TypeScript declarations are generated from the same types (`ts-rs`).
 //!
-//! The domain itself lands at this level, one module per aggregate, with
-//! PRT-5 to PRT-7.
+//! The domain itself lands at this level, one module per aggregate: the records
+//! ([`session`], [`sprint`], [`usage`]) are this ticket's, and the board and the
+//! bikeshed are PRT-5's and PRT-7's. Every failure the domain raises is
+//! [`error::DomainError`], one shape for the CLI to print.
 
+pub mod error;
+pub mod operation;
+pub mod session;
+pub mod sprint;
 pub mod store;
+pub mod usage;
 pub mod wire;
 
 #[cfg(test)]
-mod tests {
-    //! The pinned set has to resolve on every runner, not only on the machine
-    //! that first fetched it. `sha2` has no consumer yet (note content hashes
-    //! are PRT-7's), so this test is what keeps it in `Cargo.lock` and proves
-    //! the crate answers.
-
-    use sha2::{Digest, Sha256};
-
-    #[test]
-    fn the_pinned_sha2_answers() {
-        let digest = Sha256::digest(b"tandem");
-        let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-        assert_eq!(
-            hex, "7186b6e1e13844499594bc935ee9f1091d59093bcb00eca31c3d563c5bb86f7d",
-            "SHA-256 of the binary's name"
-        );
-    }
-}
+mod tests;

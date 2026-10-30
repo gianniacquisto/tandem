@@ -13,5 +13,9 @@ name = "tandem_core"
 comrak.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
+# The record's two stored JSON columns (the ticket list and the skill counts)
+# and the harness read's message data: the same JSON the wire speaks, parsed in
+# the core so a corrupt column fails at its reader (PRT-6).
+serde_json.workspace = true
 sha2.workspace = true
 ts-rs.workspace = true

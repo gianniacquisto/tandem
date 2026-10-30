@@ -435,7 +435,16 @@ mod schema {
             .unwrap()
             .map(|row| row.unwrap())
             .collect();
-        assert_eq!(versions, (1..=CURRENT_VERSION).collect::<Vec<_>>());
+        // The list, not the counter: the aggregates land in parallel and each
+        // claims its version (see `schema.rs`), so the recorded set is exactly
+        // the migrations this build ships, in order, gap included.
+        assert_eq!(
+            versions,
+            MIGRATIONS
+                .iter()
+                .map(|migration| migration.version)
+                .collect::<Vec<_>>()
+        );
         let applied_at: String = connection
             .query_row(
                 "SELECT applied_at FROM schema_migrations LIMIT 1",
@@ -550,7 +559,11 @@ mod schema {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, CURRENT_VERSION, "each migration is recorded once");
+        assert_eq!(
+            count,
+            MIGRATIONS.len() as i64,
+            "each migration is recorded once"
+        );
     }
 
     #[test]
@@ -629,7 +642,7 @@ mod schema {
         setting(&sandbox.store(), &Actor::Human, "k", "v");
 
         let connection = sandbox.connection();
-        assert_eq!(version(&connection).unwrap(), Some(2));
+        assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
         assert!(
             has_index(&connection, "tickets_lane_position"),
             "v2 adds the board's index"
@@ -884,6 +897,7 @@ mod actor {
                     tokens_cache_write: Some(0),
                     seconds: Some(1.5),
                     cost: Some(0.01),
+                    skills: Some("{\"thinking\":2}"),
                 })?;
                 write.insert_sprint(NewSprint {
                     lane: "Port",

@@ -72,6 +72,50 @@ pub struct NewSession<'a> {
     pub tokens_cache_write: Option<i64>,
     pub seconds: Option<f64>,
     pub cost: Option<f64>,
+    /// The skill counts the pass loaded, as one JSON object (TAN-241). `None`
+    /// writes NULL: a record that loaded nothing to count says so by absence.
+    pub skills: Option<&'a str>,
+}
+
+/// A session row, read back: every column the record carries, as the store
+/// holds it. The domain parses the text (timestamps, the ticket list, the skill
+/// object); the row does not, because a store reader that guesses is a store
+/// reader that hides a corrupt row.
+pub struct SessionRow {
+    pub id: String,
+    pub project: String,
+    pub agent: Option<String>,
+    pub brief: String,
+    pub status: String,
+    pub outcome: Option<String>,
+    pub summary: Option<String>,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub tokens_input: Option<i64>,
+    pub tokens_output: Option<i64>,
+    pub tokens_reasoning: Option<i64>,
+    pub tokens_cache_read: Option<i64>,
+    pub tokens_cache_write: Option<i64>,
+    pub seconds: Option<f64>,
+    pub cost: Option<f64>,
+    pub model: Option<String>,
+    pub tickets: Option<String>,
+    pub skills: Option<String>,
+}
+
+/// A sprint row, read back: the pair (lane, number) is the identity, and the
+/// batch and run log stay the JSON text the record writes.
+pub struct SprintRow {
+    pub lane: String,
+    pub number: i64,
+    pub session: Option<String>,
+    pub mode: String,
+    pub batch: Option<String>,
+    pub runs: Option<String>,
+    pub close: Option<String>,
+    pub status: String,
+    pub opened_at: String,
+    pub closed_at: Option<String>,
 }
 
 /// One sprint: a lane and a number key it, and its batch and runs stay JSON

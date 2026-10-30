@@ -24,7 +24,13 @@ use rusqlite::{Connection, params};
 use super::{Actor, Result, StoreError, timestamp, translate};
 
 /// The version this build writes and reads.
-pub const CURRENT_VERSION: i64 = 2;
+///
+/// The number is the ticket's, not the counter's: the aggregates land in
+/// parallel (PRT-5's board, PRT-7's bikeshed, this ticket's records), so each
+/// claims its version up front and the list is append-only with gaps until the
+/// siblings merge. A gap is a version another aggregate's ticket lands, and
+/// `migrate` walks whatever the list holds.
+pub const CURRENT_VERSION: i64 = 6;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -45,6 +51,14 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: 2,
         name: "the board and comment indexes",
         apply: version_two,
+    },
+    // Versions 3 to 5 are the board's and the bikeshed's (PRT-5, PRT-7); each
+    // ticket claims its number, so this list grows in version order without
+    // renumbering a shipped one.
+    Migration {
+        version: 6,
+        name: "the session skill counts",
+        apply: version_six,
     },
 ];
 
@@ -143,12 +157,24 @@ CREATE INDEX IF NOT EXISTS tickets_lane_position ON tickets (lane, position);
 CREATE INDEX IF NOT EXISTS comments_ticket ON comments (ticket_id);
 ";
 
+/// Version 6: the skill counts a session's pass loaded, stored as one JSON
+/// object in a nullable column (TAN-241). **Additive**, and that is the rule
+/// the Swift side states: a pre-v6 build's INSERT names its columns explicitly,
+/// so SQLite stores NULL, and an older build still reads and writes a v6 home.
+/// The counts are absent on every record written before the column existed, and
+/// absent is absent, never an empty object.
+const VERSION_SIX: &str = "ALTER TABLE sessions ADD COLUMN skills TEXT;";
+
 fn version_one(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_ONE)
 }
 
 fn version_two(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_TWO)
+}
+
+fn version_six(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(VERSION_SIX)
 }
 
 /// Apply every migration newer than the recorded version, in order, one
@@ -227,9 +253,25 @@ pub(crate) fn version(connection: &Connection) -> Result<Option<i64>> {
         .map_err(translate)
 }
 
-/// Whether a file is newer than this build reads. The seam's version is the
-/// fact, not a table's shape: a v5 home answers here before anything writes.
+/// Whether a file is the Swift store's or newer than this build reads.
+///
+/// **The seam's actor is what tells the two stores apart.** The Swift store's
+/// `schema_migrations` carries `version` and `appliedAt`; every version this
+/// port writes carries its `author` (PRT-4), so a seam without that column is
+/// the Swift store's, whatever its version says. The number alone cannot decide
+/// it any more: the port's versions have moved past the Swift store's v5, so a
+/// v5 file would otherwise read as merely behind this build and be migrated.
+///
+/// A Rust file whose seam is past [`CURRENT_VERSION`] is refused on the version,
+/// as before: that is a newer build's store, and this one cannot read it.
 pub fn refuse_legacy(connection: &Connection) -> Result<()> {
+    if has_table(connection, "schema_migrations")?
+        && !has_column(connection, "schema_migrations", "author")?
+    {
+        return Err(StoreError::Legacy {
+            version: version(connection)?.unwrap_or(0),
+        });
+    }
     match version(connection)? {
         Some(applied) if applied > CURRENT_VERSION => Err(StoreError::Legacy { version: applied }),
         _ => Ok(()),
@@ -263,6 +305,17 @@ fn create_seam(connection: &Connection) -> Result<()> {
                 author     TEXT NOT NULL
             )",
         )
+        .map_err(translate)
+}
+
+fn has_column(connection: &Connection, table: &str, column: &str) -> Result<bool> {
+    connection
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info(?1) WHERE name = ?2",
+            params![table, column],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|count| count > 0)
         .map_err(translate)
 }
 
