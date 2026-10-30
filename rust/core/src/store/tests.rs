@@ -784,8 +784,12 @@ mod refusal {
         );
     }
 
+    /// A clean legacy file: no journal beside it, so the version read is the
+    /// only read and the refusal writes nothing. A v5 file carrying a hot
+    /// journal is a different case: the read-write open rolls that journal back
+    /// before the seam is read, which changes no row and no schema.
     #[test]
-    fn a_refused_file_is_left_as_it_was() {
+    fn a_refused_clean_file_is_left_as_it_was() {
         let sandbox = Sandbox::new("refuse-untouched");
         v5_file(&sandbox.database());
         let before = fs::read(sandbox.database()).unwrap();

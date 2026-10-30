@@ -147,7 +147,10 @@ impl Store {
             let database = self.database();
             let existed = database.exists();
             let connection = open(&database)?;
-            // Refuse before the journal mode moves: a v5 file is left as it was.
+            // Refuse before any table is written and before the journal mode
+            // moves. A clean v5 file is left byte for byte; one carrying a hot
+            // journal has that journal rolled back by this open itself, which
+            // changes no row and no schema.
             schema::refuse_legacy(&connection)?;
             switch_to_wal(&connection)?;
             // A migration commits in its own transaction, so the pre-migration

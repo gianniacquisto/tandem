@@ -215,7 +215,17 @@ impl LockedDirectory {
                     if Instant::now() >= deadline {
                         return Err(StoreError::Locked);
                     }
-                    thread::sleep(backoff());
+                    // Yield, do not sleep. The holder releases and reacquires
+                    // the lock within tens of microseconds, so a retry that
+                    // pauses for milliseconds misses the gap between two writes
+                    // and can be excluded for the whole queue: measured on the
+                    // Windows runner, a waiter answered `Locked` after the full
+                    // window while the lock stood free between every write, and
+                    // on Ubuntu it waited 95 ms of a 117 ms queue. Yielding
+                    // competes for the gap, so a waiter is turned away for about
+                    // one write and not for the queue, and the deadline still
+                    // bounds it.
+                    thread::yield_now();
                 }
                 Err(TryLockError::Error(error)) => {
                     return Err(StoreError::Io(format!(
@@ -270,15 +280,4 @@ fn stamp() -> String {
         .map(|elapsed| elapsed.as_nanos())
         .unwrap_or(0);
     format!("{}-{nanos}-{serial}", std::process::id())
-}
-
-/// The retry's pause, 10 to 50 ms as the Swift primitive has it. A small
-/// xorshift keeps two waiters apart without a random-number dependency.
-fn backoff() -> Duration {
-    static NEXT: AtomicU64 = AtomicU64::new(0x9E37_79B9_7F4A_7C15);
-    let mut value = NEXT.fetch_add(0x9E37_79B9_7F4A_7C15, Ordering::Relaxed);
-    value ^= value >> 12;
-    value ^= value << 25;
-    value ^= value >> 27;
-    Duration::from_micros(10_000 + value % 40_001)
 }
