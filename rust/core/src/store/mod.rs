@@ -18,6 +18,10 @@
 //! - **One write, one transaction.** WAL, a ~2 s busy window that surfaces as
 //!   [`StoreError::Locked`], and a rolling backup of the pre-write state
 //!   (ADR 0018). Reads open read-only and never write.
+//! - **A revision per write** (the `schema` module). `store_meta.revision`
+//!   moves inside the write's transaction, so a listing and the event that
+//!   follows it name the same number, and a receipt cannot carry a number a
+//!   concurrent writer moved (PRT-11).
 //! - **No sidecar lock.** The store takes no `flock` and writes no lock file:
 //!   a `BEGIN IMMEDIATE` transaction is the writer and the ~2 s busy window is
 //!   the contention bound across processes (ADR 0031), so a `tandem.lock`
@@ -48,6 +52,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, TryLockError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -159,15 +164,39 @@ pub type Result<T> = std::result::Result<T, StoreError>;
 #[derive(Debug, Clone)]
 pub struct Store {
     home: Home,
+    /// The revision of the last write this store performed, read inside that
+    /// write's transaction and shared by every clone. A receipt can carry the
+    /// exact number its rows are at, without a second transaction that another
+    /// writer could move.
+    last_revision: Arc<AtomicI64>,
+    /// How many times `watch` has opened a connection. Test-facing: the point
+    /// of the watch is that a held connection is reused, not reopened a tick.
+    /// Unix only, because the case that reads it replaces the store under the
+    /// held watch, which Windows refuses to do (PRT-26).
+    #[cfg(all(test, unix))]
+    watch_opens: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Store {
     pub fn new(home: Home) -> Self {
-        Self { home }
+        Self {
+            home,
+            last_revision: Arc::new(AtomicI64::new(0)),
+            #[cfg(all(test, unix))]
+            watch_opens: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        }
     }
 
     pub fn home(&self) -> &Home {
         &self.home
+    }
+
+    /// Whether the home carries a database file. The watch asks this to tell a
+    /// home nothing has written yet, whose retry costs a `stat` and no
+    /// connection, from a store that exists but carries no revision row (a
+    /// pre-v4 file), which every attempt opens.
+    pub fn exists(&self) -> bool {
+        self.database().exists()
     }
 
     /// The database: `<home>/tandem.db`.
@@ -198,6 +227,80 @@ impl Store {
         // table the port does not have.
         schema::refuse_legacy(&connection)?;
         body(&connection).map(Some)
+    }
+
+    /// A read and the revision it is a snapshot of, in **one** read
+    /// transaction: the first `SELECT` takes the snapshot, the second sees the
+    /// same one, so a listing cannot pair rows with a revision a writer moved
+    /// between two statements.
+    pub(crate) fn read_snapshot<T>(
+        &self,
+        body: impl FnOnce(&Connection) -> Result<T>,
+    ) -> Result<Option<(T, i64)>> {
+        let database = self.database();
+        if !database.exists() {
+            return Ok(None);
+        }
+        let connection = open_read_only(&database)?;
+        schema::refuse_legacy(&connection)?;
+        connection
+            .execute_batch("BEGIN DEFERRED")
+            .map_err(translate)?;
+        let outcome = (|| {
+            let revision = schema::revision(&connection)?;
+            let value = body(&connection)?;
+            Ok((value, revision))
+        })();
+        match outcome {
+            Ok(value) => {
+                connection.execute_batch("COMMIT").map_err(translate)?;
+                Ok(Some(value))
+            }
+            Err(error) => {
+                let _ = connection.execute_batch("ROLLBACK");
+                Err(error)
+            }
+        }
+    }
+
+    /// A read-only connection kept open for the change watch. The watch polls
+    /// this instead of opening a connection per tick: an idle child runs one
+    /// query on one connection, not ~25 opens a second.
+    ///
+    /// **Any readable store is watchable, WAL or not.** ADR 0031's restore
+    /// renames the rollback-journal backup over `tandem.db`; refusing a
+    /// non-WAL file would leave the stream blind until the next write switched
+    /// WAL back, and the app showing the pre-restore board. The revision lives
+    /// in `store_meta`, which reads in either journal mode, so the watch
+    /// attaches and reports the restored number. A file with no revision row
+    /// yet (a fresh home mid-first-write, or a pre-v4 file) answers `None`; the
+    /// caller retries, and holding a reader there would only race the first
+    /// write's one-time WAL switch.
+    pub fn watch(&self) -> Result<Option<RevisionWatch>> {
+        let database = self.database();
+        if !database.exists() {
+            return Ok(None);
+        }
+        #[cfg(all(test, unix))]
+        self.watch_opens.fetch_add(1, Ordering::Relaxed);
+        let connection = open_read_only(&database)?;
+        schema::refuse_legacy(&connection)?;
+        if schema::revision(&connection)? == 0 {
+            return Ok(None);
+        }
+        let file = StoreFile::of(&database)?;
+        Ok(Some(RevisionWatch {
+            connection,
+            database,
+            file,
+        }))
+    }
+
+    /// How many connections `watch` has opened. Test-facing, so a case can pin
+    /// that a held watch is reused rather than reopened on every tick.
+    #[cfg(all(test, unix))]
+    pub(crate) fn watch_opens(&self) -> u64 {
+        self.watch_opens.load(Ordering::Relaxed)
     }
 
     /// A write: one `BEGIN IMMEDIATE` transaction with the caller's inserts
@@ -241,6 +344,7 @@ impl Store {
         schema::migrate(&connection, actor)?;
 
         begin_immediate(&connection)?;
+        let changes_before = connection.total_changes();
         let write = Write {
             connection: &connection,
             actor,
@@ -253,7 +357,19 @@ impl Store {
         };
         match body(&write) {
             Ok(value) => {
+                // The revision moves with the rows, inside the same
+                // transaction, and is read back before the commit: the receipt
+                // carries the number its own rows are at, never a later one a
+                // second transaction could pair with them. The UPDATE statements
+                // guard on the values, so a write that touched a row without
+                // changing it (a same-value set) is not a change event.
+                let revision = if connection.total_changes() > changes_before {
+                    schema::bump_revision(&connection)?
+                } else {
+                    schema::revision(&connection)?
+                };
                 commit(&connection)?;
+                self.last_revision.store(revision, Ordering::Relaxed);
                 Ok(value)
             }
             Err(error) => {
@@ -290,6 +406,77 @@ impl Store {
             Some(version) => Ok(version),
             None => Ok(None),
         }
+    }
+
+    /// The revision of the last write this store performed, read inside that
+    /// write's transaction. A receipt carries this number, so its payload and
+    /// its revision cannot be split by a concurrent writer.
+    pub fn last_revision(&self) -> i64 {
+        self.last_revision.load(Ordering::Relaxed)
+    }
+
+    /// The store's revision: the number every listing carries and every change
+    /// event repeats (PRT-11).
+    ///
+    /// A home with no database yet reads 0, and a file written before the
+    /// revision existed reads 0 too: a read migrates nothing (ADR 0031). The
+    /// number moves inside the write's transaction, so a reader either sees the
+    /// row change and the revision together or sees neither.
+    pub fn revision(&self) -> Result<i64> {
+        Ok(self.read(schema::revision)?.unwrap_or(0))
+    }
+}
+
+/// A read-only connection the change watch keeps open and polls.
+///
+/// ADR 0031's restore replaces `tandem.db` by rename, so a connection held for
+/// the process's life would keep reading the retired inode after a restore and
+/// the stream would go silent. The watch therefore remembers the file it opened
+/// and answers an error once the path names another one; the caller reopens.
+pub struct RevisionWatch {
+    connection: Connection,
+    database: PathBuf,
+    file: StoreFile,
+}
+
+impl RevisionWatch {
+    /// The store's revision as this connection currently sees it.
+    pub fn revision(&self) -> Result<i64> {
+        if StoreFile::of(&self.database)? != self.file {
+            return Err(StoreError::Io(format!(
+                "{} was replaced; the watch reopens",
+                self.database.display()
+            )));
+        }
+        schema::revision(&self.connection)
+    }
+}
+
+/// The identity of the file a watch holds, enough to tell that the path now
+/// names a different file without mistaking a write for a replacement.
+/// `dev`/`ino` decide on Unix; elsewhere the creation time does, because a
+/// renamed-over database is a different file and a write never recreates it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StoreFile {
+    created: Option<std::time::SystemTime>,
+    #[cfg(unix)]
+    dev: u64,
+    #[cfg(unix)]
+    ino: u64,
+}
+
+impl StoreFile {
+    fn of(path: &Path) -> Result<Self> {
+        let metadata = fs::metadata(path).map_err(|error| {
+            StoreError::Io(format!("could not stat {}: {error}", path.display()))
+        })?;
+        Ok(Self {
+            created: metadata.created().ok(),
+            #[cfg(unix)]
+            dev: std::os::unix::fs::MetadataExt::dev(&metadata),
+            #[cfg(unix)]
+            ino: std::os::unix::fs::MetadataExt::ino(&metadata),
+        })
     }
 }
 

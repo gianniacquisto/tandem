@@ -939,3 +939,26 @@ pub fn verb(name: &str) -> Option<&'static str> {
         _ => return None,
     })
 }
+
+/// `rpc`: the Rust-only verb the app spawns (PRT-11). The root text is the
+/// Swift binary's byte for byte, so this one is reachable by its own `--help`
+/// and is not listed among the agent verbs.
+pub const RPC: &str = concat!(
+    "tandem-cli rpc: speak the JSON protocol on stdin and stdout.",
+    "\n",
+    "",
+    "\n",
+    "Usage:",
+    "\n",
+    "  tandem-cli rpc [--home <path>]",
+    "\n",
+    "",
+    "\n",
+    "One JSON frame per line: a request carries `id`, `method` and `params`; a",
+    "\n",
+    "response echoes `id` with `result` or `error`; a change event carries",
+    "\n",
+    "`event` and the store's new `revision`. The app spawns this mode; a closed",
+    "\n",
+    "stdin ends it.",
+);

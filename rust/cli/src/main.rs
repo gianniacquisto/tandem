@@ -26,7 +26,9 @@ use tandem_core::bikeshed::{Bikeshed, CaptureKind};
 use tandem_core::diagnostics;
 use tandem_core::domain::session::{SessionOutcome, SessionTokens, Sessions, parse_skills};
 use tandem_core::domain::sprint::{SprintMode, Sprints};
-use tandem_core::domain::{AddTicket, Board, DomainError, Edit, SetFields, Status, TicketQuery};
+use tandem_core::domain::{
+    AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Status, TicketQuery,
+};
 use tandem_core::setup::{self, Environment};
 use tandem_core::store::{self, Actor, Home, Store};
 use tandem_core::wire::{
@@ -96,6 +98,8 @@ enum Command {
     },
     /// Report whether this machine's Tandem setup is sound (ADR 0014).
     Doctor,
+    /// Speak the app's JSON protocol on stdin and stdout (PRT-11).
+    Rpc,
 }
 
 #[derive(Subcommand)]
@@ -545,6 +549,7 @@ fn help_text(cli: &Cli) -> &'static str {
     let name = match &cli.command {
         None => return usage::ROOT,
         Some(Command::Doctor) => return usage::verb("doctor").unwrap_or(usage::ROOT),
+        Some(Command::Rpc) => return usage::RPC,
         Some(Command::Ticket { command }) => match command {
             None => return usage::group("ticket").unwrap_or(usage::ROOT),
             Some(TicketCommand::Comment { command: None }) => "ticket comment",
@@ -665,6 +670,7 @@ fn run(cli: &Cli) -> Result<(), Failure> {
 
     match command {
         Command::Doctor => doctor(&home),
+        Command::Rpc => rpc(&home),
         Command::Ticket { command } => ticket(&home, command.as_ref()),
         Command::Lane { command } => lane(&home, command.as_ref()),
         Command::Note { command } => note(&home, command.as_ref()),
@@ -1242,31 +1248,18 @@ fn capture_session_default() -> String {
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()[..8].to_string())
 }
 
-/// `--assignee self` is the agent running this command: its name is
-/// `$TANDEM_AGENT`. Any other value passes through, including `""`, which
-/// selects the unowned tickets.
+/// `--assignee self` is the agent running this command: the core's rule, shared
+/// with the wire's `ticket.list` and `ticket.add`, so the same value cannot mean
+/// two things. Any other value passes through, including `""`, which selects the
+/// unowned tickets.
 fn resolve_assignee(raw: Option<&str>) -> Result<Option<String>, Failure> {
-    match raw {
-        Some("self") => Ok(Some(agent_name()?)),
-        other => Ok(other.map(str::to_string)),
-    }
+    tandem_core::domain::resolve_assignee(raw, &Actor::current()).map_err(Failure::domain)
 }
 
-/// `--origin self` is the agent; an absent flag is the human. Any other value
-/// passes through to the domain, which owns the spelling rule.
+/// `--origin self` is the agent; an absent flag is the human. The core owns the
+/// rule, the same one the wire calls.
 fn resolve_origin(raw: Option<&str>) -> Result<String, Failure> {
-    match raw {
-        Some("self") => Ok(agent_name()?),
-        Some(other) => Ok(other.to_string()),
-        None => Ok("human".to_string()),
-    }
-}
-
-fn agent_name() -> Result<String, Failure> {
-    match env::var("TANDEM_AGENT") {
-        Ok(name) if !name.trim().is_empty() => Ok(name),
-        _ => Err(Failure::domain(DomainError::AgentNameUnset)),
-    }
+    tandem_core::domain::resolve_origin(raw, &Actor::current()).map_err(Failure::domain)
 }
 
 /// A session record's handle: `--session`, else `$OPENCODE_SESSION_ID`. The
@@ -1301,23 +1294,21 @@ fn description_body(flag: &str) -> Result<String, Failure> {
 }
 
 /// `--description` on `ticket add`: no flag is no description, and a named flag
-/// must carry text. A new ticket has no earlier body to clear.
+/// must carry text. A new ticket has no earlier body to clear. The refusal is
+/// the core's (`DescriptionBody::required`), the same one the wire's
+/// `ticket.add` makes.
 fn add_description_body(flag: Option<&str>) -> Result<Option<String>, Failure> {
     match flag {
         None => Ok(None),
         Some("-") => {
             let body = read_standard_input()?;
-            if body.trim().is_empty() {
-                return Err(Failure::domain(DomainError::EmptyDescriptionBody));
-            }
-            Ok(Some(body))
+            Ok(Some(
+                DescriptionBody::required(&body).map_err(Failure::domain)?,
+            ))
         }
-        Some(body) => {
-            if body.trim().is_empty() {
-                return Err(Failure::domain(DomainError::EmptyDescriptionBody));
-            }
-            Ok(Some(body.to_string()))
-        }
+        Some(body) => Ok(Some(
+            DescriptionBody::required(body).map_err(Failure::domain)?,
+        )),
     }
 }
 
@@ -1571,6 +1562,20 @@ fn close_sprint_number(sprints: &Sprints, lane: &str) -> Result<i64, Failure> {
         .ok_or_else(|| Failure::domain(DomainError::NoOpenSprint(lane.to_string())))
 }
 
+// MARK: - rpc
+
+/// The app's door: frames on stdin, frames on stdout, and an exit on a closed
+/// stdin. The protocol lives in the core (`tandem_core::rpc`); this arm is only
+/// the process that owns the two streams.
+fn rpc(home: &Home) -> Result<(), Failure> {
+    tandem_core::rpc::serve(
+        tandem_core::rpc::StdioStream::new(),
+        Store::new(home.clone()),
+        Actor::current(),
+    )
+    .map_err(|error| Failure::message(format!("The rpc stream failed: {error}. Try again.")))
+}
+
 // MARK: - doctor
 
 /// `doctor` (ADR 0014): a setup report is not a domain call, so it does not go
@@ -1654,4 +1659,27 @@ fn environment() -> Environment {
     std::env::vars_os()
         .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
         .collect()
+}
+
+// MARK: - The wire's parity gate
+
+/// The machine half of parity item 3 (`docs/port.md`): every method the wire
+/// speaks names a CLI verb, and the grammar answers it. A mutation message
+/// without a verb is a UI-only write, which the contract forbids.
+#[cfg(test)]
+mod wire_parity {
+    use super::*;
+
+    #[test]
+    fn every_wire_method_names_a_cli_verb() {
+        for (tag, verb) in tandem_core::wire::rpc::METHODS {
+            let argv = std::iter::once("tandem").chain(verb.split(' '));
+            Cli::try_parse_from(argv).unwrap_or_else(|error| {
+                panic!(
+                    "the wire's `{tag}` names the CLI verb `{verb}`, which the grammar does not \
+                     answer: {error}"
+                )
+            });
+        }
+    }
 }

@@ -78,28 +78,45 @@ impl Store {
         self.read(read_board)
     }
 
+    /// The board and the revision it is a snapshot of, read in one transaction:
+    /// a listing's rows and its number cannot be split by a concurrent writer.
+    pub(crate) fn board_snapshot(&self) -> Result<Option<(BoardRows, i64)>> {
+        self.read_snapshot(read_board)
+    }
+
     /// One ticket's comments in append order, or `None` when there is no
     /// database yet.
     pub(crate) fn comment_rows(&self, ticket_id: &str) -> Result<Option<Vec<CommentRow>>> {
-        self.read(|connection| {
-            let mut statement = connection
-                .prepare(
-                    "SELECT author, at, body FROM comments WHERE ticket_id = ?1 ORDER BY rowid",
-                )
-                .map_err(translate)?;
-            let rows = statement
-                .query_map([ticket_id], |row| {
-                    Ok(CommentRow {
-                        author: row.get(0)?,
-                        at: row.get(1)?,
-                        body: row.get(2)?,
-                    })
-                })
-                .map_err(translate)?;
-            rows.collect::<std::result::Result<Vec<_>, _>>()
-                .map_err(translate)
-        })
+        self.read(|connection| read_comments(connection, ticket_id))
     }
+
+    /// One ticket's comments and the revision they are a snapshot of, in one
+    /// read transaction: the payload and its number cannot be split.
+    pub(crate) fn comment_snapshot(
+        &self,
+        ticket_id: &str,
+    ) -> Result<Option<(Vec<CommentRow>, i64)>> {
+        self.read_snapshot(|connection| read_comments(connection, ticket_id))
+    }
+}
+
+/// One ticket's comments in append order, on any connection: the store's read
+/// path and a snapshot's own transaction both use it.
+fn read_comments(connection: &rusqlite::Connection, ticket_id: &str) -> Result<Vec<CommentRow>> {
+    let mut statement = connection
+        .prepare("SELECT author, at, body FROM comments WHERE ticket_id = ?1 ORDER BY rowid")
+        .map_err(translate)?;
+    let rows = statement
+        .query_map([ticket_id], |row| {
+            Ok(CommentRow {
+                author: row.get(0)?,
+                at: row.get(1)?,
+                body: row.get(2)?,
+            })
+        })
+        .map_err(translate)?;
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(translate)
 }
 
 /// The board as one read, on any connection: the store's read path and a write's
@@ -201,7 +218,9 @@ impl Write<'_> {
                 Some(old) if old == new => {}
                 Some(_) => self.execute(
                     "UPDATE lanes SET key = ?2, last_number = ?3, position = ?4, author = ?5
-                     WHERE name = ?1",
+                     WHERE name = ?1
+                       AND (key IS NOT ?2 OR last_number IS NOT ?3
+                            OR position IS NOT ?4 OR author IS NOT ?5)",
                     params![
                         new.name,
                         new.key,
@@ -231,7 +250,14 @@ impl Write<'_> {
                             archived = ?5, lane = ?6, number = ?7, origin = ?8,
                             assignee = ?9, link = ?10, position = ?11,
                             created_at = ?12, completed_at = ?13, author = ?14
-                     WHERE id = ?1",
+                     WHERE id = ?1
+                       AND (title IS NOT ?2 OR description IS NOT ?3
+                            OR status IS NOT ?4 OR archived IS NOT ?5
+                            OR lane IS NOT ?6 OR number IS NOT ?7
+                            OR origin IS NOT ?8 OR assignee IS NOT ?9
+                            OR link IS NOT ?10 OR position IS NOT ?11
+                            OR created_at IS NOT ?12 OR completed_at IS NOT ?13
+                            OR author IS NOT ?14)",
                     params![
                         new.id,
                         new.title,

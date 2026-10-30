@@ -1739,3 +1739,60 @@ fn bundled_sqlite_answers() {
         .expect("the engine answers");
     assert!(!version.is_empty(), "SQLite reports its version");
 }
+
+// The restore below renames the backup over the store while a watch holds the
+// file open. Windows refuses to remove or rename a file another handle has
+// open (SQLite's VFS does not ask for `FILE_SHARE_DELETE`), so the case is
+// exercised on unix only, the same gate the pipe test in `cli/tests/rpc.rs`
+// carries. PRT-26 names the Windows restore path.
+#[cfg(unix)]
+#[test]
+fn a_restored_store_is_watched_without_reopening() {
+    let sandbox = Sandbox::new("watch-restore");
+    let store = sandbox.store();
+    setting(&store, &Actor::Human, "one", "1");
+    setting(&store, &Actor::Human, "two", "2");
+
+    let watch = store
+        .watch()
+        .expect("the store opens")
+        .expect("a WAL store is watchable");
+    let before = watch.revision().expect("the revision reads");
+
+    // ADR 0031's restore: remove the journal files and the database, then move
+    // the rollback-journal backup over the path.
+    let home = sandbox.home_path();
+    let _ = fs::remove_file(home.join("tandem.db-wal"));
+    let _ = fs::remove_file(home.join("tandem.db-shm"));
+    fs::remove_file(sandbox.database()).expect("the database is removable");
+    fs::rename(sandbox.backup(), sandbox.database()).expect("the backup moves over the path");
+
+    assert!(
+        watch.revision().is_err(),
+        "the held watch notices the replacement"
+    );
+
+    // A restored store is watchable: store_meta reads in rollback-journal mode,
+    // so the stream re-attaches instead of going blind.
+    let restored = store
+        .watch()
+        .expect("the restored store opens")
+        .expect("a restored store is watchable");
+    let revision = restored.revision().expect("store_meta reads without WAL");
+    assert!(revision < before, "the backup is an earlier revision");
+
+    let opens = store.watch_opens();
+    for _ in 0..10 {
+        restored.revision().expect("the watch reads");
+    }
+    assert_eq!(
+        store.watch_opens(),
+        opens,
+        "a held watch does not open a connection per read"
+    );
+
+    // The held read-only connection does not block the next write's one-time
+    // switch back to WAL.
+    setting(&store, &Actor::Human, "three", "3");
+    assert!(restored.revision().expect("the watch reads") > revision);
+}

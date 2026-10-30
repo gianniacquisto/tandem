@@ -28,6 +28,7 @@
 pub mod bikeshed;
 pub mod diagnostics;
 pub mod domain;
+pub mod rpc;
 pub mod setup;
 pub mod store;
 pub mod wire;

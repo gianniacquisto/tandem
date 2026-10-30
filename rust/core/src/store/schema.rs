@@ -25,7 +25,7 @@ use super::{Actor, Result, StoreError, timestamp, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 3;
+pub const CURRENT_VERSION: i64 = 4;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -51,6 +51,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: SKILLS_VERSION,
         name: "the session skill counts",
         apply: version_three,
+    },
+    Migration {
+        version: REVISION_VERSION,
+        name: "the store's revision",
+        apply: version_four,
     },
 ];
 
@@ -165,6 +170,29 @@ pub(crate) const SKILLS_VERSION: i64 = 3;
 /// revert path a merge of this change has.
 const VERSION_THREE: &str = "ALTER TABLE sessions ADD COLUMN skills TEXT;";
 
+/// The version that adds the store's revision: one row in `store_meta`, moved
+/// by every write that changes a row (PRT-11).
+pub(crate) const REVISION_VERSION: i64 = 4;
+
+/// Version 4: the store's revision, the number every listing carries and every
+/// change event repeats.
+///
+/// It is a stored counter and not the engine's `data_version`, because the
+/// revision has to mean the same thing to every process: `PRAGMA data_version`
+/// is per connection and tells a reader only that *its* view moved. One row,
+/// bumped inside the write's own transaction, is the one truth the CLI, the app
+/// and a second terminal can agree on.
+///
+/// A read of a store below this version answers revision 0 and migrates
+/// nothing (ADR 0031); the first write migrates and bumps.
+const VERSION_FOUR: &str = "
+CREATE TABLE IF NOT EXISTS store_meta (
+    key   TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO store_meta (key, value) VALUES ('revision', 1);
+";
+
 fn version_one(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_ONE)
 }
@@ -175,6 +203,38 @@ fn version_two(connection: &Connection) -> rusqlite::Result<()> {
 
 fn version_three(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_THREE)
+}
+
+fn version_four(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(VERSION_FOUR)
+}
+
+/// The store's revision: the stored counter, or 0 when this file predates the
+/// table. A read never migrates, so an older file answers 0 rather than
+/// failing on a table it does not have (ADR 0031).
+pub(crate) fn revision(connection: &Connection) -> Result<i64> {
+    if !has_table(connection, "store_meta")? {
+        return Ok(0);
+    }
+    connection
+        .query_row(
+            "SELECT value FROM store_meta WHERE key = 'revision'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(translate)
+}
+
+/// Move the revision by one. Called inside the write's own transaction, and
+/// only when the write changed a row: a no-op is not a move.
+pub(crate) fn bump_revision(connection: &Connection) -> Result<i64> {
+    connection
+        .execute(
+            "UPDATE store_meta SET value = value + 1 WHERE key = 'revision'",
+            [],
+        )
+        .map_err(translate)?;
+    revision(connection)
 }
 
 /// Apply every migration newer than the recorded version, in order, one

@@ -108,10 +108,31 @@ impl Board {
         self.list(&filter.query())
     }
 
+    /// `list(query)` and the revision its rows are a snapshot of, read in one
+    /// transaction: a listing cannot pair rows with a number a writer moved
+    /// between the two statements (PRT-11).
+    pub fn list_snapshot(&self, query: &TicketQuery) -> Result<(Vec<Ticket>, i64), DomainError> {
+        let Some((rows, revision)) = self.store.board_snapshot()? else {
+            return Ok((Vec::new(), 0));
+        };
+        let contents = Contents::from_rows(&rows)?;
+        Ok((query.apply(&contents.tickets), revision))
+    }
+
     /// The lane names in render order (the default area is implicit and unnamed).
     /// Includes any name that appears only on a ticket, so a face can draw it.
     pub fn lanes(&self) -> Result<Vec<String>, DomainError> {
         Ok(self.load()?.known_lanes())
+    }
+
+    /// [`lanes`](Self::lanes) and the revision its names are a snapshot of, read
+    /// in one transaction.
+    pub fn lanes_snapshot(&self) -> Result<(Vec<String>, i64), DomainError> {
+        let Some((rows, revision)) = self.store.board_snapshot()? else {
+            return Ok((Vec::new(), 0));
+        };
+        let contents = Contents::from_rows(&rows)?;
+        Ok((contents.known_lanes(), revision))
     }
 
     /// `ticket(id)`: the ticket a handle names, or the failure every id-taking
@@ -122,6 +143,20 @@ impl Board {
         Ok(contents.tickets[index].clone())
     }
 
+    /// [`ticket`](Self::ticket) and the revision its row is a snapshot of, read
+    /// in one transaction.
+    pub fn ticket_snapshot(&self, handle: &str) -> Result<(Ticket, i64), DomainError> {
+        let Some((rows, revision)) = self.store.board_snapshot()? else {
+            return Err(DomainError::UnknownId {
+                id: handle.to_string(),
+                open: Vec::new(),
+            });
+        };
+        let contents = Contents::from_rows(&rows)?;
+        let (_, index) = contents.require_ticket(handle)?;
+        Ok((contents.tickets[index].clone(), revision))
+    }
+
     /// `comments(id)`: the ticket's comments in append order, or an empty list.
     /// The ticket must exist; an unknown handle is the same failure `append`
     /// raises, with an empty list the answer only for a ticket that has none.
@@ -129,6 +164,22 @@ impl Board {
         let contents = self.load()?;
         let (id, _) = contents.require_ticket(handle)?;
         self.comment_rows(id)
+    }
+
+    /// [`comments`](Self::comments) and the revision they are a snapshot of,
+    /// read in one transaction: the handle is resolved first, then the log and
+    /// its number come from one read.
+    pub fn comments_snapshot(&self, handle: &str) -> Result<(Vec<Comment>, i64), DomainError> {
+        let contents = self.load()?;
+        let (id, _) = contents.require_ticket(handle)?;
+        let Some((rows, revision)) = self.store.comment_snapshot(&id.to_string())? else {
+            return Ok((Vec::new(), 0));
+        };
+        let comments = rows
+            .into_iter()
+            .map(comment_from_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((comments, revision))
     }
 
     /// The app's read path: the log, or why it could not be read. The two failures
@@ -772,21 +823,7 @@ impl Board {
             .store
             .comment_rows(&id.to_string())?
             .unwrap_or_default();
-        rows.into_iter()
-            .map(|row| {
-                let at = timestamp::decode(&row.at).ok_or_else(|| {
-                    DomainError::Io(format!(
-                        "a comment row carries an unreadable timestamp \"{}\"",
-                        row.at
-                    ))
-                })?;
-                Ok(Comment {
-                    author: row.author,
-                    at,
-                    body: row.body,
-                })
-            })
-            .collect()
+        rows.into_iter().map(comment_from_row).collect()
     }
 
     // MARK: - The read-modify-write
@@ -850,6 +887,22 @@ impl Board {
 /// A store failure as the domain's two words.
 fn map_store_error(error: crate::store::StoreError) -> DomainError {
     error.into()
+}
+
+/// One comment row as the domain reads it: its stamp decoded or the row named
+/// as unreadable. The read path and the snapshot path share this conversion.
+fn comment_from_row(row: crate::store::board_rows::CommentRow) -> Result<Comment, DomainError> {
+    let at = timestamp::decode(&row.at).ok_or_else(|| {
+        DomainError::Io(format!(
+            "a comment row carries an unreadable timestamp \"{}\"",
+            row.at
+        ))
+    })?;
+    Ok(Comment {
+        author: row.author,
+        at,
+        body: row.body,
+    })
 }
 
 /// The key `requested` must not be another lane's, compared uppercased.
@@ -983,6 +1036,34 @@ fn appending(section: &str, description: Option<&str>) -> String {
     match description::normalize(description) {
         Some(existing) => format!("{existing}\n\n{section}"),
         None => section.to_string(),
+    }
+}
+
+/// The name `self` stands for: the agent running the call, never the human.
+fn self_name(actor: &Actor) -> Result<String, DomainError> {
+    match actor {
+        Actor::Agent(name) => Ok(name.clone()),
+        Actor::Human => Err(DomainError::AgentNameUnset),
+    }
+}
+
+/// `--assignee self` is the agent running this command, on the CLI and on the
+/// wire alike: one rule, so the same value cannot mean two things. Any other
+/// value passes through, including `""`, which selects the unowned tickets.
+pub fn resolve_assignee(raw: Option<&str>, actor: &Actor) -> Result<Option<String>, DomainError> {
+    match raw {
+        Some("self") => Ok(Some(self_name(actor)?)),
+        other => Ok(other.map(str::to_string)),
+    }
+}
+
+/// `--origin self` is the agent; an absent value is the human. Any other value
+/// passes through to the domain's spelling rule.
+pub fn resolve_origin(raw: Option<&str>, actor: &Actor) -> Result<String, DomainError> {
+    match raw {
+        Some("self") => self_name(actor),
+        Some(other) => Ok(other.to_string()),
+        None => Ok(HUMAN.to_string()),
     }
 }
 
