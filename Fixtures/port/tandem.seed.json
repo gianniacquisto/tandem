@@ -4,8 +4,8 @@
   },
   "lanes": [
     {
-      "name": "Port",
-      "key": "PRT",
+      "name": "Fixture",
+      "key": "FIX",
       "lastNumber": 2,
       "position": 0
     }
@@ -16,7 +16,7 @@
       "title": "the board",
       "status": "ready",
       "archived": false,
-      "lane": "Port",
+      "lane": "Fixture",
       "number": 1,
       "origin": "human",
       "assignee": null,
@@ -30,7 +30,7 @@
       "title": "the records",
       "status": "done",
       "archived": false,
-      "lane": "Port",
+      "lane": "Fixture",
       "number": 2,
       "origin": "human",
       "assignee": null,

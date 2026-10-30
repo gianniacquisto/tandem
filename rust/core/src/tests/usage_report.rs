@@ -220,8 +220,8 @@ fn the_ticket_rows_are_whole_per_ticket_and_the_ticketless_row_is_last() {
     assert_eq!(
         rows,
         vec![
-            (TICKET_ONE, "PRT-1: the board", 2, 2, 1.0),
-            (TICKET_TWO, "PRT-2: the records", 2, 1, 0.75),
+            (TICKET_ONE, "FIX-1: the board", 2, 2, 1.0),
+            (TICKET_TWO, "FIX-2: the records", 2, 1, 0.75),
             ("no-ticket", NO_TICKET_LABEL, 1, 1, 1.5),
         ],
         "a multi-ticket record lands whole in each row, and the ticketless row is last whatever it costs"
