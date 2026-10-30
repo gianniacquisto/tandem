@@ -190,7 +190,7 @@ mod locked {
         let fresh = sandbox.root().join(".tandem-fresh.tmp");
         fs::write(&fresh, b"fresh").unwrap();
 
-        storage.with_lock(|| Ok(())).expect("the lock runs");
+        let _guard = storage.lock().expect("the lock runs");
 
         assert!(!stale.exists(), "the stale orphan was not removed");
         assert!(fresh.exists(), "the fresh temp was wrongly removed");
@@ -205,7 +205,7 @@ mod locked {
         fs::write(&nested, b"stale").unwrap();
         aged(&nested, 120);
 
-        storage.with_lock(|| Ok(())).expect("the lock runs");
+        let _guard = storage.lock().expect("the lock runs");
 
         assert!(
             nested.exists(),
@@ -214,27 +214,24 @@ mod locked {
     }
 
     #[test]
-    fn with_lock_holds_the_exclusive_lock_for_the_body() {
+    fn lock_holds_the_exclusive_lock_for_the_guard() {
         let sandbox = Sandbox::new("excludes");
         let storage = storage(&sandbox);
         let lock = sandbox.root().join("tandem.lock");
 
-        storage
-            .with_lock(|| {
-                let held = OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .create(true)
-                    .truncate(false)
-                    .open(&lock)
-                    .expect("the lock file opens");
-                assert!(
-                    matches!(held.try_lock(), Err(fs::TryLockError::WouldBlock)),
-                    "a second handle took the lock while the body ran"
-                );
-                Ok(())
-            })
-            .expect("the body runs");
+        let guard = storage.lock().expect("the lock is taken");
+        let held = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock)
+            .expect("the lock file opens");
+        assert!(
+            matches!(held.try_lock(), Err(fs::TryLockError::WouldBlock)),
+            "a second handle took the lock while the guard held it"
+        );
+        drop(guard);
 
         let free = OpenOptions::new()
             .read(true)
@@ -243,7 +240,7 @@ mod locked {
             .expect("the lock file opens");
         assert!(
             free.try_lock().is_ok(),
-            "the lock was not released after the body"
+            "the lock was not released after the guard"
         );
     }
 
@@ -262,7 +259,7 @@ mod locked {
         held.try_lock().expect("the test takes the lock");
 
         let started = Instant::now();
-        let outcome = storage.with_lock(|| Ok(()));
+        let outcome = storage.lock().map(|_guard| ());
         let elapsed = started.elapsed();
         drop(held);
 
@@ -733,6 +730,43 @@ mod schema {
             Err(StoreError::Io(message)) => assert!(!message.is_empty()),
             other => panic!("expected the open to fail loudly, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_write_takes_no_sidecar_lock() {
+        use std::fs::OpenOptions;
+
+        let sandbox = Sandbox::new("sidecar");
+        let store = sandbox.store();
+        setting(&store, &Actor::Human, "seed", "1");
+
+        // ADR 0031 retires `tandem.lock` for the store: a write creates none,
+        // and one another process holds is inert rather than a wait.
+        let sidecar = sandbox.home_path().join("tandem.lock");
+        assert!(
+            !sidecar.exists(),
+            "a store write created the retired sidecar at {}",
+            sidecar.display()
+        );
+
+        let held = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&sidecar)
+            .expect("the sidecar opens");
+        held.try_lock().expect("the test takes the sidecar");
+
+        let started = Instant::now();
+        setting(&store, &Actor::Human, "next", "2");
+        let elapsed = started.elapsed();
+        drop(held);
+
+        assert!(
+            elapsed < Duration::from_millis(1_500),
+            "the write waited {elapsed:?} on a sidecar the store must not take"
+        );
     }
 
     #[test]
@@ -1212,10 +1246,9 @@ mod writes {
                             })
                             .unwrap_or_else(|error| {
                                 panic!(
-                                    "{key} answered {error} after {:?}; the longest wait for the \
-                                     sidecar lock in this process was {:?}",
-                                    started.elapsed(),
-                                    crate::store::locked::longest_wait()
+                                    "{key} answered {error} after {:?}; the store takes no \
+                                     sidecar lock, so the busy window is the only wait",
+                                    started.elapsed()
                                 )
                             });
                     }
