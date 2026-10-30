@@ -22,9 +22,9 @@ use std::path::Path;
 
 use rusqlite::{Connection, OpenFlags, params};
 
-use super::{StoreError, translate};
-use crate::error::{DomainError, DomainResult};
-use crate::session::{SessionTokens, SkillCounts};
+use super::error::{DomainError, DomainResult};
+use super::session::{SessionTokens, SkillCounts};
+use crate::store::{StoreError, translate};
 
 /// What the harness reported for one session: the usage triple and the skill
 /// counts, each piece absent when the harness did not report it.

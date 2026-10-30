@@ -3,8 +3,8 @@
 //! order, the name it renders, the grouping the faces read, and the record's
 //! life through the store.
 
-use crate::error::DomainError;
-use crate::sprint::{Sprint, SprintMode, SprintStatus, Sprints};
+use crate::domain::error::DomainError;
+use crate::domain::sprint::{Sprint, SprintMode, SprintStatus, Sprints};
 
 use super::support::{Sandbox, TICKET_ONE, TICKET_THREE, TICKET_TWO, at};
 
@@ -49,6 +49,39 @@ fn open_derives_the_number_within_its_lane() {
         already.note.as_deref(),
         Some("Sprint 1 — Port is already open")
     );
+}
+
+#[test]
+fn a_stamp_the_store_cannot_read_is_refused_before_it_is_written() {
+    let sandbox = Sandbox::new("sprint-stamp");
+    let store = sandbox.store();
+    let sprints = Sprints::new(&store);
+    let actor = sandbox.actor();
+
+    assert_eq!(
+        sprints
+            .open(
+                &actor,
+                "Port",
+                SprintMode::Serial,
+                None,
+                Some("2026-10-30T12:00:00")
+            )
+            .unwrap_err(),
+        DomainError::InvalidStamp("2026-10-30T12:00:00".to_string())
+    );
+    assert!(sprints.list(None, None).unwrap().is_empty());
+
+    sprints
+        .open(&actor, "Port", SprintMode::Serial, None, Some(&at(0)))
+        .unwrap();
+    assert_eq!(
+        sprints
+            .run(&actor, "Port", 1, "A note.", Some("soon"))
+            .unwrap_err(),
+        DomainError::InvalidStamp("soon".to_string())
+    );
+    assert!(sprints.show("Port", 1).unwrap().runs.is_empty());
 }
 
 #[test]

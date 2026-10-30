@@ -17,8 +17,8 @@
 
 use serde::Serialize;
 
-use crate::error::{DomainError, DomainResult};
-use crate::operation::Operation;
+use super::error::{DomainError, DomainResult};
+use super::operation::Operation;
 use crate::store::records::sprint_rows;
 use crate::store::{
     Actor, NewSprint, Result as StoreResult, SprintRow, Store, StoreError, timestamp,
@@ -190,7 +190,7 @@ impl Sprints {
             .map(str::trim)
             .filter(|name| !name.is_empty())
             .map(str::to_string);
-        let opened_at = at.map(str::to_string).unwrap_or_else(timestamp::now);
+        let opened_at = stamp(at)?;
         let (value, note) = self.mutate(actor, |sprints| {
             if let Some(existing) = sprints
                 .iter()
@@ -280,7 +280,7 @@ impl Sprints {
         if text.is_empty() {
             return Err(DomainError::EmptySprintNote);
         }
-        let stamped = at.map(str::to_string).unwrap_or_else(timestamp::now);
+        let stamped = stamp(at)?;
         let (value, note) = self.mutate(actor, |sprints| {
             let Some(index) = index_of(sprints, &lane, number) else {
                 return Err(unknown_sprint(sprints, &lane, number));
@@ -312,7 +312,7 @@ impl Sprints {
             Some(text) => Some(text.trim().to_string()),
             None => None,
         };
-        let closed_at = at.map(str::to_string).unwrap_or_else(timestamp::now);
+        let closed_at = stamp(at)?;
         let (value, note) = self.mutate(actor, |sprints| {
             let Some(index) = index_of(sprints, &lane, number) else {
                 return Err(unknown_sprint(sprints, &lane, number));
@@ -459,9 +459,24 @@ impl Sprints {
             return Err(failure);
         }
         outcome?;
-        result.ok_or_else(|| {
-            DomainError::Store(StoreError::Io("the write answered nothing".to_string()))
-        })
+        result.ok_or_else(|| DomainError::Io("the write answered nothing".to_string()))
+    }
+}
+
+/// The caller's stamp for a write, or now.
+///
+/// **Decoded at the write, refused when it is not a stamp.** The store's own
+/// form is ISO-8601 UTC, whole seconds, and the read side rejects anything else,
+/// so an undecoded value written here would poison every later read of the
+/// record: a bad `at` is a domain failure now, at the one call that can still
+/// say which value was wrong.
+fn stamp(at: Option<&str>) -> DomainResult<String> {
+    match at {
+        Some(text) => match timestamp::decode(text) {
+            Some(_) => Ok(text.to_string()),
+            None => Err(DomainError::InvalidStamp(text.to_string())),
+        },
+        None => Ok(timestamp::now()),
     }
 }
 

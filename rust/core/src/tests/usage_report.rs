@@ -7,8 +7,8 @@
 //! describes, built in memory: six relations over four records, and every total
 //! asserted against the number a reader can compute by hand.
 
-use crate::session::{Session, SessionOutcome, SessionStatus, SessionTokens};
-use crate::usage::{Calendar, NO_TICKET_LABEL, UsageReport, UsageTicket, usage_report};
+use crate::domain::session::{Session, SessionOutcome, SessionStatus, SessionTokens};
+use crate::domain::usage::{Calendar, NO_TICKET_LABEL, UsageReport, UsageTicket, usage_report};
 
 fn tokens(
     input: Option<i64>,

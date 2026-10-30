@@ -116,21 +116,6 @@ pub fn local_day(started_at: &str) -> Result<String> {
         .map_err(translate)
 }
 
-/// The machine's offset east of UTC, in seconds, at the instant `at` (whole
-/// seconds since the epoch). The offset is the zone's at *that* instant, so a
-/// reader can resolve days the way [`local_day`] does without a second query
-/// per record.
-pub fn local_offset_seconds(at: i64) -> Result<i64> {
-    let calendar = calendar_connection()?;
-    calendar
-        .query_row(
-            "SELECT CAST(strftime('%s', ?1, 'unixepoch', 'localtime') AS INTEGER) - ?1",
-            [at],
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(translate)
-}
-
 /// The in-memory engine the calendar questions run on. Bundled SQLite, no file,
 /// no sidecar: `localtime` is the C library's zone, the same one the Swift
 /// `Calendar` read.

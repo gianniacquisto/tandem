@@ -19,3 +19,10 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 ts-rs.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+# The busy-path suite holds the database exclusively the way another process
+# would, which only the engine's own handle can do (PRT-5).
+rusqlite.workspace = true
+uuid.workspace = true

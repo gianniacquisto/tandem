@@ -26,8 +26,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{DomainError, DomainResult};
-use crate::operation::Operation;
+use super::error::{DomainError, DomainResult};
+use super::operation::Operation;
 use crate::store::records::session_rows;
 use crate::store::{
     Actor, NewSession, Result as StoreResult, SessionRow, Store, StoreError, timestamp,
@@ -382,7 +382,7 @@ impl Sessions {
             .map(str::trim)
             .filter(|name| !name.is_empty())
             .map(str::to_string);
-        let started_at = at.map(str::to_string).unwrap_or_else(timestamp::now);
+        let started_at = stamp(at)?;
         let (value, note) = self.mutate(actor, |sessions| {
             if let Some(existing) = sessions.iter().find(|session| session.id == handle) {
                 return Ok((
@@ -439,7 +439,7 @@ impl Sessions {
             .map(str::trim)
             .filter(|name| !name.is_empty())
             .map(str::to_string);
-        let ended_at = at.map(str::to_string).unwrap_or_else(timestamp::now);
+        let ended_at = stamp(at)?;
         let ((value, stamped), note) = self.mutate(actor, |sessions| {
             let Some(index) = sessions.iter().position(|session| session.id == handle) else {
                 return Err(DomainError::UnknownSession {
@@ -673,9 +673,24 @@ impl Sessions {
             return Err(failure);
         }
         outcome?;
-        result.ok_or_else(|| {
-            DomainError::Store(StoreError::Io("the write answered nothing".to_string()))
-        })
+        result.ok_or_else(|| DomainError::Io("the write answered nothing".to_string()))
+    }
+}
+
+/// The caller's stamp for a write, or now.
+///
+/// **Decoded at the write, refused when it is not a stamp.** The store's own
+/// form is ISO-8601 UTC, whole seconds, and the read side rejects anything else,
+/// so an undecoded value written here would poison every later read of the
+/// record: a bad `at` is a domain failure now, at the one call that can still
+/// say which value was wrong.
+fn stamp(at: Option<&str>) -> DomainResult<String> {
+    match at {
+        Some(text) => match timestamp::decode(text) {
+            Some(_) => Ok(text.to_string()),
+            None => Err(DomainError::InvalidStamp(text.to_string())),
+        },
+        None => Ok(timestamp::now()),
     }
 }
 

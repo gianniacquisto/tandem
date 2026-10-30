@@ -96,6 +96,21 @@ impl Write<'_> {
         )
     }
 
+    /// Insert a comment whose author is the comment's own, not the write's actor.
+    /// The two are different facts: the actor made the write, the author said the
+    /// words, and only the CLI's `--author` names the second (the minutes rule).
+    pub(crate) fn insert_comment_authored(
+        &self,
+        author: &str,
+        comment: NewComment<'_>,
+    ) -> Result<()> {
+        self.before_mutation()?;
+        self.execute(
+            "INSERT INTO comments (ticket_id, author, at, body) VALUES (?1, ?2, ?3, ?4)",
+            params![comment.ticket_id, author, comment.at, comment.body],
+        )
+    }
+
     pub fn insert_comment(&self, comment: NewComment<'_>) -> Result<()> {
         self.before_mutation()?;
         self.execute(
@@ -269,7 +284,7 @@ impl Write<'_> {
     /// page. The copy is taken through its own read-only connection: a WAL
     /// reader sees the last committed state while this write waits, and the
     /// backup API does not run against a connection holding the write lock.
-    fn before_mutation(&self) -> Result<()> {
+    pub(crate) fn before_mutation(&self) -> Result<()> {
         if !self.backup.armed || self.backup.taken.get() {
             return Ok(());
         }
@@ -278,7 +293,7 @@ impl Write<'_> {
         Ok(())
     }
 
-    fn execute(&self, sql: &str, values: impl rusqlite::Params) -> Result<()> {
+    pub(crate) fn execute(&self, sql: &str, values: impl rusqlite::Params) -> Result<()> {
         self.connection
             .execute(sql, values)
             .map_err(super::translate)?;

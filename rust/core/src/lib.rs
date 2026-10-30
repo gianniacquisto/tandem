@@ -8,17 +8,14 @@
 //! - [`wire`]: the JSON the agent face prints and the app reads. The
 //!   TypeScript declarations are generated from the same types (`ts-rs`).
 //!
-//! The domain itself lands at this level, one module per aggregate: the records
-//! ([`session`], [`sprint`], [`usage`]) are this ticket's, and the board and the
-//! bikeshed are PRT-5's and PRT-7's. Every failure the domain raises is
-//! [`error::DomainError`], one shape for the CLI to print.
+//! - [`domain`]: the aggregates, pure over the adapter: the board's tickets,
+//!   lanes, comments, order and the dependency edge (PRT-5), and the records'
+//!   sessions, sprints and usage derivation (PRT-6). The bikeshed follows at this
+//!   level with PRT-7. Every failure the domain raises is
+//!   [`domain::error::DomainError`], one shape for the CLI to print.
 
-pub mod error;
-pub mod operation;
-pub mod session;
-pub mod sprint;
+pub mod domain;
 pub mod store;
-pub mod usage;
 pub mod wire;
 
 #[cfg(test)]

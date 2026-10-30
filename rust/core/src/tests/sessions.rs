@@ -2,8 +2,8 @@
 //! record's rules, the verb shapes those suites pinned, and the continuation the
 //! usage wrapper carries.
 
-use crate::error::DomainError;
-use crate::session::{
+use crate::domain::error::DomainError;
+use crate::domain::session::{
     Ending, SessionOutcome, SessionStatus, Sessions, SkillCounts, Stamp, parse_skills,
 };
 use crate::store::Actor;
@@ -11,7 +11,12 @@ use crate::store::records::session_skills;
 
 use super::support::{Sandbox, TICKET_ONE, TICKET_TWO, at};
 
-fn start(sessions: &Sessions, actor: &Actor, id: &str, brief: &str) -> crate::session::Session {
+fn start(
+    sessions: &Sessions,
+    actor: &Actor,
+    id: &str,
+    brief: &str,
+) -> crate::domain::session::Session {
     sessions
         .start(actor, id, "tandem", Some("builder"), brief, Some(&at(0)))
         .expect("a session starts")
@@ -120,7 +125,7 @@ fn an_end_stamps_once_and_a_second_end_cannot_restate_it() {
             Ending {
                 outcome: SessionOutcome::Succeeded,
                 summary: Some("  What landed.  "),
-                tokens: Some(crate::session::SessionTokens {
+                tokens: Some(crate::domain::session::SessionTokens {
                     input: Some(10),
                     output: Some(20),
                     reasoning: Some(5),
@@ -205,6 +210,51 @@ fn an_end_of_an_unknown_session_names_the_ids_the_store_holds() {
         error.message().contains("ses_1"),
         "the message names what the store holds: {}",
         error.message()
+    );
+}
+
+#[test]
+fn a_stamp_the_store_cannot_read_is_refused_before_it_is_written() {
+    let sandbox = Sandbox::new("stamp");
+    let actor = sandbox.actor();
+    let sessions = Sessions::new(&sandbox.store());
+
+    assert_eq!(
+        sessions
+            .start(
+                &actor,
+                "ses_1",
+                "tandem",
+                None,
+                "One.",
+                Some("2026-10-30 12:00:00"),
+            )
+            .unwrap_err(),
+        DomainError::InvalidStamp("2026-10-30 12:00:00".to_string()),
+        "an undecodable stamp is caught at the write, not at every later read"
+    );
+    assert!(
+        sessions.list(None, None).unwrap().is_empty(),
+        "a refused stamp writes nothing"
+    );
+
+    start(&sessions, &actor, "ses_1", "One.");
+    let refused = sessions
+        .end(
+            &actor,
+            "ses_1",
+            Ending {
+                outcome: SessionOutcome::Succeeded,
+                at: Some("yesterday"),
+                ..Ending::default()
+            },
+        )
+        .unwrap_err();
+    assert_eq!(refused, DomainError::InvalidStamp("yesterday".to_string()));
+    assert_eq!(
+        sessions.show("ses_1").unwrap().status,
+        SessionStatus::Running,
+        "the record is untouched"
     );
 }
 

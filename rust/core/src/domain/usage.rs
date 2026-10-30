@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::session::{Session, SessionTokens};
+use super::session::{Session, SessionTokens};
 
 /// The rolling key of the ticketless row: every record that carried no ticket
 /// lands here, so the ticket table accounts for the spend it cannot attribute.

@@ -10,9 +10,9 @@ use std::path::PathBuf;
 
 use rusqlite::{Connection, params};
 
-use crate::error::DomainError;
-use crate::session::{Ending, SessionOutcome, SessionStatus, Sessions, SkillCounts};
-use crate::store::read_harness_usage;
+use crate::domain::error::DomainError;
+use crate::domain::harness::read;
+use crate::domain::session::{Ending, SessionOutcome, SessionStatus, Sessions, SkillCounts};
 
 use super::support::{Sandbox, TICKET_ONE, TICKET_TWO, at};
 
@@ -78,7 +78,7 @@ fn the_harness_row_becomes_the_usage_triple_and_the_skill_counts() {
     let sandbox = Sandbox::new("harness-read");
     let path = harness(&sandbox);
 
-    let usage = read_harness_usage(&path, "ses_1").expect("the row is there");
+    let usage = read(&path, "ses_1").expect("the row is there");
 
     assert_eq!(usage.tokens.input, Some(25_765));
     assert_eq!(usage.tokens.output, Some(3_100));
@@ -106,7 +106,7 @@ fn a_missing_harness_database_is_a_domain_failure_not_a_panic() {
     let sandbox = Sandbox::new("harness-missing");
     let path = sandbox.path().join("nothing-here.db");
 
-    match read_harness_usage(&path, "ses_1") {
+    match read(&path, "ses_1") {
         Err(DomainError::NoHarnessDatabase { path: named }) => {
             assert!(
                 named.ends_with("nothing-here.db"),
@@ -123,7 +123,7 @@ fn a_session_the_harness_never_recorded_names_the_id() {
     let path = harness(&sandbox);
 
     assert_eq!(
-        read_harness_usage(&path, "ses_9").unwrap_err(),
+        read(&path, "ses_9").unwrap_err(),
         DomainError::UnknownHarnessSession {
             id: "ses_9".to_string(),
         }
@@ -137,7 +137,7 @@ fn a_message_that_is_not_the_json_this_build_reads_is_skipped() {
 
     // The suite's database carries one message that is not JSON at all: the read
     // still answers the usage the pass spent, and the counts it could read.
-    let usage = read_harness_usage(&path, "ses_1").expect("the usage is still read");
+    let usage = read(&path, "ses_1").expect("the usage is still read");
     assert!(usage.tokens.reported());
     assert!(usage.skills.is_some(), "the readable messages still count");
 }
@@ -179,7 +179,7 @@ fn a_resumed_pass_writes_its_usage_to_its_own_record_and_carries_the_tickets() {
 
     // The wrapper's composition, in the core: read the harness, mint the pass's
     // own record, link what it carried, stamp the usage on it.
-    let usage = read_harness_usage(&path, "ses_1").expect("the harness row is there");
+    let usage = read(&path, "ses_1").expect("the harness row is there");
     let continued = sessions
         .continue_after(&actor, "ses_1", "A resumed pass.", Some(&at(90)))
         .expect("the pass gets its own record");

@@ -24,7 +24,7 @@
 //!   crash's.
 
 mod actor;
-mod harness;
+pub(crate) mod board_rows;
 mod home;
 mod locked;
 pub(crate) mod records;
@@ -43,9 +43,8 @@ use std::time::Duration;
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 
 pub use actor::{Actor, ENVIRONMENT as ACTOR_ENVIRONMENT};
-pub use harness::{HarnessUsage, read as read_harness_usage};
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
-pub use records::{local_day, local_offset_seconds};
+pub use records::local_day;
 pub use rows::{
     NewComment, NewDependency, NewLane, NewSession, NewSetting, NewSprint, NewTicket, SessionRow,
     SprintRow,
