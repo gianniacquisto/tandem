@@ -1,0 +1,62 @@
+{
+  "argv": [
+    "setup",
+    "uninstall"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "manifest": "used",
+    "paths": [
+      {
+        "action": "removed",
+        "path": "<home>/.config/opencode/agents/golden.md"
+      },
+      {
+        "action": "removed",
+        "path": "<home>/.config/opencode/skills/golden-skill"
+      },
+      {
+        "action": "removed",
+        "path": "<home>/.config/opencode/opencode.json"
+      },
+      {
+        "action": "removed",
+        "path": "<tandem-home>/agent"
+      }
+    ],
+    "state": {
+      "hosts": [
+        {
+          "expectedLinks": 0,
+          "host": "opencode",
+          "links": 0,
+          "state": "absent"
+        },
+        {
+          "expectedLinks": 0,
+          "host": "claude",
+          "links": 0,
+          "state": "absent"
+        },
+        {
+          "expectedLinks": 0,
+          "host": "agents",
+          "links": 0,
+          "state": "absent"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "no-bundle",
+          "detail": "no bundled agent face",
+          "hint": "run inside Tandem.app, or set TANDEM_AGENT_BUNDLE",
+          "severity": "info"
+        }
+      ]
+    },
+    "verb": "uninstall"
+  },
+  "stdoutKind": "json"
+}

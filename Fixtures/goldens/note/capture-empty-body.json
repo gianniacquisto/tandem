@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "note",
+    "capture",
+    "--kind",
+    "fact"
+  ],
+  "exit": 2,
+  "stderr": [
+    "Capture body is empty. Provide a non-empty body on stdin and try again."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

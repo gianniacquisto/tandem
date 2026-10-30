@@ -10,3 +10,5 @@ DerivedData/
 /Fixtures/*
 !/Fixtures/README.md
 !/Fixtures/port/
+# The CLI's goldens are the contract both implementations answer to (PRT-8).
+!/Fixtures/goldens/

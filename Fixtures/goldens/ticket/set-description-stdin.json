@@ -1,0 +1,34 @@
+{
+  "argv": [
+    "ticket",
+    "set",
+    "--id",
+    "TAN-1",
+    "--description",
+    "-"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "A body from stdin.\n",
+  "stdout": {
+    "archived": false,
+    "assignee": null,
+    "blocked": false,
+    "blockedBy": [],
+    "blockedReason": null,
+    "blocks": [],
+    "completedAt": null,
+    "createdAt": "<timestamp>",
+    "description": "A body from stdin.",
+    "done": false,
+    "id": "<id>",
+    "lane": "Tandem",
+    "link": null,
+    "number": 1,
+    "origin": "human",
+    "ref": "TAN-1",
+    "status": "backlog",
+    "title": "Fixture ticket"
+  },
+  "stdoutKind": "json"
+}

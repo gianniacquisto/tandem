@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "ticket",
+    "archive"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "archived": 1
+  },
+  "stdoutKind": "json"
+}

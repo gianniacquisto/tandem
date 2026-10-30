@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "session",
+    "show",
+    "--session",
+    "golden-other"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Unknown session id \"golden-other\". No session is recorded yet."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

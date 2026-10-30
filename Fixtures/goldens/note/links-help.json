@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "note",
+    "links",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli note links — the link-graph health readout.",
+    "",
+    "Usage:",
+    "  tandem-cli note links"
+  ],
+  "stdoutKind": "text"
+}

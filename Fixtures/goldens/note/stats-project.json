@@ -1,0 +1,30 @@
+{
+  "argv": [
+    "note",
+    "stats",
+    "--project",
+    "fixture"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "bikeshed": "<tandem-home>/bikeshed",
+    "projects": [
+      {
+        "curatedNotes": 1,
+        "lastConsolidated": "<timestamp>",
+        "oldestPending": "<timestamp>",
+        "project": "fixture",
+        "rawArchived": 0,
+        "rawPending": 1
+      }
+    ],
+    "totals": {
+      "curatedNotes": 1,
+      "rawArchived": 0,
+      "rawPending": 1
+    }
+  },
+  "stdoutKind": "json"
+}

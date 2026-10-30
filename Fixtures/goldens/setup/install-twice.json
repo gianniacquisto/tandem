@@ -1,0 +1,53 @@
+{
+  "argv": [
+    "setup",
+    "install"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "manifest": "used",
+    "paths": [
+      {
+        "action": "ok",
+        "path": "<home>/.config/opencode/skills/golden-skill"
+      },
+      {
+        "action": "ok",
+        "path": "<home>/.config/opencode/agents/golden.md"
+      },
+      {
+        "action": "ok",
+        "path": "<home>/.config/opencode/opencode.json"
+      }
+    ],
+    "state": {
+      "bundledVersion": "0.0.0-golden",
+      "hosts": [
+        {
+          "expectedLinks": 2,
+          "host": "opencode",
+          "links": 2,
+          "state": "installed"
+        },
+        {
+          "expectedLinks": 1,
+          "host": "claude",
+          "links": 0,
+          "state": "absent"
+        },
+        {
+          "expectedLinks": 1,
+          "host": "agents",
+          "links": 0,
+          "state": "absent"
+        }
+      ],
+      "installedVersion": "0.0.0-golden",
+      "warnings": []
+    },
+    "verb": "install"
+  },
+  "stdoutKind": "json"
+}

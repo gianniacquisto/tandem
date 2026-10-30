@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "ticket",
+    "set",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli ticket set — edit one ticket's fields in one write.",
+    "",
+    "Usage:",
+    "  tandem-cli ticket set --id <id> [--title <string>] [--status <value>]",
+    "                        [--assignee <name|self>] [--description <string|->]",
+    "",
+    "Values:",
+    "  status    backlog | on-hold | ready | in-progress | in-review | done",
+    "  assignee  a name, `self` ($TANDEM_AGENT), or \"\" for the unassigned",
+    "",
+    "A flag not named leaves its field alone. `--description -` reads the body",
+    "from stdin; `--description \"\"` clears the description deliberately."
+  ],
+  "stdoutKind": "text"
+}

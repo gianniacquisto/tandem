@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "ticket",
+    "comment",
+    "add",
+    "--id",
+    "TAN-1",
+    "--body",
+    "-"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "A comment from stdin.\n",
+  "stdout": {
+    "at": "<timestamp>",
+    "author": "",
+    "body": "A comment from stdin."
+  },
+  "stdoutKind": "json"
+}

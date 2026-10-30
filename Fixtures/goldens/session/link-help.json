@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "session",
+    "link",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli session link — the record carries a ticket.",
+    "",
+    "Usage:",
+    "  tandem-cli session link --ticket <id> [--session <id>]"
+  ],
+  "stdoutKind": "text"
+}

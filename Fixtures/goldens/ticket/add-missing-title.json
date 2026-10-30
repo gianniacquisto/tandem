@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "ticket",
+    "add"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Title is empty. Provide a non-empty ticket title and try again."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

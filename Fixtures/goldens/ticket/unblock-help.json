@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "ticket",
+    "unblock",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli ticket unblock: a ticket stops waiting.",
+    "",
+    "Usage:",
+    "  tandem-cli ticket unblock --id <id> [--on <id>]",
+    "",
+    "With `--on`, that one edge is removed; without it, every edge the ticket has,",
+    "so a dependent is released in one call. A missing edge is a no-op."
+  ],
+  "stdoutKind": "text"
+}

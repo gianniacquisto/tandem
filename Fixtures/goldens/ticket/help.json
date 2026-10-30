@@ -1,0 +1,41 @@
+{
+  "argv": [
+    "ticket",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli ticket — the board's ticket surface.",
+    "",
+    "Usage:",
+    "  tandem-cli ticket list [--filter open|done|all] [--status <value[,value]>]",
+    "                          [--assignee <name|self>] [--lane <name>] [--text <string>]",
+    "                          [--archived] [--blocked]",
+    "  tandem-cli ticket show --id <id>",
+    "  tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]",
+    "                         [--lane <name>] [--origin <name|self>] [--description <string|->]",
+    "  tandem-cli ticket set --id <id> [--title <string>] [--status <value>]",
+    "                        [--assignee <name|self>] [--description <string|->]",
+    "  tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]",
+    "  tandem-cli ticket block --id <id> --on <id>",
+    "  tandem-cli ticket unblock --id <id> [--on <id>]",
+    "  tandem-cli ticket complete --id <id>",
+    "  tandem-cli ticket answer --id <id> --status <value> [--assignee <name|self>]",
+    "                           [--body <string|->]",
+    "  tandem-cli ticket archive",
+    "  tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->",
+    "  tandem-cli ticket comment list --id <id>",
+    "",
+    "Values:",
+    "  status    backlog | on-hold | ready | in-progress | in-review | done",
+    "  filter    open (default) | done | all",
+    "  assignee  a name, `self` ($TANDEM_AGENT), or \"\" for the unassigned",
+    "  origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it",
+    "  author    a name; omitted is the unnamed author",
+    "  lane      a lane name, or \"\" for the default area",
+    "  index     0-based within the lane; omitted appends to it"
+  ],
+  "stdoutKind": "text"
+}

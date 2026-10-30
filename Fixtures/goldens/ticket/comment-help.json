@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "ticket",
+    "comment",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli ticket comment — a ticket's discussion log.",
+    "",
+    "Usage:",
+    "  tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->",
+    "  tandem-cli ticket comment list --id <id>",
+    "",
+    "Values:",
+    "  author    a name; omitted is the unnamed author"
+  ],
+  "stdoutKind": "text"
+}

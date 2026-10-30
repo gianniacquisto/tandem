@@ -1,0 +1,28 @@
+{
+  "argv": [
+    "session",
+    "start",
+    "--project",
+    "fixture",
+    "--agent",
+    "builder",
+    "--brief",
+    "A brief the golden keeps."
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "agent": "builder",
+    "brief": "A brief the golden keeps.",
+    "endedAt": null,
+    "id": "golden-session",
+    "outcome": null,
+    "project": "fixture",
+    "startedAt": "<timestamp>",
+    "status": "running",
+    "summary": null,
+    "tickets": []
+  },
+  "stdoutKind": "json"
+}

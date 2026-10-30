@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "lane",
+    "rename",
+    "--from",
+    "Cycle",
+    "--to",
+    "Loop",
+    "--abbr",
+    "LOP"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "lanes": [
+      "Loop"
+    ]
+  },
+  "stdoutKind": "json"
+}

@@ -1,0 +1,41 @@
+{
+  "argv": [
+    "ticket",
+    "block",
+    "--id",
+    "CYC-1",
+    "--on",
+    "CYC-2"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "archived": false,
+    "assignee": null,
+    "blocked": true,
+    "blockedBy": [
+      {
+        "id": "<id>",
+        "ref": "CYC-2",
+        "status": "backlog",
+        "title": "Second ticket"
+      }
+    ],
+    "blockedReason": null,
+    "blocks": [],
+    "completedAt": null,
+    "createdAt": "<timestamp>",
+    "description": null,
+    "done": false,
+    "id": "<id>",
+    "lane": "Cycle",
+    "link": null,
+    "number": 1,
+    "origin": "human",
+    "ref": "CYC-1",
+    "status": "backlog",
+    "title": "Fixture ticket"
+  },
+  "stdoutKind": "json"
+}

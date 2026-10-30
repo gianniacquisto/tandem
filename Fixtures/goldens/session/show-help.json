@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "session",
+    "show",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli session show — one session record.",
+    "",
+    "Usage:",
+    "  tandem-cli session show [--session <id>]",
+    "",
+    "An absent `--session` is $OPENCODE_SESSION_ID."
+  ],
+  "stdoutKind": "text"
+}

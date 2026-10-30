@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "ticket",
+    "add",
+    "--title",
+    "Golden ticket",
+    "--status",
+    "nope"
+  ],
+  "exit": 1,
+  "stderr": [
+    "status must be one of backlog, on-hold, ready, in-progress, in-review, done (got \"nope\")."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "sprint",
+    "ticket",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli sprint ticket — a ticket joins the open sprint's batch.",
+    "",
+    "Usage:",
+    "  tandem-cli sprint ticket --lane <name> --ticket <id>"
+  ],
+  "stdoutKind": "text"
+}

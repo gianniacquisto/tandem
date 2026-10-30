@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "ticket",
+    "archive",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli ticket archive — the whole done list, bulk.",
+    "",
+    "Usage:",
+    "  tandem-cli ticket archive"
+  ],
+  "stdoutKind": "text"
+}

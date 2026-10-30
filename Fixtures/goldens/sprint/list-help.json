@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "sprint",
+    "list",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli sprint list — the sprint records.",
+    "",
+    "Usage:",
+    "  tandem-cli sprint list [--lane <name>] [--status open|closed]",
+    "",
+    "Values:",
+    "  status    open | closed"
+  ],
+  "stdoutKind": "text"
+}

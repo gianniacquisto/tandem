@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "note",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli note — the bikeshed's agent face.",
+    "",
+    "Usage:",
+    "  tandem-cli note rename --from <path> --to <path>",
+    "  tandem-cli note capture --kind <decision|gotcha|fact|thread> [--project <name>] [--session <id>]",
+    "  tandem-cli note stats [--project <name>]",
+    "  tandem-cli note links"
+  ],
+  "stdoutKind": "text"
+}

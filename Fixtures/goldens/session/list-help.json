@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "session",
+    "list",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli session list — the session records.",
+    "",
+    "Usage:",
+    "  tandem-cli session list [--project <name>] [--status <value>]",
+    "",
+    "Values:",
+    "  status    running | ended"
+  ],
+  "stdoutKind": "text"
+}

@@ -1,0 +1,28 @@
+{
+  "argv": [
+    "sprint",
+    "list",
+    "--status",
+    "closed"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "sprints": [
+      {
+        "batch": [],
+        "close": null,
+        "closedAt": "<timestamp>",
+        "lane": "Cycle",
+        "mode": "serial",
+        "number": 1,
+        "openedAt": "<timestamp>",
+        "runs": [],
+        "session": "golden-session",
+        "status": "closed"
+      }
+    ]
+  },
+  "stdoutKind": "json"
+}
