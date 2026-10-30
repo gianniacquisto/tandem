@@ -9,8 +9,8 @@
 //! vocabulary; the store translates its two failures into the store's words.
 //!
 //! The store takes no lock (ADR 0031): SQLite's `BEGIN IMMEDIATE` and the busy
-//! window are its contention bound, and it borrows only the temp, the commit
-//! and the directory sync for the rolling backup. The sidecar, the sweep and
+//! window are its contention bound, and it borrows the temp, the commit, the
+//! directory sync and the orphan sweep for its rolling backup. The sidecar and
 //! [`LockedDirectory::lock`] are the bikeshed's, which is the file tree that
 //! still needs one.
 
@@ -62,8 +62,8 @@ impl LockedDirectory {
 
     /// The store's own directory: `<home>/tandem.lock` as the lock file and the
     /// home as its root. The store takes no lock (ADR 0031) and borrows this
-    /// value for the rolling backup's commit and directory sync; the sidecar
-    /// itself is the bikeshed's.
+    /// value for the rolling backup's commit and directory sync and for the
+    /// sweep of its own backup temp; the sidecar itself is the bikeshed's.
     pub(crate) fn for_store(home: &Path) -> Self {
         Self::new(home.join("tandem.lock"), TEMP_PREFIX, home.to_path_buf())
     }
@@ -238,7 +238,12 @@ impl LockedDirectory {
     /// Remove `<prefix>*<suffix>` files older than [`ORPHAN_MAX_AGE`]: flat for
     /// the store, whose temps sit beside the database, and recursive for the
     /// bikeshed, whose temps sit beside each note in the tree.
-    fn sweep_orphans(&self) {
+    ///
+    /// The store calls this itself, under its own gate, before it opens the
+    /// database: a writer killed mid-backup leaves its temp and nothing renames
+    /// it, so the next write is what clears it. The bikeshed calls it under its
+    /// sidecar lock.
+    pub(crate) fn sweep_orphans(&self) {
         let cutoff = SystemTime::now()
             .checked_sub(ORPHAN_MAX_AGE)
             .unwrap_or(UNIX_EPOCH);
