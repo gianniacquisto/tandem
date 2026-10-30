@@ -36,11 +36,13 @@ is only the result, self-describing enough that a reviewer can read it alone:
     stdout           that JSON, or one entry per line for text
     stderr           one entry per line, always
 
-Ids, timestamps and the two sandbox paths appear as `<id>`, `<timestamp>`,
-`<tandem-home>` and `<home>`, and nothing else is normalized. `doctor`'s `app`
-and `skills` rows read the machine rather than the home, so a case names them in
-its `mask` and their detail is `<environment>`; their names and `ok` still
-compare. `Scripts/capture-goldens.sh` writes the goldens,
+Ids, timestamps, the two sandbox paths and the store's schema version appear as
+`<id>`, `<timestamp>`, `<tandem-home>`, `<home>` and `<schema>`, and nothing else
+is normalized. The schema is the one number the two stores do not share (the
+port's schema is its own, `docs/port.md`, Store), so the rule names it and
+compares everything around it. `doctor`'s `app` and `skills` rows read the
+machine rather than the home, so a case names them in its `mask` and their
+detail is `<environment>`; their names and `ok` still compare. `Scripts/capture-goldens.sh` writes the goldens,
 `rust/cli/tests/goldens.rs` replays them.
 
 **The port's agent face**, `Fixtures/port/agent-face/`, is the bundle `setup`

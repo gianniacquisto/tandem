@@ -20,6 +20,10 @@
       "as": "<home>"
     },
     {
+      "kind": "schema",
+      "as": "<schema>"
+    },
+    {
       "kind": "uuid",
       "as": "<id>"
     },
@@ -708,6 +712,16 @@
                "--tokens-input", "10", "--tokens-output", "20", "--tokens-reasoning", "5",
                "--tokens-cache-read", "3", "--tokens-cache-write", "1",
                "--cost", "0.5", "--model", "golden-model"]
+    },
+    {
+      "group": "session",
+      "case": "end-skills",
+      "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder",
+                     "--brief", "A brief the golden keeps."]}
+      ],
+      "argv": ["session", "end", "--outcome", "succeeded", "--summary", "What landed.",
+               "--skills", "grilling=2,tandem-memory=1"]
     },
     {
       "group": "session",

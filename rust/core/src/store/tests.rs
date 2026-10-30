@@ -8,6 +8,7 @@
 //! allowed to know the storage; everything above it talks to `Store` only.
 
 use std::fs;
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime};
@@ -86,6 +87,17 @@ fn setting(store: &Store, actor: &Actor, key: &str, value: &str) {
         .expect("the write lands");
 }
 
+/// Backdate a file, so the orphan sweep reads it as a crash's leftover rather
+/// than as a write in flight.
+fn aged(path: &Path, seconds: u64) {
+    let file = OpenOptions::new()
+        .write(true)
+        .open(path)
+        .expect("the temp opens");
+    let when = SystemTime::now() - Duration::from_secs(seconds);
+    file.set_modified(when).expect("the temp's age is set");
+}
+
 fn author_of(connection: &Connection, table: &str) -> Vec<String> {
     let sql = format!("SELECT author FROM {table} ORDER BY rowid");
     let mut statement = connection.prepare(&sql).expect("the table answers");
@@ -130,15 +142,6 @@ mod locked {
     fn storage(sandbox: &Sandbox) -> super::super::locked::LockedDirectory {
         fs::create_dir_all(sandbox.root()).expect("the root is creatable");
         super::super::locked::LockedDirectory::for_store(sandbox.root())
-    }
-
-    fn aged(path: &Path, seconds: u64) {
-        let file = OpenOptions::new()
-            .write(true)
-            .open(path)
-            .expect("the temp opens");
-        let when = SystemTime::now() - Duration::from_secs(seconds);
-        file.set_modified(when).expect("the temp's age is set");
     }
 
     #[test]
@@ -190,7 +193,7 @@ mod locked {
         let fresh = sandbox.root().join(".tandem-fresh.tmp");
         fs::write(&fresh, b"fresh").unwrap();
 
-        storage.with_lock(|| Ok(())).expect("the lock runs");
+        let _guard = storage.lock().expect("the lock runs");
 
         assert!(!stale.exists(), "the stale orphan was not removed");
         assert!(fresh.exists(), "the fresh temp was wrongly removed");
@@ -205,7 +208,7 @@ mod locked {
         fs::write(&nested, b"stale").unwrap();
         aged(&nested, 120);
 
-        storage.with_lock(|| Ok(())).expect("the lock runs");
+        let _guard = storage.lock().expect("the lock runs");
 
         assert!(
             nested.exists(),
@@ -214,27 +217,24 @@ mod locked {
     }
 
     #[test]
-    fn with_lock_holds_the_exclusive_lock_for_the_body() {
+    fn lock_holds_the_exclusive_lock_for_the_guard() {
         let sandbox = Sandbox::new("excludes");
         let storage = storage(&sandbox);
         let lock = sandbox.root().join("tandem.lock");
 
-        storage
-            .with_lock(|| {
-                let held = OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .create(true)
-                    .truncate(false)
-                    .open(&lock)
-                    .expect("the lock file opens");
-                assert!(
-                    matches!(held.try_lock(), Err(fs::TryLockError::WouldBlock)),
-                    "a second handle took the lock while the body ran"
-                );
-                Ok(())
-            })
-            .expect("the body runs");
+        let guard = storage.lock().expect("the lock is taken");
+        let held = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock)
+            .expect("the lock file opens");
+        assert!(
+            matches!(held.try_lock(), Err(fs::TryLockError::WouldBlock)),
+            "a second handle took the lock while the guard held it"
+        );
+        drop(guard);
 
         let free = OpenOptions::new()
             .read(true)
@@ -243,7 +243,7 @@ mod locked {
             .expect("the lock file opens");
         assert!(
             free.try_lock().is_ok(),
-            "the lock was not released after the body"
+            "the lock was not released after the guard"
         );
     }
 
@@ -262,7 +262,7 @@ mod locked {
         held.try_lock().expect("the test takes the lock");
 
         let started = Instant::now();
-        let outcome = storage.with_lock(|| Ok(()));
+        let outcome = storage.lock().map(|_guard| ());
         let elapsed = started.elapsed();
         drop(held);
 
@@ -277,6 +277,168 @@ mod locked {
         assert!(
             elapsed < Duration::from_secs(15),
             "the retry did not wait far past the window: {elapsed:?}"
+        );
+    }
+
+    /// A nested acquisition is a body that takes the same lock file again: it
+    /// queues behind itself, so it must answer `Locked` at the window like any
+    /// other writer that cannot be served, never hang. The wait is bounded on
+    /// both halves (`Queue::take` and the `flock` retry), so this case bounds
+    /// the test at three windows instead of relying on the suite's timeout.
+    #[test]
+    fn a_nested_acquisition_answers_locked_at_the_window_instead_of_hanging() {
+        let sandbox = Sandbox::new("nested");
+        let storage = storage(&sandbox);
+        let (answered, waiting) = std::sync::mpsc::channel();
+        // Detached, not scoped: a scoped thread that hangs takes the test with
+        // it, and the point of this case is the answer.
+        std::thread::spawn({
+            let storage = storage.clone();
+            move || {
+                let started = Instant::now();
+                let outcome = storage
+                    .lock()
+                    .and_then(|_held| storage.lock().map(|_nested| ()));
+                let _ = answered.send((
+                    matches!(outcome, Err(StoreError::Locked)),
+                    started.elapsed(),
+                ));
+            }
+        });
+
+        let (locked, elapsed) = waiting
+            .recv_timeout(super::super::locked::LOCK_TIMEOUT * 3)
+            .expect("a nested acquisition answers at the window, it does not hang");
+        assert!(
+            locked,
+            "a nested acquisition answers Locked, not Ok: it took {elapsed:?}"
+        );
+        assert!(
+            elapsed >= super::super::locked::LOCK_TIMEOUT,
+            "the nested acquisition answered before the window: {elapsed:?}"
+        );
+    }
+
+    /// Two spellings of one lock file are one queue, or the fairness guarantee
+    /// is lost for writers that spell their home differently (a symlink, a `.`
+    /// or `..` segment, a different case on Windows): both would take ticket 0
+    /// and race the `flock` again.
+    #[test]
+    fn two_spellings_of_one_home_share_one_queue() {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        let sandbox = Sandbox::new("spellings");
+        let root = sandbox.root();
+        let plain = root.join("tandem.lock");
+        let dotted = root.join(".").join("tandem.lock");
+        assert_eq!(
+            super::super::locked::queue_key(&plain).expect("the plain spelling canonicalizes"),
+            super::super::locked::queue_key(&dotted).expect("the dotted spelling canonicalizes"),
+            "two spellings of one lock file must key one queue"
+        );
+
+        // And they exclude each other: the dotted spelling waits out a holder
+        // on the plain one instead of taking a second lock.
+        let holder =
+            super::super::locked::LockedDirectory::new(plain, ".tandem-", root.to_path_buf());
+        let waiter =
+            super::super::locked::LockedDirectory::new(dotted, ".tandem-", root.to_path_buf());
+        let holding = Arc::new(Barrier::new(2));
+        let held_for = Duration::from_millis(300);
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                let _held = holder.lock().expect("the holder's body runs");
+                holding.wait();
+                thread::sleep(held_for);
+            });
+            holding.wait();
+
+            let started = Instant::now();
+            let _served = waiter
+                .lock()
+                .expect("a writer on the other spelling is served, not locked out");
+            assert!(
+                started.elapsed() >= held_for,
+                "the waiter did not wait for the holder: {:?}",
+                started.elapsed()
+            );
+        });
+    }
+
+    /// A writer that arrives while another holds the lock is served in arrival
+    /// order: two waiters queue behind the holder, and the queue hands them the
+    /// lock in the order they took their tickets. This is the property `Queue`
+    /// exists for; without it both waiters spin `try_lock` and the order is a
+    /// coin flip per release. The case waits on the queue's own ticket count,
+    /// so a bypassed `Queue::take` fails here (the count never moves) instead
+    /// of passing by luck.
+    #[test]
+    fn waiters_are_served_in_arrival_order() {
+        let sandbox = Sandbox::new("order");
+        let storage = storage(&sandbox);
+        let key = super::super::locked::queue_key(&sandbox.root().join("tandem.lock"))
+            .expect("the sandbox root canonicalizes");
+
+        let held = storage.lock().expect("the holder takes the lock");
+        // The holder's own ticket is taken; every later arrival adds one.
+        let holder_ticket = super::super::locked::queued(&key);
+        let (served, order) = std::sync::mpsc::channel();
+        let mut waiters = Vec::new();
+        for name in ["first", "second"] {
+            let storage = storage.clone();
+            let served = served.clone();
+            waiters.push(std::thread::spawn(move || {
+                let _guard = storage.lock().expect("the waiter is served");
+                let _ = served.send(name);
+            }));
+            // Wait until this waiter has taken its ticket: that is its arrival,
+            // and it is what the queue orders on. A sleep would assume the
+            // thread ran; the count is the synchronization point.
+            let deadline = Instant::now() + super::super::locked::LOCK_TIMEOUT;
+            let wanted = holder_ticket + waiters.len() as u64;
+            while super::super::locked::queued(&key) < wanted {
+                assert!(
+                    Instant::now() < deadline,
+                    "waiter {} did not take a queue ticket; the queue is bypassed",
+                    waiters.len()
+                );
+                std::thread::yield_now();
+            }
+        }
+        drop(held);
+
+        let arrivals: Vec<&str> = (0..2)
+            .map(|_| {
+                order
+                    .recv_timeout(super::super::locked::LOCK_TIMEOUT * 3)
+                    .expect("both waiters report")
+            })
+            .collect();
+        for waiter in waiters {
+            waiter.join().expect("the waiter thread joins");
+        }
+        assert_eq!(
+            arrivals,
+            ["first", "second"],
+            "waiters are served in the order they queued"
+        );
+    }
+
+    /// A lock file whose directory cannot canonicalize is refused, not keyed on
+    /// the path as spelled: the spelled path is the split this key exists to
+    /// close, and two spellings of one home would each get a queue. A missing
+    /// directory is the portable way to make `canonicalize` fail.
+    #[test]
+    fn a_directory_that_cannot_canonicalize_is_refused() {
+        let sandbox = Sandbox::new("uncanonical");
+        let missing = sandbox.root().join("missing").join("tandem.lock");
+
+        let outcome = super::super::locked::queue_key(&missing);
+
+        assert!(
+            matches!(&outcome, Err(StoreError::Io(_))),
+            "a directory that cannot canonicalize is refused: {outcome:?}"
         );
     }
 
@@ -378,6 +540,107 @@ mod locked {
         let sandbox = Sandbox::new("fsync-ok");
         let storage = storage(&sandbox);
         storage.fsync_directory().expect("a real directory syncs");
+    }
+}
+
+// MARK: - The in-process write gate
+
+mod gate {
+    use std::sync::{Arc, mpsc};
+    use std::thread;
+
+    use super::*;
+
+    #[test]
+    fn one_home_is_one_gate() {
+        let sandbox = Sandbox::new("gate-key");
+        let home = sandbox.home_path();
+        fs::create_dir_all(&home).unwrap();
+
+        assert!(
+            Arc::ptr_eq(&write_gate(&home), &write_gate(&home)),
+            "the same home must answer the same gate"
+        );
+        assert!(
+            Arc::ptr_eq(&write_gate(&home), &write_gate(&home.join("."))),
+            "another spelling of the home must answer the same gate"
+        );
+    }
+
+    #[test]
+    fn in_process_writers_queue_on_the_gate() {
+        let sandbox = Sandbox::new("gate-queue");
+        let home = sandbox.home_path();
+        fs::create_dir_all(&home).unwrap();
+        let gate = write_gate(&home);
+
+        let held = gate.lock().expect("the gate is taken");
+        let (tx, entered) = mpsc::channel();
+        let queued = {
+            let gate = Arc::clone(&gate);
+            thread::spawn(move || {
+                let _guard = gate.lock().expect("the queued writer takes the gate");
+                tx.send(()).expect("the parent is listening");
+            })
+        };
+
+        assert!(
+            entered.recv_timeout(Duration::from_millis(150)).is_err(),
+            "a second writer entered while the first held the gate"
+        );
+        drop(held);
+        entered
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the queued writer runs once the gate is free");
+        queued.join().expect("the queued writer finishes");
+    }
+
+    #[test]
+    fn a_held_gate_times_out_as_locked() {
+        let sandbox = Sandbox::new("gate-deadline");
+        let home = sandbox.home_path();
+        fs::create_dir_all(&home).unwrap();
+        let gate = write_gate(&home);
+        let held = gate.lock().expect("the test takes the gate");
+
+        // The engine is free while this thread holds the gate, so only the
+        // gate's own deadline can turn the queued writer away.
+        let store = sandbox.store();
+        let (tx, answered) = mpsc::channel();
+        let queued = thread::spawn(move || {
+            let started = Instant::now();
+            let outcome = store.write(&Actor::Human, |write| {
+                write.insert_setting(NewSetting {
+                    key: "blocked",
+                    value: "1",
+                })
+            });
+            tx.send((outcome, started.elapsed()))
+                .expect("the parent is listening");
+        });
+
+        let (outcome, elapsed) = answered
+            .recv_timeout(Duration::from_secs(15))
+            .expect("a held gate must answer within the store's window");
+        drop(held);
+        queued.join().expect("the queued writer finishes");
+
+        assert!(
+            matches!(outcome, Err(StoreError::Locked)),
+            "a held gate must time out as locked: {outcome:?}"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(1_500),
+            "the writer waited the store's window (elapsed {elapsed:?})"
+        );
+        assert!(
+            elapsed < Duration::from_secs(15),
+            "the writer did not wait far past the window (elapsed {elapsed:?})"
+        );
+        assert!(
+            !sandbox.database().exists(),
+            "a write turned away at the gate opened no database"
+        );
     }
 }
 
@@ -733,6 +996,135 @@ mod schema {
             Err(StoreError::Io(message)) => assert!(!message.is_empty()),
             other => panic!("expected the open to fail loudly, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_write_takes_no_sidecar_lock() {
+        use std::fs::OpenOptions;
+
+        let sandbox = Sandbox::new("sidecar");
+        let store = sandbox.store();
+        setting(&store, &Actor::Human, "seed", "1");
+
+        // ADR 0031 retires `tandem.lock` for the store: a write creates none,
+        // and one another process holds is inert rather than a wait.
+        let sidecar = sandbox.home_path().join("tandem.lock");
+        assert!(
+            !sidecar.exists(),
+            "a store write created the retired sidecar at {}",
+            sidecar.display()
+        );
+
+        let held = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&sidecar)
+            .expect("the sidecar opens");
+        held.try_lock().expect("the test takes the sidecar");
+
+        let started = Instant::now();
+        setting(&store, &Actor::Human, "next", "2");
+        let elapsed = started.elapsed();
+        drop(held);
+
+        assert!(
+            elapsed < Duration::from_millis(1_500),
+            "the write waited {elapsed:?} on a sidecar the store must not take"
+        );
+    }
+
+    /// The child half of [`another_process_contends_only_through_the_busy_window`].
+    /// Spawned by the parent with the database in `TANDEM_TEST_HOLD_DB`; it holds
+    /// the engine's write side until the parent closes its stdin.
+    #[test]
+    #[ignore = "spawned by another_process_contends_only_through_the_busy_window"]
+    fn hold_the_write_side_for_another_process() {
+        use std::io::Read;
+
+        let Ok(database) = std::env::var("TANDEM_TEST_HOLD_DB") else {
+            return;
+        };
+        let connection = Connection::open(&database).expect("the child opens the store");
+        connection
+            .execute_batch("BEGIN IMMEDIATE")
+            .expect("the child takes the write side");
+        println!("held");
+        let mut sink = Vec::new();
+        std::io::stdin()
+            .read_to_end(&mut sink)
+            .expect("the child waits for the parent");
+        connection
+            .execute_batch("ROLLBACK")
+            .expect("the child releases the write side");
+    }
+
+    #[test]
+    fn another_process_contends_only_through_the_busy_window() {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
+
+        let sandbox = Sandbox::new("other-process");
+        let store = sandbox.store();
+        setting(&store, &Actor::Human, "seed", "1");
+
+        let mut child = Command::new(std::env::current_exe().expect("the test binary"))
+            .args([
+                "--exact",
+                "store::tests::schema::hold_the_write_side_for_another_process",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("TANDEM_TEST_HOLD_DB", sandbox.database())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("the child process starts");
+
+        let stdout = child.stdout.take().expect("the child's stdout is piped");
+        // The reader stays alive until the child exits: closing the pipe under
+        // the harness's own output would turn its report into a broken pipe.
+        let mut lines = BufReader::new(stdout).lines();
+        let mut held = false;
+        while let Some(Ok(line)) = lines.next() {
+            if line.trim() == "held" {
+                held = true;
+                break;
+            }
+        }
+        assert!(held, "the child never took the write side");
+
+        let started = Instant::now();
+        let outcome = store.write(&Actor::Human, |write| {
+            write.insert_setting(NewSetting {
+                key: "blocked",
+                value: "1",
+            })
+        });
+        let elapsed = started.elapsed();
+        drop(child.stdin.take());
+        let status = child.wait().expect("the child exits");
+        drop(lines);
+        assert!(status.success(), "the child failed: {status}");
+
+        assert!(
+            matches!(outcome, Err(StoreError::Locked)),
+            "another process's write must time out as locked: {outcome:?}"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(1_500),
+            "the write waited the store's window (elapsed {elapsed:?})"
+        );
+        assert!(
+            elapsed < Duration::from_secs(15),
+            "the write did not wait far past the window (elapsed {elapsed:?})"
+        );
+        let count: i64 = sandbox
+            .connection()
+            .query_row("SELECT COUNT(*) FROM settings", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "the timed-out write wrote nothing");
     }
 
     #[test]
@@ -1117,6 +1509,36 @@ mod writes {
     }
 
     #[test]
+    fn the_next_write_sweeps_a_backup_temp_a_kill_left_behind() {
+        let sandbox = Sandbox::new("backup-orphan");
+        let store = sandbox.store();
+        setting(&store, &Actor::Human, "one", "1");
+
+        // A writer killed mid-backup leaves its same-directory temp: nothing
+        // renames it and no read removes it, so the next write sweeps it.
+        let killed = sandbox.home_path().join(".tandem-backup-4242-1-0.tmp");
+        fs::write(&killed, b"half a copy").unwrap();
+        aged(&killed, 120);
+        // A temp young enough to belong to a writer still running is not a
+        // kill's, and the sweep must leave it alone.
+        let in_flight = sandbox.home_path().join(".tandem-backup-4243-2-0.tmp");
+        fs::write(&in_flight, b"a copy in progress").unwrap();
+
+        setting(&store, &Actor::Human, "two", "2");
+
+        assert!(
+            !killed.exists(),
+            "the next write left the killed backup's temp at {}",
+            killed.display()
+        );
+        assert!(
+            in_flight.exists(),
+            "the sweep removed a temp a live writer may still hold"
+        );
+        let _ = fs::remove_file(&in_flight);
+    }
+
+    #[test]
     fn a_backup_that_cannot_be_landed_fails_the_write_and_changes_nothing() {
         let sandbox = Sandbox::new("backup-fails");
         let store = sandbox.store();
@@ -1196,6 +1618,13 @@ mod writes {
         let store = sandbox.store();
         setting(&store, &Actor::Human, "seed", "1");
 
+        // The timing assumption: the only thing these two threads contend for
+        // is the process-local write gate (`store::write_gate`), one mutex per
+        // canonical home, so `BEGIN IMMEDIATE` never sees a same-process
+        // sibling: a writer waits one write of the other, never the 2 s busy
+        // window. Across processes the window is the bound (ADR 0031). No
+        // ordering between the threads is assumed: the count is read after the
+        // scope joins both.
         thread::scope(|scope| {
             for group in ["a", "b"] {
                 let store = &store;
@@ -1212,10 +1641,9 @@ mod writes {
                             })
                             .unwrap_or_else(|error| {
                                 panic!(
-                                    "{key} answered {error} after {:?}; the longest wait for the \
-                                     sidecar lock in this process was {:?}",
-                                    started.elapsed(),
-                                    crate::store::locked::longest_wait()
+                                    "{key} answered {error} after {:?}; the store takes no \
+                                     sidecar lock, so the busy window is the only wait",
+                                    started.elapsed()
                                 )
                             });
                     }

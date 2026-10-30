@@ -18,13 +18,20 @@
 //! - **One write, one transaction.** WAL, a ~2 s busy window that surfaces as
 //!   [`StoreError::Locked`], and a rolling backup of the pre-write state
 //!   (ADR 0018). Reads open read-only and never write.
-//! - **The write discipline** (the `locked` module): the `flock` sidecar with bounded
-//!   retry, same-directory temps with `fsync` + rename, and the orphan sweep.
-//!   A lock that is not held is a lock; a temp older than a minute is a
-//!   crash's.
+//! - **No sidecar lock.** The store takes no `flock` and writes no lock file:
+//!   a `BEGIN IMMEDIATE` transaction is the writer and the ~2 s busy window is
+//!   the contention bound across processes (ADR 0031), so a `tandem.lock`
+//!   beside a home is inert. Two threads of one process queue on a process-local
+//!   gate (one mutex per canonical home, no file), and a thread that cannot
+//!   enter it in the same ~2 s window answers "locked", so in-process
+//!   contention is bounded exactly as the engine bounds it across processes.
+//!   The `locked` module keeps the sidecar for the bikeshed; the store borrows
+//!   the same-directory temp, the commit, the directory sync and the orphan
+//!   sweep, which clears a backup temp a killed writer left behind.
 
 mod actor;
 pub(crate) mod board_rows;
+mod diagnostics;
 mod home;
 pub(crate) mod locked;
 pub(crate) mod records;
@@ -37,14 +44,18 @@ mod tests;
 pub(crate) mod timestamp;
 mod write;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, TryLockError};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 
 pub use actor::{Actor, ENVIRONMENT as ACTOR_ENVIRONMENT};
+pub use diagnostics::{BackupHealth, CommentsHealth, CommentsState, Health, comments_state};
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
 pub use records::local_day;
 pub use rows::{
@@ -62,12 +73,60 @@ use write::BackupState;
 /// "locked".
 const BUSY_TIMEOUT: Duration = Duration::from_millis(2_000);
 
+/// The process-local write gate: one mutex per canonical home.
+///
+/// Across processes, SQLite's `BEGIN IMMEDIATE` and the busy window are the
+/// contention bound (ADR 0031). Inside one process that is not enough: two
+/// threads that reach the engine together race the busy handler instead of
+/// queueing, and on the Windows runner a writer answered `Locked` after the
+/// full window while its sibling held the write for a few milliseconds. The
+/// gate makes those writers queue, deterministically and with no file at all:
+/// it is keyed on the canonical home, it lives only in this process, and a
+/// stale `tandem.lock` has nothing to do with it.
+fn write_gate(home: &Path) -> Arc<Mutex<()>> {
+    static GATES: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+    let gates = GATES.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+    let mut gates = gates
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    Arc::clone(gates.entry(key).or_default())
+}
+
+/// Enter the gate within the store's window, or answer the store's one word
+/// for contention.
+///
+/// The gate is bounded by [`BUSY_TIMEOUT`], the same window the engine gives a
+/// writer in another process: the sidecar's 2 s window used to bound
+/// in-process contention too, and a thread that cannot enter in that window
+/// gets [`StoreError::Locked`] rather than waiting for the writer ahead of it
+/// to finish. The holder is a local thread mid-write, and its work is bounded
+/// by the same window it was given.
+fn enter_gate(gate: &Mutex<()>) -> Result<MutexGuard<'_, ()>> {
+    let deadline = Instant::now() + BUSY_TIMEOUT;
+    loop {
+        match gate.try_lock() {
+            Ok(guard) => return Ok(guard),
+            Err(TryLockError::Poisoned(poisoned)) => return Ok(poisoned.into_inner()),
+            Err(TryLockError::WouldBlock) => {
+                if Instant::now() >= deadline {
+                    return Err(StoreError::Locked);
+                }
+                // Yield, do not sleep: a local write holds the gate for
+                // milliseconds, so a retry that pauses misses the gap it frees,
+                // and the deadline still bounds the wait.
+                thread::yield_now();
+            }
+        }
+    }
+}
+
 /// What a store failure is, in the store's words. Every engine failure that is
 /// not contention becomes [`StoreError::Io`] with the engine's detail, exactly
 /// as the Swift store translates `SQLiteError` (ADR 0007).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoreError {
-    /// The sidecar lock or the write transaction was held past the window.
+    /// The gate or the write transaction was held past the window.
     Locked,
     /// Anything else: an unreadable file, a full disk, a failed migration.
     Io(String),
@@ -141,8 +200,11 @@ impl Store {
         body(&connection).map(Some)
     }
 
-    /// A write: the sidecar lock, one `BEGIN IMMEDIATE` transaction, and the
-    /// caller's inserts recorded under `actor`.
+    /// A write: one `BEGIN IMMEDIATE` transaction with the caller's inserts
+    /// recorded under `actor`, and no sidecar lock: the engine's write lock and
+    /// the busy window are the contention bound across processes, and the
+    /// process-local gate queues this process's own threads within the same
+    /// window (ADR 0031).
     pub fn write<T>(&self, actor: &Actor, body: impl FnOnce(&Write<'_>) -> Result<T>) -> Result<T> {
         self.home.ensure().map_err(|error| {
             StoreError::Io(format!(
@@ -150,49 +212,55 @@ impl Store {
                 self.home.directory().display()
             ))
         })?;
-        let locked = LockedDirectory::for_store(self.home.directory());
-        locked.with_lock(|| {
-            let database = self.database();
-            let existed = database.exists();
-            let connection = open(&database)?;
-            // Refuse before any table is written and before the journal mode
-            // moves. A clean v5 file is left byte for byte; one carrying a hot
-            // journal has that journal rolled back by this open itself, which
-            // changes no row and no schema.
-            schema::refuse_legacy(&connection)?;
-            switch_to_wal(&connection)?;
-            // A migration commits in its own transaction, so the pre-migration
-            // image is rolled here, before it runs: rolled afterwards, `.bak`
-            // would already hold the new version and a previous build would
-            // have nothing to restore.
-            let migrating = existed && schema::behind(&connection)?;
-            if migrating {
-                backup_database(&database, &self.backup())?;
-            }
-            schema::migrate(&connection, actor)?;
+        // Two threads of this process queue here, each turned away as "locked"
+        // after the store's window; across processes the engine's write lock
+        // and the busy window are the bound (ADR 0031).
+        let gate = write_gate(self.home.directory());
+        let _gate = enter_gate(&gate)?;
+        // A writer killed mid-backup leaves its temp beside the database, and
+        // nothing renames it: the sweep under the gate clears it, the same rule
+        // the bikeshed's vault applies to its notes' temps (ADR 0031).
+        LockedDirectory::for_store(self.home.directory()).sweep_orphans();
+        let database = self.database();
+        let existed = database.exists();
+        let connection = open(&database)?;
+        // Refuse before any table is written and before the journal mode
+        // moves. A clean v5 file is left byte for byte; one carrying a hot
+        // journal has that journal rolled back by this open itself, which
+        // changes no row and no schema.
+        schema::refuse_legacy(&connection)?;
+        switch_to_wal(&connection)?;
+        // A migration commits in its own transaction, so the pre-migration
+        // image is rolled here, before it runs: rolled afterwards, `.bak`
+        // would already hold the new version and a previous build would
+        // have nothing to restore.
+        let migrating = existed && schema::behind(&connection)?;
+        if migrating {
+            backup_database(&database, &self.backup())?;
+        }
+        schema::migrate(&connection, actor)?;
 
-            begin_immediate(&connection)?;
-            let write = Write {
-                connection: &connection,
-                actor,
-                backup: BackupState {
-                    database: &database,
-                    target: self.backup(),
-                    armed: existed && !migrating,
-                    taken: std::cell::Cell::new(false),
-                },
-            };
-            match body(&write) {
-                Ok(value) => {
-                    commit(&connection)?;
-                    Ok(value)
-                }
-                Err(error) => {
-                    let _ = connection.execute_batch("ROLLBACK");
-                    Err(error)
-                }
+        begin_immediate(&connection)?;
+        let write = Write {
+            connection: &connection,
+            actor,
+            backup: BackupState {
+                database: &database,
+                target: self.backup(),
+                armed: existed && !migrating,
+                taken: std::cell::Cell::new(false),
+            },
+        };
+        match body(&write) {
+            Ok(value) => {
+                commit(&connection)?;
+                Ok(value)
             }
-        })
+            Err(error) => {
+                let _ = connection.execute_batch("ROLLBACK");
+                Err(error)
+            }
+        }
     }
 
     /// Every session row, in stored order. An empty result is a successful

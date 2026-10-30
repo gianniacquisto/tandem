@@ -13,20 +13,18 @@
 //! - **A fresh copy of the fixture home per case.** Nothing carries between
 //!   cases, and no run sees `~/.tandem`: the child gets an `env_clear`ed
 //!   environment whose `HOME` and `TANDEM_HOME` are directories this test made.
-//! - **Ids, timestamps and the two sandbox paths are names, nothing else.**
-//!   `<id>`, `<timestamp>`, `<tandem-home>`, `<home>`. The manifest says so, in
-//!   its own `normalize` list; a value that differs between machines and is not
-//!   in that list is a difference this test reports.
+//! - **Ids, timestamps, the two sandbox paths and the store's schema version
+//!   are names, nothing else.** `<id>`, `<timestamp>`, `<tandem-home>`,
+//!   `<home>`, `<schema>`. The manifest says so, in its own `normalize` list; a
+//!   value that differs between machines and is not in that list is a
+//!   difference this test reports.
 //! - **A case's `mask` is the case admitting what the machine owns.** `doctor`'s
 //!   `app` and `skills` rows read this machine, not the fixture home, so their
 //!   names still compare and their detail is `<environment>`.
 //!
-//! **While PRT-9 is unbuilt this test skips, by name.** PRT-3's binary answers
-//! `doctor` alone; the grammar the goldens cover lands with PRT-9. When none of
-//! the grammar's verb groups answers, the test says which and returns, and it is
-//! not `#[ignore]`: the first group that lands turns the comparison on, with no
-//! change here. One group answering and another missing is a port that regressed,
-//! and the cases name the verb.
+//! **Every group must answer.** A group that stops parsing fails here on its
+//! cases, never silently: the skip PRT-9's rung carried for `setup` and `doctor`
+//! went with PRT-10, which ported them.
 //!
 //! **`TANDEM_GOLDENS_BINARY` checks the harness.** The goldens are the Swift
 //! binary's own answers, so pointing this test at it must match every case; that
@@ -89,49 +87,6 @@ fn case_name(case: &Value) -> String {
     )
 }
 
-// MARK: - The grammar gate
-
-/// The groups the goldens cover with verbs under them, derived from the case list:
-/// a case spelled `[group, verb, ...]` is a group that carries verbs. `doctor` is
-/// one word and is not one of them, which is why PRT-3's binary answers it alone.
-fn grammar_groups(manifest: &Value) -> Vec<String> {
-    let mut groups: Vec<String> = cases(manifest)
-        .iter()
-        .filter_map(|case| {
-            let argv = case["argv"].as_array()?;
-            let group = argv.first()?.as_str()?;
-            let verb = argv.get(1)?.as_str()?;
-            (!verb.starts_with('-')).then(|| group.to_owned())
-        })
-        .collect();
-    groups.sort();
-    groups.dedup();
-    groups
-}
-
-/// Whether the binary answers a group at all.
-fn answers(binary: &Path, group: &str) -> bool {
-    let sandbox = std::env::temp_dir();
-    Command::new(binary)
-        .args([group, "--help"])
-        .env_clear()
-        .env("HOME", &sandbox)
-        .env("TANDEM_HOME", sandbox.join("tandem-goldens-probe"))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
-}
-
-fn quoted(names: &[String]) -> String {
-    names
-        .iter()
-        .map(|name| format!("`{name}`"))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 // MARK: - Normalization
 
 /// Replace a sandbox path with its name, in both spellings the child may report:
@@ -149,6 +104,7 @@ fn transform(text: &str, rule: &Value, prefixes: &[(String, String)]) -> String 
         "prefix" => normalize_prefixes(text, prefixes),
         "uuid" => replace_uuids(text, rule["as"].as_str().unwrap_or("<id>")),
         "timestamp" => replace_timestamps(text, rule["as"].as_str().unwrap_or("<timestamp>")),
+        "schema" => replace_schema_version(text, rule["as"].as_str().unwrap_or("<schema>")),
         _ => text.to_owned(),
     }
 }
@@ -279,6 +235,35 @@ fn replace_timestamps(text: &str, name: &str) -> String {
     out
 }
 
+/// The store row's schema version is the one number the two stores do not
+/// share: the port's schema is its own (docs/port.md, Store), so a `v5` and a
+/// `v3` are the same verdict. The rule names the number and compares everything
+/// around it; it fires only after the store row's `tandem.db` and its `v`,
+/// never on another `v<n>`.
+fn replace_schema_version(text: &str, name: &str) -> String {
+    const MARKER: &str = "tandem.db \u{2014} ";
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(at) = rest.find(MARKER) {
+        let after = at + MARKER.len();
+        out.push_str(&rest[..after]);
+        let Some(version) = rest[after..].strip_prefix('v') else {
+            rest = &rest[after..];
+            continue;
+        };
+        let digits = version.chars().take_while(char::is_ascii_digit).count();
+        if digits == 0 {
+            out.push('v');
+            rest = version;
+            continue;
+        }
+        out.push_str(name);
+        rest = &version[digits..];
+    }
+    out.push_str(rest);
+    out
+}
+
 /// A case's `mask`: the rows of a report whose detail is the machine's, not the
 /// fixture home's. Their names and `ok` still compare.
 fn mask(value: &mut Value, mask: &Value) {
@@ -384,13 +369,18 @@ impl Sandbox {
     fn prefixes(&self) -> Vec<(String, String)> {
         let mut prefixes = Vec::new();
         for (path, name) in [(&self.home, "<tandem-home>"), (&self.user, "<home>")] {
-            let spelled = path.to_string_lossy().into_owned();
-            prefixes.push((spelled.clone(), name.to_owned()));
+            // The wire spells a path with `/` on every platform, so the sandbox
+            // has to be a name in that spelling too, not only in the host's.
+            let mut spellings = vec![path.to_string_lossy().into_owned()];
             if let Ok(canonical) = fs::canonicalize(path) {
-                let canonical = canonical.to_string_lossy().into_owned();
-                if canonical != spelled {
-                    prefixes.push((canonical, name.to_owned()));
+                spellings.push(canonical.to_string_lossy().into_owned());
+            }
+            for spelling in spellings {
+                let slashed = spelling.replace(std::path::MAIN_SEPARATOR, "/");
+                if slashed != spelling {
+                    prefixes.push((slashed, name.to_owned()));
                 }
+                prefixes.push((spelling, name.to_owned()));
             }
         }
         prefixes
@@ -572,20 +562,6 @@ fn setup_steps(case: &Value, sandbox: &Sandbox, environment: &[(String, String)]
 #[test]
 fn goldens_match_the_binary() {
     let manifest = manifest();
-    let groups = grammar_groups(&manifest);
-    // No group answered is the PRT-9 state: there is nothing to compare yet. One
-    // group answered and another missing is a port that regressed, and the cases
-    // name the verb.
-    if !groups.iter().any(|group| answers(&binary(), group)) {
-        eprintln!(
-            "skipped: PRT-9 has not built the grammar yet, so the Rust binary answers no verb \
-             group the goldens cover ({}). The cases in Fixtures/goldens stay unrun until the \
-             port answers them; this test then compares them, with no change here.",
-            quoted(&groups)
-        );
-        return;
-    }
-
     let rules = manifest["normalize"]
         .as_array()
         .expect("the manifest carries a `normalize` list")
@@ -678,6 +654,22 @@ fn a_timestamp_is_its_name() {
         replace_timestamps("dated 2026-10-30 only", "<timestamp>"),
         "dated 2026-10-30 only",
         "a date is not a stamp: the fixture home's daily note keeps it"
+    );
+}
+
+#[test]
+fn a_schema_version_is_its_name() {
+    assert_eq!(
+        replace_schema_version(
+            "<tandem-home>/tandem.db \u{2014} v5; 1 open, 0 done",
+            "<schema>"
+        ),
+        "<tandem-home>/tandem.db \u{2014} <schema>; 1 open, 0 done"
+    );
+    assert_eq!(
+        replace_schema_version("schema v5 is refused", "<schema>"),
+        "schema v5 is refused",
+        "only the store row's number is the port's own"
     );
 }
 

@@ -43,7 +43,7 @@ No ORM and no async runtime: the store is one writer on one file.
 
 ## Transport and the UI contract
 
-- stdio locally, HTTPS remotely later; one message set, two stream adapters. No daemon: the app spawns the child, the child dies with the app, and the CLI opens the store under the `flock` sidecar when nothing holds it.
+- stdio locally, HTTPS remotely later; one message set, two stream adapters. No daemon: the app spawns the child, the child dies with the app, and the CLI opens `tandem.db` directly, with the engine's `BEGIN IMMEDIATE` and ~2 s busy window as the contention bound across processes and a process-local gate bounding one process's own threads inside the same window (ADR 0031).
 - **No UI-only writes.** Every UI mutation maps to a message the CLI also exposes, with a test that fails when a UI-only write appears.
 - Listings are a full snapshot plus a revision number; the core pushes change events on the stream.
 

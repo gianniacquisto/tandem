@@ -1005,6 +1005,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tandem-core",
+ "uuid",
 ]
 
 [[package]]
@@ -1012,6 +1013,7 @@ name = "tandem-core"
 version = "0.1.0"
 dependencies = [
  "comrak",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",
