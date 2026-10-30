@@ -7,8 +7,8 @@
 //! table or rule, and one run per styled span inside them. The source stays the
 //! source: the sheet's `Edit source` shows the exact stored bytes.
 //!
-//! It rides `comrak`, the GFM parser the bikeshed's health report uses (PRT-7), so
-//! the ticket faces read the same dialect the editor highlights: tables,
+//! It rides `comrak`, the GFM parser the bikeshed's scanner uses, so the ticket
+//! faces read the same dialect the editor highlights: tables,
 //! strikethrough and task lists included. The view model is `PartialEq` on purpose:
 //! it is the tests' subject.
 
