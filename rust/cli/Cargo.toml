@@ -1,0 +1,17 @@
+[package]
+name = "tandem"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Tandem's agent face: the verbs the skills speak and, later, rpc."
+
+[[bin]]
+name = "tandem"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tandem-core.workspace = true

@@ -1,0 +1,62 @@
+name: Rust
+
+# The port's first CI: the workspace's four gates on the three platforms the
+# port targets.
+#
+# The checks this publishes are what `main`'s protection names:
+# `rust (macos-latest)`, `rust (ubuntu-latest)`, `rust (windows-latest)`, and
+# they have to exist on every pull request to be worth requiring: a required
+# check that a path-filtered workflow never creates reads "Expected" forever and
+# blocks the merge of a PR that touches no `rust/**` file. So `push` keeps its
+# filter, where a skipped run costs nothing, and `pull_request` does not filter.
+#
+# No third-party action: `rust-toolchain.toml` pins the version and the two
+# components, rustup ships on every hosted runner, and nothing here reads a
+# secret or prints an environment.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rust/**"
+      - ".github/workflows/rust.yml"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: rust
+
+jobs:
+  rust:
+    name: rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Warm the toolchain proxy
+        # rustup reads `rust/rust-toolchain.toml` on first proxy use and
+        # installs the pinned version with `rustfmt` and `clippy`; naming it
+        # here keeps the download visible and the gate steps free of setup.
+        run: cargo --version
+
+      - name: "Gate: cargo fmt --check"
+        run: cargo fmt --all --check
+
+      - name: "Gate: cargo clippy -D warnings"
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: "Gate: cargo build"
+        run: cargo build
+
+      - name: "Gate: cargo test"
+        run: cargo test

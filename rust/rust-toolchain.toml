@@ -1,0 +1,11 @@
+# One toolchain for the machine and the three CI runners: rustup installs this
+# version and these two components on first use, so `cargo fmt` and `cargo
+# clippy` mean the same thing locally and in the PR's run.
+#
+# The pin is deliberate: a floating channel lets a new stable release redden
+# `main` with no commit here. Bump this one line in a PR that shows the gates
+# green on all three runners.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
