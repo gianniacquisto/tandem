@@ -137,8 +137,11 @@ struct UsageFaceView: View {
                 "\(UsageFormat.money(report.overlap)) of that is overlap: a shared record's cost per extra ticket")
         }
         if let loose = report.ticket.first(where: { $0.id == usageReportNoTicketID }) {
-            parts.append(
-                "\(UsageFormat.records(loose.records)) carried none, \(UsageFormat.money(loose.cost))")
+            // Absent stays absent, as on the rows: a ticketless record that
+            // reported nothing adds no cost to the clause.
+            parts.append(loose.reported == 0
+                ? "\(UsageFormat.records(loose.records)) carried none"
+                : "\(UsageFormat.records(loose.records)) carried none, \(UsageFormat.money(loose.cost))")
         }
         return parts.joined(separator: " · ")
     }

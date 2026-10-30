@@ -130,9 +130,9 @@ struct SnapshotTests {
         }
 
         /// Three records: one still running, two ended with their outcomes. The
-        /// two ended ones carry usage (TAN-234): their cost, tokens and model,
-        /// one ticket each, and the middle record carries two, so the Usage
-        /// face has an overlap and the fleet record has no ticket at all.
+        /// two ended ones carry usage (TAN-234): their cost, tokens and model.
+        /// The middle record carries two tickets and the fleet record carries
+        /// none, so the Usage face has an overlap and a ticketless row.
         private static func seedSessions(at home: URL) throws {
             let ids = try Store(directory: home).list(.all).value.map(\.id)
             let records = [
