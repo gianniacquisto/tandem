@@ -218,7 +218,12 @@ public enum DomainError: Error, Sendable, Equatable {
         case .emptySessionSummary:
             return "Session summary is empty. Provide a non-empty summary on stdin — or omit --summary to end the session without one."
         case .invalidUsageFlag(let flag, let value):
-            return "--\(flag) must be a non-negative number (got \"\(value)\")."
+            // One case for every usage flag this build refuses, two grammars: the
+            // number flags take a count, `--skills` takes `name=count` pairs.
+            let expected = flag == "skills"
+                ? "name=count pairs with a count of at least 1"
+                : "a non-negative number"
+            return "--\(flag) must be \(expected) (got \"\(value)\")."
         case .emptyDescriptionBody:
             return "Description body is empty. Provide a non-empty body on stdin — or pass --description \"\" to clear the description."
         case .invalidFilter(let bad):

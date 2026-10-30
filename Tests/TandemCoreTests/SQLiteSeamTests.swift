@@ -345,7 +345,7 @@ struct SQLiteSeamTests {
         #expect(tickets.compactMap(\.ref).sorted() == ["TAN-1", "TAN-2"])
     }
 
-    @Test("the first write on a v4 home creates ticket_dependencies and records v5")
+    @Test("the first write on a v4 home creates ticket_dependencies and records every version")
     func firstWriteOnV4CreatesTheTable() throws {
         let dir = try makeDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -355,7 +355,7 @@ struct SQLiteSeamTests {
         _ = try store.block(ids.first.uuidString, on: ids.second.uuidString)
 
         #expect(store.schemaVersion() == StoreSchema.currentVersion)
-        #expect(StoreSchema.currentVersion == 5, "the dependency table moves the schema")
+        #expect(StoreSchema.currentVersion == 6, "the session skills column moves the schema")
 
         let db = try SQLiteDatabase(url: store.databaseURL, mode: .readOnly)
         defer { db.close() }
@@ -365,7 +365,7 @@ struct SQLiteSeamTests {
         let versions = try db.rows("SELECT version FROM schema_migrations ORDER BY version") {
             $0.int(0)
         }
-        #expect(versions == Array(1...5))
+        #expect(versions == Array(1...6))
         let edges = try db.rows("SELECT ticket_id, depends_on_id FROM ticket_dependencies") {
             ($0.text(0), $0.text(1))
         }
@@ -387,7 +387,7 @@ struct SQLiteSeamTests {
 
         let backup = try SQLiteDatabase(url: store.backupURL, mode: .readOnly)
         defer { backup.close() }
-        #expect(try StoreSchema.version(of: backup) == 5,
+        #expect(try StoreSchema.version(of: backup) == 6,
                 "the write after the migration rolls the migrated state")
 
         // The migration's pre-image is what the first write rolled: rebuild one and

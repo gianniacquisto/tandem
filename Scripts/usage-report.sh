@@ -100,6 +100,35 @@ flags=""
 [ -n "$cost" ] && flags="$flags --cost $cost"
 [ -n "$model" ] && flags="$flags --model $model"
 
+# The skills this pass loaded, from the session's own messages: a `skill` tool
+# part names the skill it loaded at `state.input.id`. One query for the whole
+# row, grouped by name, and every part of it is the same row the usage above
+# came from. A database with no message table (an older harness), or a session
+# that loaded nothing, contributes no flag, so the record carries no map, never
+# an empty one. The id was refused above if it carried a quote, and this query
+# interpolates nothing else.
+skills=$(sqlite3 -readonly -separator "$(printf '\t')" "$DB" \
+    "SELECT json_extract(part.value, '\$.state.input.id') AS skill, COUNT(*)
+     FROM session_message AS message
+     JOIN json_each(message.data, '\$.content') AS part
+     WHERE message.session_id = '$SESSION'
+       AND message.type = 'assistant'
+       AND json_extract(part.value, '\$.type') = 'tool'
+       AND json_extract(part.value, '\$.name') = 'skill'
+       AND json_extract(part.value, '\$.state.input.id') IS NOT NULL
+     GROUP BY skill
+     ORDER BY skill;" 2>/dev/null) || skills=""
+
+# `name=count` pairs, comma separated, in name order: the CLI's one flag for the
+# map. A name or a count carrying whitespace would split the flag, and opencode's
+# own ids never do; a row whose fields are not two is one this wrapper does not
+# understand and drops rather than guess.
+if [ -n "$skills" ]; then
+    pairs=$(printf '%s\n' "$skills" \
+        | awk -F'\t' 'NF == 2 && $1 != "" { printf "%s%s=%s", (n++ ? "," : ""), $1, $2 }')
+    [ -n "$pairs" ] && flags="$flags --skills $pairs"
+fi
+
 # The record this opencode session already has: `running` takes the usage
 # itself (the exec below); `ended` cannot — it stamps once — so this pass gets
 # its own record. A `session show` failure (no record at all) is not this

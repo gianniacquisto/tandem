@@ -26,7 +26,7 @@ enum StoreSchema {
     }
 
     /// The version this build writes and reads.
-    static let currentVersion = 5
+    static let currentVersion = 6
 
     /// Every migration, in order. Append only — a shipped version's DDL never changes.
     static let migrations: [Migration] = [
@@ -186,6 +186,16 @@ enum StoreSchema {
                 CREATE INDEX IF NOT EXISTS ticket_dependencies_on
                 ON ticket_dependencies (depends_on_id)
                 """)
+        },
+        // The skills a pass loaded (TAN-241): one JSON object on the session row,
+        // skill name to invocation count, stamped once by `end`. A column, not a
+        // table: a record stamps once and a map of five names does not earn one,
+        // the same reason `tickets` is JSON text beside it. No backfill: the
+        // harness database holds the counts and keeps only its newest sessions, so
+        // a backfill would guess, and every existing row reads as `nil` (absent,
+        // never a reported zero), which is what an unrecorded count means.
+        Migration(version: 6, name: "session skills") { db in
+            try db.execute("ALTER TABLE sessions ADD COLUMN skills TEXT")
         }
     ]
 

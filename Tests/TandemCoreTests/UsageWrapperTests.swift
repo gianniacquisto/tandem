@@ -133,6 +133,87 @@ struct UsageWrapperTests {
         #expect(try cli.comments(home: home, id: ticket).isEmpty, "and no usage comment posted")
     }
 
+    // MARK: - the skills
+
+    @Test("the wrapper counts the row's skill parts onto the record: one name, its count, nothing else")
+    func theWrapperCountsTheSkillParts() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        #expect(try run(home: home, [
+            "session", "start", "--project", "tandem", "--agent", "builder", "--brief", "the pass",
+        ]).code == 0)
+
+        let db = try opencodeDatabase([OpenCodeRow(id: sessionID, toolParts: [
+            (name: "skill", skill: "grilling"),
+            (name: "skill", skill: "grilling"),
+            (name: "bash", skill: nil),
+        ])])
+        defer { try? FileManager.default.removeItem(at: db) }
+
+        let ended = try wrapper(home: home, db: db, ["--outcome", "succeeded"], stdin: "the pass ended\n")
+        #expect(ended.code == 0, "the wrapper ends the pass: \(ended.error)")
+
+        let record = try cli.object(from: try run(home: home, ["session", "show"]).output)
+        let skills = try #require(record["skills"] as? [String: Any], "the counts land on the record")
+        #expect(skills["grilling"] as? Int == 2, "two loads of one skill are one name with count 2")
+        #expect(skills.count == 1, "the non-skill tool call is not a skill")
+    }
+
+    @Test("a row with no skill parts writes no `skills` key")
+    func aRowWithNoSkillPartsWritesNoSkills() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        #expect(try run(home: home, [
+            "session", "start", "--project", "tandem", "--agent", "builder", "--brief", "the pass",
+        ]).code == 0)
+
+        let db = try opencodeDatabase([OpenCodeRow(id: sessionID, toolParts: [
+            (name: "bash", skill: nil),
+            (name: "read", skill: nil),
+        ])])
+        defer { try? FileManager.default.removeItem(at: db) }
+
+        #expect(try wrapper(home: home, db: db, ["--outcome", "succeeded"], stdin: "the pass ended\n").code == 0)
+
+        let record = try cli.object(from: try run(home: home, ["session", "show"]).output)
+        #expect(record["skills"] == nil, "no skill loaded, no map, never an empty one")
+    }
+
+    @Test("the continuation record carries the pass's skill counts too")
+    func theContinuationRecordCarriesTheSkillCounts() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        #expect(try run(home: home, [
+            "session", "start", "--project", "tandem", "--agent", "builder", "--brief", "the gate pass",
+        ]).code == 0)
+        #expect(try run(home: home, [
+            "session", "end", "--outcome", "succeeded", "--summary", "gate pass merged",
+        ]).code == 0)
+
+        let db = try opencodeDatabase([OpenCodeRow(id: sessionID, toolParts: [
+            (name: "skill", skill: "tandem-build"),
+            (name: "skill", skill: "tdd"),
+            (name: "skill", skill: "tdd"),
+        ])])
+        defer { try? FileManager.default.removeItem(at: db) }
+
+        let ended = try wrapper(home: home, db: db, ["--outcome", "succeeded"], stdin: "the merge pass\n")
+        #expect(ended.code == 0, "the wrapper mints the continuation: \(ended.error)")
+
+        let cont = try cli.object(
+            from: try run(home: home, ["session", "show", "--session", "\(sessionID)-2"]).output)
+        let skills = try #require(cont["skills"] as? [String: Any])
+        #expect(skills["tdd"] as? Int == 2)
+        #expect(skills["tandem-build"] as? Int == 1)
+        #expect(skills.count == 2)
+
+        let first = try cli.object(from: try run(home: home, ["session", "show", "--session", sessionID]).output)
+        #expect(first["skills"] == nil, "the ended record keeps what it had: nothing")
+    }
+
     // MARK: - the terminal record
 
     @Test("a pass whose record already ended gets its own record — `<id>-2` — and the usage lands on it")
@@ -395,6 +476,10 @@ struct UsageWrapperTests {
         var id: String
         var input = 12345
         var cost = 0.42
+        /// The tool parts the row's assistant messages carry, in order: a `skill`
+        /// call names the skill it loaded, any other name is a tool call the
+        /// count leaves alone.
+        var toolParts: [(name: String, skill: String?)] = []
     }
 
     /// An opencode database carrying one row for `session` — the shape the
@@ -418,12 +503,27 @@ struct UsageWrapperTests {
             tokens_cache_write INTEGER,
             cost REAL,
             model TEXT);
+        CREATE TABLE session_message (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            data TEXT NOT NULL);
         """
         for row in rows {
             sql += """
             INSERT INTO session_v2 VALUES ('\(row.id)', \(row.input), 4567, 567, 89012, 1234, \(row.cost),
                 '{"id":"opencode-go/deepseek-v4.1-flash"}');
             """
+            // One assistant message per part, the shape opencode writes: the
+            // part sits in the message's `content` array, and a `skill` tool
+            // part names its skill at `state.input.id`.
+            for (index, part) in row.toolParts.enumerated() {
+                let input = part.skill.map { ",\"state\":{\"input\":{\"id\":\"\($0)\"}}" } ?? ""
+                sql += """
+                INSERT INTO session_message VALUES ('\(row.id)-part-\(index)', '\(row.id)',
+                    'assistant', '{"content":[{"type":"tool","name":"\(part.name)"\(input)}]}');
+                """
+            }
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")

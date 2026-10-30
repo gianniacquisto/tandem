@@ -44,7 +44,7 @@ enum Usage {
                              [--tokens-input <n>] [--tokens-output <n>]
                              [--tokens-reasoning <n>] [--tokens-cache-read <n>]
                              [--tokens-cache-write <n>] [--cost <dollars>]
-                             [--model <name>]
+                             [--model <name>] [--skills <name=count[,name=count]>]
       tandem-cli session link --ticket <id> [--session <id>]
       tandem-cli session list [--project <name>] [--status <value>]
       tandem-cli session show [--session <id>]
@@ -141,7 +141,7 @@ enum Usage {
                                  [--tokens-input <n>] [--tokens-output <n>]
                                  [--tokens-reasoning <n>] [--tokens-cache-read <n>]
                                  [--tokens-cache-write <n>] [--cost <dollars>]
-                                 [--model <name>]
+                                 [--model <name>] [--skills <name=count[,name=count]>]
           tandem-cli session link --ticket <id> [--session <id>]
           tandem-cli session list [--project <name>] [--status <value>]
           tandem-cli session show [--session <id>]
@@ -459,7 +459,7 @@ enum Usage {
                                  [--tokens-input <n>] [--tokens-output <n>]
                                  [--tokens-reasoning <n>] [--tokens-cache-read <n>]
                                  [--tokens-cache-write <n>] [--cost <dollars>]
-                                 [--model <name>]
+                                 [--model <name>] [--skills <name=count[,name=count]>]
 
         Values:
           outcome   succeeded | failed | interrupted | unknown — how a session ended
