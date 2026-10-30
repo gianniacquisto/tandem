@@ -161,6 +161,14 @@ impl Store {
         &self.home
     }
 
+    /// Whether the home carries a database file. The watch asks this to tell a
+    /// home nothing has written yet, whose retry costs a `stat` and no
+    /// connection, from a store that exists but carries no revision row (a
+    /// pre-v4 file), which every attempt opens.
+    pub fn exists(&self) -> bool {
+        self.database().exists()
+    }
+
     /// The database: `<home>/tandem.db`.
     pub fn database(&self) -> PathBuf {
         self.home.directory().join("tandem.db")

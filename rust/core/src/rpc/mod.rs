@@ -45,17 +45,19 @@ use crate::wire::{CommentView, TicketDetail, TicketSummary};
 
 /// The most one frame may carry. A description is text a human wrote; a
 /// megabyte is far past any of them, and the cap keeps an untrusted writer from
-/// growing this process's heap one line at a time.
-const MAX_FRAME: usize = 4 * 1024 * 1024;
+/// growing this process's heap one line at a time. A frame of exactly this many
+/// bytes is legal; the newline that ends it is the stream's, not the frame's.
+pub const MAX_FRAME: usize = 4 * 1024 * 1024;
 
 /// How often the watch asks the store whether the revision moved, on the one
 /// connection it keeps open. Short enough that the face updates before a human
 /// notices, and one query a tick is what an idle child costs.
 const WATCH_INTERVAL: Duration = Duration::from_millis(40);
 
-/// The longest wait after a refused or unreadable store. A legacy or broken
-/// home must not be reopened 25 times a second: the watch doubles its wait on
-/// every refusal up to this cap, and resets on a successful open.
+/// The longest wait after a store the watch cannot attach to: refused,
+/// unreadable, or readable with no revision row yet. A legacy or broken home
+/// must not be reopened 25 times a second: the watch doubles its wait on every
+/// such attempt up to this cap, and resets on a successful attach.
 const WATCH_BACKOFF_MAX: Duration = Duration::from_secs(5);
 
 /// One step of the watch's backoff: twice the wait, capped.
@@ -112,12 +114,23 @@ impl Stream for StdioStream {
         let mut input = self.input.lock();
         let mut buffer = Vec::new();
         {
-            let mut limited = (&mut input).take(MAX_FRAME as u64 + 1);
+            // The limit is two bytes past the cap: enough for a legal frame's
+            // content, a CR and the newline that ends it. A frame of exactly
+            // `MAX_FRAME` bytes therefore arrives whole, newline included,
+            // instead of being refused for the byte its terminator took.
+            let mut limited = (&mut input).take(MAX_FRAME as u64 + 2);
             limited.read_until(b'\n', &mut buffer)?;
         }
-        if buffer.len() > MAX_FRAME {
-            // Drain the rest of the line so the next read starts at a frame
-            // boundary, then refuse this one. The stream stays usable.
+        if buffer.is_empty() {
+            return Ok(None);
+        }
+        let terminated = buffer.ends_with(b"\n");
+        if !terminated && buffer.len() == MAX_FRAME + 2 {
+            // The limit was reached before the line ended, so the rest of this
+            // frame is still on the stream: drain to its own newline, and only
+            // to that one, so the next read starts at a frame boundary and the
+            // client's next request survives. A short unterminated buffer is a
+            // last frame at end of stream, not an overflow.
             let mut discard = Vec::new();
             loop {
                 discard.clear();
@@ -125,19 +138,18 @@ impl Stream for StdioStream {
                     break;
                 }
             }
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("the frame is longer than {MAX_FRAME} bytes"),
-            ));
         }
-        if buffer.is_empty() {
-            return Ok(None);
-        }
-        if buffer.ends_with(b"\n") {
+        if terminated {
             buffer.pop();
             if buffer.ends_with(b"\r") {
                 buffer.pop();
             }
+        }
+        if buffer.len() > MAX_FRAME {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("the frame is longer than {MAX_FRAME} bytes"),
+            ));
         }
         String::from_utf8(buffer)
             .map(Some)
@@ -169,61 +181,7 @@ pub fn serve<S: Stream>(stream: S, store: Store, actor: Actor) -> io::Result<()>
         let stream = Arc::clone(&stream);
         let store = store.clone();
         let stop = Arc::clone(&stop);
-        thread::spawn(move || {
-            // One read-only connection, reused: an idle child runs one query
-            // per tick, not an open and a close. The watch waits for the store
-            // to exist and for its one-time WAL switch (`Store::watch`).
-            let mut watch = store.watch().ok().flatten();
-            let mut last = watch
-                .as_ref()
-                .and_then(|watch| watch.revision().ok())
-                .unwrap_or(0);
-            let mut wait = WATCH_INTERVAL;
-            while !stop.load(Ordering::Relaxed) {
-                thread::sleep(wait);
-                if watch.is_none() {
-                    match store.watch() {
-                        Ok(Some(found)) => {
-                            watch = Some(found);
-                            wait = WATCH_INTERVAL;
-                        }
-                        // No store yet (or the first write's WAL switch is in
-                        // flight): look again at the normal cadence.
-                        Ok(None) => {
-                            wait = WATCH_INTERVAL;
-                            continue;
-                        }
-                        // A refused store (a legacy file, an unreadable one)
-                        // must not spin: back off until it changes.
-                        Err(_) => {
-                            wait = backoff(wait);
-                            continue;
-                        }
-                    }
-                }
-                let Some(current) = watch.as_ref() else {
-                    continue;
-                };
-                let Ok(revision) = current.revision() else {
-                    // The connection is unusable (the store was replaced or
-                    // removed): drop it and reopen with the backoff.
-                    watch = None;
-                    wait = backoff(wait);
-                    continue;
-                };
-                if revision == last {
-                    continue;
-                }
-                last = revision;
-                let frame = match serde_json::to_string(&Event::changed(revision)) {
-                    Ok(frame) => frame,
-                    Err(_) => continue,
-                };
-                if stream.write_frame(&frame).is_err() {
-                    return;
-                }
-            }
-        })
+        thread::spawn(move || watch(&*stream, &store, &stop))
     };
 
     let outcome = loop {
@@ -255,6 +213,71 @@ pub fn serve<S: Stream>(stream: S, store: Store, actor: Actor) -> io::Result<()>
     stop.store(true, Ordering::Relaxed);
     let _ = watcher.join();
     outcome
+}
+
+/// The watch: poll the store's revision on one read-only connection and push a
+/// change event whenever it moves, until `stop`.
+fn watch<S: Stream>(stream: &S, store: &Store, stop: &AtomicBool) {
+    // One read-only connection, reused: an idle child runs one query per tick,
+    // not an open and a close. The watch waits for the store to exist and for
+    // its one-time WAL switch (`Store::watch`).
+    let mut watch = store.watch().ok().flatten();
+    let mut last = watch
+        .as_ref()
+        .and_then(|watch| watch.revision().ok())
+        .unwrap_or(0);
+    let mut wait = WATCH_INTERVAL;
+    while !stop.load(Ordering::Relaxed) {
+        thread::sleep(wait);
+        if watch.is_none() {
+            match store.watch() {
+                Ok(Some(found)) => {
+                    watch = Some(found);
+                    wait = WATCH_INTERVAL;
+                }
+                // No store yet: the first write has not run, and asking again
+                // costs a stat and no connection, so keep the normal cadence.
+                // A store that exists but carries no revision row is a pre-v4
+                // file, opened on every attempt: it backs off like a refusal
+                // until the first write migrates it.
+                Ok(None) => {
+                    wait = if store.exists() {
+                        backoff(wait)
+                    } else {
+                        WATCH_INTERVAL
+                    };
+                    continue;
+                }
+                // A refused store (a legacy file, an unreadable one)
+                // must not spin: back off until it changes.
+                Err(_) => {
+                    wait = backoff(wait);
+                    continue;
+                }
+            }
+        }
+        let Some(current) = watch.as_ref() else {
+            continue;
+        };
+        let Ok(revision) = current.revision() else {
+            // The connection is unusable (the store was replaced or
+            // removed): drop it and reopen with the backoff.
+            watch = None;
+            wait = backoff(wait);
+            continue;
+        };
+        if revision == last {
+            continue;
+        }
+        last = revision;
+        let frame = match serde_json::to_string(&Event::changed(revision)) {
+            Ok(frame) => frame,
+            Err(_) => continue,
+        };
+        if stream.write_frame(&frame).is_err() {
+            return;
+        }
+    }
 }
 
 // MARK: - One frame
@@ -554,5 +577,70 @@ mod tests {
         }
         assert_eq!(wait, WATCH_BACKOFF_MAX);
         assert!(WATCH_BACKOFF_MAX > WATCH_INTERVAL);
+    }
+
+    /// A home whose store carries no revision row, which is what a pre-v4 file
+    /// presents to `Store::watch`: `Ok(None)`, not an error.
+    fn store_without_a_revision(name: &str) -> (std::path::PathBuf, Store) {
+        use crate::store::{Home, NewSetting};
+
+        let root =
+            std::env::temp_dir().join(format!("tandem-rpc-watch-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let home = Home::resolve(Some(&root.join("home")), None, &root.join("user"));
+        let store = Store::new(home);
+        store
+            .write(&Actor::Human, |write| {
+                write.insert_setting(NewSetting {
+                    key: "k",
+                    value: "v",
+                })
+            })
+            .expect("the first write creates the schema");
+        let connection = rusqlite::Connection::open(root.join("home").join("tandem.db"))
+            .expect("the store opens");
+        connection
+            .execute_batch("DROP TABLE store_meta")
+            .expect("the revision table is droppable");
+        (root, store)
+    }
+
+    /// The stream the watch writes its events to; a store with no revision
+    /// produces none.
+    struct Sink;
+
+    impl Stream for Sink {
+        fn read_frame(&self) -> io::Result<Option<String>> {
+            Ok(None)
+        }
+
+        fn write_frame(&self, _frame: &str) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    // Unix only because the counter it reads is (`Store::watch_opens`), the
+    // same gate the restored-store case carries.
+    #[cfg(unix)]
+    #[test]
+    fn a_store_with_no_revision_backs_off_instead_of_reopening() {
+        let (root, store) = store_without_a_revision("no-revision");
+        let store = Arc::new(store);
+        let stop = Arc::new(AtomicBool::new(false));
+        let opens_before = store.watch_opens();
+        let handle = {
+            let store = Arc::clone(&store);
+            let stop = Arc::clone(&stop);
+            thread::spawn(move || watch(&Sink, &store, &stop))
+        };
+        thread::sleep(Duration::from_secs(1));
+        stop.store(true, Ordering::Relaxed);
+        handle.join().expect("the watch stops");
+        let opens = store.watch_opens() - opens_before;
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            opens <= 10,
+            "a pre-v4 store is opened {opens} times in a second, not at the 40 ms cadence"
+        );
     }
 }

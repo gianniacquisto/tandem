@@ -167,6 +167,58 @@ fn revision(frame: &Value) -> i64 {
         .unwrap_or_else(|| panic!("the frame carries a revision: {frame}"))
 }
 
+/// A request padded with trailing spaces (legal JSON) to exactly `len` bytes,
+/// so a case can sit on the frame cap without megabytes of text.
+fn request_of_len(id: u64, len: usize) -> String {
+    let mut frame = json!({"id": id, "method": "ticket.list", "params": {}}).to_string();
+    assert!(frame.len() <= len, "the request fits under the cap");
+    frame.push_str(&" ".repeat(len - frame.len()));
+    frame
+}
+
+#[test]
+fn a_frame_of_exactly_the_cap_is_answered() {
+    let sandbox = Sandbox::new("cap");
+    let mut session = Session::start(&sandbox);
+
+    session.send_raw(&request_of_len(11, tandem_core::rpc::MAX_FRAME));
+    let answered = session.receive_where(|frame| frame["id"] == 11);
+    assert!(
+        answered["result"].is_object(),
+        "a frame of exactly the cap is a frame: {answered}"
+    );
+}
+
+#[test]
+fn a_frame_over_the_cap_is_refused_without_eating_the_next_request() {
+    let sandbox = Sandbox::new("over-cap");
+    let mut session = Session::start(&sandbox);
+
+    session.send_raw(&request_of_len(12, tandem_core::rpc::MAX_FRAME + 1));
+    let refused = session.receive_where(|frame| frame["error"].is_object());
+    assert!(
+        refused["id"].is_null(),
+        "the refused frame carries no id: {refused}"
+    );
+    assert_eq!(refused["error"]["code"], "parse");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("longer than"),
+        "the error names the cap: {refused}"
+    );
+
+    // The drain stopped at the refused frame's own newline, so the request
+    // after it is still a request and still answered.
+    session.send(json!({"id": 13, "method": "ticket.list", "params": {}}));
+    let answered = session.receive_where(|frame| frame["id"] == 13);
+    assert!(
+        answered["result"].is_object(),
+        "the request after a refused frame is answered: {answered}"
+    );
+}
+
 #[test]
 fn a_pipe_session_snapshots_mutates_and_reports_the_change() {
     let sandbox = Sandbox::new("session");
