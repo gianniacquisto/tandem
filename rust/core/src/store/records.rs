@@ -16,18 +16,26 @@ use rusqlite::{Connection, OpenFlags};
 use super::rows::{SessionRow, SprintRow};
 use super::{Result, StoreError, translate};
 
-/// Every session row, in the order the rows were recorded.
-pub(crate) fn session_rows(connection: &Connection) -> Result<Vec<SessionRow>> {
-    let mut statement = connection
-        .prepare(
-            "SELECT id, project, agent, brief, status, outcome, summary,
+/// The session columns every version carries, in read order.
+const SESSION_COLUMNS: &str = "id, project, agent, brief, status, outcome, summary,
                     started_at, ended_at, tokens_input, tokens_output,
                     tokens_reasoning, tokens_cache_read, tokens_cache_write,
-                    seconds, cost, model, tickets, skills
-             FROM sessions
-             ORDER BY rowid",
-        )
-        .map_err(translate)?;
+                    seconds, cost, model, tickets";
+
+/// Every session row, in the order the rows were recorded.
+///
+/// **The skill column is read only from a file that has it.** `skills` arrived
+/// with v3, and a read never writes, so a v2 home (the previous build's, and a
+/// home `Scripts/usage-report.sh` reads before it ends anything) answers its
+/// records with `skills` NULL rather than an engine error. Both fragments are
+/// literals; nothing here is a caller's string.
+pub(crate) fn session_rows(connection: &Connection) -> Result<Vec<SessionRow>> {
+    let sql = if super::schema::has_skills(connection)? {
+        format!("SELECT {SESSION_COLUMNS}, skills FROM sessions ORDER BY rowid")
+    } else {
+        format!("SELECT {SESSION_COLUMNS}, NULL FROM sessions ORDER BY rowid")
+    };
+    let mut statement = connection.prepare(&sql).map_err(translate)?;
     let rows = statement
         .query_map([], |row| {
             Ok(SessionRow {

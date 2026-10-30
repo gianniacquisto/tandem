@@ -29,7 +29,9 @@ mod home;
 mod locked;
 pub(crate) mod records;
 mod rows;
-mod schema;
+// Reachable from the records suite, which builds a v2 home to prove a read of
+// an older file never fails on a column a later migration adds.
+pub(crate) mod schema;
 #[cfg(test)]
 mod tests;
 pub(crate) mod timestamp;

@@ -259,6 +259,60 @@ fn a_stamp_the_store_cannot_read_is_refused_before_it_is_written() {
 }
 
 #[test]
+fn a_read_of_a_v2_home_answers_its_records_with_no_skill_counts() {
+    let sandbox = Sandbox::new("v2-home");
+    let store = sandbox.store();
+    std::fs::create_dir_all(store.home().directory()).expect("the home directory is creatable");
+    {
+        // A home the previous build wrote: the seam at v2, the session row
+        // without the skills column that v3 adds.
+        let connection = rusqlite::Connection::open(store.database()).expect("the v2 file opens");
+        crate::store::schema::migrate_with(
+            &connection,
+            &crate::store::schema::MIGRATIONS[..2],
+            &Actor::Human,
+        )
+        .expect("a v2 home is the shape the previous build writes");
+        connection
+            .execute(
+                "INSERT INTO sessions
+                    (id, project, agent, brief, status, outcome, summary, started_at,
+                     ended_at, tokens_input, tokens_output, tokens_reasoning,
+                     tokens_cache_read, tokens_cache_write, seconds, cost, model,
+                     tickets, author)
+                 VALUES (?1, 'tandem', NULL, 'A record the v2 build wrote.', 'ended',
+                         'succeeded', NULL, ?2, ?3, NULL, NULL, NULL, NULL, NULL,
+                         NULL, NULL, NULL, '[]', 'human')",
+                rusqlite::params!["ses_v2", at(0), at(5)],
+            )
+            .expect("the v2 row lands");
+    }
+
+    let sessions = Sessions::new(&store);
+    let listed = sessions
+        .list(None, None)
+        .expect("a read never writes (ADR 0031), and a v2 home still reads");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, "ses_v2");
+    assert_eq!(
+        listed[0].skills, None,
+        "the additive column reads NULL, not as an engine error"
+    );
+    assert_eq!(
+        sessions
+            .show("ses_v2")
+            .expect("show reads the same row")
+            .skills,
+        None
+    );
+    assert_eq!(
+        store.schema_version().unwrap(),
+        Some(2),
+        "the read migrated nothing"
+    );
+}
+
+#[test]
 fn a_link_appends_once_in_link_order() {
     let sandbox = Sandbox::new("link");
     let actor = sandbox.actor();
@@ -426,7 +480,7 @@ fn the_skill_counts_are_a_column_a_record_written_before_it_reads_empty() {
     let store = sandbox.store();
     let sessions = Sessions::new(&store);
 
-    // v6 adds the column: a fresh home carries it, and a record that reports no
+    // v3 adds the column: a fresh home carries it, and a record that reports no
     // skills stores NULL rather than an empty object.
     sessions
         .start(&actor, "ses_old", "tandem", None, "One.", Some(&at(0)))

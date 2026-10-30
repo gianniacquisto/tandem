@@ -239,7 +239,7 @@ impl DomainError {
             ),
             Self::InvalidSkills(bad) => format!(
                 "--skills must be comma-separated name=count pairs, each a name and a \
-                 non-negative whole count (got \"{bad}\" )."
+                 non-negative whole count (got \"{bad}\")."
             ),
             Self::InvalidStamp(bad) => format!(
                 "\"{bad}\" is not a timestamp. Stamps are ISO-8601 UTC, \

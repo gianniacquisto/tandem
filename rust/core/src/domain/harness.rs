@@ -86,7 +86,7 @@ fn row(connection: &Connection, session_id: &str) -> DomainResult<HarnessUsage> 
                         cache_write: row.get(4)?,
                     },
                     cost: row.get(5)?,
-                    model: model.map(|raw| model_id(&raw)),
+                    model: model.as_deref().and_then(model_id),
                     skills: None,
                 })
             },
@@ -145,15 +145,26 @@ fn skills(connection: &Connection, session_id: &str) -> DomainResult<Option<Skil
     Ok((!counts.is_empty()).then_some(counts))
 }
 
-/// The model string the harness reports: the `id` inside the row's JSON model,
-/// or the text itself when it is not the object opencode writes.
-fn model_id(raw: &str) -> String {
+/// The model string the harness reports: the `id` inside the row's JSON model, a
+/// JSON string's own value, or the text itself when it is not JSON.
+///
+/// **A JSON `null` is no model at all.** The harness writes `null` for a row it
+/// never attributed, and recording the word `"null"` would invent a model by
+/// that name, which is exactly what `Scripts/usage-report.sh` avoids by passing
+/// no `--model` flag for an empty value.
+fn model_id(raw: &str) -> Option<String> {
     match serde_json::from_str::<serde_json::Value>(raw) {
-        Ok(model) => model
+        Ok(serde_json::Value::Object(model)) => model
             .get("id")
             .and_then(|id| id.as_str())
-            .map(str::to_string)
-            .unwrap_or_else(|| raw.to_string()),
-        Err(_) => raw.to_string(),
+            .map(str::to_string),
+        Ok(serde_json::Value::String(text)) => non_blank(&text),
+        Ok(_) => None,
+        Err(_) => non_blank(raw),
     }
+}
+
+fn non_blank(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }

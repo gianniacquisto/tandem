@@ -37,7 +37,7 @@ use crate::store::{
 ///
 /// One count per name, held as a map so the order is the reader's, not the
 /// store's. It is stamped once, by `end`, and stored as one JSON object in the
-/// `skills` column (schema v6, an append-only migration).
+/// `skills` column (schema v3, an append-only migration).
 pub type SkillCounts = BTreeMap<String, i64>;
 
 /// Parse a `--skills name=count,...` value.

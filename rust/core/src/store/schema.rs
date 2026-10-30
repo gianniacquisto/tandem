@@ -48,7 +48,7 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         apply: version_two,
     },
     Migration {
-        version: 3,
+        version: SKILLS_VERSION,
         name: "the session skill counts",
         apply: version_three,
     },
@@ -148,6 +148,11 @@ const VERSION_TWO: &str = "
 CREATE INDEX IF NOT EXISTS tickets_lane_position ON tickets (lane, position);
 CREATE INDEX IF NOT EXISTS comments_ticket ON comments (ticket_id);
 ";
+
+/// The version that adds `sessions.skills`, and the newest version a read of an
+/// older file has to know about: the column is additive, so a file below this
+/// version is readable with the column absent (TAN-241).
+pub(crate) const SKILLS_VERSION: i64 = 3;
 
 /// Version 3: the skill counts a session's pass loaded, stored as one JSON
 /// object in a nullable column (TAN-241). **Additive**: an INSERT that names its
@@ -276,6 +281,15 @@ pub(crate) fn behind(connection: &Connection) -> Result<bool> {
         Some(applied) => Ok(applied < CURRENT_VERSION),
         None => Ok(true),
     }
+}
+
+/// Whether the file carries the session record's skill column.
+///
+/// **A read asks this instead of migrating**, because a read never writes
+/// (ADR 0031): a home the previous build wrote answers its records with the
+/// additive column NULL, rather than failing on a column it does not have.
+pub(crate) fn has_skills(connection: &Connection) -> Result<bool> {
+    Ok(version(connection)?.unwrap_or(0) >= SKILLS_VERSION)
 }
 
 /// Whether a store is behind the version this build writes.

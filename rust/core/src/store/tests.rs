@@ -490,16 +490,7 @@ mod schema {
             .unwrap()
             .map(|row| row.unwrap())
             .collect();
-        // The list, not the counter: the aggregates land in parallel and each
-        // claims its version (see `schema.rs`), so the recorded set is exactly
-        // the migrations this build ships, in order, gap included.
-        assert_eq!(
-            versions,
-            MIGRATIONS
-                .iter()
-                .map(|migration| migration.version)
-                .collect::<Vec<_>>()
-        );
+        assert_eq!(versions, (1..=CURRENT_VERSION).collect::<Vec<_>>());
         let applied_at: String = connection
             .query_row(
                 "SELECT applied_at FROM schema_migrations LIMIT 1",

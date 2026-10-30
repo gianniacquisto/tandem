@@ -39,6 +39,16 @@ fn harness(sandbox: &Sandbox) -> PathBuf {
             );",
         )
         .expect("the harness schema is written");
+    // A row the harness never attributed: the model column holds JSON `null`.
+    connection
+        .execute(
+            "INSERT INTO session_v2
+                (id, cost, tokens_input, tokens_output, tokens_reasoning,
+                 tokens_cache_read, tokens_cache_write, model)
+             VALUES ('ses_unattributed', 0, 0, 0, 0, 0, 0, 'null')",
+            [],
+        )
+        .expect("the unattributed row is written");
     connection
         .execute(
             "INSERT INTO session_v2
@@ -98,6 +108,18 @@ fn the_harness_row_becomes_the_usage_triple_and_the_skill_counts() {
             ("tdd".to_string(), 1),
         ])),
         "the skill loads are counted by name, and a name is trimmed"
+    );
+}
+
+#[test]
+fn a_harness_row_with_a_null_model_reports_no_model() {
+    let sandbox = Sandbox::new("harness-null-model");
+    let path = harness(&sandbox);
+
+    let usage = read(&path, "ses_unattributed").expect("the row is there");
+    assert_eq!(
+        usage.model, None,
+        "JSON null is no model, not a model called \"null\""
     );
 }
 
