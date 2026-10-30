@@ -141,25 +141,33 @@ fn normalize(path: PathBuf) -> PathBuf {
 mod tests {
     use super::*;
 
+    // Every path here is platform-shaped: a `/users/test` literal resolves to
+    // `D:\users\test` on Windows and the assertions would compare two homes
+    // that never met. The temp directory is absolute on all three runners.
     fn user_home() -> PathBuf {
-        Path::new("/users/test").to_path_buf()
+        std::env::temp_dir().join("tandem-user-home")
+    }
+
+    fn absolute(name: &str) -> PathBuf {
+        std::env::temp_dir().join(name)
     }
 
     #[test]
     fn the_flag_wins_over_the_environment() {
         let home = Home::resolve(
-            Some(Path::new("/fixtures/home")),
-            Some("/environment/home"),
+            Some(&absolute("flag-home")),
+            Some(absolute("environment-home").to_str().unwrap()),
             &user_home(),
         );
-        assert_eq!(home.directory(), Path::new("/fixtures/home"));
+        assert_eq!(home.directory(), absolute("flag-home"));
         assert_eq!(home.source(), HomeSource::Flag);
     }
 
     #[test]
     fn a_non_empty_environment_wins_over_the_default() {
-        let home = Home::resolve(None, Some("/environment/home"), &user_home());
-        assert_eq!(home.directory(), Path::new("/environment/home"));
+        let environment = absolute("environment-home");
+        let home = Home::resolve(None, Some(environment.to_str().unwrap()), &user_home());
+        assert_eq!(home.directory(), environment);
         assert_eq!(home.source(), HomeSource::Environment);
     }
 
@@ -183,7 +191,10 @@ mod tests {
         assert_eq!(bare.directory(), user_home());
 
         let nested = Home::resolve(Some(Path::new("~/fixtures/home")), None, &user_home());
-        assert_eq!(nested.directory(), user_home().join("fixtures/home"));
+        assert_eq!(
+            nested.directory(),
+            user_home().join("fixtures").join("home")
+        );
     }
 
     #[test]
