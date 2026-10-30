@@ -254,6 +254,26 @@ struct UsageReportTests {
         expectClose(single.overlap, 0)
     }
 
+    @Test("the ticket rows' total is the report's own, never the face's sum")
+    func ticketTotalIsTheRowsOwnTotal() {
+        let one = UUID()
+        let two = UUID()
+        let report = usageReport(
+            sessions: [
+                session("shared", tickets: [one, two], cost: 0.6, model: "m"),
+                session("loose", cost: 0.27, model: "m"),
+            ],
+            tickets: [
+                ticket(one, number: 1, title: "first"),
+                ticket(two, number: 2, title: "second"),
+            ],
+            calendar: utc)
+
+        // The face states this number without summing a table (TAN-234).
+        expectClose(report.ticketTotal, report.cost + report.overlap)
+        expectClose(report.ticketTotal, report.ticket.reduce(0) { $0 + $1.cost })
+    }
+
     // MARK: - the views agree
 
     @Test("the day, model and agent views are one number")
