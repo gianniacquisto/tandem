@@ -356,6 +356,36 @@ body {
   color: var(--accent-deep);
 }
 
+/* Mermaid diagrams (src/mermaid.js draws the SVG into this block widget):
+   parchment panel and sand hairline like the code block it replaces, capped
+   at the column's width, with a wide diagram scrolling inside the panel
+   rather than pushing the pane sideways. */
+.tandem-mermaid {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 6px 0;
+  padding: 10px;
+  border: 1px solid var(--sand);
+  border-radius: 9px;
+  background-color: var(--parchment);
+  overflow-x: auto;
+}
+.tandem-mermaid svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+/* mermaid's parse error: the raw source stays visible (the same contract
+   display math has), monospaced ink, wrapped. */
+.tandem-mermaid-error {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Local images: the container-width cap; a missing file (the tandem:
    scheme 404) or a remote target (rewritten, never fetched) shows the
    broken-image placeholder. */

@@ -94,8 +94,10 @@ writeFileSync(
 cpSync(path.join(editorDir, "index.html"), path.join(outDir, "index.html"));
 
 // 4. LICENSES.md — generated from the metafile: exactly the packages whose
-//    code landed in editor.js, with their npm-declared license. Non-MIT is
-//    a build failure (spec: nothing GPL/AGPL ships).
+//    code landed in editor.js, with their npm-declared license. GPL and
+//    AGPL never ship; the permissive set mermaid's tree needs does (MIT;
+//    ISC for d3; MPL-2.0 and Apache-2.0 for dompurify and its siblings;
+//    EPL-2.0 for elkjs; BSD-2-Clause/BSD-3-Clause/0BSD where present).
 function packageNameOf(input) {
   const marker = "node_modules/";
   const i = input.lastIndexOf(marker);
@@ -104,15 +106,52 @@ function packageNameOf(input) {
   return parts[0].startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
 }
 
+// What may ship. Everything else (GPL, AGPL, an unknown identifier, a
+// package that declares nothing) fails the build. An SPDX expression
+// ("MPL-2.0 OR Apache-2.0") is accepted when every alternative it names is
+// in the set. Unlicense is the public-domain dedication two of d3's helpers
+// (robust-predicates, via d3-delaunay) declare.
+const ALLOWED_LICENSES = new Set([
+  "MIT",
+  "ISC",
+  "MPL-2.0",
+  "APACHE-2.0",
+  "EPL-2.0",
+  "BSD-2-CLAUSE",
+  "BSD-3-CLAUSE",
+  "0BSD",
+  "UNLICENSE",
+]);
+
+// npm metadata is the source of truth, with these named exceptions: a
+// package whose package.json omits the field and whose shipped license file
+// states the license above it. Each entry is one package, reviewed once;
+// the build still fails unless the text below it is readable.
+const LICENSE_OVERRIDES = new Map([["khroma", "MIT"]]);
+
+function isAllowedLicense(declared) {
+  if (typeof declared !== "string" || declared.trim() === "") return false;
+  // dompurify declares "(MPL-2.0 OR Apache-2.0)": the parentheses are SPDX
+  // grouping, not part of the identifiers.
+  return declared
+    .trim()
+    .replace(/^\((.*)\)$/, "$1")
+    .split(/\s+(?:OR|AND)\s+/i)
+    .map((part) => part.trim().toUpperCase())
+    .every((part) => ALLOWED_LICENSES.has(part));
+}
+
 const bundled = new Map(); // name -> {version, license}
 for (const input of Object.keys(buildResult.metafile.inputs)) {
   const name = packageNameOf(input);
   if (!name || bundled.has(name)) continue;
   const pkgDir = path.join(nm, name);
   const pkg = JSON.parse(readFileSync(path.join(pkgDir, "package.json"), "utf8"));
-  const license = typeof pkg.license === "string" ? pkg.license : pkg.license?.type;
-  if (String(license).trim().toUpperCase() !== "MIT")
-    throw new Error(`non-MIT package landed in the editor bundle: ${name} (${license})`);
+  const license =
+    (typeof pkg.license === "string" ? pkg.license : pkg.license?.type) ??
+    LICENSE_OVERRIDES.get(name);
+  if (!isAllowedLicense(license))
+    throw new Error(`license not allowed in the editor bundle: ${name} (${license})`);
   bundled.set(name, { version: pkg.version, license });
 }
 if (!bundled.has("katex")) throw new Error("katex missing from the bundle inputs");
@@ -123,16 +162,17 @@ if (!bundled.has("katex")) throw new Error("katex missing from the bundle inputs
 // build failure — the bundle must never ship code whose terms we can't
 // show.
 function licenseText(pkgDir) {
-  for (const f of ["LICENSE", "LICENSE.md", "LICENSE.txt"]) {
+  for (const f of readdirSync(pkgDir)) {
+    if (!/^licen[cs]e(\.|$)/i.test(f)) continue;
     const p = path.join(pkgDir, f);
-    if (existsSync(p)) return readFileSync(p, "utf8").replace(/\s+$/, "");
+    if (statSync(p).isFile()) return readFileSync(p, "utf8").replace(/\s+$/, "");
   }
   throw new Error(`no license file found under ${pkgDir}`);
 }
 
 const pkgRows = [...bundled.entries()]
   .sort((a, b) => a[0].localeCompare(b[0]))
-  .map(([name, v]) => `| \`${name}\` | ${v.version} |`)
+  .map(([name, v]) => `| \`${name}\` | ${v.version} | ${v.license} |`)
   .join("\n");
 const licenseBlocks = [...bundled.entries()]
   .sort((a, b) => a[0].localeCompare(b[0]))
@@ -150,12 +190,13 @@ KaTeX's stylesheet (folded into \`style.css\`) and KaTeX woff2 fonts
 (\`fonts/\`). Versions are the pinned set from \`Editor/package.json\` +
 lockfile — npm metadata is the source of truth (spec: Editor — Packaging).
 
-Every bundled package is MIT-licensed; the build fails if a non-MIT
-package ever lands in the bundle (spec: nothing GPL/AGPL ships). The
-license texts below are the packages' own files, verbatim.
+Every bundled package is under a permissive license (MIT, ISC, MPL-2.0,
+Apache-2.0, EPL-2.0 or BSD); GPL and AGPL never ship, and the build fails
+if a package outside that set ever lands in the bundle. The license texts
+below are the packages' own files, verbatim.
 
-| package | version |
-| --- | --- |
+| package | version | license |
+| --- | --- | --- |
 ${pkgRows}
 
 ## License texts
