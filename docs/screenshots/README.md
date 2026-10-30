@@ -38,5 +38,5 @@ Every file is shot against a scratch home (`TANDEM_HOME`) with fixture tickets a
 a fixture bikeshed — never a human's real list or real notes.
 
 The store behind them is a scratch home (`TANDEM_HOME`) with fixture tickets and
-four fixture session records, two of them carrying reported usage, not a human's
+four fixture session records, three of them carrying reported usage, not a human's
 real list.
