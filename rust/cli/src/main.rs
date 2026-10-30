@@ -23,14 +23,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
 use tandem_core::bikeshed::{Bikeshed, CaptureKind};
+use tandem_core::diagnostics;
 use tandem_core::domain::session::{SessionOutcome, SessionTokens, Sessions, parse_skills};
 use tandem_core::domain::sprint::{SprintMode, Sprints};
 use tandem_core::domain::{AddTicket, Board, DomainError, Edit, SetFields, Status, TicketQuery};
+use tandem_core::setup::{self, Environment};
 use tandem_core::store::{self, Actor, Home, Store};
 use tandem_core::wire::{
-    ArchivedView, CommentList, CommentResult, CommentView, DoctorCheck, DoctorReport,
-    LaneDeletionView, LaneList, NotePathView, SessionDetailView, SessionList, SessionResult,
-    SprintList, SprintResult, TicketDetail, TicketList, TicketSummary,
+    ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
+    NotePathView, SessionDetailView, SessionList, SessionResult, SprintList, SprintResult,
+    TicketDetail, TicketList, TicketSummary,
 };
 
 // MARK: - The grammar
@@ -86,6 +88,11 @@ enum Command {
     Sprint {
         #[command(subcommand)]
         command: Option<SprintCommand>,
+    },
+    /// The agent face: install, uninstall and inspect it (ADR 0034).
+    Setup {
+        #[command(subcommand)]
+        command: Option<SetupCommand>,
     },
     /// Report whether this machine's Tandem setup is sound (ADR 0014).
     Doctor,
@@ -374,6 +381,30 @@ struct SessionShowArgs {
     session: Option<String>,
 }
 
+#[derive(Subcommand)]
+enum SetupCommand {
+    Install(SetupInstallArgs),
+    Uninstall(SetupUninstallArgs),
+    Status,
+}
+
+#[derive(Args)]
+struct SetupInstallArgs {
+    /// A host name, or a comma-separated list (default: opencode).
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    host: Option<String>,
+    /// Replace a link that points elsewhere, a checkout included.
+    #[arg(long)]
+    force: bool,
+}
+
+#[derive(Args)]
+struct SetupUninstallArgs {
+    /// A host name, or a comma-separated list (default: every host).
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    host: Option<String>,
+}
+
 #[derive(Args)]
 struct SprintOpenArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
@@ -447,7 +478,9 @@ fn main() -> ExitCode {
     match run(&cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(failure) => {
-            eprintln!("{}", failure.message);
+            if !failure.message.is_empty() {
+                eprintln!("{}", failure.message);
+            }
             ExitCode::from(failure.exit)
         }
     }
@@ -479,6 +512,15 @@ impl Failure {
         Self {
             message: message.into(),
             exit: 1,
+        }
+    }
+
+    /// Exit with a code and no message: the verb already printed its report,
+    /// and the report is the diagnosis.
+    fn silent(exit: u8) -> Self {
+        Self {
+            message: String::new(),
+            exit,
         }
     }
 }
@@ -528,6 +570,10 @@ fn help_text(cli: &Cli) -> &'static str {
         },
         Some(Command::Sprint { command }) => match command {
             None => return usage::group("sprint").unwrap_or(usage::ROOT),
+            Some(command) => command.help(),
+        },
+        Some(Command::Setup { command }) => match command {
+            None => return usage::group("setup").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
         },
     };
@@ -586,6 +632,16 @@ impl SessionCommand {
     }
 }
 
+impl SetupCommand {
+    fn help(&self) -> &'static str {
+        match self {
+            Self::Install(_) => "setup install",
+            Self::Uninstall(_) => "setup uninstall",
+            Self::Status => "setup status",
+        }
+    }
+}
+
 impl SprintCommand {
     fn help(&self) -> &'static str {
         match self {
@@ -608,12 +664,13 @@ fn run(cli: &Cli) -> Result<(), Failure> {
     let command = cli.command.as_ref().ok_or_else(Failure::usage)?;
 
     match command {
-        Command::Doctor => print(&report(&home)),
+        Command::Doctor => doctor(&home),
         Command::Ticket { command } => ticket(&home, command.as_ref()),
         Command::Lane { command } => lane(&home, command.as_ref()),
         Command::Note { command } => note(&home, command.as_ref()),
         Command::Session { command } => session(&home, command.as_ref()),
         Command::Sprint { command } => sprint(&home, command.as_ref()),
+        Command::Setup { command } => setup_command(&home, command.as_ref()),
     }
 }
 
@@ -1516,21 +1573,85 @@ fn close_sprint_number(sprints: &Sprints, lane: &str) -> Result<i64, Failure> {
 
 // MARK: - doctor
 
-/// ADR 0014's report, with the one row this rung can answer: `home` names the
-/// directory the run resolved and why. `home` is informational, so it cannot
-/// fail and the report is `ok`; a writing verb creates the home, never this
-/// read-only one.
-fn report(home: &Home) -> DoctorReport {
-    DoctorReport {
-        ok: true,
-        checks: vec![DoctorCheck {
-            name: "home".to_string(),
-            ok: true,
-            detail: format!(
-                "{} ({})",
-                tandem_core::wire::slashed_path(home.directory()),
-                home.source().as_str()
-            ),
-        }],
+/// `doctor` (ADR 0014): a setup report is not a domain call, so it does not go
+/// through `run`. It always prints the report JSON to stdout, the report is the
+/// success value even when a check fails, and exits 0 when every
+/// failing-capable check passed, 1 otherwise, echoing each failing check's next
+/// step to stderr. A read-only verb: it never creates the home it reports.
+fn doctor(home: &Home) -> Result<(), Failure> {
+    let report = diagnostics::run(home, &environment());
+    print(&report)?;
+    if report.ok {
+        return Ok(());
     }
+    let failures: Vec<String> = report
+        .checks
+        .iter()
+        .filter(|check| !check.ok)
+        .map(|check| format!("doctor: {} \u{2014} {}", check.name, check.detail))
+        .collect();
+    Err(Failure {
+        message: failures.join("\n"),
+        exit: 1,
+    })
+}
+
+// MARK: - setup
+
+/// `setup install|uninstall|status` (ADR 0034): one JSON report on stdout
+/// whatever the exit code, because the report is the diagnosis. `install` and
+/// `uninstall` exit 1 when a warning is an error; `status` exits 0 always. A
+/// thrown failure keeps the other verbs' contract: message on stderr, exit 1,
+/// no JSON on stdout.
+fn setup_command(home: &Home, command: Option<&SetupCommand>) -> Result<(), Failure> {
+    let command = command.ok_or_else(Failure::usage)?;
+    let environment = environment();
+    match command {
+        SetupCommand::Install(args) => {
+            let hosts = setup::hosts(args.host.as_deref()).map_err(setup_failure)?;
+            let bundle = setup::bundled_face(&environment);
+            let report = setup::install(
+                home.directory(),
+                &environment,
+                bundle.as_deref(),
+                args.force,
+                &hosts,
+            )
+            .map_err(setup_failure)?;
+            print(&report)?;
+            if report.state.has_error() {
+                return Err(Failure::silent(1));
+            }
+            Ok(())
+        }
+        SetupCommand::Uninstall(args) => {
+            let hosts = setup::uninstall_hosts(args.host.as_deref()).map_err(setup_failure)?;
+            let report = setup::uninstall(home.directory(), &environment, hosts.as_deref())
+                .map_err(setup_failure)?;
+            print(&report)?;
+            if report.state.has_error() {
+                return Err(Failure::silent(1));
+            }
+            Ok(())
+        }
+        SetupCommand::Status => {
+            let report = setup::status(home.directory(), &environment);
+            print(&report)
+        }
+    }
+}
+
+/// A setup failure is a message an agent or human can act on, exit 1, and no
+/// JSON: the report is only for a run that got far enough to build one.
+fn setup_failure(error: impl std::fmt::Display) -> Failure {
+    Failure::message(error.to_string())
+}
+
+/// The process's environment as the setup and doctor code reads it: `HOME`,
+/// `XDG_CONFIG_HOME`, `TANDEM_AGENT_BUNDLE` and the four host flags. A value
+/// that is not UTF-8 is not one of those names and is dropped.
+fn environment() -> Environment {
+    std::env::vars_os()
+        .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
+        .collect()
 }

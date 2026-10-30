@@ -104,22 +104,25 @@ fn report(output: &Output) -> Value {
     assert_eq!(
         value["ok"],
         Value::Bool(true),
-        "`home` is informational and cannot fail, so the report is ok: {value}"
+        "a fresh home passes every row that can fail, so the report is ok: {value}"
     );
     value
 }
 
-/// The stub answers the one row it owns, shaped as ADR 0014 pins it.
+/// The `home` row, shaped as ADR 0014 pins it, inside the eight-row report.
 fn home_row(value: &Value) -> &Value {
     let rows = value["checks"]
         .as_array()
         .expect("`checks` is an array of rows");
     assert_eq!(
         rows.len(),
-        1,
-        "this stub owns the `home` row and no other: {value}"
+        8,
+        "the report carries the eight checks: {value}"
     );
-    let row = &rows[0];
+    let row = rows
+        .iter()
+        .find(|row| row["name"] == "home")
+        .expect("the report carries the `home` row");
     assert_eq!(
         row.as_object().map(|object| object.len()),
         Some(3),
@@ -173,7 +176,7 @@ fn the_flag_wins_and_the_run_writes_nothing_in_the_users_home() {
     );
     let value = report(&output);
 
-    assert_eq!(reported_source(&value), "flag");
+    assert_eq!(reported_source(&value), "--home");
     assert_eq!(reported_home(&value), fixture);
     // The fixture already exists: the run must leave it exactly as committed,
     // and it must not have fallen through to either override.
@@ -189,7 +192,7 @@ fn the_environment_is_second_and_the_run_creates_nothing() {
     let output = tandem(&sandbox, Some(&environment_home), &["doctor"]);
     let value = report(&output);
 
-    assert_eq!(reported_source(&value), "environment");
+    assert_eq!(reported_source(&value), "TANDEM_HOME override");
     assert_eq!(reported_home(&value), environment_home);
     assert!(
         !environment_home.exists(),

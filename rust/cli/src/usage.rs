@@ -866,6 +866,15 @@ pub fn verb(name: &str) -> Option<&'static str> {
             "\n",
             "  tandem-cli sprint show --lane <name> --number <n>",
         ),
+        "doctor" => concat!(
+            "tandem-cli doctor \u{2014} the shared setup's read-only diagnostic.",
+            "\n",
+            "",
+            "\n",
+            "Usage:",
+            "\n",
+            "  tandem-cli doctor",
+        ),
         "setup install" => concat!(
             "tandem-cli setup install: the bundled agent face, installed and wired.",
             "\n",

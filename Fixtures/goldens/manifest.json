@@ -20,6 +20,10 @@
       "as": "<home>"
     },
     {
+      "kind": "schema",
+      "as": "<schema>"
+    },
+    {
       "kind": "uuid",
       "as": "<id>"
     },
