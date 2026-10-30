@@ -105,6 +105,31 @@ pub enum DomainError {
     NoHarnessDatabase { path: String },
     /// The harness database carries no row for the session id.
     UnknownHarnessSession { id: String },
+    /// The bikeshed lock could not be acquired within its bounded retry window.
+    BikeshedLocked,
+    /// The bikeshed itself failed: an unreadable note, a failed rename.
+    BikeshedIo(String),
+    /// `read` / `delete` / `rename` / `move` / `backlinks` was called with a path
+    /// not present in the bikeshed.
+    UnknownNote(String),
+    /// A create, rename or move target that already exists. An error, never an
+    /// overwrite.
+    NoteAlreadyExists(String),
+    /// A name the bikeshed's create/rename rule refuses.
+    InvalidName(String),
+    /// A capture `project` or `session` that is not one visible folder name.
+    InvalidCaptureName(String),
+    /// A capture kind that is not one of the four.
+    InvalidCaptureKind(String),
+    /// The retired `work` capture kind: the session summary is the work record.
+    RetiredCaptureKind(String),
+    /// A capture body that is empty or whitespace-only.
+    EmptyCaptureBody,
+    /// A capture body whose first non-empty line carries no words, so the
+    /// filename would fall back to the kind's own name.
+    EmptyCaptureSlug(String),
+    /// A folder moved into itself or one of its own descendants.
+    MoveCycle { path: String, into: String },
 }
 
 impl DomainError {
@@ -253,6 +278,52 @@ impl DomainError {
                 "No harness row for session \"{id}\". Check the session id, or end the record \
                  without harness usage, and try again."
             ),
+            Self::BikeshedLocked => {
+                "The bikeshed is locked by another process. Please retry.".to_string()
+            }
+            Self::BikeshedIo(detail) => format!("Bikeshed error: {detail}. Try again."),
+            Self::UnknownNote(path) => format!(
+                "No note at \"{path}\" in the bikeshed. List the bikeshed to see what is there."
+            ),
+            Self::NoteAlreadyExists(path) => {
+                format!("A file already exists at \"{path}\". Choose a different name.")
+            }
+            Self::InvalidName(name) => format!(
+                "Name \"{name}\" is not allowed: note names cannot contain # or |, and must \
+                 end in .md. Choose a different name."
+            ),
+            Self::InvalidCaptureName(name) => format!(
+                "Capture name \"{name}\" is not allowed: project and session must each be one \
+                 folder name with no /, #, |, or leading dot. Choose a different name."
+            ),
+            Self::InvalidCaptureKind(kind) => format!(
+                "Unknown capture kind \"{kind}\". Use one of: {}.",
+                crate::bikeshed::CaptureKind::WIRE_VALUES.join(", ")
+            ),
+            Self::RetiredCaptureKind(kind) => format!(
+                "The capture kind \"{kind}\" is retired. The summary at `session end \
+                 --summary` is the work record (ADR 0027). Use one of: {}.",
+                crate::bikeshed::CaptureKind::WIRE_VALUES.join(", ")
+            ),
+            Self::EmptyCaptureBody => "Capture body is empty. Provide a non-empty body on \
+                 stdin and try again."
+                .to_string(),
+            Self::EmptyCaptureSlug(kind) => format!(
+                "Capture \"{kind}\" has no usable slug: the body's first non-empty line \
+                 carries no words. Start the body with a short title line (e.g. \"# Caret not \
+                 placed\") and try again."
+            ),
+            Self::MoveCycle { path, into } => {
+                let destination = if into.is_empty() {
+                    "the bikeshed root".to_string()
+                } else {
+                    format!("\"{into}\"")
+                };
+                format!(
+                    "Cannot move \"{path}\" into {destination}: a folder cannot be moved \
+                     into itself. Choose a different folder."
+                )
+            }
         }
     }
 }
