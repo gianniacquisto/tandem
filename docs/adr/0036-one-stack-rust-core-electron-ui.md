@@ -1,0 +1,42 @@
+# One stack: a Rust core and an Electron shell, one app for three platforms
+
+Tandem is a macOS-only product by construction. `Package.swift` declares `.macOS(.v27)`, `GLOSSARY.md` defines the agent as "running as the same OS user on the same Mac", and 8,934 of the repository's 22,306 Swift lines are SwiftUI and AppKit that exist on no other platform. The core underneath is already nearly portable: `TandemCore` is 11,377 lines with no AppKit or SwiftUI import at all, `tandem-cli` is 1,995 lines of Foundation over it, and three years of decisions live in tests, ADRs and the agent face rather than in the file format. The store is SQLite behind a version seam, and the CLI speaks JSON to every skill and pass prompt. Nothing about the product needs the Mac; only the presentation layer does.
+
+Decided 2026-10-30, with the work carried by `PRT-1`.
+
+## Decision
+
+- **One binary.** `tandem` answers the agent verbs as today and an `rpc` mode over stdio that the app spawns. The CLI the agents call and the core the app trusts are the same executable, so they cannot drift.
+- **Rust for the core.** `rusqlite` with `bundled` puts one SQLite on every platform with no distro library; `comrak` renders GFM, closest to the `cmark-gfm` the Swift core uses, so the health report and the editor agree; `clap` carries the grammar, `serde` the wire, `sha2` the note hashes. No ORM and no async runtime: the store is one writer on one file, and an async driver would be machinery with nothing to do.
+- **Electron for the shell, React for the renderer.** One Chromium on macOS, Windows and Linux, which removes the class of bug that is invisible on the development machine. `ts-rs` generates the renderer's types from the Rust message structs, so a message shape cannot drift without a compile error on both sides. The CodeMirror 6 bundle moves verbatim: it is the reason the UI is a webview at all.
+- **The UI is a view.** Every UI mutation maps to a message the CLI also exposes, and a test fails when a UI-only write appears. Listings are a full snapshot plus a revision, and the core pushes change events on the stream.
+- **Transport is a seam, not a server.** stdio locally, HTTPS remotely later, same message shapes, only the stream adapter differs. No daemon: the app spawns the child, the child dies with the app, and the agent CLI opens the store itself under the same `flock` sidecar when nothing holds it.
+- **Fresh schema, version 1, with an actor on every write.** There are no users to migrate, so the Rust store starts clean and refuses a v5 file with a message naming the import. Every mutation records who made it, from the first migration; retrofitting identity into a store that assumed one user is the expensive migration, and `(c)` below makes that identity load-bearing.
+- **One home everywhere.** `~/.tandem` on all three platforms, with `TANDEM_HOME` the only override. Agents are the primary consumer of these paths and gain nothing from platform idiom.
+- **A hosted core for several humans is a deployment shape, not a feature.** It is deferred, and what it needs from today is the actor and the transport seam, both of which are built now.
+- **The GUI is pruned before it is ported.** The menu-bar extra and its popover, the Sessions and Sprints tabs, Board as its own tab, the setup wizard as its own window, the Inbox tab and the quick-open palette are not ported. About 2,000 of the app's 8,934 lines never cross. The Sessions and Sprints data stays in the store, read by `session list` and `sprint list`; the Usage tab (`TAN-208`, `TAN-234`) is the one surface over it.
+- **The work lands additively on `main`.** New directories, `rust/` and `app/`; `Package.swift` and `Sources/` keep building and the release keeps shipping the Swift app. The cutover is one commit that deletes the Swift targets, flips the release workflow and tags v1.0.0.
+- **The migration is a script, not a feature.** Ticket refs, timestamps, comments, dependency edges, sessions, sprints, usage and settings seed the new store by SQL from the old `tandem.db`; the bikeshed is copied as files. The CLIs cannot carry it: `ticket set` writes none of `number`/`ref`, `createdAt`, `completedAt`, `origin`, `lane`, `archived` or edges, and a `session end` replay stamps "now", which falsifies the dates the Usage tab rolls up.
+- **The agent face is the CLI and nothing else.** `session end --usage-from-harness` reads the harness database directly, replacing `Scripts/usage-report.sh`, so the agent path carries no shell and no `sqlite3` binary on any platform.
+- **Playwright drives the renderer.** UI screenshots become a CI job against the real app, retiring `Scripts/shot.sh` and its lldb injection and answering the question `TAN-210` was parked on.
+
+## Rejected
+
+- **Swift on all three platforms behind a portable UI.** The cheapest port, since the core keeps working, and rejected on toolchain: Swift on Windows is the roughest part of that ecosystem, and the outcome keeps two languages for the domain and the view with the human reviewing both.
+- **Tauri v2 with system webviews.** Smaller and Rust-in-process, and rejected on engine divergence, which a solo maintainer pays for alone: child-webview bounds break on Linux and Wayland (`tauri-apps/tauri#15656`), WebKitGTK has documented blank-window, flicker and resize-crash modes under DMABUF on NVIDIA, its scroll scheduling is a known unfixed class of bug that lands squarely on a code editor, distro packages decide the engine version (Ubuntu 22.04 ships roughly Safari 16), and its `run_javascript` does not await a returned promise where WKWebView does, which is exactly the shape of the editor bridge.
+- **egui, Slint, Compose Multiplatform, Avalonia.** Each forfeits the CodeMirror bundle and the markdown rendering that the vault depends on, and the bridge would be rewritten in a toolkit with no equivalent.
+- **A TypeScript core in the Electron sidecar.** One language everywhere, and rejected because the CLI's instant start is an agent-facing property: every pass calls it many times, and a Node runtime on that path is a tax with no offset now that agents write the Rust.
+- **Svelte for the renderer.** The smaller and more pleasant codebase, and rejected for agent throughput: React has the deepest training surface, and the renderer is mostly written by agents. `ts-rs` makes a later swap a UI-only change.
+- **A long-lived port branch.** Rejected: the repository retired the `dev` line on 2026-10-29 for this exact shape (ADR 0019), every agent contract branches from `main`, and the conflict surface (`skills/`, `agents/`, `docs/`, `Scripts/`, `.github/workflows/`) is edited weekly.
+- **Keeping schema v5 compatibility.** Rejected: it buys nothing with no users and constrains the new schema exactly where the port wants freedom, since the store must stop assuming SQLite-local.
+- **A daemon.** Rejected: the app spawns a child, and the `flock` sidecar already makes several processes on one home safe.
+
+## Consequences
+
+- `README.md`, `GLOSSARY.md` and `Package.swift` state the one-Mac assumption in prose (`Package.swift` line 5, `GLOSSARY.md` line 164). They are superseded by this decision and corrected by `PRT-1` at cutover, not before.
+- The CI matrix grows a Rust job alongside the Swift one, and the Electron build joins it with the shell. The release pipeline keeps publishing the Swift artifact until the cutover tags v1.0.0.
+- `Scripts/shot.sh` retires with the Swift app; `Scripts/usage-report.sh` retires when the CLI reads the harness database itself.
+- Skills and the four pass prompts do not change: they speak the CLI's JSON, and the goldens captured from the Swift binary pin it.
+- The board gains the `Port` lane, whose epic carries the parity checklist: goldens green, ported tests green, every kept surface reachable, the import of the real home accepted, one week of dogfooding, then the cutover.
+- The port competes with a line that ships weekly. The mitigation is scope, not schedule: no hosted service, no CLI prune, no tray, and a prune list fixed before the first UI line.
+- Two open questions ride `PRT-1`: whether `TANDEM_AGENT` is the actor value on agent writes, and whether the Usage tab absorbs the per-session and per-sprint detail the cut faces carried.
