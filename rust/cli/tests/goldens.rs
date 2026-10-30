@@ -375,13 +375,18 @@ impl Sandbox {
     fn prefixes(&self) -> Vec<(String, String)> {
         let mut prefixes = Vec::new();
         for (path, name) in [(&self.home, "<tandem-home>"), (&self.user, "<home>")] {
-            let spelled = path.to_string_lossy().into_owned();
-            prefixes.push((spelled.clone(), name.to_owned()));
+            // The wire spells a path with `/` on every platform, so the sandbox
+            // has to be a name in that spelling too, not only in the host's.
+            let mut spellings = vec![path.to_string_lossy().into_owned()];
             if let Ok(canonical) = fs::canonicalize(path) {
-                let canonical = canonical.to_string_lossy().into_owned();
-                if canonical != spelled {
-                    prefixes.push((canonical, name.to_owned()));
+                spellings.push(canonical.to_string_lossy().into_owned());
+            }
+            for spelling in spellings {
+                let slashed = spelling.replace(std::path::MAIN_SEPARATOR, "/");
+                if slashed != spelling {
+                    prefixes.push((slashed, name.to_owned()));
                 }
+                prefixes.push((spelling, name.to_owned()));
             }
         }
         prefixes

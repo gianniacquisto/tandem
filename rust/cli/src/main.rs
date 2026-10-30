@@ -1525,7 +1525,7 @@ fn report(home: &Home) -> DoctorReport {
             ok: true,
             detail: format!(
                 "{} ({})",
-                home.directory().display(),
+                tandem_core::wire::slashed_path(home.directory()),
                 home.source().as_str()
             ),
         }],

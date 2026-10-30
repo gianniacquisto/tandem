@@ -7,8 +7,20 @@
 
 mod views;
 
+use std::path::Path;
+
 use serde::Serialize;
 use ts_rs::TS;
+
+/// A path in the wire's spelling: `/`-separated on every platform (PRT-7).
+///
+/// The host's separator is a fact about the machine, not about the contract: a
+/// Windows `\` in a path on stdout is a shape the app and the skills would have
+/// to learn. The drive or root is kept, so an absolute path still reads as one.
+pub fn slashed_path(path: &Path) -> String {
+    path.to_string_lossy()
+        .replace(std::path::MAIN_SEPARATOR, "/")
+}
 
 pub use views::{
     ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,

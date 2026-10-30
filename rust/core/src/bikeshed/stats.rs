@@ -72,7 +72,7 @@ impl Bikeshed {
         };
         Ok(Operation {
             value: BikeshedStats {
-                bikeshed: self.directory.to_string_lossy().to_string(),
+                bikeshed: crate::wire::slashed_path(&self.directory),
                 projects: rows,
                 totals,
             },

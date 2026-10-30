@@ -32,7 +32,13 @@ fn stats(vault: &Vault, project: Option<&str>) -> BikeshedStats {
 fn an_empty_bikeshed_reports_no_projects_and_zero_totals() {
     let vault = Vault::new("stats-empty");
     let found = stats(&vault, None);
-    assert_eq!(found.bikeshed, vault.dir().to_string_lossy());
+    assert_eq!(
+        found.bikeshed,
+        vault
+            .dir()
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/")
+    );
     assert!(found.projects.is_empty());
     assert_eq!(found.totals.curated_notes, 0);
     assert_eq!(found.totals.raw_pending, 0);
