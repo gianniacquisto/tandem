@@ -4,8 +4,8 @@ import TandemCore
 /// The main window in reach B — subtle Ligne Claire (ticket 01 verdict).
 ///
 ///   Header    — the "Tandem" wordmark and the Tickets/Board/Inbox/Sessions/
-///               Sprints/Bikeshed tab control, closed by a hairline (identical
-///               on every tab)
+///               Sprints/Usage/Bikeshed tab control, closed by a hairline
+///               (identical on every tab)
 ///   Tickets   — a centered 540 pt column: flat parchment quick-add
 ///               (Return commits, ⌘N focuses it), flat segmented Open/Done/All/
 ///               Archived with live counts (⌘1–⌘4) on a row with "+ Cycle lane" and
@@ -38,6 +38,11 @@ import TandemCore
 ///               and in the record's own words (`open`, `closed`); a row opens
 ///               the record's sheet — its batch, its runs, its close, its
 ///               opening session, its times
+///   Usage     - the reported spend (UsageFace.swift): TAN-208's report drawn,
+///               a total and a coverage line, then one table at a time by day,
+///               model, agent or ticket. Selecting a row rolls its records
+///               down; a carried ticket opens its sheet. Read-only, and the
+///               face computes no number of its own
 ///   Bikeshed  — the notes face (BikeFace.swift): tree sidebar, the WKWebView
 ///               editor, the backlinks dock
 ///   ⌘K        — the quick-open palette over the window: one ranked list of
@@ -129,6 +134,19 @@ struct MainView: View {
                                 palette: palette,
                                 onOpenLink: openLinkedNote)
                     .frame(maxWidth: 540)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            } else if tab == .usage {
+                // The reported spend (TAN-234): TAN-208's report, drawn. The
+                // face formats and lays out; every number it draws is a report
+                // field, and a carried ticket opens the window's ticket sheet.
+                UsageFaceView(report: usageReport(sessions: model.sessions,
+                                                  tickets: model.tickets,
+                                                  calendar: .current),
+                              tickets: model.tickets,
+                              palette: palette,
+                              onOpenTicket: { ticket in ticketFor = ticket })
+                    // Wider than the list faces: six table columns need the room.
+                    .frame(maxWidth: 660)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
                 BikeFaceView(model: bikeModel)

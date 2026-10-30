@@ -7,7 +7,8 @@ import Testing
 @testable import Tandem
 import TandemCore
 
-// Snapshots: the four faces rendered and compared to committed baselines (TAN-218).
+// Snapshots: the five faces rendered and compared to committed baselines (TAN-218,
+// TAN-234 for the usage face).
 //
 // **Why**: the gate can read a diff but cannot see that a column is 1100px wide or that
 // a button lost its padding. These tests render the real views and fail when one pixel
@@ -128,8 +129,12 @@ struct SnapshotTests {
             _ = try store.block(leaf.ref!, on: middle.ref!)
         }
 
-        /// Three records: one still running, two ended with their outcomes.
+        /// Three records: one still running, two ended with their outcomes. The
+        /// two ended ones carry usage (TAN-234): their cost, tokens and model,
+        /// one ticket each, and the middle record carries two, so the Usage
+        /// face has an overlap and the fleet record has no ticket at all.
         private static func seedSessions(at home: URL) throws {
+            let ids = try Store(directory: home).list(.all).value.map(\.id)
             let records = [
                 Session(id: "ses_fixture_a", project: "tandem", agent: "builder",
                         brief: "Build TAN-218.", status: .running,
@@ -137,15 +142,32 @@ struct SnapshotTests {
                 Session(id: "ses_fixture_b", project: "tandem", agent: "reviewer",
                         brief: "Review TAN-212.", summary: "Merged.",
                         status: .ended, outcome: .succeeded,
+                        tickets: Array(ids.prefix(2)),
                         startedAt: Date(timeIntervalSince1970: 1_793_178_000),
-                        endedAt: Date(timeIntervalSince1970: 1_793_181_600)),
+                        endedAt: Date(timeIntervalSince1970: 1_793_181_600),
+                        tokens: SessionTokens(input: 128_400, output: 12_800,
+                                              reasoning: 3_200, cacheRead: 480_000),
+                        cost: 0.42, model: "claude-sonnet-4"),
                 Session(id: "ses_fixture_c", project: "fleet", agent: nil,
                         brief: "Tidy the roster.", status: .ended, outcome: .interrupted,
                         startedAt: Date(timeIntervalSince1970: 1_793_006_400),
-                        endedAt: Date(timeIntervalSince1970: 1_793_008_000)),
+                        endedAt: Date(timeIntervalSince1970: 1_793_008_000),
+                        tokens: SessionTokens(input: 8_200, output: 640),
+                        cost: 0.09, model: "glm-5"),
             ]
             try write(SessionsFile(version: 1, sessions: records),
                       to: home.appendingPathComponent("sessions.json"))
+        }
+
+        /// The report the Usage face draws, over the seeded records and tickets
+        /// (TAN-234). The calendar is UTC, not the machine's: a day row's label
+        /// is a local date, so the snapshot pins the calendar that names it.
+        static var report: UsageReport {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+            return usageReport(sessions: model.sessions,
+                               tickets: model.tickets,
+                               calendar: calendar)
         }
 
         /// Two lanes' records: one open, one closed.
@@ -276,8 +298,56 @@ struct SnapshotTests {
         assertSnapshot(of: hosting, as: .stableDescription())
     }
 
-    // MARK: - The normalised text dump
+    /// The usage face (TAN-234): the reported spend, the coverage over both
+    /// records that carry usage and the one that does not, the ticket table's
+    /// own arithmetic, and the day table's rows with their bars.
+    @Test("the usage face")
+    func usageFace() throws {
+        let view = UsageFaceView(report: Fixture.report,
+                                 tickets: Fixture.model.tickets,
+                                 palette: .day,
+                                 onOpenTicket: { _ in })
+        let size = CGSize(width: 660, height: 520)
+        let hosting = host(view, size: size)
+        assertSnapshot(of: hosting, as: .image(at: 2, size: size))
+        assertSnapshot(of: hosting, as: .stableDescription())
+    }
 
+    /// The roll-down under a ticket row: the records behind it, newest first,
+    /// each with its agent, model, start time, cost, the tokens it reported and
+    /// the ticket it carried, which opens its sheet.
+    @Test("the usage roll-down")
+    func usageRollDown() throws {
+        let row = try #require(
+            Fixture.report.ticket.first { $0.id != usageReportNoTicketID })
+        let view = UsageRecordsView(row: row,
+                                    tickets: Fixture.model.tickets,
+                                    palette: .day,
+                                    onOpenTicket: { _ in })
+        let size = CGSize(width: 660, height: 96)
+        let hosting = host(view, size: size)
+        assertSnapshot(of: hosting, as: .image(at: 2, size: size))
+        assertSnapshot(of: hosting, as: .stableDescription())
+    }
+
+    /// A home with no record at all: the empty face in the app's own
+    /// empty-state language, not an error and not a blank sheet.
+    @Test("the empty usage face")
+    func emptyUsageFace() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let report = usageReport(sessions: [], tickets: [], calendar: calendar)
+        let view = UsageFaceView(report: report,
+                                 tickets: [],
+                                 palette: .day,
+                                 onOpenTicket: { _ in })
+        let size = CGSize(width: 660, height: 420)
+        let hosting = host(view, size: size)
+        assertSnapshot(of: hosting, as: .image(at: 2, size: size))
+        assertSnapshot(of: hosting, as: .stableDescription())
+    }
+
+    // MARK: - The normalised text dump
     @Test("the sheet's text diff allows five points of AppKit drift and no more")
     func geometryTolerance() {
         let reference = "  h=--- v=--- SwiftUI.AppKitTextField f=(20,65,58,13) b=(-)"

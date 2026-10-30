@@ -25,6 +25,10 @@ enum MainTab: String, CaseIterable, Identifiable {
     /// (rows in the store's `sprints` table), read-only, in the record's own
     /// two states (`open`, `closed`) — never the board's (spec `4F746EFE`, R3).
     case sprints = "Sprints"
+    /// The reported spend (TAN-234): the usage the records carry, rolled up by
+    /// day, model, agent and ticket and rolled down to the records behind each
+    /// row. Read-only, and the one face that states a sum rather than a list.
+    case usage = "Usage"
     case bikeshed = "Bikeshed"
     var id: String { rawValue }
 }
@@ -61,10 +65,11 @@ struct BikeTabControl: View {
                 .buttonStyle(.plain)
             }
         }
-        // 504 pt: six labelled tabs at the 760 pt window floor — 84 pt per
-        // tab, the per-tab width the fifth tab's move settled (340 → 420),
-        // so every label ("Sessions" the widest at ~62 pt) draws whole with
-        // no truncation.
+        // 504 pt: seven labelled tabs at the 760 pt window floor, 72 pt per
+        // tab, enough for every label whole ("Bikeshed" the widest at ~56 pt,
+        // "Sessions" at ~55, and the Inbox dot inside its own 72). The per-tab
+        // width the fifth tab's move settled (340 → 420) still holds at seven,
+        // checked on the running app at the floor (TAN-234).
         .frame(width: 504, height: Space.control)
         .background(RoundedRectangle(cornerRadius: Radius.control).fill(palette.paper))
         .clipShape(RoundedRectangle(cornerRadius: Radius.control))

@@ -40,6 +40,11 @@ public struct UsageReport: Sendable, Equatable {
     /// The ticket rows' excess over `cost`: `(n-1) x cost` for every record
     /// that carried `n >= 2` tickets.
     public let overlap: Double
+
+    /// What the ticket table's rows add up to, `cost + overlap`: every ticket
+    /// row and the ticketless row, whole. The face states it beside `cost`, so
+    /// the report keeps the sum it describes (TAN-234).
+    public var ticketTotal: Double { cost + overlap }
 }
 
 /// One line of the report: a key, its label, the records behind it and what

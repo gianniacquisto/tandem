@@ -29,6 +29,7 @@ fixture home. A refusal exits non-zero and writes nothing.
 | `bikeshed-send-to-tickets.png` | the Bikeshed face with a note open: the title bar's **Send to tickets** button |
 | `bikeshed.png` | the Bikeshed face with a note open: the notes tree, the editor, the backlinks and the Health panel |
 | `sessions-tab.png` | the main window's **Sessions** tab: the session records grouped by project, a `running` one and an `ended · succeeded` one |
+| `usage-tab.png` | the main window's **Usage** tab: the reported spend and the records' coverage, the ticket table's own arithmetic, the Day/Model/Agent/Ticket picker, and one ticket row rolled down to the records behind it |
 | `session-sheet.png` | a session record's sheet: the brief, the notes the session filed, the tickets it carried, and the times |
 | `session-sheet-ticket.png` | the **ticket sheet**, opened from a record's ticket — the record's own ticket link |
 | `session-note-open.png` | the **Bikeshed** face with the session's capture note open — the record's own note link |
@@ -37,4 +38,5 @@ Every file is shot against a scratch home (`TANDEM_HOME`) with fixture tickets a
 a fixture bikeshed — never a human's real list or real notes.
 
 The store behind them is a scratch home (`TANDEM_HOME`) with fixture tickets and
-two fixture session records, not a human's real list.
+four fixture session records, two of them carrying reported usage, not a human's
+real list.
