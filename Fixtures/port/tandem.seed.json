@@ -1,0 +1,134 @@
+{
+  "schema": {
+    "appliedAt": "2026-10-30T00:00:00Z"
+  },
+  "lanes": [
+    {
+      "name": "Port",
+      "key": "PRT",
+      "lastNumber": 2,
+      "position": 0
+    }
+  ],
+  "tickets": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "title": "the board",
+      "status": "ready",
+      "archived": false,
+      "lane": "Port",
+      "number": 1,
+      "origin": "human",
+      "assignee": null,
+      "link": null,
+      "position": 0,
+      "createdAt": "2026-10-30T08:00:00Z",
+      "completedAt": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "title": "the records",
+      "status": "done",
+      "archived": false,
+      "lane": "Port",
+      "number": 2,
+      "origin": "human",
+      "assignee": null,
+      "link": null,
+      "position": 1,
+      "createdAt": "2026-10-30T08:30:00Z",
+      "completedAt": "2026-10-30T12:00:00Z"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "ses_a",
+      "project": "tandem",
+      "agent": "builder",
+      "brief": "A record the report rolls up.",
+      "summary": "What landed.",
+      "status": "ended",
+      "outcome": "succeeded",
+      "tickets": ["00000000-0000-4000-8000-000000000001"],
+      "startedAt": "2026-10-30T09:00:00Z",
+      "endedAt": "2026-10-30T09:00:00Z",
+      "tokens": {
+        "input": 1000,
+        "output": 500,
+        "reasoning": 100,
+        "cacheRead": 200,
+        "cacheWrite": 50
+      },
+      "cost": 0.25,
+      "model": "deepseek-v4.1-flash",
+      "seconds": 0.0,
+      "skills": null
+    },
+    {
+      "id": "ses_b",
+      "project": "tandem",
+      "agent": "reviewer",
+      "brief": "A record the report rolls up.",
+      "summary": "What landed.",
+      "status": "ended",
+      "outcome": "succeeded",
+      "tickets": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002"
+      ],
+      "startedAt": "2026-10-30T11:00:00Z",
+      "endedAt": "2026-10-30T11:00:00Z",
+      "tokens": {
+        "input": 2000,
+        "output": 1000,
+        "reasoning": 0,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "cost": 0.75,
+      "model": "deepseek-v4.1-flash",
+      "seconds": 0.0,
+      "skills": null
+    },
+    {
+      "id": "ses_c",
+      "project": "tandem",
+      "agent": "builder",
+      "brief": "A record the report rolls up.",
+      "summary": "What landed.",
+      "status": "ended",
+      "outcome": "succeeded",
+      "tickets": [],
+      "startedAt": "2026-10-31T08:00:00Z",
+      "endedAt": "2026-10-31T08:00:00Z",
+      "tokens": {
+        "input": 3000,
+        "output": null,
+        "reasoning": null,
+        "cacheRead": null,
+        "cacheWrite": null
+      },
+      "cost": 1.5,
+      "model": "gemma4:e4b-mlx",
+      "seconds": 0.0,
+      "skills": null
+    },
+    {
+      "id": "ses_d",
+      "project": "tandem",
+      "agent": null,
+      "brief": "A record the report rolls up.",
+      "summary": "What landed.",
+      "status": "ended",
+      "outcome": "succeeded",
+      "tickets": ["00000000-0000-4000-8000-000000000002"],
+      "startedAt": "2026-10-31T09:00:00Z",
+      "endedAt": "2026-10-31T09:00:00Z",
+      "tokens": null,
+      "cost": null,
+      "model": null,
+      "seconds": 0.0,
+      "skills": null
+    }
+  ]
+}
