@@ -1,11 +1,14 @@
 name: Rust
 
 # The port's first CI: the workspace's four gates on the three platforms the
-# port targets, path-filtered so the Swift pipeline never waits on it and this
-# one never waits on a Swift change.
+# port targets.
 #
 # The checks this publishes are what `main`'s protection names:
-# `rust (macos-latest)`, `rust (ubuntu-latest)`, `rust (windows-latest)`.
+# `rust (macos-latest)`, `rust (ubuntu-latest)`, `rust (windows-latest)`, and
+# they have to exist on every pull request to be worth requiring: a required
+# check that a path-filtered workflow never creates reads "Expected" forever and
+# blocks the merge of a PR that touches no `rust/**` file. So `push` keeps its
+# filter, where a skipped run costs nothing, and `pull_request` does not filter.
 #
 # No third-party action: `rust-toolchain.toml` pins the version and the two
 # components, rustup ships on every hosted runner, and nothing here reads a
@@ -18,9 +21,6 @@ on:
       - "rust/**"
       - ".github/workflows/rust.yml"
   pull_request:
-    paths:
-      - "rust/**"
-      - ".github/workflows/rust.yml"
   workflow_dispatch:
 
 permissions:
