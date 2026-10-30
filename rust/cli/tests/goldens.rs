@@ -21,10 +21,17 @@
 //!   `app` and `skills` rows read this machine, not the fixture home, so their
 //!   names still compare and their detail is `<environment>`.
 //!
-//! **While PRT-9 is unbuilt this test skips, by name.** The Rust binary answers
-//! `doctor` only; the grammar the goldens cover lands with PRT-9. The skip names
-//! the first group the binary does not answer, and it is not `#[ignore]`: when
-//! the port answers every group the test runs, with no change here.
+//! **While PRT-9 is unbuilt this test skips, by name.** PRT-3's binary answers
+//! `doctor` alone; the grammar the goldens cover lands with PRT-9. When none of
+//! the grammar's verb groups answers, the test says which and returns, and it is
+//! not `#[ignore]`: the first group that lands turns the comparison on, with no
+//! change here. One group answering and another missing is a port that regressed,
+//! and the cases name the verb.
+//!
+//! **`TANDEM_GOLDENS_BINARY` checks the harness.** The goldens are the Swift
+//! binary's own answers, so pointing this test at it must match every case; that
+//! is how the normalization and the comparison got verified before PRT-9, instead
+//! of only after it.
 
 use std::fs;
 use std::io::Write;
@@ -35,6 +42,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use serde_json::{Map, Value, json};
 
 const BINARY: &str = env!("CARGO_BIN_EXE_tandem");
+
+/// The binary under test: this package's own, unless `TANDEM_GOLDENS_BINARY` names
+/// another. Naming the Swift binary is how the harness gets checked rather than
+/// trusted: it captured the goldens, so every case must match it exactly.
+fn binary() -> PathBuf {
+    std::env::var_os("TANDEM_GOLDENS_BINARY")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(BINARY))
+}
 
 /// Sandbox names are unique per process and per case, so two runs never share a
 /// directory and a leftover from a killed run cannot be read as this one's.
@@ -95,9 +111,12 @@ fn grammar_groups(manifest: &Value) -> Vec<String> {
 
 /// Whether the binary answers a group at all.
 fn answers(binary: &Path, group: &str) -> bool {
+    let sandbox = std::env::temp_dir();
     Command::new(binary)
         .args([group, "--help"])
         .env_clear()
+        .env("HOME", &sandbox)
+        .env("TANDEM_HOME", sandbox.join("tandem-goldens-probe"))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -452,7 +471,8 @@ struct Outcome {
 
 fn run(argv: &[Value], stdin: &str, environment: &[(String, String)], cwd: &Path) -> Outcome {
     let arguments: Vec<&str> = argv.iter().filter_map(Value::as_str).collect();
-    let mut child = Command::new(BINARY)
+    let binary = binary();
+    let mut child = Command::new(&binary)
         .args(&arguments)
         .current_dir(cwd)
         .env_clear()
@@ -461,7 +481,7 @@ fn run(argv: &[Value], stdin: &str, environment: &[(String, String)], cwd: &Path
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .unwrap_or_else(|error| panic!("{BINARY} runs `{arguments:?}`: {error}"));
+        .unwrap_or_else(|error| panic!("{} runs `{arguments:?}`: {error}", binary.display()));
     child
         .stdin
         .as_mut()
@@ -556,7 +576,7 @@ fn goldens_match_the_binary() {
     // No group answered is the PRT-9 state: there is nothing to compare yet. One
     // group answered and another missing is a port that regressed, and the cases
     // name the verb.
-    if !groups.iter().any(|group| answers(Path::new(BINARY), group)) {
+    if !groups.iter().any(|group| answers(&binary(), group)) {
         eprintln!(
             "skipped: PRT-9 has not built the grammar yet, so the Rust binary answers no verb \
              group the goldens cover ({}). The cases in Fixtures/goldens stay unrun until the \
@@ -583,16 +603,18 @@ fn goldens_match_the_binary() {
         let stdin = case["stdin"].as_str().unwrap_or("");
         let outcome = run(argv, stdin, &environment, &sandbox.home);
 
-        let (stdout, kind) = stdout_value(&outcome, &rules, &sandbox.prefixes());
         let mut actual = json!({
             "argv": argv,
             "stdin": stdin,
             "exit": outcome.exit,
-            "stdoutKind": kind,
-            "stdout": stdout,
             "stderr": lines(&outcome.stderr, &rules, &sandbox.prefixes()),
         });
-        mask(&mut actual, &case["mask"]);
+        let (mut stdout, kind) = stdout_value(&outcome, &rules, &sandbox.prefixes());
+        // The case's `mask` names rows of the answer, so it goes on `stdout`, the
+        // one place the capture applies it too.
+        mask(&mut stdout, &case["mask"]);
+        actual["stdoutKind"] = json!(kind);
+        actual["stdout"] = stdout;
 
         let path = goldens.join(format!("{name}.json"));
         let Ok(text) = fs::read_to_string(&path) else {
