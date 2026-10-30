@@ -280,6 +280,168 @@ mod locked {
         );
     }
 
+    /// A nested acquisition is a body that takes the same lock file again: it
+    /// queues behind itself, so it must answer `Locked` at the window like any
+    /// other writer that cannot be served, never hang. The wait is bounded on
+    /// both halves (`Queue::take` and the `flock` retry), so this case bounds
+    /// the test at three windows instead of relying on the suite's timeout.
+    #[test]
+    fn a_nested_acquisition_answers_locked_at_the_window_instead_of_hanging() {
+        let sandbox = Sandbox::new("nested");
+        let storage = storage(&sandbox);
+        let (answered, waiting) = std::sync::mpsc::channel();
+        // Detached, not scoped: a scoped thread that hangs takes the test with
+        // it, and the point of this case is the answer.
+        std::thread::spawn({
+            let storage = storage.clone();
+            move || {
+                let started = Instant::now();
+                let outcome = storage
+                    .lock()
+                    .and_then(|_held| storage.lock().map(|_nested| ()));
+                let _ = answered.send((
+                    matches!(outcome, Err(StoreError::Locked)),
+                    started.elapsed(),
+                ));
+            }
+        });
+
+        let (locked, elapsed) = waiting
+            .recv_timeout(super::super::locked::LOCK_TIMEOUT * 3)
+            .expect("a nested acquisition answers at the window, it does not hang");
+        assert!(
+            locked,
+            "a nested acquisition answers Locked, not Ok: it took {elapsed:?}"
+        );
+        assert!(
+            elapsed >= super::super::locked::LOCK_TIMEOUT,
+            "the nested acquisition answered before the window: {elapsed:?}"
+        );
+    }
+
+    /// Two spellings of one lock file are one queue, or the fairness guarantee
+    /// is lost for writers that spell their home differently (a symlink, a `.`
+    /// or `..` segment, a different case on Windows): both would take ticket 0
+    /// and race the `flock` again.
+    #[test]
+    fn two_spellings_of_one_home_share_one_queue() {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        let sandbox = Sandbox::new("spellings");
+        let root = sandbox.root();
+        let plain = root.join("tandem.lock");
+        let dotted = root.join(".").join("tandem.lock");
+        assert_eq!(
+            super::super::locked::queue_key(&plain).expect("the plain spelling canonicalizes"),
+            super::super::locked::queue_key(&dotted).expect("the dotted spelling canonicalizes"),
+            "two spellings of one lock file must key one queue"
+        );
+
+        // And they exclude each other: the dotted spelling waits out a holder
+        // on the plain one instead of taking a second lock.
+        let holder =
+            super::super::locked::LockedDirectory::new(plain, ".tandem-", root.to_path_buf());
+        let waiter =
+            super::super::locked::LockedDirectory::new(dotted, ".tandem-", root.to_path_buf());
+        let holding = Arc::new(Barrier::new(2));
+        let held_for = Duration::from_millis(300);
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                let _held = holder.lock().expect("the holder's body runs");
+                holding.wait();
+                thread::sleep(held_for);
+            });
+            holding.wait();
+
+            let started = Instant::now();
+            let _served = waiter
+                .lock()
+                .expect("a writer on the other spelling is served, not locked out");
+            assert!(
+                started.elapsed() >= held_for,
+                "the waiter did not wait for the holder: {:?}",
+                started.elapsed()
+            );
+        });
+    }
+
+    /// A writer that arrives while another holds the lock is served in arrival
+    /// order: two waiters queue behind the holder, and the queue hands them the
+    /// lock in the order they took their tickets. This is the property `Queue`
+    /// exists for; without it both waiters spin `try_lock` and the order is a
+    /// coin flip per release. The case waits on the queue's own ticket count,
+    /// so a bypassed `Queue::take` fails here (the count never moves) instead
+    /// of passing by luck.
+    #[test]
+    fn waiters_are_served_in_arrival_order() {
+        let sandbox = Sandbox::new("order");
+        let storage = storage(&sandbox);
+        let key = super::super::locked::queue_key(&sandbox.root().join("tandem.lock"))
+            .expect("the sandbox root canonicalizes");
+
+        let held = storage.lock().expect("the holder takes the lock");
+        // The holder's own ticket is taken; every later arrival adds one.
+        let holder_ticket = super::super::locked::queued(&key);
+        let (served, order) = std::sync::mpsc::channel();
+        let mut waiters = Vec::new();
+        for name in ["first", "second"] {
+            let storage = storage.clone();
+            let served = served.clone();
+            waiters.push(std::thread::spawn(move || {
+                let _guard = storage.lock().expect("the waiter is served");
+                let _ = served.send(name);
+            }));
+            // Wait until this waiter has taken its ticket: that is its arrival,
+            // and it is what the queue orders on. A sleep would assume the
+            // thread ran; the count is the synchronization point.
+            let deadline = Instant::now() + super::super::locked::LOCK_TIMEOUT;
+            let wanted = holder_ticket + waiters.len() as u64;
+            while super::super::locked::queued(&key) < wanted {
+                assert!(
+                    Instant::now() < deadline,
+                    "waiter {} did not take a queue ticket; the queue is bypassed",
+                    waiters.len()
+                );
+                std::thread::yield_now();
+            }
+        }
+        drop(held);
+
+        let arrivals: Vec<&str> = (0..2)
+            .map(|_| {
+                order
+                    .recv_timeout(super::super::locked::LOCK_TIMEOUT * 3)
+                    .expect("both waiters report")
+            })
+            .collect();
+        for waiter in waiters {
+            waiter.join().expect("the waiter thread joins");
+        }
+        assert_eq!(
+            arrivals,
+            ["first", "second"],
+            "waiters are served in the order they queued"
+        );
+    }
+
+    /// A lock file whose directory cannot canonicalize is refused, not keyed on
+    /// the path as spelled: the spelled path is the split this key exists to
+    /// close, and two spellings of one home would each get a queue. A missing
+    /// directory is the portable way to make `canonicalize` fail.
+    #[test]
+    fn a_directory_that_cannot_canonicalize_is_refused() {
+        let sandbox = Sandbox::new("uncanonical");
+        let missing = sandbox.root().join("missing").join("tandem.lock");
+
+        let outcome = super::super::locked::queue_key(&missing);
+
+        assert!(
+            matches!(&outcome, Err(StoreError::Io(_))),
+            "a directory that cannot canonicalize is refused: {outcome:?}"
+        );
+    }
+
     #[test]
     fn an_ordered_write_keeps_the_old_file_until_the_commit() {
         let sandbox = Sandbox::new("ordered");
@@ -1456,6 +1618,13 @@ mod writes {
         let store = sandbox.store();
         setting(&store, &Actor::Human, "seed", "1");
 
+        // The timing assumption: the only thing these two threads contend for
+        // is the process-local write gate (`store::write_gate`), one mutex per
+        // canonical home, so `BEGIN IMMEDIATE` never sees a same-process
+        // sibling: a writer waits one write of the other, never the 2 s busy
+        // window. Across processes the window is the bound (ADR 0031). No
+        // ordering between the threads is assumed: the count is read after the
+        // scope joins both.
         thread::scope(|scope| {
             for group in ["a", "b"] {
                 let store = &store;
