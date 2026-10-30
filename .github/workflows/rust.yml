@@ -62,13 +62,14 @@ jobs:
         run: cargo test
 
       - name: "Gate: the two contention cases, ten times (Windows)"
-        # These are the cases that flaked on this runner, both on the sidecar
-        # lock's window: run 41080330208 (`concurrent_writers_keep_every_row`)
+        # These are the cases that flaked on this runner, both on the store's
+        # old sidecar window: run 41080330208 (`concurrent_writers_keep_every_row`)
         # and run 41099651828 (`a_concurrent_edit_is_not_reverted_by_another_writers_snapshot`,
-        # which answered `Locked`). The queue in `store::locked` gives this
-        # process's writers a turn order, so a waiter is served when the holder
-        # releases instead of racing it; ten runs in one job are the evidence,
-        # and a failure here is a red gate, not a re-run to notice.
+        # which answered `Locked`). PRT-23 removed the store's sidecar and
+        # serialized this process's writers on a home-keyed gate, so a waiter is
+        # served when the holder releases instead of racing SQLite's busy
+        # handler; ten runs in one job are the evidence, and a failure here is a
+        # red gate, not a re-run to notice.
         if: runner.os == 'Windows'
         run: |
           for ($run = 1; $run -le 10; $run++) {

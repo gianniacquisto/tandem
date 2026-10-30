@@ -378,10 +378,10 @@ fn two_writers_over_one_home_keep_every_row_and_issue_every_ref_once() {
 ///
 /// The timing assumption: none between the two threads. The property holds for
 /// every interleaving, and the assertion reads after `scope` joins both. What
-/// the write waits for is the sidecar, and this process's queue
-/// (`store::locked::Queue`) serves a waiter when the holder releases, so neither
-/// writer is turned away while the lock stands free (`rust (windows-latest)`
-/// run 41099651828 answered `Locked` here).
+/// the write waits for is the process-local write gate (`store::write_gate`,
+/// one mutex per canonical home), so neither writer is turned away while the
+/// other's transaction is open (`rust (windows-latest)` run 41099651828
+/// answered `Locked` here before the gate).
 #[test]
 fn a_concurrent_edit_is_not_reverted_by_another_writers_snapshot() {
     let sandbox = Sandbox::new("board-revert");

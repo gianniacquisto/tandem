@@ -90,7 +90,7 @@ fn the_fixture_vaults_search_and_stats_answer() {
     );
 
     let stats = bikeshed.stats(None).expect("the stats read").value;
-    assert_eq!(stats.bikeshed, vault.dir().to_string_lossy());
+    assert_eq!(stats.bikeshed, crate::wire::slashed_path(vault.dir()));
     assert_eq!(stats.projects.len(), 1);
     let row = &stats.projects[0];
     assert_eq!(row.project, "fixture");

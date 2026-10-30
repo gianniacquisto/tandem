@@ -1,0 +1,32 @@
+{
+  "argv": [
+    "session",
+    "end",
+    "--outcome",
+    "succeeded",
+    "--summary",
+    "What landed.",
+    "--skills",
+    "grilling=2,tandem-memory=1"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "agent": "builder",
+    "brief": "A brief the golden keeps.",
+    "endedAt": "<timestamp>",
+    "id": "golden-session",
+    "outcome": "succeeded",
+    "project": "fixture",
+    "skills": {
+      "grilling": 2,
+      "tandem-memory": 1
+    },
+    "startedAt": "<timestamp>",
+    "status": "ended",
+    "summary": "What landed.",
+    "tickets": []
+  },
+  "stdoutKind": "json"
+}

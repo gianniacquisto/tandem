@@ -251,3 +251,32 @@ fn a_run_against_the_fixture_home_writes_nothing_there() {
     );
     assert!(!sandbox.user_home().join(".tandem").exists());
 }
+
+/// A write to a home that cannot be created says which path it tried, once.
+/// The path is the first argument's, and the io error is the cause, not a
+/// second copy of the path (the gate found the two swapped).
+#[test]
+fn a_home_that_cannot_be_created_names_its_path_and_the_cause() {
+    let sandbox = Sandbox::new("uncreatable");
+    let occupied = sandbox.path().join("not-a-directory");
+    fs::write(&occupied, b"occupied").expect("the file is writable");
+
+    let output = tandem(
+        &sandbox,
+        Some(&occupied),
+        &["ticket", "add", "--title", "A ticket"],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "a write failure is exit 1");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let path = occupied.to_string_lossy();
+    assert!(
+        stderr.starts_with(&format!("Cannot create the Tandem home at {path}: ")),
+        "the message names the path and then the cause: {stderr}"
+    );
+    assert_eq!(
+        stderr.matches(path.as_ref()).count(),
+        1,
+        "the path is printed once: {stderr}"
+    );
+}

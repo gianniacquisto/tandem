@@ -1,4 +1,4 @@
-//! The storage mechanics every writing verb shares: a `flock` sidecar with
+//! The storage mechanics a file-tree writer shares: a `flock` sidecar with
 //! bounded retry, same-directory temp files with `fsync` + rename, and the
 //! orphan sweep that clears a crash's leftovers under the lock.
 //!
@@ -8,14 +8,20 @@
 //! This module is the mechanism only. It owns no schema and no domain
 //! vocabulary; the store translates its two failures into the store's words.
 //!
+//! The store takes no lock (ADR 0031): SQLite's `BEGIN IMMEDIATE` and the busy
+//! window are its contention bound, and it borrows only the temp, the commit
+//! and the directory sync for the rolling backup. The sidecar, the sweep and
+//! [`LockedDirectory::lock`] are the bikeshed's, which is the file tree that
+//! still needs one.
+//!
 //! One thing the Swift mechanism did not need and this one does: `flock` has no
 //! queue, so threads of one process that want the same lock race `try_lock`
 //! and the loser can lose every flip for the whole window. [`Queue`] gives this
-//! process's writers a turn order, so a waiter is served when the holder
-//! releases instead of racing it, and the window bounds the wait rather than the
-//! luck. The window is the bound on both halves: a writer that cannot be served
-//! within it, queued or blocked by a foreign holder, answers `Locked` exactly as
-//! it did before the queue.
+//! process's bikeshed writers a turn order, so a waiter is served when the
+//! holder releases instead of racing it, and the window bounds the wait rather
+//! than the luck. A writer that cannot be served within the window, queued or
+//! blocked by a foreign holder, answers `Locked` exactly as it did before the
+//! queue.
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions, TryLockError};
@@ -37,22 +43,6 @@ pub(crate) const LOCK_TIMEOUT: Duration = Duration::from_millis(2_000);
 
 /// A temp older than this is a crash's leftover, never an in-flight write's.
 pub(crate) const ORPHAN_MAX_AGE: Duration = Duration::from_secs(60);
-
-/// The longest wait for the sidecar lock this process has seen, in
-/// milliseconds.
-///
-/// Test-facing, and it exists so a red contended write names the cost rather
-/// than only the answer: two seconds of starvation (a waiter that never wins
-/// the gap) and one two-second `fsync` both surface as [`StoreError::Locked`]
-/// and need different fixes.
-#[cfg(test)]
-static LONGEST_WAIT_MS: AtomicU64 = AtomicU64::new(0);
-
-/// The longest this process has waited for the sidecar lock.
-#[cfg(test)]
-pub(crate) fn longest_wait() -> Duration {
-    Duration::from_millis(LONGEST_WAIT_MS.load(Ordering::Relaxed))
-}
 
 /// The store's temp prefix: its own files only, so the sweep cannot touch the
 /// bikeshed's.
@@ -217,7 +207,10 @@ impl LockedDirectory {
         }
     }
 
-    /// The store's own sidecar: `<home>/tandem.lock` and the home as its root.
+    /// The store's own directory: `<home>/tandem.lock` as the lock file and the
+    /// home as its root. The store takes no lock (ADR 0031) and borrows this
+    /// value for the rolling backup's commit and directory sync; the sidecar
+    /// itself is the bikeshed's.
     pub(crate) fn for_store(home: &Path) -> Self {
         Self::new(home.join("tandem.lock"), TEMP_PREFIX, home.to_path_buf())
     }
@@ -231,14 +224,6 @@ impl LockedDirectory {
             root,
             recursive: true,
         }
-    }
-
-    /// Acquire the exclusive lock and run `body` under it, after sweeping the
-    /// tree's stale temps. The lock is released when `body` returns or throws;
-    /// `flock` releases on process death, so there is no stale lock to recover.
-    pub(crate) fn with_lock<T>(&self, body: impl FnOnce() -> Result<T>) -> Result<T> {
-        let _lock = self.lock()?;
-        body()
     }
 
     /// Acquire the lock and sweep, handing back the guard that holds it. A
@@ -370,8 +355,6 @@ impl LockedDirectory {
             })?;
         let key = queue_key(&self.lock_file);
         let queue = queue_for(&key);
-        #[cfg(test)]
-        let started = Instant::now();
         // One window for the whole wait, as before the queue: the turn in the
         // queue and then the `flock`. The queue only decides who is served
         // first, never how long a writer may wait.
@@ -392,9 +375,6 @@ impl LockedDirectory {
         loop {
             match held.file().try_lock() {
                 Ok(()) => {
-                    #[cfg(test)]
-                    LONGEST_WAIT_MS
-                        .fetch_max(started.elapsed().as_millis() as u64, Ordering::Relaxed);
                     return Ok(held);
                 }
                 Err(TryLockError::WouldBlock) => {
