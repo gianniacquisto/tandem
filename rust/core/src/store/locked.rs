@@ -140,17 +140,28 @@ static QUEUES: OnceLock<Mutex<HashMap<PathBuf, Arc<Queue>>>> = OnceLock::new();
 /// The key a lock file's queue is filed under: its directory canonicalized, so
 /// two spellings of one lock file (a symlinked home, a `.` or `..` segment, a
 /// different case on Windows) share one queue. The file itself may not exist
-/// yet, so the directory is what canonicalizes; a directory that cannot
-/// canonicalize keeps the path as spelled.
-pub(crate) fn queue_key(lock_file: &Path) -> PathBuf {
-    let Some(name) = lock_file.file_name() else {
-        return lock_file.to_path_buf();
-    };
+/// yet, so the directory is what canonicalizes.
+///
+/// A directory that cannot canonicalize is an error, never the path as
+/// spelled: the spelled path is exactly the split this key exists to close
+/// (two spellings of one home would each get a queue and race the `flock`
+/// again), and every caller has just created the directory, so a failure here
+/// is a filesystem problem to name, not a spelling variant to tolerate.
+pub(crate) fn queue_key(lock_file: &Path) -> Result<PathBuf> {
+    let name = lock_file.file_name().ok_or_else(|| {
+        StoreError::Io(format!(
+            "the lock file {} has no name to key its queue on",
+            lock_file.display()
+        ))
+    })?;
     let directory = lock_file.parent().unwrap_or_else(|| Path::new("."));
-    match directory.canonicalize() {
-        Ok(directory) => directory.join(name),
-        Err(_) => lock_file.to_path_buf(),
-    }
+    let directory = directory.canonicalize().map_err(|error| {
+        StoreError::Io(format!(
+            "could not canonicalize the directory {}: {error}",
+            directory.display()
+        ))
+    })?;
+    Ok(directory.join(name))
 }
 
 /// The queue for one lock file, created on first use.
@@ -160,6 +171,20 @@ fn queue_for(key: &Path) -> Arc<Queue> {
         .entry(key.to_path_buf())
         .or_insert_with(|| Arc::new(Queue::new()))
         .clone()
+}
+
+/// The number of tickets this process has taken for `key`: test-facing, so a
+/// case can wait until a waiter has queued instead of assuming it by a sleep.
+#[cfg(test)]
+pub(crate) fn queued(key: &Path) -> u64 {
+    let Some(queues) = QUEUES.get() else {
+        return 0;
+    };
+    let queues = lock(queues);
+    queues
+        .get(key)
+        .map(|queue| lock(&queue.turn).next)
+        .unwrap_or(0)
 }
 
 /// Drop a lock file's queue once no writer of this process holds or waits on
@@ -353,7 +378,7 @@ impl LockedDirectory {
                     self.lock_file.display()
                 ))
             })?;
-        let key = queue_key(&self.lock_file);
+        let key = queue_key(&self.lock_file)?;
         let queue = queue_for(&key);
         // One window for the whole wait, as before the queue: the turn in the
         // queue and then the `flock`. The queue only decides who is served

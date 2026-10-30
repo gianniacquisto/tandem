@@ -70,11 +70,25 @@ jobs:
         # served when the holder releases instead of racing SQLite's busy
         # handler; ten runs in one job are the evidence, and a failure here is a
         # red gate, not a re-run to notice.
+        #
+        # Each run asserts that exactly one test ran: `--exact` with a renamed
+        # case exits 0 after `running 0 tests`, and a done-when that silently
+        # stops testing is worse than a red one.
         if: runner.os == 'Windows'
         run: |
           for ($run = 1; $run -le 10; $run++) {
-            cargo test -p tandem-core --lib -- store::tests::writes::concurrent_writers_keep_every_row --exact
+            $out = cargo test -p tandem-core --lib -- store::tests::writes::concurrent_writers_keep_every_row --exact 2>&1
+            $out | Write-Output
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            cargo test -p tandem-core --test board -- a_concurrent_edit_is_not_reverted_by_another_writers_snapshot --exact
+            if (-not ($out -match 'test result: ok\. 1 passed')) {
+              Write-Error "run ${run}: concurrent_writers_keep_every_row ran no test; a renamed case would pass silently"
+              exit 1
+            }
+            $out = cargo test -p tandem-core --test board -- a_concurrent_edit_is_not_reverted_by_another_writers_snapshot --exact 2>&1
+            $out | Write-Output
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if (-not ($out -match 'test result: ok\. 1 passed')) {
+              Write-Error "run ${run}: a_concurrent_edit_is_not_reverted_by_another_writers_snapshot ran no test; a renamed case would pass silently"
+              exit 1
+            }
           }

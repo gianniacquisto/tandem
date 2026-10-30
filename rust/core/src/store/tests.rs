@@ -330,8 +330,8 @@ mod locked {
         let plain = root.join("tandem.lock");
         let dotted = root.join(".").join("tandem.lock");
         assert_eq!(
-            super::super::locked::queue_key(&plain),
-            super::super::locked::queue_key(&dotted),
+            super::super::locked::queue_key(&plain).expect("the plain spelling canonicalizes"),
+            super::super::locked::queue_key(&dotted).expect("the dotted spelling canonicalizes"),
             "two spellings of one lock file must key one queue"
         );
 
@@ -361,6 +361,82 @@ mod locked {
                 started.elapsed()
             );
         });
+    }
+
+    /// A writer that arrives while another holds the lock is served in arrival
+    /// order: two waiters queue behind the holder, and the queue hands them the
+    /// lock in the order they took their tickets. This is the property `Queue`
+    /// exists for; without it both waiters spin `try_lock` and the order is a
+    /// coin flip per release. The case waits on the queue's own ticket count,
+    /// so a bypassed `Queue::take` fails here (the count never moves) instead
+    /// of passing by luck.
+    #[test]
+    fn waiters_are_served_in_arrival_order() {
+        let sandbox = Sandbox::new("order");
+        let storage = storage(&sandbox);
+        let key = super::super::locked::queue_key(&sandbox.root().join("tandem.lock"))
+            .expect("the sandbox root canonicalizes");
+
+        let held = storage.lock().expect("the holder takes the lock");
+        // The holder's own ticket is taken; every later arrival adds one.
+        let holder_ticket = super::super::locked::queued(&key);
+        let (served, order) = std::sync::mpsc::channel();
+        let mut waiters = Vec::new();
+        for name in ["first", "second"] {
+            let storage = storage.clone();
+            let served = served.clone();
+            waiters.push(std::thread::spawn(move || {
+                let _guard = storage.lock().expect("the waiter is served");
+                let _ = served.send(name);
+            }));
+            // Wait until this waiter has taken its ticket: that is its arrival,
+            // and it is what the queue orders on. A sleep would assume the
+            // thread ran; the count is the synchronization point.
+            let deadline = Instant::now() + super::super::locked::LOCK_TIMEOUT;
+            let wanted = holder_ticket + waiters.len() as u64;
+            while super::super::locked::queued(&key) < wanted {
+                assert!(
+                    Instant::now() < deadline,
+                    "waiter {} did not take a queue ticket; the queue is bypassed",
+                    waiters.len()
+                );
+                std::thread::yield_now();
+            }
+        }
+        drop(held);
+
+        let arrivals: Vec<&str> = (0..2)
+            .map(|_| {
+                order
+                    .recv_timeout(super::super::locked::LOCK_TIMEOUT * 3)
+                    .expect("both waiters report")
+            })
+            .collect();
+        for waiter in waiters {
+            waiter.join().expect("the waiter thread joins");
+        }
+        assert_eq!(
+            arrivals,
+            ["first", "second"],
+            "waiters are served in the order they queued"
+        );
+    }
+
+    /// A lock file whose directory cannot canonicalize is refused, not keyed on
+    /// the path as spelled: the spelled path is the split this key exists to
+    /// close, and two spellings of one home would each get a queue. A missing
+    /// directory is the portable way to make `canonicalize` fail.
+    #[test]
+    fn a_directory_that_cannot_canonicalize_is_refused() {
+        let sandbox = Sandbox::new("uncanonical");
+        let missing = sandbox.root().join("missing").join("tandem.lock");
+
+        let outcome = super::super::locked::queue_key(&missing);
+
+        assert!(
+            matches!(&outcome, Err(StoreError::Io(_))),
+            "a directory that cannot canonicalize is refused: {outcome:?}"
+        );
     }
 
     #[test]
