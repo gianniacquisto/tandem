@@ -236,6 +236,7 @@ fn setup_install_prints_the_same_warnings_as_status() {
 }
 
 #[test]
+#[cfg(unix)]
 fn setup_install_exits_one_and_still_prints_the_report_on_an_error() {
     let sandbox = Sandbox::new("unwritable");
     sandbox.write_bundle("1.0");

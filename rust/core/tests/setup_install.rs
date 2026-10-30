@@ -50,6 +50,13 @@ impl Drop for Fixture {
     }
 }
 
+/// Undo the chmods a test made, so the fixture's root can be removed. On Unix
+/// that is the mode bits; on Windows the only permission a path carries here is
+/// the read-only flag, and clearing it is the same repair. The clippy lint about
+/// `set_readonly(false)` is the Unix caveat (it makes a file world-writable
+/// there); on Windows the call is the only standard-library way to clear the
+/// flag, and this branch compiles on no Unix host.
+#[allow(clippy::permissions_set_readonly_false)]
 fn make_writable(path: &Path) {
     #[cfg(unix)]
     {
@@ -64,6 +71,18 @@ fn make_writable(path: &Path) {
                 }
             } else if !metadata.file_type().is_symlink() {
                 let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o644));
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        if let Ok(metadata) = fs::symlink_metadata(path)
+            && !metadata.file_type().is_symlink()
+        {
+            let mut permissions = metadata.permissions();
+            if permissions.readonly() {
+                permissions.set_readonly(false);
+                let _ = fs::set_permissions(path, permissions);
             }
         }
     }
@@ -384,6 +403,7 @@ fn a_new_bundled_version_replaces_the_installed_copy() {
 }
 
 #[test]
+#[cfg(unix)]
 fn a_failed_replace_leaves_the_previous_copy_and_every_link_intact() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
     install(&f, &[Host::Opencode], false).expect("the first install");
@@ -421,6 +441,7 @@ fn a_failed_replace_leaves_the_previous_copy_and_every_link_intact() {
 }
 
 #[test]
+#[cfg(unix)]
 fn install_refuses_an_unwritable_home_and_writes_nothing() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
     fs::create_dir_all(&f.tandem_home).unwrap();
@@ -1065,6 +1086,7 @@ fn a_host_with_its_links_but_no_instruction_file_warns_half_installed() {
 }
 
 #[test]
+#[cfg(unix)]
 fn an_unwritable_home_is_an_error() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
     fs::create_dir_all(&f.tandem_home).unwrap();
