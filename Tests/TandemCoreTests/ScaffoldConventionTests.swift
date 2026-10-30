@@ -330,6 +330,53 @@ struct ScaffoldConventionTests {
                 "the skills table names the Overview as the orient target (TAN-194)")
     }
 
+    /// The positioning sweep (TAN-238): the absence of a server is today's
+    /// shape, never the product's, because a hosted core is a later deployment.
+    /// These phrasings sold it as permanent, so the docs that carried the claim
+    /// are pinned against them.
+    private static let retiredPositioningPhrases = [
+        "no account, no server",
+        "no server, no network",
+    ]
+
+    /// The ADRs on disk, not a list in this file: a new ADR is swept without an
+    /// edit here.
+    private static func adrFiles() throws -> [String] {
+        let directory = root.appendingPathComponent("docs/adr")
+        return try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            .filter { $0.hasSuffix(".md") }
+            .sorted()
+            .map { "docs/adr/\($0)" }
+    }
+
+    @Test("A deployment shape is not a product property (TAN-238)")
+    func positioningStaysTodaysShape() throws {
+        let readme = try Self.file("README.md")
+        let folded = readme.lowercased()
+        for phrase in Self.retiredPositioningPhrases {
+            #expect(!folded.contains(phrase),
+                    "README.md sells the absence of a server as permanent: `\(phrase)`")
+        }
+        #expect(readme.contains("Everything runs on your Mac today"),
+                "the intro dates the boundary as today's deployment")
+        #expect(readme.contains("| Network | none today"),
+                "the runs-on table dates its network row")
+        #expect(readme.contains("Not a service yet"),
+                "the `what it is not` bullet dates its claim")
+
+        let port = try Self.file("docs/adr/0037-one-stack-rust-core-electron-ui.md")
+        #expect(port.contains("deployment shape, not a feature"),
+                "the port's ADR is where the hosted core is deferred")
+
+        for path in try Self.adrFiles() {
+            let text = try Self.file(path).lowercased()
+            for phrase in Self.retiredPositioningPhrases {
+                #expect(!text.contains(phrase),
+                        "\(path) sells the absence of a server as permanent: `\(phrase)`")
+            }
+        }
+    }
+
     @Test("The setup surfaces run the one install verb, never a hand-made link (TAN-216)")
     func setupSurfacesRunTheInstallVerb() throws {
         let command = "tandem-cli setup install"
