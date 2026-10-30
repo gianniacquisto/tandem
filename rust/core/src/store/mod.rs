@@ -18,12 +18,15 @@
 //! - **One write, one transaction.** WAL, a ~2 s busy window that surfaces as
 //!   [`StoreError::Locked`], and a rolling backup of the pre-write state
 //!   (ADR 0018). Reads open read-only and never write.
-//! - **No sidecar lock.** The store takes no `flock`: a `BEGIN IMMEDIATE`
-//!   transaction is the writer and the ~2 s busy window is the contention bound
-//!   (ADR 0031), so a `tandem.lock` beside a home is inert. The `locked` module
-//!   keeps the sidecar, the same-directory temp with `fsync` + rename and the
-//!   orphan sweep for the bikeshed (PRT-7); the store borrows only the temp,
-//!   the commit and the directory sync for the rolling backup.
+//! - **No sidecar lock.** The store takes no `flock` and writes no lock file:
+//!   a `BEGIN IMMEDIATE` transaction is the writer and the ~2 s busy window is
+//!   the contention bound across processes (ADR 0031), so a `tandem.lock`
+//!   beside a home is inert. Two threads of one process queue on a process-local
+//!   gate (one mutex per canonical home, no file), so the engine only arbitrates
+//!   across processes. The `locked` module keeps the sidecar, the same-directory
+//!   temp with `fsync` + rename and the orphan sweep for the bikeshed; the store
+//!   borrows only the temp, the commit and the directory sync for the rolling
+//!   backup.
 
 mod actor;
 pub(crate) mod board_rows;
@@ -39,9 +42,11 @@ mod tests;
 pub(crate) mod timestamp;
 mod write;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
@@ -63,6 +68,26 @@ use write::BackupState;
 /// waits ~2 s for another process's transaction, then the write fails as
 /// "locked".
 const BUSY_TIMEOUT: Duration = Duration::from_millis(2_000);
+
+/// The process-local write gate: one mutex per canonical home.
+///
+/// Across processes, SQLite's `BEGIN IMMEDIATE` and the busy window are the
+/// contention bound (ADR 0031). Inside one process that is not enough: two
+/// threads that reach the engine together race the busy handler instead of
+/// queueing, and on the Windows runner a writer answered `Locked` after the
+/// full window while its sibling held the write for a few milliseconds. The
+/// gate makes those writers queue, deterministically and with no file at all:
+/// it is keyed on the canonical home, it lives only in this process, and a
+/// stale `tandem.lock` has nothing to do with it.
+fn write_gate(home: &Path) -> Arc<Mutex<()>> {
+    static GATES: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+    let gates = GATES.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+    let mut gates = gates
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    Arc::clone(gates.entry(key).or_default())
+}
 
 /// What a store failure is, in the store's words. Every engine failure that is
 /// not contention becomes [`StoreError::Io`] with the engine's detail, exactly
@@ -153,6 +178,10 @@ impl Store {
                 self.home.directory().display()
             ))
         })?;
+        // Two threads of this process queue here; across processes the engine's
+        // write lock and the busy window are the bound (ADR 0031).
+        let gate = write_gate(self.home.directory());
+        let _gate = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let database = self.database();
         let existed = database.exists();
         let connection = open(&database)?;
