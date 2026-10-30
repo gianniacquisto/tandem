@@ -580,7 +580,9 @@ mod tests {
     }
 
     /// A home whose store carries no revision row, which is what a pre-v4 file
-    /// presents to `Store::watch`: `Ok(None)`, not an error.
+    /// presents to `Store::watch`: `Ok(None)`, not an error. Unix only with the
+    /// case that uses it.
+    #[cfg(unix)]
     fn store_without_a_revision(name: &str) -> (std::path::PathBuf, Store) {
         use crate::store::{Home, NewSetting};
 
@@ -606,9 +608,11 @@ mod tests {
     }
 
     /// The stream the watch writes its events to; a store with no revision
-    /// produces none.
+    /// produces none. Unix only with the case that uses it.
+    #[cfg(unix)]
     struct Sink;
 
+    #[cfg(unix)]
     impl Stream for Sink {
         fn read_frame(&self) -> io::Result<Option<String>> {
             Ok(None)
