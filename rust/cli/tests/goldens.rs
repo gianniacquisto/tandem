@@ -21,12 +21,11 @@
 //!   `app` and `skills` rows read this machine, not the fixture home, so their
 //!   names still compare and their detail is `<environment>`.
 //!
-//! **While PRT-9 is unbuilt this test skips, by name.** PRT-3's binary answers
-//! `doctor` alone; the grammar the goldens cover lands with PRT-9. When none of
-//! the grammar's verb groups answers, the test says which and returns, and it is
-//! not `#[ignore]`: the first group that lands turns the comparison on, with no
-//! change here. One group answering and another missing is a port that regressed,
-//! and the cases name the verb.
+//! **Only `setup` and `doctor` may go unanswered, and they are named.** They are
+//! PRT-10's; their cases are skipped, with the group named in the output. Every
+//! other group must answer, and one that stops parsing is a failure here: a
+//! per-case skip on "does not answer" would let a regressed `ticket` pass
+//! silently, which is the opposite of what the goldens are for.
 //!
 //! **`TANDEM_GOLDENS_BINARY` checks the harness.** The goldens are the Swift
 //! binary's own answers, so pointing this test at it must match every case; that
@@ -91,45 +90,39 @@ fn case_name(case: &Value) -> String {
 
 // MARK: - The grammar gate
 
-/// The groups the goldens cover with verbs under them, derived from the case list:
-/// a case spelled `[group, verb, ...]` is a group that carries verbs. `doctor` is
-/// one word and is not one of them, which is why PRT-3's binary answers it alone.
-fn grammar_groups(manifest: &Value) -> Vec<String> {
-    let mut groups: Vec<String> = cases(manifest)
-        .iter()
-        .filter_map(|case| {
-            let argv = case["argv"].as_array()?;
-            let group = argv.first()?.as_str()?;
-            let verb = argv.get(1)?.as_str()?;
-            (!verb.starts_with('-')).then(|| group.to_owned())
-        })
-        .collect();
-    groups.sort();
-    groups.dedup();
-    groups
-}
+/// Whether the binary answers a case's group at all.
+///
+/// `cli` is the root itself and always answers. A group answers when its
+/// `--help` does. `doctor` is the exception: PRT-3's stub answers `--help` with
+/// one row, so the report's own length is what tells the stub from PRT-10's eight
+/// checks, and the goldens stay unrun until it is the report.
+/// The groups the binary may still leave unanswered. PRT-10 owns both; the rest
+/// of the grammar landed with PRT-9 and must keep answering.
+const UNPORTED: [&str; 2] = ["setup", "doctor"];
 
-/// Whether the binary answers a group at all.
 fn answers(binary: &Path, group: &str) -> bool {
     let sandbox = std::env::temp_dir();
-    Command::new(binary)
-        .args([group, "--help"])
-        .env_clear()
-        .env("HOME", &sandbox)
-        .env("TANDEM_HOME", sandbox.join("tandem-goldens-probe"))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
-}
-
-fn quoted(names: &[String]) -> String {
-    names
-        .iter()
-        .map(|name| format!("`{name}`"))
-        .collect::<Vec<_>>()
-        .join(", ")
+    let home = sandbox.join(format!("tandem-goldens-probe-{}", std::process::id()));
+    let run = |args: &[&str]| {
+        Command::new(binary)
+            .args(args)
+            .env_clear()
+            .env("HOME", &sandbox)
+            .env("TANDEM_HOME", &home)
+            .stdin(Stdio::null())
+            .output()
+    };
+    match group {
+        "cli" => true,
+        "doctor" => match run(&["doctor"]) {
+            Ok(output) => serde_json::from_slice::<Value>(&output.stdout)
+                .ok()
+                .and_then(|report| report["checks"].as_array().map(Vec::len))
+                .is_some_and(|rows| rows == 8),
+            Err(_) => false,
+        },
+        _ => run(&[group, "--help"]).is_ok_and(|output| output.status.success()),
+    }
 }
 
 // MARK: - Normalization
@@ -384,13 +377,18 @@ impl Sandbox {
     fn prefixes(&self) -> Vec<(String, String)> {
         let mut prefixes = Vec::new();
         for (path, name) in [(&self.home, "<tandem-home>"), (&self.user, "<home>")] {
-            let spelled = path.to_string_lossy().into_owned();
-            prefixes.push((spelled.clone(), name.to_owned()));
+            // The wire spells a path with `/` on every platform, so the sandbox
+            // has to be a name in that spelling too, not only in the host's.
+            let mut spellings = vec![path.to_string_lossy().into_owned()];
             if let Ok(canonical) = fs::canonicalize(path) {
-                let canonical = canonical.to_string_lossy().into_owned();
-                if canonical != spelled {
-                    prefixes.push((canonical, name.to_owned()));
+                spellings.push(canonical.to_string_lossy().into_owned());
+            }
+            for spelling in spellings {
+                let slashed = spelling.replace(std::path::MAIN_SEPARATOR, "/");
+                if slashed != spelling {
+                    prefixes.push((slashed, name.to_owned()));
                 }
+                prefixes.push((spelling, name.to_owned()));
             }
         }
         prefixes
@@ -572,20 +570,6 @@ fn setup_steps(case: &Value, sandbox: &Sandbox, environment: &[(String, String)]
 #[test]
 fn goldens_match_the_binary() {
     let manifest = manifest();
-    let groups = grammar_groups(&manifest);
-    // No group answered is the PRT-9 state: there is nothing to compare yet. One
-    // group answered and another missing is a port that regressed, and the cases
-    // name the verb.
-    if !groups.iter().any(|group| answers(&binary(), group)) {
-        eprintln!(
-            "skipped: PRT-9 has not built the grammar yet, so the Rust binary answers no verb \
-             group the goldens cover ({}). The cases in Fixtures/goldens stay unrun until the \
-             port answers them; this test then compares them, with no change here.",
-            quoted(&groups)
-        );
-        return;
-    }
-
     let rules = manifest["normalize"]
         .as_array()
         .expect("the manifest carries a `normalize` list")
@@ -593,8 +577,22 @@ fn goldens_match_the_binary() {
     let goldens = repo_root().join("Fixtures/goldens");
     let mut failures = Vec::new();
 
+    let mut skipped: Vec<String> = Vec::new();
     for case in cases(&manifest) {
         let name = case_name(case);
+        let group = case["group"].as_str().unwrap_or("?");
+        if !answers(&binary(), group) {
+            if UNPORTED.contains(&group) {
+                skipped.push(group.to_string());
+            } else {
+                failures.push(format!(
+                    "{name}: the `{group}` group does not answer, and it is not one of the \
+                     groups still unported ({})",
+                    UNPORTED.join(", ")
+                ));
+            }
+            continue;
+        }
         let sandbox = Sandbox::new(&name);
         let environment = sandbox.environment(&manifest, case);
         setup_steps(case, &sandbox, &environment);
@@ -644,6 +642,20 @@ fn goldens_match_the_binary() {
         if let Some(difference) = first_difference(&expected, &actual, "") {
             failures.push(format!("{name}: {difference}"));
         }
+    }
+
+    skipped.sort();
+    skipped.dedup();
+    if !skipped.is_empty() {
+        eprintln!(
+            "skipped: the binary does not answer {} yet, so those cases stay unrun; a later PR \
+             turns them on with no change here.",
+            skipped
+                .iter()
+                .map(|group| format!("`{group}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
 
     assert!(
