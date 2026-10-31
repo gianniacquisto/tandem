@@ -39,9 +39,11 @@ function cliJson(args: string[]): unknown {
 }
 
 async function rowIds(window: import('@playwright/test').Page): Promise<Array<string | null>> {
-  return window.locator('.ticket-row').evaluateAll((rows) =>
-    rows.map((row) => row.getAttribute('data-ticket')),
-  )
+  // Read each row through its locator rather than an in-page evaluate: the node
+  // project carries no DOM lib, and `@types/react`'s empty globals fill the
+  // name, so a `row.getAttribute` callback cannot be typed.
+  const rows = await window.locator('.ticket-row').all()
+  return Promise.all(rows.map((row) => row.getAttribute('data-ticket')))
 }
 
 /** The board column a card sits in, by its lane key (the default area is the empty string). */
@@ -50,8 +52,11 @@ async function laneOf(
   ticket: string,
 ): Promise<string | null> {
   return window
-    .locator(`.ticket-row[data-ticket="${ticket}"]`)
-    .evaluate((row) => row.closest('.board__column')?.getAttribute('data-lane') ?? null)
+    .locator('.board__column', {
+      has: window.locator(`.ticket-row[data-ticket="${ticket}"]`),
+    })
+    .first()
+    .getAttribute('data-lane')
 }
 
 test('the tickets face shows one board two ways: the list and the board over one snapshot', async ({
@@ -196,9 +201,10 @@ test('the keyboard set reaches the fields and moves a ticket, and a second write
   // A vertical Option arrow moves one visible row; a row a filter hides is
   // stepped over rather than counted. On a one-row lane there is nowhere to go,
   // so the horizontal move below is the exercise.
-  const visibleInLane = await window
-    .locator(`.board__column[data-lane="${laneBefore}"] .ticket-row`)
-    .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-ticket')))
+  const inLane = window.locator(`.board__column[data-lane="${laneBefore}"] .ticket-row`)
+  const visibleInLane = await Promise.all(
+    (await inLane.all()).map((row) => row.getAttribute('data-ticket')),
+  )
   const atInLane = visibleInLane.indexOf(ticket as string)
   if (atInLane >= 0 && atInLane < visibleInLane.length - 1) {
     await window.keyboard.press('Alt+ArrowDown')
@@ -208,9 +214,9 @@ test('the keyboard set reaches the fields and moves a ticket, and a second write
   }
 
   // Option and the arrows move the selected ticket one lane over.
-  const lanes = await window
-    .locator('.board__column')
-    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-lane')))
+  const lanes = await Promise.all(
+    (await window.locator('.board__column').all()).map((node) => node.getAttribute('data-lane')),
+  )
   const at = lanes.indexOf(laneBefore)
   const step = at > 0 ? -1 : 1
   const laneAfter = lanes[at + step]
