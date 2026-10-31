@@ -102,6 +102,11 @@ jobs:
           bundle="$RUNNER_TEMP/zipcheck/Tandem.app"
           test -x "$bundle/Contents/MacOS/Tandem"
           test -x "$bundle/Contents/Resources/tandem"
+          # The cask's `binary` stanza links this path into Homebrew's bin, and
+          # every skill calls it by this name. A packaging change that drops the
+          # symlink must fail before the release is published and the tap bumped.
+          test -L "$bundle/Contents/MacOS/tandem-cli"
+          test "$(readlink "$bundle/Contents/MacOS/tandem-cli")" = "../Resources/tandem"
           test -f "$bundle/Contents/Resources/agent/AGENTS.md"
           test "$(cat "$bundle/Contents/Resources/agent/VERSION")" = "$version"
 

@@ -61,6 +61,15 @@ jobs:
       - name: "Gate: cargo test"
         run: cargo test
 
+      - name: "Gate: the legacy import verifies a v5 home"
+        # Parity item 4's forward path. The cutover deletes the Swift tree that
+        # wrote the v5 home, and the tree carries no committed v5 file, so the
+        # test builds the smallest one the import reads and asserts the script's
+        # own verification (ticket refs, counts and usage totals) is zero diffs.
+        if: runner.os != 'Windows'
+        working-directory: ${{ github.workspace }}
+        run: python3 Scripts/test_import_legacy.py
+
       - name: "Gate: the two contention cases, ten times (Windows)"
         # These are the cases that flaked on this runner, both on the store's
         # old sidecar window: run 41080330208 (`concurrent_writers_keep_every_row`)

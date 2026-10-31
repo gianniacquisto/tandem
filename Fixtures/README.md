@@ -48,8 +48,10 @@ is normalized. The schema is the one number the two stores do not share (the
 port's schema is its own, `docs/port.md`, Store), so the rule names it and
 compares everything around it. `doctor`'s `app` and `skills` rows read the
 machine rather than the home, so a case names them in its `mask` and their
-detail is `<environment>`; their names and `ok` still compare. `Scripts/capture-goldens.sh` writes the goldens,
-`rust/cli/tests/goldens.rs` replays them.
+detail is `<environment>`; their names and `ok` still compare. The goldens were
+written by the Swift capture before the cutover, which retired with the tree;
+`rust/cli/tests/goldens.rs` replays them, and a new shape is a deliberate
+manifest line plus a file written to the same shape.
 
 **The port's agent face**, `Fixtures/port/agent-face/`, is the bundle `setup`
 installs from: one skill, one prompt, one `AGENTS.md` and a `VERSION`. Both

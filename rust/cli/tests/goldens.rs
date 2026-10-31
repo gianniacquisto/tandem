@@ -1,14 +1,14 @@
-//! The port's parity gate, Rust half: the case list in
-//! `Fixtures/goldens/manifest.json`, run through the Rust binary and compared,
-//! message for message, to the goldens the Swift binary captured.
+//! The port's parity gate: the case list in `Fixtures/goldens/manifest.json`,
+//! run through the Rust binary and compared, message for message, to the goldens
+//! the Swift binary captured before the cutover.
 //!
-//! `docs/port.md` (Parity, item 1). `Scripts/capture-goldens.sh` is the other
-//! half: it runs the same cases through the Swift binary and writes one file per
-//! case under `Fixtures/goldens/<group>/<case>.json`. Neither half knows which
-//! binary captured a golden; both read the same manifest, both normalize the same
-//! way, and the comparison is on the result, not on a rendering of it.
+//! `docs/port.md` (Parity, item 1). The Swift capture script retired with the
+//! Swift tree, so the goldens are frozen: `Fixtures/goldens/<group>/<case>.json`
+//! is the contract, and a new shape is a deliberate manifest line plus a file
+//! written to the same shape. The comparison is on the result, not on a
+//! rendering of it.
 //!
-//! The rules this test shares with the capture:
+//! The rules the goldens were captured under:
 //!
 //! - **A fresh copy of the fixture home per case, without its committed
 //!   store.** The goldens were captured on an empty board beside the fixture
@@ -651,8 +651,8 @@ fn goldens_match_the_binary() {
         for key in ["argv", "stdin", "exit"] {
             if expected[key] != invocation[key] {
                 failures.push(format!(
-                    "{name}: the golden was captured from a different invocation, recapture it \
-                     with Scripts/capture-goldens.sh ({}: expected {}, the manifest says {})",
+                    "{name}: the golden was captured from a different invocation; a manifest \
+                     change needs a deliberate new golden ({}: expected {}, the manifest says {})",
                     key, expected[key], invocation[key]
                 ));
             }
