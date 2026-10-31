@@ -39,8 +39,9 @@ function connect(): RpcClient {
     resourcesPath: process.resourcesPath,
   })
 
+  // No cwd: the core finds the home through TANDEM_HOME, and a packaged
+  // app's `app.getAppPath()` names `app.asar`, which is not a directory.
   const spawned = RpcClient.spawn(command, ['rpc'], {
-    cwd: app.getAppPath(),
     env: homeEnvironment(),
   })
   void spawned.exited.then((code) => {
@@ -63,6 +64,39 @@ function replyTo(call: Call): Promise<BridgeCall> {
       },
     }),
   )
+}
+
+/**
+ * `TANDEM_SMOKE`: the packaged app's own proof that it carries a core
+ * (`scripts/smoke-packaged.mjs`). It spawns the bundled binary, asks
+ * `ticket.list` against the home `TANDEM_HOME` names, prints the revision and
+ * exits, without opening a window.
+ */
+function smoke(): void {
+  client = connect()
+  client
+    .call({
+      method: 'ticket.list',
+      params: {
+        filter: null,
+        text: null,
+        status: null,
+        assignee: null,
+        lane: null,
+        archived: false,
+        blocked: false,
+      },
+    })
+    .then(
+      (reply) => {
+        if (!('revision' in reply)) throw new Error('ticket.list answered without a revision')
+        process.stdout.write(`revision ${reply.revision}\n`, () => app.exit(0))
+      },
+      (error: unknown) => {
+        console.error(`ticket.list failed: ${error instanceof Error ? error.message : String(error)}`)
+        app.exit(1)
+      },
+    )
 }
 
 function sameOrigin(candidate: string, base: string): boolean {
@@ -142,6 +176,11 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   installContentSecurityPolicy()
+
+  if (process.env['TANDEM_SMOKE'] !== undefined) {
+    smoke()
+    return
+  }
 
   client = connect()
   client.onChanged((revision) => {

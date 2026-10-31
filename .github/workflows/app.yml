@@ -1,7 +1,10 @@
 name: App
 
-# The shell's four gates on the three platforms the port targets, plus one
-# packaging run per platform. The checks this publishes are what a branch rule
+# The shell's gates on the three platforms the port targets, plus one
+# packaging run per platform. The packaging step builds the Rust core into the
+# artifact, and two gates check it: the binary sits where the packaged shell
+# resolves it, and (on macOS and Linux) the packaged app answers `ticket.list`
+# against a fixture home. The checks this publishes are what a branch rule
 # may name: `app (macos-latest)`, `app (ubuntu-latest)`, `app (windows-latest)`.
 #
 # `push` is path-filtered, where a skipped run costs nothing; `pull_request` is
@@ -33,7 +36,7 @@ jobs:
   app:
     name: app (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +52,14 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
+      - name: Warm the Rust toolchain
+        # The artifact carries the core it runs (below). The proxy reads
+        # `rust/rust-toolchain.toml` on first use and installs the version
+        # `rust.yml` pins, so the packaged binary is built by the same
+        # toolchain CI tests.
+        working-directory: rust
+        run: cargo --version
+
       - name: Install
         run: npm ci
 
@@ -61,8 +72,29 @@ jobs:
       - name: "Gate: build"
         run: npm run build
 
+      - name: Build the core the artifact carries
+        run: npm run binary:release
+
       - name: "Gate: package"
         run: npm run dist
+
+      - name: "Gate: the artifact carries the tandem binary"
+        # The path `src/main/binary.ts` resolves in a packaged app, checked on
+        # every platform: a missing binary cannot ship silently.
+        run: npm run check:artifact
+
+      - name: "Gate: the packaged app answers ticket.list"
+        # What the check above cannot prove: that the binary runs and the app
+        # answers against a fixture home, with the workspace build unreachable.
+        # Linux runners have no display, so the app runs under Xvfb.
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a npm run smoke
+          else
+            npm run smoke
+          fi
 
       - name: Upload the platform's artifact
         uses: actions/upload-artifact@v4
