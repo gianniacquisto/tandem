@@ -95,7 +95,7 @@ fn row(connection: &Connection, session_id: &str) -> DomainResult<HarnessUsage> 
             rusqlite::Error::QueryReturnedNoRows => DomainError::UnknownHarnessSession {
                 id: session_id.to_string(),
             },
-            other => DomainError::from(translate(other)),
+            other => DomainError::from(translate(other, connection)),
         })?;
     Ok(found)
 }
@@ -110,13 +110,13 @@ fn row(connection: &Connection, session_id: &str) -> DomainResult<HarnessUsage> 
 fn skills(connection: &Connection, session_id: &str) -> DomainResult<Option<SkillCounts>> {
     let mut statement = connection
         .prepare("SELECT data FROM session_message WHERE session_id = ?1")
-        .map_err(|error| DomainError::from(translate(error)))?;
+        .map_err(|error| DomainError::from(translate(error, connection)))?;
     let rows = statement
         .query_map(params![session_id], |row| row.get::<_, String>(0))
-        .map_err(|error| DomainError::from(translate(error)))?;
+        .map_err(|error| DomainError::from(translate(error, connection)))?;
     let mut counts: BTreeMap<String, i64> = BTreeMap::new();
     for data in rows {
-        let data = data.map_err(|error| DomainError::from(translate(error)))?;
+        let data = data.map_err(|error| DomainError::from(translate(error, connection)))?;
         let Ok(message) = serde_json::from_str::<serde_json::Value>(&data) else {
             continue;
         };

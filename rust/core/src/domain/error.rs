@@ -6,6 +6,7 @@
 //! [`DomainError::Locked`]), so the domain's surface is one error type.
 
 use std::fmt;
+use std::path::PathBuf;
 
 use crate::store::StoreError;
 
@@ -17,8 +18,10 @@ pub type DomainResult<T> = Result<T, DomainError>;
 /// A failure a human or an agent can act on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DomainError {
-    /// Another process held the store past its 2 s window.
-    Locked,
+    /// The store at this home was held past its 2 s window, by another
+    /// process's transaction or by a sibling thread of this one. It names the
+    /// home rather than the holder, because the same words are true for both.
+    Locked(PathBuf),
     /// The store itself failed: an unreadable file, a full disk.
     Io(String),
     /// A row this build cannot read: a ticket's id or timestamp is not the shape
@@ -153,9 +156,10 @@ impl DomainError {
     /// two faces say one thing about one failure.
     pub fn message(&self) -> String {
         match self {
-            Self::Locked => {
-                "The Tandem store is locked by another process. Please retry.".to_string()
-            }
+            Self::Locked(home) => format!(
+                "The Tandem store at {} is locked by another writer. Please retry.",
+                home.display()
+            ),
             Self::Io(detail) => format!("Tandem store error: {detail}. Try again."),
             Self::Unreadable(detail) => format!(
                 "The store holds a row this build cannot read ({detail}). Restore the backup \
@@ -374,8 +378,35 @@ impl std::error::Error for DomainError {}
 impl From<StoreError> for DomainError {
     fn from(error: StoreError) -> Self {
         match error {
-            StoreError::Locked => Self::Locked,
+            StoreError::Locked { home } => Self::Locked(home),
             other => Self::Io(other.to_string()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    /// Contention answers the same failure whether the holder is a thread of
+    /// this process or a writer in another one, so the words name the store
+    /// (the home the caller chose) rather than a process the caller never saw.
+    #[test]
+    fn the_locked_message_names_the_home_and_not_a_process() {
+        let home = PathBuf::from("/tmp/tandem-locked-home");
+        let error: DomainError = StoreError::Locked { home: home.clone() }.into();
+        let message = error.message();
+
+        assert_eq!(error, DomainError::Locked(home.clone()));
+        assert!(
+            message.contains(&home.display().to_string()),
+            "the message names the home: {message}"
+        );
+        assert!(
+            !message.contains("process"),
+            "a sibling thread answers the same words, so the message blames no process: {message}"
+        );
     }
 }
