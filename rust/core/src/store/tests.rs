@@ -1367,6 +1367,8 @@ mod actor {
                 })?;
                 write.insert_session(NewSession {
                     id: "ses_e73388dd8ffd",
+                    harness_session_id: Some("ses_harness"),
+                    harness_transport: Some("database"),
                     project: "tandem",
                     agent: Some("builder"),
                     brief: "Build the store.",

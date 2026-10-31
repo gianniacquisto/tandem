@@ -4,7 +4,8 @@
 
 use crate::domain::error::DomainError;
 use crate::domain::session::{
-    Ending, SessionOutcome, SessionStatus, Sessions, SkillCounts, Stamp, parse_skills,
+    Ending, HarnessSession, HarnessTransport, SessionOutcome, SessionStatus, Sessions, SkillCounts,
+    Stamp, parse_skills,
 };
 use crate::store::Actor;
 use crate::store::records::session_skills;
@@ -299,6 +300,11 @@ fn a_read_of_a_v2_home_answers_its_records_with_no_skill_counts() {
         "the additive column reads NULL, not as an engine error"
     );
     assert_eq!(
+        listed[0].harness_session_id, None,
+        "the harness columns are additive too: a row written before them answers absent"
+    );
+    assert_eq!(listed[0].harness_transport, None);
+    assert_eq!(
         sessions
             .show("ses_v2")
             .expect("show reads the same row")
@@ -511,81 +517,224 @@ fn the_skill_counts_are_a_column_a_record_written_before_it_reads_empty() {
 }
 
 #[test]
-fn the_continuation_mints_the_next_free_suffix_and_carries_the_tickets() {
-    let sandbox = Sandbox::new("continuation");
+fn two_records_point_at_one_harness_session_and_neither_is_overwritten() {
+    let sandbox = Sandbox::new("harness-pointer");
     let actor = sandbox.actor();
     let sessions = Sessions::new(&sandbox.store());
-    start(&sessions, &actor, "ses_1", "First pass.");
-    sessions.link(&actor, "ses_1", TICKET_ONE).unwrap();
-    sessions.link(&actor, "ses_1", TICKET_TWO).unwrap();
+    let harness = HarnessSession {
+        id: "ses_harness_1".to_string(),
+        transport: HarnessTransport::Database,
+    };
+
+    // Two passes of one harness session: neither id is the harness's, and the
+    // second start writes a record rather than continuing the first (RET-44).
+    let first = sessions
+        .start_with_harness(
+            &actor,
+            "ses_pass_1",
+            "tandem",
+            Some("builder"),
+            "The first pass.",
+            harness.clone(),
+            Some(&at(0)),
+        )
+        .expect("the first pass records")
+        .value;
+    let second = sessions
+        .start_with_harness(
+            &actor,
+            "ses_pass_2",
+            "tandem",
+            Some("refiner"),
+            "The second pass.",
+            harness.clone(),
+            Some(&at(10)),
+        )
+        .expect("the second pass records")
+        .value;
+
+    assert_eq!(first.id, "ses_pass_1");
+    assert_eq!(second.id, "ses_pass_2", "a record is Tandem's own handle");
+    assert_eq!(
+        first.harness_session_id.as_deref(),
+        Some("ses_harness_1"),
+        "the harness session is a foreign pointer, and both records name it"
+    );
+    assert_eq!(second.harness_session_id.as_deref(), Some("ses_harness_1"));
+    assert_eq!(first.harness_transport, Some(HarnessTransport::Database));
+    assert_eq!(second.harness_transport, Some(HarnessTransport::Database));
+
     sessions
         .end(
             &actor,
-            "ses_1",
+            "ses_pass_1",
             Ending {
                 outcome: SessionOutcome::Succeeded,
-                summary: Some("Landed."),
+                summary: Some("The first pass landed."),
+                cost: Some(0.25),
+                model: Some("deepseek-v4.1-flash"),
                 at: Some(&at(60)),
                 ..Ending::default()
             },
         )
-        .unwrap();
-
-    let continued = sessions
-        .continue_after(&actor, "ses_1", "A resumed pass.", Some(&at(90)))
-        .expect("the pass gets its own record");
-
-    assert_eq!(continued.note, None);
-    assert_eq!(continued.value.id, "ses_1-2");
-    assert_eq!(
-        continued.value.project, "tandem",
-        "the ended record's project"
-    );
-    assert_eq!(continued.value.agent.as_deref(), Some("builder"));
-    assert_eq!(continued.value.status, SessionStatus::Running);
-    assert_eq!(
-        continued.value.tickets,
-        vec![TICKET_ONE.to_string(), TICKET_TWO.to_string()],
-        "the usage comment needs the board the pass carried"
-    );
-
-    // A third pass takes the next free suffix, not `-2` again.
+        .expect("the first record stamps");
     sessions
         .end(
             &actor,
-            "ses_1-2",
+            "ses_pass_2",
             Ending {
                 outcome: SessionOutcome::Succeeded,
+                summary: Some("The second pass landed."),
+                cost: Some(0.5),
+                model: Some("claude-sonnet-5"),
                 at: Some(&at(120)),
                 ..Ending::default()
             },
         )
-        .unwrap();
-    let third = sessions
-        .continue_after(&actor, "ses_1", "A third pass.", Some(&at(150)))
-        .unwrap();
-    assert_eq!(third.value.id, "ses_1-3");
+        .expect("the second record stamps");
+
+    assert_eq!(
+        sessions.list(None, None).unwrap().len(),
+        2,
+        "two records, not one overwritten"
+    );
+    let first = sessions.show("ses_pass_1").unwrap();
+    let second = sessions.show("ses_pass_2").unwrap();
+    assert_eq!(first.agent.as_deref(), Some("builder"));
+    assert_eq!(second.agent.as_deref(), Some("refiner"));
+    assert_eq!(first.summary.as_deref(), Some("The first pass landed."));
+    assert_eq!(second.summary.as_deref(), Some("The second pass landed."));
+    assert_eq!(first.cost, Some(0.25), "the first stamp survives");
+    assert_eq!(second.cost, Some(0.5));
+    assert_eq!(
+        first.harness_session_id, second.harness_session_id,
+        "one harness session, two attributed records"
+    );
+    assert_eq!(first.status, SessionStatus::Ended);
+    assert_eq!(second.status, SessionStatus::Ended);
 }
 
 #[test]
-fn a_running_record_is_not_continued() {
-    let sandbox = Sandbox::new("continuation-running");
+fn a_record_with_no_harness_session_records_and_answers_absent() {
+    let sandbox = Sandbox::new("no-harness");
     let actor = sandbox.actor();
     let sessions = Sessions::new(&sandbox.store());
-    start(&sessions, &actor, "ses_1", "One.");
 
-    let outcome = sessions
-        .continue_after(&actor, "ses_1", "A resumed pass.", Some(&at(10)))
-        .expect("a running record takes the usage itself");
+    // The hand-driven case: a caller names the record and the environment names
+    // no harness, and the run still records.
+    let record = start(&sessions, &actor, "ses_hand", "A hand-driven pass.");
+    assert_eq!(record.harness_session_id, None);
+    assert_eq!(record.harness_transport, None);
+    assert_eq!(sessions.list(None, None).unwrap().len(), 1);
 
-    assert_eq!(outcome.value.id, "ses_1");
+    let record = sessions.show("ses_hand").unwrap();
+    assert_eq!(record.status, SessionStatus::Running);
+    let json = serde_json::to_value(&record).unwrap();
+    assert!(
+        json.get("harnessSessionId").is_none(),
+        "an absent harness session is absent on the wire, never null: {json}"
+    );
+    assert!(json.get("harnessTransport").is_none());
+}
+
+#[test]
+fn a_harness_pointer_resolves_to_the_newest_record_that_names_it() {
+    let sandbox = Sandbox::new("pointer-resolve");
+    let actor = sandbox.actor();
+    let sessions = Sessions::new(&sandbox.store());
+    let harness = HarnessSession {
+        id: "ses_harness_1".to_string(),
+        transport: HarnessTransport::Database,
+    };
+    sessions
+        .start_with_harness(
+            &actor,
+            "ses_pass_1",
+            "tandem",
+            Some("builder"),
+            "The first pass.",
+            harness.clone(),
+            Some(&at(0)),
+        )
+        .unwrap();
+    sessions
+        .start_with_harness(
+            &actor,
+            "ses_pass_2",
+            "tandem",
+            Some("refiner"),
+            "The second pass.",
+            harness,
+            Some(&at(10)),
+        )
+        .unwrap();
+
     assert_eq!(
-        outcome.note.as_deref(),
-        Some("session ses_1 is still running")
+        sessions.resolve("ses_harness_1").unwrap(),
+        "ses_pass_2",
+        "the external wrapper's harness id reaches the newest record through the column"
+    );
+    assert_eq!(
+        sessions.resolve("ses_pass_1").unwrap(),
+        "ses_pass_1",
+        "an exact record id is never second-guessed"
+    );
+    assert_eq!(
+        sessions.resolve("ses_missing").unwrap_err(),
+        DomainError::UnknownSession {
+            id: "ses_missing".to_string(),
+            known: vec!["ses_pass_1".to_string(), "ses_pass_2".to_string()],
+        }
+    );
+}
+
+#[test]
+fn a_harness_session_is_trimmed_and_an_empty_one_is_refused() {
+    let sandbox = Sandbox::new("harness-empty");
+    let actor = sandbox.actor();
+    let sessions = Sessions::new(&sandbox.store());
+
+    let trimmed = sessions
+        .start_with_harness(
+            &actor,
+            "ses_pass_1",
+            "tandem",
+            None,
+            "One.",
+            HarnessSession {
+                id: "  ses_harness_1  ".to_string(),
+                transport: HarnessTransport::EventStream,
+            },
+            Some(&at(0)),
+        )
+        .expect("a named harness session records")
+        .value;
+    assert_eq!(trimmed.harness_session_id.as_deref(), Some("ses_harness_1"));
+    assert_eq!(
+        trimmed.harness_transport,
+        Some(HarnessTransport::EventStream)
+    );
+
+    assert_eq!(
+        sessions
+            .start_with_harness(
+                &actor,
+                "ses_pass_2",
+                "tandem",
+                None,
+                "Two.",
+                HarnessSession {
+                    id: "   ".to_string(),
+                    transport: HarnessTransport::Database,
+                },
+                None,
+            )
+            .unwrap_err(),
+        DomainError::EmptyHarnessSessionId
     );
     assert_eq!(
         sessions.list(None, None).unwrap().len(),
         1,
-        "nothing was minted"
+        "a refused start writes nothing"
     );
 }

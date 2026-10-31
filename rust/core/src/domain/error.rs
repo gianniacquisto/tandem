@@ -123,8 +123,20 @@ pub enum DomainError {
     /// A caller-supplied timestamp is not the store's own ISO-8601 UTC form. A
     /// stamp the write cannot read is a record every later read fails on.
     InvalidStamp(String),
+    /// `--harness-session` was given an empty or whitespace-only id.
+    EmptyHarnessSessionId,
+    /// `--harness-transport` was given a value that is not one of the two.
+    InvalidHarnessTransport(String),
+    /// `session end --usage-from-harness` named a record with no harness
+    /// session: there is no foreign pointer to read usage through.
+    NoHarnessSession { id: String },
+    /// `--usage-from-harness` on a record read from the event stream, with no
+    /// `--harness-events` path to read it from.
+    NoHarnessEventsPath,
     /// The harness database the run asked for is not a file.
     NoHarnessDatabase { path: String },
+    /// The harness event stream the run asked for is not a file.
+    NoHarnessEvents { path: String },
     /// The harness database carries no row for the session id.
     UnknownHarnessSession { id: String },
     /// The bikeshed lock could not be acquired within its bounded retry window.
@@ -313,9 +325,27 @@ impl DomainError {
                 "\"{bad}\" is not a timestamp. Stamps are ISO-8601 UTC, \
                  YYYY-MM-DDTHH:MM:SSZ; omit the value to use the current time."
             ),
+            Self::EmptyHarnessSessionId => "Harness session id is empty. Provide the harness's \
+                 own session id, or omit --harness-session, and try again."
+                .to_string(),
+            Self::InvalidHarnessTransport(bad) => {
+                format!("Harness transport \"{bad}\" is not one of event-stream, database.")
+            }
+            Self::NoHarnessSession { id } => format!(
+                "Session \"{id}\" has no harness session id, so --usage-from-harness has \
+                 nothing to read. End it with explicit usage flags, or start it again with \
+                 --harness-session."
+            ),
+            Self::NoHarnessEventsPath => "This record's usage came from the harness event \
+                 stream; pass --harness-events <path> to the stream it wrote."
+                .to_string(),
             Self::NoHarnessDatabase { path } => format!(
                 "No harness database at {path}. Check the path, or let the harness run once, \
                  and try again."
+            ),
+            Self::NoHarnessEvents { path } => format!(
+                "No harness event stream at {path}. Check the path, or let the harness run \
+                 once, and try again."
             ),
             Self::UnknownHarnessSession { id } => format!(
                 "No harness row for session \"{id}\". Check the session id, or end the record \

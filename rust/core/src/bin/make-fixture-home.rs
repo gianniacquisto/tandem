@@ -165,6 +165,10 @@ fn write(seed_path: &Path, target: &Path) -> Result<(), String> {
                 let tokens = session.tokens.as_ref();
                 write.insert_session(NewSession {
                     id: &session.id,
+                    // The fixture records predate the harness pointer: the seed
+                    // has none, and the columns read NULL (PRT-29).
+                    harness_session_id: None,
+                    harness_transport: None,
                     project: &session.project,
                     agent: session.agent.as_deref(),
                     brief: &session.brief,

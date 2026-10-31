@@ -25,7 +25,7 @@ use super::{Actor, Result, StoreError, timestamp, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 4;
+pub const CURRENT_VERSION: i64 = 5;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -56,6 +56,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: REVISION_VERSION,
         name: "the store's revision",
         apply: version_four,
+    },
+    Migration {
+        version: HARNESS_VERSION,
+        name: "the session's harness pointer",
+        apply: version_five,
     },
 ];
 
@@ -193,6 +198,22 @@ CREATE TABLE IF NOT EXISTS store_meta (
 INSERT OR IGNORE INTO store_meta (key, value) VALUES ('revision', 1);
 ";
 
+/// The version that adds the session record's harness pointer (PRT-29).
+pub(crate) const HARNESS_VERSION: i64 = 5;
+
+/// Version 5: the harness session a record ran in, and the transport that
+/// reported it (PRT-29).
+///
+/// **Additive, and the pointer, never the identity.** `sessions.id` stays
+/// Tandem's own primary key; `harness_session_id` is the harness's id as a
+/// foreign pointer, and `harness_transport` says how its usage is read. Both
+/// are nullable: the hand-driven run names no harness, and a record written
+/// before this version reads both as absent.
+const VERSION_FIVE: &str = "
+ALTER TABLE sessions ADD COLUMN harness_session_id TEXT;
+ALTER TABLE sessions ADD COLUMN harness_transport TEXT;
+";
+
 fn version_one(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_ONE)
 }
@@ -207,6 +228,10 @@ fn version_three(connection: &Connection) -> rusqlite::Result<()> {
 
 fn version_four(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_FOUR)
+}
+
+fn version_five(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(VERSION_FIVE)
 }
 
 /// The store's revision: the stored counter, or 0 when this file predates the
@@ -350,6 +375,14 @@ pub(crate) fn behind(connection: &Connection) -> Result<bool> {
 /// additive column NULL, rather than failing on a column it does not have.
 pub(crate) fn has_skills(connection: &Connection) -> Result<bool> {
     Ok(version(connection)?.unwrap_or(0) >= SKILLS_VERSION)
+}
+
+/// Whether the file carries the session record's harness columns (v5).
+///
+/// A read asks this rather than migrating: an older home answers both columns
+/// NULL, and nothing is written (ADR 0031).
+pub(crate) fn has_harness(connection: &Connection) -> Result<bool> {
+    Ok(version(connection)?.unwrap_or(0) >= HARNESS_VERSION)
 }
 
 /// Whether a store is behind the version this build writes.

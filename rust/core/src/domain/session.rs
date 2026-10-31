@@ -182,6 +182,52 @@ impl SessionOutcome {
     }
 }
 
+/// How Tandem reads a harness session's usage (PRT-29).
+///
+/// The record names its transport so `session end --usage-from-harness` reads
+/// the same way the pass was recorded: `event-stream` is the embedded harness,
+/// whose events Tandem holds; `database` is the external opencode on this Mac,
+/// whose store Tandem reads read-only. Neither is a join on identity: the
+/// session record is Tandem's, and the harness session is a foreign pointer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HarnessTransport {
+    EventStream,
+    Database,
+}
+
+impl HarnessTransport {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::EventStream => "event-stream",
+            Self::Database => "database",
+        }
+    }
+
+    /// The words a row or a flag may carry, in declaration order.
+    pub const WIRE_VALUES: [&'static str; 2] = ["event-stream", "database"];
+
+    pub fn parse(word: &str) -> Option<Self> {
+        match word {
+            "event-stream" => Some(Self::EventStream),
+            "database" => Some(Self::Database),
+            _ => None,
+        }
+    }
+}
+
+/// The harness session a record points at, and the transport that reported it.
+///
+/// One value because the two travel together: a harness id with no transport
+/// would leave `--usage-from-harness` with no way to read it. The id is the
+/// harness's own and is trimmed; an empty one is refused at the write.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HarnessSession {
+    pub id: String,
+    pub transport: HarnessTransport,
+}
+
 /// What `end` writes: the outcome, and the usage and skill counts the harness
 /// reported. One value because the stamp is one write: a record's outcome and
 /// what it spent are written together or not at all.
@@ -233,6 +279,14 @@ pub struct Stamp {
 #[serde(rename_all = "camelCase")]
 pub struct Session {
     pub id: String,
+    /// The harness's own session, as a foreign pointer (PRT-29). Tandem's `id`
+    /// is the primary key; this column is how a pass is joined to what the
+    /// harness recorded, and it is absent on a hand-driven run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub harness_session_id: Option<String>,
+    /// How the harness session's usage is read: `event-stream` or `database`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub harness_transport: Option<HarnessTransport>,
     pub project: String,
     pub agent: Option<String>,
     pub brief: String,
@@ -303,6 +357,14 @@ impl Session {
         };
         Ok(Self {
             id: row.id,
+            // A transport word this build does not know is flattened to absence,
+            // like an outcome: the record still reads, and the pointer it cannot
+            // interpret is the piece missing, never the whole row.
+            harness_transport: row
+                .harness_transport
+                .as_deref()
+                .and_then(HarnessTransport::parse),
+            harness_session_id: row.harness_session_id,
             project: row.project,
             agent: row.agent,
             brief: row.brief,
@@ -373,11 +435,59 @@ impl Sessions {
         brief: &str,
         at: Option<&str>,
     ) -> DomainResult<Operation<Session>> {
+        self.open(actor, id, project, agent, brief, None, at)
+    }
+
+    /// `session start`, pointing at the harness session the pass ran in (PRT-29).
+    ///
+    /// The handle stays Tandem's: a session, a re-dispatched pass and a second
+    /// pass in one harness session each name their own record, and the harness
+    /// id is one column on each. Nothing continues a stamped record; a pass that
+    /// runs again starts again, with a fresh handle and the same pointer.
+    // The verb's own fields, one argument each: a struct here would be a second
+    // spelling of the same call for every caller.
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_with_harness(
+        &self,
+        actor: &Actor,
+        id: &str,
+        project: &str,
+        agent: Option<&str>,
+        brief: &str,
+        harness: HarnessSession,
+        at: Option<&str>,
+    ) -> DomainResult<Operation<Session>> {
+        self.open(actor, id, project, agent, brief, Some(harness), at)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn open(
+        &self,
+        actor: &Actor,
+        id: &str,
+        project: &str,
+        agent: Option<&str>,
+        brief: &str,
+        harness: Option<HarnessSession>,
+        at: Option<&str>,
+    ) -> DomainResult<Operation<Session>> {
         let handle = self.handle(id)?;
         let brief = brief.trim();
         if brief.is_empty() {
             return Err(DomainError::EmptySessionBrief);
         }
+        let harness = harness
+            .map(|harness| {
+                let id = harness.id.trim();
+                if id.is_empty() {
+                    return Err(DomainError::EmptyHarnessSessionId);
+                }
+                Ok(HarnessSession {
+                    id: id.to_string(),
+                    transport: harness.transport,
+                })
+            })
+            .transpose()?;
         let name = agent
             .map(str::trim)
             .filter(|name| !name.is_empty())
@@ -393,6 +503,8 @@ impl Sessions {
             }
             let session = Session {
                 id: handle.clone(),
+                harness_session_id: harness.as_ref().map(|harness| harness.id.clone()),
+                harness_transport: harness.as_ref().map(|harness| harness.transport),
                 project: project.to_string(),
                 agent: name.clone(),
                 brief: brief.to_string(),
@@ -533,56 +645,41 @@ impl Sessions {
             })
     }
 
-    /// The continuation rule: a pass the harness resumed into an ended record
-    /// gets its own, `<id>-2`, then `<id>-3`, `…`.
+    /// Resolve a handle to a record's own id.
     ///
-    /// The rule the usage wrapper carries (`Scripts/usage-report.sh`, RET-43)
-    /// lives here because it is the record's, not the script's: a record stamps
-    /// once, so a resumed pass's usage needs a record of its own. The new record
-    /// carries the ended record's project, agent and tickets, the brief is this
-    /// call's own, and the ticket links are made through [`Sessions::link`] so a
-    /// failed link is one failure and not a half-written record. Free is decided
-    /// by minting, not by reading the list first: `start` answers "already
-    /// recorded" for the loser of a race, and this loop takes the next suffix.
-    ///
-    /// A record that is still running is returned with a note: a running record
-    /// takes the usage itself, so there is nothing to mint.
-    pub fn continue_after(
-        &self,
-        actor: &Actor,
-        id: &str,
-        brief: &str,
-        at: Option<&str>,
-    ) -> DomainResult<Operation<Session>> {
-        let handle = self.handle(id)?;
-        let previous = self.show(&handle)?;
-        if previous.status == SessionStatus::Running {
-            return Ok(Operation {
-                value: previous,
-                note: Some(format!("session {handle} is still running")),
-            });
+    /// An exact record id answers itself, so every caller that names Tandem's
+    /// handle keeps working. A handle the store does not carry is tried as a
+    /// **harness pointer**: the newest record that names it in
+    /// `harness_session_id` answers. That is how the external opencode wrapper,
+    /// which only ever knew the harness id, still reaches its record through the
+    /// same column (PRT-29); the record's identity stays Tandem's.
+    pub fn resolve(&self, handle: &str) -> DomainResult<String> {
+        let handle = self.handle(handle)?;
+        let records = self.records()?;
+        if records.iter().any(|session| session.id == handle) {
+            return Ok(handle);
         }
-        let mut suffix = 2;
-        let minted = loop {
-            let candidate = format!("{handle}-{suffix}");
-            let opened = self.start(
-                actor,
-                &candidate,
-                &previous.project,
-                previous.agent.as_deref(),
-                brief,
-                at,
-            )?;
-            if opened.note.is_none() {
-                break opened.value;
+        // Newest by start time, and the latest stored record among records that
+        // share one: two passes can start in the same second, and the pointer
+        // belongs to the pass that opened its record last.
+        let mut newest: Option<Session> = None;
+        for session in records
+            .into_iter()
+            .filter(|session| session.harness_session_id.as_deref() == Some(handle.as_str()))
+        {
+            if newest
+                .as_ref()
+                .is_none_or(|best| session.started_at >= best.started_at)
+            {
+                newest = Some(session);
             }
-            suffix += 1;
-        };
-        for ticket in &previous.tickets {
-            self.link(actor, &minted.id, ticket)?;
         }
-        self.show(&minted.id)
-            .map(|value| Operation { value, note: None })
+        newest
+            .map(|session| session.id)
+            .ok_or_else(|| DomainError::UnknownSession {
+                id: handle,
+                known: self.known_ids(),
+            })
     }
 
     /// Every record, in stored order. A read: the store is not touched.
@@ -638,6 +735,8 @@ impl Sessions {
                 let (tickets, skills) = record.to_row()?;
                 let new = NewSession {
                     id: &record.id,
+                    harness_session_id: record.harness_session_id.as_deref(),
+                    harness_transport: record.harness_transport.map(|transport| transport.as_str()),
                     project: &record.project,
                     agent: record.agent.as_deref(),
                     brief: &record.brief,

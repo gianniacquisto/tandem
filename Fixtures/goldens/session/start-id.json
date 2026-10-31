@@ -18,6 +18,8 @@
     "agent": "builder",
     "brief": "A brief the golden keeps.",
     "endedAt": null,
+    "harnessSessionId": "golden-session",
+    "harnessTransport": "database",
     "id": "golden-other",
     "outcome": null,
     "project": "fixture",

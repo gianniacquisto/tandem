@@ -631,8 +631,8 @@
       "group": "session",
       "case": "start-no-id",
       "env": {"OPENCODE_SESSION_ID": null},
-      "argv": ["session", "start", "--project", "fixture"],
-      "exit": 1
+      "argv": ["session", "start", "--project", "fixture", "--agent", "builder",
+                  "--brief", "A brief the golden keeps."]
     },
     {
       "group": "session",

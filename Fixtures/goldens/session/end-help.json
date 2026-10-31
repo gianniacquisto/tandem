@@ -17,12 +17,15 @@
     "                         [--tokens-reasoning <n>] [--tokens-cache-read <n>]",
     "                         [--tokens-cache-write <n>] [--cost <dollars>]",
     "                         [--model <name>] [--skills <name=count[,name=count]>]",
+    "                         [--usage-from-harness] [--harness-events <path>]",
     "",
     "Values:",
     "  outcome   succeeded | failed | interrupted | unknown — how a session ended",
     "",
     "A flag not named is absent on the record. `--summary -` reads from stdin;",
-    "an absent `--outcome` is `unknown`."
+    "an absent `--outcome` is `unknown`. `--usage-from-harness` reads the",
+    "record's harness session through its recorded transport: its opencode",
+    "database, or the event stream `--harness-events` names."
   ],
   "stdoutKind": "text"
 }

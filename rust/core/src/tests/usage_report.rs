@@ -72,6 +72,8 @@ fn session(
 ) -> Session {
     Session {
         id: id.to_string(),
+        harness_session_id: None,
+        harness_transport: None,
         project: "tandem".to_string(),
         agent: agent.map(str::to_string),
         brief: "A record the report rolls up.".to_string(),
