@@ -30,8 +30,8 @@ use ts_rs::TS;
 
 use crate::bikeshed::health::BikeshedHealth;
 use crate::wire::views::{
-    BacklinkView, CommentView, NoteContentView, NoteMoveView, NoteNodeView, NoteWriteView,
-    RecoveryView, TicketDetail, TicketSummary, UsageReportView,
+    BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
+    NoteWriteView, RecoveryView, TicketDetail, TicketSummary, UsageReportView,
 };
 
 // MARK: - Requests
@@ -126,6 +126,17 @@ methods! {
     // derivation `usage_report` already froze (PRT-15). An empty verb is how the
     // table says so; `the_read_methods_without_a_cli_verb_are_named_here` names it.
     UsageReport: "usage.report", EmptyParams, "";
+    // The ticket sheet's read: a body in, the blocks it draws out. The parsing
+    // is the core's (`TicketMarkdown`), so the app and the CLI cannot read one
+    // dialect two ways, and the message writes nothing: an empty verb.
+    MarkdownBlocks: "markdown.blocks", MarkdownBlocksParams, "";
+}
+
+/// `markdown.blocks`: the text to parse. Absent is no body, which draws nothing.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MarkdownBlocksParams {
+    pub text: Option<String>,
 }
 
 /// A method that takes nothing. The frame still carries `"params": {}`, so a
@@ -365,6 +376,14 @@ pub enum Reply {
     NoteHealth(NoteHealthReply),
     NoteBacklinks(NoteBacklinksReply),
     NoteRecoveries(NoteRecoveriesReply),
+    Markdown(MarkdownReply),
+}
+
+/// `markdown.blocks`: the document's blocks, top level first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkdownReply {
+    pub blocks: Vec<MarkdownBlockView>,
 }
 
 /// `note.tree`: the folder and note rows, folders first as the core walks them.

@@ -26,7 +26,9 @@ use crate::bikeshed::{
 use crate::domain::session::{Session, SessionTokens};
 use crate::domain::sprint::Sprint;
 use crate::domain::usage::{UsageReport, UsageRow};
-use crate::domain::{Comment, LaneDeletion, Ticket, TicketBlock};
+use crate::domain::{
+    Comment, InlineStyle, LaneDeletion, MarkdownBlock, MarkdownInline, Ticket, TicketBlock,
+};
 use crate::store::timestamp::encode;
 
 /// One end of a dependency edge: the other ticket's id, ref, title and status.
@@ -569,5 +571,123 @@ impl UsageReportView {
             overlap: report.overlap,
             ticket_total: report.ticket_total(),
         }
+    }
+}
+
+/// One styled span of a ticket's markdown: the text, the markers it wears, and
+/// the destination a link pointed at. `styles` is a list because the domain
+/// keeps a set (`**bold with `code`**` is one run carrying both).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkdownInlineView {
+    pub text: String,
+    pub styles: Vec<String>,
+    pub link: Option<String>,
+}
+
+impl MarkdownInlineView {
+    pub fn new(run: &MarkdownInline) -> Self {
+        Self {
+            text: run.text.clone(),
+            styles: run
+                .styles
+                .iter()
+                .map(|style| {
+                    match style {
+                        InlineStyle::Bold => "bold",
+                        InlineStyle::Italic => "italic",
+                        InlineStyle::Strikethrough => "strikethrough",
+                        InlineStyle::Code => "code",
+                    }
+                    .to_string()
+                })
+                .collect(),
+            link: run.link.clone(),
+        }
+    }
+}
+
+/// One block of a ticket's markdown, ready to draw (`TicketMarkdown`, TAN-219).
+///
+/// The tag is `kind`, so a face switches on one field and never on the shape of
+/// the object. The parsing is the core's: the sheet sends the text it holds and
+/// draws what comes back, so the app and the CLI read one dialect.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum MarkdownBlockView {
+    Heading {
+        level: usize,
+        runs: Vec<MarkdownInlineView>,
+    },
+    Paragraph {
+        runs: Vec<MarkdownInlineView>,
+    },
+    List {
+        ordered: bool,
+        start: i64,
+        items: Vec<Vec<MarkdownBlockView>>,
+    },
+    Code {
+        language: Option<String>,
+        text: String,
+    },
+    Quote {
+        blocks: Vec<MarkdownBlockView>,
+    },
+    Table {
+        header: Vec<String>,
+        rows: Vec<Vec<String>>,
+    },
+    Rule,
+    Task {
+        checked: bool,
+        blocks: Vec<MarkdownBlockView>,
+    },
+}
+
+impl MarkdownBlockView {
+    pub fn new(block: &MarkdownBlock) -> Self {
+        match block {
+            MarkdownBlock::Heading { level, runs } => Self::Heading {
+                level: *level,
+                runs: runs.iter().map(MarkdownInlineView::new).collect(),
+            },
+            MarkdownBlock::Paragraph { runs } => Self::Paragraph {
+                runs: runs.iter().map(MarkdownInlineView::new).collect(),
+            },
+            MarkdownBlock::List {
+                ordered,
+                start,
+                items,
+            } => Self::List {
+                ordered: *ordered,
+                start: *start,
+                items: items
+                    .iter()
+                    .map(|item| item.iter().map(Self::new).collect())
+                    .collect(),
+            },
+            MarkdownBlock::Code { language, text } => Self::Code {
+                language: language.clone(),
+                text: text.clone(),
+            },
+            MarkdownBlock::Quote(blocks) => Self::Quote {
+                blocks: blocks.iter().map(Self::new).collect(),
+            },
+            MarkdownBlock::Table { header, rows } => Self::Table {
+                header: header.clone(),
+                rows: rows.clone(),
+            },
+            MarkdownBlock::Rule => Self::Rule,
+            MarkdownBlock::Task { checked, blocks } => Self::Task {
+                checked: *checked,
+                blocks: blocks.iter().map(Self::new).collect(),
+            },
+        }
+    }
+
+    /// Every block of a document, in order.
+    pub fn blocks(blocks: &[MarkdownBlock]) -> Vec<Self> {
+        blocks.iter().map(Self::new).collect()
     }
 }

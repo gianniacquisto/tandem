@@ -3,13 +3,15 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import type { Call } from '../../src/shared/bridge'
 import { BikeshedFace } from './faces/BikeshedFace'
 import { SettingsFace } from './faces/SettingsFace'
+import { TicketSheet } from './faces/TicketSheet'
 import { TicketsFace } from './faces/TicketsFace'
 import { UsageFace } from './faces/UsageFace'
-import { parseRoute, tabHref, type Route } from './shell/route'
+import { closeHref, parseRoute, tabHref, type Route } from './shell/route'
 import { initialSnapshot, snapshotReducer, type SnapshotState } from './shell/snapshot'
-import { writeBlocked } from './shell/write'
+import { writeBlocked, type WriteOutcome } from './shell/write'
 import { TABS } from './shell/tabs'
 import type { TicketListParams } from './wire/TicketListParams'
+import type { TicketSummary } from './wire/TicketSummary'
 
 /**
  * The whole store in one listing: no scope, the archive included, every axis
@@ -32,20 +34,43 @@ function face(
   snapshot: SnapshotState,
   actions: {
     onReload: () => void
-    onWrite: (call: Call, expected: number | null) => Promise<boolean>
+    onWrite: (call: Call, expected: number | null) => Promise<WriteOutcome>
     onDismiss: () => void
+    openTicket: string | null
+    onOpenTicket: (ticket: TicketSummary) => void
   },
 ) {
   switch (route.tab) {
     case 'tickets':
-      return <TicketsFace snapshot={snapshot} view={route.view} {...actions} />
+      return (
+        <TicketsFace
+          snapshot={snapshot}
+          view={route.view}
+          onReload={actions.onReload}
+          onWrite={actions.onWrite}
+          onDismiss={actions.onDismiss}
+          openTicket={actions.openTicket}
+          onOpenTicket={actions.onOpenTicket}
+        />
+      )
     case 'bikeshed':
-      return <BikeshedFace />
+      return <BikeshedFace onOpenTicket={actions.onOpenTicket} />
     case 'usage':
       return <UsageFace report={snapshot.usage} />
     case 'settings':
       return <SettingsFace />
   }
+}
+
+/** The names the assignee picker offers: every assignee the board carries. */
+function assignees(tickets: TicketSummary[]): string[] {
+  return [
+    ...new Set(
+      tickets
+        .map((ticket) => ticket.assignee)
+        .filter((assignee): assignee is string => assignee !== null),
+    ),
+  ].sort()
 }
 
 function revisionLabel(snapshot: SnapshotState): string {
@@ -62,6 +87,12 @@ function revisionLabel(snapshot: SnapshotState): string {
  */
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash))
+  // The sheet's one selection. The hash's `ticket` opens it (a link a person can
+  // keep), and a row, a card or a note's ticket row sets it without moving the
+  // tab, so Esc leaves the face that opened it exactly where it was.
+  const [openTicket, setOpenTicket] = useState<string | null>(
+    () => parseRoute(window.location.hash).ticket,
+  )
   const [snapshot, dispatch] = useReducer(snapshotReducer, initialSnapshot)
   const state = useRef(snapshot)
   state.current = snapshot
@@ -125,29 +156,34 @@ export function App() {
   }, [load])
 
   useEffect(() => {
-    const followHash = () => setRoute(parseRoute(window.location.hash))
+    const followHash = () => {
+      const next = parseRoute(window.location.hash)
+      setRoute(next)
+      setOpenTicket(next.ticket)
+    }
     window.addEventListener('hashchange', followHash)
     return () => window.removeEventListener('hashchange', followHash)
   }, [])
 
   const write = useCallback(
-    async (call: Call, expected: number | null): Promise<boolean> => {
+    async (call: Call, expected: number | null): Promise<WriteOutcome> => {
       const blocked = writeBlocked(state.current, expected)
       if (blocked !== null) {
         dispatch({ type: 'notice', message: blocked })
         void load()
-        return false
+        return { ok: false, message: blocked }
       }
       try {
         const answer = await window.tandem.call(call)
         if ('error' in answer) {
           dispatch({ type: 'notice', message: answer.error.message })
-          return false
+          return { ok: false, message: answer.error.message }
         }
-        return true
+        return { ok: true }
       } catch {
-        dispatch({ type: 'notice', message: 'The write could not reach the store.' })
-        return false
+        const message = 'The write could not reach the store.'
+        dispatch({ type: 'notice', message })
+        return { ok: false, message }
       }
     },
     [load],
@@ -157,6 +193,15 @@ export function App() {
   const reload = useCallback(() => {
     void load()
   }, [load])
+  const open = useCallback((ticket: TicketSummary) => setOpenTicket(ticket.id), [])
+  const closeSheet = useCallback(() => {
+    setOpenTicket(null)
+    // A sheet opened from a kept link owns the hash's query; closing drops that
+    // query and keeps the layout that carried it, so Esc from the board is the
+    // board and not the list.
+    const current = parseRoute(window.location.hash)
+    if (current.ticket !== null) window.location.hash = closeHref(current)
+  }, [])
 
   return (
     <div className="shell">
@@ -193,7 +238,24 @@ export function App() {
             </button>
           </div>
         )}
-        {face(route, snapshot, { onReload: reload, onWrite: write, onDismiss: dismiss })}
+        {face(route, snapshot, {
+          onReload: reload,
+          onWrite: write,
+          onDismiss: dismiss,
+          openTicket,
+          onOpenTicket: open,
+        })}
+        {openTicket === null ? null : (
+          <TicketSheet
+            ticketId={openTicket}
+            lanes={snapshot.lanes}
+            roster={assignees(snapshot.tickets)}
+            revision={snapshot.revision}
+            onWrite={write}
+            onDismiss={closeSheet}
+            onOpenTicket={setOpenTicket}
+          />
+        )}
       </main>
     </div>
   )

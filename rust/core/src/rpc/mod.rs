@@ -43,13 +43,13 @@ use crate::setup::Environment;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, HostRoot, LaneDeletionReply,
-    LaneListReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply, NoteReadReply,
-    NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, Reply, Request, Response,
-    SetupReply, TicketListReply, TicketReply, UsageReportReply, WireError,
+    LaneListReply, MarkdownReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply,
+    NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, Reply, Request,
+    Response, SetupReply, TicketListReply, TicketReply, UsageReportReply, WireError,
 };
 use crate::wire::{
-    BacklinkView, CommentView, NoteContentView, NoteMoveView, NoteNodeView, NoteWriteView,
-    RecoveryView, TicketDetail, TicketSummary, UsageReportView, slashed_path,
+    BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
+    NoteWriteView, RecoveryView, TicketDetail, TicketSummary, UsageReportView, slashed_path,
 };
 use crate::{diagnostics, setup};
 
@@ -573,6 +573,17 @@ fn execute(
             let report = usage_report(&sessions, &tickets, &Calendar::Local);
             Ok(Reply::UsageReport(UsageReportReply {
                 report: UsageReportView::new(&report),
+            }))
+        }
+        Method::MarkdownBlocks(params) => {
+            // The parsing is the domain's (`TicketMarkdown`), so the sheet draws
+            // the same blocks the Swift sheet drew from the same dialect. The
+            // message touches no store: it is a pure projection of the text the
+            // face already holds, and it answers without a lock.
+            Ok(Reply::Markdown(MarkdownReply {
+                blocks: MarkdownBlockView::blocks(&crate::domain::TicketMarkdown::blocks(
+                    params.text.as_deref(),
+                )),
             }))
         }
         Method::LaneList(_) => {

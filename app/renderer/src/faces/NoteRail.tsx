@@ -9,6 +9,12 @@ export type NoteRailProps = {
   linked: TicketSummary[]
   recoveries: RecoveryView[]
   onOpenNote: (path: string) => void
+  /**
+   * Opens the ticket sheet over the bikeshed. The row stays an anchor
+   * (`ticketHref`): a click opens the sheet where the note is, and a middle
+   * click or a copied link still names a ticket a person can come back to.
+   */
+  onOpenTicket?: (ticket: TicketSummary) => void
 }
 
 function name(path: string): string {
@@ -27,7 +33,13 @@ function ticketName(ticket: TicketSummary): string {
  * sibling under the tree); a recovery is drawn as what it is, a draft, never as
  * an error banner.
  */
-export function NoteRail({ backlinks, linked, recoveries, onOpenNote }: NoteRailProps) {
+export function NoteRail({
+  backlinks,
+  linked,
+  recoveries,
+  onOpenNote,
+  onOpenTicket,
+}: NoteRailProps) {
   return (
     <section className="rail" aria-label="Note links">
       <div className="rail__section">
@@ -64,7 +76,15 @@ export function NoteRail({ backlinks, linked, recoveries, onOpenNote }: NoteRail
           <ul className="rail__rows">
             {linked.map((ticket) => (
               <li key={ticket.id}>
-                <a className="rail__row" href={ticketHref(ticket.id)}>
+                <a
+                  className="rail__row"
+                  href={ticketHref(ticket.id)}
+                  onClick={(event) => {
+                    if (onOpenTicket === undefined) return
+                    event.preventDefault()
+                    onOpenTicket(ticket)
+                  }}
+                >
                   <span className="rail__row-name">{ticketName(ticket)}</span>
                   <span className="rail__row-detail">{ticket.title}</span>
                 </a>

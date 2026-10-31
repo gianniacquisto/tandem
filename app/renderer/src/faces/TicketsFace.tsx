@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import type { Call } from '../../../src/shared/bridge'
+import type { WriteOutcome } from '../shell/write'
 import {
   INITIAL_FILTERS,
   STATUSES,
@@ -30,11 +31,12 @@ export type TicketsFaceProps = {
   snapshot: SnapshotState
   view: View
   onReload: () => void
-  /** A write through the shell's one door; true when the store took it. */
-  onWrite: (call: Call, expected: number | null) => Promise<boolean>
+  /** A write through the shell's one door. */
+  onWrite: (call: Call, expected: number | null) => Promise<WriteOutcome>
   onDismiss: () => void
-  /** Opens the ticket sheet; PRT-17 owns the sheet, so the path is inert until then. */
-  onOpenTicket?: (ticket: TicketSummary) => void
+  /** The sheet's subject, whichever face opened it, so one row reads as current. */
+  openTicket: string | null
+  onOpenTicket: (ticket: TicketSummary) => void
 }
 
 const SCOPES: ReadonlyArray<{ value: Scope; label: string }> = [
@@ -59,10 +61,14 @@ export function TicketsFace({
   onReload,
   onWrite,
   onDismiss,
+  openTicket,
   onOpenTicket,
 }: TicketsFaceProps) {
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS)
   const [selected, setSelected] = useState<string | null>(null)
+  // The sheet's subject wins the row's mark: a ticket opened from a note is the
+  // one the face is showing, and the keyboard selection is only the face's own.
+  const current = openTicket ?? selected
   const [draft, setDraft] = useState('')
   const [addLane, setAddLane] = useState<string | null>(null)
   const quickAdd = useRef<HTMLInputElement>(null)
@@ -103,7 +109,7 @@ export function TicketsFace({
       },
       snapshot.revision,
     )
-    if (written) {
+    if (written.ok) {
       setDraft('')
       quickAdd.current?.focus()
     }
@@ -142,6 +148,9 @@ export function TicketsFace({
 
   useEffect(() => {
     function handle(event: KeyboardEvent): void {
+      // The sheet owns the keys while it is open: its Escape closes it, and the
+      // face behind it must not also clear a search or drop a notice.
+      if (openTicket !== null) return
       const element = event.target instanceof HTMLElement ? event.target : null
       const editable =
         element !== null &&
@@ -190,7 +199,7 @@ export function TicketsFace({
           return
         case 'open': {
           const ticket = snapshot.tickets.find((candidate) => candidate.id === selected)
-          if (ticket !== undefined && onOpenTicket !== undefined) {
+          if (ticket !== undefined) {
             event.preventDefault()
             onOpenTicket(ticket)
           }
@@ -248,7 +257,18 @@ export function TicketsFace({
 
     window.addEventListener('keydown', handle)
     return () => window.removeEventListener('keydown', handle)
-  }, [snapshot, filters, view, selected, columns, order, allKeys, onDismiss, onOpenTicket])
+  }, [
+    snapshot,
+    filters,
+    view,
+    selected,
+    columns,
+    order,
+    allKeys,
+    openTicket,
+    onDismiss,
+    onOpenTicket,
+  ])
 
   const empty = emptyState(snapshot, filters, visible.length === 0, onReload)
 
@@ -432,7 +452,7 @@ export function TicketsFace({
           view === 'list' ? (
             <TicketList
               columns={columns}
-              selected={selected}
+              selected={current}
               onSelect={setSelected}
               onToggle={toggle}
               onOpen={onOpenTicket}
@@ -441,7 +461,7 @@ export function TicketsFace({
           ) : (
             <BoardLayout
               columns={columns}
-              selected={selected}
+              selected={current}
               onSelect={setSelected}
               onToggle={toggle}
               onOpen={onOpenTicket}

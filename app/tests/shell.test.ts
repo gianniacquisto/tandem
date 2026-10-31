@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { TABS } from '../renderer/src/shell/tabs'
-import { parseRoute, tabHref, viewHref } from '../renderer/src/shell/route'
+import { closeHref, parseRoute, tabHref, viewHref } from '../renderer/src/shell/route'
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
 const renderer = join(appRoot, 'renderer')
@@ -33,19 +33,62 @@ describe('the shell', () => {
 
   it('routes every tab to its own path and back', () => {
     for (const tab of TABS) {
-      expect(parseRoute(tabHref(tab.id))).toEqual({ tab: tab.id, view: 'list' })
+      expect(parseRoute(tabHref(tab.id))).toEqual({ tab: tab.id, view: 'list', ticket: null })
       expect(tabHref(tab.id)).toBe(`#/${tab.id}`)
     }
-    expect(parseRoute('')).toEqual({ tab: 'tickets', view: 'list' })
-    expect(parseRoute('#/nowhere')).toEqual({ tab: 'tickets', view: 'list' })
+    expect(parseRoute('')).toEqual({ tab: 'tickets', view: 'list', ticket: null })
+    expect(parseRoute('#/nowhere')).toEqual({ tab: 'tickets', view: 'list', ticket: null })
   })
 
   it('routes the Tickets face two ways: the list and the board', () => {
-    expect(parseRoute(viewHref('tickets', 'list'))).toEqual({ tab: 'tickets', view: 'list' })
-    expect(parseRoute(viewHref('tickets', 'board'))).toEqual({ tab: 'tickets', view: 'board' })
+    expect(parseRoute(viewHref('tickets', 'list'))).toEqual({
+      tab: 'tickets',
+      view: 'list',
+      ticket: null,
+    })
+    expect(parseRoute(viewHref('tickets', 'board'))).toEqual({
+      tab: 'tickets',
+      view: 'board',
+      ticket: null,
+    })
     expect(viewHref('tickets', 'board')).toBe('#/tickets/board')
     // Only the Tickets face has a board; another tab's second segment is ignored.
-    expect(parseRoute('#/usage/board')).toEqual({ tab: 'usage', view: 'list' })
+    expect(parseRoute('#/usage/board')).toEqual({ tab: 'usage', view: 'list', ticket: null })
+  })
+
+  it('opens the sheet from a kept ticket link, on whatever tab carries it', () => {
+    // A note's ticket row is an anchor (`ticketHref`), so the sheet has to open
+    // from a hash a person can keep, not from a click handler alone.
+    expect(parseRoute('#/tickets?ticket=D5BAD6F7-5D45-4910-9A69-1C0409479BAD')).toEqual({
+      tab: 'tickets',
+      view: 'list',
+      ticket: 'D5BAD6F7-5D45-4910-9A69-1C0409479BAD',
+    })
+    expect(parseRoute('#/bikeshed?ticket=PRT-17')).toEqual({
+      tab: 'bikeshed',
+      view: 'list',
+      ticket: 'PRT-17',
+    })
+    expect(parseRoute('#/tickets/board?ticket=PRT-17').view).toBe('board')
+    // An empty or unnamed ticket is no ticket: the face, not an empty sheet.
+    expect(parseRoute('#/tickets?ticket=').ticket).toBeNull()
+    expect(parseRoute('#/tickets?view=board').ticket).toBeNull()
+  })
+
+  it('closes back onto the layout that carried the sheet', () => {
+    // Esc from a sheet opened on the board is still the board: dropping the
+    // segment would land a human on the list they did not choose.
+    expect(closeHref(parseRoute('#/tickets/board?ticket=PRT-17'))).toBe('#/tickets/board')
+    expect(closeHref(parseRoute('#/tickets?ticket=PRT-17'))).toBe('#/tickets')
+    expect(closeHref(parseRoute('#/bikeshed?ticket=PRT-17'))).toBe('#/bikeshed')
+  })
+
+  it('answers no ticket for a query it cannot decode, instead of crashing the window', () => {
+    // `parseRoute` runs in App's render initialiser, so a stale hand-typed hash
+    // with one bad escape must read as no ticket, never blank the window.
+    expect(parseRoute('#/tickets?ticket=%zz').ticket).toBeNull()
+    expect(parseRoute('#/tickets?ticket=%E0%A4%A').ticket).toBeNull()
+    expect(() => parseRoute('#/tickets?ticket=%E0%A4%A')).not.toThrow()
   })
 
   it('keeps Node out of the renderer: no electron, no builtin, no process', () => {
