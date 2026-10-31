@@ -1,9 +1,9 @@
-/* The design tokens, ported from `Sources/Tandem/LigneTheme.swift`.
+/* The design tokens, frozen at the cutover from the Swift theme. */
  *
  * One file, one palette pair: the day panel is the light scheme and the night
  * panel the dark one, and the app follows the system appearance. Components
  * read these variables and never a raw colour. The test in `tests/tokens.test.ts`
- * compares every value with the Swift source.
+ * pins every palette value, so a drift is a red test.
  */
 :root {
   color-scheme: light dark;

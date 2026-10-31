@@ -4,9 +4,9 @@
  *
  * Layout:
  *   1. The Ligne palette — 10 CSS custom properties, day + night. Values
- *      are the ground truth from Sources/Tandem/LigneTheme.swift; the
- *      Swift host sets data-theme="day" | "night" on <html> (day is the
- *      default) so the pane matches the window chrome.
+ *      are frozen from the app's tokens; the shell sets data-theme="day" |
+ *      "night" on <html> (day is the default) so the pane matches the
+ *      window chrome.
  *   2. Page chrome (html / body / #tandem-editor).
  *   2b. The formatting toolbar (the quiet row above the note).
  *   3. Live-preview line classes (what blocks.js plans) — line height is
@@ -24,7 +24,7 @@
  * references by relative URL from this file's location.
  */
 
-/* 1. Ligne palette (LigneTheme.swift — day = "day panel", night =
+/* 1. Ligne palette (frozen from the app's tokens — day = "day panel", night =
    "night panel"; values sampled from the brand asset, the tandem-bike
    illustration) ------------------------------------------------------- */
 

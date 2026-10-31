@@ -65,8 +65,8 @@ review.
 ## Styling
 
 - **One token file.** Every colour, hairline, radius and motion duration, and
-  every spacing step `Sources/Tandem/LigneTheme.swift` names, is a CSS variable
-  in `renderer/src/tokens.css`, ported value for value. Layout arithmetic the
+  every spacing step the theme names, is a CSS variable in
+  `renderer/src/tokens.css`, the palette's one source of truth. Layout arithmetic the
   Swift theme does not name (a tab's `8px` padding, a fact row's `12px 14px`)
   stays a literal in `app.css`; it is not a token.
 - **No raw colour literals.** `#hex`, `rgb()`, `rgba()`, `hsl()` and `hsla()`

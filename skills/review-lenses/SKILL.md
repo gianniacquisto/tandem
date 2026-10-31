@@ -15,7 +15,7 @@ The refiner picks the lenses for a change and writes a `## Lenses` section in th
 | --- | --- | --- |
 | `code` | `agents/reviewer.md` | the gate's own reading: correctness, edges, breakage |
 | `security` | `skills/review-lenses/security.md` | secrets and tokens, shell and SQL interpolation, input that reaches a path, writes that lose or expose store data, `--force` and permission changes |
-| `ui-design` | `skills/review-lenses/ui-design.md` | the app's visual language: `Sources/Tandem/LigneTheme.swift` tokens instead of literals, spacing, type, colour, dark mode, popover and sheet sizing |
+| `ui-design` | `skills/review-lenses/ui-design.md` | the app's visual language: `app/renderer/src/tokens.css` tokens instead of literals, spacing, type, colour, dark mode, popover and sheet sizing |
 | `ux` | `skills/review-lenses/ux.md` | interaction and recovery: keyboard paths, destructive acts without undo or confirmation, empty and error states, the human's round-trips |
 | `architecture` | `skills/review-lenses/architecture.md` | layering, one truth per fact, schema and migration discipline, the ADRs the change touches, the reader-first order |
 

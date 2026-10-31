@@ -8,7 +8,7 @@
 //! - `SprintsTests`, `SprintGroupingTests`, `SprintDocumentsTests`,
 //!   `SprintMigrationTests`, `SprintVerbTests`: `sprints`
 //! - `UsageReportTests`: `usage_report`
-//! - the harness read (`Scripts/usage-report.sh` today): `harness`
+//! - the harness read (`session end --usage-from-harness`): `harness`
 //! - the bikeshed's nineteen Swift suites, one Rust module each:
 //!   `bikeshed_path`, `bikeshed_wikilink`, `bikeshed_backlink`, `bikeshed_front`,
 //!   `bikeshed_health`, `bikeshed_stats`, `bikeshed_search`, `bikeshed_move`,

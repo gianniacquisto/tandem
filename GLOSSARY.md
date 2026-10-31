@@ -1,6 +1,6 @@
 # Tandem
 
-A native macOS ticket board shared by humans and agents on the same machine.
+A macOS ticket board shared by humans and agents on the same machine.
 
 ## Language
 

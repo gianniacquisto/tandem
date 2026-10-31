@@ -4,28 +4,57 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
-const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
-
-const swift = readFileSync(`${repoRoot}Sources/Tandem/LigneTheme.swift`, 'utf8')
 const css = readFileSync(`${appRoot}renderer/src/tokens.css`, 'utf8')
 
-/** `accentDeep` in Swift is `accent-deep` in CSS. */
+/** `accentDeep` in Swift became `accent-deep` in CSS. */
 const variable = (name: string) => `--${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`
 
-/** The palette's entries in the Swift theme, as name to hex. */
-function palette(name: 'day' | 'night'): Map<string, string> {
-  const block = swift.match(new RegExp(`static let ${name} = Palette\\(([\\s\\S]*?)\\n    \\)`))
-  if (!block?.[1]) throw new Error(`no ${name} palette in LigneTheme.swift`)
+/**
+ * The palette the Swift theme carried, frozen here at the cutover: the Swift
+ * file is gone, so the hex values are the source of truth and this table is the
+ * only place a drift can be caught.
+ */
+const DAY = new Map<string, string>([
+  ['paper', '#F1E9D7'],
+  ['parchment', '#E7DECA'],
+  ['sand', '#D6C9AE'],
+  ['shadow', '#C6B897'],
+  ['line', '#C6B99E'],
+  ['ink', '#211D18'],
+  ['inkDim', '#877D6B'],
+  ['accent', '#6E7D6E'],
+  ['accentDeep', '#55604F'],
+  ['ember', '#A9745C'],
+  ['emberDeep', '#8B5A45'],
+  ['moss', '#6C7A66'],
+  ['mossDeep', '#7E8D77'],
+  ['sky', '#CFDDE2'],
+  ['hill', '#B7C4AE'],
+  ['hillFar', '#C8CFBB'],
+  ['skin', '#E4C9A2'],
+  ['sun', '#E5C07B'],
+])
 
-  const entries = new Map<string, string>()
-  for (const match of block[1].matchAll(/(\w+):\s*hex\(0x([0-9A-Fa-f]{6})\)/g)) {
-    const key = match[1]
-    const hex = match[2]
-    if (key === undefined || hex === undefined) continue
-    entries.set(key, `#${hex.toUpperCase()}`)
-  }
-  return entries
-}
+const NIGHT = new Map<string, string>([
+  ['paper', '#23211C'],
+  ['parchment', '#2C2A23'],
+  ['sand', '#3C3930'],
+  ['shadow', '#191712'],
+  ['line', '#494437'],
+  ['ink', '#EDE6D3'],
+  ['inkDim', '#9C9583'],
+  ['accent', '#93A48F'],
+  ['accentDeep', '#6E7E6A'],
+  ['ember', '#C08A70'],
+  ['emberDeep', '#9E6B54'],
+  ['moss', '#8FA084'],
+  ['mossDeep', '#74856E'],
+  ['sky', '#2A2E28'],
+  ['hill', '#3A4441'],
+  ['hillFar', '#313A36'],
+  ['skin', '#E3C29B'],
+  ['sun', '#EDE6D3'],
+])
 
 /** The variables a CSS block declares, as name to value. */
 function declarations(block: string): Map<string, string> {
@@ -52,8 +81,8 @@ function darkBlock(): string {
 }
 
 describe('the design tokens', () => {
-  it('ports every day palette entry from the Swift theme, value for value', () => {
-    const day = palette('day')
+  it('keeps every day palette entry, value for value', () => {
+    const day = DAY
     expect(day.size).toBe(18)
 
     const declared = declarations(lightBlock())
@@ -62,8 +91,8 @@ describe('the design tokens', () => {
     }
   })
 
-  it('ports every night palette entry, value for value', () => {
-    const night = palette('night')
+  it('keeps every night palette entry, value for value', () => {
+    const night = NIGHT
     expect(night.size).toBe(18)
 
     const declared = declarations(darkBlock())
@@ -73,7 +102,7 @@ describe('the design tokens', () => {
   })
 
   it('declares no palette variable the theme does not have', () => {
-    const theme = new Set([...palette('day').keys()].map((name) => variable(name).slice(2)))
+    const theme = new Set([...DAY.keys()].map((name) => variable(name).slice(2)))
     const scales = new Set([
       'hairline',
       'radius-checkbox',

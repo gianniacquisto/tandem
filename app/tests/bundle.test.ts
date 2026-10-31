@@ -1,42 +1,28 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { existsSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
 /**
- * The editor bundle moves verbatim (`docs/port.md`, Where the old code goes).
+ * The editor bundle is built by `Editor/build.mjs` straight into
+ * `app/renderer/public/editor`, so the copy the renderer loads is the one
+ * source tree (`docs/port.md`, Where the old code goes). The build is
+ * reproducible: `app.yml` runs it and fails on any diff in this directory, so a
+ * hand edit cannot survive CI.
  *
- * The committed `Sources/Tandem/Resources/Editor` is the source of truth; the
- * renderer's copy under `public/editor` is what an iframe loads, and Vite copies
- * `public/` byte for byte, so the bundle is never rebundled. A file that differs
- * by one byte is the test that fails, because a rebundled editor is a different
- * editor.
+ * This test is the shape check the renderer can do alone: the files an iframe
+ * loads are there, and the bundle is a real build rather than a placeholder.
  */
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
-const repoRoot = join(appRoot, '..')
-const source = join(repoRoot, 'Sources', 'Tandem', 'Resources', 'Editor')
 const copy = join(appRoot, 'renderer', 'public', 'editor')
 
-function filesUnder(directory: string, root: string = directory): string[] {
-  return readdirSync(directory).flatMap((entry) => {
-    const path = join(directory, entry)
-    if (statSync(path).isDirectory()) return filesUnder(path, root)
-    return [relative(root, path)]
-  })
-}
-
 describe('the committed editor bundle', () => {
-  it('is copied into the renderer with the same files', () => {
-    expect(filesUnder(copy).sort()).toEqual(filesUnder(source).sort())
-  })
-
-  it('is byte-identical, file for file', () => {
-    for (const file of filesUnder(source)) {
-      const expected = readFileSync(join(source, file))
-      const actual = readFileSync(join(copy, file))
-      expect(actual.equals(expected), `${file} differs from the Swift resource`).toBe(true)
+  it('carries every file the editor frame loads', () => {
+    for (const file of ['index.html', 'editor.js', 'style.css', 'LICENSES.md']) {
+      expect(existsSync(join(copy, file)), file).toBe(true)
     }
+    expect(readdirSync(join(copy, 'fonts')).length).toBeGreaterThan(0)
   })
 
   it('carries the bundle itself, so the copy is not a placeholder', () => {

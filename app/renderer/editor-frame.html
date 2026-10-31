@@ -1,10 +1,9 @@
 <!doctype html>
 <!--
   The editor frame: the committed CodeMirror bundle in its own document, loaded
-  by the Bikeshed face's iframe. The bundle is `public/editor/`, copied byte for
-  byte from `Sources/Tandem/Resources/Editor`; this page adds only the bridge
-  shim (`src/editor/frame.ts`), which replaces the WKWebView message handler the
-  Swift host used to provide.
+  by the Bikeshed face's iframe. The bundle is `public/editor/`, built byte for byte by
+  `Editor/build.mjs`; this page adds only the bridge shim (`src/editor/frame.ts`),
+  which carries the editor's messages over the preload bridge.
 
   No inline script: the content security policy admits `'self'` only, and the
   bundle mounts itself into `#tandem-editor`.

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "The CLI's contract, captured from the Swift binary. One case per verb shape the suite exercises; a new shape is a deliberate line here, and `Scripts/capture-goldens.sh` writes Fixtures/goldens/<group>/<case>.json from it. Both implementations read this file: the capture runs the Swift binary, `rust/cli/tests/goldens.rs` runs the Rust one.",
+  "about": "The CLI's contract, captured from the Swift binary before the cutover. One case per verb shape the suite exercises; a new shape is a deliberate line here and a hand-written Fixtures/goldens/<group>/<case>.json in the same shape. The Swift capture retired with the tree; `rust/cli/tests/goldens.rs` replays the frozen files.",
   "home": "Fixtures/port/Home",
   "face": "Fixtures/port/agent-face",
   "env": {

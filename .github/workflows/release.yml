@@ -1,25 +1,28 @@
 name: Release
 
-# The repo's first CI. A tag v* push (or a manual dispatch) on a GitHub-hosted
-# macOS 27 runner (`xcode-27`) builds and verifies the artifact and then
-# publishes the GitHub release; pull-request runs do the same build-and-verify
-# work and upload the artifact, never publishing. The contract is this file
-# and `docs/releasing.md`; ADR 0003 owns the distribution model it serves (one
-# prebuilt cask, its artifact built by CI on each tag).
+# The cutover's release: a tag v* push (or a manual dispatch) on a GitHub-hosted
+# macOS runner packages the Electron app, verifies the artifact and publishes the
+# GitHub release; pull-request runs do the same build-and-verify work and upload
+# the artifact, never publishing. The contract is this file and
+# `docs/releasing.md`; ADR 0003 owns the distribution model it serves (one
+# prebuilt cask, its artifact built by CI on each tag) and ADR 0036 owns the tap
+# bump.
 #
-# The stages are the test seam: the run fails if the test suite fails, the
-# README's CLI grammar block drifts from `Usage.swift`, the build fails, the
-# signature does not verify, the Info.plist version does not match the tag,
-# the in-bundle CLI fails its --help / no-argument exit-code assertions, or
-# the zip does not contain an intact app.
+# The gates that used to live here moved with the Swift tree: the Rust suite is
+# `rust.yml`, the shell's typecheck, tests, package and smoke gates are
+# `app.yml`, and the screenshot suite is `app.yml`'s `shots` job. This workflow
+# builds the bytes the tag publishes, so it does not run a second copy of the
+# suites that already gate the merge. What it does gate is the artifact: the
+# package names the cask downloads, the core sits where the packaged shell
+# resolves it, the zip is intact, and the checksum the tap bump reads is the
+# checksum of those bytes.
 #
-# The work is split in three: `test` (the gates) and `build` (the artifact) run
-# in parallel, each on its own runner, and `release` aggregates them. The
-# aggregator keeps the name `release` for one reason: `main` requires
-# a status check by that name, and a required check that never reports blocks
-# every merge: the name stays, the branch protection is untouched, and the
-# merge still waits for both halves, because the aggregator
-# publishes only when both are green.
+# The work is split in two: `build` produces and verifies the artifact, and
+# `release` publishes it. The publisher keeps the name `release` for one
+# reason: `main` requires a status check by that name, and a required check that
+# never reports blocks every merge. The name stays, the branch protection is
+# untouched, and the merge waits for the build because the publisher only runs
+# when it is green.
 
 on:
   push:
@@ -27,81 +30,38 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Least privilege by default: the two heavy jobs only read the repo. The
-# publish step needs `contents: write`, and only the `release` job gets it.
+# Least privilege by default: the build job only reads the repo. The publish and
+# tap steps need `contents: write`, and only the `release` job gets it.
 permissions:
   contents: read
 
 jobs:
-  test:
-    # The gates. The floor is macOS 27 (Apple silicon); the build needs SDK 27.
-    # `xcode-27` is the GitHub-hosted public-preview image: macOS 27.0.1 /
-    # Xcode 27 / macosx27.0 SDK / Node 24 — the target toolchain, no self-hosted
-    # runner to keep online. `macos-27` is NOT a hosted label (Homebrew's
-    # :golden_gate naming; a run pinned to it queues forever), and the macOS 26
-    # images ship Xcode 26 / SDK 26, so they cannot build a `.macOS(.v27)`
-    # package. The few-core preview runner needs the serialized test gate below.
-    runs-on: xcode-27
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the source
-        uses: actions/checkout@v4
-
-      - name: "Gate: run the package test suite"
-        run: |
-          # Serialized (`--no-parallel`): Swift Testing runs tests in parallel by
-          # default (`--no-parallel` is the XCTest default only), and on the
-          # few-core hosted xcode-27 runner the CPU-heavy suites starve the
-          # DispatchQueue pool the contention tests use — their helper threads
-          # miss even the widened 15 s waits, so the gate fails on load, not on
-          # behaviour. Serial execution removes that artificial contention; each
-          # test's own threads still exercise the lock. (The self-hosted 10-core
-          # Mac had the headroom for the default parallel run.)
-          swift test --no-parallel
-
-      - name: "Gate: the README's CLI grammar matches Usage.swift"
-        run: |
-          # The README's grammar block is a hand-copy of `Usage.text`, and a
-          # hand-copy drifts — review gates caught it twice (the deprecated
-          # `todo` verb taught, `[--archived]` dropped, the `session` group
-          # missing) before this check existed. The script makes the drift a
-          # red run: every grammar entry the source carries must appear in the
-          # block, in order, and the block may not carry an entry the source
-          # does not have.
-          Scripts/check-readme-grammar.sh
-
-      - name: "Gate: editor bundle tests + reproducible build"
-        run: |
-          # The editor bundle is committed prebuilt (`Editor/build.mjs` states
-          # the rule: the pinned inputs must regenerate the committed bytes
-          # exactly): its tests run on the pinned deps, and the committed bytes
-          # must be exactly what the pinned inputs regenerate — a non-empty diff
-          # after the rebuild is a manual edit or a source/lockfile drift.
-          cd Editor
-          npm ci
-          # `node --test` with no path (auto-discovery): the hosted image's Node
-          # 24 rejects a directory positional (`node --test test/` →
-          # "Cannot find module …/Editor/test"); bare `--test` discovers the same
-          # 169 tests on Node 24 and 26.
-          node --test
-          npm run build
-          cd ..
-          git diff --exit-code -- Sources/Tandem/Resources/Editor
-
   build:
-    # The artifact. The same runner and the same floor as the gates, and the
-    # same build as before the split: both products in release configuration,
-    # the bundle assembled and verified, the zip uploaded. The aggregator
-    # rebuilds nothing, so the published bytes are the bytes this job verified.
-    runs-on: xcode-27
-    timeout-minutes: 30
+    # The artifact. macOS runs the Electron package and arm64 is the port's one
+    # macOS target; the core is built by the same pinned toolchain `rust.yml`
+    # tests because `prepare-binary.mjs` runs the cargo proxy from `rust/`.
+    runs-on: macos-latest
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
       - name: Check out the source
         uses: actions/checkout@v4
+
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Warm the Rust toolchain
+        working-directory: rust
+        run: cargo --version
+
+      - name: Install
+        working-directory: app
+        run: npm ci
 
       - name: Resolve the version
         run: |
@@ -113,134 +73,83 @@ jobs:
             echo "version=0.0.0" >> "$GITHUB_ENV"
           fi
 
-      - name: Build both products (release configuration)
+      - name: Package the app
+        working-directory: app
         run: |
-          swift build -c release --product Tandem
-          swift build -c release --product tandem-cli
+          # electron-builder names the artifact from the app's version, so the
+          # tag's version is stamped before packaging. The build is unsigned by
+          # design (PRT-32 owns signing and notarization).
+          npm version "$version" --no-git-tag-version --allow-same-version
+          npm run dist
 
-      - name: Assemble the app bundle
-        run: Scripts/make-app-bundle.sh .build/release/Tandem .build/release/tandem-cli "$version" dist
+      - name: "Verify: the artifact carries the core"
+        working-directory: app
+        run: npm run check:artifact
 
-      - name: "Verify: bundle structure"
+      - name: "Verify: the cask's artifact name and archive"
         run: |
-          app=dist/Tandem.app
-          test -x "$app/Contents/MacOS/Tandem"
-          test -x "$app/Contents/MacOS/tandem-cli"
-          test -f "$app/Contents/Info.plist"
-          test -f "$app/Contents/Resources/AppIcon.icns"
-          editor="$app/Contents/Resources/tandem_Tandem.bundle/Contents/Resources/Editor"
-          test -f "$app/Contents/Resources/NOTICE.txt"
-          test -f "$editor/index.html"
-          test -f "$editor/editor.js"
-          test -f "$editor/style.css"
-          test -d "$editor/fonts"
-          test -f "$editor/LICENSES.md"
-          # The agent face travels in the artifact (ADR 0034). The loops read the
-          # checkout, so a skill added to skills/ is asserted without a count in
-          # YAML going stale.
-          agent="$app/Contents/Resources/agent"
-          test -f "$agent/AGENTS.md"
-          test -f "$agent/VERSION"
-          test "$(cat "$agent/VERSION")" = "$version"
-          for f in skills/*/SKILL.md; do test -f "$agent/$f"; done
-          for f in agents/*.md; do test -f "$agent/$f"; done
+          # The tap's cask downloads
+          # `releases/download/v<version>/Tandem-<version>.zip`, and
+          # `Scripts/bump-tap.sh` reads exactly `Tandem-<version>.zip` out of
+          # SHA256SUMS. Both are checked before anything is published, so a
+          # rename in electron-builder is a red build, not a broken upgrade.
+          zip="app/dist/Tandem-$version.zip"
+          dmg="app/dist/Tandem-$version.dmg"
+          test -f "$zip"
+          test -f "$dmg"
+          mkdir "$RUNNER_TEMP/zipcheck"
+          unzip -q "$zip" -d "$RUNNER_TEMP/zipcheck"
+          bundle="$RUNNER_TEMP/zipcheck/Tandem.app"
+          test -x "$bundle/Contents/MacOS/Tandem"
+          test -x "$bundle/Contents/Resources/tandem"
+          # The cask's `binary` stanza links this path into Homebrew's bin, and
+          # every skill calls it by this name. A packaging change that drops the
+          # symlink must fail before the release is published and the tap bumped.
+          test -L "$bundle/Contents/MacOS/tandem-cli"
+          test "$(readlink "$bundle/Contents/MacOS/tandem-cli")" = "../Resources/tandem"
+          test -f "$bundle/Contents/Resources/agent/AGENTS.md"
+          test "$(cat "$bundle/Contents/Resources/agent/VERSION")" = "$version"
 
-      - name: "Verify: ad-hoc signature"
-        run: codesign --verify --strict dist/Tandem.app
-
-      - name: "Verify: Info.plist version matches the tag"
+      - name: Compute the checksum
         run: |
-          actual=$(plutil -extract CFBundleShortVersionString raw dist/Tandem.app/Contents/Info.plist)
-          if [[ "$actual" != "$version" ]]; then
-            echo "::error::Info.plist version '$actual' does not match the expected version '$version'"
-            exit 1
-          fi
-
-      - name: "Verify: Info.plist floor matches the binaries"
-        run: |
-          # A plist floor below the binaries' deployment target admits an
-          # install the binaries cannot load, through both Gatekeeper and brew:
-          # `brew bump` derives the cask's `depends_on macos:` from this value,
-          # so a stale plist silently lowers the cask floor (2026-10-17: the
-          # plist said 26.0 while both binaries' LC_BUILD_VERSION minos was
-          # 27.0, and the 0.6.0 bump PR moved the cask to :tahoe/macOS 26).
-          # Compare the plist against each binary's minos, major component only.
-          app=dist/Tandem.app
-          plist_floor=$(plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist")
-          failed=0
-          for bin in Tandem tandem-cli; do
-            minos=$(otool -l "$app/Contents/MacOS/$bin" | awk '/LC_BUILD_VERSION/{f=1} f && $1 == "minos"{print $2; exit}')
-            if [[ "${plist_floor%%.*}" != "${minos%%.*}" ]]; then
-              echo "::error::$bin is built for macOS $minos but Info.plist LSMinimumSystemVersion is $plist_floor"
-              failed=1
-            fi
-          done
-          exit $failed
-
-      - name: "Verify: in-bundle CLI help and no-argument exit codes"
-        run: |
-          # tandem-cli replaces the retired MCP server (ADR 0009). --help prints
-          # usage to stdout and exits 0; no arguments prints usage to stderr and
-          # exits 2. (The old formula's stdin-EOF smoke retired with the server.)
-          cli=dist/Tandem.app/Contents/MacOS/tandem-cli
-          "$cli" --help >/dev/null
-          code=0
-          "$cli" </dev/null >/dev/null 2>/dev/null || code=$?
-          if [[ "$code" -ne 2 ]]; then
-            echo "::error::tandem-cli with no arguments exited $code, expected 2"
-            exit 1
-          fi
-
-      - name: Zip the artifact and compute the checksum
-        run: |
-          cd dist
-          zip -rX "Tandem-$version.zip" Tandem.app
+          cd app/dist
           shasum -a 256 "Tandem-$version.zip" > SHA256SUMS
           cat SHA256SUMS
-
-      - name: "Verify: the zip contains an intact app"
-        run: |
-          mkdir "$RUNNER_TEMP/zipcheck"
-          unzip -q "dist/Tandem-$version.zip" -d "$RUNNER_TEMP/zipcheck"
-          app="$RUNNER_TEMP/zipcheck/Tandem.app"
-          test -x "$app/Contents/MacOS/Tandem"
-          test -x "$app/Contents/MacOS/tandem-cli"
-          codesign --verify --strict "$app"
 
       - name: Upload the artifact
         uses: actions/upload-artifact@v4
         with:
           name: Tandem-${{ env.version }}
           path: |
-            dist/Tandem-${{ env.version }}.zip
-            dist/SHA256SUMS
+            app/dist/Tandem-${{ env.version }}.zip
+            app/dist/Tandem-${{ env.version }}.dmg
+            app/dist/SHA256SUMS
 
   release:
-    # The aggregator, and the name the branch protection requires. It runs
-    # after both halves, so the merge still waits for the gates and for the
-    # build: a release is still published only from a run whose tests passed.
+    # The publisher, and the name the branch protection requires. It runs after
+    # the build, so a release is published only from a run whose artifact was
+    # verified.
     #
-    # `!cancelled()` (GitHub's own pattern for "run me whatever the
-    # dependencies did") rather than the default `success()`: a job skipped
-    # because a dependency failed reports "Success" to the branch protection
-    # (skipped is a passing status), so the required check would read as green
-    # on a red test run. This job runs instead, and the step below turns a red
-    # half into a red `release` — the check the protection watches fails, as
-    # it did before the split.
-    needs: [test, build]
+    # `!cancelled()` (GitHub's own pattern for "run me whatever the dependencies
+    # did") rather than the default `success()`: a job skipped because a
+    # dependency failed reports "Success" to the branch protection (skipped is a
+    # passing status), so the required check would read as green on a red build.
+    # This job runs instead, and the step below turns a red build into a red
+    # `release`, the check the protection watches.
+    needs: [build]
     if: ${{ !cancelled() }}
-    runs-on: xcode-27
+    # macOS because the tap step runs brew (`--verify`), and the runner has it.
+    runs-on: macos-latest
     timeout-minutes: 15
     permissions:
       contents: write # needed by the publish step (gh release); no other job has it
     steps:
-      - name: "Verify: both halves are green"
+      - name: "Verify: the build is green"
         env:
-          TEST_RESULT: ${{ needs.test.result }}
           BUILD_RESULT: ${{ needs.build.result }}
         run: |
-          if [[ "$TEST_RESULT" != "success" || "$BUILD_RESULT" != "success" ]]; then
-            echo "::error::the release aggregator needs both halves green (test: $TEST_RESULT, build: $BUILD_RESULT)"
+          if [[ "$BUILD_RESULT" != "success" ]]; then
+            echo "::error::the release aggregator needs the build green (build: $BUILD_RESULT)"
             exit 1
           fi
 
@@ -297,7 +206,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "Tandem $version" \
             --notes "$notes" \
-            "dist/Tandem-$version.zip" dist/SHA256SUMS
+            "dist/Tandem-$version.zip" "dist/Tandem-$version.dmg" dist/SHA256SUMS
 
       - name: Bump the tap cask (tag runs only)
         # The second half of the release, in the same run (ADR 0036): the tap's

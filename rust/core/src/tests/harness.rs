@@ -1,6 +1,6 @@
 //! The harness read, and the wrapper's whole shape: a resumed pass lands its
-//! usage on a record of its own and keeps the board it carried
-//! (`Scripts/usage-report.sh` today, `docs/port.md` Where the old code goes).
+//! usage on a record of its own and keeps the board it carried (the read
+//! `session end --usage-from-harness` makes, `docs/port.md` Where the old code goes).
 //!
 //! The harness database here is opencode's shape: one `session_v2` row per
 //! session and one `session_message` row per message, the skill loads sitting in
