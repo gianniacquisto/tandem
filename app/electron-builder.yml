@@ -1,9 +1,10 @@
 # electron-builder, three platforms, one artifact each.
 #
-# Signing is deliberately unset: no certificate exists in this repository or in
-# CI. macOS builds with `identity: null`, so the dmg is unsigned and not
-# notarized; Windows and Linux are unsigned for the same reason. Code signing
-# is a follow-up ticket; nothing here reads a secret.
+# No Developer ID certificate exists in this repository or in CI, so macOS is
+# signed ad-hoc (`identity: "-"`): the bundle is sealed and verifies, which is
+# what Gatekeeper needs to stop calling it damaged. It is still not notarized,
+# and Windows and Linux stay unsigned; Developer ID signing and notarization
+# are PRT-32. Nothing here reads a secret.
 appId: com.gianniacquisto.tandem
 productName: Tandem
 copyright: Copyright © 2026 Gianni Acquisto
@@ -56,7 +57,13 @@ mac:
   # the zip's name is a contract, not a preference. The dmg keeps the same
   # stem and only the cask's archive matters to the bump.
   artifactName: ${productName}-${version}.${ext}
-  identity: null
+  # Ad-hoc, not unsigned: `null` left the main executable linker-signed with
+  # `Sealed Resources=none`, which `codesign --verify --deep --strict` rejects
+  # and macOS reports as a damaged app. There is no Team ID, so hardened
+  # runtime is off: with it on, library validation rejects the pre-signed
+  # Electron frameworks. `check-artifact.mjs` proves the seal.
+  identity: "-"
+  hardenedRuntime: false
 
 win:
   target:

@@ -77,8 +77,8 @@ jobs:
         working-directory: app
         run: |
           # electron-builder names the artifact from the app's version, so the
-          # tag's version is stamped before packaging. The build is unsigned by
-          # design (PRT-32 owns signing and notarization).
+          # tag's version is stamped before packaging. The build is ad-hoc
+          # signed (PRT-36); Developer ID signing and notarization are PRT-32.
           npm version "$version" --no-git-tag-version --allow-same-version
           npm run dist
 
@@ -109,6 +109,18 @@ jobs:
           test "$(readlink "$bundle/Contents/MacOS/tandem-cli")" = "../Resources/tandem"
           test -f "$bundle/Contents/Resources/agent/AGENTS.md"
           test "$(cat "$bundle/Contents/Resources/agent/VERSION")" = "$version"
+          # Ad-hoc signed at package time (PRT-36). The v1.0.0 artifact kept
+          # the linker's signature with `Sealed Resources=none`, so the zip
+          # verified as an archive but macOS called the installed app damaged.
+          # The shipped bundle must verify and seal its resources.
+          codesign --verify --deep --strict "$bundle"
+          signature=$(codesign --display --verbose=2 "$bundle" 2>&1)
+          if ! printf '%s\n' "$signature" | grep -Eq 'Sealed Resources( version)?=' \
+            || printf '%s\n' "$signature" | grep -q 'Sealed Resources=none'; then
+            echo "the shipped bundle does not seal its resources:" >&2
+            printf '%s\n' "$signature" >&2
+            exit 1
+          fi
 
       - name: Compute the checksum
         run: |
