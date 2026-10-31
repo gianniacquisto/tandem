@@ -4,7 +4,11 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
-const css = readFileSync(`${appRoot}renderer/src/tokens.css`, 'utf8')
+const tokensPath = `${appRoot}renderer/src/tokens.css`
+
+/** A Windows checkout reads the same stylesheet with CRLF endings. */
+const normalise = (text: string) => text.replace(/\r\n/g, '\n')
+const css = normalise(readFileSync(tokensPath, 'utf8'))
 
 /** `accentDeep` in Swift became `accent-deep` in CSS. */
 const variable = (name: string) => `--${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`
@@ -68,19 +72,47 @@ function declarations(block: string): Map<string, string> {
   return entries
 }
 
-function lightBlock(): string {
-  const match = css.match(/:root\s*\{([\s\S]*?)\n\}/)
+function lightBlock(text = css): string {
+  const match = text.match(/:root\s*\{([\s\S]*?)\n\}/)
   if (!match?.[1]) throw new Error('no :root block in tokens.css')
   return match[1]
 }
 
-function darkBlock(): string {
-  const match = css.match(/@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{([\s\S]*?)\n  \}/)
+function darkBlock(text = css): string {
+  const match = text.match(/@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{([\s\S]*?)\n  \}/)
   if (!match?.[1]) throw new Error('no dark :root block in tokens.css')
   return match[1]
 }
 
+/** The day rule's shape and value, on whichever checkout's text it is given. */
+function checkDayRoot(text: string): void {
+  const rule = text.indexOf(':root')
+  expect(rule).toBeGreaterThan(0)
+
+  const header = text.slice(0, rule).trim()
+  expect(header.startsWith('/*')).toBe(true)
+  expect(header.endsWith('*/')).toBe(true)
+  expect(header.slice(2, -2)).not.toContain('*/')
+
+  expect(text.slice(rule)).toMatch(/^:root \{\n[\s\S]*?\n\}/)
+  expect(declarations(lightBlock(text)).get('paper')).toBe('#F1E9D7')
+}
+
 describe('the design tokens', () => {
+  it('opens with one closed header comment, so the day :root rule parses', () => {
+    checkDayRoot(css)
+  })
+
+  it('holds on a CRLF checkout of the same stylesheet', () => {
+    const crlf = normalise(readFileSync(tokensPath, 'utf8')).replace(/\n/g, '\r\n')
+    expect(crlf).toContain('\r\n')
+    expect(crlf).not.toMatch(/[^\r]\n/)
+
+    const text = normalise(crlf)
+    expect(text).toBe(css)
+    checkDayRoot(text)
+  })
+
   it('keeps every day palette entry, value for value', () => {
     const day = DAY
     expect(day.size).toBe(18)

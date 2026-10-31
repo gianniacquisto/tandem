@@ -1,4 +1,5 @@
-/* The design tokens, frozen at the cutover from the Swift theme. */
+/*
+ * The design tokens, frozen at the cutover from the Swift theme.
  *
  * One file, one palette pair: the day panel is the light scheme and the night
  * panel the dark one, and the app follows the system appearance. Components
