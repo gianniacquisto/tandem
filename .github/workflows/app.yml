@@ -1,8 +1,9 @@
 name: App
 
 # The shell's four gates on the three platforms the port targets, plus one
-# packaging run per platform. The checks this publishes are what a branch rule
-# may name: `app (macos-latest)`, `app (ubuntu-latest)`, `app (windows-latest)`.
+# packaging run per platform, plus the screenshot suite on Linux. The checks
+# this publishes are what a branch rule may name: `app (macos-latest)`,
+# `app (ubuntu-latest)`, `app (windows-latest)` and `shots (ubuntu-latest)`.
 #
 # `push` is path-filtered, where a skipped run costs nothing; `pull_request` is
 # not, because a required check a path-filtered workflow never creates reads
@@ -73,3 +74,49 @@ jobs:
             app/dist/*.AppImage
             app/dist/*.exe
           if-no-files-found: error
+
+  # The port's replacement for `Scripts/shot.sh`: the same job, a browser
+  # instead of an lldb injection. Linux only, because a display there is one
+  # command (`xvfb-run`); the pictures themselves come from the developer's
+  # machine, and this job is the spec's own verdict. The core is built first
+  # because the specs drive the real shell over `rpc`, so the binary is the
+  # subject and not a stub.
+  shots:
+    name: shots (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Build the core
+        working-directory: rust
+        run: cargo build -p tandem
+
+      - name: Install
+        run: npm ci
+
+      - name: Install the window's system libraries
+        run: npx playwright install-deps chromium
+
+      - name: "Gate: the screenshot suite"
+        run: xvfb-run -a npm run shots
+        env:
+          TANDEM_SHOTS_HOME: ../Fixtures/port/Home
+
+      - name: Keep what a failed run left
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shot-run
+          path: |
+            app/test-results
+            app/playwright-report
+          if-no-files-found: ignore
