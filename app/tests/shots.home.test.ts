@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -33,9 +33,9 @@ describe('the shots home', () => {
   })
 
   it('accepts the port fixture home and resolves it', () => {
-    expect(shotsSource({ [HOME_VAR]: '/repo/Fixtures/port/Home' }, repoRoot)).toBe(
-      '/repo/Fixtures/port/Home',
-    )
+    const port = join(repoRoot, 'Fixtures', 'port', 'Home')
+
+    expect(shotsSource({ [HOME_VAR]: port }, repoRoot)).toBe(resolve(port))
   })
 
   it('seeds a scratch copy so no run writes into the committed home', () => {
