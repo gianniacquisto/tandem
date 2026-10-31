@@ -2,6 +2,7 @@ import { expect } from '@playwright/test'
 
 import { capture, openTab, test } from '../../shots/app'
 import { scene } from '../../shots/scenes'
+import { computed, token } from '../../shots/tokens'
 
 /**
  * The Settings face a human reads: the machine's paths (the seeded home and
@@ -36,6 +37,9 @@ test('the settings face, over the seeded homes', async ({ app, window }) => {
   )
   await expect(facts.nth(3).locator('.settings__value')).toHaveText(/\/tmp\/tandem-shots\/user\/\.claude$/)
   await expect(facts.nth(4).locator('.settings__value')).toHaveText(/\/tmp\/tandem-shots\/user\/\.agents$/)
+
+  // The facts panel is a token card: its corner is --radius-card.
+  expect(await computed(window, '.settings__facts', 'border-radius')).toBe(token('radius-card'))
 
   await expect(window.locator('.settings__checks').first().locator('.settings__check')).toHaveCount(8)
   await expect(window.locator('.settings__action')).toHaveText(/^(Install|Repair)$/)

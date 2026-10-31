@@ -8,6 +8,7 @@ import { capture, openTab, test } from '../../shots/app'
 import { seedPath } from '../../shots/home'
 import { REPO_ROOT } from '../../shots/roots'
 import { scene } from '../../shots/scenes'
+import { computed, token } from '../../shots/tokens'
 
 /**
  * The Bikeshed face a human writes in: the tree, the committed editor bundle in
@@ -37,6 +38,9 @@ test('the bikeshed face, over the seeded vault', async ({ app, window }) => {
   await expect(editor.locator('.cm-content')).toContainText('The project overview')
   await expect(window.locator('.editor__title')).toHaveText('fixture')
   await expect(window.locator('.editor__folder')).toHaveText('projects/fixture')
+
+  // The editor frame's titlebar rule is the palette's sand, not a UA border.
+  expect(await computed(window, '.editor__titlebar', 'border-bottom-color')).toBe(token('sand'))
 
   await expect(window.locator('.rail__title').first()).toHaveText('Backlinks')
   await expect(window.locator('.rail__count').first()).toHaveText('1')

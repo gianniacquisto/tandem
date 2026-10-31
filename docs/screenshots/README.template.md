@@ -53,4 +53,10 @@ CI runs the same command on the Linux runner under a virtual display
 (`.github/workflows/app.yml`), so a deliberately broken selector is a red job
 rather than a human reading a diff.
 
+The suite asserts a face, not only its contents: every photographed face checks
+one computed style against the token it reads from
+`app/renderer/src/tokens.css`, because structure alone is not a picture. A
+stylesheet that parses into a stylesheet with no matching rules leaves the same
+DOM, the same row ids and the same counts on unstyled text.
+
 <!-- scenes -->
