@@ -28,6 +28,16 @@ function cli(args: string[]): void {
   })
 }
 
+/** The same store the app reads, through the CLI: the count the face must draw. */
+function cliJson(args: string[]): unknown {
+  return JSON.parse(
+    execFileSync(binary(), args, {
+      env: { ...process.env, TANDEM_HOME: seedPath(), TANDEM_AGENT: 'shots' },
+      encoding: 'utf8',
+    }),
+  )
+}
+
 async function rowIds(window: import('@playwright/test').Page): Promise<Array<string | null>> {
   return window.locator('.ticket-row').evaluateAll((rows) =>
     rows.map((row) => row.getAttribute('data-ticket')),
@@ -58,10 +68,21 @@ test('the tickets face shows one board two ways: the list and the board over one
   await expect(window.locator('.search__input')).toHaveAttribute('placeholder', 'Search tickets…')
 
   // The shipped scope opens on Open; All includes the archive and is the shape
-  // both layouts must agree on.
+  // both layouts must agree on. The count is the store's own, read through the
+  // CLI: the face draws every row the store holds.
+  const store = cliJson(['ticket', 'list', '--filter', 'all', '--archived']) as {
+    tickets: Array<{ id: string }>
+  }
+  const storeIds = store.tickets.map((one) => one.id)
+  if ((process.env['TANDEM_SHOTS_HOME'] ?? '').endsWith('Fixtures/port/Board')) {
+    expect(storeIds.length).toBe(78)
+  }
+
   await window.getByRole('tab', { name: /^All/ }).click()
+  await expect(window.getByRole('tab', { name: /^All/ })).toContainText(String(storeIds.length))
   const listIds = await rowIds(window)
-  expect(listIds.length).toBeGreaterThan(0)
+  expect(listIds.length).toBe(storeIds.length)
+  expect([...listIds].sort()).toEqual([...storeIds].sort())
 
   // A title search that matches nothing says so, in the face's own words.
   await window.locator('.search__input').fill('zzzz no such ticket')

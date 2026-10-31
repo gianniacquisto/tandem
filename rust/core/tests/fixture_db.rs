@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use tandem_core::domain::session::Sessions;
+use tandem_core::domain::{Board, Filter};
 use tandem_core::store::{Home, Store};
 
 fn repo_root() -> PathBuf {
@@ -60,6 +61,10 @@ fn board_committed() -> PathBuf {
         .join("tandem.db")
 }
 
+fn board_home() -> PathBuf {
+    repo_root().join("Fixtures").join("port").join("Board")
+}
+
 fn fixture_home() -> PathBuf {
     repo_root().join("Fixtures").join("port").join("Home")
 }
@@ -75,13 +80,21 @@ fn first_difference(left: &[u8], right: &[u8]) -> Option<usize> {
 /// Run the generator on `seed` and fail naming the first byte that differs from
 /// the committed `frozen` file.
 fn assert_generated(seed: &Path, frozen: &Path) {
+    // Both homes are named `tandem.db`, and two tests run in parallel in one
+    // process, so the scratch root is named for the home and the seed, never
+    // for the store's file name alone.
+    let home = frozen
+        .parent()
+        .and_then(|parent| parent.file_name())
+        .and_then(|name| name.to_str())
+        .unwrap_or("home");
+    let seed_name = seed
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("seed");
     let root = std::env::temp_dir().join(format!(
-        "tandem-fixture-db-{}-{}",
-        std::process::id(),
-        frozen
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or("db")
+        "tandem-fixture-db-{}-{home}-{seed_name}",
+        std::process::id()
     ));
     let _ = fs::remove_dir_all(&root);
     let target = root.join("tandem.db");
@@ -129,6 +142,25 @@ fn the_committed_database_is_what_the_generator_writes() {
 #[test]
 fn the_committed_board_database_is_what_the_generator_writes() {
     assert_generated(&board_seed(), &board_committed());
+}
+
+#[test]
+fn the_board_home_holds_the_78_ticket_shape() {
+    let store = Store::new(Home::resolve(
+        Some(&board_home()),
+        None,
+        Path::new("/nonexistent-user-home"),
+    ));
+    let tickets = Board::new(store)
+        .list_filter(Filter::All)
+        .expect("the board home reads");
+
+    assert_eq!(tickets.len(), 78, "the frozen board is 78 tickets");
+    let lanes: std::collections::BTreeSet<Option<&str>> = tickets
+        .iter()
+        .map(|ticket| ticket.lane.as_deref())
+        .collect();
+    assert_eq!(lanes.len(), 5, "four named lanes and the default area");
 }
 
 #[test]
