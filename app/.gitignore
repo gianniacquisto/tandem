@@ -6,3 +6,4 @@ dist/
 # lives at a fixed scratch path outside the checkout (app/shots/home.ts).
 test-results/
 playwright-report/
+build/

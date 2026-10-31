@@ -11,11 +11,13 @@
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
+    "allowJs": true,
     "noEmit": true
   },
   "include": [
     "electron.vite.config.mts",
     "vitest.config.mts",
+    "scripts/**/*.mjs",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",

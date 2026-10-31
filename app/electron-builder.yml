@@ -21,6 +21,16 @@ files:
   # bundled, and the renderer carries its React bundle.
   - "!node_modules/**/*"
 
+# The core travels inside the artifact: `scripts/prepare-binary.mjs` builds it
+# in release configuration and stages the runner's own name in `build/`, and
+# the shell resolves it at `process.resourcesPath/tandem` (`src/main/binary.ts`).
+extraResources:
+  - from: build
+    to: .
+    filter:
+      - tandem
+      - tandem.exe
+
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 
 mac:
