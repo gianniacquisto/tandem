@@ -212,6 +212,15 @@ impl Bikeshed {
         Self::with_lock_file(directory, lock_file, shows_hidden_files)
     }
 
+    /// Test-facing: this vault with its own lock window, so a contention case
+    /// on a slow runner does not race the production 2 s (`LOCK_TIMEOUT`,
+    /// which stays 2 s).
+    #[cfg(test)]
+    pub(crate) fn with_lock_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.storage = self.storage.with_timeout(timeout);
+        self
+    }
+
     /// A vault with an explicit sidecar lockfile: the default (chosen) folder
     /// keeps its lock in Tandem's home rather than beside an arbitrary folder.
     pub fn with_lock_file(

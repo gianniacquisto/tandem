@@ -155,8 +155,8 @@ impl Drop for GateGuard<'_> {
 /// notifies it or the window closes, so contention costs the waiting thread no
 /// CPU. A notified waiter whose window closed in the meantime answers locked,
 /// exactly as a `yield_now` loop would have.
-fn enter_gate<'a>(gate: &'a Gate, home: &Path) -> Result<GateGuard<'a>> {
-    let deadline = Instant::now() + BUSY_TIMEOUT;
+fn enter_gate<'a>(gate: &'a Gate, home: &Path, timeout: Duration) -> Result<GateGuard<'a>> {
+    let deadline = Instant::now() + timeout;
     let mut held = gate
         .held
         .lock()
@@ -231,6 +231,10 @@ pub type Result<T> = std::result::Result<T, StoreError>;
 #[derive(Debug, Clone)]
 pub struct Store {
     home: Home,
+    /// How long this store's writes wait for the process-local gate: the
+    /// production [`BUSY_TIMEOUT`], unless a test configures its own. The
+    /// constant stays 2 s; only the contention cases widen their own store.
+    gate_timeout: Duration,
     /// The revision of the last write this store performed, read inside that
     /// write's transaction and shared by every clone. A receipt can carry the
     /// exact number its rows are at, without a second transaction that another
@@ -249,10 +253,21 @@ impl Store {
     pub fn new(home: Home) -> Self {
         Self {
             home,
+            gate_timeout: BUSY_TIMEOUT,
             last_revision: Arc::new(AtomicI64::new(0)),
             #[cfg(test)]
             watch_opens: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
+    }
+
+    /// Test-facing: this store with its own gate window. The production
+    /// [`BUSY_TIMEOUT`] stays 2 s; a contention case on a loaded runner
+    /// configures its own, and a deliberate hold longer than that configured
+    /// window still answers `Locked`.
+    #[cfg(test)]
+    pub(crate) fn with_gate_timeout(mut self, timeout: Duration) -> Self {
+        self.gate_timeout = timeout;
+        self
     }
 
     pub fn home(&self) -> &Home {
@@ -389,7 +404,7 @@ impl Store {
         // after the store's window; across processes the engine's write lock
         // and the busy window are the bound (ADR 0031).
         let gate = write_gate(self.home.directory());
-        let _gate = enter_gate(&gate, self.home.directory())?;
+        let _gate = enter_gate(&gate, self.home.directory(), self.gate_timeout)?;
         // A writer killed mid-backup leaves its temp beside the database, and
         // nothing renames it: the sweep under the gate clears it, the same rule
         // the bikeshed's vault applies to its notes' temps (ADR 0031).
