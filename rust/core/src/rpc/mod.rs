@@ -38,12 +38,15 @@ use crate::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, Filter, Status, TicketQuery,
     resolve_assignee, resolve_origin,
 };
+use crate::setup::Environment;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
-    ArchivedReply, CommentListReply, CommentReply, Event, LaneDeletionReply, LaneListReply, Method,
-    Outcome, Reply, Request, Response, TicketListReply, TicketReply, UsageReportReply, WireError,
+    ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, HostRoot, LaneDeletionReply,
+    LaneListReply, Method, Outcome, Reply, Request, Response, SetupReply, TicketListReply,
+    TicketReply, UsageReportReply, WireError,
 };
-use crate::wire::{CommentView, TicketDetail, TicketSummary, UsageReportView};
+use crate::wire::{CommentView, TicketDetail, TicketSummary, UsageReportView, slashed_path};
+use crate::{diagnostics, setup};
 
 /// The most one frame may carry. A description is text a human wrote; a
 /// megabyte is far past any of them, and the cap keeps an untrusted writer from
@@ -290,10 +293,17 @@ fn watch<S: Stream>(stream: &S, store: &Store, stop: &AtomicBool) {
 /// This is the whole protocol minus the transport, so the suite can drive it
 /// without a process and the pipe test can drive it through one.
 pub fn handle(frame: &str, store: &Store, actor: &Actor) -> String {
+    handle_in(frame, store, actor, &process_environment())
+}
+
+/// [`handle`] with the environment injected, so a test names a throwaway home
+/// and a fixture bundle instead of the process's own (`setup` and `doctor` read
+/// `HOME`, `XDG_CONFIG_HOME` and `TANDEM_AGENT_BUNDLE`).
+pub fn handle_in(frame: &str, store: &Store, actor: &Actor, environment: &Environment) -> String {
     let response = match serde_json::from_str::<Request>(frame) {
         Ok(request) => {
             let id = request.id;
-            match execute(request.method, store, actor) {
+            match execute(request.method, store, actor, environment) {
                 Ok(reply) => Response {
                     id: Some(id),
                     outcome: Outcome::Result(reply),
@@ -349,7 +359,17 @@ fn classify(frame: &str, error: &serde_json::Error) -> WireError {
 
 /// One method through the domain. Every arm is the CLI verb's call, with the
 /// same defaults: the wire adds no rule of its own.
-fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireError> {
+///
+/// `environment` is the process's, injected so a test can name a throwaway
+/// home and a fixture bundle: the `setup` and `doctor` verbs are the machine's
+/// reads, and the app gets them over this door rather than opening the
+/// filesystem itself.
+fn execute(
+    method: Method,
+    store: &Store,
+    actor: &Actor,
+    environment: &Environment,
+) -> Result<Reply, WireError> {
     let board = Board::with_actor(store.clone(), actor.clone());
     match method {
         Method::TicketList(params) => {
@@ -564,7 +584,63 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
                 moved: deletion.moved,
             }))
         }
+        Method::SetupStatus(_) => {
+            let home = store.home().directory();
+            let executable = std::env::current_exe().unwrap_or_default();
+            let is_debug_build = cfg!(debug_assertions);
+            let bundle = setup::bundle(environment, &executable, is_debug_build);
+            let report = setup::status_with(
+                home,
+                environment,
+                bundle.as_deref(),
+                &executable,
+                is_debug_build,
+            );
+            Ok(Reply::Setup(setup_reply(store, environment, report)))
+        }
+        Method::SetupInstall(params) => {
+            let hosts = setup::hosts(params.host.as_deref())
+                .map_err(|error| WireError::setup(error.to_string()))?;
+            let home = store.home().directory();
+            let executable = std::env::current_exe().unwrap_or_default();
+            let is_debug_build = cfg!(debug_assertions);
+            let bundle = setup::bundle(environment, &executable, is_debug_build);
+            let report = setup::install(home, environment, bundle.as_deref(), params.force, &hosts)
+                .map_err(|error| WireError::setup(error.to_string()))?;
+            Ok(Reply::Setup(setup_reply(store, environment, report)))
+        }
+        Method::DoctorReport(_) => Ok(Reply::Doctor(DoctorReply {
+            report: diagnostics::run(store.home(), environment),
+        })),
     }
+}
+
+/// The Settings surface's one read: the setup verb's report and the roots it is
+/// about. The paths are the core's own rule, so the renderer names none.
+fn setup_reply(store: &Store, environment: &Environment, report: setup::Report) -> SetupReply {
+    let home = store.home().directory();
+    let context = setup::Context::new(home, environment);
+    SetupReply {
+        home: slashed_path(home),
+        bikeshed: slashed_path(&home.join("bikeshed")),
+        hosts: setup::Host::ALL
+            .into_iter()
+            .map(|host| HostRoot {
+                host: host.as_str().to_string(),
+                path: slashed_path(&context.host_root(host)),
+            })
+            .collect(),
+        report,
+    }
+}
+
+/// The environment `setup` and `doctor` read: `HOME`, `XDG_CONFIG_HOME`,
+/// `TANDEM_AGENT_BUNDLE` and the four host flags. A value that is not UTF-8 is
+/// not one of those names and is dropped.
+fn process_environment() -> Environment {
+    std::env::vars_os()
+        .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
+        .collect()
 }
 
 /// A handle the caller named; an absent one is the empty string the CLI passes,

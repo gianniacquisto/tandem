@@ -72,7 +72,9 @@ export function App() {
           dispatch({ type: 'failed', message: usage.error.message })
           return
         }
-        if ('report' in usage.reply) {
+        // Two replies carry a `report` (the doctor's and the usage face's), so
+        // the narrow names the field only this one has.
+        if ('report' in usage.reply && 'ticketTotal' in usage.reply.report) {
           dispatch({ type: 'usage', report: usage.reply.report })
         }
         const reply = board.reply
