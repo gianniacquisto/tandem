@@ -35,4 +35,4 @@ A lens whose file cannot be read is named in the review body, and the gate falls
 
 ## Adding a lens
 
-One file and one row, in the same PR, under the three headings above. A file with no row and a row with no file are both drift, and the pin in `Tests/TandemCoreTests/ScaffoldConventionTests.swift` fails on either.
+One file and one row, in the same PR, under the three headings above. A file with no row and a row with no file are both drift, and the pin in `rust/core/src/tests/scaffold_convention.rs` fails on either.

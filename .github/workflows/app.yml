@@ -91,6 +91,15 @@ jobs:
         if: runner.os == 'macOS'
         run: git diff --exit-code -- app/renderer/public/editor
 
+      - name: "Gate: the tree names no retired path"
+        # The cutover deleted the Swift tree and retired two scripts (RET-91).
+        # This greps the tracked tree, so a doc, prompt or comment that still
+        # names one fails the PR here instead of in review. Once per run: the
+        # check reads git, not the platform.
+        if: runner.os == 'macOS'
+        working-directory: ${{ github.workspace }}
+        run: bash Scripts/check-retired-paths.sh
+
       - name: Build the core the artifact carries
         run: npm run binary:release
 
