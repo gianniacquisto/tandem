@@ -12,13 +12,20 @@
     "",
     "Usage:",
     "  tandem-cli session start [--project <name>] [--agent <name>] [--session <id>]",
-    "                            [--brief <string|->]",
+    "                            [--harness-session <id>]",
+    "                            [--harness-transport <value>] [--brief <string|->]",
     "",
     "An absent `--project` is the working directory's last path component, an",
-    "absent `--agent` is $TANDEM_AGENT, an absent `--session` is",
-    "$OPENCODE_SESSION_ID. `--brief` takes the literal brief text, or",
+    "absent `--agent` is $TANDEM_AGENT, and an absent `--session` mints a",
+    "handle: Tandem owns the record, and $OPENCODE_SESSION_ID is the harness",
+    "pointer, not the key. `--brief` takes the literal brief text, or",
     "`--brief -` which reads it from stdin — never a file path, which is",
-    "refused."
+    "refused.",
+    "",
+    "`--harness-session` is the harness's own session, a foreign pointer on the",
+    "record; an absent one is $OPENCODE_SESSION_ID, and an absent",
+    "`--harness-transport` is `database`, the external opencode this Mac runs.",
+    "`event-stream` reads the embedded harness's events instead."
   ],
   "stdoutKind": "text"
 }

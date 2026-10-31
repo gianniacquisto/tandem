@@ -3,13 +3,26 @@
     "session",
     "start",
     "--project",
-    "fixture"
+    "fixture",
+    "--agent",
+    "builder",
+    "--brief",
+    "A brief the golden keeps."
   ],
-  "exit": 1,
-  "stderr": [
-    "Cannot resolve the session id: set OPENCODE_SESSION_ID to this session's id, or pass --session <id>."
-  ],
+  "exit": 0,
+  "stderr": [],
   "stdin": "",
-  "stdout": [],
-  "stdoutKind": "text"
+  "stdout": {
+    "agent": "builder",
+    "brief": "A brief the golden keeps.",
+    "endedAt": null,
+    "id": "<id>",
+    "outcome": null,
+    "project": "fixture",
+    "startedAt": "<timestamp>",
+    "status": "running",
+    "summary": null,
+    "tickets": []
+  },
+  "stdoutKind": "json"
 }

@@ -55,6 +55,11 @@ pub struct NewComment<'a> {
 /// never infers authorship from the record.
 pub struct NewSession<'a> {
     pub id: &'a str,
+    /// The harness's own session, a foreign pointer (PRT-29). `None` writes
+    /// NULL: a hand-driven record names no harness.
+    pub harness_session_id: Option<&'a str>,
+    /// How that harness session's usage is read, as its wire word.
+    pub harness_transport: Option<&'a str>,
     pub project: &'a str,
     pub agent: Option<&'a str>,
     pub brief: &'a str,
@@ -83,6 +88,8 @@ pub struct NewSession<'a> {
 /// reader that hides a corrupt row.
 pub struct SessionRow {
     pub id: String,
+    pub harness_session_id: Option<String>,
+    pub harness_transport: Option<String>,
     pub project: String,
     pub agent: Option<String>,
     pub brief: String,

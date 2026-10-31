@@ -11,16 +11,22 @@
 //! domain failure rather than a panic. Nothing here writes: the harness owns its
 //! database, and Tandem only reads it.
 //!
-//! **Two reads, one shape.** The row (`session_v2` in opencode's own schema) is
-//! the tokens, the cost and the model; the messages carry the skill loads, one
-//! `skill` tool part per load, counted by name (TAN-241). A number the harness
-//! did not report stays absent, and a skill object with no loads stays absent
-//! too, never an empty map.
+//! **Two transports, one shape.** The `database` transport reads the row
+//! (`session_v2` in opencode's own schema) for the tokens, the cost and the
+//! model, and the messages for the skill loads, one `skill` tool part per load,
+//! counted by name (TAN-241). The `event-stream` transport reads the harness's
+//! own event JSON, one object per line as the app forwards it, and sums the
+//! assistant messages the same way; the skill loads ride the `message.part`
+//! events. A number the harness did not report stays absent, and a skill object
+//! with no loads stays absent too, never an empty map.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use rusqlite::{Connection, OpenFlags, params};
+use serde_json::Value;
 
 use super::error::{DomainError, DomainResult};
 use super::session::{SessionTokens, SkillCounts};
@@ -65,6 +71,156 @@ pub fn read(database: &Path, session_id: &str) -> DomainResult<HarnessUsage> {
     let mut usage = row(&connection, session_id)?;
     usage.skills = skills(&connection, session_id)?;
     Ok(usage)
+}
+
+/// Read `session_id`'s usage out of the harness event stream at `stream`.
+///
+/// The stream is the harness's own event JSON, one object per line. Tandem
+/// reads the `message.updated` events (`info.sessionID`, `info.tokens`,
+/// `info.cost`, `info.modelID`) and the `message.part.updated` events for the
+/// `skill` tool loads, and it reads only the events of `session_id`: another
+/// session's events, a line that is not JSON and a type this build does not use
+/// are skipped, not failures. A missing file is
+/// [`DomainError::NoHarnessEvents`]; a stream with no message for the session
+/// answers no usage at all.
+///
+/// A message is updated repeatedly as it streams, so the last event per message
+/// id is the one that counts and a message is never billed twice. The model is
+/// the last assistant message's, and a skill load is counted once per part id.
+pub fn read_events(stream: &Path, session_id: &str) -> DomainResult<HarnessUsage> {
+    if !stream.is_file() {
+        return Err(DomainError::NoHarnessEvents {
+            path: stream.display().to_string(),
+        });
+    }
+    let file = File::open(stream).map_err(|error| {
+        DomainError::from(StoreError::Io(format!(
+            "could not open the harness event stream at {}: {error}",
+            stream.display()
+        )))
+    })?;
+    let mut messages: BTreeMap<String, (SessionTokens, Option<f64>)> = BTreeMap::new();
+    let mut parts: BTreeSet<String> = BTreeSet::new();
+    let mut skills: BTreeMap<String, i64> = BTreeMap::new();
+    let mut model: Option<String> = None;
+    for (index, line) in BufReader::new(file).lines().enumerate() {
+        let line = line.map_err(|error| {
+            DomainError::from(StoreError::Io(format!(
+                "could not read the harness event stream at {}: {error}",
+                stream.display()
+            )))
+        })?;
+        let Ok(event) = serde_json::from_str::<Value>(line.trim()) else {
+            continue;
+        };
+        match event.get("type").and_then(Value::as_str) {
+            Some("message.updated") => {
+                let Some(info) = event.pointer("/properties/info") else {
+                    continue;
+                };
+                if !of_session(info, session_id) {
+                    continue;
+                }
+                let key = info
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("event-{index}"));
+                messages.insert(
+                    key,
+                    (
+                        event_tokens(info.get("tokens")),
+                        info.get("cost").and_then(Value::as_f64),
+                    ),
+                );
+                if let Some(name) = info
+                    .get("modelID")
+                    .and_then(Value::as_str)
+                    .and_then(non_blank)
+                {
+                    model = Some(name);
+                }
+            }
+            Some("message.part.updated") => {
+                let Some(part) = event.pointer("/properties/part") else {
+                    continue;
+                };
+                if !of_session(part, session_id) {
+                    continue;
+                }
+                if part.get("type").and_then(Value::as_str) != Some("tool") {
+                    continue;
+                }
+                let tool = part
+                    .get("tool")
+                    .or_else(|| part.get("name"))
+                    .and_then(Value::as_str);
+                if tool != Some("skill") {
+                    continue;
+                }
+                let key = part
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("part-{index}"));
+                if !parts.insert(key) {
+                    continue;
+                }
+                if let Some(name) = part
+                    .pointer("/state/input/id")
+                    .and_then(Value::as_str)
+                    .and_then(non_blank)
+                {
+                    *skills.entry(name).or_insert(0) += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut usage = HarnessUsage {
+        model,
+        skills: (!skills.is_empty()).then_some(skills),
+        ..HarnessUsage::default()
+    };
+    let mut spent: Option<f64> = None;
+    for (tokens, cost) in messages.values() {
+        add(&mut usage.tokens.input, tokens.input);
+        add(&mut usage.tokens.output, tokens.output);
+        add(&mut usage.tokens.reasoning, tokens.reasoning);
+        add(&mut usage.tokens.cache_read, tokens.cache_read);
+        add(&mut usage.tokens.cache_write, tokens.cache_write);
+        if let Some(cost) = cost {
+            spent = Some(spent.unwrap_or(0.0) + cost);
+        }
+    }
+    usage.cost = spent;
+    Ok(usage)
+}
+
+/// Whether an event value belongs to `session_id`.
+fn of_session(value: &Value, session_id: &str) -> bool {
+    value.get("sessionID").and_then(Value::as_str) == Some(session_id)
+}
+
+/// The five counts one assistant message reported, absent where it reported none.
+fn event_tokens(value: Option<&Value>) -> SessionTokens {
+    let Some(value) = value else {
+        return SessionTokens::default();
+    };
+    SessionTokens {
+        input: value.get("input").and_then(Value::as_i64),
+        output: value.get("output").and_then(Value::as_i64),
+        reasoning: value.get("reasoning").and_then(Value::as_i64),
+        cache_read: value.pointer("/cache/read").and_then(Value::as_i64),
+        cache_write: value.pointer("/cache/write").and_then(Value::as_i64),
+    }
+}
+
+/// Add one message's piece to the session's total, keeping absence absent.
+fn add(total: &mut Option<i64>, piece: Option<i64>) {
+    if let Some(piece) = piece {
+        *total = Some(total.unwrap_or(0) + piece);
+    }
 }
 
 /// The session row: the five token counts, the cost and the model.

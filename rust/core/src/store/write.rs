@@ -131,9 +131,9 @@ impl Write<'_> {
                 (id, project, agent, brief, status, outcome, summary, started_at,
                  ended_at, tokens_input, tokens_output, tokens_reasoning,
                  tokens_cache_read, tokens_cache_write, seconds, cost, model,
-                 tickets, skills, author)
+                 tickets, skills, harness_session_id, harness_transport, author)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-                     ?15, ?16, ?17, ?18, ?19, ?20)",
+                     ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
             params![
                 session.id,
                 session.project,
@@ -154,6 +154,8 @@ impl Write<'_> {
                 session.model,
                 session.tickets,
                 session.skills,
+                session.harness_session_id,
+                session.harness_transport,
                 self.actor.as_str(),
             ],
         )
@@ -182,7 +184,8 @@ impl Write<'_> {
                 summary = ?7, started_at = ?8, ended_at = ?9, tokens_input = ?10,
                 tokens_output = ?11, tokens_reasoning = ?12, tokens_cache_read = ?13,
                 tokens_cache_write = ?14, seconds = ?15, cost = ?16, model = ?17,
-                tickets = ?18, skills = ?19, author = ?20
+                tickets = ?18, skills = ?19, harness_session_id = ?20,
+                harness_transport = ?21, author = ?22
              WHERE id = ?1
                AND (project IS NOT ?2 OR agent IS NOT ?3 OR brief IS NOT ?4
                     OR status IS NOT ?5 OR outcome IS NOT ?6 OR summary IS NOT ?7
@@ -191,7 +194,8 @@ impl Write<'_> {
                     OR tokens_reasoning IS NOT ?12 OR tokens_cache_read IS NOT ?13
                     OR tokens_cache_write IS NOT ?14 OR seconds IS NOT ?15
                     OR cost IS NOT ?16 OR model IS NOT ?17 OR tickets IS NOT ?18
-                    OR skills IS NOT ?19 OR author IS NOT ?20)",
+                    OR skills IS NOT ?19 OR harness_session_id IS NOT ?20
+                    OR harness_transport IS NOT ?21 OR author IS NOT ?22)",
             params![
                 session.id,
                 session.project,
@@ -212,6 +216,8 @@ impl Write<'_> {
                 session.model,
                 session.tickets,
                 session.skills,
+                session.harness_session_id,
+                session.harness_transport,
                 self.actor.as_str(),
             ],
         )

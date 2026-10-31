@@ -24,7 +24,10 @@ use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
 use tandem_core::bikeshed::{Bikeshed, CaptureKind};
 use tandem_core::diagnostics;
-use tandem_core::domain::session::{SessionOutcome, SessionTokens, Sessions, parse_skills};
+use tandem_core::domain::harness;
+use tandem_core::domain::session::{
+    HarnessSession, HarnessTransport, SessionOutcome, SessionTokens, Sessions, parse_skills,
+};
 use tandem_core::domain::sprint::{SprintMode, Sprints};
 use tandem_core::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Status, TicketQuery,
@@ -372,6 +375,10 @@ struct SessionStartArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     session: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    harness_session: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    harness_transport: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
     brief: Option<String>,
 }
 
@@ -399,6 +406,10 @@ struct SessionEndArgs {
     model: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     skills: Option<String>,
+    #[arg(long)]
+    usage_from_harness: bool,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    harness_events: Option<String>,
 }
 
 #[derive(Args)]
@@ -1078,29 +1089,51 @@ fn session(home: &Home, command: Option<&SessionCommand>) -> Result<(), Failure>
 
     match command {
         SessionCommand::Start(args) => {
-            let id = session_id(args.session.as_deref())?;
+            let id = started_id(args.session.as_deref());
             let project = args.project.clone().unwrap_or_else(project_default);
             let agent = session_agent(args.agent.clone());
             let brief = session_brief(args.brief.as_deref())?;
-            let result = sessions
-                .start(&actor, &id, &project, agent.as_deref(), &brief, None)
-                .map_err(Failure::domain)?;
+            let harness = harness_session(
+                args.harness_session.as_deref(),
+                args.harness_transport.as_deref(),
+            )?;
+            let result = match harness {
+                Some(harness) => sessions.start_with_harness(
+                    &actor,
+                    &id,
+                    &project,
+                    agent.as_deref(),
+                    &brief,
+                    harness,
+                    None,
+                ),
+                None => sessions.start(&actor, &id, &project, agent.as_deref(), &brief, None),
+            }
+            .map_err(Failure::domain)?;
             print(&SessionResult {
                 session: result.value,
                 note: result.note,
             })
         }
         SessionCommand::End(args) => {
-            let id = session_id(args.session.as_deref())?;
+            let id = session_handle(&sessions, args.session.as_deref())?;
             let outcome = session_outcome(args.outcome.as_deref())?;
             let summary = session_summary(args.summary.as_deref())?;
-            let tokens = usage_tokens(args)?;
-            let cost = usage_cost(args.cost.as_deref())?;
-            let model = usage_model(args.model.as_deref());
-            let skills = match args.skills.as_deref() {
+            let mut tokens = usage_tokens(args)?;
+            let mut cost = usage_cost(args.cost.as_deref())?;
+            let mut model = usage_model(args.model.as_deref());
+            let mut skills = match args.skills.as_deref() {
                 Some(raw) => parse_skills(raw).map_err(Failure::domain)?,
                 None => None,
             };
+            if args.usage_from_harness {
+                let record = sessions.show(&id).map_err(Failure::domain)?;
+                let reported = harness_usage(&record, args.harness_events.as_deref())?;
+                tokens = reported.tokens().or(tokens);
+                cost = reported.cost.or(cost);
+                model = reported.model.or(model);
+                skills = reported.skills.or(skills);
+            }
             let stamp = sessions
                 .end(
                     &actor,
@@ -1125,7 +1158,7 @@ fn session(home: &Home, command: Option<&SessionCommand>) -> Result<(), Failure>
             })
         }
         SessionCommand::Link(args) => {
-            let id = session_id(args.session.as_deref())?;
+            let id = session_handle(&sessions, args.session.as_deref())?;
             let ticket = Board::new(store.clone())
                 .ticket(args.ticket.as_deref().unwrap_or(""))
                 .map_err(Failure::domain)?;
@@ -1154,7 +1187,7 @@ fn session(home: &Home, command: Option<&SessionCommand>) -> Result<(), Failure>
             print(&SessionList { sessions: records })
         }
         SessionCommand::Show(args) => {
-            let id = session_id(args.session.as_deref())?;
+            let id = session_handle(&sessions, args.session.as_deref())?;
             let record = sessions.show(&id).map_err(Failure::domain)?;
             let notes = bikeshed(home)
                 .session_notes(&id)
@@ -1347,7 +1380,105 @@ fn resolve_origin(raw: Option<&str>) -> Result<String, Failure> {
     tandem_core::domain::resolve_origin(raw, &Actor::current()).map_err(Failure::domain)
 }
 
-/// A session record's handle: `--session`, else `$OPENCODE_SESSION_ID`. The
+/// The harness session a record points at: `--harness-session`, else
+/// `$OPENCODE_SESSION_ID`; no transport flag is `database`, the external
+/// opencode this Mac dogfoods (PRT-29).
+fn harness_session(
+    raw: Option<&str>,
+    transport: Option<&str>,
+) -> Result<Option<HarnessSession>, Failure> {
+    let from_environment = || {
+        env::var("OPENCODE_SESSION_ID")
+            .map(|id| id.trim().to_string())
+            .unwrap_or_default()
+    };
+    let id = match raw {
+        Some(raw) => raw.trim().to_string(),
+        None => from_environment(),
+    };
+    if id.is_empty() {
+        if raw.is_some() {
+            return Err(Failure::domain(DomainError::EmptyHarnessSessionId));
+        }
+        if transport.is_some() {
+            return Err(Failure::message(
+                "--harness-transport names no harness session. Pass --harness-session <id> with it.",
+            ));
+        }
+        return Ok(None);
+    }
+    let transport = match transport {
+        Some(raw) => HarnessTransport::parse(raw.trim()).ok_or_else(|| {
+            Failure::domain(DomainError::InvalidHarnessTransport(raw.to_string()))
+        })?,
+        None => HarnessTransport::Database,
+    };
+    Ok(Some(HarnessSession { id, transport }))
+}
+
+/// The usage a record's harness session reported, read through the transport
+/// the record names: the event stream `--harness-events` points at, or the
+/// external opencode database.
+fn harness_usage(
+    record: &tandem_core::domain::session::Session,
+    events: Option<&str>,
+) -> Result<harness::HarnessUsage, Failure> {
+    let id = record.harness_session_id.clone().ok_or_else(|| {
+        Failure::domain(DomainError::NoHarnessSession {
+            id: record.id.clone(),
+        })
+    })?;
+    match record.harness_transport {
+        Some(HarnessTransport::EventStream) => {
+            let stream = events
+                .map(str::trim)
+                .filter(|path| !path.is_empty())
+                .ok_or_else(|| Failure::domain(DomainError::NoHarnessEventsPath))?;
+            harness::read_events(Path::new(stream), &id).map_err(Failure::domain)
+        }
+        _ => harness::read(&opencode_database(), &id).map_err(Failure::domain),
+    }
+}
+
+/// The external opencode store: `$OPENCODE_DB`, else the path its own default
+/// names. Tandem reads it read-only and never writes it.
+fn opencode_database() -> PathBuf {
+    if let Some(path) = env::var_os("OPENCODE_DB") {
+        return PathBuf::from(path);
+    }
+    let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    home.join(".local")
+        .join("share")
+        .join("opencode")
+        .join("opencode.db")
+}
+
+/// A session record's handle when the verb opens one: `--session`, else a
+/// minted id. Tandem owns the record (PRT-29); the harness session is a column
+/// beside it, never the key, so a second pass in one harness session opens a
+/// record of its own instead of finding the first one "already recorded".
+fn started_id(raw: Option<&str>) -> String {
+    match raw {
+        Some(raw) => raw.to_string(),
+        None => uuid::Uuid::new_v4().to_string(),
+    }
+}
+
+/// A session record's handle when the verb reads or stamps one: `--session`,
+/// else `$OPENCODE_SESSION_ID`, resolved to the record (an exact id first, then
+/// the harness pointer the older caller speaks).
+fn session_handle(sessions: &Sessions, raw: Option<&str>) -> Result<String, Failure> {
+    let handle = match raw {
+        Some(raw) => raw.to_string(),
+        None => match env::var("OPENCODE_SESSION_ID") {
+            Ok(id) if !id.trim().is_empty() => id,
+            _ => return Err(Failure::domain(DomainError::SessionIdUnset)),
+        },
+    };
+    sessions.resolve(&handle).map_err(Failure::domain)
+}
+
+/// A sprint's session id: `--session`, else `$OPENCODE_SESSION_ID`. The
 /// fallback is the environment's, never an invented one.
 fn session_id(raw: Option<&str>) -> Result<String, Failure> {
     if let Some(raw) = raw {
