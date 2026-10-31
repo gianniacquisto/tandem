@@ -75,6 +75,10 @@ jobs:
 
       - name: Package the app
         working-directory: app
+        env:
+          # electron-builder skips signing on pull-request builds unless this
+          # is set. The signature is ad-hoc and reads no secret (PRT-36).
+          CSC_FOR_PULL_REQUEST: "true"
         run: |
           # electron-builder names the artifact from the app's version, so the
           # tag's version is stamped before packaging. The build is ad-hoc

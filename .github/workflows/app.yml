@@ -95,6 +95,11 @@ jobs:
         run: npm run binary:release
 
       - name: "Gate: package"
+        env:
+          # electron-builder skips signing on pull-request builds unless this
+          # is set. The signature is ad-hoc and reads no secret (PRT-36), so
+          # the warning's fork-risk does not apply.
+          CSC_FOR_PULL_REQUEST: "true"
         run: npm run dist
 
       - name: "Gate: the artifact carries the tandem binary"
