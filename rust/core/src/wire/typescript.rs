@@ -12,13 +12,16 @@
 use ts_rs::{Config, TS};
 
 use super::rpc::{
-    ArchivedReply, CommentAddParams, CommentListReply, CommentReply, EmptyParams, Event,
-    LaneAddParams, LaneDeleteParams, LaneDeletionReply, LaneListReply, LaneRenameParams, Method,
-    Outcome, Reply, Request, Response, TicketAddParams, TicketAnswerParams, TicketArchiveParams,
-    TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams,
-    TicketReply, TicketSetParams, TicketUnblockParams, WireError,
+    ArchivedReply, CommentAddParams, CommentListReply, CommentReply, DoctorReply, EmptyParams,
+    Event, HostRoot, LaneAddParams, LaneDeleteParams, LaneDeletionReply, LaneListReply,
+    LaneRenameParams, Method, Outcome, Reply, Request, Response, SetupInstallParams, SetupReply,
+    TicketAddParams, TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
+    TicketListParams, TicketListReply, TicketMoveParams, TicketReply, TicketSetParams,
+    TicketUnblockParams, WireError,
 };
 use super::views::{CommentView, TicketBlockView, TicketDetail, TicketSummary};
+use super::{DoctorCheck, DoctorReport};
+use crate::setup;
 
 /// Every generated file, by name, in a stable order.
 ///
@@ -104,6 +107,22 @@ pub fn files() -> Vec<(&'static str, String)> {
             LaneDeletionReply::export_to_string(&cfg),
         ),
         render("ArchivedReply.ts", ArchivedReply::export_to_string(&cfg)),
+        render("SetupReply.ts", SetupReply::export_to_string(&cfg)),
+        render("HostRoot.ts", HostRoot::export_to_string(&cfg)),
+        render("DoctorReply.ts", DoctorReply::export_to_string(&cfg)),
+        render("DoctorReport.ts", DoctorReport::export_to_string(&cfg)),
+        render("DoctorCheck.ts", DoctorCheck::export_to_string(&cfg)),
+        render(
+            "SetupInstallParams.ts",
+            SetupInstallParams::export_to_string(&cfg),
+        ),
+        render("Report.ts", setup::Report::export_to_string(&cfg)),
+        render("PathAction.ts", setup::PathAction::export_to_string(&cfg)),
+        render("State.ts", setup::State::export_to_string(&cfg)),
+        render("HostState.ts", setup::HostState::export_to_string(&cfg)),
+        render("Warning.ts", setup::Warning::export_to_string(&cfg)),
+        render("Code.ts", setup::Code::export_to_string(&cfg)),
+        render("Severity.ts", setup::Severity::export_to_string(&cfg)),
         render("TicketSummary.ts", TicketSummary::export_to_string(&cfg)),
         render("TicketDetail.ts", TicketDetail::export_to_string(&cfg)),
         render(
