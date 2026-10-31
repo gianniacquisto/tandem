@@ -17,9 +17,11 @@ Development spawns `rust/target/debug/tandem rpc` against the fixture home,
 still owns `~/.tandem` until the cutover, so the shell never opens it by
 accident.
 
-`TANDEM_BIN` overrides the binary path; a packaged app expects it beside its
-resources (`process.resourcesPath/tandem`), and the bundling of the binary into
-the artifact is still open work.
+`TANDEM_BIN` overrides the binary path. `npm run dev` reads the workspace
+build; a packaged app reads the copy beside its resources
+(`process.resourcesPath/tandem`, `tandem.exe` on Windows), and the artifact
+carries it: `npm run pack` and `npm run dist` build the core in release
+configuration and electron-builder copies it in.
 
 ## Checks
 
@@ -38,6 +40,16 @@ npm run dist
 `electron-builder.yml` builds a dmg on macOS, an NSIS installer on Windows and
 an AppImage on Linux. `.github/workflows/app.yml` runs the same on the three
 hosted runners and uploads one artifact per platform.
+
+The artifact carries the core it runs: `scripts/prepare-binary.mjs` builds
+`tandem` in release configuration and electron-builder copies it beside the
+app's resources, so an installed app spawns nothing from a checkout. The macOS
+arm64 dmg is about 118 MB, of which the core is about 6 MB.
+
+Two gates check that. `npm run check:artifact` asserts the binary sits where
+`src/main/binary.ts` resolves it; `npm run smoke` launches the packaged app
+against a copy of `Fixtures/port/Home` and requires `ticket.list` to answer a
+revision. CI runs the second on macOS and Linux, under Xvfb on Linux.
 
 **Code signing is not set up.** The artifacts are unsigned on all three
 platforms: macOS ships with `identity: null` (no notarization), and Windows and
