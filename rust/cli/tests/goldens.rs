@@ -16,11 +16,11 @@
 //!   that file where it sits. Nothing carries between cases, and no run sees
 //!   `~/.tandem`: the child gets an `env_clear`ed environment whose `HOME` and
 //!   `TANDEM_HOME` are directories this test made.
-//! - **Ids, timestamps, the two sandbox paths and the store's schema version
-//!   are names, nothing else.** `<id>`, `<timestamp>`, `<tandem-home>`,
-//!   `<home>`, `<schema>`. The manifest says so, in its own `normalize` list; a
-//!   value that differs between machines and is not in that list is a
-//!   difference this test reports.
+//! - **Ids, timestamps, the two sandbox paths, the store's schema version and the
+//!   answer block's day are names, nothing else.** `<id>`, `<timestamp>`,
+//!   `<tandem-home>`, `<home>`, `<schema>`, `<day>`. The manifest says so, in its
+//!   own `normalize` list; a value that differs between machines and is not in
+//!   that list is a difference this test reports.
 //! - **A case's `mask` is the case admitting what the machine owns.** `doctor`'s
 //!   `app` and `skills` rows read this machine, not the fixture home, so their
 //!   names still compare and their detail is `<environment>`.
@@ -107,6 +107,7 @@ fn transform(text: &str, rule: &Value, prefixes: &[(String, String)]) -> String 
         "prefix" => normalize_prefixes(text, prefixes),
         "uuid" => replace_uuids(text, rule["as"].as_str().unwrap_or("<id>")),
         "timestamp" => replace_timestamps(text, rule["as"].as_str().unwrap_or("<timestamp>")),
+        "answer-day" => replace_answer_day(text, rule["as"].as_str().unwrap_or("<day>")),
         "schema" => replace_schema_version(text, rule["as"].as_str().unwrap_or("<schema>")),
         _ => text.to_owned(),
     }
@@ -235,6 +236,39 @@ fn replace_timestamps(text: &str, name: &str) -> String {
             at += character.len_utf8();
         }
     }
+    out
+}
+
+/// The day in the answer block's heading is the clock's, not content: the heading
+/// reads `## Answer`, an em dash, then `YYYY-MM-DD`, and the day it names is the
+/// one the capture ran on. Only a day that follows that heading is replaced; a bare
+/// date anywhere else (the fixture home's daily note, a quoted date in a body) is
+/// content and stays.
+fn replace_answer_day(text: &str, name: &str) -> String {
+    const HEADING: &str = "## Answer \u{2014} ";
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(at) = rest.find(HEADING) {
+        let after = at + HEADING.len();
+        out.push_str(&rest[..after]);
+        let day = rest.as_bytes().get(after..).unwrap_or_default();
+        let digits = |from: usize, width: usize| -> bool {
+            day.get(from..from + width)
+                .is_some_and(|part| part.iter().all(u8::is_ascii_digit))
+        };
+        let dated = digits(0, 4)
+            && day.get(4) == Some(&b'-')
+            && digits(5, 2)
+            && day.get(7) == Some(&b'-')
+            && digits(8, 2);
+        if dated {
+            out.push_str(name);
+            rest = &rest[after + 10..];
+        } else {
+            rest = &rest[after..];
+        }
+    }
+    out.push_str(rest);
     out
 }
 
@@ -661,6 +695,25 @@ fn a_timestamp_is_its_name() {
         replace_timestamps("dated 2026-10-30 only", "<timestamp>"),
         "dated 2026-10-30 only",
         "a date is not a stamp: the fixture home's daily note keeps it"
+    );
+}
+
+#[test]
+fn an_answer_day_is_its_name() {
+    let text = "## Answer \u{2014} 2026-10-30\n\nThe answer stands.";
+    assert_eq!(
+        replace_answer_day(text, "<day>"),
+        "## Answer \u{2014} <day>\n\nThe answer stands."
+    );
+    assert_eq!(
+        replace_answer_day("daily/2026-10-30.md and 2026-10-30", "<day>"),
+        "daily/2026-10-30.md and 2026-10-30",
+        "a day is the clock's only in the answer heading: elsewhere it is content"
+    );
+    assert_eq!(
+        replace_answer_day("## Answer \u{2014} the 30th\n\nA", "<day>"),
+        "## Answer \u{2014} the 30th\n\nA",
+        "a heading with no date is not a day"
     );
 }
 

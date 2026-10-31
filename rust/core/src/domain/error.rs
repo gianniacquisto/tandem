@@ -39,6 +39,9 @@ pub enum DomainError {
     EmptyCommentBody,
     /// A stdin description body was empty after trimming.
     EmptyDescriptionBody,
+    /// A stdin body was not UTF-8. A body is text, not a vault path, so this is
+    /// its own failure rather than the bikeshed's I/O one.
+    StandardInputNotUtf8,
     /// `list` was given a filter that is not `open`, `done` or `all`.
     InvalidFilter(String),
     /// A status value that is not one of the six.
@@ -180,6 +183,7 @@ impl DomainError {
             Self::EmptyDescriptionBody => "Description body is empty. Provide a non-empty body on \
                  stdin, or pass --description \"\" to clear the description."
                 .to_string(),
+            Self::StandardInputNotUtf8 => "stdin is not valid UTF-8. Try again.".to_string(),
             Self::InvalidFilter(bad) => {
                 format!("filter must be one of open, done, all (got \"{bad}\").")
             }
