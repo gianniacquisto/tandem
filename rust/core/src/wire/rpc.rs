@@ -21,13 +21,14 @@
 //!   of its own) and it can be superseded before the client reads.
 //! - **A method is a domain verb, never a row.** The names are the CLI's
 //!   grammar (`ticket.add` is `ticket add`), and [`METHODS`] is the table the
-//!   parity test walks: every message names a CLI verb, so no UI-only write can
-//!   appear without the CLI growing the same act.
+//!   parity test walks: every write names a CLI verb, so no UI-only write can
+//!   appear without the CLI growing the same act. A read is the one method that
+//!   may name no verb (`usage.report`), and the table says so with an empty one.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::wire::views::{CommentView, TicketDetail, TicketSummary};
+use crate::wire::views::{CommentView, TicketDetail, TicketSummary, UsageReportView};
 
 // MARK: - Requests
 
@@ -105,6 +106,11 @@ methods! {
     SetupStatus: "setup.status", EmptyParams, "setup status";
     SetupInstall: "setup.install", SetupInstallParams, "setup install";
     DoctorReport: "doctor.report", EmptyParams, "doctor";
+    // A read the CLI does not spell a verb for: the Usage face's one report. It
+    // writes nothing, so no UI-only write hides behind it, and the report is the
+    // derivation `usage_report` already froze (PRT-15). An empty verb is how the
+    // table says so; `the_read_methods_without_a_cli_verb_are_named_here` names it.
+    UsageReport: "usage.report", EmptyParams, "";
 }
 
 /// A method that takes nothing. The frame still carries `"params": {}`, so a
@@ -278,6 +284,7 @@ pub enum Outcome {
 #[allow(clippy::large_enum_variant)]
 pub enum Reply {
     TicketList(TicketListReply),
+    UsageReport(UsageReportReply),
     Ticket(TicketReply),
     Comment(CommentReply),
     CommentList(CommentListReply),
@@ -286,6 +293,20 @@ pub enum Reply {
     Archived(ArchivedReply),
     Setup(SetupReply),
     Doctor(DoctorReply),
+}
+
+/// `usage.report`: the reported usage, rolled up over every session record and
+/// labelled from the board.
+///
+/// One message, because the face draws every number from it: the partitions, the
+/// ticket arithmetic, each row's records and each row's bar width (PRT-15). It
+/// carries no revision: the rows are the records and the board as read, the
+/// shell's displayed revision is the listing's, and a change event is what makes
+/// the face read this again.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageReportReply {
+    pub report: UsageReportView,
 }
 
 /// `ticket.list`: the full snapshot and the revision it is a snapshot of.

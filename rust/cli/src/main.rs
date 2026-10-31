@@ -1629,7 +1629,8 @@ fn environment() -> Environment {
 
 /// The machine half of parity item 3 (`docs/port.md`): every method the wire
 /// speaks names a CLI verb, and the grammar answers it. A mutation message
-/// without a verb is a UI-only write, which the contract forbids.
+/// without a verb is a UI-only write, which the contract forbids. A read may name
+/// no verb: it writes nothing, and `usage.report` is the one such method.
 #[cfg(test)]
 mod wire_parity {
     use super::*;
@@ -1637,6 +1638,9 @@ mod wire_parity {
     #[test]
     fn every_wire_method_names_a_cli_verb() {
         for (tag, verb) in tandem_core::wire::rpc::METHODS {
+            if verb.is_empty() {
+                continue;
+            }
             let argv = std::iter::once("tandem").chain(verb.split(' '));
             Cli::try_parse_from(argv).unwrap_or_else(|error| {
                 panic!(
