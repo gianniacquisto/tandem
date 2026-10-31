@@ -222,6 +222,10 @@ pub(crate) struct LockedDirectory {
     /// True for the bikeshed, whose temps sit beside each note in a nested
     /// tree; false for the store, one flat file per directory.
     recursive: bool,
+    /// How long one acquisition waits before answering `Locked`: the
+    /// production [`LOCK_TIMEOUT`], unless a test configures its own
+    /// directory (a slow runner can spend the window on one write).
+    timeout: Duration,
 }
 
 impl LockedDirectory {
@@ -231,7 +235,18 @@ impl LockedDirectory {
             temp_prefix: temp_prefix.into(),
             root,
             recursive: false,
+            timeout: LOCK_TIMEOUT,
         }
+    }
+
+    /// Test-facing: the same directory with a different wait window. The
+    /// production [`LOCK_TIMEOUT`] stays 2 s; a contention case on a loaded
+    /// runner configures its own, and a deliberate hold longer than that
+    /// configured window still answers `Locked`.
+    #[cfg(test)]
+    pub(crate) fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
     }
 
     /// The store's own directory: `<home>/tandem.lock` as the lock file and the
@@ -250,6 +265,7 @@ impl LockedDirectory {
             temp_prefix: BIKESHED_TEMP_PREFIX.to_string(),
             root,
             recursive: true,
+            timeout: LOCK_TIMEOUT,
         }
     }
 
@@ -385,7 +401,7 @@ impl LockedDirectory {
         // One window for the whole wait, as before the queue: the turn in the
         // queue and then the `flock`. The queue only decides who is served
         // first, never how long a writer may wait.
-        let deadline = Instant::now() + LOCK_TIMEOUT;
+        let deadline = Instant::now() + self.timeout;
         let ticket = match queue.take(deadline, &self.root) {
             Ok(ticket) => ticket,
             Err(error) => {

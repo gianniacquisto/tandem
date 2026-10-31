@@ -8,7 +8,7 @@ import { TicketsFace } from './faces/TicketsFace'
 import { UsageFace } from './faces/UsageFace'
 import { closeHref, parseRoute, tabHref, type Route } from './shell/route'
 import { initialSnapshot, snapshotReducer, type SnapshotState } from './shell/snapshot'
-import { writeBlocked, type WriteOutcome } from './shell/write'
+import { refusalBanner, writeBlocked, type WriteCaller, type WriteOutcome } from './shell/write'
 import { TABS } from './shell/tabs'
 import type { TicketListParams } from './wire/TicketListParams'
 import type { TicketSummary } from './wire/TicketSummary'
@@ -166,27 +166,37 @@ export function App() {
   }, [])
 
   const write = useCallback(
-    async (call: Call, expected: number | null): Promise<WriteOutcome> => {
+    async (
+      call: Call,
+      expected: number | null,
+      caller: WriteCaller = 'face',
+    ): Promise<WriteOutcome> => {
+      const refuse = (message: string): WriteOutcome => {
+        const banner = refusalBanner(caller, message)
+        if (banner !== null) dispatch({ type: 'notice', message: banner })
+        return { ok: false, message }
+      }
       const blocked = writeBlocked(state.current, expected)
       if (blocked !== null) {
-        dispatch({ type: 'notice', message: blocked })
         void load()
-        return { ok: false, message: blocked }
+        return refuse(blocked)
       }
       try {
         const answer = await window.tandem.call(call)
-        if ('error' in answer) {
-          dispatch({ type: 'notice', message: answer.error.message })
-          return { ok: false, message: answer.error.message }
-        }
+        if ('error' in answer) return refuse(answer.error.message)
         return { ok: true }
       } catch {
-        const message = 'The write could not reach the store.'
-        dispatch({ type: 'notice', message })
-        return { ok: false, message }
+        return refuse('The write could not reach the store.')
       }
     },
     [load],
+  )
+
+  // The sheet carries its own refusals, so its writes never raise the banner
+  // behind the modal.
+  const sheetWrite = useCallback(
+    (call: Call, expected: number | null): Promise<WriteOutcome> => write(call, expected, 'sheet'),
+    [write],
   )
 
   const dismiss = useCallback(() => dispatch({ type: 'dismiss' }), [])
@@ -251,7 +261,7 @@ export function App() {
             lanes={snapshot.lanes}
             roster={assignees(snapshot.tickets)}
             revision={snapshot.revision}
-            onWrite={write}
+            onWrite={sheetWrite}
             onDismiss={closeSheet}
             onOpenTicket={setOpenTicket}
           />

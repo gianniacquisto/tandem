@@ -12,6 +12,19 @@ export type WriteOutcome = { ok: true } | { ok: false; message: string }
 export type Write = (call: Call, expected: number | null) => Promise<WriteOutcome>
 
 /**
+ * Who made a write. A face has no place of its own to answer a refusal, so it
+ * goes on the shell's banner; the sheet draws the same words beside the field
+ * that raised them, and a banner behind the modal would be a second copy that
+ * outlives Esc.
+ */
+export type WriteCaller = 'face' | 'sheet'
+
+/** The banner a refusal raises, or null when the caller carries the words itself. */
+export function refusalBanner(caller: WriteCaller, message: string): string | null {
+  return caller === 'sheet' ? null : message
+}
+
+/**
  * Whether a write may leave the face, and why not when it may not.
  *
  * The listing's revision is authoritative (PRT-11): a change event is a hint

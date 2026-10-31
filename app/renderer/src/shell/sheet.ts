@@ -213,7 +213,17 @@ export function ticketHandle(ticket: Pick<TicketDetail, 'ref' | 'number'>): stri
   return ticket.number === null ? '#?' : `#${ticket.number}`
 }
 
-export type LaneChoice = { value: string | null; label: string; selected: boolean }
+export type LaneChoice = {
+  value: string | null
+  label: string
+  selected: boolean
+  /**
+   * Whether the store declares the lane. A name only a ticket carries has no
+   * row to rename: `lane.rename` on it answers `UnknownLane`, so the sheet
+   * hides the control rather than offering the refusal.
+   */
+  renamable: boolean
+}
 
 /**
  * The lane surface's list: the default area, the declared lanes, then any name
@@ -231,6 +241,7 @@ export function laneChoices(
     value,
     label: value ?? UNCATEGORIZED,
     selected: value === current,
+    renamable: value !== null && lanes.includes(value),
   }))
 }
 
