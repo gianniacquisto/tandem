@@ -299,6 +299,64 @@ fn list_is_newest_first_with_the_filters_and_show_names_the_numbers_held() {
 }
 
 #[test]
+fn the_lane_only_handles_answer_the_open_record_and_the_close_target() {
+    let sandbox = Sandbox::new("sprint-handles");
+    let store = sandbox.store();
+    let sprints = Sprints::new(&store);
+    let actor = sandbox.actor();
+
+    assert_eq!(
+        sprints.open_in("Port").unwrap_err(),
+        DomainError::NoOpenSprint("Port".to_string()),
+        "a lane with no record has no open sprint"
+    );
+    assert_eq!(
+        sprints.close_in("Port").unwrap_err(),
+        DomainError::NoOpenSprint("Port".to_string()),
+        "a lane with no record has nothing to close"
+    );
+
+    sprints
+        .open(&actor, "Port", SprintMode::Serial, None, Some(&at(0)))
+        .unwrap();
+    sprints
+        .close(&actor, "Port", 1, None, Some(&at(10)))
+        .unwrap();
+    sprints
+        .open(&actor, "Port", SprintMode::Serial, None, Some(&at(20)))
+        .unwrap();
+
+    assert_eq!(sprints.open_in("Port").unwrap().number, 2);
+    assert_eq!(
+        sprints.close_in("Port").unwrap().number,
+        2,
+        "the open record is the close target"
+    );
+
+    sprints
+        .close(&actor, "Port", 2, None, Some(&at(30)))
+        .unwrap();
+    assert_eq!(
+        sprints.open_in("Port").unwrap_err(),
+        DomainError::NoOpenSprint("Port".to_string())
+    );
+    assert_eq!(
+        sprints.close_in("Port").unwrap().number,
+        2,
+        "a close re-run reaches the lane's newest record"
+    );
+
+    assert_eq!(
+        sprints.open_in(" ").unwrap_err(),
+        DomainError::EmptyLaneName
+    );
+    assert_eq!(
+        sprints.close_in(" ").unwrap_err(),
+        DomainError::EmptyLaneName
+    );
+}
+
+#[test]
 fn the_grouping_keeps_first_appearance_order_and_the_list_order_inside_a_lane() {
     let sandbox = Sandbox::new("sprint-grouping");
     let store = sandbox.store();

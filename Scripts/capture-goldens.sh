@@ -19,13 +19,14 @@
 # the shell (a real `TANDEM_HOME`, a real session id) reaches the CLI. A run that
 # writes anywhere else is a bug in the CLI, not a thing this script can do.
 #
-# **Normalized, not massaged.** Ids, timestamps, the two sandbox paths and the
-# store's schema version are replaced with the names the manifest declares
-# (`<id>`, `<timestamp>`, `<tandem-home>`, `<home>`, `<schema>`), because they
-# differ per machine, per day, or per store. Nothing else is touched: a golden
-# that normalizes the shape of the answer proves nothing. `doctor`'s `app` and `skills` rows are the one exception, and the case
-# says so itself (`mask`): those rows read the machine, not the fixture home, so
-# the check names still compare and their detail is `<environment>`.
+# **Normalized, not massaged.** Ids, timestamps, the two sandbox paths, the
+# store's schema version and the answer block's day are replaced with the names
+# the manifest declares (`<id>`, `<timestamp>`, `<tandem-home>`, `<home>`,
+# `<schema>`, `<day>`), because they differ per machine, per day, or per store.
+# Nothing else is touched: a golden that normalizes the shape of the answer
+# proves nothing. `doctor`'s `app` and `skills` rows are the one exception, and
+# the case says so itself (`mask`): those rows read the machine, not the fixture
+# home, so the check names still compare and their detail is `<environment>`.
 #
 # **Which Swift binary.** The default is this checkout's build,
 # `.build/debug/tandem-cli`, because the repo is what the port ports: `Sources/`
@@ -168,6 +169,8 @@ def normalized($rules):
         elif $r.kind == "timestamp" then
           gsub("[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z"; $r.as)
           | gsub("[0-9]{8}T[0-9]{6}Z"; $r.as)
+        elif $r.kind == "answer-day" then
+          gsub("## Answer \u2014 [0-9]{4}-[0-9]{2}-[0-9]{2}"; "## Answer \u2014 " + $r.as)
         elif $r.kind == "schema" then
           sub("tandem\\.db \u2014 v[0-9]+"; "tandem.db \u2014 " + $r.as)
         else . end)
