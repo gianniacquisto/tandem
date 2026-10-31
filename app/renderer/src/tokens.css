@@ -1,0 +1,65 @@
+/* The design tokens, ported from `Sources/Tandem/LigneTheme.swift`.
+ *
+ * One file, one palette pair: the day panel is the light scheme and the night
+ * panel the dark one, and the app follows the system appearance. Components
+ * read these variables and never a raw colour. The test in `tests/tokens.test.ts`
+ * compares every value with the Swift source.
+ */
+:root {
+  color-scheme: light dark;
+
+  --paper: #F1E9D7;
+  --parchment: #E7DECA;
+  --sand: #D6C9AE;
+  --shadow: #C6B897;
+  --line: #C6B99E;
+  --ink: #211D18;
+  --ink-dim: #877D6B;
+  --accent: #6E7D6E;
+  --accent-deep: #55604F;
+  --ember: #A9745C;
+  --ember-deep: #8B5A45;
+  --moss: #6C7A66;
+  --moss-deep: #7E8D77;
+  --sky: #CFDDE2;
+  --hill: #B7C4AE;
+  --hill-far: #C8CFBB;
+  --skin: #E4C9A2;
+  --sun: #E5C07B;
+
+  --hairline: 1px;
+  --radius-checkbox: 5px;
+  --radius-control: 9px;
+  --radius-card: 12px;
+  --space-gutter: 20px;
+  --space-row: 40px;
+  --space-control: 32px;
+  --space-lane: 12px;
+  --motion-insert: 200ms;
+  --motion-toggle: 180ms;
+  --motion-remove: 150ms;
+  --window-floor: 760px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #23211C;
+    --parchment: #2C2A23;
+    --sand: #3C3930;
+    --shadow: #191712;
+    --line: #494437;
+    --ink: #EDE6D3;
+    --ink-dim: #9C9583;
+    --accent: #93A48F;
+    --accent-deep: #6E7E6A;
+    --ember: #C08A70;
+    --ember-deep: #9E6B54;
+    --moss: #8FA084;
+    --moss-deep: #74856E;
+    --sky: #2A2E28;
+    --hill: #3A4441;
+    --hill-far: #313A36;
+    --skin: #E3C29B;
+    --sun: #EDE6D3;
+  }
+}

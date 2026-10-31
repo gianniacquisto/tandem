@@ -1,0 +1,122 @@
+/* The shell's layout: header, tab strip, face body. Every value comes from
+ * `tokens.css`; this file names no colour of its own. */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: var(--window-floor);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.shell__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-gutter);
+  height: 56px;
+  padding: 0 var(--space-gutter);
+}
+
+.shell__wordmark {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.tabs {
+  display: flex;
+  width: 504px;
+  height: var(--space-control);
+  overflow: hidden;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+}
+
+.tab {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 8px;
+  color: var(--ink-dim);
+  font-size: 12.5px;
+  white-space: nowrap;
+  text-decoration: none;
+  transition:
+    background-color var(--motion-toggle) ease-in-out,
+    color var(--motion-toggle) ease-in-out;
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.tab[aria-selected="true"] {
+  background: var(--parchment);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.shell__revision {
+  margin-left: auto;
+  color: var(--ink-dim);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.shell__body {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-gutter);
+  border-top: var(--hairline) solid var(--sand);
+}
+
+.shell__error {
+  max-width: 540px;
+  margin: 0 0 var(--space-gutter);
+  padding: 10px 14px;
+  border: var(--hairline) solid var(--ember);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ember-deep);
+}
+
+.face {
+  max-width: 540px;
+}
+
+.face__title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.face__blurb {
+  margin: 0 0 var(--space-gutter);
+  color: var(--ink-dim);
+}
+
+.face__fact {
+  margin: 0;
+  padding: 12px 14px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--parchment);
+}
