@@ -18,6 +18,10 @@
 //! comment on that ticket states, so the ticket rows sum to `cost + overlap`
 //! rather than to `cost`. [`UsageReport::ticket_total`] is the sum and the face
 //! says the overlap once.
+//!
+//! **The bar is the report's too.** [`UsageRow::bar_percent`] is a row's cost
+//! over its table's largest, the width the Swift face derived in its view
+//! (`UsageFace.bar`). The ported face formats it and derives nothing (PRT-15).
 
 use std::collections::BTreeMap;
 
@@ -139,6 +143,11 @@ pub struct UsageRow {
     pub reported: usize,
     /// The reported records' summed cost.
     pub cost: f64,
+    /// The bar's width, as a percentage of the largest cost in the row's own
+    /// table (`0` to `100`, and `0` when no row of that table reported a cost).
+    /// It lives in the report, not the face, so the face formats it and computes
+    /// no percentage of its own (PRT-15).
+    pub bar_percent: f64,
     /// The reported records' summed token counts.
     pub tokens: SessionTokens,
     /// The records behind the row, newest `started_at` first.
@@ -201,6 +210,7 @@ pub fn usage_report(
         })
         .collect();
     cost_then_label(&mut model_rows);
+    with_bars(&mut model_rows);
 
     let mut agent_rows: Vec<UsageRow> = agent_buckets
         .into_iter()
@@ -214,6 +224,7 @@ pub fn usage_report(
         })
         .collect();
     cost_then_label(&mut agent_rows);
+    with_bars(&mut agent_rows);
 
     let mut ticket_rows: Vec<UsageRow> = ticket_buckets
         .into_iter()
@@ -236,13 +247,15 @@ pub fn usage_report(
             ticketless,
         ));
     }
+    with_bars(&mut ticket_rows);
 
     // Day rows read newest first; the key is a zero-padded local date.
-    let day_rows: Vec<UsageRow> = day_buckets
+    let mut day_rows: Vec<UsageRow> = day_buckets
         .into_iter()
         .rev()
         .map(|(key, records)| row(key.clone(), key, records))
         .collect();
+    with_bars(&mut day_rows);
 
     let mut overlap = 0.0;
     for session in sessions {
@@ -330,8 +343,23 @@ fn row(id: String, label: String, mut sessions: Vec<Session>) -> UsageRow {
         records: summary.records,
         reported: summary.reported,
         cost: summary.cost,
+        bar_percent: 0.0,
         tokens: summary.tokens(),
         sessions,
+    }
+}
+
+/// Scale each row's bar to the largest cost in the table being drawn: the one
+/// quantity the Swift face derived itself (`UsageFace.bar`), moved into the
+/// report so the ported face does no arithmetic (PRT-15). A table whose rows all
+/// report nothing draws empty bars rather than a division by zero.
+fn with_bars(rows: &mut [UsageRow]) {
+    let largest = rows.iter().map(|row| row.cost).fold(0.0, f64::max);
+    if largest <= 0.0 {
+        return;
+    }
+    for row in rows {
+        row.bar_percent = row.cost / largest * 100.0;
     }
 }
 

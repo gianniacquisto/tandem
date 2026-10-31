@@ -18,8 +18,9 @@
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::domain::session::Session;
+use crate::domain::session::{Session, SessionTokens};
 use crate::domain::sprint::Sprint;
+use crate::domain::usage::{UsageReport, UsageRow};
 use crate::domain::{Comment, LaneDeletion, Ticket, TicketBlock};
 use crate::store::timestamp::encode;
 
@@ -278,4 +279,136 @@ pub struct NotePathView {
     pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+}
+
+// MARK: - Usage
+
+/// The five token pieces a record reported, each absent on the wire when it was
+/// not reported: the face draws the absent mark, never a zero dressed up as a
+/// count.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageTokensView {
+    pub input: Option<i64>,
+    pub output: Option<i64>,
+    pub reasoning: Option<i64>,
+    pub cache_read: Option<i64>,
+    pub cache_write: Option<i64>,
+}
+
+impl UsageTokensView {
+    fn new(tokens: &SessionTokens) -> Self {
+        Self {
+            input: tokens.input,
+            output: tokens.output,
+            reasoning: tokens.reasoning,
+            cache_read: tokens.cache_read,
+            cache_write: tokens.cache_write,
+        }
+    }
+}
+
+/// One record behind a row, as the roll-down draws it: the session id, the agent
+/// and model it was stamped with, its local start, and what it reported. The
+/// record's brief and summary belong to the session surfaces, not to this one.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageSessionView {
+    pub id: String,
+    pub agent: Option<String>,
+    pub model: Option<String>,
+    pub started_at: String,
+    pub cost: Option<f64>,
+    pub tokens: Option<UsageTokensView>,
+    /// The tickets the record carried, as ids: the face resolves one to its ref
+    /// and opens its sheet.
+    pub tickets: Vec<String>,
+}
+
+impl UsageSessionView {
+    fn new(session: &Session) -> Self {
+        Self {
+            id: session.id.clone(),
+            agent: session.agent.clone(),
+            model: session.model.clone(),
+            started_at: session.started_at.clone(),
+            cost: session.cost,
+            tokens: session.tokens.as_ref().map(UsageTokensView::new),
+            tickets: session.tickets.clone(),
+        }
+    }
+}
+
+/// One line of the table: its label, its record count, its tokens, its cost and
+/// the bar's width, all from the report.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageRowView {
+    pub id: String,
+    pub label: String,
+    pub records: usize,
+    pub reported: usize,
+    pub cost: f64,
+    /// The bar's width as a percentage of the row's own table, derived with the
+    /// report: the face writes the width and computes no percentage (PRT-15).
+    pub bar_percent: f64,
+    pub tokens: UsageTokensView,
+    /// The records behind the row, newest start first.
+    pub sessions: Vec<UsageSessionView>,
+}
+
+impl UsageRowView {
+    fn new(row: &UsageRow) -> Self {
+        Self {
+            id: row.id.clone(),
+            label: row.label.clone(),
+            records: row.records,
+            reported: row.reported,
+            cost: row.cost,
+            bar_percent: row.bar_percent,
+            tokens: UsageTokensView::new(&row.tokens),
+            sessions: row.sessions.iter().map(UsageSessionView::new).collect(),
+        }
+    }
+
+    fn rows(rows: &[UsageRow]) -> Vec<Self> {
+        rows.iter().map(Self::new).collect()
+    }
+}
+
+/// `usage.report`: the whole report the Usage face draws, one message.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageReportView {
+    pub records: usize,
+    pub reported: usize,
+    pub cost: f64,
+    pub tokens: UsageTokensView,
+    pub day: Vec<UsageRowView>,
+    pub model: Vec<UsageRowView>,
+    pub agent: Vec<UsageRowView>,
+    pub ticket: Vec<UsageRowView>,
+    /// The ticket rows' excess over `cost`: a shared record's cost per extra
+    /// ticket.
+    pub overlap: f64,
+    /// What the ticket rows add up to, `cost + overlap`, said once in the
+    /// header.
+    pub ticket_total: f64,
+}
+
+impl UsageReportView {
+    pub fn new(report: &UsageReport) -> Self {
+        Self {
+            records: report.records,
+            reported: report.reported,
+            cost: report.cost,
+            tokens: UsageTokensView::new(&report.tokens),
+            day: UsageRowView::rows(&report.day),
+            model: UsageRowView::rows(&report.model),
+            agent: UsageRowView::rows(&report.agent),
+            ticket: UsageRowView::rows(&report.ticket),
+            overlap: report.overlap,
+            ticket_total: report.ticket_total(),
+        }
+    }
 }

@@ -23,11 +23,14 @@ fixture home. A refusal exits non-zero and writes nothing.
 Swift app, so `Scripts/shot.sh` cannot drive it. That picture is the shell's own
 in-process rig, `TANDEM_SHOT=<path.png> npm run dev` in `app/` against
 `Fixtures/port/Home`, spelled out in `app/README.md` and held to the same rule:
-a fixture home, the app's own capture, a refusal writes nothing.
+a fixture home, the app's own capture, a refusal writes nothing. The port's own
+faces are photographed the same way until the Playwright suite (PRT-19) takes
+over the catalogue.
 
 | file | what it shows |
 | --- | --- |
 | `electron-shell.png` | the port's Electron shell at its 760 pt floor: the wordmark, the four kept tabs (Tickets, Bikeshed, Usage, Settings) and the store revision read over `rpc` |
+| `usage-face.png` | the port's **Usage** face over `Fixtures/port/Home`: the reported spend and its coverage, the ticket rows' arithmetic, the Day/Model/Agent/Ticket picker, and a ticket row rolled down to the records behind it, each naming its session, agent, model, local start, cost, tokens and the tickets it carried |
 | `tickets-tab.png` | the main window's **Tickets** tab: the quick-add, the Open/Done/All/Archived counts, the search field and the lane-grouped list |
 | `tickets-search-empty.png` | the same tab with a search that matches nothing — "No ticket title matches your search." |
 | `board.png` | the **Board** view: Status columns across, cycle lanes down, a ticket drawn where its Status and lane meet |

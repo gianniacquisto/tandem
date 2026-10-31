@@ -17,9 +17,12 @@ use super::rpc::{
     LaneRenameParams, Method, Outcome, Reply, Request, Response, SetupInstallParams, SetupReply,
     TicketAddParams, TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
     TicketListParams, TicketListReply, TicketMoveParams, TicketReply, TicketSetParams,
-    TicketUnblockParams, WireError,
+    TicketUnblockParams, UsageReportReply, WireError,
 };
-use super::views::{CommentView, TicketBlockView, TicketDetail, TicketSummary};
+use super::views::{
+    CommentView, TicketBlockView, TicketDetail, TicketSummary, UsageReportView, UsageRowView,
+    UsageSessionView, UsageTokensView,
+};
 use super::{DoctorCheck, DoctorReport};
 use crate::setup;
 
@@ -130,5 +133,22 @@ pub fn files() -> Vec<(&'static str, String)> {
             TicketBlockView::export_to_string(&cfg),
         ),
         render("CommentView.ts", CommentView::export_to_string(&cfg)),
+        render(
+            "UsageReportReply.ts",
+            UsageReportReply::export_to_string(&cfg),
+        ),
+        render(
+            "UsageReportView.ts",
+            UsageReportView::export_to_string(&cfg),
+        ),
+        render("UsageRowView.ts", UsageRowView::export_to_string(&cfg)),
+        render(
+            "UsageSessionView.ts",
+            UsageSessionView::export_to_string(&cfg),
+        ),
+        render(
+            "UsageTokensView.ts",
+            UsageTokensView::export_to_string(&cfg),
+        ),
     ]
 }

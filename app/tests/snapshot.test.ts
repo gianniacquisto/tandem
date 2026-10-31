@@ -8,6 +8,7 @@ describe('the shell snapshot', () => {
       status: 'connecting',
       revision: null,
       tickets: 0,
+      usage: null,
       error: null,
     })
   })
@@ -34,5 +35,43 @@ describe('the shell snapshot', () => {
     expect(failed.status).toBe('failed')
     expect(failed.revision).toBe(12)
     expect(failed.error).toBe('the store is locked')
+  })
+
+  it('carries the one usage report the Usage face draws', () => {
+    const drawn = {
+      records: 4,
+      reported: 3,
+      cost: 2.5,
+      tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
+      day: [],
+      model: [],
+      agent: [],
+      ticket: [],
+      overlap: 0.75,
+      ticketTotal: 3.25,
+    }
+    const next = snapshotReducer(initialSnapshot, { type: 'usage', report: drawn })
+
+    expect(next.usage).toBe(drawn)
+    expect(next.revision).toBeNull()
+  })
+
+  it('keeps the last report when the next read fails', () => {
+    const drawn = {
+      records: 4,
+      reported: 3,
+      cost: 2.5,
+      tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
+      day: [],
+      model: [],
+      agent: [],
+      ticket: [],
+      overlap: 0.75,
+      ticketTotal: 3.25,
+    }
+    const ready = snapshotReducer(initialSnapshot, { type: 'usage', report: drawn })
+    const failed = snapshotReducer(ready, { type: 'failed', message: 'no store' })
+
+    expect(failed.usage).toBe(drawn)
   })
 })
