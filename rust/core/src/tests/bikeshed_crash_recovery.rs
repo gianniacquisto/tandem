@@ -94,3 +94,26 @@ fn an_orphaned_temp_older_than_60_seconds_is_cleaned_by_the_next_locked_op() {
     assert!(!vault.exists(orphan));
     assert_eq!(vault.read("A.md"), "see [[B]] still");
 }
+
+#[test]
+fn a_recovery_names_the_temp_until_the_next_locked_op_sweeps_it() {
+    let vault = Vault::new("crash-recovery");
+    let bikeshed = vault.bikeshed();
+    let temp = ".note-crash-0000-0000-0000-000000000001.tmp";
+    vault.stage(temp, "partial bytes");
+
+    let recoveries = bikeshed.recoveries();
+    assert_eq!(recoveries.len(), 1);
+    assert_eq!(recoveries[0].file, temp);
+    assert_eq!(recoveries[0].bytes, "partial bytes".len() as u64);
+
+    // A fresh temp is a writer's, not a crash's: the next locked operation
+    // leaves it alone.
+    bikeshed.write("A.md", "x").unwrap();
+    assert_eq!(bikeshed.recoveries().len(), 1);
+
+    // Past the sweep's age, the next locked operation takes it.
+    vault.set_modified(temp, SystemTime::now() - Duration::from_secs(120));
+    bikeshed.write("A.md", "y").unwrap();
+    assert!(bikeshed.recoveries().is_empty());
+}

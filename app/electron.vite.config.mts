@@ -40,7 +40,12 @@ export default defineConfig({
     plugins: [react(), policy],
     build: {
       rollupOptions: {
-        input: resolve('renderer/index.html'),
+        input: {
+          // The shell, and the editor frame its one same-origin iframe loads.
+          // `public/editor/` is copied verbatim beside both.
+          index: resolve('renderer/index.html'),
+          editor: resolve('renderer/editor-frame.html'),
+        },
       },
     },
   },

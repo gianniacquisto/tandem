@@ -32,6 +32,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use crate::bikeshed::Bikeshed;
 use crate::domain::session::Sessions;
 use crate::domain::usage::{Calendar, UsageTicket, usage_report};
 use crate::domain::{
@@ -42,10 +43,14 @@ use crate::setup::Environment;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, HostRoot, LaneDeletionReply,
-    LaneListReply, Method, Outcome, Reply, Request, Response, SetupReply, TicketListReply,
-    TicketReply, UsageReportReply, WireError,
+    LaneListReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply, NoteReadReply,
+    NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, Reply, Request, Response,
+    SetupReply, TicketListReply, TicketReply, UsageReportReply, WireError,
 };
-use crate::wire::{CommentView, TicketDetail, TicketSummary, UsageReportView, slashed_path};
+use crate::wire::{
+    BacklinkView, CommentView, NoteContentView, NoteMoveView, NoteNodeView, NoteWriteView,
+    RecoveryView, TicketDetail, TicketSummary, UsageReportView, slashed_path,
+};
 use crate::{diagnostics, setup};
 
 /// The most one frame may carry. A description is text a human wrote; a
@@ -422,6 +427,28 @@ fn execute(
                 .map_err(domain)?;
             Ok(ticket_receipt(&ticket, store))
         }
+        Method::TicketAddFromNote(params) => {
+            let status = match params.status.as_deref() {
+                Some(raw) => Status::parse(raw).map_err(domain)?,
+                None => Status::Backlog,
+            };
+            let assignee = resolve_assignee(params.assignee.as_deref(), actor).map_err(domain)?;
+            let origin = resolve_origin(params.origin.as_deref(), actor).map_err(domain)?;
+            let ticket = board
+                .add_from_note(
+                    params.text.as_deref().unwrap_or(""),
+                    named(&params.note),
+                    AddTicket {
+                        lane: params.lane.as_deref(),
+                        status,
+                        assignee: assignee.as_deref(),
+                        description: None,
+                        origin: &origin,
+                    },
+                )
+                .map_err(domain)?;
+            Ok(ticket_receipt(&ticket, store))
+        }
         Method::TicketSet(params) => {
             let status = match params.status.as_deref() {
                 Some(raw) => Edit::Set(Status::parse(raw).map_err(domain)?),
@@ -612,7 +639,74 @@ fn execute(
         Method::DoctorReport(_) => Ok(Reply::Doctor(DoctorReply {
             report: diagnostics::run(store.home(), environment),
         })),
+        Method::NoteTree(params) => {
+            let bikeshed = Bikeshed::with_reveal(bikeshed_directory(store), params.hidden);
+            Ok(Reply::NoteTree(NoteTreeReply {
+                nodes: bikeshed.tree().iter().map(NoteNodeView::new).collect(),
+            }))
+        }
+        Method::NoteRead(params) => {
+            let path = named(&params.path);
+            let content = open_bikeshed(store).read(path).map_err(domain)?.value;
+            Ok(Reply::NoteRead(NoteReadReply {
+                note: NoteContentView::new(path, &content),
+            }))
+        }
+        Method::NoteWrite(params) => {
+            let path = named(&params.path);
+            // An absent text is not an empty note: the client sent no document,
+            // and writing "" would clear a human's note. `text: ""` is the
+            // explicit clear; a missing field is the refusal.
+            let Some(text) = params.text.as_deref() else {
+                return Err(WireError::domain("the write carries no text"));
+            };
+            let record = open_bikeshed(store)
+                .write(path, text)
+                .map_err(domain)?
+                .value;
+            Ok(Reply::NoteWrite(NoteWriteReply {
+                write: NoteWriteView::new(&record),
+            }))
+        }
+        Method::NoteMove(params) => {
+            let outcome = open_bikeshed(store)
+                .move_into(named(&params.path), named(&params.into))
+                .map_err(domain)?
+                .value;
+            Ok(Reply::NoteMove(NoteMoveReply {
+                moved: NoteMoveView::new(&outcome),
+            }))
+        }
+        Method::NoteHealth(_) => Ok(Reply::NoteHealth(NoteHealthReply {
+            health: open_bikeshed(store).health().map_err(domain)?.value,
+        })),
+        Method::NoteBacklinks(params) => {
+            let path = named(&params.path);
+            let rows = open_bikeshed(store).backlinks(path).map_err(domain)?.value;
+            Ok(Reply::NoteBacklinks(NoteBacklinksReply {
+                path: path.to_string(),
+                backlinks: rows.iter().map(BacklinkView::new).collect(),
+            }))
+        }
+        Method::NoteRecoveries(_) => Ok(Reply::NoteRecoveries(NoteRecoveriesReply {
+            recoveries: open_bikeshed(store)
+                .recoveries()
+                .iter()
+                .map(RecoveryView::new)
+                .collect(),
+        })),
     }
+}
+
+/// The bikeshed a home keeps: `<home>/bikeshed`, the one rule the CLI's note
+/// verbs and the app's reads share.
+fn bikeshed_directory(store: &Store) -> std::path::PathBuf {
+    store.home().directory().join("bikeshed")
+}
+
+/// The vault the note methods read and write.
+fn open_bikeshed(store: &Store) -> Bikeshed {
+    Bikeshed::new(bikeshed_directory(store))
 }
 
 /// The Settings surface's one read: the setup verb's report and the roots it is

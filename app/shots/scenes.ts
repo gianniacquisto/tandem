@@ -30,6 +30,12 @@ export const SCENES: readonly Scene[] = [
       'the **Usage** face over the fixture home: the reported spend and its coverage, the ticket rows and their arithmetic, the Day/Model/Agent/Ticket picker, and a ticket row rolled down to the records behind it, each naming its session, agent, model, local start, cost, tokens and the tickets it carried',
   },
   {
+    id: 'bikeshed',
+    file: 'bikeshed-face.png',
+    description:
+      'the **Bikeshed** face over the fixture home: the scaffold tree with its reveal control, the committed CodeMirror bundle editing the fixture project note in its own frame, the Backlinks dock naming the Index note, the Health panel reporting the daily note as an orphan, and a draft a killed save left named as a recovery',
+  },
+  {
     id: 'settings',
     file: 'settings-face.png',
     description:

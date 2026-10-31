@@ -15,9 +15,14 @@
 //!   A re-run of `session start`, `sprint open` or `lane add` is a success that
 //!   says so, and the note is how it says it.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use serde::Serialize;
 use ts_rs::TS;
 
+use crate::bikeshed::{
+    Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, Recovery, WriteRecord,
+};
 use crate::domain::session::{Session, SessionTokens};
 use crate::domain::sprint::Sprint;
 use crate::domain::usage::{UsageReport, UsageRow};
@@ -279,6 +284,160 @@ pub struct NotePathView {
     pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+}
+
+/// A filesystem instant as the store's ISO-8601 UTC text.
+fn stamp(time: SystemTime) -> String {
+    let seconds = time
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0);
+    encode(seconds)
+}
+
+// MARK: - Notes
+
+/// One tree row: a folder or a note, with its children.
+///
+/// `kind` is `"folder"` or `"note"`, the two words the renderer branches on.
+/// The walk is the core's own (`Bikeshed::tree`): the wire adds no ordering and
+/// no filtering, and the hidden layer is drawn only when the read asked for it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteNodeView {
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub children: Vec<NoteNodeView>,
+}
+
+impl NoteNodeView {
+    pub fn new(node: &BikeshedNode) -> Self {
+        Self {
+            name: node.name.clone(),
+            path: node.path.clone(),
+            kind: match node.kind {
+                NodeKind::Folder => "folder".to_string(),
+                NodeKind::Note => "note".to_string(),
+            },
+            children: node.children.iter().map(Self::new).collect(),
+        }
+    }
+}
+
+/// `note.read`: the note's text, its content hash and its modification stamp.
+///
+/// The hash is the save discipline's whole conflict rule: the buffer tracks the
+/// hash it last agreed with, and a read whose hash differs is an external write.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteContentView {
+    pub path: String,
+    pub text: String,
+    pub hash: String,
+    pub modified_at: String,
+}
+
+impl NoteContentView {
+    pub fn new(path: &str, content: &NoteContent) -> Self {
+        Self {
+            path: path.to_string(),
+            text: content.text.clone(),
+            hash: content.hash.clone(),
+            modified_at: stamp(content.modified_at),
+        }
+    }
+}
+
+/// `note.write`: the path written and the hash of the bytes that landed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteWriteView {
+    pub path: String,
+    pub hash: String,
+}
+
+impl NoteWriteView {
+    pub fn new(record: &WriteRecord) -> Self {
+        Self {
+            path: record.path.clone(),
+            hash: record.hash.clone(),
+        }
+    }
+}
+
+/// One note whose path changed in a move.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MovedNoteView {
+    pub old_path: String,
+    pub new_path: String,
+}
+
+impl MovedNoteView {
+    fn new(note: &MovedNote) -> Self {
+        Self {
+            old_path: note.old_path.clone(),
+            new_path: note.new_path.clone(),
+        }
+    }
+}
+
+/// `note.move`: where the note or folder landed, and every note it carried.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteMoveView {
+    pub path: String,
+    pub old_path: String,
+    pub is_folder: bool,
+    pub moved_notes: Vec<MovedNoteView>,
+}
+
+impl NoteMoveView {
+    pub fn new(outcome: &crate::bikeshed::MoveOutcome) -> Self {
+        Self {
+            path: outcome.path.clone(),
+            old_path: outcome.old_path.clone(),
+            is_folder: outcome.is_folder,
+            moved_notes: outcome.moved_notes.iter().map(MovedNoteView::new).collect(),
+        }
+    }
+}
+
+/// One backlink row: the note that links here, and the line of its first link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct BacklinkView {
+    pub path: String,
+    pub line: String,
+}
+
+impl BacklinkView {
+    pub fn new(backlink: &Backlink) -> Self {
+        Self {
+            path: backlink.path.clone(),
+            line: backlink.line.clone(),
+        }
+    }
+}
+
+/// One orphaned temp a killed save left: the file, its size and its stamp.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryView {
+    pub file: String,
+    pub bytes: u64,
+    pub modified_at: String,
+}
+
+impl RecoveryView {
+    pub fn new(recovery: &Recovery) -> Self {
+        Self {
+            file: recovery.file.clone(),
+            bytes: recovery.bytes,
+            modified_at: stamp(recovery.modified_at),
+        }
+    }
 }
 
 // MARK: - Usage
