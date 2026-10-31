@@ -58,8 +58,10 @@ TANDEM_SHOTS_HOME=../Fixtures/port/Home npm run shots
 
 `TANDEM_SHOTS_HOME` is required and must name a home under `Fixtures/`; a run
 against `~/.tandem` is refused before a window opens, and the app opens a
-scratch copy so the committed fixture is never written to. A scene is one row
-in `shots/scenes.ts` and one spec in `tests/shots/`.
+scratch copy (`/tmp/tandem-shots/Home`) so the committed fixture is never
+written to. The seed is that copy plus a fixed clock (`shots/clock.ts`) and a
+fixed fixture user home, so a run writes the same picture it wrote last time. A
+scene is one row in `shots/scenes.ts` and one spec in `tests/shots/`.
 
 `TANDEM_SHOT=<path.png>` is the shell's older in-process rig (one PNG after the
 first render, then quit); it goes with `Scripts/shot.sh` at the cutover.

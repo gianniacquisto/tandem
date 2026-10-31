@@ -77,10 +77,11 @@ jobs:
 
   # The port's replacement for `Scripts/shot.sh`: the same job, a browser
   # instead of an lldb injection. Linux only, because a display there is one
-  # command (`xvfb-run`); the pictures themselves come from the developer's
-  # machine, and this job is the spec's own verdict. The core is built first
-  # because the specs drive the real shell over `rpc`, so the binary is the
-  # subject and not a stub.
+  # command (`xvfb-run`). The run writes the PNGs and the catalogue into the
+  # runner's checkout, which is the point: the job is the spec's verdict on the
+  # pictures a developer's machine commits. The core is built first because the
+  # specs drive the real shell over `rpc`, so the binary is the subject and not
+  # a stub.
   shots:
     name: shots (ubuntu-latest)
     runs-on: ubuntu-latest
