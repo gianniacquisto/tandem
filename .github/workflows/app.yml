@@ -1,0 +1,75 @@
+name: App
+
+# The shell's four gates on the three platforms the port targets, plus one
+# packaging run per platform. The checks this publishes are what a branch rule
+# may name: `app (macos-latest)`, `app (ubuntu-latest)`, `app (windows-latest)`.
+#
+# `push` is path-filtered, where a skipped run costs nothing; `pull_request` is
+# not, because a required check a path-filtered workflow never creates reads
+# "Expected" forever and blocks a PR that touches no `app/**` file. Same shape
+# as `rust.yml`.
+#
+# No secret and no signing identity: the artifacts are unsigned on all three
+# platforms, which is the ticket's decided-against. electron-builder downloads
+# the platform's Electron and its own tooling on each runner.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/app.yml"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  app:
+    name: app (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: "Gate: typecheck"
+        run: npm run typecheck
+
+      - name: "Gate: test"
+        run: npm test
+
+      - name: "Gate: build"
+        run: npm run build
+
+      - name: "Gate: package"
+        run: npm run dist
+
+      - name: Upload the platform's artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tandem-${{ matrix.os }}
+          path: |
+            app/dist/*.dmg
+            app/dist/*.AppImage
+            app/dist/*.exe
+          if-no-files-found: error

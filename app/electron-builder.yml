@@ -1,0 +1,39 @@
+# electron-builder, three platforms, one artifact each.
+#
+# Signing is deliberately unset: no certificate exists in this repository or in
+# CI. macOS builds with `identity: null`, so the dmg is unsigned and not
+# notarized; Windows and Linux are unsigned for the same reason. Code signing
+# is a follow-up ticket; nothing here reads a secret.
+appId: com.gianniacquisto.tandem
+productName: Tandem
+copyright: Copyright © 2026 Gianni Acquisto
+forceCodeSigning: false
+asar: true
+npmRebuild: false
+
+directories:
+  output: dist
+
+files:
+  - out/**/*
+  - package.json
+  # Nothing is loaded from node_modules at runtime: main and preload are
+  # bundled, and the renderer carries its React bundle.
+  - "!node_modules/**/*"
+
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+  identity: null
+
+win:
+  target:
+    - target: nsis
+
+linux:
+  category: Utility
+  target:
+    - target: AppImage

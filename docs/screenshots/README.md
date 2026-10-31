@@ -19,8 +19,15 @@ own fixtures (`Fixtures/`) — never `~/.tandem`, never `~/.tandem-dev` — and 
 refuses to photograph an app whose own environment is not pointed at that same
 fixture home. A refusal exits non-zero and writes nothing.
 
+`electron-shell.png` is the one exception: the port's Electron shell is not the
+Swift app, so `Scripts/shot.sh` cannot drive it. That picture is the shell's own
+in-process rig, `TANDEM_SHOT=<path.png> npm run dev` in `app/` against
+`Fixtures/port/Home`, spelled out in `app/README.md` and held to the same rule:
+a fixture home, the app's own capture, a refusal writes nothing.
+
 | file | what it shows |
 | --- | --- |
+| `electron-shell.png` | the port's Electron shell at its 760 pt floor: the wordmark, the four kept tabs (Tickets, Bikeshed, Usage, Settings) and the store revision read over `rpc` |
 | `tickets-tab.png` | the main window's **Tickets** tab: the quick-add, the Open/Done/All/Archived counts, the search field and the lane-grouped list |
 | `tickets-search-empty.png` | the same tab with a search that matches nothing — "No ticket title matches your search." |
 | `board.png` | the **Board** view: Status columns across, cycle lanes down, a ticket drawn where its Status and lane meet |
