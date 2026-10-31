@@ -1,0 +1,23 @@
+<!doctype html>
+<!--
+  The editor frame: the committed CodeMirror bundle in its own document, loaded
+  by the Bikeshed face's iframe. The bundle is `public/editor/`, copied byte for
+  byte from `Sources/Tandem/Resources/Editor`; this page adds only the bridge
+  shim (`src/editor/frame.ts`), which replaces the WKWebView message handler the
+  Swift host used to provide.
+
+  No inline script: the content security policy admits `'self'` only, and the
+  bundle mounts itself into `#tandem-editor`.
+-->
+<html lang="en" data-theme="day">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tandem editor</title>
+    <link rel="stylesheet" href="./editor/style.css" />
+  </head>
+  <body>
+    <div id="tandem-editor"></div>
+    <script type="module" src="/src/editor/frame.ts"></script>
+  </body>
+</html>

@@ -31,6 +31,32 @@ npm test                 # the seams: tokens, bridge, spawn, window, shell
 npm run build            # out/main, out/preload, out/renderer
 ```
 
+## The editor bundle
+
+`renderer/public/editor/` is `Sources/Tandem/Resources/Editor` copied byte for
+byte: `editor.js`, `style.css`, `fonts/` and `LICENSES.md` are never rebundled,
+and `tests/bundle.test.ts` fails on a one-byte difference. The Bikeshed face
+loads it in `renderer/editor-frame.html`, one same-origin sandboxed frame, and
+`src/editor/frame.ts` supplies the `window.webkit.messageHandlers.tandem`
+handler the bundle was written against, so its messages cross by
+`postMessage` and its page globals (`setDocument`, `setNoteIndex`,
+`focusEditor`, `requestTicketCandidate`) are the Swift host's calls over the
+wire. The frame has no `window.tandem` of its own.
+
+The mermaid fence parity list (TAN-239; the bundle lands here with its next
+copy): the port's editor keeps
+
+- the strict security level, so rendering a diagram adds no network path;
+- the theme repaint, a `MutationObserver` on `<html data-theme>` re-rendering
+  mounted diagrams on the day/night flip;
+- the error fallback carrying the raw source under `.tandem-mermaid-error`;
+- reveal-to-edit, where the caret in a fence shows its source and leaving it
+  re-renders.
+
+The bundle on this base predates those fences, so the four are the check the
+next copy must pass; `editor.js` is generated, so a React editor that dropped
+mermaid would fail no other test.
+
 ## Package
 
 ```sh

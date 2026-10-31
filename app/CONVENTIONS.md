@@ -90,6 +90,10 @@ review.
   origin throws before a window exists.
 - `setWindowOpenHandler` denies every window, `will-navigate` refuses any
   origin but the loaded page, and `will-attach-webview` is prevented.
+- One same-origin frame is admitted and it is ours: `editor-frame.html`, which
+  loads the committed CodeMirror bundle. The policy's `frame-src 'self'` is the
+  whole allowance; no remote origin can be framed, and the frame never opens a
+  window or navigates the parent.
 - The content security policy is `src/shared/security.ts`: the built page gets
   a meta tag, every response gets the header, and only development may admit
   the refresh preamble and the dev socket.

@@ -33,8 +33,8 @@ use tandem_core::setup::{self, Environment};
 use tandem_core::store::{self, Actor, Home, Store};
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
-    NotePathView, SessionDetailView, SessionList, SessionResult, SprintList, SprintResult,
-    TicketDetail, TicketList, TicketSummary,
+    NoteMoveView, NotePathView, NoteWriteView, SessionDetailView, SessionList, SessionResult,
+    SprintList, SprintResult, TicketDetail, TicketList, TicketSummary,
 };
 
 // MARK: - The grammar
@@ -107,6 +107,7 @@ enum TicketCommand {
     List(ListArgs),
     Show(ShowArgs),
     Add(AddArgs),
+    File(FileArgs),
     Set(SetArgs),
     Move(MoveArgs),
     Block(BlockArgs),
@@ -140,6 +141,8 @@ enum NoteCommand {
     Capture(NoteCaptureArgs),
     Stats(NoteStatsArgs),
     Links,
+    Write(NoteWriteArgs),
+    Move(NoteMoveArgs),
 }
 
 #[derive(Subcommand)]
@@ -179,6 +182,24 @@ struct ListArgs {
     /// Only tickets waiting on an open blocker.
     #[arg(long)]
     blocked: bool,
+}
+
+#[derive(Args)]
+struct FileArgs {
+    /// The note the text came from (bikeshed-root-relative).
+    #[arg(long = "from-note", num_args = 0..=1, default_missing_value = "")]
+    from_note: Option<String>,
+    /// The selection; `-` or an absent flag reads stdin.
+    #[arg(long, num_args = 0..=1, default_missing_value = "", allow_hyphen_values = true)]
+    text: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    status: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    assignee: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    lane: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    origin: Option<String>,
 }
 
 #[derive(Args)]
@@ -307,6 +328,23 @@ struct NoteRenameArgs {
     from: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     to: Option<String>,
+}
+
+#[derive(Args)]
+struct NoteWriteArgs {
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    path: Option<String>,
+    /// The whole text; `-` or an absent flag reads stdin.
+    #[arg(long, num_args = 0..=1, default_missing_value = "", allow_hyphen_values = true)]
+    text: Option<String>,
+}
+
+#[derive(Args)]
+struct NoteMoveArgs {
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    path: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    into: Option<String>,
 }
 
 #[derive(Args)]
@@ -591,6 +629,7 @@ impl TicketCommand {
             Self::List(_) => "ticket list",
             Self::Show(_) => "ticket show",
             Self::Add(_) => "ticket add",
+            Self::File(_) => "ticket file",
             Self::Set(_) => "ticket set",
             Self::Move(_) => "ticket move",
             Self::Block(_) => "ticket block",
@@ -621,6 +660,8 @@ impl NoteCommand {
             Self::Capture(_) => "note capture",
             Self::Stats(_) => "note stats",
             Self::Links => "note links",
+            Self::Write(_) => "note write",
+            Self::Move(_) => "note move",
         }
     }
 }
@@ -736,6 +777,32 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                         status,
                         assignee: assignee.as_deref(),
                         description: description.as_deref(),
+                        origin: &origin,
+                    },
+                )
+                .map_err(Failure::domain)?;
+            print(&TicketDetail::new(&ticket))
+        }
+        TicketCommand::File(args) => {
+            let text = match args.text.as_deref() {
+                None | Some("-") => read_standard_input()?,
+                Some(text) => text.to_string(),
+            };
+            let status = match args.status.as_deref() {
+                Some(raw) => Status::parse(raw).map_err(Failure::domain)?,
+                None => Status::Backlog,
+            };
+            let assignee = resolve_assignee(args.assignee.as_deref())?;
+            let origin = resolve_origin(args.origin.as_deref())?;
+            let ticket = board
+                .add_from_note(
+                    &text,
+                    args.from_note.as_deref().unwrap_or(""),
+                    AddTicket {
+                        lane: args.lane.as_deref(),
+                        status,
+                        assignee: assignee.as_deref(),
+                        description: None,
                         origin: &origin,
                     },
                 )
@@ -959,6 +1026,28 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
         NoteCommand::Links => {
             let health = vault.health().map_err(Failure::domain)?;
             print(&health.value)
+        }
+        NoteCommand::Write(args) => {
+            home.ensure()
+                .map_err(|error| home_failure(home.directory(), error))?;
+            let path = args.path.as_deref().unwrap_or("");
+            let text = match args.text.as_deref() {
+                None | Some("-") => read_standard_input()?,
+                Some(text) => text.to_string(),
+            };
+            let record = vault.write(path, &text).map_err(Failure::domain)?;
+            print(&NoteWriteView::new(&record.value))
+        }
+        NoteCommand::Move(args) => {
+            home.ensure()
+                .map_err(|error| home_failure(home.directory(), error))?;
+            let outcome = vault
+                .move_into(
+                    args.path.as_deref().unwrap_or(""),
+                    args.into.as_deref().unwrap_or(""),
+                )
+                .map_err(Failure::domain)?;
+            print(&NoteMoveView::new(&outcome.value))
         }
     }
 }

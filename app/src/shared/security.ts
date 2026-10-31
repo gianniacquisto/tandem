@@ -1,12 +1,14 @@
 /**
  * The policy both the packaged page and the dev server answer to.
  *
- * `docs/port.md` keeps the renderer a browser: no Node, no remote content, no
- * embedded frame. The script source is the bundle the shell itself loaded, so
- * a page that gains an inline script fails rather than runs. Development is the
- * one loosening (`unsafe-inline` for the refresh preamble, and the dev
- * server's socket), and only when the window was opened against a loopback dev
- * server.
+ * `docs/port.md` keeps the renderer a browser: no Node, no remote content. The
+ * script source is the bundle the shell itself loaded, so a page that gains an
+ * inline script fails rather than runs. One frame is admitted and it is ours:
+ * the editor page, which loads the committed CodeMirror bundle beside the
+ * renderer. It is same-origin, so `frame-src 'self'` is the whole allowance and
+ * no remote origin can be framed. Development is the one loosening
+ * (`unsafe-inline` for the refresh preamble, and the dev server's socket), and
+ * only when the window was opened against a loopback dev server.
  */
 export function contentSecurityPolicy(development: boolean): string {
   const script = development ? "'self' 'unsafe-inline'" : "'self'"
@@ -22,6 +24,7 @@ export function contentSecurityPolicy(development: boolean): string {
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",
-    "frame-ancestors 'none'",
+    "frame-src 'self'",
+    "frame-ancestors 'self'",
   ].join('; ')
 }
