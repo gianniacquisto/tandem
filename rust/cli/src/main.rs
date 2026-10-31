@@ -1108,7 +1108,7 @@ fn sprint(home: &Home, command: Option<&SprintCommand>) -> Result<(), Failure> {
             let ticket = Board::new(store.clone())
                 .ticket(args.ticket.as_deref().unwrap_or(""))
                 .map_err(Failure::domain)?;
-            let number = open_sprint_number(&sprints, lane)?;
+            let number = sprints.open_in(lane).map_err(Failure::domain)?.number;
             let result = sprints
                 .ticket(&actor, lane, number, &ticket.id.to_string())
                 .map_err(Failure::domain)?;
@@ -1120,7 +1120,7 @@ fn sprint(home: &Home, command: Option<&SprintCommand>) -> Result<(), Failure> {
         SprintCommand::Run(args) => {
             let lane = args.lane.as_deref().unwrap_or("");
             let note = sprint_note(args.note.as_deref().unwrap_or(""))?;
-            let number = open_sprint_number(&sprints, lane)?;
+            let number = sprints.open_in(lane).map_err(Failure::domain)?.number;
             let result = sprints
                 .run(&actor, lane, number, &note, None)
                 .map_err(Failure::domain)?;
@@ -1137,7 +1137,7 @@ fn sprint(home: &Home, command: Option<&SprintCommand>) -> Result<(), Failure> {
             };
             let number = match args.number.as_deref() {
                 Some(raw) => sprint_number(raw)?,
-                None => close_sprint_number(&sprints, lane)?,
+                None => sprints.close_in(lane).map_err(Failure::domain)?.number,
             };
             let result = sprints
                 .close(&actor, lane, number, note.as_deref(), None)
@@ -1218,11 +1218,7 @@ fn read_standard_input() -> Result<String, Failure> {
     io::stdin()
         .read_to_end(&mut bytes)
         .map_err(|error| Failure::message(format!("Cannot read stdin: {error}. Try again.")))?;
-    String::from_utf8(bytes).map_err(|_| {
-        Failure::domain(DomainError::BikeshedIo(
-            "stdin is not valid UTF-8".to_string(),
-        ))
-    })
+    String::from_utf8(bytes).map_err(|_| Failure::domain(DomainError::StandardInputNotUtf8))
 }
 
 /// The working directory's last component: the project a capture or session
@@ -1528,38 +1524,6 @@ fn sprint_note(raw: &str) -> Result<String, Failure> {
 fn sprint_number(raw: &str) -> Result<i64, Failure> {
     raw.parse::<i64>()
         .map_err(|_| Failure::domain(DomainError::InvalidSprintNumber(raw.to_string())))
-}
-
-/// The lane's open sprint: the record `sprint ticket` and `sprint run` act on.
-fn open_sprint_number(sprints: &Sprints, lane: &str) -> Result<i64, Failure> {
-    let open = sprints
-        .list(
-            Some(lane),
-            Some(tandem_core::domain::sprint::SprintStatus::Open),
-        )
-        .map_err(Failure::domain)?;
-    open.first()
-        .map(|sprint| sprint.number)
-        .ok_or_else(|| Failure::domain(DomainError::NoOpenSprint(lane.to_string())))
-}
-
-/// The number `sprint close` acts on: the open record, or the lane's newest when
-/// the sprint already closed (a close is a stamp once).
-fn close_sprint_number(sprints: &Sprints, lane: &str) -> Result<i64, Failure> {
-    let open = sprints
-        .list(
-            Some(lane),
-            Some(tandem_core::domain::sprint::SprintStatus::Open),
-        )
-        .map_err(Failure::domain)?;
-    if let Some(sprint) = open.first() {
-        return Ok(sprint.number);
-    }
-    let records = sprints.list(Some(lane), None).map_err(Failure::domain)?;
-    records
-        .first()
-        .map(|sprint| sprint.number)
-        .ok_or_else(|| Failure::domain(DomainError::NoOpenSprint(lane.to_string())))
 }
 
 // MARK: - rpc
