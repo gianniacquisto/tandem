@@ -165,8 +165,23 @@ test('the keyboard set reaches the fields and moves a ticket, and a second write
   const ticket = await selected.getAttribute('data-ticket')
   expect(ticket).not.toBeNull()
 
-  // Option and the arrows move the selected ticket one lane over.
   const laneBefore = await laneOf(window, ticket as string)
+
+  // A vertical Option arrow moves one visible row; a row a filter hides is
+  // stepped over rather than counted. On a one-row lane there is nowhere to go,
+  // so the horizontal move below is the exercise.
+  const visibleInLane = await window
+    .locator(`.board__column[data-lane="${laneBefore}"] .ticket-row`)
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-ticket')))
+  const atInLane = visibleInLane.indexOf(ticket as string)
+  if (atInLane >= 0 && atInLane < visibleInLane.length - 1) {
+    await window.keyboard.press('Alt+ArrowDown')
+    await expect(
+      window.locator(`.board__column[data-lane="${laneBefore}"] .ticket-row`).nth(atInLane + 1),
+    ).toHaveAttribute('data-ticket', ticket as string)
+  }
+
+  // Option and the arrows move the selected ticket one lane over.
   const lanes = await window
     .locator('.board__column')
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-lane')))

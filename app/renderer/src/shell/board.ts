@@ -80,18 +80,47 @@ export function blockLabel(
   return only?.ref === null || only === undefined ? 'Blocked' : `Blocked, ${only.ref}`
 }
 
-/** Case- and diacritic-insensitive, the comparison the core's search uses. */
+/**
+ * The core's fold table, entry for entry (`rust/core/src/domain/text.rs`):
+ * case- and diacritic-insensitive, with the Latin accents a title actually
+ * carries. `fold.test.ts` reads the Rust source and fails when this drifts, so
+ * ADR 0008's one rule, one place holds across the two languages. A letter
+ * outside the table is still folded by case, never by accent.
+ */
+export const FOLD: Readonly<Record<string, string>> = {
+  à: 'a', á: 'a', â: 'a', ã: 'a', ä: 'a', å: 'a', ā: 'a', ă: 'a', ą: 'a',
+  æ: 'ae',
+  ç: 'c', ć: 'c', č: 'c',
+  ď: 'd',
+  è: 'e', é: 'e', ê: 'e', ë: 'e', ē: 'e', ĕ: 'e', ė: 'e', ę: 'e', ě: 'e',
+  ĝ: 'g', ğ: 'g',
+  ì: 'i', í: 'i', î: 'i', ï: 'i', ĩ: 'i', ī: 'i', į: 'i',
+  ł: 'l',
+  ñ: 'n', ń: 'n', ň: 'n',
+  ò: 'o', ó: 'o', ô: 'o', õ: 'o', ö: 'o', ø: 'o', ō: 'o', ő: 'o',
+  œ: 'oe',
+  ř: 'r',
+  ś: 's', š: 's', ş: 's',
+  ß: 'ss',
+  ť: 't',
+  ù: 'u', ú: 'u', û: 'u', ü: 'u', ũ: 'u', ū: 'u', ů: 'u', ű: 'u',
+  ý: 'y', ÿ: 'y',
+  ź: 'z', ż: 'z', ž: 'z',
+}
+
+/** `text` lowercased with the Latin accents folded, exactly as the core does. */
 export function fold(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/æ/g, 'ae')
-    .replace(/œ/g, 'oe')
-    .replace(/ø/g, 'o')
-    .replace(/ß/g, 'ss')
-    .replace(/ð/g, 'd')
-    .replace(/þ/g, 'th')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+  let folded = ''
+  for (const character of text) {
+    const point = character.codePointAt(0) ?? 0
+    // A combining mark on its own carries no letter: the base letter already
+    // stands for it.
+    if (point >= 0x0300 && point <= 0x036f) continue
+    for (const lower of character.toLowerCase()) {
+      folded += FOLD[lower] ?? lower
+    }
+  }
+  return folded
 }
 
 export function titleMatches(needle: string, title: string): boolean {
@@ -212,6 +241,27 @@ export function dropIndex(
   const movingIndex = members.findIndex((ticket) => ticket.id === moving)
   if (movingIndex >= 0 && movingIndex < index) index -= 1
   return index
+}
+
+/**
+ * The index a keyboard move of one *visible* row hands `ticket.move`.
+ *
+ * The arrows move what the human sees, so the neighbour is the next visible row
+ * in the same lane, and the index is resolved against the whole lane through
+ * `dropIndex` (hidden rows are stepped over, never counted as a move). `null`
+ * when the moving row is not in view or the move would leave the lane.
+ */
+export function visibleMoveIndex(
+  tickets: readonly TicketSummary[],
+  visible: readonly TicketSummary[],
+  moving: string,
+  delta: -1 | 1,
+): number | null {
+  const at = visible.findIndex((ticket) => ticket.id === moving)
+  if (at < 0) return null
+  const neighbour = visible[at + delta]
+  if (neighbour === undefined) return null
+  return dropIndex(tickets, moving, neighbour.id, delta > 0)
 }
 
 /**

@@ -18,17 +18,24 @@ writes one PNG per scene into this folder, and rewrites the table below from
     npm ci
     npm run binary
     TANDEM_SHOTS_HOME=../Fixtures/port/Home npm run shots
+    TANDEM_SHOTS_HOME=../Fixtures/port/Board npx playwright test tests/shots/tickets.shots.ts
 
 `TANDEM_SHOTS_HOME` is required, and it must resolve under the repository's
 `Fixtures/`: a run that names no home is refused, and so is `~/.tandem` or any
 path outside `Fixtures/`. The app opens the scratch copy, never the committed
 home, so no run writes into the fixture.
 
-The seed is the fixture home plus a fixed clock: the page's `Date` is pinned to
-`2026-10-30T12:00:00Z` before the first application script runs, and `TZ` is
-UTC, so a scene that renders a now-relative time renders one instant. The two
-seeded paths are fixed too, because the Settings face prints them: a run in one
-checkout writes the same bytes as a run in any other. Two things stay the
+The port has two committed homes. `Fixtures/port/Home` is the contract home: the
+four session records and two board tickets the shell, Usage and Settings scenes
+read. `Fixtures/port/Board` is the 78-ticket board home, and the Tickets scenes
+are shot on it. CI runs the first command above; the Tickets pictures in this
+folder are the second.
+
+The seed is the named fixture home plus a fixed clock: the page's `Date` is
+pinned to `2026-10-30T12:00:00Z` before the first application script runs, and
+`TZ` is UTC, so a scene that renders a now-relative time renders one instant.
+The two seeded paths are fixed too, because the Settings face prints them: a run
+in one checkout writes the same bytes as a run in any other. Two things stay the
 machine's own, and no fixture can make them otherwise: the `app` row of the
 doctor report names the Tandem installed on the machine, and the PNG's pixel
 size follows the display's scale factor.

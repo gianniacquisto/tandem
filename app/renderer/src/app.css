@@ -675,7 +675,7 @@ body {
 }
 
 .search:focus-within {
-  border-color: var(--line);
+  border-color: var(--ember);
 }
 
 .search__icon {

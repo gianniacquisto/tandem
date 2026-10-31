@@ -1,11 +1,13 @@
-//! The committed fixture store (`Fixtures/port/Home/tandem.db`) is an artifact
-//! of its generator, byte for byte.
+//! The committed fixture stores (`Fixtures/port/Home/tandem.db` and
+//! `Fixtures/port/Board/tandem.db`) are artifacts of their generator, byte for
+//! byte.
 //!
-//! `Scripts/make-fixture-home.sh` writes the database from
-//! `Fixtures/port/tandem.seed.json`: every id and timestamp is in the seed and
-//! nothing reads the clock, so the file in the tree is reproducible. This suite
-//! runs the same generator into a temp path and fails on any difference, which
-//! is what keeps a hand-edited database out of the tree.
+//! `Scripts/make-fixture-home.sh` writes each database from its seed
+//! (`Fixtures/port/tandem.seed.json`, `Fixtures/port/board.seed.json`): every id
+//! and timestamp is in the seed and nothing reads the clock, so the files in the
+//! tree are reproducible. This suite runs the same generator into a temp path
+//! and fails on any difference, which is what keeps a hand-edited database out
+//! of the tree.
 //!
 //! The store is in rollback-journal mode, not WAL: a read of a WAL file would
 //! need `-shm` and `-wal` sidecars beside it, and the fixture home is content,
@@ -43,6 +45,21 @@ fn committed() -> PathBuf {
         .join("tandem.db")
 }
 
+fn board_seed() -> PathBuf {
+    repo_root()
+        .join("Fixtures")
+        .join("port")
+        .join("board.seed.json")
+}
+
+fn board_committed() -> PathBuf {
+    repo_root()
+        .join("Fixtures")
+        .join("port")
+        .join("Board")
+        .join("tandem.db")
+}
+
 fn fixture_home() -> PathBuf {
     repo_root().join("Fixtures").join("port").join("Home")
 }
@@ -55,16 +72,24 @@ fn first_difference(left: &[u8], right: &[u8]) -> Option<usize> {
         .or_else(|| (left.len() != right.len()).then(|| left.len().min(right.len())))
 }
 
-#[test]
-fn the_committed_database_is_what_the_generator_writes() {
-    let root = std::env::temp_dir().join(format!("tandem-fixture-db-{}", std::process::id()));
+/// Run the generator on `seed` and fail naming the first byte that differs from
+/// the committed `frozen` file.
+fn assert_generated(seed: &Path, frozen: &Path) {
+    let root = std::env::temp_dir().join(format!(
+        "tandem-fixture-db-{}-{}",
+        std::process::id(),
+        frozen
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("db")
+    ));
     let _ = fs::remove_dir_all(&root);
     let target = root.join("tandem.db");
 
     let generator = std::env::var("CARGO_BIN_EXE_make-fixture-home")
         .expect("cargo builds the generator for this suite");
     let output = Command::new(generator)
-        .arg(seed())
+        .arg(seed)
         .arg(&target)
         .output()
         .expect("the generator runs");
@@ -75,8 +100,7 @@ fn the_committed_database_is_what_the_generator_writes() {
     );
 
     let written = fs::read(&target).expect("the generator wrote the database");
-    let frozen = committed();
-    let committed_bytes = fs::read(&frozen).unwrap_or_else(|error| {
+    let committed_bytes = fs::read(frozen).unwrap_or_else(|error| {
         panic!(
             "{} is committed ({error}): run Scripts/make-fixture-home.sh",
             frozen.display()
@@ -95,6 +119,16 @@ fn the_committed_database_is_what_the_generator_writes() {
     }
 
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn the_committed_database_is_what_the_generator_writes() {
+    assert_generated(&seed(), &committed());
+}
+
+#[test]
+fn the_committed_board_database_is_what_the_generator_writes() {
+    assert_generated(&board_seed(), &board_committed());
 }
 
 #[test]

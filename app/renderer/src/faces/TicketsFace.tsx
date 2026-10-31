@@ -9,10 +9,10 @@ import {
   filterTickets,
   laneColumns,
   laneKeys,
-  laneMembers,
   neighbourLane,
   neighbourSelection,
   scopeCounts,
+  visibleMoveIndex,
   type Filters,
   type Scope,
   type View,
@@ -227,10 +227,9 @@ export function TicketsFace({
         case 'move-in-lane': {
           const ticket = snapshot.tickets.find((candidate) => candidate.id === selected)
           if (ticket === undefined) return
-          const members = laneMembers(snapshot.tickets, ticket.lane)
-          const at = members.findIndex((candidate) => candidate.id === ticket.id)
-          const target = at + intent.delta
-          if (at < 0 || target < 0 || target >= members.length) return
+          const lane = columns.find((column) => column.key === ticket.lane)?.tickets ?? []
+          const target = visibleMoveIndex(snapshot.tickets, lane, ticket.id, intent.delta)
+          if (target === null) return
           event.preventDefault()
           move(ticket.id, ticket.lane, target)
           return

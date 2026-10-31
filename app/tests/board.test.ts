@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -14,6 +17,7 @@ import {
   neighbourLane,
   neighbourSelection,
   scopeCounts,
+  visibleMoveIndex,
   statusLabel,
   titleMatches,
   type Filters,
@@ -215,12 +219,47 @@ describe('the drag arithmetic', () => {
     expect(laneMembers(board, 'Port').map((t) => t.id)).toEqual(['a', 'c'])
   })
 
+  it('moves one visible row at a time, stepping over the rows a filter hides', () => {
+    const full = [
+      ticket({ id: 'a', lane: 'Port' }),
+      ticket({ id: 'b', lane: 'Port' }),
+      ticket({ id: 'c', lane: 'Port' }),
+    ]
+    // b is hidden: moving a down lands it after c, not after b.
+    const visible = [full[0], full[2]] as TicketSummary[]
+    expect(visibleMoveIndex(full, visible, 'a', 1)).toBe(2)
+    expect(visibleMoveIndex(full, visible, 'c', -1)).toBe(0)
+    expect(visibleMoveIndex(full, visible, 'a', -1)).toBeNull()
+    expect(visibleMoveIndex(full, visible, 'c', 1)).toBeNull()
+    expect(visibleMoveIndex(full, visible, 'b', 1)).toBeNull()
+  })
+
   it('walks the lane order, where null is a real key and undefined is past the end', () => {
     const keys = laneKeys(['Port'], board)
     expect(neighbourLane(keys, 'Port', 1)).toBe('Tandem')
     expect(neighbourLane(keys, 'Port', -1)).toBeNull()
     expect(neighbourLane(keys, null, 1)).toBe('Port')
     expect(neighbourLane(keys, 'Tandem', 1)).toBeUndefined()
+  })
+
+  it('is the shared golden both implementations run (Fixtures/port/ordering.json)', () => {
+    type Case = {
+      name: string
+      tickets: Array<{ id: string; lane: string | null }>
+      moving: string
+      anchor: string
+      after: boolean
+      index: number | null
+    }
+    const golden = JSON.parse(
+      readFileSync(fileURLToPath(new URL('../../Fixtures/port/ordering.json', import.meta.url)), 'utf8'),
+    ) as { cases: Case[] }
+
+    expect(golden.cases.length).toBeGreaterThan(0)
+    for (const entry of golden.cases) {
+      const tickets = entry.tickets.map((one) => ticket({ id: one.id, lane: one.lane }))
+      expect(dropIndex(tickets, entry.moving, entry.anchor, entry.after), entry.name).toBe(entry.index)
+    }
   })
 
   it('moves the selection down a column, then across to the next non-empty lane', () => {

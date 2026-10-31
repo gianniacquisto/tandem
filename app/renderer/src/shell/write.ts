@@ -17,10 +17,10 @@ export function writeBlocked(state: SnapshotState, expected: number | null): str
     return 'The board is not readable right now. Nothing was written.'
   }
   if (state.stale) {
-    return 'The board changed while you were acting. Nothing was written; the board is reloading.'
+    return 'The board changed while you were acting. Nothing was written.'
   }
   if (expected !== null && state.revision !== expected) {
-    return `The board moved from revision ${expected} to revision ${state.revision} while you were acting. Nothing was written; the board is reloading.`
+    return `The board moved from revision ${expected} to revision ${state.revision} while you were acting. Nothing was written.`
   }
   return null
 }
