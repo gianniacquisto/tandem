@@ -6,7 +6,9 @@
 mod support;
 
 use support::Sandbox;
-use tandem_core::domain::{AddTicket, Board, Status, Ticket, TicketBoard, TicketQuery};
+use tandem_core::domain::{
+    AddTicket, Board, DomainError, Status, Ticket, TicketBoard, TicketQuery,
+};
 
 fn ticket(title: &str, status: Status, lane: Option<&str>) -> Ticket {
     Ticket {
@@ -371,6 +373,50 @@ fn two_writers_over_one_home_keep_every_row_and_issue_every_ref_once() {
     assert_eq!(refs, expected, "every number is issued exactly once");
 }
 
+/// Run one write, and run it again when it answers [`DomainError::Locked`].
+///
+/// The process-local gate is bounded: a writer that cannot enter it within the
+/// store's 2 s window (`store::BUSY_TIMEOUT`) gets `Locked` instead of waiting
+/// for the writer ahead of it (PRT-25). A queue of 40 writes on a loaded runner
+/// can reach that bound, and what this file's contention case asserts is that
+/// no write reverts another's row, not who wins the gate. So a turn-away is
+/// retried until the write is served; the attempt cap keeps a real deadlock a
+/// failure rather than a hang.
+fn write_after_lock<T>(mut write: impl FnMut() -> Result<T, DomainError>) -> T {
+    // Enough turns for a 40-write queue, and short enough that a store which
+    // never frees reports as a failure rather than hanging the run.
+    const ATTEMPTS: usize = 32;
+    for attempt in 1..=ATTEMPTS {
+        match write() {
+            Ok(value) => return value,
+            Err(DomainError::Locked(_)) if attempt < ATTEMPTS => {}
+            Err(error) => panic!("the write failed: {error}"),
+        }
+    }
+    unreachable!("the loop returns or panics on every attempt")
+}
+
+#[test]
+fn a_write_that_answers_locked_is_retried_until_it_is_served() {
+    let attempts = std::cell::Cell::new(0);
+    let served = write_after_lock(|| {
+        attempts.set(attempts.get() + 1);
+        if attempts.get() < 3 {
+            Err(DomainError::Locked(std::path::PathBuf::from("/some/home")))
+        } else {
+            Ok(attempts.get())
+        }
+    });
+    assert_eq!(served, 3, "the retry returns the write's third answer");
+    assert_eq!(attempts.get(), 3, "a locked answer costs one more attempt");
+}
+
+#[test]
+#[should_panic(expected = "the write failed")]
+fn a_write_that_fails_for_another_reason_is_not_retried() {
+    write_after_lock(|| Err::<(), _>(DomainError::Io("disk full".to_string())));
+}
+
 /// A writer's snapshot cannot be stale: adding a ticket shifts the stored order of
 /// every ticket after it, and the write that carries the new order writes those
 /// rows back. Read outside the transaction, that write reverts an edit another
@@ -379,9 +425,11 @@ fn two_writers_over_one_home_keep_every_row_and_issue_every_ref_once() {
 /// The timing assumption: none between the two threads. The property holds for
 /// every interleaving, and the assertion reads after `scope` joins both. What
 /// the write waits for is the process-local write gate (`store::write_gate`,
-/// one mutex per canonical home), so neither writer is turned away while the
-/// other's transaction is open (`rust (windows-latest)` run 41099651828
-/// answered `Locked` here before the gate).
+/// one mutex per canonical home) under the store's 2 s window: the gate makes
+/// writers queue, and a thread that cannot enter in that window is turned away
+/// with `Locked` ([`write_after_lock`] retries it), so a loaded runner can cost
+/// this case a retry but not a false red (`rust (windows-latest)` run
+/// 41099651828 answered `Locked` here before the gate).
 #[test]
 fn a_concurrent_edit_is_not_reverted_by_another_writers_snapshot() {
     let sandbox = Sandbox::new("board-revert");
@@ -408,15 +456,15 @@ fn a_concurrent_edit_is_not_reverted_by_another_writers_snapshot() {
                 tandem_core::store::Actor::Agent("editor".to_string()),
             );
             for index in 0..20 {
-                board
-                    .set(
+                write_after_lock(|| {
+                    board.set(
                         &edited_id,
                         tandem_core::domain::SetFields {
                             title: tandem_core::domain::Edit::Set(&format!("edited {index}")),
                             ..tandem_core::domain::SetFields::default()
                         },
                     )
-                    .unwrap();
+                });
             }
         });
         let adder = store.clone();
@@ -424,15 +472,15 @@ fn a_concurrent_edit_is_not_reverted_by_another_writers_snapshot() {
             let board =
                 Board::with_actor(adder, tandem_core::store::Actor::Agent("adder".to_string()));
             for index in 0..20 {
-                board
-                    .add(
+                write_after_lock(|| {
+                    board.add(
                         &format!("added {index}"),
                         AddTicket {
                             lane: Some("Tandem"),
                             ..AddTicket::default()
                         },
                     )
-                    .unwrap();
+                });
             }
         });
     });
