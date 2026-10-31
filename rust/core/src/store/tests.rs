@@ -267,7 +267,7 @@ mod locked {
         drop(held);
 
         assert!(
-            matches!(outcome, Err(StoreError::Locked)),
+            matches!(outcome, Err(StoreError::Locked { .. })),
             "the bounded retry must answer locked: {outcome:?}"
         );
         assert!(
@@ -300,7 +300,7 @@ mod locked {
                     .lock()
                     .and_then(|_held| storage.lock().map(|_nested| ()));
                 let _ = answered.send((
-                    matches!(outcome, Err(StoreError::Locked)),
+                    matches!(outcome, Err(StoreError::Locked { .. })),
                     started.elapsed(),
                 ));
             }
@@ -574,12 +574,13 @@ mod gate {
         fs::create_dir_all(&home).unwrap();
         let gate = write_gate(&home);
 
-        let held = gate.lock().expect("the gate is taken");
+        let held = enter_gate(&gate, &home).expect("the gate is taken");
         let (tx, entered) = mpsc::channel();
         let queued = {
             let gate = Arc::clone(&gate);
+            let home = home.clone();
             thread::spawn(move || {
-                let _guard = gate.lock().expect("the queued writer takes the gate");
+                let _guard = enter_gate(&gate, &home).expect("the queued writer takes the gate");
                 tx.send(()).expect("the parent is listening");
             })
         };
@@ -595,13 +596,61 @@ mod gate {
         queued.join().expect("the queued writer finishes");
     }
 
+    /// Contention must block, not burn a core: the waiter sleeps on the gate's
+    /// condition variable and wakes once the holder releases it, so a 150 ms
+    /// hold costs the waiter one pass through the wait instead of the
+    /// thousands a `yield_now` loop spends.
+    #[test]
+    fn a_contended_writer_blocks_on_the_gate_instead_of_spinning() {
+        let sandbox = Sandbox::new("gate-condvar");
+        let home = sandbox.home_path();
+        fs::create_dir_all(&home).unwrap();
+        let gate = write_gate(&home);
+        let held = enter_gate(&gate, &home).expect("the test takes the gate");
+        gate.wait_passes.store(0, Ordering::Relaxed);
+
+        let (tx, answered) = mpsc::channel();
+        let waiting = {
+            let gate = Arc::clone(&gate);
+            let home = home.clone();
+            thread::spawn(move || {
+                let started = Instant::now();
+                let outcome = enter_gate(&gate, &home).map(|_guard| ());
+                let elapsed = started.elapsed();
+                let passes = gate.wait_passes.load(Ordering::Relaxed);
+                let _ = tx.send((outcome, elapsed, passes));
+            })
+        };
+
+        thread::sleep(Duration::from_millis(150));
+        drop(held);
+        let (outcome, elapsed, passes) = answered
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the queued writer answers once the gate is free");
+        waiting.join().expect("the queued writer finishes");
+
+        assert!(
+            outcome.is_ok(),
+            "the queued writer entered the gate: {outcome:?}"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(100),
+            "the queued writer waited behind the holder: {elapsed:?}"
+        );
+        assert!(
+            passes <= 3,
+            "the wait slept on the gate's condition variable, not a yield loop: \
+             {passes} passes in {elapsed:?}"
+        );
+    }
+
     #[test]
     fn a_held_gate_times_out_as_locked() {
         let sandbox = Sandbox::new("gate-deadline");
         let home = sandbox.home_path();
         fs::create_dir_all(&home).unwrap();
         let gate = write_gate(&home);
-        let held = gate.lock().expect("the test takes the gate");
+        let held = enter_gate(&gate, &home).expect("the test takes the gate");
 
         // The engine is free while this thread holds the gate, so only the
         // gate's own deadline can turn the queued writer away.
@@ -626,8 +675,8 @@ mod gate {
         queued.join().expect("the queued writer finishes");
 
         assert!(
-            matches!(outcome, Err(StoreError::Locked)),
-            "a held gate must time out as locked: {outcome:?}"
+            matches!(&outcome, Err(StoreError::Locked { home: named }) if named == &home),
+            "a held gate must time out as locked, naming the home: {outcome:?}"
         );
         assert!(
             elapsed >= Duration::from_millis(1_500),
@@ -1109,7 +1158,7 @@ mod schema {
         assert!(status.success(), "the child failed: {status}");
 
         assert!(
-            matches!(outcome, Err(StoreError::Locked)),
+            matches!(outcome, Err(StoreError::Locked { .. })),
             "another process's write must time out as locked: {outcome:?}"
         );
         assert!(
@@ -1149,7 +1198,7 @@ mod schema {
         holder.execute_batch("ROLLBACK").unwrap();
 
         assert!(
-            matches!(outcome, Err(StoreError::Locked)),
+            matches!(outcome, Err(StoreError::Locked { .. })),
             "the write must time out as locked: {outcome:?}"
         );
         assert!(

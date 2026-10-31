@@ -168,7 +168,7 @@ impl Write<'_> {
                 row.get::<_, i64>(0)
             })
             .map(|count| count > 0)
-            .map_err(super::translate)
+            .map_err(|error| super::translate(error, self.connection))
     }
 
     /// Replace a session row's mutable half: a record is created once, linked
@@ -258,7 +258,7 @@ impl Write<'_> {
                 |row| row.get::<_, i64>(0),
             )
             .map(|count| count > 0)
-            .map_err(super::translate)
+            .map_err(|error| super::translate(error, self.connection))
     }
 
     /// Replace a sprint row: `open` creates it, and `ticket`, `run` and
@@ -308,7 +308,7 @@ impl Write<'_> {
     pub(crate) fn execute(&self, sql: &str, values: impl rusqlite::Params) -> Result<()> {
         self.connection
             .execute(sql, values)
-            .map_err(super::translate)?;
+            .map_err(|error| super::translate(error, self.connection))?;
         Ok(())
     }
 }

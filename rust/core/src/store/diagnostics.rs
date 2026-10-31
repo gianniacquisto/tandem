@@ -123,21 +123,21 @@ impl Store {
 fn counts(connection: &Connection) -> super::Result<(i64, i64)> {
     let total: i64 = connection
         .query_row("SELECT COUNT(*) FROM tickets", [], |row| row.get(0))
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     let done: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM tickets WHERE status = ?1",
             [Status::Done.as_str()],
             |row| row.get(0),
         )
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     Ok((total - done, done))
 }
 
 fn comment_count(connection: &Connection) -> super::Result<i64> {
     connection
         .query_row("SELECT COUNT(*) FROM comments", [], |row| row.get(0))
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

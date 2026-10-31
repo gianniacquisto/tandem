@@ -96,7 +96,7 @@ impl Queue {
     /// Take a ticket and wait until it is served, or answer `Locked` when
     /// `deadline` passes: a ticket that is never served (a nested acquisition, a
     /// holder that never releases) must not hang the process.
-    fn take(&self, deadline: Instant) -> Result<u64> {
+    fn take(&self, deadline: Instant, home: &Path) -> Result<u64> {
         let mut turn = lock(&self.turn);
         let ticket = turn.next;
         turn.next += 1;
@@ -112,7 +112,9 @@ impl Queue {
                 turn.serving = turn.serving.max(ticket + 1);
                 drop(turn);
                 self.served.notify_all();
-                return Err(StoreError::Locked);
+                return Err(StoreError::Locked {
+                    home: home.to_path_buf(),
+                });
             }
             turn = self
                 .served
@@ -384,7 +386,7 @@ impl LockedDirectory {
         // queue and then the `flock`. The queue only decides who is served
         // first, never how long a writer may wait.
         let deadline = Instant::now() + LOCK_TIMEOUT;
-        let ticket = match queue.take(deadline) {
+        let ticket = match queue.take(deadline, &self.root) {
             Ok(ticket) => ticket,
             Err(error) => {
                 forget(&key, &queue);
@@ -404,7 +406,9 @@ impl LockedDirectory {
                 }
                 Err(TryLockError::WouldBlock) => {
                     if Instant::now() >= deadline {
-                        return Err(StoreError::Locked);
+                        return Err(StoreError::Locked {
+                            home: self.root.clone(),
+                        });
                     }
                     // Yield, do not sleep. A holder outside this process
                     // releases and reacquires within tens of microseconds, so a
