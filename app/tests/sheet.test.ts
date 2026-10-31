@@ -104,7 +104,14 @@ describe('the sheet description', () => {
       'utf8',
     )
     expect(EMPTY_DESCRIPTION_REFUSAL).toBe(wordingFrom(error))
-    expect(wordingFrom(error.replace(/\n/g, '\r\n'))).toBe(EMPTY_DESCRIPTION_REFUSAL)
+    // The Windows checkout's own shape, built from the raw bytes with `\r?\n`:
+    // a line that already carries its `\r` must not be given a second one, or
+    // the copy is `\r\r\n`, the normalisation leaves a `\r` behind, and the
+    // continuation never matches. The copy is asserted to carry the backslash
+    // and the CRLF together, so it reproduces what the runner reads.
+    const crlf = error.replace(/\r?\n/g, '\r\n')
+    expect(crlf).toContain('\\\r\n')
+    expect(wordingFrom(crlf)).toBe(EMPTY_DESCRIPTION_REFUSAL)
   })
 
   it('joins the stored body and the addition with the core\'s one blank line', () => {
