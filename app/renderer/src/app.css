@@ -887,7 +887,11 @@ body {
 
 .board__column {
   display: flex;
-  flex: 1 0 180px;
+  /* Grows into the board but stops at a card's readable width: one or two
+     lanes must not stretch a column to the window. */
+  flex: 1 1 180px;
+  max-width: 320px;
+  box-sizing: border-box;
   flex-direction: column;
   gap: 6px;
   min-width: 180px;
@@ -1929,6 +1933,8 @@ body {
 }
 
 .markdown__link {
-  color: var(--accent);
+  /* The Swift label's `palette.emberDeep`: a link is warm ink, not the sage
+     accent the sheet uses for its own marks. */
+  color: var(--ember-deep);
   text-decoration: underline dotted;
 }
