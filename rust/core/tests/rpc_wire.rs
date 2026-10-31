@@ -14,6 +14,7 @@ mod support;
 use serde_json::{Value, json};
 use support::Sandbox;
 use tandem_core::domain::DomainError;
+use tandem_core::domain::session::{Ending, SessionOutcome, Sessions};
 use tandem_core::store::Actor;
 use tandem_core::wire::rpc::{METHODS, Request};
 
@@ -34,12 +35,136 @@ fn handle_as(store: &tandem_core::store::Store, frame: &str, actor: &Actor) -> V
 #[test]
 fn every_method_round_trips_through_its_wire_tag() {
     for (tag, verb) in METHODS {
-        assert!(!verb.is_empty(), "the method {tag} names a CLI verb");
         let request: Request = serde_json::from_str(&frame(0, tag, json!({})))
             .unwrap_or_else(|error| panic!("{tag} accepts an empty params object: {error}"));
         assert_eq!(request.method.tag(), *tag, "{tag} round-trips");
         assert_eq!(request.method.cli_verb(), *verb, "{tag} names its verb");
     }
+}
+
+/// The contract is "no UI-only write": a write names a CLI verb, and a read may
+/// name none. The list is spelled out so a new read is a decision a reviewer
+/// reads, not a verb someone forgot.
+#[test]
+fn the_read_methods_without_a_cli_verb_are_named_here() {
+    let reads: Vec<&str> = METHODS
+        .iter()
+        .filter(|(_, verb)| verb.is_empty())
+        .map(|(tag, _)| *tag)
+        .collect();
+    assert_eq!(
+        reads,
+        vec!["usage.report"],
+        "a read with no CLI verb joins this list deliberately"
+    );
+}
+
+#[test]
+fn a_usage_report_is_one_message_over_the_records() {
+    let sandbox = Sandbox::new("rpc-usage");
+    let store = sandbox.store();
+
+    // An empty home answers every field a face draws, zeroed.
+    let empty = handle(&store, &frame(1, "usage.report", json!({})));
+    assert_eq!(empty["id"], 1);
+    let report = &empty["result"]["report"];
+    assert_eq!(report["records"], 0);
+    assert_eq!(report["reported"], 0);
+    assert_eq!(report["cost"], 0.0);
+    assert_eq!(report["overlap"], 0.0);
+    assert_eq!(report["day"], json!([]));
+    assert_eq!(report["model"], json!([]));
+    assert_eq!(report["agent"], json!([]));
+    assert_eq!(report["ticket"], json!([]));
+
+    // Two records: one stamped with usage, one that reported nothing at all.
+    let sessions = Sessions::new(&store);
+    let actor = Actor::Agent("builder".to_string());
+    sessions
+        .start(
+            &actor,
+            "ses_a",
+            "tandem",
+            Some("builder"),
+            "A brief.",
+            Some("2026-10-30T12:00:00Z"),
+        )
+        .expect("the record starts");
+    sessions
+        .end(
+            &actor,
+            "ses_a",
+            Ending {
+                outcome: SessionOutcome::Succeeded,
+                summary: Some("What landed."),
+                tokens: None,
+                cost: Some(0.5),
+                model: Some("deepseek-v4"),
+                skills: None,
+                at: Some("2026-10-30T12:05:00Z"),
+            },
+        )
+        .expect("the record stamps");
+    sessions
+        .start(
+            &actor,
+            "ses_b",
+            "tandem",
+            Some("builder"),
+            "A brief.",
+            Some("2026-10-30T11:00:00Z"),
+        )
+        .expect("the record starts");
+    sessions
+        .end(&actor, "ses_b", Ending::new(SessionOutcome::Succeeded))
+        .expect("the record stamps");
+
+    let answer = handle(&store, &frame(2, "usage.report", json!({})));
+    let report = &answer["result"]["report"];
+    assert_eq!(report["records"], 2);
+    assert_eq!(report["reported"], 1, "one record carries no usage");
+    assert_eq!(report["cost"], 0.5);
+    assert_eq!(report["agent"][0]["label"], "builder");
+    assert_eq!(report["agent"][0]["barPercent"], 100.0);
+    assert_eq!(report["model"][0]["label"], "deepseek-v4");
+    assert_eq!(
+        report["ticket"][0]["label"], "no ticket",
+        "a record that carried none lands in the ticketless row"
+    );
+    assert_eq!(report["ticket"][0]["records"], 2);
+}
+
+#[test]
+fn a_home_whose_records_predate_usage_reports_zeros_over_its_records() {
+    let sandbox = Sandbox::new("rpc-usage-predates");
+    let store = sandbox.store();
+    let sessions = Sessions::new(&store);
+    let actor = Actor::Human;
+    for id in ["ses_old", "ses_older"] {
+        sessions
+            .start(
+                &actor,
+                id,
+                "tandem",
+                Some("builder"),
+                "A brief.",
+                Some("2026-10-30T12:00:00Z"),
+            )
+            .expect("the record starts");
+        sessions
+            .end(&actor, id, Ending::new(SessionOutcome::Unknown))
+            .expect("the record stamps");
+    }
+
+    let answer = handle(&store, &frame(1, "usage.report", json!({})));
+    let report = &answer["result"]["report"];
+    assert_eq!(
+        report["records"], 2,
+        "the records are the coverage's denominator"
+    );
+    assert_eq!(report["reported"], 0, "no record reports usage");
+    assert_eq!(report["cost"], 0.0, "no sum invents a cost");
+    assert_eq!(report["agent"][0]["barPercent"], 0.0, "and no bar is drawn");
 }
 
 #[test]

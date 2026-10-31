@@ -27,7 +27,7 @@ function face(tab: TabId, snapshot: SnapshotState) {
     case 'bikeshed':
       return <BikeshedFace />
     case 'usage':
-      return <UsageFace />
+      return <UsageFace report={snapshot.usage} />
     case 'settings':
       return <SettingsFace />
   }
@@ -57,16 +57,25 @@ export function App() {
 
     async function load(): Promise<void> {
       try {
-        const answer = await window.tandem.call({
-          method: 'ticket.list',
-          params: OPEN_BOARD,
-        })
+        // The board and the one usage report, in one pass: the report is the
+        // derivation's (`usage.report`), so the Usage face sums nothing.
+        const [board, usage] = await Promise.all([
+          window.tandem.call({ method: 'ticket.list', params: OPEN_BOARD }),
+          window.tandem.call({ method: 'usage.report', params: {} }),
+        ])
         if (!live) return
-        if ('error' in answer) {
-          dispatch({ type: 'failed', message: answer.error.message })
+        if ('error' in board) {
+          dispatch({ type: 'failed', message: board.error.message })
           return
         }
-        const reply = answer.reply
+        if ('error' in usage) {
+          dispatch({ type: 'failed', message: usage.error.message })
+          return
+        }
+        if ('report' in usage.reply) {
+          dispatch({ type: 'usage', report: usage.reply.report })
+        }
+        const reply = board.reply
         if ('tickets' in reply && 'revision' in reply) {
           dispatch({ type: 'loaded', reply })
         }

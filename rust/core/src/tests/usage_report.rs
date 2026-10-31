@@ -12,7 +12,9 @@
 use std::path::{Path, PathBuf};
 
 use crate::domain::session::{Session, SessionOutcome, SessionStatus, SessionTokens, Sessions};
-use crate::domain::usage::{Calendar, NO_TICKET_LABEL, UsageReport, UsageTicket, usage_report};
+use crate::domain::usage::{
+    Calendar, NO_TICKET_LABEL, UsageReport, UsageRow, UsageTicket, usage_report,
+};
 use crate::domain::{Board, Filter};
 use crate::store::{Actor, Home, Store};
 
@@ -250,6 +252,69 @@ fn the_partitions_cover_every_record_once_and_the_tickets_state_their_excess() {
         (ticket_cost - report.ticket_total()).abs() < 1e-9,
         "the ticket rows sum to cost + overlap: {ticket_cost}"
     );
+}
+
+/// `bar_percent` is the bar's width, and the face formats it and nothing else:
+/// each row's cost over the largest cost in its own table, so the table's
+/// dearest row fills the track whatever the dimension.
+#[test]
+fn a_row_carries_its_bar_width_against_its_own_tables_largest() {
+    let report = report();
+
+    let widths =
+        |rows: &[UsageRow]| -> Vec<f64> { rows.iter().map(|row| row.bar_percent).collect() };
+    let near = |actual: &[f64], expected: &[f64]| -> bool {
+        actual.len() == expected.len()
+            && actual
+                .iter()
+                .zip(expected)
+                .all(|(a, b)| (a - b).abs() < 1e-9)
+    };
+
+    assert!(
+        near(&widths(&report.day), &[100.0, 100.0 * 1.0 / 1.5]),
+        "a day table scales to its own dearest day: {:?}",
+        widths(&report.day)
+    );
+    assert!(
+        near(&widths(&report.model), &[100.0, 100.0 * 1.0 / 1.5, 0.0]),
+        "a row that reported nothing has no bar: {:?}",
+        widths(&report.model)
+    );
+    assert!(
+        near(&widths(&report.agent), &[100.0, 100.0 * 0.75 / 1.75, 0.0]),
+        "the agent table's own largest sets the scale: {:?}",
+        widths(&report.agent)
+    );
+    assert!(
+        near(
+            &widths(&report.ticket),
+            &[100.0 * 1.0 / 1.5, 100.0 * 0.75 / 1.5, 100.0],
+        ),
+        "the ticketless row is a row of the table, so it sets the scale: {:?}",
+        widths(&report.ticket)
+    );
+}
+
+#[test]
+fn a_table_with_no_reported_cost_has_no_bars() {
+    let sessions = vec![session(
+        "ses_a",
+        "2026-10-30T09:00:00Z",
+        Some("builder"),
+        Some("deepseek-v4"),
+        None,
+        None,
+        &[],
+    )];
+    let report = usage_report(&sessions, &[], &Calendar::Utc);
+
+    for rows in [&report.day, &report.model, &report.agent, &report.ticket] {
+        assert!(
+            rows.iter().all(|row| row.bar_percent == 0.0),
+            "a table whose rows all reported nothing draws empty bars"
+        );
+    }
 }
 
 #[test]

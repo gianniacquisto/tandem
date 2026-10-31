@@ -32,16 +32,18 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use crate::domain::session::Sessions;
+use crate::domain::usage::{Calendar, UsageTicket, usage_report};
 use crate::domain::{
-    AddTicket, Board, DescriptionBody, DomainError, Edit, Status, TicketQuery, resolve_assignee,
-    resolve_origin,
+    AddTicket, Board, DescriptionBody, DomainError, Edit, Filter, Status, TicketQuery,
+    resolve_assignee, resolve_origin,
 };
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, Event, LaneDeletionReply, LaneListReply, Method,
-    Outcome, Reply, Request, Response, TicketListReply, TicketReply, WireError,
+    Outcome, Reply, Request, Response, TicketListReply, TicketReply, UsageReportReply, WireError,
 };
-use crate::wire::{CommentView, TicketDetail, TicketSummary};
+use crate::wire::{CommentView, TicketDetail, TicketSummary, UsageReportView};
 
 /// The most one frame may carry. A description is text a human wrote; a
 /// megabyte is far past any of them, and the cap keeps an untrusted writer from
@@ -503,6 +505,27 @@ fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireEr
             Ok(Reply::CommentList(CommentListReply {
                 revision,
                 comments: comments.iter().map(CommentView::new).collect(),
+            }))
+        }
+        Method::UsageReport(_) => {
+            // The derivation is the one `usage_report` froze (TAN-208): the
+            // dispatch only feeds it the records and the board's labels, the way
+            // the Swift window fed it the model it already held.
+            let sessions = Sessions::new(store).list(None, None).map_err(domain)?;
+            let tickets: Vec<UsageTicket> = Board::new(store.clone())
+                .list_filter(Filter::All)
+                .map_err(domain)?
+                .into_iter()
+                .map(|ticket| UsageTicket {
+                    id: ticket.id.to_string(),
+                    reference: ticket.reference.clone(),
+                    title: ticket.title.clone(),
+                })
+                .collect();
+            // The reader's calendar: a day is the day the human lived through.
+            let report = usage_report(&sessions, &tickets, &Calendar::Local);
+            Ok(Reply::UsageReport(UsageReportReply {
+                report: UsageReportView::new(&report),
             }))
         }
         Method::LaneList(_) => {
