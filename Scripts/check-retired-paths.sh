@@ -38,6 +38,7 @@ allow=(
   'docs/adr/*.md|.*|An ADR is the historical record: it names a path as it stood when the decision was made, and its amendments name what retired.'
   'docs/port.md|.*|The port spec, dated 2026-10-30: its "Where the old code goes" table is the record of where each old path went.'
   'rust/*.rs|^[[:space:]]*//!|A module doc comment records what the module was ported from, a reference to the git history.'
+  'app/tests/*.test.ts|^[[:space:]]*//.*Sources/Tandem[^ ]*\.swift|A ported test cites the Swift file the behaviour came from, a provenance comment: the same class as the Rust module docs.'
   'Editor/build.mjs|^console\.log\("Editor bundle|The bundle log line names the directory the bundle replaced.'
 )
 
