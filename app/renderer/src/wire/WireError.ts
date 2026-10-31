@@ -5,6 +5,7 @@
  *
  * `parse` is a frame that is not a request; `method` is a method this build
  * does not answer; `domain` is a refusal the domain made (an unknown id, an
- * empty body); `store` is the store failing (a lock held past the window).
+ * empty body); `store` is the store failing (a lock held past the window);
+ * `setup` is a setup verb refusing (no bundle, an unknown host).
  */
 export type WireError = { code: string, message: string, };

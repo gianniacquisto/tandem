@@ -95,6 +95,18 @@ impl Context {
         self.user_home().join(".agents").join("skills")
     }
 
+    /// The directory one host reads Tandem's face from: the root a Settings
+    /// surface shows beside the host's name. OpenCode's is its config
+    /// directory (which holds `skills/`, `agents/` and `opencode.json`), so
+    /// the one root serves every path the install writes into.
+    pub fn host_root(&self, host: super::Host) -> PathBuf {
+        match host {
+            super::Host::Opencode => self.config_home().join("opencode"),
+            super::Host::Claude => self.user_home().join(".claude"),
+            super::Host::Agents => self.user_home().join(".agents"),
+        }
+    }
+
     /// The four host directories the scan reads and the writability probe walks.
     pub fn host_directories(&self) -> [PathBuf; 4] {
         [
