@@ -144,6 +144,55 @@ fn the_gate_reads_the_tickets_lenses() {
     assert!(reviewer.contains("skills/review-lenses/"));
 }
 
+/// A builder that hands off a red head spends the gate's first pass on a
+/// reading that cannot merge, and the fix costs a second CI cycle. The
+/// handoff waits for the checks on the head sha and names the run it read.
+#[test]
+fn the_builder_hands_off_only_on_green_checks() {
+    let builder = file("agents/builder.md");
+    assert!(
+        builder.contains("gh pr checks"),
+        "the handoff waits on `gh pr checks`"
+    );
+    assert!(
+        builder.contains("headRefOid"),
+        "the checks bind to the head sha, not the branch"
+    );
+    assert!(
+        builder.contains("every check on the head is green"),
+        "the handoff names its precondition: every check green"
+    );
+    assert!(
+        builder.contains("run or the head sha"),
+        "the ticket comment names the run or the head sha it read"
+    );
+}
+
+/// The gate's pre-flight reads the checks before the diff, and a head it
+/// cannot merge costs it one line, not a whole pass.
+#[test]
+fn the_gate_names_a_red_head_before_reading_the_diff() {
+    let reviewer = file("agents/reviewer.md");
+    assert!(
+        reviewer.contains("red or pending"),
+        "the pre-flight names a red or pending check"
+    );
+    assert!(
+        reviewer.contains("in one line"),
+        "the report on a head that cannot merge is one line"
+    );
+    let checks = reviewer
+        .find("gh pr checks")
+        .expect("the gate reads `gh pr checks`");
+    let diff = reviewer
+        .find("gh pr diff <n>")
+        .expect("the gate reads the diff");
+    assert!(
+        checks < diff,
+        "the checks are read in the pre-flight, before the diff"
+    );
+}
+
 #[test]
 fn the_refiner_writes_the_lenses_line() {
     let refiner = file("agents/refiner.md");
