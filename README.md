@@ -21,7 +21,7 @@ Spell the tap out in full, every time. Homebrew core has an unrelated cask named
 
 ### First launch (once per install or upgrade)
 
-Tandem is not signed or notarized yet, so macOS shows a Gatekeeper warning the first time you launch it after a download, and the app quits by itself a few seconds later. Clear the download flag once, then relaunch:
+Tandem is ad-hoc signed, not Developer ID signed or notarized, so macOS still shows a Gatekeeper warning the first time you launch it after a download, and the app quits by itself a few seconds later. The bundle's signature is valid and its resources are sealed, so the warning is the missing notarization, not a damaged app. Clear the download flag once, then relaunch:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/Tandem.app

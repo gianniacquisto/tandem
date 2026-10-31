@@ -61,6 +61,9 @@ if [ -z "$prev" ]; then
   exit 1
 fi
 
+# The lead line is user-facing and always fully qualified: the token `tandem`
+# collides with Homebrew core's unrelated cask, and renaming it would break
+# existing installs' upgrade path (PRT-36), so the tap prefix is the contract.
 lead="Tandem $version for macOS 27 (Apple silicon). Install: brew install --cask gianniacquisto/tap/tandem"
 
 # The integration tip a tag names. The tags before the flip sit on `dev`'s
