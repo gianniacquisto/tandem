@@ -2,6 +2,7 @@ import { expect } from '@playwright/test'
 
 import { capture, openTab, test } from '../../shots/app'
 import { scene } from '../../shots/scenes'
+import { computed, token } from '../../shots/tokens'
 
 /**
  * The Usage face a human reads: the spend the records reported, the arithmetic
@@ -14,6 +15,9 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
   await expect(window.locator('.face__title')).toHaveText('Usage')
   await expect(window.locator('.usage__coverage')).toHaveText(/^reported by \d+ of \d+ records$/)
   await expect(window.locator('.usage__spend')).toHaveText(/^\$\d+\.\d{2}$/)
+
+  // The face reads the day palette: its quiet text is --ink-dim.
+  expect(await computed(window, '.usage__coverage', 'color')).toBe(token('ink-dim'))
 
   const picker = window.locator('.usage__segment')
   await expect(picker).toHaveText(['Day', 'Model', 'Agent', 'Ticket'])
