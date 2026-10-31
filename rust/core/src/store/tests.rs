@@ -574,13 +574,14 @@ mod gate {
         fs::create_dir_all(&home).unwrap();
         let gate = write_gate(&home);
 
-        let held = enter_gate(&gate, &home).expect("the gate is taken");
+        let held = enter_gate(&gate, &home, BUSY_TIMEOUT).expect("the gate is taken");
         let (tx, entered) = mpsc::channel();
         let queued = {
             let gate = Arc::clone(&gate);
             let home = home.clone();
             thread::spawn(move || {
-                let _guard = enter_gate(&gate, &home).expect("the queued writer takes the gate");
+                let _guard = enter_gate(&gate, &home, BUSY_TIMEOUT)
+                    .expect("the queued writer takes the gate");
                 tx.send(()).expect("the parent is listening");
             })
         };
@@ -606,7 +607,7 @@ mod gate {
         let home = sandbox.home_path();
         fs::create_dir_all(&home).unwrap();
         let gate = write_gate(&home);
-        let held = enter_gate(&gate, &home).expect("the test takes the gate");
+        let held = enter_gate(&gate, &home, BUSY_TIMEOUT).expect("the test takes the gate");
         gate.wait_passes.store(0, Ordering::Relaxed);
 
         let (tx, answered) = mpsc::channel();
@@ -615,7 +616,7 @@ mod gate {
             let home = home.clone();
             thread::spawn(move || {
                 let started = Instant::now();
-                let outcome = enter_gate(&gate, &home).map(|_guard| ());
+                let outcome = enter_gate(&gate, &home, BUSY_TIMEOUT).map(|_guard| ());
                 let elapsed = started.elapsed();
                 let passes = gate.wait_passes.load(Ordering::Relaxed);
                 let _ = tx.send((outcome, elapsed, passes));
@@ -644,13 +645,61 @@ mod gate {
         );
     }
 
+    /// The window a test store configures is the window that bites: a
+    /// deliberate hold longer than the configured window still answers
+    /// `Locked`, so the contention case's wider window is a setting, not a
+    /// disabled bound.
+    #[test]
+    fn a_configured_gate_window_still_bites_after_a_deliberate_hold() {
+        let sandbox = Sandbox::new("gate-configured-deadline");
+        let home = sandbox.home_path();
+        fs::create_dir_all(&home).unwrap();
+        let gate = write_gate(&home);
+        let held = enter_gate(&gate, &home, BUSY_TIMEOUT).expect("the test takes the gate");
+        let store = sandbox
+            .store()
+            .with_gate_timeout(Duration::from_millis(200));
+
+        let (tx, answered) = mpsc::channel();
+        let queued = thread::spawn(move || {
+            let started = Instant::now();
+            let outcome = store.write(&Actor::Human, |write| {
+                write.insert_setting(NewSetting {
+                    key: "blocked",
+                    value: "1",
+                })
+            });
+            tx.send((outcome, started.elapsed()))
+                .expect("the parent is listening");
+        });
+
+        let (outcome, elapsed) = answered
+            .recv_timeout(Duration::from_secs(5))
+            .expect("a held gate must answer within the configured window");
+        drop(held);
+        queued.join().expect("the queued writer finishes");
+
+        assert!(
+            matches!(&outcome, Err(StoreError::Locked { home: named }) if named == &home),
+            "a held gate must time out as locked, naming the home: {outcome:?}"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(150),
+            "the writer waited the configured window (elapsed {elapsed:?})"
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "the writer did not wait far past the configured window (elapsed {elapsed:?})"
+        );
+    }
+
     #[test]
     fn a_held_gate_times_out_as_locked() {
         let sandbox = Sandbox::new("gate-deadline");
         let home = sandbox.home_path();
         fs::create_dir_all(&home).unwrap();
         let gate = write_gate(&home);
-        let held = enter_gate(&gate, &home).expect("the test takes the gate");
+        let held = enter_gate(&gate, &home, BUSY_TIMEOUT).expect("the test takes the gate");
 
         // The engine is free while this thread holds the gate, so only the
         // gate's own deadline can turn the queued writer away.
@@ -1490,6 +1539,14 @@ mod writes {
 
     use super::*;
 
+    /// A loaded runner can spend more than the production 2 s on one write (a
+    /// Defender scan of the fsync, a slow VM), and the gate's window bounds one
+    /// writer's wait for the writer ahead of it. The contention case configures
+    /// its own wider window; `BUSY_TIMEOUT` stays 2 s, and
+    /// `gate::a_configured_gate_window_still_bites_after_a_deliberate_hold`
+    /// proves a configured window still bites.
+    const SLOW_RUNNER_WINDOW: Duration = Duration::from_secs(60);
+
     #[test]
     fn the_first_write_has_no_backup() {
         let sandbox = Sandbox::new("backup-first");
@@ -1666,16 +1723,15 @@ mod writes {
     #[test]
     fn concurrent_writers_keep_every_row() {
         let sandbox = Sandbox::new("concurrent");
-        let store = sandbox.store();
+        // The only thing these two threads contend for is the process-local
+        // write gate (`store::write_gate`), one mutex per canonical home, so
+        // `BEGIN IMMEDIATE` never sees a same-process sibling and the gate's
+        // window is the only wait. That window is the production 2 s by
+        // default, which a loaded Windows runner outlasts with one slow write;
+        // this case gives its own store a wider one. No ordering between the
+        // threads is assumed: the count is read after the scope joins both.
+        let store = sandbox.store().with_gate_timeout(SLOW_RUNNER_WINDOW);
         setting(&store, &Actor::Human, "seed", "1");
-
-        // The timing assumption: the only thing these two threads contend for
-        // is the process-local write gate (`store::write_gate`), one mutex per
-        // canonical home, so `BEGIN IMMEDIATE` never sees a same-process
-        // sibling: a writer waits one write of the other, never the 2 s busy
-        // window. Across processes the window is the bound (ADR 0031). No
-        // ordering between the threads is assumed: the count is read after the
-        // scope joins both.
         thread::scope(|scope| {
             for group in ["a", "b"] {
                 let store = &store;

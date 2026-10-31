@@ -7,19 +7,27 @@ use std::fs::{self, File};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::bikeshed::Bikeshed;
 use crate::domain::error::DomainError;
 
 use super::bikeshed_support::Vault;
 
+/// A loaded runner can spend more than the production 2 s window on one note
+/// write (a Defender scan of the fsync, a slow VM), and the window bounds a
+/// writer's wait for the holder ahead of it. The contention case configures its
+/// own wider window; `LOCK_TIMEOUT` stays 2 s, and
+/// `a_configured_lock_window_still_bites_after_a_deliberate_hold` proves a
+/// configured window still bites.
+const SLOW_RUNNER_WINDOW: Duration = Duration::from_secs(60);
+
 #[test]
 fn two_writers_on_threads_interleave_without_lost_or_torn_notes() {
     let vault = Vault::new("lock-contended");
     vault.stage("A.md", "");
     vault.stage("B.md", "");
-    let bikeshed = Arc::new(vault.bikeshed());
+    let bikeshed = Arc::new(vault.bikeshed().with_lock_timeout(SLOW_RUNNER_WINDOW));
     let errors = Arc::new(Mutex::new(Vec::new()));
 
     let mut handles = Vec::new();
@@ -85,6 +93,57 @@ fn a_write_on_a_locked_bikeshed_throws_locked_after_the_bounded_retry() {
     );
     holder.join().expect("the holder releases");
 
+    bikeshed.write("A.md", "after release").unwrap();
+    assert_eq!(vault.read("A.md"), "after release");
+}
+
+/// A vault with its own short window still answers `Locked` when a holder
+/// outlasts it: the wider window the contention case configures is a setting,
+/// never a disabled bound, and the production `LOCK_TIMEOUT` is untouched.
+#[test]
+fn a_configured_lock_window_still_bites_after_a_deliberate_hold() {
+    let vault = Vault::new("lock-configured");
+    vault.stage("A.md", "seed");
+    let bikeshed = vault
+        .bikeshed()
+        .with_lock_timeout(Duration::from_millis(200));
+    let lock_path = vault.lock_path();
+    let (ready, acquired) = mpsc::channel();
+
+    let holder = thread::spawn(move || {
+        let file = File::options()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock_path)
+            .expect("the lock file opens");
+        file.lock().expect("the holder takes the lock");
+        ready.send(()).expect("the holder signals");
+        thread::sleep(Duration::from_millis(600));
+    });
+    acquired
+        .recv_timeout(Duration::from_secs(15))
+        .expect("the holder acquired the lock");
+
+    let started = Instant::now();
+    assert_eq!(
+        bikeshed
+            .write("A.md", "should fail while locked")
+            .unwrap_err(),
+        DomainError::BikeshedLocked
+    );
+    let elapsed = started.elapsed();
+    holder.join().expect("the holder releases");
+
+    assert!(
+        elapsed >= Duration::from_millis(150),
+        "the writer waited the configured window: {elapsed:?}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "the writer did not wait far past the configured window: {elapsed:?}"
+    );
     bikeshed.write("A.md", "after release").unwrap();
     assert_eq!(vault.read("A.md"), "after release");
 }

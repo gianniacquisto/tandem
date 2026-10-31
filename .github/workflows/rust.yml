@@ -70,15 +70,17 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: python3 Scripts/test_import_legacy.py
 
-      - name: "Gate: the two contention cases, ten times (Windows)"
-        # These are the cases that flaked on this runner, both on the store's
-        # old sidecar window: run 41080330208 (`concurrent_writers_keep_every_row`)
-        # and run 41099651828 (`a_concurrent_edit_is_not_reverted_by_another_writers_snapshot`,
-        # which answered `Locked`). PRT-23 removed the store's sidecar and
-        # serialized this process's writers on a home-keyed gate, so a waiter is
-        # served when the holder releases instead of racing SQLite's busy
-        # handler; ten runs in one job are the evidence, and a failure here is a
-        # red gate, not a re-run to notice.
+      - name: "Gate: the contention cases, ten times (Windows)"
+        # These are the cases that flaked on this runner: run 41080330208
+        # (`concurrent_writers_keep_every_row`) and run 41099651828
+        # (`a_concurrent_edit_is_not_reverted_by_another_writers_snapshot`,
+        # which answered `Locked`) on the store's old sidecar window, and PRT-37's
+        # `two_writers_on_threads_interleave_without_lost_or_torn_notes` on the
+        # bikeshed's bounded lock. PRT-23 removed the store's sidecar and
+        # serialized this process's writers on a home-keyed gate; PRT-37 gave the
+        # three contention cases their own wider window (the production 2 s
+        # constants are untouched). Ten runs in one job are the evidence, and a
+        # failure here is a red gate, not a re-run to notice.
         #
         # Each run asserts that exactly one test ran: `--exact` with a renamed
         # case exits 0 after `running 0 tests`, and a done-when that silently
@@ -91,6 +93,13 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             if (-not ($out -match 'test result: ok\. 1 passed')) {
               Write-Error "run ${run}: concurrent_writers_keep_every_row ran no test; a renamed case would pass silently"
+              exit 1
+            }
+            $out = cargo test -p tandem-core --lib -- tests::bikeshed_locking::two_writers_on_threads_interleave_without_lost_or_torn_notes --exact 2>&1
+            $out | Write-Output
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if (-not ($out -match 'test result: ok\. 1 passed')) {
+              Write-Error "run ${run}: two_writers_on_threads_interleave_without_lost_or_torn_notes ran no test; a renamed case would pass silently"
               exit 1
             }
             $out = cargo test -p tandem-core --test board -- a_concurrent_edit_is_not_reverted_by_another_writers_snapshot --exact 2>&1
