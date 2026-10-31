@@ -14,9 +14,10 @@
 //! - a malformed frame answers an error frame and leaves the child answering;
 //! - a closed stdin ends the child, leaves the store readable and no temp
 //!   behind, so nothing outlives the app that spawned it;
-//! - after ADR 0031's restore (a rollback-journal backup renamed over the
-//!   store) the child re-attaches and reports the restored revision instead of
-//!   going silent on the pre-restore board.
+//! - after ADR 0031's restore the child re-attaches and reports the restored
+//!   revision instead of going silent on the pre-restore board: renamed over the
+//!   store while the child runs on unix, and, the way the documented Windows
+//!   recipe does it, restored with the app closed and attached on the next open.
 
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -296,6 +297,11 @@ fn a_write_from_another_process_arrives_as_a_change_event() {
     );
 }
 
+// The restore while the child runs: the backup is renamed over the database the
+// watch holds open, which Windows refuses (SQLite's VFS does not ask for
+// `FILE_SHARE_DELETE`), so the case is unix only. The app-closed restore a
+// Windows human runs, and the re-attach on the next open it leaves, is
+// `a_restored_store_is_re_attached_on_the_next_open` below (PRT-26).
 #[cfg(unix)]
 #[test]
 fn a_restored_store_re_attaches_and_reports_the_restored_revision() {
@@ -343,6 +349,61 @@ fn a_restored_store_re_attaches_and_reports_the_restored_revision() {
 
     // The held watch does not block the next write's switch back to WAL, and
     // the stream carries the write's revision.
+    session.send(json!({"id": 5, "method": "ticket.add", "params": {"title": "After"}}));
+    let added = session.receive_where(|frame| frame["id"] == 5);
+    let moved = revision(&added);
+    assert!(
+        moved > restored,
+        "the write moved past the restored revision"
+    );
+    let event =
+        session.receive_where(|frame| frame["event"] == "changed" && frame["revision"] == moved);
+    assert_eq!(event["revision"], moved);
+}
+
+// The restore the docs tell a Windows human to run: the app is closed while
+// the backup moves over the store, so nothing renames over a held file. The
+// next child attaches to the rollback-journal store and reports it, and the
+// stream keeps reporting once a write switches WAL back on.
+#[test]
+fn a_restored_store_is_re_attached_on_the_next_open() {
+    let sandbox = Sandbox::new("restore-next-open");
+    let mut closed = Session::start(&sandbox);
+    closed.send(json!({"id": 1, "method": "ticket.add", "params": {"title": "One"}}));
+    closed.receive_where(|frame| frame["id"] == 1);
+    closed.send(json!({"id": 2, "method": "ticket.add", "params": {"title": "Two"}}));
+    closed.receive_where(|frame| frame["id"] == 2);
+    closed.send(json!({"id": 3, "method": "ticket.list", "params": {}}));
+    let before = revision(&closed.receive_where(|frame| frame["id"] == 3));
+
+    // The app is closed for the restore, which is the documented recipe on
+    // Windows: a live watch holds `tandem.db` open and the platform refuses the
+    // remove and the rename.
+    drop(closed);
+
+    let home = sandbox.home();
+    let _ = fs::remove_file(home.join("tandem.db-wal"));
+    let _ = fs::remove_file(home.join("tandem.db-shm"));
+    fs::remove_file(home.join("tandem.db")).expect("the database is removable");
+    fs::rename(home.join("tandem.db.bak"), home.join("tandem.db"))
+        .expect("the backup moves over the path");
+
+    // The next open attaches to the rollback-journal store and reads it.
+    let mut session = Session::start(&sandbox);
+    session.send(json!({"id": 4, "method": "ticket.list", "params": {}}));
+    let restored_frame = session.receive_where(|frame| frame["id"] == 4);
+    let restored = revision(&restored_frame);
+    assert!(
+        restored < before,
+        "the backup is an earlier revision ({restored} is not below {before})"
+    );
+    assert_eq!(
+        restored_frame["result"]["tickets"][0]["title"], "One",
+        "the backup predates the second write"
+    );
+
+    // The child watches the restored store, and its first write switches WAL
+    // back on: the event carries that write's revision.
     session.send(json!({"id": 5, "method": "ticket.add", "params": {"title": "After"}}));
     let added = session.receive_where(|frame| frame["id"] == 5);
     let moved = revision(&added);
