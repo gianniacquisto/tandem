@@ -2,7 +2,7 @@
 
 **Status**: decided 2026-10-30. The epic is `PRT-1` on the board; the decision record is [ADR 0037](adr/0037-one-stack-rust-core-electron-ui.md). This file is the spec: what the target looks like, what is deliberately not built, and what "done" means. The epic mirrors it and carries the work.
 
-Tandem today is a macOS-only product by construction: `Package.swift` targets `.macOS(.v27)`, the GUI is 8,934 lines of SwiftUI and AppKit, and nothing in the domain needs the Mac. The core is 11,377 lines with no AppKit or SwiftUI import, the CLI is 1,995 lines of Foundation over it, the store is SQLite behind a version seam, and the agent face speaks JSON. Only the presentation layer is Mac-bound, so only the presentation layer gets rewritten.
+Tandem was a macOS-only product by construction when the port was decided: the Swift package targeted `.macOS(.v27)`, the GUI was 8,934 lines of SwiftUI and AppKit, and nothing in the domain needed the Mac. The core was 11,377 lines with no AppKit or SwiftUI import, the CLI 1,995 lines of Foundation over it, the store SQLite behind a version seam, and the agent face spoke JSON. Only the presentation layer was Mac-bound, so only the presentation layer was rewritten.
 
 ## Target shape
 
@@ -35,7 +35,7 @@ The app holds no domain logic. The binary the agents call and the core the app t
 | shell | Electron, electron-vite, electron-builder | one Chromium on all three platforms |
 | renderer | React + TypeScript | agent throughput and ecosystem depth; `app/CONVENTIONS.md` pins the idioms |
 | message types | `ts-rs` | generated from the Rust structs, so a shape cannot drift without a compile error on both sides |
-| UI screenshots | Playwright against the real app | retires `Scripts/shot.sh`, answers `TAN-210`, unblocks `TAN-217` |
+| UI screenshots | Playwright against the real app | a spec in CI, replacing the lldb shot script; answers `TAN-210`, unblocks `TAN-217` |
 | harness | `opencode` v2.2.5, pinned by digest, spawned as a child | no host install, no terminal in onboarding ([ADR 0038](adr/0038-the-harness-home.md)) |
 
 No ORM and no async runtime: the store is one writer on one file.
@@ -91,7 +91,7 @@ Not built: a hosted service for several humans (a deployment shape later, not a 
 
 ## How the work lands
 
-- **Additive on `main`**: new directories `rust/` and `app/`. `Package.swift` and `Sources/` keep building and the release keeps shipping the Swift app until cutover. No long-lived port branch: the repo retired `dev` on 2026-10-29 for this shape ([ADR 0019](adr/0019-integration-branch.md)), and every agent contract branches from `main`.
+- **Landed additively on `main`**: new directories `rust/` and `app/` arrived first, and the Swift targets kept building and the release kept shipping the Swift app until the cutover commit deleted them. No long-lived port branch: the repo retired `dev` on 2026-10-29 for this shape ([ADR 0019](adr/0019-integration-branch.md)), and every agent contract branches from `main`.
 - **Fixture homes until cutover**: the Rust binary runs against `Fixtures/` homes and never touches `~/.tandem` while the Swift app owns it.
 - **Merges, not rebases**, per the repo's git rule.
 
