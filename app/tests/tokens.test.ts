@@ -81,6 +81,19 @@ function darkBlock(): string {
 }
 
 describe('the design tokens', () => {
+  it('opens with one closed header comment, so the day :root rule parses', () => {
+    const rule = css.indexOf(':root')
+    expect(rule).toBeGreaterThan(0)
+
+    const header = css.slice(0, rule).trim()
+    expect(header.startsWith('/*')).toBe(true)
+    expect(header.endsWith('*/')).toBe(true)
+    expect(header.slice(2, -2)).not.toContain('*/')
+
+    expect(css.slice(rule)).toMatch(/^:root \{\n[\s\S]*?\n\}/)
+    expect(declarations(lightBlock()).get('paper')).toBe('#F1E9D7')
+  })
+
   it('keeps every day palette entry, value for value', () => {
     const day = DAY
     expect(day.size).toBe(18)
