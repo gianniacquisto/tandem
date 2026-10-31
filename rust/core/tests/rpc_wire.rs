@@ -54,7 +54,13 @@ fn the_read_methods_without_a_cli_verb_are_named_here() {
         .collect();
     assert_eq!(
         reads,
-        vec!["usage.report"],
+        vec![
+            "note.tree",
+            "note.read",
+            "note.backlinks",
+            "note.recoveries",
+            "usage.report",
+        ],
         "a read with no CLI verb joins this list deliberately"
     );
 }
@@ -467,4 +473,139 @@ fn the_revision_moves_once_per_write_that_changes_a_row() {
 
     handle(&store, &frame(2, "ticket.add", json!({"title": "Two"})));
     assert_eq!(store.revision().expect("the store reads"), once + 1);
+}
+
+#[test]
+fn the_note_methods_read_write_move_and_report_the_vault() {
+    let sandbox = Sandbox::new("rpc-notes");
+    let store = sandbox.store();
+    let bikeshed = sandbox.root().join("home").join("bikeshed");
+    std::fs::create_dir_all(bikeshed.join("projects")).expect("the folder is creatable");
+
+    let wrote = handle(
+        &store,
+        &frame(
+            1,
+            "note.write",
+            json!({"path": "alpha.md", "text": "hello [[beta]]"}),
+        ),
+    );
+    assert_eq!(wrote["result"]["write"]["path"], "alpha.md");
+    let hash = wrote["result"]["write"]["hash"]
+        .as_str()
+        .expect("the write answers its hash")
+        .to_string();
+
+    let read = handle(&store, &frame(2, "note.read", json!({"path": "alpha.md"})));
+    assert_eq!(read["result"]["note"]["text"], "hello [[beta]]");
+    assert_eq!(
+        read["result"]["note"]["hash"], hash,
+        "the read's hash is the write's"
+    );
+
+    handle(
+        &store,
+        &frame(3, "note.write", json!({"path": "beta.md", "text": "bee"})),
+    );
+
+    let tree = handle(&store, &frame(4, "note.tree", json!({})));
+    let rows = tree["result"]["nodes"].to_string();
+    assert!(rows.contains("alpha.md"), "the tree holds the note: {rows}");
+    assert!(
+        rows.contains("projects"),
+        "the tree holds the folder: {rows}"
+    );
+
+    let backlinks = handle(
+        &store,
+        &frame(5, "note.backlinks", json!({"path": "beta.md"})),
+    );
+    assert_eq!(backlinks["result"]["backlinks"][0]["path"], "alpha.md");
+
+    let health = handle(&store, &frame(6, "note.health", json!({})));
+    assert_eq!(health["result"]["health"]["counts"]["notes"], 2);
+    assert_eq!(health["result"]["health"]["counts"]["broken"], 0);
+
+    let moved = handle(
+        &store,
+        &frame(
+            7,
+            "note.move",
+            json!({"path": "beta.md", "into": "projects"}),
+        ),
+    );
+    assert_eq!(moved["result"]["moved"]["path"], "projects/beta.md");
+    assert_eq!(moved["result"]["moved"]["oldPath"], "beta.md");
+    let landed = handle(
+        &store,
+        &frame(8, "note.read", json!({"path": "projects/beta.md"})),
+    );
+    assert_eq!(landed["result"]["note"]["text"], "bee");
+    let rewritten = handle(&store, &frame(9, "note.read", json!({"path": "alpha.md"})));
+    assert_eq!(
+        rewritten["result"]["note"]["text"], "hello [[beta]]",
+        "the canonical target stays the bare name while the basename is unique"
+    );
+}
+
+#[test]
+fn the_note_tree_draws_the_hidden_layer_only_when_asked() {
+    let sandbox = Sandbox::new("rpc-note-hidden");
+    let store = sandbox.store();
+    let bikeshed = sandbox.root().join("home").join("bikeshed");
+    std::fs::create_dir_all(bikeshed.join(".raw")).expect("the saddlebag is creatable");
+    std::fs::write(bikeshed.join(".raw").join("capture.md"), "hidden")
+        .expect("the capture is written");
+
+    let curated = handle(&store, &frame(1, "note.tree", json!({})));
+    assert!(
+        !curated["result"]["nodes"]
+            .to_string()
+            .contains("capture.md"),
+        "the hidden layer is not drawn by default"
+    );
+
+    let revealed = handle(&store, &frame(2, "note.tree", json!({"hidden": true})));
+    assert!(
+        revealed["result"]["nodes"]
+            .to_string()
+            .contains("capture.md"),
+        "the reveal draws the saddlebag"
+    );
+}
+
+#[test]
+fn the_note_recoveries_name_a_killed_writes_temp() {
+    let sandbox = Sandbox::new("rpc-note-recovery");
+    let store = sandbox.store();
+    let bikeshed = sandbox.root().join("home").join("bikeshed");
+    std::fs::create_dir_all(&bikeshed).expect("the vault is creatable");
+    let temp = bikeshed.join(".note-0000-0000-0000-000000000001.tmp");
+    std::fs::write(&temp, "partial bytes").expect("the temp is written");
+
+    let answer = handle(&store, &frame(1, "note.recoveries", json!({})));
+    assert_eq!(
+        answer["result"]["recoveries"][0]["file"],
+        ".note-0000-0000-0000-000000000001.tmp"
+    );
+    assert_eq!(answer["result"]["recoveries"][0]["bytes"], 13);
+}
+
+#[test]
+fn a_note_read_of_no_path_is_the_domains_own_refusal() {
+    let sandbox = Sandbox::new("rpc-note-refusal");
+    let store = sandbox.store();
+
+    let answer = handle(
+        &store,
+        &frame(1, "note.read", json!({"path": "../escape.md"})),
+    );
+    assert_eq!(answer["error"]["code"], "domain");
+    assert!(
+        answer["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("escape.md"),
+        "the refusal names the path: {answer}"
+    );
 }

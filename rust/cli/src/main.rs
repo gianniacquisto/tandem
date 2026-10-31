@@ -33,8 +33,8 @@ use tandem_core::setup::{self, Environment};
 use tandem_core::store::{self, Actor, Home, Store};
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
-    NotePathView, SessionDetailView, SessionList, SessionResult, SprintList, SprintResult,
-    TicketDetail, TicketList, TicketSummary,
+    NoteMoveView, NotePathView, NoteWriteView, SessionDetailView, SessionList, SessionResult,
+    SprintList, SprintResult, TicketDetail, TicketList, TicketSummary,
 };
 
 // MARK: - The grammar
@@ -140,6 +140,8 @@ enum NoteCommand {
     Capture(NoteCaptureArgs),
     Stats(NoteStatsArgs),
     Links,
+    Write(NoteWriteArgs),
+    Move(NoteMoveArgs),
 }
 
 #[derive(Subcommand)]
@@ -307,6 +309,23 @@ struct NoteRenameArgs {
     from: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     to: Option<String>,
+}
+
+#[derive(Args)]
+struct NoteWriteArgs {
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    path: Option<String>,
+    /// The whole text; `-` or an absent flag reads stdin.
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    text: Option<String>,
+}
+
+#[derive(Args)]
+struct NoteMoveArgs {
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    path: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    into: Option<String>,
 }
 
 #[derive(Args)]
@@ -621,6 +640,8 @@ impl NoteCommand {
             Self::Capture(_) => "note capture",
             Self::Stats(_) => "note stats",
             Self::Links => "note links",
+            Self::Write(_) => "note write",
+            Self::Move(_) => "note move",
         }
     }
 }
@@ -959,6 +980,28 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
         NoteCommand::Links => {
             let health = vault.health().map_err(Failure::domain)?;
             print(&health.value)
+        }
+        NoteCommand::Write(args) => {
+            home.ensure()
+                .map_err(|error| home_failure(home.directory(), error))?;
+            let path = args.path.as_deref().unwrap_or("");
+            let text = match args.text.as_deref() {
+                None | Some("-") => read_standard_input()?,
+                Some(text) => text.to_string(),
+            };
+            let record = vault.write(path, &text).map_err(Failure::domain)?;
+            print(&NoteWriteView::new(&record.value))
+        }
+        NoteCommand::Move(args) => {
+            home.ensure()
+                .map_err(|error| home_failure(home.directory(), error))?;
+            let outcome = vault
+                .move_into(
+                    args.path.as_deref().unwrap_or(""),
+                    args.into.as_deref().unwrap_or(""),
+                )
+                .map_err(Failure::domain)?;
+            print(&NoteMoveView::new(&outcome.value))
         }
     }
 }

@@ -14,16 +14,20 @@ use ts_rs::{Config, TS};
 use super::rpc::{
     ArchivedReply, CommentAddParams, CommentListReply, CommentReply, DoctorReply, EmptyParams,
     Event, HostRoot, LaneAddParams, LaneDeleteParams, LaneDeletionReply, LaneListReply,
-    LaneRenameParams, Method, Outcome, Reply, Request, Response, SetupInstallParams, SetupReply,
-    TicketAddParams, TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
-    TicketListParams, TicketListReply, TicketMoveParams, TicketReply, TicketSetParams,
-    TicketUnblockParams, UsageReportReply, WireError,
+    LaneRenameParams, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveParams, NoteMoveReply,
+    NotePathParams, NoteReadReply, NoteRecoveriesReply, NoteTreeParams, NoteTreeReply,
+    NoteWriteParams, NoteWriteReply, Outcome, Reply, Request, Response, SetupInstallParams,
+    SetupReply, TicketAddParams, TicketAnswerParams, TicketArchiveParams, TicketBlockParams,
+    TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams, TicketReply,
+    TicketSetParams, TicketUnblockParams, UsageReportReply, WireError,
 };
 use super::views::{
-    CommentView, TicketBlockView, TicketDetail, TicketSummary, UsageReportView, UsageRowView,
-    UsageSessionView, UsageTokensView,
+    BacklinkView, CommentView, MovedNoteView, NoteContentView, NoteMoveView, NoteNodeView,
+    NoteWriteView, RecoveryView, TicketBlockView, TicketDetail, TicketSummary, UsageReportView,
+    UsageRowView, UsageSessionView, UsageTokensView,
 };
 use super::{DoctorCheck, DoctorReport};
+use crate::bikeshed::{BikeshedHealth, BikeshedHealthCounts, BrokenLink};
 use crate::setup;
 
 /// Every generated file, by name, in a stable order.
@@ -149,6 +153,45 @@ pub fn files() -> Vec<(&'static str, String)> {
         render(
             "UsageTokensView.ts",
             UsageTokensView::export_to_string(&cfg),
+        ),
+        render("NoteTreeParams.ts", NoteTreeParams::export_to_string(&cfg)),
+        render("NotePathParams.ts", NotePathParams::export_to_string(&cfg)),
+        render(
+            "NoteWriteParams.ts",
+            NoteWriteParams::export_to_string(&cfg),
+        ),
+        render("NoteMoveParams.ts", NoteMoveParams::export_to_string(&cfg)),
+        render("NoteTreeReply.ts", NoteTreeReply::export_to_string(&cfg)),
+        render("NoteReadReply.ts", NoteReadReply::export_to_string(&cfg)),
+        render("NoteWriteReply.ts", NoteWriteReply::export_to_string(&cfg)),
+        render("NoteMoveReply.ts", NoteMoveReply::export_to_string(&cfg)),
+        render(
+            "NoteHealthReply.ts",
+            NoteHealthReply::export_to_string(&cfg),
+        ),
+        render(
+            "NoteBacklinksReply.ts",
+            NoteBacklinksReply::export_to_string(&cfg),
+        ),
+        render(
+            "NoteRecoveriesReply.ts",
+            NoteRecoveriesReply::export_to_string(&cfg),
+        ),
+        render("NoteNodeView.ts", NoteNodeView::export_to_string(&cfg)),
+        render(
+            "NoteContentView.ts",
+            NoteContentView::export_to_string(&cfg),
+        ),
+        render("NoteWriteView.ts", NoteWriteView::export_to_string(&cfg)),
+        render("NoteMoveView.ts", NoteMoveView::export_to_string(&cfg)),
+        render("MovedNoteView.ts", MovedNoteView::export_to_string(&cfg)),
+        render("BacklinkView.ts", BacklinkView::export_to_string(&cfg)),
+        render("RecoveryView.ts", RecoveryView::export_to_string(&cfg)),
+        render("BikeshedHealth.ts", BikeshedHealth::export_to_string(&cfg)),
+        render("BrokenLink.ts", BrokenLink::export_to_string(&cfg)),
+        render(
+            "BikeshedHealthCounts.ts",
+            BikeshedHealthCounts::export_to_string(&cfg),
         ),
     ]
 }

@@ -32,7 +32,7 @@ pub mod wikilink;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
@@ -166,6 +166,20 @@ pub struct Backlink {
 pub struct SearchHit {
     pub path: String,
     pub display: String,
+}
+
+/// One orphaned temp a killed write left beside a note.
+///
+/// The atomic write renames into place, so a temp that survives a crash holds
+/// the bytes that were about to land. The next locked operation sweeps one
+/// older than a minute; until then the app names it as a recovery, never as an
+/// error: nothing is lost, and nothing has to be clicked away.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Recovery {
+    /// The temp's bikeshed-root-relative path.
+    pub file: String,
+    pub bytes: u64,
+    pub modified_at: SystemTime,
 }
 
 /// The vault: the directory, the sidecar lockfile and the reveal flag.
@@ -320,6 +334,19 @@ impl Bikeshed {
         let mut paths = Vec::new();
         collect_notes(&self.nodes(&self.directory, "", false), &mut paths);
         paths
+    }
+
+    /// The orphaned temps a killed write left, read-only and lock-free.
+    ///
+    /// A temp is found by the atomic write's own prefix and suffix and carries
+    /// no note path, so the recovery names the file; the panel shows it beside
+    /// the note it will be swept from. Hidden folders are included: a capture's
+    /// interrupted write is still a human's words.
+    pub fn recoveries(&self) -> Vec<Recovery> {
+        let mut found = Vec::new();
+        collect_recoveries(&self.directory, "", &mut found);
+        found.sort_by(|left, right| left.file.cmp(&right.file));
+        found
     }
 
     // MARK: - Path resolution
@@ -869,6 +896,38 @@ fn collect_notes(nodes: &[BikeshedNode], paths: &mut Vec<String>) {
             paths.push(node.path.clone());
         }
         collect_notes(&node.children, paths);
+    }
+}
+
+/// Walk `directory` for the atomic write's orphaned temps, relative to the
+/// vault root. Unreadable entries are skipped: a read never fails on a tree it
+/// cannot fully see, exactly like [`Bikeshed::tree`].
+fn collect_recoveries(directory: &Path, relative: &str, found: &mut Vec<Recovery>) {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let path = entry.path();
+        let child = if relative.is_empty() {
+            name.clone()
+        } else {
+            format!("{relative}/{name}")
+        };
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if metadata.is_dir() {
+            collect_recoveries(&path, &child, found);
+            continue;
+        }
+        if name.starts_with(crate::store::locked::BIKESHED_TEMP_PREFIX) && name.ends_with(".tmp") {
+            found.push(Recovery {
+                file: child,
+                bytes: metadata.len(),
+                modified_at: metadata.modified().unwrap_or(UNIX_EPOCH),
+            });
+        }
     }
 }
 

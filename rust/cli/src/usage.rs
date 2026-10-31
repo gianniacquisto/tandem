@@ -239,6 +239,11 @@ pub fn group(name: &str) -> Option<&'static str> {
             "  tandem-cli note stats [--project <name>]",
             "\n",
             "  tandem-cli note links",
+            // `note write` and `note move` are port-only: the golden captures
+            // this group from the Swift binary line for line, so the group
+            // text stays the Swift surface and the two verbs carry their own
+            // `verb` help below (the rpc's writes name them, which is what the
+            // no-UI-only-write rule asks).
         ),
         "session" => concat!(
             "tandem-cli session \u{2014} the session record.",
@@ -634,6 +639,36 @@ pub fn verb(name: &str) -> Option<&'static str> {
             "Usage:",
             "\n",
             "  tandem-cli lane delete --name <name>",
+        ),
+        "note write" => concat!(
+            "tandem-cli note write: write a note's whole text, atomically.",
+            "\n",
+            "",
+            "\n",
+            "Usage:",
+            "\n",
+            "  tandem-cli note write --path <path> [--text <string|->]",
+            "\n",
+            "",
+            "\n",
+            "The text is the flag's value, or stdin when the flag is absent or `-`.",
+        ),
+        "note move" => concat!(
+            "tandem-cli note move: move a note or folder, rewriting its links.",
+            "\n",
+            "",
+            "\n",
+            "Usage:",
+            "\n",
+            "  tandem-cli note move --path <path> --into <folder>",
+            "\n",
+            "",
+            "\n",
+            "One locked transaction: every wikilink resolving to a moved note is",
+            "\n",
+            "rewritten, then the subtree moves in one rename. An empty --into is",
+            "\n",
+            "the bikeshed root.",
         ),
         "note rename" => concat!(
             "tandem-cli note rename \u{2014} a note's path, wikilinks rewritten.",

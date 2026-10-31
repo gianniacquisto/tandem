@@ -28,7 +28,11 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::wire::views::{CommentView, TicketDetail, TicketSummary, UsageReportView};
+use crate::bikeshed::health::BikeshedHealth;
+use crate::wire::views::{
+    BacklinkView, CommentView, NoteContentView, NoteMoveView, NoteNodeView, NoteWriteView,
+    RecoveryView, TicketDetail, TicketSummary, UsageReportView,
+};
 
 // MARK: - Requests
 
@@ -103,6 +107,16 @@ methods! {
     LaneAdd: "lane.add", LaneAddParams, "lane add";
     LaneRename: "lane.rename", LaneRenameParams, "lane rename";
     LaneDelete: "lane.delete", LaneDeleteParams, "lane delete";
+    // The Bikeshed face's reads. The CLI spells no verb for them today, and
+    // they write nothing, so no UI-only write hides behind an empty verb. The
+    // two mutations name the verbs they share with the agent face.
+    NoteTree: "note.tree", NoteTreeParams, "";
+    NoteRead: "note.read", NotePathParams, "";
+    NoteHealth: "note.health", EmptyParams, "note links";
+    NoteBacklinks: "note.backlinks", NotePathParams, "";
+    NoteRecoveries: "note.recoveries", EmptyParams, "";
+    NoteWrite: "note.write", NoteWriteParams, "note write";
+    NoteMove: "note.move", NoteMoveParams, "note move";
     SetupStatus: "setup.status", EmptyParams, "setup status";
     SetupInstall: "setup.install", SetupInstallParams, "setup install";
     DoctorReport: "doctor.report", EmptyParams, "doctor";
@@ -117,6 +131,39 @@ methods! {
 /// client always sends the same three keys.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 pub struct EmptyParams {}
+
+/// `note.tree`: whether the hidden layer is drawn. The flag reaches the tree
+/// walk only; the linkable graph is always the curated layer.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NoteTreeParams {
+    pub hidden: bool,
+}
+
+/// A method that names one note.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NotePathParams {
+    pub path: Option<String>,
+}
+
+/// `note.write`: the path and its whole text. Both optional so the frame's
+/// empty-params round-trip still parses; a missing path is refused by the
+/// domain, never silently written.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NoteWriteParams {
+    pub path: Option<String>,
+    pub text: Option<String>,
+}
+
+/// `note.move`: the note or folder, and the folder it moves into.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NoteMoveParams {
+    pub path: Option<String>,
+    pub into: Option<String>,
+}
 
 /// `ticket.list`: the CLI's filters, every one optional.
 ///
@@ -293,6 +340,63 @@ pub enum Reply {
     Archived(ArchivedReply),
     Setup(SetupReply),
     Doctor(DoctorReply),
+    NoteTree(NoteTreeReply),
+    NoteRead(NoteReadReply),
+    NoteWrite(NoteWriteReply),
+    NoteMove(NoteMoveReply),
+    NoteHealth(NoteHealthReply),
+    NoteBacklinks(NoteBacklinksReply),
+    NoteRecoveries(NoteRecoveriesReply),
+}
+
+/// `note.tree`: the folder and note rows, folders first as the core walks them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteTreeReply {
+    pub nodes: Vec<NoteNodeView>,
+}
+
+/// `note.read`: the note's text, hash and stamp.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteReadReply {
+    pub note: NoteContentView,
+}
+
+/// `note.write`: the path written and the hash that landed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteWriteReply {
+    pub write: NoteWriteView,
+}
+
+/// `note.move`: where the note or folder landed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteMoveReply {
+    pub moved: NoteMoveView,
+}
+
+/// `note.health`: the same report `note links` prints.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteHealthReply {
+    pub health: BikeshedHealth,
+}
+
+/// `note.backlinks`: the notes linking to the path, and line of the first link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteBacklinksReply {
+    pub path: String,
+    pub backlinks: Vec<BacklinkView>,
+}
+
+/// `note.recoveries`: the orphaned temps a killed save left, if any.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteRecoveriesReply {
+    pub recoveries: Vec<RecoveryView>,
 }
 
 /// `usage.report`: the reported usage, rolled up over every session record and

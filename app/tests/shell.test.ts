@@ -18,7 +18,12 @@ function filesUnder(directory: string, extensions: string[]): string[] {
   })
 }
 
-const sources = filesUnder(renderer, ['.ts', '.tsx', '.css', '.html'])
+// `public/` is the committed editor bundle, copied byte for byte from the Swift
+// resource: its colours and its own CSS are not the app's to rewrite, and
+// `tests/bundle.test.ts` is the test that keeps it verbatim.
+const sources = filesUnder(renderer, ['.ts', '.tsx', '.css', '.html']).filter(
+  (path) => !path.includes(`${join('renderer', 'public')}`),
+)
 
 describe('the shell', () => {
   it('keeps the four tabs, in the spec order', () => {

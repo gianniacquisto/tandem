@@ -32,6 +32,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use crate::bikeshed::Bikeshed;
 use crate::domain::session::Sessions;
 use crate::domain::usage::{Calendar, UsageTicket, usage_report};
 use crate::domain::{
@@ -42,10 +43,14 @@ use crate::setup::Environment;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, HostRoot, LaneDeletionReply,
-    LaneListReply, Method, Outcome, Reply, Request, Response, SetupReply, TicketListReply,
-    TicketReply, UsageReportReply, WireError,
+    LaneListReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply, NoteReadReply,
+    NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, Reply, Request, Response,
+    SetupReply, TicketListReply, TicketReply, UsageReportReply, WireError,
 };
-use crate::wire::{CommentView, TicketDetail, TicketSummary, UsageReportView, slashed_path};
+use crate::wire::{
+    BacklinkView, CommentView, NoteContentView, NoteMoveView, NoteNodeView, NoteWriteView,
+    RecoveryView, TicketDetail, TicketSummary, UsageReportView, slashed_path,
+};
 use crate::{diagnostics, setup};
 
 /// The most one frame may carry. A description is text a human wrote; a
@@ -612,7 +617,69 @@ fn execute(
         Method::DoctorReport(_) => Ok(Reply::Doctor(DoctorReply {
             report: diagnostics::run(store.home(), environment),
         })),
+        Method::NoteTree(params) => {
+            let bikeshed = Bikeshed::with_reveal(bikeshed_directory(store), params.hidden);
+            Ok(Reply::NoteTree(NoteTreeReply {
+                nodes: bikeshed.tree().iter().map(NoteNodeView::new).collect(),
+            }))
+        }
+        Method::NoteRead(params) => {
+            let path = named(&params.path);
+            let content = open_bikeshed(store).read(path).map_err(domain)?.value;
+            Ok(Reply::NoteRead(NoteReadReply {
+                note: NoteContentView::new(path, &content),
+            }))
+        }
+        Method::NoteWrite(params) => {
+            let path = named(&params.path);
+            let text = params.text.as_deref().unwrap_or("");
+            let record = open_bikeshed(store)
+                .write(path, text)
+                .map_err(domain)?
+                .value;
+            Ok(Reply::NoteWrite(NoteWriteReply {
+                write: NoteWriteView::new(&record),
+            }))
+        }
+        Method::NoteMove(params) => {
+            let outcome = open_bikeshed(store)
+                .move_into(named(&params.path), named(&params.into))
+                .map_err(domain)?
+                .value;
+            Ok(Reply::NoteMove(NoteMoveReply {
+                moved: NoteMoveView::new(&outcome),
+            }))
+        }
+        Method::NoteHealth(_) => Ok(Reply::NoteHealth(NoteHealthReply {
+            health: open_bikeshed(store).health().map_err(domain)?.value,
+        })),
+        Method::NoteBacklinks(params) => {
+            let path = named(&params.path);
+            let rows = open_bikeshed(store).backlinks(path).map_err(domain)?.value;
+            Ok(Reply::NoteBacklinks(NoteBacklinksReply {
+                path: path.to_string(),
+                backlinks: rows.iter().map(BacklinkView::new).collect(),
+            }))
+        }
+        Method::NoteRecoveries(_) => Ok(Reply::NoteRecoveries(NoteRecoveriesReply {
+            recoveries: open_bikeshed(store)
+                .recoveries()
+                .iter()
+                .map(RecoveryView::new)
+                .collect(),
+        })),
     }
+}
+
+/// The bikeshed a home keeps: `<home>/bikeshed`, the one rule the CLI's note
+/// verbs and the app's reads share.
+fn bikeshed_directory(store: &Store) -> std::path::PathBuf {
+    store.home().directory().join("bikeshed")
+}
+
+/// The vault the note methods read and write.
+fn open_bikeshed(store: &Store) -> Bikeshed {
+    Bikeshed::new(bikeshed_directory(store))
 }
 
 /// The Settings surface's one read: the setup verb's report and the roots it is
