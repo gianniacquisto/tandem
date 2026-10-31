@@ -8,7 +8,7 @@ import { scene } from '../../shots/scenes'
  * revision the core answered over `rpc`, at the Swift window's floor.
  */
 test('the shell at its 760 pt floor', async ({ window }) => {
-  await expect(window.locator('.shell__wordmark')).toHaveText('Tandem')
+  await expect(window.locator('.shell__wordmarks')).toHaveText('Tandem')
 
   const tabs = window.locator('.tabs .tab')
   await expect(tabs).toHaveCount(4)
