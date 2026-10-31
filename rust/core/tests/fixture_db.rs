@@ -161,6 +161,14 @@ fn the_board_home_holds_the_78_ticket_shape() {
         .map(|ticket| ticket.lane.as_deref())
         .collect();
     assert_eq!(lanes.len(), 5, "four named lanes and the default area");
+
+    let edges: usize = tickets.iter().map(|ticket| ticket.blocked_by.len()).sum();
+    assert_eq!(edges, 3, "the frozen board carries three dependency edges");
+    assert_eq!(
+        tickets.iter().filter(|ticket| ticket.blocked()).count(),
+        3,
+        "three open tickets carry the blocked mark the pictures show"
+    );
 }
 
 #[test]
