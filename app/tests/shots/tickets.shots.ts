@@ -7,6 +7,7 @@ import { capture, openTab, test } from '../../shots/app'
 import { seedPath } from '../../shots/home'
 import { REPO_ROOT } from '../../shots/roots'
 import { scene } from '../../shots/scenes'
+import { computed, token } from '../../shots/tokens'
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
@@ -96,6 +97,11 @@ test('the tickets face shows one board two ways: the list and the board over one
   await window.getByRole('tab', { name: 'Board' }).click()
   await expect(window.locator('.board')).toBeVisible()
   await expect(window.locator('.board__column').first()).toBeVisible()
+
+  // The board card is a token card: its corner is --radius-control.
+  expect(await computed(window, '.ticket-row--board', 'border-radius')).toBe(
+    token('radius-control'),
+  )
 
   const boardIds = await rowIds(window)
   expect(boardIds).toEqual(listIds)
