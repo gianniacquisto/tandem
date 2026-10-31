@@ -1,3 +1,8 @@
 node_modules/
 out/
 dist/
+
+# The screenshot suite: its scratch seed and its run artifacts are rebuilt.
+shots/.seed/
+test-results/
+playwright-report/

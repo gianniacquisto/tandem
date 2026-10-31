@@ -14,13 +14,15 @@
     "test": "vitest run",
     "binary": "cargo build -p tandem --manifest-path ../rust/Cargo.toml",
     "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder --publish never"
+    "dist": "npm run build && electron-builder --publish never",
+    "shots": "npm run build && playwright test"
   },
   "dependencies": {
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
