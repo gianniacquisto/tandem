@@ -35,8 +35,12 @@ size follows the display's scale factor.
 
 A face taller than the window is laid out at its own height (the scroll
 constraint lifted, the width kept) and shot whole, so a picture of a table is
-the whole table. A failing spec fails the run, and the catalogue is rewritten
-only when every scene's picture exists, so a picture and its row cannot drift.
+the whole table; a board is laid out at the width its lanes need, so the picture
+is the whole board rather than a column and a half of it. The scratch home is
+seeded again before every test, so a spec that writes (a drag, a save, the CLI
+as a second writer) cannot change the next spec's picture or its assertions. A
+failing spec fails the run, and the catalogue is rewritten only when every
+scene's picture exists, so a picture and its row cannot drift.
 
 CI runs the same command on the Linux runner under a virtual display
 (`.github/workflows/app.yml`), so a deliberately broken selector is a red job
@@ -44,9 +48,12 @@ rather than a human reading a diff.
 
 | file | what it shows |
 | --- | --- |
-| `electron-shell.png` | the shell at its 760 pt floor: the wordmark, the four kept tabs (Tickets, Bikeshed, Usage, Settings) and the store revision read over `rpc` |
+| `electron-shell.png` | the shell at its 760 pt floor: the wordmark, the four kept tabs (Tickets, Bikeshed, Usage, Settings), the Tickets face it opens on, and the store revision read over `rpc` |
 | `usage-face.png` | the **Usage** face over the fixture home: the reported spend and its coverage, the ticket rows and their arithmetic, the Day/Model/Agent/Ticket picker, and a ticket row rolled down to the records behind it, each naming its session, agent, model, local start, cost, tokens and the tickets it carried |
 | `settings-face.png` | the **Settings** face over the fixture home: the home, the bikeshed, the three agent hosts, the theme rule, the bundled and installed versions, and the doctor's checks each named with its state and detail |
+| `tickets-list.png` | the **Tickets** face in its list layout over the fixture home: the quick-add, the Open/Done/All scopes with their counts, the status, assignee and lane filters, the search, and the lane-grouped rows with each ticket's ref, title, status, assignee, lane and blocked mark |
+| `tickets-board.png` | the same face in its board layout: one column per lane with the default area named, the same rows set on cards, each with its own count and drop target |
+| `tickets-keyboard.png` | the keyboard-only pass over the board: a row selected with the arrows, the quick-add reached with the platform modifier and N, the search with the platform modifier and F, and a ticket moved a lane with Option and the arrows |
 
 ## The Swift app, until the cutover
 

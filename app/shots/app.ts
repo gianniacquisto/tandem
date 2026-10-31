@@ -8,7 +8,7 @@ import {
 } from '@playwright/test'
 
 import { clockScript } from './clock'
-import { seedPath, seedUserPath } from './home'
+import { seedHome, seedPath, seedUserPath, shotsSource } from './home'
 import { WINDOW_FLOOR } from '../src/main/window'
 import { APP_ROOT, REPO_ROOT } from './roots'
 import type { Scene } from './scenes'
@@ -47,14 +47,20 @@ function seededEnv(): Record<string, string> {
 }
 
 /**
- * One built app per spec, at the Swift window's 760 by 560 floor: the suite
+ * One built app per test, at the Swift window's 760 by 560 floor: the suite
  * photographs the real shell over the real `rpc` child, not a mounted
  * component. The clock is pinned before the first application script runs, so
  * a scene that renders a now-relative time renders one instant. A spec asserts
  * its scene and then calls `capture`.
+ *
+ * The scratch home is seeded again before every test, so a spec that writes (a
+ * face's own save, a drag, the CLI as a second writer) cannot change the next
+ * spec's picture or its assertions: every test starts from the named home's
+ * bytes.
  */
 export const test = base.extend<{ app: ElectronApplication; window: Page }>({
   app: async ({}, use) => {
+    seedHome(shotsSource(process.env, REPO_ROOT), SEEDED_HOME)
     const app = await electron.launch({
       args: [
         join(APP_ROOT, 'out', 'main', 'index.js'),
@@ -108,10 +114,15 @@ export async function openTab(page: Page, tab: string): Promise<void> {
  */
 const FULL_HEIGHT = `html, body, #root { height: auto } .shell { height: auto; min-height: ${WINDOW_FLOOR.height}px } .shell__body { overflow: visible }`
 
-export async function capture(app: ElectronApplication, window: Page, entry: Scene): Promise<void> {
-  await app.evaluate(({ BrowserWindow }) => {
-    BrowserWindow.getAllWindows()[0]?.setContentSize(760, 560)
-  })
+export async function capture(
+  app: ElectronApplication,
+  window: Page,
+  entry: Scene,
+  width: number = WINDOW_FLOOR.width,
+): Promise<void> {
+  await app.evaluate(({ BrowserWindow }, size) => {
+    BrowserWindow.getAllWindows()[0]?.setContentSize(size, 560)
+  }, width)
   await window.addStyleTag({ content: FULL_HEIGHT })
   await window.screenshot({
     path: join(REPO_ROOT, 'docs', 'screenshots', entry.file),
