@@ -97,6 +97,11 @@ test('the tickets face shows one board two ways: the list and the board over one
   await expect(window.locator('.board')).toBeVisible()
   await expect(window.locator('.board__column').first()).toBeVisible()
 
+  // A board of one or two lanes does not stretch: a column caps at the card's
+  // readable width, so the one-lane home reads like the five-lane picture.
+  const column = await window.locator('.board__column').first().boundingBox()
+  expect(column?.width ?? 0).toBeLessThanOrEqual(320)
+
   const boardIds = await rowIds(window)
   expect(boardIds).toEqual(listIds)
 
