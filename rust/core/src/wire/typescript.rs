@@ -14,17 +14,18 @@ use ts_rs::{Config, TS};
 use super::rpc::{
     ArchivedReply, CommentAddParams, CommentListReply, CommentReply, DoctorReply, EmptyParams,
     Event, HostRoot, LaneAddParams, LaneDeleteParams, LaneDeletionReply, LaneListReply,
-    LaneRenameParams, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveParams, NoteMoveReply,
-    NotePathParams, NoteReadReply, NoteRecoveriesReply, NoteTreeParams, NoteTreeReply,
-    NoteWriteParams, NoteWriteReply, Outcome, Reply, Request, Response, SetupInstallParams,
-    SetupReply, TicketAddFromNoteParams, TicketAddParams, TicketAnswerParams, TicketArchiveParams,
-    TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams,
-    TicketReply, TicketSetParams, TicketUnblockParams, UsageReportReply, WireError,
+    LaneRenameParams, MarkdownBlocksParams, MarkdownReply, Method, NoteBacklinksReply,
+    NoteHealthReply, NoteMoveParams, NoteMoveReply, NotePathParams, NoteReadReply,
+    NoteRecoveriesReply, NoteTreeParams, NoteTreeReply, NoteWriteParams, NoteWriteReply, Outcome,
+    Reply, Request, Response, SetupInstallParams, SetupReply, TicketAddFromNoteParams,
+    TicketAddParams, TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
+    TicketListParams, TicketListReply, TicketMoveParams, TicketReply, TicketSetParams,
+    TicketUnblockParams, UsageReportReply, WireError,
 };
 use super::views::{
-    BacklinkView, CommentView, MovedNoteView, NoteContentView, NoteMoveView, NoteNodeView,
-    NoteWriteView, RecoveryView, TicketBlockView, TicketDetail, TicketSummary, UsageReportView,
-    UsageRowView, UsageSessionView, UsageTokensView,
+    BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
+    NoteContentView, NoteMoveView, NoteNodeView, NoteWriteView, RecoveryView, TicketBlockView,
+    TicketDetail, TicketSummary, UsageReportView, UsageRowView, UsageSessionView, UsageTokensView,
 };
 use super::{DoctorCheck, DoctorReport};
 use crate::bikeshed::{BikeshedHealth, BikeshedHealthCounts, BrokenLink};
@@ -196,6 +197,19 @@ pub fn files() -> Vec<(&'static str, String)> {
         render(
             "BikeshedHealthCounts.ts",
             BikeshedHealthCounts::export_to_string(&cfg),
+        ),
+        render(
+            "MarkdownBlocksParams.ts",
+            MarkdownBlocksParams::export_to_string(&cfg),
+        ),
+        render("MarkdownReply.ts", MarkdownReply::export_to_string(&cfg)),
+        render(
+            "MarkdownBlockView.ts",
+            MarkdownBlockView::export_to_string(&cfg),
+        ),
+        render(
+            "MarkdownInlineView.ts",
+            MarkdownInlineView::export_to_string(&cfg),
         ),
     ]
 }

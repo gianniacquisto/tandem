@@ -1,4 +1,15 @@
+import type { Call } from '../../../src/shared/bridge'
 import type { SnapshotState } from './snapshot'
+
+/**
+ * One write's answer. `ok` is whether the store took it; a refusal carries the
+ * core's own words, so the face that made the write can answer the action where
+ * it was taken instead of raising the shell's banner over somebody else's face.
+ */
+export type WriteOutcome = { ok: true } | { ok: false; message: string }
+
+/** The shell's one write door: guarded by the listing's revision. */
+export type Write = (call: Call, expected: number | null) => Promise<WriteOutcome>
 
 /**
  * Whether a write may leave the face, and why not when it may not.

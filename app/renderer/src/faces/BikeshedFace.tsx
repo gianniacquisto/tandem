@@ -77,7 +77,12 @@ function message(error: unknown): string {
  * hash on disk before it writes: a concurrent write is a conflict with both
  * bodies, never a lost one.
  */
-export function BikeshedFace() {
+export type BikeshedFaceProps = {
+  /** The note's ticket rows open the one sheet, over the bikeshed. */
+  onOpenTicket?: (ticket: TicketSummary) => void
+}
+
+export function BikeshedFace({ onOpenTicket }: BikeshedFaceProps) {
   const [hidden, setHidden] = useState(() => window.localStorage.getItem(HIDDEN_KEY) === 'true')
   const [nodes, setNodes] = useState<NoteNodeView[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -460,6 +465,7 @@ export function BikeshedFace() {
             linked={linked}
             recoveries={recoveries}
             onOpenNote={(path) => void openNote(path)}
+            onOpenTicket={onOpenTicket}
           />
         </div>
       </div>

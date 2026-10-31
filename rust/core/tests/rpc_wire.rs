@@ -60,9 +60,53 @@ fn the_read_methods_without_a_cli_verb_are_named_here() {
             "note.backlinks",
             "note.recoveries",
             "usage.report",
+            "markdown.blocks",
         ],
         "a read with no CLI verb joins this list deliberately"
     );
+}
+
+/// The ticket sheet draws a body as markdown (`TicketMarkdown`, TAN-219). The
+/// parsing stays the core's: the app sends the text it holds, and gets blocks
+/// back, so the sheet and the CLI cannot read one dialect two ways.
+#[test]
+fn a_markdown_read_answers_the_blocks_the_sheet_draws() {
+    let sandbox = Sandbox::new("rpc-markdown");
+    let store = sandbox.store();
+
+    let answer = handle(
+        &store,
+        &frame(
+            1,
+            "markdown.blocks",
+            json!({"text": "## Why\n\nA **bold** line.\n\n- one\n- two"}),
+        ),
+    );
+    assert_eq!(answer["id"], 1);
+    let blocks = answer["result"]["blocks"]
+        .as_array()
+        .expect("blocks is an array");
+    assert_eq!(
+        blocks[0],
+        json!({
+            "kind": "heading",
+            "level": 2,
+            "runs": [{"text": "Why", "styles": [], "link": null}],
+        })
+    );
+    assert_eq!(blocks[1]["kind"], "paragraph");
+    assert_eq!(
+        blocks[1]["runs"][1],
+        json!({"text": "bold", "styles": ["bold"], "link": null})
+    );
+    assert_eq!(blocks[2]["kind"], "list");
+    assert_eq!(blocks[2]["ordered"], false);
+    assert_eq!(blocks[2]["start"], 1);
+    assert_eq!(blocks[2]["items"][0][0]["runs"][0]["text"], "one");
+
+    // A body with nothing in it draws nothing: the sheet opens for writing.
+    let empty = handle(&store, &frame(2, "markdown.blocks", json!({"text": "   "})));
+    assert_eq!(empty["result"]["blocks"], json!([]));
 }
 
 #[test]
