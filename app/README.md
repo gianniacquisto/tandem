@@ -59,6 +59,21 @@ and filed as its own backlog ticket.
 
 ## A picture
 
-`TANDEM_SHOT=<path.png>` on a dev run writes the window's own PNG after the
-first render and quits. It refuses unless `TANDEM_HOME` is a home under
-`Fixtures/`, the rule in `docs/screenshots/README.md`.
+The screenshots are `app/tests/shots/`, the port's replacement for
+`Scripts/shot.sh`: one spec per scene, one PNG per scene, the catalogue under
+`docs/screenshots/` rewritten by the same run.
+
+```sh
+npm run binary
+TANDEM_SHOTS_HOME=../Fixtures/port/Home npm run shots
+```
+
+`TANDEM_SHOTS_HOME` is required and must name a home under `Fixtures/`; a run
+against `~/.tandem` is refused before a window opens, and the app opens a
+scratch copy (`/tmp/tandem-shots/Home`) so the committed fixture is never
+written to. The seed is that copy plus a fixed clock (`shots/clock.ts`) and a
+fixed fixture user home, so a run writes the same picture it wrote last time. A
+scene is one row in `shots/scenes.ts` and one spec in `tests/shots/`.
+
+`TANDEM_SHOT=<path.png>` is the shell's older in-process rig (one PNG after the
+first render, then quit); it goes with `Scripts/shot.sh` at the cutover.

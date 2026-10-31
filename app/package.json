@@ -17,13 +17,15 @@
     "check:artifact": "node scripts/check-artifact.mjs",
     "smoke": "node scripts/smoke-packaged.mjs",
     "pack": "npm run build && npm run binary:release && electron-builder --dir",
-    "dist": "npm run build && npm run binary:release && electron-builder --publish never"
+    "dist": "npm run build && npm run binary:release && electron-builder --publish never",
+    "shots": "npm run build && playwright test"
   },
   "dependencies": {
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

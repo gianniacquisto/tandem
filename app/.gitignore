@@ -1,4 +1,9 @@
 node_modules/
 out/
 dist/
+
+# The screenshot suite's run artifacts are rebuilt by every run; its seed
+# lives at a fixed scratch path outside the checkout (app/shots/home.ts).
+test-results/
+playwright-report/
 build/
