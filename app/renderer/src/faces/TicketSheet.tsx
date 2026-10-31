@@ -4,8 +4,8 @@ import type { Call } from '../../../src/shared/bridge'
 import { STATUSES } from '../shell/board'
 import {
   EMPTY_COMMENT_REFUSAL,
-  appendDescription,
   answerBlock,
+  appendPlan,
   assigneeChoices,
   canSave,
   commentAuthor,
@@ -16,6 +16,7 @@ import {
   laneCreateParams,
   laneRenameParams,
   sheetChanges,
+  sheetOf,
   ticketHandle,
 } from '../shell/sheet'
 import type { Write } from '../shell/write'
@@ -40,10 +41,6 @@ export type TicketSheetProps = {
   onDismiss: () => void
   /** A dependency row re-targets the same sheet at another ticket. */
   onOpenTicket: (id: string) => void
-}
-
-function ticketOf(reply: Reply): TicketDetail | null {
-  return 'ticket' in reply ? reply.ticket : null
 }
 
 function commentsOf(reply: Reply): CommentView[] | null {
@@ -77,12 +74,21 @@ export function TicketSheet({
   onOpenTicket,
 }: TicketSheetProps) {
   const [ticket, setTicket] = useState<TicketDetail | null>(null)
+  // The revision the ticket above was read at: the body's pin, not the
+  // listing's (`SheetRead`).
+  const [sheetRevision, setSheetRevision] = useState<number | null>(null)
+  // A refusal re-reads the sheet; the token makes that a state change.
+  const [readToken, setReadToken] = useState(0)
   const [comments, setComments] = useState<CommentView[]>([])
   const [commentBlocks, setCommentBlocks] = useState<MarkdownBlockView[][]>([])
   const [descriptionBlocks, setDescriptionBlocks] = useState<MarkdownBlockView[]>([])
   const [answerBlocks, setAnswerBlocks] = useState<MarkdownBlockView[]>([])
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // The reads that failed, told apart from an empty log or an absent body: a
+  // failed read is not "nothing here".
+  const [logError, setLogError] = useState<string | null>(null)
+  const [markdownError, setMarkdownError] = useState<string | null>(null)
 
   const [title, setTitle] = useState('')
   const [status, setStatus] = useState('backlog')
@@ -104,8 +110,9 @@ export function TicketSheet({
   const draftFor = useRef<string | null>(null)
   const dialog = useRef<HTMLDivElement>(null)
 
-  // The ticket and its log, re-read when the sheet opens and on every store
-  // change (the revision is the listing's; an agent's comment moves it too).
+  // The ticket and its log, re-read when the sheet opens, on every store
+  // change, and after a refusal: a refusal means the body this sheet holds may
+  // no longer be the body the store has, and the next write pins to that read.
   useEffect(() => {
     let live = true
     async function load(): Promise<void> {
@@ -118,11 +125,13 @@ export function TicketSheet({
         setError(shown.error.message)
         return
       }
-      const found = ticketOf(shown.reply)
-      if (found === null) {
+      const read = sheetOf(shown.reply)
+      if (read === null) {
         setError('The ticket could not be read.')
         return
       }
+      const found = read.ticket
+      const logFailure = 'error' in log ? log.error.message : null
       const logRows = 'error' in log ? [] : (commentsOf(log.reply) ?? [])
       const decision = answerBlock(found.description)
       const [body, answerBody, ...logBodies] = await Promise.all([
@@ -138,13 +147,27 @@ export function TicketSheet({
       if (!live) return
       setError(null)
       setTicket(found)
+      // The pin follows every read, not only the opening: a re-read after a
+      // refusal must hand the next write the revision the stored body is at.
+      setSheetRevision(read.revision)
       setComments(logRows)
       const bodyBlocks = 'error' in body ? [] : (blocksOf(body.reply) ?? [])
+      // One failed markdown read is a failure to say out loud, never an empty
+      // body: the text is stored, it just could not be drawn.
+      let markdownFailure = 'error' in body ? body.error.message : null
+      if (markdownFailure === null && 'error' in answerBody) {
+        markdownFailure = answerBody.error.message
+      }
+      for (const reply of logBodies) {
+        if (markdownFailure === null && 'error' in reply) markdownFailure = reply.error.message
+      }
       setDescriptionBlocks(bodyBlocks)
       setAnswerBlocks('error' in answerBody ? [] : (blocksOf(answerBody.reply) ?? []))
       setCommentBlocks(
         logBodies.map((reply) => ('error' in reply ? [] : (blocksOf(reply.reply) ?? []))),
       )
+      setLogError(logFailure)
+      setMarkdownError(markdownFailure)
       // A ticket with a body opens for reading it; a terse one opens for
       // writing it (the Swift sheet's rule). Seeded once per opening: a
       // re-read must not overwrite what the human is typing.
@@ -166,7 +189,7 @@ export function TicketSheet({
     return () => {
       live = false
     }
-  }, [ticketId, revision])
+  }, [ticketId, revision, readToken])
 
   useEffect(() => {
     function handle(event: KeyboardEvent): void {
@@ -185,12 +208,17 @@ export function TicketSheet({
     return () => window.removeEventListener('keydown', handle)
     // The handlers read the sheet's current state through its render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticket, title, status, assignee, commentDraft, revision])
+  }, [ticket, title, status, assignee, commentDraft, revision, sheetRevision])
 
-  async function write(call: Call): Promise<boolean> {
-    const outcome = await onWrite(call, revision)
+  async function write(call: Call, expected: number | null = revision): Promise<boolean> {
+    const outcome = await onWrite(call, expected)
     if (!outcome.ok) {
       setNotice(outcome.message)
+      // A refusal means the store moved under the sheet, or it would not take
+      // the write: read the ticket again, so the next write pins to what is
+      // actually stored and the body the human sees is the body being appended
+      // to.
+      setReadToken((token) => token + 1)
       return false
     }
     return true
@@ -203,31 +231,30 @@ export function TicketSheet({
       setNotice('Nothing changed.')
       return
     }
-    const written = await write({
-      method: 'ticket.set',
-      params: { id: ticket.id, title: null, status: null, assignee: null, description: null, ...changes },
-    })
+    const written = await write(
+      {
+        method: 'ticket.set',
+        params: { id: ticket.id, title: null, status: null, assignee: null, description: null, ...changes },
+      },
+      // The draft's fields came from the ticket read; pin them there too, so a
+      // concurrent title change is a conflict and not a silent overwrite.
+      sheetRevision ?? revision,
+    )
     if (written) setNotice(null)
   }
 
   async function append(): Promise<void> {
-    if (ticket === null) return
-    const outcome = appendDescription(ticket.description, addition)
-    if (!outcome.ok) {
-      setDescriptionError(outcome.message)
+    if (ticket === null || sheetRevision === null) return
+    // The body comes from the ticket read, so the write pins to that read: a
+    // `ticket answer` that landed between the read and this append answers a
+    // conflict, and the sheet reads again, instead of erasing the answer.
+    const plan = appendPlan({ ticket, revision: sheetRevision }, addition)
+    if (!plan.ok) {
+      setDescriptionError(plan.message)
       return
     }
     setDescriptionError(null)
-    const written = await write({
-      method: 'ticket.set',
-      params: {
-        id: ticket.id,
-        title: null,
-        status: null,
-        assignee: null,
-        description: outcome.body,
-      },
-    })
+    const written = await write(plan.call, plan.expected)
     if (written) setAddition('')
   }
 
@@ -473,7 +500,11 @@ export function TicketSheet({
 
               {previewing ? (
                 <div className="sheet__preview">
-                  {descriptionBlocks.length === 0 ? (
+                  {markdownError !== null ? (
+                    <p className="sheet__refusal" role="alert">
+                      The description could not be drawn. {markdownError}
+                    </p>
+                  ) : descriptionBlocks.length === 0 ? (
                     <p className="sheet__empty">No description yet.</p>
                   ) : (
                     <MarkdownDocument blocks={descriptionBlocks} />
@@ -631,7 +662,11 @@ export function TicketSheet({
 
             <section className="sheet__discussion" aria-label="Comments">
               <h2 className="sheet__section-title">Comments: the ticket's discussion log</h2>
-              {comments.length === 0 ? (
+              {logError !== null ? (
+                <p className="sheet__refusal" role="alert">
+                  The log could not be read. {logError}
+                </p>
+              ) : comments.length === 0 ? (
                 <p className="sheet__empty">Nothing in the log yet.</p>
               ) : (
                 <ul className="sheet__comments">

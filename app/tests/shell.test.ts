@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { TABS } from '../renderer/src/shell/tabs'
-import { parseRoute, tabHref, viewHref } from '../renderer/src/shell/route'
+import { closeHref, parseRoute, tabHref, viewHref } from '../renderer/src/shell/route'
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
 const renderer = join(appRoot, 'renderer')
@@ -73,6 +73,14 @@ describe('the shell', () => {
     // An empty or unnamed ticket is no ticket: the face, not an empty sheet.
     expect(parseRoute('#/tickets?ticket=').ticket).toBeNull()
     expect(parseRoute('#/tickets?view=board').ticket).toBeNull()
+  })
+
+  it('closes back onto the layout that carried the sheet', () => {
+    // Esc from a sheet opened on the board is still the board: dropping the
+    // segment would land a human on the list they did not choose.
+    expect(closeHref(parseRoute('#/tickets/board?ticket=PRT-17'))).toBe('#/tickets/board')
+    expect(closeHref(parseRoute('#/tickets?ticket=PRT-17'))).toBe('#/tickets')
+    expect(closeHref(parseRoute('#/bikeshed?ticket=PRT-17'))).toBe('#/bikeshed')
   })
 
   it('answers no ticket for a query it cannot decode, instead of crashing the window', () => {

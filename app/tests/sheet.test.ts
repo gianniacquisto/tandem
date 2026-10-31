@@ -10,6 +10,8 @@ import {
   answerBlock,
   answered,
   appendDescription,
+  appendPlan,
+  sheetOf,
   assigneeChoices,
   canSave,
   commentAuthor,
@@ -32,13 +34,16 @@ function source(name: string): string {
 }
 
 /**
- * The refusal wording out of `error.rs`, with the checkout's line endings
+ * A refusal's wording out of `error.rs`, with the checkout's line endings
  * normalised first: the Windows runner checks the tree out with CRLF, and a
  * `\\\n` continuation there is `\\\r\n` (PR #282's app job found this).
  */
-function wordingFrom(error: string): string {
+function coreWording(error: string, arm: string): string {
   const normalized = error.replace(/\r\n/g, '\n')
-  const match = /Self::EmptyDescriptionBody => "([\s\S]*?)"\s*\.to_string\(\)/.exec(normalized)
+  const pattern = new RegExp(
+    `Self::${arm} => \\{?\\s*"([\\s\\S]*?)"\\s*\\.to_string\\(\\)`,
+  )
+  const match = pattern.exec(normalized)
   return (match?.[1] ?? '')
     .replace(/\\\n\s+/g, ' ')
     .replace(/\\"/g, '"')
@@ -103,7 +108,8 @@ describe('the sheet description', () => {
       join(appRoot, '..', 'rust', 'core', 'src', 'domain', 'error.rs'),
       'utf8',
     )
-    expect(EMPTY_DESCRIPTION_REFUSAL).toBe(wordingFrom(error))
+    expect(EMPTY_DESCRIPTION_REFUSAL).toBe(coreWording(error, 'EmptyDescriptionBody'))
+    expect(EMPTY_COMMENT_REFUSAL).toBe(coreWording(error, 'EmptyCommentBody'))
     // The Windows checkout's own shape, built from the raw bytes with `\r?\n`:
     // a line that already carries its `\r` must not be given a second one, or
     // the copy is `\r\r\n`, the normalisation leaves a `\r` behind, and the
@@ -111,7 +117,8 @@ describe('the sheet description', () => {
     // and the CRLF together, so it reproduces what the runner reads.
     const crlf = error.replace(/\r?\n/g, '\r\n')
     expect(crlf).toContain('\\\r\n')
-    expect(wordingFrom(crlf)).toBe(EMPTY_DESCRIPTION_REFUSAL)
+    expect(coreWording(crlf, 'EmptyDescriptionBody')).toBe(EMPTY_DESCRIPTION_REFUSAL)
+    expect(coreWording(crlf, 'EmptyCommentBody')).toBe(EMPTY_COMMENT_REFUSAL)
   })
 
   it('joins the stored body and the addition with the core\'s one blank line', () => {
@@ -123,6 +130,18 @@ describe('the sheet description', () => {
       'utf8',
     )
     expect(board).toContain('format!("{existing}\\n\\n{section}")')
+  })
+
+  it('reads the answer heading by the core\'s own marker', () => {
+    const description = readFileSync(
+      join(appRoot, '..', 'rust', 'core', 'src', 'domain', 'description.rs'),
+      'utf8',
+    ).replace(/\r\n/g, '\n')
+    // The marker is the store's; when it moves, this fails and the sheet moves
+    // with it rather than keeping a second spelling.
+    expect(description).toContain('.starts_with("## answer")')
+    expect(answered('  ## ANSWER  ')).toBe(true)
+    expect(answered('### answer')).toBe(false)
   })
 
   it('counts the heading alone as an answer, the way the store does', () => {
@@ -153,6 +172,37 @@ describe('the sheet description', () => {
 })
 
 describe('the sheet write', () => {
+  it('pins an append to the revision its body was read at, not the listing\'s', () => {
+    // The listing's revision can differ from the ticket read's: a `ticket
+    // answer` between the two would be overwritten by the older body if the
+    // write were pinned to the listing.
+    const read = { revision: 12, ticket: ticket({ id: 't1', description: 'Stored.' }) }
+    expect(appendPlan(read, 'Added.')).toEqual({
+      ok: true,
+      expected: 12,
+      call: {
+        method: 'ticket.set',
+        params: {
+          id: 't1',
+          title: null,
+          status: null,
+          assignee: null,
+          description: 'Stored.\n\nAdded.',
+        },
+      },
+    })
+  })
+
+  it('keeps the revision the ticket was read at, and refuses an empty append', () => {
+    const read = { revision: 42, ticket: ticket({}) }
+    expect(sheetOf(read)).toEqual(read)
+    expect(sheetOf({ blocks: [] })).toBeNull()
+    expect(appendPlan(read, '   ')).toEqual({
+      ok: false,
+      message: EMPTY_DESCRIPTION_REFUSAL,
+    })
+  })
+
   it('sends only the fields that moved, and nothing when nothing did', () => {
     const stored = ticket({ title: 'A title', status: 'ready', assignee: 'builder' })
 

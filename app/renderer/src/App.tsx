@@ -6,7 +6,7 @@ import { SettingsFace } from './faces/SettingsFace'
 import { TicketSheet } from './faces/TicketSheet'
 import { TicketsFace } from './faces/TicketsFace'
 import { UsageFace } from './faces/UsageFace'
-import { parseRoute, tabHref, type Route } from './shell/route'
+import { closeHref, parseRoute, tabHref, type Route } from './shell/route'
 import { initialSnapshot, snapshotReducer, type SnapshotState } from './shell/snapshot'
 import { writeBlocked, type WriteOutcome } from './shell/write'
 import { TABS } from './shell/tabs'
@@ -196,10 +196,11 @@ export function App() {
   const open = useCallback((ticket: TicketSummary) => setOpenTicket(ticket.id), [])
   const closeSheet = useCallback(() => {
     setOpenTicket(null)
-    // A sheet opened from a kept link owns the hash's query; closing drops it so
-    // a reload does not reopen what the human just closed.
+    // A sheet opened from a kept link owns the hash's query; closing drops that
+    // query and keeps the layout that carried it, so Esc from the board is the
+    // board and not the list.
     const current = parseRoute(window.location.hash)
-    if (current.ticket !== null) window.location.hash = tabHref(current.tab)
+    if (current.ticket !== null) window.location.hash = closeHref(current)
   }, [])
 
   return (

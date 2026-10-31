@@ -22,6 +22,15 @@ export function viewHref(tab: TabId, view: View): string {
   return view === 'board' ? `#/${tab}/board` : tabHref(tab)
 }
 
+/**
+ * Where a sheet closes to: the tab and the layout that carried it, without the
+ * ticket query. A kept link's query is the sheet's, not the face's, so closing
+ * drops only that; the board stays the board.
+ */
+export function closeHref(route: Route): string {
+  return viewHref(route.tab, route.view)
+}
+
 export function parseRoute(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#\/?/, '').split('?')
   const [first, second] = path.split('/')

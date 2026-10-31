@@ -1,3 +1,5 @@
+import type { Call } from '../../../src/shared/bridge'
+import type { Reply } from '../wire/Reply'
 import type { TicketDetail } from '../wire/TicketDetail'
 
 import { UNCATEGORIZED, assigneeLabel } from './board'
@@ -32,6 +34,20 @@ export const EMPTY_COMMENT_REFUSAL =
 export type AppendOutcome = { ok: true; body: string } | { ok: false; message: string }
 
 /**
+ * One `ticket.show` answer: the ticket, and the revision that body is a
+ * snapshot of. The revision is the write's pin: the body a description append
+ * re-sends came from this read, and a write pinned anywhere else could put an
+ * older body over an answer that landed in between.
+ */
+export type SheetRead = { ticket: TicketDetail; revision: number }
+
+/** The ticket and its revision out of a `ticket.show` reply, or null. */
+export function sheetOf(reply: Reply): SheetRead | null {
+  if (!('ticket' in reply) || !('revision' in reply)) return null
+  return { ticket: reply.ticket, revision: reply.revision }
+}
+
+/**
  * The body an appended edit writes: the stored text, one blank line, then the
  * addition. `stored` alone is what the append is for, so an addition that
  * carries nothing is the domain's refusal and nothing is written: a pipe of
@@ -56,9 +72,12 @@ export function appendDescription(
  */
 export function answered(description: string | null): boolean {
   if (description === null) return false
-  return description
-    .split('\n')
-    .some((line) => line.trim().toLowerCase().startsWith('## answer'))
+  return answerHeading(description.split('\n')) >= 0
+}
+
+/** The line the answer heading sits on, or -1: the one scan both reads share. */
+function answerHeading(lines: string[]): number {
+  return lines.findIndex((line) => line.trim().toLowerCase().startsWith('## answer'))
 }
 
 /**
@@ -70,9 +89,7 @@ export function answered(description: string | null): boolean {
 export function answerBlock(description: string | null): string | null {
   if (description === null) return null
   const lines = description.split('\n')
-  const heading = lines.findIndex((line) =>
-    line.trim().toLowerCase().startsWith('## answer'),
-  )
+  const heading = answerHeading(lines)
   if (heading < 0) return null
   const body: string[] = []
   for (const line of lines.slice(heading + 1)) {
@@ -99,6 +116,35 @@ export type SheetDraft = {
   title: string
   status: string
   assignee: string | null
+}
+
+/**
+ * The description append as one guarded write: the whole body, and the revision
+ * the body was read at. The sheet's body is not the listing's, so the pin is the
+ * read's own and never the listing's: a `ticket answer` that landed between the
+ * two would otherwise be overwritten by the older body.
+ */
+export type AppendPlan =
+  | { ok: true; call: Call; expected: number }
+  | { ok: false; message: string }
+
+export function appendPlan(read: SheetRead, addition: string): AppendPlan {
+  const outcome = appendDescription(read.ticket.description, addition)
+  if (!outcome.ok) return outcome
+  return {
+    ok: true,
+    expected: read.revision,
+    call: {
+      method: 'ticket.set',
+      params: {
+        id: read.ticket.id,
+        title: null,
+        status: null,
+        assignee: null,
+        description: outcome.body,
+      },
+    },
+  }
 }
 
 /** The fields moved since the sheet opened, or null when the save is free. */
