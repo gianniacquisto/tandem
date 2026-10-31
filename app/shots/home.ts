@@ -1,5 +1,5 @@
-import { cpSync, mkdirSync, rmSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { cpSync, mkdirSync, renameSync, rmSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 
 import { isFixtureHome } from '../src/main/shot'
 
@@ -19,9 +19,34 @@ export class ShotsRefused extends Error {
   override name = 'ShotsRefused'
 }
 
-/** Where a run seeds its scratch copy of the fixture home (gitignored). */
-export function seedPath(repoRoot: string): string {
-  return resolve(repoRoot, 'app', 'shots', '.seed', 'Home')
+/**
+ * Where a run seeds, and the reason it is not under the checkout: the seed's
+ * path is printed by the Settings face, so a picture taken in one checkout must
+ * carry the same path as a picture taken in any other. A fixed scratch root is
+ * the only spelling that gives that, and it is clearly scratch.
+ *
+ * It is refreshed by every run (see [`seedHome`]) and deliberately never
+ * removed: two runs on one machine share it, and a run that deleted it would
+ * break the other's next read. A stale seed cannot outlive a run, because the
+ * next run replaces it wholesale.
+ */
+export function seedRoot(): string {
+  if (process.platform === 'win32') return resolve(process.env['TEMP'] ?? '.', 'tandem-shots')
+  return '/tmp/tandem-shots'
+}
+
+/** The scratch copy of the fixture home a run's app reads. */
+export function seedPath(): string {
+  return join(seedRoot(), 'Home')
+}
+
+/**
+ * The scratch fixture user home: the `HOME` a scene's Settings face reads, so
+ * the host roots it prints are the seed's and never a human's
+ * `~/.config/opencode`, `~/.claude` or `~/.agents`.
+ */
+export function seedUserPath(): string {
+  return join(seedRoot(), 'user')
 }
 
 /** The source home a run was told to read, or a refusal saying why not. */
@@ -51,8 +76,35 @@ export function shotsSource(env: NodeJS.ProcessEnv, repoRoot: string): string {
  * the same bytes.
  */
 export function seedHome(source: string, target: string): string {
-  rmSync(target, { recursive: true, force: true })
+  return replace(target, (staging) => {
+    cpSync(source, staging, { recursive: true })
+  })
+}
+
+/**
+ * The fixture user home: the three host roots the setup report reads, created
+ * empty. They are directories and nothing more, because a picture of Settings
+ * has to show a host's path without showing a host's contents.
+ */
+export function seedUserHome(target: string): string {
+  return replace(target, (staging) => {
+    mkdirSync(join(staging, '.config', 'opencode'), { recursive: true })
+    mkdirSync(join(staging, '.claude'), { recursive: true })
+    mkdirSync(join(staging, '.agents'), { recursive: true })
+  })
+}
+
+/**
+ * A seed is built beside its path and moved into place, so a reader never sees
+ * half a copy: the only gap is the remove and the rename around it, and both
+ * are one directory entry each.
+ */
+function replace(target: string, build: (staging: string) => void): string {
+  const staging = `${target}.staging`
+  rmSync(staging, { recursive: true, force: true })
   mkdirSync(dirname(target), { recursive: true })
-  cpSync(source, target, { recursive: true })
+  build(staging)
+  rmSync(target, { recursive: true, force: true })
+  renameSync(staging, target)
   return target
 }

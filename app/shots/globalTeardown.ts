@@ -1,18 +1,14 @@
-import { rmSync } from 'node:fs'
-
 import { writeCatalogue } from './catalogue'
-import { seedPath } from './home'
 import { REPO_ROOT } from './roots'
 
 /**
- * The catalogue is kept by the same run that takes the pictures, and the
- * scratch home is dropped afterwards. A scene whose PNG is missing throws
- * here, so a green run and a documented picture cannot disagree.
+ * The catalogue is kept by the same run that takes the pictures. A scene whose
+ * PNG is missing throws here, so a green run and a documented picture cannot
+ * disagree.
+ *
+ * The seed is left in place: it is a fixed scratch path shared by runs on one
+ * machine (`home.ts`), and the next run replaces it wholesale.
  */
 export default function globalTeardown(): void {
-  try {
-    writeCatalogue({ repoRoot: REPO_ROOT })
-  } finally {
-    rmSync(seedPath(REPO_ROOT), { recursive: true, force: true })
-  }
+  writeCatalogue({ repoRoot: REPO_ROOT })
 }

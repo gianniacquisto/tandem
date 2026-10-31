@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { HOME_VAR, seedHome, shotsSource } from '../shots/home'
+import { HOME_VAR, seedHome, seedPath, seedUserPath, shotsSource } from '../shots/home'
 
 const repoRoot = '/repo'
 
@@ -38,6 +38,13 @@ describe('the shots home', () => {
     expect(shotsSource({ [HOME_VAR]: port }, repoRoot)).toBe(resolve(port))
   })
 
+  it('seeds at one fixed scratch root, so a picture carries the same paths in any checkout', () => {
+    if (process.platform === 'win32') return
+
+    expect(seedPath()).toBe('/tmp/tandem-shots/Home')
+    expect(seedUserPath()).toBe('/tmp/tandem-shots/user')
+  })
+
   it('seeds a scratch copy so no run writes into the committed home', () => {
     const dir = scratchDir()
     const source = join(dir, 'source')
@@ -54,5 +61,6 @@ describe('the shots home', () => {
     seedHome(source, target)
 
     expect(existsSync(join(target, 'scratch.db'))).toBe(false)
+    expect(existsSync(`${target}.staging`)).toBe(false)
   })
 })
