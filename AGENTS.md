@@ -5,7 +5,7 @@
 This project's memory is the Tandem **bikeshed** (`~/.tandem/bikeshed/`), reached through the `tandem-memory` skill. Before you read or edit project files:
 
 - **Orient first** — load the `tandem-memory` skill, then read `Index.md`, the project's **Overview** (`projects/<project>/<project>.md`, the anchor of its fixed scaffold), and `tandem-cli ticket list`. Do this before touching project files.
-- **Record** — the summary at `session end` (ADR 0027) is the work record. File a **capture** (`tandem-cli note capture --kind <decision|gotcha|fact|thread> --project tandem`) for one thing only: a decision, gotcha or fact whose **cost of re-derivation is real** and which is not already in a session record, a ticket, an ADR or the code. The curated bikeshed notes have one writer — the consolidation pass — so never edit them.
+- **Record** — the summary at `session end` (ADR 0027) is the work record. File a **capture** (`tandem-cli note capture --kind <decision|gotcha|fact|thread> --project tandem`) for one thing only: a decision, gotcha or fact whose **cost of re-derivation is real** and which is not already in a session record, a ticket, an ADR or the code. The capture's body rides **stdin**: `capture` takes no body flag, only `--kind`, `--project` and `--session`, so pipe it in, `printf '%s\n' "$body" | tandem-cli note capture --kind gotcha --project tandem`. The curated bikeshed notes have one writer — the consolidation pass — so never edit them.
 - **Consolidate on request** — the captures keep at session close; when the human asks, `skills/tandem-consolidate/` dispatches the pass.
 - **Applies to sub-agents too** — a child session receives this section like the root does, so a brief need not restate it.
 
@@ -26,7 +26,7 @@ A session is a record, not a ticket (ADR 0027): a row of the store's `sessions` 
 - **A session that dies leaves a `running` record and nothing to reclaim.** The board holds only work, so no pass reclaims the rows of a dead session — what the session carried, its record's `tickets` names.
 - **Stale work is still work.** A ticket claimed by a session that has ended is picked up by the next sprint's triage; the live-vs-ended rule and the dispatch live in `skills/tandem-sprint/SKILL.md`.
 
-Tickets keep their own conventions: a ticket's description is written once and appended to, never overwritten. `--description -` takes the body on stdin, and an empty or whitespace-only body is a domain failure: exit 1, the description left as it was. Pass `--description ""` when you mean to clear it. A session that resumes reopens its carried tickets: `ticket set --id <id> --status in-progress`.
+Tickets keep their own conventions: a ticket's description is written once, and a later pass appends to it rather than rewriting it. That is the convention, not the flag: `--description -` takes the whole body on stdin and **replaces** the stored description, so a pipe carrying only the delta wipes everything else, and appending means re-sending the whole text, the existing body and the addition in one write. An empty or whitespace-only body is a domain failure: exit 1, the description left as it was. Pass `--description ""` when you mean to clear it. A session that resumes reopens its carried tickets: `ticket set --id <id> --status in-progress`.
 
 ## Handoff
 
