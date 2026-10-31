@@ -427,6 +427,28 @@ fn execute(
                 .map_err(domain)?;
             Ok(ticket_receipt(&ticket, store))
         }
+        Method::TicketAddFromNote(params) => {
+            let status = match params.status.as_deref() {
+                Some(raw) => Status::parse(raw).map_err(domain)?,
+                None => Status::Backlog,
+            };
+            let assignee = resolve_assignee(params.assignee.as_deref(), actor).map_err(domain)?;
+            let origin = resolve_origin(params.origin.as_deref(), actor).map_err(domain)?;
+            let ticket = board
+                .add_from_note(
+                    params.text.as_deref().unwrap_or(""),
+                    named(&params.note),
+                    AddTicket {
+                        lane: params.lane.as_deref(),
+                        status,
+                        assignee: assignee.as_deref(),
+                        description: None,
+                        origin: &origin,
+                    },
+                )
+                .map_err(domain)?;
+            Ok(ticket_receipt(&ticket, store))
+        }
         Method::TicketSet(params) => {
             let status = match params.status.as_deref() {
                 Some(raw) => Edit::Set(Status::parse(raw).map_err(domain)?),
@@ -632,7 +654,12 @@ fn execute(
         }
         Method::NoteWrite(params) => {
             let path = named(&params.path);
-            let text = params.text.as_deref().unwrap_or("");
+            // An absent text is not an empty note: the client sent no document,
+            // and writing "" would clear a human's note. `text: ""` is the
+            // explicit clear; a missing field is the refusal.
+            let Some(text) = params.text.as_deref() else {
+                return Err(WireError::domain("the write carries no text"));
+            };
             let record = open_bikeshed(store)
                 .write(path, text)
                 .map_err(domain)?

@@ -163,3 +163,50 @@ fn the_group_help_stays_the_swift_capture_and_the_new_verbs_name_themselves() {
     let moved = sandbox.run(&["note", "move", "--help"], None);
     assert!(String::from_utf8_lossy(&moved.stdout).contains("tandem-cli note move"));
 }
+
+#[test]
+fn ticket_file_files_the_selection_and_links_the_note() {
+    let sandbox = Sandbox::new("ticket-file");
+    sandbox.run(
+        &[
+            "note",
+            "write",
+            "--path",
+            "Index.md",
+            "--text",
+            "the fixture index",
+        ],
+        None,
+    );
+
+    let filed = printed(&sandbox.run(
+        &[
+            "ticket",
+            "file",
+            "--from-note",
+            "Index.md",
+            "--text",
+            "- [ ] File this line",
+        ],
+        None,
+    ));
+    assert_eq!(filed["title"], "File this line");
+    assert_eq!(filed["link"], "Index.md");
+    assert_eq!(filed["description"], "- [ ] File this line");
+    assert_eq!(filed["status"], "backlog");
+
+    let empty = sandbox.run(
+        &["ticket", "file", "--from-note", "Index.md", "--text", ""],
+        None,
+    );
+    assert_eq!(
+        empty.status.code(),
+        Some(1),
+        "an empty selection is a refusal"
+    );
+    assert!(
+        String::from_utf8_lossy(&empty.stderr).contains("Select text"),
+        "{}",
+        String::from_utf8_lossy(&empty.stderr)
+    );
+}

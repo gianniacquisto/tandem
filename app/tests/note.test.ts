@@ -6,6 +6,8 @@ import {
   keepMine,
   openBuffer,
   saveNote,
+  stashDraft,
+  takeDraft,
   takeTheirs,
   type NoteBuffer,
   type NoteCall,
@@ -130,5 +132,18 @@ describe('an opened note', () => {
       baseline: 'aaaa',
       dirty: false,
     })
+  })
+})
+
+describe('a draft whose save did not land', () => {
+  it('keeps a dirty buffer and hands it back once', () => {
+    stashDraft({ ...buffer, path: 'draft.md', text: 'unsaved' })
+    expect(takeDraft()).toEqual({ ...buffer, path: 'draft.md', text: 'unsaved' })
+    expect(takeDraft()).toBeNull()
+  })
+
+  it('does not keep a clean buffer', () => {
+    stashDraft({ ...buffer, path: 'clean.md', dirty: false })
+    expect(takeDraft()).toBeNull()
   })
 })

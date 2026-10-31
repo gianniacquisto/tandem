@@ -113,3 +113,26 @@ export async function saveNote(call: NoteCall, buffer: NoteBuffer): Promise<Save
   if (hash === null) return { type: 'error', message: 'The note could not be written.' }
   return { type: 'saved', hash }
 }
+
+/**
+ * A dirty buffer whose last save did not land.
+ *
+ * A tab switch unmounts the face; the pending autosave dies with it. The
+ * unmount flush writes when it can, and stashes the buffer on a conflict or an
+ * error, so the next visit resumes it. The Swift model outlives the tab; this
+ * map is the port's same promise, without a second model.
+ */
+const drafts = new Map<string, NoteBuffer>()
+
+/** Keep a dirty buffer for the next visit. A clean one has nothing to lose. */
+export function stashDraft(buffer: NoteBuffer): void {
+  if (buffer.dirty) drafts.set(buffer.path, buffer)
+}
+
+/** The oldest kept draft, removed from the map; null when nothing is waiting. */
+export function takeDraft(): NoteBuffer | null {
+  const first = drafts.values().next()
+  if (first.done === true) return null
+  drafts.delete(first.value.path)
+  return first.value
+}

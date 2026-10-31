@@ -94,6 +94,7 @@ methods! {
     TicketList: "ticket.list", TicketListParams, "ticket list";
     TicketShow: "ticket.show", TicketIdParams, "ticket show";
     TicketAdd: "ticket.add", TicketAddParams, "ticket add";
+    TicketAddFromNote: "ticket.addFromNote", TicketAddFromNoteParams, "ticket file";
     TicketSet: "ticket.set", TicketSetParams, "ticket set";
     TicketMove: "ticket.move", TicketMoveParams, "ticket move";
     TicketBlock: "ticket.block", TicketBlockParams, "ticket block";
@@ -198,6 +199,23 @@ pub struct TicketAddParams {
     pub lane: Option<String>,
     pub origin: Option<String>,
     pub description: Option<String>,
+}
+
+/// `ticket.addFromNote`: the selector's text filed as a ticket, linked to the
+/// note it came from. The title is the core's own derivation
+/// (`Board::add_from_note`), never the wire's.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TicketAddFromNoteParams {
+    /// The bikeshed-root-relative note the text came from.
+    pub note: Option<String>,
+    /// The selection, or the caret's checkbox line. Absent is the empty
+    /// selection, which the domain refuses.
+    pub text: Option<String>,
+    pub status: Option<String>,
+    pub assignee: Option<String>,
+    pub lane: Option<String>,
+    pub origin: Option<String>,
 }
 
 /// `ticket.set`: an absent field is unchanged, `description: ""` is the clear.

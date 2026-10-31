@@ -609,3 +609,65 @@ fn a_note_read_of_no_path_is_the_domains_own_refusal() {
         "the refusal names the path: {answer}"
     );
 }
+
+#[test]
+fn a_ticket_filed_from_a_note_links_to_it() {
+    let sandbox = Sandbox::new("rpc-ticket-from-note");
+    let store = sandbox.store();
+    let bikeshed = sandbox.root().join("home").join("bikeshed");
+    std::fs::create_dir_all(&bikeshed).expect("the vault is creatable");
+    std::fs::write(bikeshed.join("note.md"), "the note the ticket came from")
+        .expect("the note is written");
+
+    let added = handle(
+        &store,
+        &frame(
+            1,
+            "ticket.addFromNote",
+            json!({"note": "note.md", "text": "- [ ] File me"}),
+        ),
+    );
+    assert_eq!(added["result"]["ticket"]["title"], "File me");
+    assert_eq!(added["result"]["ticket"]["link"], "note.md");
+    assert_eq!(added["result"]["ticket"]["description"], "- [ ] File me");
+
+    let listed = handle(&store, &frame(2, "ticket.list", json!({})));
+    assert_eq!(listed["result"]["tickets"][0]["link"], "note.md");
+
+    let empty = handle(
+        &store,
+        &frame(3, "ticket.addFromNote", json!({"note": "note.md"})),
+    );
+    assert_eq!(empty["error"]["code"], "domain");
+    assert!(
+        empty["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Select text"),
+        "the domain's own empty-selection refusal: {empty}"
+    );
+}
+
+#[test]
+fn a_note_write_without_text_is_refused_rather_than_emptied() {
+    let sandbox = Sandbox::new("rpc-note-no-text");
+    let store = sandbox.store();
+
+    handle(
+        &store,
+        &frame(
+            1,
+            "note.write",
+            json!({"path": "note.md", "text": "keep me"}),
+        ),
+    );
+    let refused = handle(&store, &frame(2, "note.write", json!({"path": "note.md"})));
+    assert_eq!(refused["error"]["code"], "domain");
+    assert_eq!(refused["error"]["message"], "the write carries no text");
+
+    let read = handle(&store, &frame(3, "note.read", json!({"path": "note.md"})));
+    assert_eq!(
+        read["result"]["note"]["text"], "keep me",
+        "the refused write left the note alone"
+    );
+}

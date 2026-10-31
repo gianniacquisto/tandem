@@ -529,6 +529,11 @@ body {
   color: var(--ember-deep);
 }
 
+.banner--notice {
+  border-color: var(--accent);
+  color: var(--accent-deep);
+}
+
 .banner__dismiss {
   border: 0;
   background: transparent;

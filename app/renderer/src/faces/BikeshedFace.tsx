@@ -13,10 +13,13 @@ import {
   resolveWikilink,
 } from '../shell/bikeshed'
 import {
+  arrival,
   keepMine,
   noteContentOf,
   openBuffer,
   saveNote,
+  stashDraft,
+  takeDraft,
   takeTheirs,
   type NoteBuffer,
   type Theirs,
@@ -82,6 +85,7 @@ export function BikeshedFace() {
   const [conflict, setConflict] = useState<Theirs | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [backlinks, setBacklinks] = useState<BacklinkView[]>([])
   const [linked, setLinked] = useState<TicketSummary[]>([])
   const [health, setHealth] = useState<BikeshedHealth | null>(null)
@@ -144,6 +148,7 @@ export function BikeshedFace() {
     void refreshVault()
     function onFocus(): void {
       void refreshVault()
+      void adoptExternal()
     }
     window.addEventListener('focus', onFocus)
     const stop = window.tandem.onChanged(() => {
@@ -195,14 +200,28 @@ export function BikeshedFace() {
     setError(outcome.message)
   }
 
-  // A tab switch unmounts the face. The pending timer dies with it, so the
-  // buffer is handed to the core one last time; a conflict at that moment is
-  // not written, and the dirty text was never going to win a race with itself.
+  // A tab switch unmounts the face and the pending timer dies with it. The
+  // buffer is handed to the core one last time; a save that does not land (a
+  // conflict or an error) keeps the buffer as a draft, and the next visit
+  // resumes it. That is what makes the unmount safe, not the flush alone.
   useEffect(() => {
     return () => {
       const buffer = openRef.current
-      if (buffer !== null && buffer.dirty) void saveNote(window.tandem.call, buffer)
+      if (buffer === null || !buffer.dirty) return
+      void saveNote(window.tandem.call, buffer).then((outcome) => {
+        if (outcome.type !== 'saved') stashDraft(buffer)
+      })
     }
+  }, [])
+
+  // The draft a previous visit could not save, resumed before the first read.
+  useEffect(() => {
+    const draft = takeDraft()
+    if (draft === null) return
+    setOpen(draft)
+    setToken((current) => current + 1)
+    setExpanded((current) => new Set([...current, ...ancestorsOf(draft.path)]))
+    setNotice('A draft from your last visit was kept. Saving again.')
   }, [])
 
   // The autosave: ~1 s after the last keystroke, withheld while a conflict has
@@ -215,6 +234,56 @@ export function BikeshedFace() {
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, conflict, saving])
+
+  /**
+   * An external write arriving while the face is open. The store's change
+   * event cannot carry it (a note is not a row), so a focus re-read is the
+   * watcher: a dirty buffer becomes the conflict banner, a clean one adopts the
+   * on-disk body (ADR 0004).
+   */
+  async function adoptExternal(): Promise<void> {
+    const current = openRef.current
+    if (current === null) return
+    const answer = await window.tandem.call({ method: 'note.read', params: { path: current.path } })
+    if ('error' in answer) return
+    const disk = noteContentOf(answer.reply)
+    if (disk === null) return
+    const next = arrival(current, { text: disk.text, hash: disk.hash })
+    if (next.type === 'conflict') {
+      setConflict(next.theirs)
+    } else if (next.type === 'adopted') {
+      setOpen(next.buffer)
+      setToken((value) => value + 1)
+      setConflict(null)
+      void refreshVault()
+      void refreshNote(current.path)
+    }
+  }
+
+  async function fileTicket(text: string): Promise<void> {
+    const current = openRef.current
+    if (current === null) {
+      setError('Open a note first: a ticket needs the note it came from.')
+      return
+    }
+    const answer = await window.tandem.call({
+      method: 'ticket.addFromNote',
+      params: {
+        note: current.path,
+        text,
+        status: null,
+        assignee: null,
+        lane: null,
+        origin: null,
+      },
+    })
+    if ('error' in answer) {
+      setError(answer.error.message)
+      return
+    }
+    setNotice('Filed a ticket from this note.')
+    void refreshNote(current.path)
+  }
 
   async function loadNote(path: string): Promise<void> {
     const answer = await window.tandem.call({ method: 'note.read', params: { path } })
@@ -296,6 +365,10 @@ export function BikeshedFace() {
       if (target.includes('://')) return
       const path = resolveWikilink(target, noteIndex)
       if (path !== null) void openNote(path)
+      return
+    }
+    if (next.type === 'send-to-todos' && typeof next.text === 'string') {
+      void fileTicket(next.text)
     }
   }
 
@@ -310,6 +383,15 @@ export function BikeshedFace() {
         <div className="banner" role="alert">
           <span>{error}</span>
           <button type="button" className="banner__dismiss" onClick={() => setError(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {notice === null ? null : (
+        <div className="banner banner--notice" role="status">
+          <span>{notice}</span>
+          <button type="button" className="banner__dismiss" onClick={() => setNotice(null)}>
             Dismiss
           </button>
         </div>

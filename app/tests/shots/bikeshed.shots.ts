@@ -112,3 +112,95 @@ test('a dropped note re-parents through the core move', async ({ window }) => {
   expect(existsSync(join(seedPath(), 'bikeshed', 'daily', 'Index.md'))).toBe(true)
   expect(existsSync(join(seedPath(), 'bikeshed', 'Index.md'))).toBe(false)
 })
+
+/**
+ * The watcher the port does not have: a focus re-read is it (ADR 0004). A dirty
+ * buffer learns of the CLI's write as a conflict immediately, without waiting
+ * for the autosave, and the conflict survives a tab switch because the unmount
+ * keeps the buffer as a draft.
+ */
+test('an external write on focus is a conflict, and the tab switch keeps the draft', async ({
+  window,
+}) => {
+  await openTab(window, 'bikeshed')
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+
+  const editor = window.frameLocator('.editor__frame')
+  await editor.locator('.cm-content').click()
+  await window.keyboard.type(' and words no save has seen')
+  await expect(editor.locator('.cm-content')).toContainText('words no save has seen')
+  // The dirty message crosses the frame's postMessage before the face has it;
+  // the focus must see the buffer, not the keystroke before it.
+  await window.waitForTimeout(300)
+
+  const binary = join(REPO_ROOT, 'rust', 'target', 'debug', process.platform === 'win32' ? 'tandem.exe' : 'tandem')
+  execFileSync(binary, [
+    '--home',
+    seedPath(),
+    'note',
+    'write',
+    '--path',
+    'projects/fixture/fixture.md',
+    '--text',
+    'written behind the open editor',
+  ])
+
+  // The watcher's stand-in: the window's own focus event.
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
+  await expect(window.locator('.conflict')).toBeVisible()
+  await expect(window.locator('.conflict__text').nth(0)).toContainText('words no save has seen')
+  await expect(window.locator('.conflict__text').nth(1)).toContainText(
+    'written behind the open editor',
+  )
+
+  // Unmount the face and come back: the dirty buffer is a draft, not a loss.
+  await window.locator('.tab', { hasText: 'Tickets' }).click()
+  await expect(window.locator('.face__title')).toHaveText('Tickets')
+  await window.waitForTimeout(500)
+  await window.locator('.tab', { hasText: 'Bikeshed' }).click()
+  await expect(window.locator('.face__title')).toHaveText('Bikeshed')
+
+  await expect(editor.locator('.cm-content')).toContainText('words no save has seen')
+  await expect(window.locator('.banner--notice')).toContainText('draft')
+  await expect(window.locator('.conflict')).toBeVisible()
+})
+
+/**
+ * The editor's own send: the bundle's Mod-Shift-t posts the selection as
+ * `send-to-todos`, and the face files it as a ticket linked to the note. The
+ * shortcut is the bundle's (its own suite covers it); the message is the seam
+ * the port must answer, so this posts the exact message and checks the store.
+ */
+test('the editor send files a ticket linked to the note', async ({ window }) => {
+  await openTab(window, 'bikeshed')
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+
+  const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('.cm-content')).toBeVisible()
+
+  const frame = window.frames().find((candidate) => candidate.url().includes('editor-frame.html'))
+  expect(frame).toBeDefined()
+  const message = JSON.stringify({
+    type: 'send-to-todos',
+    text: '- [ ] File this from the note',
+  })
+  await frame?.evaluate(
+    `window.webkit.messageHandlers.tandem.postMessage(${JSON.stringify(message)})`,
+  )
+
+  const tickets = window.locator('.rail__section').filter({ hasText: 'Tickets' })
+  await expect(tickets.locator('.rail__title')).toHaveText('Tickets')
+  await expect(tickets.locator('.rail__row-detail')).toContainText('File this from the note')
+
+  const binary = join(REPO_ROOT, 'rust', 'target', 'debug', process.platform === 'win32' ? 'tandem.exe' : 'tandem')
+  const listed = JSON.parse(
+    execFileSync(binary, ['--home', seedPath(), 'ticket', 'list'], { encoding: 'utf8' }),
+  ) as { tickets: Array<{ title: string; link: string | null }> }
+  expect(
+    listed.tickets.some(
+      (ticket) =>
+        ticket.title === 'File this from the note' &&
+        ticket.link === 'projects/fixture/fixture.md',
+    ),
+  ).toBe(true)
+})

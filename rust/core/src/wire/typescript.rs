@@ -17,9 +17,9 @@ use super::rpc::{
     LaneRenameParams, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveParams, NoteMoveReply,
     NotePathParams, NoteReadReply, NoteRecoveriesReply, NoteTreeParams, NoteTreeReply,
     NoteWriteParams, NoteWriteReply, Outcome, Reply, Request, Response, SetupInstallParams,
-    SetupReply, TicketAddParams, TicketAnswerParams, TicketArchiveParams, TicketBlockParams,
-    TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams, TicketReply,
-    TicketSetParams, TicketUnblockParams, UsageReportReply, WireError,
+    SetupReply, TicketAddFromNoteParams, TicketAddParams, TicketAnswerParams, TicketArchiveParams,
+    TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams,
+    TicketReply, TicketSetParams, TicketUnblockParams, UsageReportReply, WireError,
 };
 use super::views::{
     BacklinkView, CommentView, MovedNoteView, NoteContentView, NoteMoveView, NoteNodeView,
@@ -60,6 +60,10 @@ pub fn files() -> Vec<(&'static str, String)> {
         render(
             "TicketAddParams.ts",
             TicketAddParams::export_to_string(&cfg),
+        ),
+        render(
+            "TicketAddFromNoteParams.ts",
+            TicketAddFromNoteParams::export_to_string(&cfg),
         ),
         render(
             "TicketSetParams.ts",

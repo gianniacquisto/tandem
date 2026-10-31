@@ -15,6 +15,8 @@ type ParentCall = { type: 'tandem-editor-call'; name: string; args: unknown[] }
 const parentWindow = window.parent
 
 function post(message: EditorMessage): void {
+  // '*' is safe here: the parent accepts only its own frame's window as the
+  // source, and this frame accepts only its own parent's, on both sides.
   parentWindow.postMessage(message, '*')
 }
 
