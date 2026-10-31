@@ -20,7 +20,7 @@ use std::process::ExitCode;
 
 use rusqlite::Connection;
 use serde::Deserialize;
-use tandem_core::store::{Actor, Home, NewLane, NewSession, NewTicket, Store};
+use tandem_core::store::{Actor, Home, NewDependency, NewLane, NewSession, NewTicket, Store};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -28,7 +28,19 @@ struct Seed {
     schema: Schema,
     lanes: Vec<Lane>,
     tickets: Vec<Ticket>,
+    /// The dependency edges, as `ticket block --id <ticket> --on <on>` writes
+    /// them. Absent on a seed that carries no edges.
+    #[serde(default)]
+    edges: Vec<Edge>,
     sessions: Vec<Session>,
+}
+
+/// One dependency edge: the waiting ticket and the ticket it waits on.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Edge {
+    ticket: String,
+    on: String,
 }
 
 /// The one column of `schema_migrations` the store stamps from the clock.
@@ -159,6 +171,12 @@ fn write(seed_path: &Path, target: &Path) -> Result<(), String> {
                     position: ticket.position,
                     created_at: &ticket.created_at,
                     completed_at: ticket.completed_at.as_deref(),
+                })?;
+            }
+            for edge in &seed.edges {
+                write.insert_dependency(NewDependency {
+                    ticket_id: &edge.ticket,
+                    depends_on_id: &edge.on,
                 })?;
             }
             for (session, tickets) in seed.sessions.iter().zip(&ticket_lists) {

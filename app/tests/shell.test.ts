@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { TABS } from '../renderer/src/shell/tabs'
-import { parseRoute, tabHref } from '../renderer/src/shell/route'
+import { parseRoute, tabHref, viewHref } from '../renderer/src/shell/route'
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
 const renderer = join(appRoot, 'renderer')
@@ -18,7 +18,12 @@ function filesUnder(directory: string, extensions: string[]): string[] {
   })
 }
 
-const sources = filesUnder(renderer, ['.ts', '.tsx', '.css', '.html'])
+// `public/` is the committed editor bundle, copied byte for byte from the Swift
+// resource: its colours and its own CSS are not the app's to rewrite, and
+// `tests/bundle.test.ts` is the test that keeps it verbatim.
+const sources = filesUnder(renderer, ['.ts', '.tsx', '.css', '.html']).filter(
+  (path) => !path.includes(`${join('renderer', 'public')}`),
+)
 
 describe('the shell', () => {
   it('keeps the four tabs, in the spec order', () => {
@@ -28,11 +33,19 @@ describe('the shell', () => {
 
   it('routes every tab to its own path and back', () => {
     for (const tab of TABS) {
-      expect(parseRoute(tabHref(tab.id))).toBe(tab.id)
+      expect(parseRoute(tabHref(tab.id))).toEqual({ tab: tab.id, view: 'list' })
       expect(tabHref(tab.id)).toBe(`#/${tab.id}`)
     }
-    expect(parseRoute('')).toBe('tickets')
-    expect(parseRoute('#/nowhere')).toBe('tickets')
+    expect(parseRoute('')).toEqual({ tab: 'tickets', view: 'list' })
+    expect(parseRoute('#/nowhere')).toEqual({ tab: 'tickets', view: 'list' })
+  })
+
+  it('routes the Tickets face two ways: the list and the board', () => {
+    expect(parseRoute(viewHref('tickets', 'list'))).toEqual({ tab: 'tickets', view: 'list' })
+    expect(parseRoute(viewHref('tickets', 'board'))).toEqual({ tab: 'tickets', view: 'board' })
+    expect(viewHref('tickets', 'board')).toBe('#/tickets/board')
+    // Only the Tickets face has a board; another tab's second segment is ignored.
+    expect(parseRoute('#/usage/board')).toEqual({ tab: 'usage', view: 'list' })
   })
 
   it('keeps Node out of the renderer: no electron, no builtin, no process', () => {

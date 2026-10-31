@@ -5,8 +5,13 @@
 
 mod support;
 
+use std::fs;
+use std::path::PathBuf;
+
+use serde::Deserialize;
 use support::{Sandbox, all, titles};
-use tandem_core::domain::{AddTicket, Board, Filter, TicketOrdering};
+use tandem_core::domain::{AddTicket, Board, Filter, Ticket, TicketOrdering};
+use uuid::Uuid;
 
 /// Drop `moving` on the `anchor` row and perform it.
 fn drop_on(board: &Board, moving: &str, anchor: &str, after: bool) -> bool {
@@ -161,4 +166,72 @@ fn a_done_ticket_hidden_by_the_open_filter_still_anchors_the_drop_correctly() {
     // a lands past c in the *stored* list, so the hidden b keeps its place above.
     assert_eq!(titles(&board, Filter::All), ["b", "c", "a"]);
     assert_eq!(titles(&board, Filter::Open), ["c", "a"]);
+}
+
+/// The drop-index arithmetic, in a golden both implementations run:
+/// `Fixtures/port/ordering.json` is the case list, this suite reads it, and
+/// `app/tests/board.test.ts` reads the same file through the renderer's port.
+/// One rule, two languages, one set of answers (ADR 0008).
+#[derive(Deserialize)]
+struct Golden {
+    cases: Vec<GoldenCase>,
+}
+
+#[derive(Deserialize)]
+struct GoldenCase {
+    name: String,
+    tickets: Vec<GoldenTicket>,
+    moving: String,
+    anchor: String,
+    after: bool,
+    index: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct GoldenTicket {
+    id: String,
+    lane: Option<String>,
+}
+
+fn golden_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("the core crate sits two levels below the repo root")
+        .join("Fixtures")
+        .join("port")
+        .join("ordering.json")
+}
+
+#[test]
+fn the_drop_index_golden_is_the_rule_both_implementations_answer() {
+    let path = golden_path();
+    let golden: Golden = serde_json::from_str(
+        &fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{} is readable: {error}", path.display())),
+    )
+    .expect("the ordering golden parses");
+    assert!(!golden.cases.is_empty(), "the golden holds cases");
+
+    for case in golden.cases {
+        let tickets: Vec<Ticket> = case
+            .tickets
+            .iter()
+            .map(|entry| {
+                let mut ticket = Ticket::new("a ticket");
+                ticket.id = Uuid::parse_str(&entry.id).expect("a golden id is a uuid");
+                ticket.lane = entry.lane.clone();
+                ticket
+            })
+            .collect();
+        let moving = Uuid::parse_str(&case.moving).expect("a golden id is a uuid");
+        let anchor = Uuid::parse_str(&case.anchor).expect("a golden id is a uuid");
+
+        assert_eq!(
+            TicketOrdering::drop_index(&tickets, moving, anchor, case.after),
+            case.index,
+            "{}",
+            case.name
+        );
+    }
 }

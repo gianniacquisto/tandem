@@ -10,7 +10,15 @@ describe('the content security policy', () => {
     expect(policy).toContain("script-src 'self';")
     expect(policy).not.toContain("script-src 'self' 'unsafe-inline'")
     expect(policy).toContain("object-src 'none'")
-    expect(policy).toContain("frame-ancestors 'none'")
+    expect(policy).toContain("frame-ancestors 'self'")
+  })
+
+  it('admits exactly the editor frame the bundle loads in, and no remote frame', () => {
+    const policy = contentSecurityPolicy(false)
+
+    expect(policy).toContain("frame-src 'self'")
+    expect(policy).not.toContain("frame-ancestors 'none'")
+    expect(policy).not.toMatch(/frame-src[^;]*https?:/)
   })
 
   it('admits the dev server socket only in development', () => {

@@ -17,10 +17,17 @@ committed. Every picture comes from a home under this folder — never
 The fixture data is written here by the CLI, against this folder — the script
 refuses any other home. Nothing under a scratch home is committed.
 
-**The port's home**, `Fixtures/port/Home/`, is the exception: it is authored and
-committed, because both implementations read it and its shape is part of the
-port's contract (`docs/port.md`, Phases 1). No run writes into it. Its README
-states the rule.
+**The port's homes** are the exception: authored and committed, because both
+implementations read them and their shape is part of the port's contract
+(`docs/port.md`, Phases 1). `Fixtures/port/Home/` is the contract home (four
+session records, two board tickets); `Fixtures/port/Board/` is the 78-ticket
+board the Tickets face's pictures are shot on. No run writes into either, and
+each README states the rule.
+
+**The port's ordering golden**, `Fixtures/port/ordering.json`, is the drag
+arithmetic's one case list: `rust/core/tests/ordering.rs` and
+`app/tests/board.test.ts` run the same cases through their own implementation,
+so a drop index cannot drift between the two.
 
 **The port's goldens**, `Fixtures/goldens/`, are the CLI's contract written down:
 `manifest.json` is the case list, one deliberate line per verb shape, and

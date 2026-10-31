@@ -21,7 +21,7 @@ export const SCENES: readonly Scene[] = [
     id: 'shell',
     file: 'electron-shell.png',
     description:
-      'the shell at its 760 pt floor: the wordmark, the four kept tabs (Tickets, Bikeshed, Usage, Settings) and the store revision read over `rpc`',
+      'the shell at its 760 pt floor: the wordmark, the four kept tabs (Tickets, Bikeshed, Usage, Settings), the Tickets face it opens on, and the store revision read over `rpc`',
   },
   {
     id: 'usage',
@@ -30,10 +30,34 @@ export const SCENES: readonly Scene[] = [
       'the **Usage** face over the fixture home: the reported spend and its coverage, the ticket rows and their arithmetic, the Day/Model/Agent/Ticket picker, and a ticket row rolled down to the records behind it, each naming its session, agent, model, local start, cost, tokens and the tickets it carried',
   },
   {
+    id: 'bikeshed',
+    file: 'bikeshed-face.png',
+    description:
+      'the **Bikeshed** face over the fixture home: the scaffold tree with its reveal control, the committed CodeMirror bundle editing the fixture project note in its own frame, the Backlinks dock naming the Index note, the Health panel reporting the daily note as an orphan, and a draft a killed save left named as a recovery',
+  },
+  {
     id: 'settings',
     file: 'settings-face.png',
     description:
       'the **Settings** face over the fixture home: the home, the bikeshed, the three agent hosts, the theme rule, the bundled and installed versions, and the doctor\'s checks each named with its state and detail',
+  },
+  {
+    id: 'tickets-list',
+    file: 'tickets-list.png',
+    description:
+      'the **Tickets** face in its list layout over the port\'s 78-ticket board home (`Fixtures/port/Board`): the quick-add, the Open/Done/All scopes with their counts, the status, assignee and lane filters, the search, and the lane-grouped rows with each ticket\'s ref, title, status, assignee, lane and blocked mark',
+  },
+  {
+    id: 'tickets-board',
+    file: 'tickets-board.png',
+    description:
+      'the same face on the same 78-ticket board home in its board layout: one column per lane with the default area named, the same rows set on cards, each with its own count and drop target',
+  },
+  {
+    id: 'tickets-keyboard',
+    file: 'tickets-keyboard.png',
+    description:
+      'the keyboard-only pass over the 78-ticket board home: a row selected with the arrows, the quick-add reached with the platform modifier and N, the search with the platform modifier and F, and a ticket moved a lane with Option and the arrows',
   },
 ]
 

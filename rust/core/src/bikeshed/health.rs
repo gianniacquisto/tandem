@@ -8,6 +8,7 @@
 //! are never reported and a capture is never an orphan.
 
 use serde::Serialize;
+use ts_rs::TS;
 
 use crate::domain::error::DomainResult;
 use crate::domain::operation::Operation;
@@ -17,7 +18,7 @@ use super::wikilink::{LinkResolution, line_number_of, link_occurrences};
 
 /// One broken wikilink: the note that holds it, the target as written, and the
 /// 1-based line it sits on.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, TS)]
 pub struct BrokenLink {
     pub note: String,
     pub link: String,
@@ -25,7 +26,7 @@ pub struct BrokenLink {
 }
 
 /// The vault's link-graph health: `{"broken": [...], "orphans": [...], "counts": {...}}`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 pub struct BikeshedHealth {
     /// Every wikilink that resolves to no note, or to more than one.
     pub broken: Vec<BrokenLink>,
@@ -51,7 +52,7 @@ impl BikeshedHealth {
 }
 
 /// The totals of a health readout.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 pub struct BikeshedHealthCounts {
     pub notes: usize,
     pub links: usize,
