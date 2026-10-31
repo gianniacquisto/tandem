@@ -1742,9 +1742,13 @@ fn bundled_sqlite_answers() {
 
 // The restore below renames the backup over the store while a watch holds the
 // file open. Windows refuses to remove or rename a file another handle has
-// open (SQLite's VFS does not ask for `FILE_SHARE_DELETE`), so the case is
-// exercised on unix only, the same gate the pipe test in `cli/tests/rpc.rs`
-// carries. PRT-26 names the Windows restore path.
+// open (SQLite's VFS does not ask for `FILE_SHARE_DELETE`), so this case is
+// unix only and the documented restore is the app-closed one there. The half
+// the platform can run, a rollback-journal store answering the watch with no
+// rename over a held file, is
+// `a_rollback_journal_store_answers_a_revision_to_the_watch` below, and the
+// pipe suite in `cli/tests/rpc.rs` covers the same shape through the child
+// (PRT-26).
 #[cfg(unix)]
 #[test]
 fn a_restored_store_is_watched_without_reopening() {
@@ -1795,4 +1799,69 @@ fn a_restored_store_is_watched_without_reopening() {
     // switch back to WAL.
     setting(&store, &Actor::Human, "three", "3");
     assert!(restored.revision().expect("the watch reads") > revision);
+}
+
+// The restore's other half, and the only half Windows can run: the app is
+// closed for the restore (the documented recipe says so on Windows, PRT-26),
+// so nothing is renamed over a held file. The store the restore leaves is the
+// rollback-journal backup copied into place, and the watch has to attach to it
+// and answer its revision. Copying the backup into a home of its own produces
+// exactly that file without the rename the platform forbids.
+#[test]
+fn a_rollback_journal_store_answers_a_revision_to_the_watch() {
+    let sandbox = Sandbox::new("watch-rollback-journal");
+    let store = sandbox.store();
+    setting(&store, &Actor::Human, "one", "1");
+    setting(&store, &Actor::Human, "two", "2");
+    let before = store.revision().expect("the store reads");
+
+    let restored_home = sandbox.root().join("restored");
+    fs::create_dir_all(&restored_home).expect("the restored home is creatable");
+    let restored_database = restored_home.join("tandem.db");
+    fs::copy(sandbox.backup(), &restored_database).expect("the backup copies");
+    let restored = Store::new(Home::resolve(
+        Some(&restored_home),
+        None,
+        &sandbox.user_home(),
+    ));
+
+    // The file is what ADR 0031's restore leaves: the backup, in
+    // rollback-journal mode, so it opens as one file with no `-shm` beside it.
+    let connection =
+        Connection::open_with_flags(&restored_database, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .expect("the restored database opens");
+    assert_eq!(
+        journal_mode(&connection)
+            .expect("the journal mode reads")
+            .as_deref(),
+        Some("delete"),
+        "the backup is a rollback-journal file"
+    );
+    drop(connection);
+
+    // A rollback-journal store is watchable, and the watch reports the
+    // revision the backup was taken at: the stream is not blind until the next
+    // write switches WAL back on.
+    let watch = restored
+        .watch()
+        .expect("the restored store opens")
+        .expect("a rollback-journal store is watchable");
+    let revision = watch.revision().expect("store_meta reads without WAL");
+    assert!(revision > 0, "the backup carries its revision");
+    assert!(revision < before, "the backup predates the second write");
+
+    let opens = restored.watch_opens();
+    for _ in 0..10 {
+        watch.revision().expect("the watch reads");
+    }
+    assert_eq!(
+        restored.watch_opens(),
+        opens,
+        "a held watch does not open a connection per read"
+    );
+
+    // The next write switches WAL back on, and the held connection reads it:
+    // a child that re-attached keeps reporting instead of going silent.
+    setting(&restored, &Actor::Human, "three", "3");
+    assert!(watch.revision().expect("the watch reads") > revision);
 }
