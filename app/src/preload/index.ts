@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 
 import { createBridge, type IpcSurface } from './surface'
 
@@ -10,10 +10,11 @@ import { createBridge, type IpcSurface } from './surface'
 const ipc: IpcSurface = {
   invoke: (channel, call) => ipcRenderer.invoke(channel, call),
   on: (channel, listener) => {
-    ipcRenderer.on(channel, (_event, revision: number) => listener(revision))
-  },
-  off: (channel) => {
-    ipcRenderer.removeAllListeners(channel)
+    const wrapped = (_event: IpcRendererEvent, revision: number) => listener(revision)
+    ipcRenderer.on(channel, wrapped)
+    return () => {
+      ipcRenderer.off(channel, wrapped)
+    }
   },
 }
 

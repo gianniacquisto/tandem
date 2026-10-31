@@ -25,8 +25,11 @@ review.
 - The only window surface is `window.tandem`: `call({ method, params })` and
   `onChanged(listener)`. A third verb is a ticket on the protocol, not a wider
   bridge.
-- A frame never reaches the renderer. `call` resolves with the reply or throws
-  an `RpcError` carrying the core's `code` and `message`.
+- A frame never reaches the renderer. `call` resolves with `{ reply }` or
+  `{ error }`, the core's refusal with its `code` and `message`; a renderer
+  narrows on `'error' in answer`. It never throws one: `contextBridge` clones
+  the value it returns and rebuilds a thrown `Error` with the message alone, so
+  the code would not arrive.
 
 ## Reading and writing messages
 
@@ -58,9 +61,11 @@ review.
 
 ## Styling
 
-- **One token file.** Every colour, hairline, radius, spacing step and motion
-  duration is a CSS variable in `renderer/src/tokens.css`, ported value for
-  value from `Sources/Tandem/LigneTheme.swift`.
+- **One token file.** Every colour, hairline, radius and motion duration, and
+  every spacing step `Sources/Tandem/LigneTheme.swift` names, is a CSS variable
+  in `renderer/src/tokens.css`, ported value for value. Layout arithmetic the
+  Swift theme does not name (a tab's `8px` padding, a fact row's `12px 14px`)
+  stays a literal in `app.css`; it is not a token.
 - **No raw colour literals.** `#hex`, `rgb()`, `rgba()`, `hsl()` and `hsla()`
   appear only in `tokens.css`; a component, a face and `app.css` read
   `var(--ink)` and friends. `tests/shell.test.ts` enforces it.
@@ -95,5 +100,9 @@ review.
   screenshot rule.
 - A test lives in `app/tests/`, named for the unit it covers, and runs in Node.
   No DOM environment and no browser driver: the shell's state is plain data.
+- The bridge's test cannot observe `contextBridge` in Node, so it enforces the
+  seam's shape instead: a refusal is answered as data and still whole after
+  `structuredClone`, the clone the bridge makes. Nothing that must survive the
+  bridge is thrown.
 - Run one suite while working (`npx vitest run tests/shell.test.ts`); CI runs
   all of them on three platforms.

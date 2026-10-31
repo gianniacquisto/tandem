@@ -57,19 +57,22 @@ export function App() {
 
     async function load(): Promise<void> {
       try {
-        const reply = await window.tandem.call({
+        const answer = await window.tandem.call({
           method: 'ticket.list',
           params: OPEN_BOARD,
         })
-        if (live && 'tickets' in reply && 'revision' in reply) {
+        if (!live) return
+        if ('error' in answer) {
+          dispatch({ type: 'failed', message: answer.error.message })
+          return
+        }
+        const reply = answer.reply
+        if ('tickets' in reply && 'revision' in reply) {
           dispatch({ type: 'loaded', reply })
         }
-      } catch (error) {
+      } catch {
         if (live) {
-          dispatch({
-            type: 'failed',
-            message: error instanceof Error ? error.message : 'The store could not be read.',
-          })
+          dispatch({ type: 'failed', message: 'The store could not be read.' })
         }
       }
     }
