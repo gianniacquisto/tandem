@@ -512,6 +512,455 @@ body {
   color: var(--ember-deep);
 }
 
+/* The Tickets face: the quick-add, the scope and filter row, the search, and
+ * the two layouts over one set of rows. The list keeps the Swift face's 540 pt
+ * column; the board takes the window's width because a lane column is a lane. */
+
+.shell__notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lane);
+  max-width: 540px;
+  margin: 0 0 var(--space-gutter);
+  padding: 10px 14px;
+  border: var(--hairline) solid var(--ember);
+  border-radius: var(--radius-card);
+  background: var(--parchment);
+  color: var(--ember-deep);
+}
+
+.shell__dismiss {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ember-deep);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tickets {
+  max-width: 540px;
+}
+
+.tickets--board {
+  max-width: none;
+}
+
+.quick-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--space-control);
+  padding: 0 11px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+}
+
+.quick-add:focus-within {
+  border-color: var(--ember);
+}
+
+.quick-add__plus {
+  color: var(--ink-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.quick-add__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+
+.quick-add__input::placeholder {
+  color: var(--ink-dim);
+}
+
+.quick-add__lane {
+  max-width: 140px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tickets__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-lane);
+  margin-top: var(--space-lane);
+}
+
+.segmented {
+  display: flex;
+  height: var(--space-control);
+  overflow: hidden;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+}
+
+.segmented__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 12.5px;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.segmented__item[aria-selected="true"] {
+  background: var(--parchment);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.segmented__count {
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.segmented--views {
+  margin-left: auto;
+}
+
+.tickets__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter {
+  height: var(--space-control);
+  padding: 0 8px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--space-control);
+  margin-top: var(--space-lane);
+  margin-bottom: var(--space-lane);
+  padding: 0 11px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+}
+
+.search:focus-within {
+  border-color: var(--ember);
+}
+
+.search__icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: var(--ink-dim);
+  stroke-width: 1.4;
+}
+
+.search__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.search__input::placeholder {
+  color: var(--ink-dim);
+}
+
+.search__clear {
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* The list: the default area flat, each named lane under its own header. */
+
+.list {
+  max-width: 540px;
+}
+
+.list__lane-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: var(--space-lane) 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.list__lane-title:first-child {
+  margin-top: 0;
+}
+
+.list__lane-count {
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.list__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One row, both layouts. The list sets it flat on the paper; the board sets
+ * the same row on a parchment card. */
+
+.ticket-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: var(--space-row);
+  padding: 7px 0;
+  border-bottom: var(--hairline) solid var(--sand);
+  transition: background-color var(--motion-toggle) ease-in-out;
+}
+
+.ticket-row:hover,
+.ticket-row[aria-current="true"] {
+  background: var(--parchment);
+}
+
+.ticket-row[aria-current="true"] {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.ticket-row--board {
+  padding: 7px 8px;
+  border: var(--hairline) solid var(--sand);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+}
+
+.ticket-row--board:hover {
+  border-color: var(--line);
+}
+
+.ticket-row[data-targeted] {
+  border-color: var(--accent);
+  background: var(--parchment);
+}
+
+.ticket-row__check {
+  position: relative;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  padding: 0;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-checkbox);
+  background: var(--parchment);
+  cursor: pointer;
+}
+
+.ticket-row__check[aria-checked="true"] {
+  border-color: var(--moss);
+  background: var(--moss);
+}
+
+.ticket-row__check[aria-checked="true"]::after {
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  width: 5px;
+  height: 9px;
+  border-right: 2px solid var(--paper);
+  border-bottom: 2px solid var(--paper);
+  content: "";
+  transform: rotate(45deg);
+}
+
+.ticket-row__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ticket-row__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.ticket-row__title {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.ticket-row[data-done] .ticket-row__title {
+  color: var(--ink-dim);
+  text-decoration: line-through;
+}
+
+.ticket-row__tag,
+.ticket-row__status {
+  padding: 1px 5px;
+  border: var(--hairline) solid var(--sand);
+  border-radius: 999px;
+  color: var(--ink-dim);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.ticket-row__tag--blocked {
+  border-color: var(--ember);
+  color: var(--ember-deep);
+}
+
+.ticket-row__ref {
+  color: var(--ink-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.ticket-row__assignee {
+  color: var(--ink-dim);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.ticket-row__assignee--human {
+  color: var(--ember-deep);
+}
+
+.ticket-row__lane {
+  margin-left: auto;
+  color: var(--ink-dim);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+/* The board: one column per lane, the same rows on cards. */
+
+.board {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding-bottom: var(--space-lane);
+  overflow-x: auto;
+}
+
+.board__column {
+  display: flex;
+  flex: 1 0 180px;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+  min-height: 120px;
+  padding: 4px;
+  border-radius: var(--radius-control);
+}
+
+.board__column[data-targeted] {
+  background: var(--parchment);
+  outline: var(--hairline) solid var(--accent);
+}
+
+.board__title {
+  display: flex;
+  justify-content: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.board__count {
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.board__tickets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 40px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Empty and error states. */
+
+.empty {
+  padding: 40px 0;
+  text-align: center;
+}
+
+.empty--hero {
+  padding: 64px 0;
+}
+
+.empty__title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.empty__subtitle {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.empty__action {
+  height: var(--space-control);
+  margin-top: var(--space-lane);
+  padding: 0 12px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
 /* The Bikeshed face: the tree and its Health panel, the editor frame and the
  * backlinks dock. The layout is the Swift face's (a 232 pt sidebar, a title
  * bar, the dock under the editor); only the widths are the window's. */
