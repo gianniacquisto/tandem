@@ -368,9 +368,33 @@ impl Sprints {
     /// [`DomainError::NoOpenSprint`], whose next step is the lane's own `open`.
     pub fn open_in(&self, lane: &str) -> DomainResult<Sprint> {
         let lane = lane_name(lane)?;
-        self.records()?
+        self.open_record(&lane)?
+            .ok_or(DomainError::NoOpenSprint(lane))
+    }
+
+    /// The lane's open record, if the lane holds one. The one rule both
+    /// lane-only handles read, so `sprint ticket` and `sprint close` cannot
+    /// disagree about which record is open.
+    fn open_record(&self, lane: &str) -> DomainResult<Option<Sprint>> {
+        Ok(self
+            .records()?
             .into_iter()
-            .find(|sprint| sprint.lane == lane && sprint.status == SprintStatus::Open)
+            .find(|sprint| sprint.lane == lane && sprint.status == SprintStatus::Open))
+    }
+
+    /// The lane-only handle `sprint close` acts on: the lane's open record, or
+    /// the lane's newest when every record has closed. A close is a stamp once,
+    /// so a re-run of the close step must reach the same record and read its
+    /// note rather than open a second one. A lane with no record at all answers
+    /// [`DomainError::NoOpenSprint`], as [`Sprints::open_in`] does.
+    pub fn close_in(&self, lane: &str) -> DomainResult<Sprint> {
+        let lane = lane_name(lane)?;
+        if let Some(open) = self.open_record(&lane)? {
+            return Ok(open);
+        }
+        self.list(Some(&lane), None)?
+            .into_iter()
+            .next()
             .ok_or(DomainError::NoOpenSprint(lane))
     }
 

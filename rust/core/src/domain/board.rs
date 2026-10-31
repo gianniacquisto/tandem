@@ -188,7 +188,7 @@ impl Board {
     pub fn comment_read(&self, handle: &str) -> CommentRead {
         match self.comments(handle) {
             Ok(comments) => CommentRead::List(comments),
-            Err(DomainError::Locked) => CommentRead::Busy(DomainError::Locked.message()),
+            Err(error @ DomainError::Locked(_)) => CommentRead::Busy(error.message()),
             Err(error) => CommentRead::Failed(error.message()),
         }
     }

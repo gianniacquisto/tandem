@@ -30,6 +30,10 @@
     {
       "kind": "timestamp",
       "as": "<timestamp>"
+    },
+    {
+      "kind": "answer-day",
+      "as": "<day>"
     }
   ],
   "cases": [

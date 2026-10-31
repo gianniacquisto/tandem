@@ -837,7 +837,7 @@ impl Notes for Bikeshed {
 
 fn translate_store(error: StoreError) -> DomainError {
     match error {
-        StoreError::Locked => DomainError::BikeshedLocked,
+        StoreError::Locked { .. } => DomainError::BikeshedLocked,
         other => DomainError::BikeshedIo(other.to_string()),
     }
 }
