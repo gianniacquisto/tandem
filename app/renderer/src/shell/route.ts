@@ -31,13 +31,26 @@ export function parseRoute(hash: string): Route {
   return { tab, view, ticket: ticketParam(query) }
 }
 
-/** The `ticket` query parameter, or null when it names nothing. */
+/**
+ * The `ticket` query parameter, or null when it names nothing. A malformed
+ * escape is a hash somebody typed or a stale link: it reads as no ticket, never
+ * as a throw, because `parseRoute` runs in the shell's render and one bad
+ * character must not blank the window.
+ */
 function ticketParam(query: string): string | null {
   for (const pair of query.split('&')) {
     const [name, value = ''] = pair.split('=')
     if (name !== 'ticket') continue
-    const decoded = decodeURIComponent(value).trim()
+    const decoded = decodeURIComponentOrNull(value)?.trim() ?? ''
     return decoded === '' ? null : decoded
   }
   return null
+}
+
+function decodeURIComponentOrNull(value: string): string | null {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return null
+  }
 }

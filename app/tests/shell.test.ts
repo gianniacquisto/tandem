@@ -75,6 +75,14 @@ describe('the shell', () => {
     expect(parseRoute('#/tickets?view=board').ticket).toBeNull()
   })
 
+  it('answers no ticket for a query it cannot decode, instead of crashing the window', () => {
+    // `parseRoute` runs in App's render initialiser, so a stale hand-typed hash
+    // with one bad escape must read as no ticket, never blank the window.
+    expect(parseRoute('#/tickets?ticket=%zz').ticket).toBeNull()
+    expect(parseRoute('#/tickets?ticket=%E0%A4%A').ticket).toBeNull()
+    expect(() => parseRoute('#/tickets?ticket=%E0%A4%A')).not.toThrow()
+  })
+
   it('keeps Node out of the renderer: no electron, no builtin, no process', () => {
     const forbidden = [
       /from\s+['"]electron['"]/,

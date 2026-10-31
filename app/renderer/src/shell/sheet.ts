@@ -48,10 +48,24 @@ export function appendDescription(
 }
 
 /**
+ * Whether the description carries an answer block: a line whose trimmed start
+ * is `## Answer`, case-insensitively. **Line-anchored and heading-only**, the
+ * core's own rule (`DescriptionBody::answered`): the heading is the answer, so
+ * an empty one still closes the hold, and a body that mentions the block inline
+ * is still asking its question.
+ */
+export function answered(description: string | null): boolean {
+  if (description === null) return false
+  return description
+    .split('\n')
+    .some((line) => line.trim().toLowerCase().startsWith('## answer'))
+}
+
+/**
  * The text under a line whose trimmed start is `## Answer`, up to the next
  * heading, trimmed. The block is how an answer is recorded, so the sheet draws
- * it apart from the brief (the core's `DescriptionBody::answered`, line
- * anchored on purpose).
+ * it apart from the brief. `null` when there is no heading or its body is
+ * empty: nothing to draw, though `answered` still counts the heading alone.
  */
 export function answerBlock(description: string | null): string | null {
   if (description === null) return null
@@ -72,12 +86,13 @@ export function answerBlock(description: string | null): string | null {
 /**
  * Whether the ticket still asks its question: on hold, with no answer block
  * written. An answered ticket that still wears `on-hold` is the next pass's
- * debt, not a question the sheet should present as open.
+ * debt, not a question the sheet should present as open, so the mark follows
+ * the store's `answered` and not a stricter reading of the body.
  */
 export function holdOpen(
   ticket: Pick<TicketDetail, 'status' | 'description'>,
 ): boolean {
-  return ticket.status === 'on-hold' && answerBlock(ticket.description) === null
+  return ticket.status === 'on-hold' && !answered(ticket.description)
 }
 
 export type SheetDraft = {

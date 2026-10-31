@@ -8,6 +8,7 @@ import {
   EMPTY_COMMENT_REFUSAL,
   EMPTY_DESCRIPTION_REFUSAL,
   answerBlock,
+  answered,
   appendDescription,
   assigneeChoices,
   canSave,
@@ -28,6 +29,21 @@ const renderer = join(appRoot, 'renderer', 'src')
 
 function source(name: string): string {
   return readFileSync(join(renderer, name), 'utf8')
+}
+
+/**
+ * The refusal wording out of `error.rs`, with the checkout's line endings
+ * normalised first: the Windows runner checks the tree out with CRLF, and a
+ * `\\\n` continuation there is `\\\r\n` (PR #282's app job found this).
+ */
+function wordingFrom(error: string): string {
+  const normalized = error.replace(/\r\n/g, '\n')
+  const match = /Self::EmptyDescriptionBody => "([\s\S]*?)"\s*\.to_string\(\)/.exec(normalized)
+  return (match?.[1] ?? '')
+    .replace(/\\\n\s+/g, ' ')
+    .replace(/\\"/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function ticket(overrides: Partial<TicketDetail>): TicketDetail {
@@ -80,19 +96,34 @@ describe('the sheet description', () => {
 
   it('carries the CLI\'s refusal text, not a second wording of it', () => {
     // The one wording is the core's (`EmptyDescriptionBody`): read it out of
-    // the Rust source and fail when the sheet's copy drifts from it.
+    // the Rust source and fail when the sheet's copy drifts from it. The parse
+    // normalises line endings first, so the Windows checkout reads the same
+    // arm as the macOS one.
     const error = readFileSync(
       join(appRoot, '..', 'rust', 'core', 'src', 'domain', 'error.rs'),
       'utf8',
     )
-    const match = /Self::EmptyDescriptionBody => "([\s\S]*?)"\s*\.to_string\(\)/.exec(error)
-    expect(match, 'the error arm is where the sheet reads the wording from').not.toBeNull()
-    const wording = (match?.[1] ?? '')
-      .replace(/\\\n\s+/g, ' ')
-      .replace(/\\"/g, '"')
-      .replace(/\s+/g, ' ')
-      .trim()
-    expect(EMPTY_DESCRIPTION_REFUSAL).toBe(wording)
+    expect(EMPTY_DESCRIPTION_REFUSAL).toBe(wordingFrom(error))
+    expect(wordingFrom(error.replace(/\n/g, '\r\n'))).toBe(EMPTY_DESCRIPTION_REFUSAL)
+  })
+
+  it('joins the stored body and the addition with the core\'s one blank line', () => {
+    expect(appendDescription('One.', 'Two.')).toEqual({ ok: true, body: 'One.\n\nTwo.' })
+    // The sheet restates `board.rs`\'s `appending`; this pin keeps the two
+    // copies of the separator from drifting.
+    const board = readFileSync(
+      join(appRoot, '..', 'rust', 'core', 'src', 'domain', 'board.rs'),
+      'utf8',
+    )
+    expect(board).toContain('format!("{existing}\\n\\n{section}")')
+  })
+
+  it('counts the heading alone as an answer, the way the store does', () => {
+    expect(answered('## Answer')).toBe(true)
+    expect(answered('## Answer\n\n')).toBe(true)
+    expect(answered('## Why\n\nThe question.')).toBe(false)
+    expect(answered('Mentions ## Answer inline, but is not a block.')).toBe(false)
+    expect(answered(null)).toBe(false)
   })
 
   it('finds an answer block by its line-anchored heading, and the body under it', () => {
@@ -107,6 +138,9 @@ describe('the sheet description', () => {
   it('calls a hold open until its answer block is written', () => {
     expect(holdOpen(ticket({ status: 'on-hold' }))).toBe(true)
     expect(holdOpen(ticket({ status: 'on-hold', description: '## Answer\n\nYes.' }))).toBe(false)
+    // The core counts the heading alone as answered (`DescriptionBody::answered`),
+    // so the sheet must not draw a hold over a ticket the store calls answered.
+    expect(holdOpen(ticket({ status: 'on-hold', description: '## Answer' }))).toBe(false)
     expect(holdOpen(ticket({ status: 'ready' }))).toBe(false)
   })
 })
