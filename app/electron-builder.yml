@@ -10,6 +10,9 @@ copyright: Copyright © 2026 Gianni Acquisto
 forceCodeSigning: false
 asar: true
 npmRebuild: false
+# The cask links `Contents/MacOS/tandem-cli`; the hook puts the symlink at that
+# name so one Rust binary serves both the shell and the agent face.
+afterPack: scripts/after-pack.mjs
 
 directories:
   output: dist
@@ -30,13 +33,29 @@ extraResources:
     filter:
       - tandem
       - tandem.exe
+  # The agent face (ADR 0034): the skills, the four prompts and AGENTS.md ship
+  # beside the core, and `tandem-cli setup install` materialises this copy into
+  # the Tandem home. `prepare-binary.mjs` writes it from the checkout and stamps
+  # VERSION from the app's version.
+  - from: build/agent
+    to: agent
 
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 
 mac:
   category: public.app-category.productivity
+  # The brand icon the Swift bundle carried, so the dock and Finder show Tandem
+  # rather than Electron's default.
+  icon: ../Resources/AppIcon.icns
   target:
     - target: dmg
+    - target: zip
+  # The tap's cask downloads
+  # `releases/download/v#{version}/Tandem-#{version}.zip` and
+  # `Scripts/bump-tap.sh` reads `Tandem-<version>.zip` out of SHA256SUMS, so
+  # the zip's name is a contract, not a preference. The dmg keeps the same
+  # stem and only the cask's archive matters to the bump.
+  artifactName: ${productName}-${version}.${ext}
   identity: null
 
 win:

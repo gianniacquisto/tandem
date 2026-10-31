@@ -1,9 +1,9 @@
-//! The `--help` texts, byte for byte the Swift CLI's (PRT-9).
+//! The `--help` texts, ported byte for byte from the Swift CLI (PRT-9).
 //!
 //! `--help` carries the grammar only; the meaning lives in the `tandem` skill, so
 //! help and the skill are not two homes for the same contract. The texts are
-//! copied from `Sources/tandem-cli/Usage.swift` and pinned by the goldens: a
-//! line that moves here is a golden that fails, which is the point.
+//! pinned by the goldens and by the README test below: a line that moves here is
+//! a gate that fails, which is the point.
 //!
 //! The em dash is written `\u{2014}` so this file holds none of its own.
 
@@ -1050,3 +1050,89 @@ pub const RPC: &str = concat!(
     "\n",
     "stdin ends it.",
 );
+
+#[cfg(test)]
+mod tests {
+    //! The README's grammar block is a hand-copy of [`ROOT`], and a hand-copy
+    //! drifts. This is the gate the retired Swift check carried, moved to the
+    //! binary that now owns the grammar: the block must carry every entry in
+    //! the same order, and no entry ROOT does not have.
+
+    use super::ROOT;
+
+    const README: &str = include_str!("../../../README.md");
+
+    /// The README's grammar fence: the ```sh block beginning `tandem-cli ticket list`.
+    fn readme_block() -> Vec<String> {
+        let mut inside = false;
+        let mut first = String::new();
+        let mut lines = Vec::new();
+        for line in README.lines() {
+            if !inside && line.trim() == "```sh" {
+                inside = true;
+                lines.clear();
+                first.clear();
+                continue;
+            }
+            if inside && line.trim() == "```" {
+                if first.starts_with("tandem-cli ticket list") {
+                    return lines;
+                }
+                inside = false;
+                continue;
+            }
+            if inside {
+                if first.is_empty() && !line.trim().is_empty() {
+                    first = line.trim().to_string();
+                }
+                lines.push(line.to_string());
+            }
+        }
+        panic!("README.md has no ```sh block that begins with `tandem-cli ticket list`");
+    }
+
+    /// One entry per `tandem-cli` command: continuation lines join the entry above.
+    fn entries(lines: impl IntoIterator<Item = String>) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for line in lines {
+            let line = line.split_whitespace().collect::<Vec<_>>().join(" ");
+            if line.is_empty() {
+                continue;
+            }
+            if line.starts_with("tandem-cli ") || line.starts_with("todo is a deprecated alias") {
+                out.push(line);
+            } else if let Some(last) = out.last_mut() {
+                last.push(' ');
+                last.push_str(&line);
+            }
+        }
+        out
+    }
+
+    /// ROOT's Usage section, without the `--help` line the README's prose names.
+    fn source_entries() -> Vec<String> {
+        let usage = ROOT
+            .split_once("Usage:")
+            .expect("ROOT carries a Usage section")
+            .1;
+        let usage = usage
+            .split_once("Values:")
+            .expect("ROOT's Usage section ends at Values:")
+            .0;
+        entries(
+            usage
+                .lines()
+                .filter(|line| line.trim() != "tandem-cli --help | -h")
+                .map(str::to_string),
+        )
+    }
+
+    #[test]
+    fn the_readme_grammar_block_matches_the_root_usage() {
+        assert_eq!(
+            entries(readme_block()),
+            source_entries(),
+            "README.md's CLI grammar block is not the root usage text"
+        );
+    }
+}

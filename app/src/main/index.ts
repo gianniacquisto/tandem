@@ -1,4 +1,3 @@
-import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { app, BrowserWindow, ipcMain, session } from 'electron'
@@ -7,7 +6,6 @@ import { resolveBinary } from './binary'
 import { RpcClient } from './rpcClient'
 import { contentSecurityPolicy } from '../shared/security'
 import { CALL_CHANNEL, CHANGED_CHANNEL, type BridgeCall, type Call } from '../shared/bridge'
-import { isFixtureHome } from './shot'
 import { windowOptions } from './window'
 
 /**
@@ -119,33 +117,6 @@ function installContentSecurityPolicy(): void {
   })
 }
 
-/**
- * The in-process photograph: `TANDEM_SHOT` writes one PNG after the first
- * render, on the fixture home only. It is the shell's own window, so no Screen
- * Recording permission is involved (`docs/screenshots/README.md`).
- */
-function maybeCapture(win: BrowserWindow): void {
-  const target = process.env['TANDEM_SHOT']
-  if (target === undefined || target.trim() === '' || app.isPackaged) return
-
-  const fixturesRoot = join(app.getAppPath(), '..', 'Fixtures')
-  const home = process.env['TANDEM_HOME'] ?? join(fixturesRoot, 'port', 'Home')
-  if (!isFixtureHome(home, fixturesRoot)) {
-    console.error('TANDEM_SHOT refused: TANDEM_HOME must name a home under Fixtures/.')
-    app.exit(1)
-    return
-  }
-
-  win.webContents.once('did-finish-load', () => {
-    setTimeout(() => {
-      void win.webContents.capturePage().then(async (image) => {
-        await writeFile(target, image.toPNG())
-        app.exit(0)
-      })
-    }, 1500)
-  })
-}
-
 function createWindow(): void {
   const win = new BrowserWindow(
     windowOptions({
@@ -164,8 +135,6 @@ function createWindow(): void {
     if (devServerUrl !== undefined && sameOrigin(url, devServerUrl)) return
     event.preventDefault()
   })
-
-  maybeCapture(win)
 
   if (devServerUrl !== undefined) {
     void win.loadURL(devServerUrl)

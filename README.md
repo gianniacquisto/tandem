@@ -7,7 +7,7 @@
 
 ![The tandem bike — the app's brand mark and icon](Resources/TandemBike.jpg)
 
-**Tandem is a native macOS board for you and your AI coding agents.** One ticket list, one board by status and lane, an inbox for what the agents owe you, and the bikeshed — a folder of markdown notes — that doubles as the agents' memory. Your agent and you share one list: it files tickets you see, and it sees the ones you close. Everything runs on your Mac today: one SQLite database and a folder of markdown notes you own, with no account to create. A hosted core is a later deployment shape, so the boundary is today's, not the product's.
+**Tandem is a macOS board for you and your AI coding agents.** One ticket list, one board by status and lane, an inbox for what the agents owe you, and the bikeshed — a folder of markdown notes — that doubles as the agents' memory. Your agent and you share one list: it files tickets you see, and it sees the ones you close. Everything runs on your Mac today: one SQLite database and a folder of markdown notes you own, with no account to create. A hosted core is a later deployment shape, so the boundary is today's, not the product's.
 
 ## Install
 
@@ -21,7 +21,7 @@ Spell the tap out in full, every time. Homebrew core has an unrelated cask named
 
 ### First launch (once per install or upgrade)
 
-Tandem is signed but not notarized by Apple, so macOS shows a Gatekeeper warning the first time you launch it after a download, and the app quits by itself a few seconds later. Clear the download flag once, then relaunch:
+Tandem is not signed or notarized yet, so macOS shows a Gatekeeper warning the first time you launch it after a download, and the app quits by itself a few seconds later. Clear the download flag once, then relaunch:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/Tandem.app
@@ -147,11 +147,14 @@ tandem-cli note capture --kind <decision|gotcha|fact|thread> [--project <name>] 
 tandem-cli note stats [--project <name>]
 tandem-cli note links
 tandem-cli session start [--project <name>] [--agent <name>] [--session <id>]
+                         [--harness-session <id>] [--harness-transport <value>]
                          [--brief <string|->]
 tandem-cli session end [--session <id>] [--outcome <value>] [--summary <string|->]
                        [--tokens-input <n>] [--tokens-output <n>]
                        [--tokens-reasoning <n>] [--tokens-cache-read <n>]
                        [--tokens-cache-write <n>] [--cost <dollars>] [--model <name>]
+                       [--skills <name=count[,name=count]>]
+                       [--usage-from-harness] [--harness-events <path>]
 tandem-cli session link --ticket <id> [--session <id>]
 tandem-cli session list [--project <name>] [--status <value>]
 tandem-cli session show [--session <id>]
@@ -247,7 +250,7 @@ The tracker is the **Tandem board**, not GitHub issues — the tracker contract 
 
 - **Branch off `main`.** `main` is the trunk: it takes merges, and a release is a lightweight tag on its head, so installs come from the tag ([ADR 0019](docs/adr/0019-integration-branch.md), amended 2026-10-29). Pull requests target `main`.
 - **Merge, don't rewrite.** Prefer merge commits over rebases, and avoid force pushes and other destructive git actions unless absolutely necessary — when a force push is unavoidable, `--force-with-lease`, never bare `--force`.
-- **Run the gates.** `swift test` for the core suite, and in `Editor/`: `npm ci && node --test`. The committed editor bundle is prebuilt, and CI checks that the committed bytes are exactly what the pinned inputs regenerate.
+- **Run the gates.** `cargo test`, `cargo fmt --all --check` and `cargo clippy --all-targets -- -D warnings` in `rust/`; `npm run typecheck && npm test` in `app/`; and in `Editor/`: `npm ci && node --test`. The committed editor bundle is prebuilt, and CI rebuilds it and fails on any byte that differs.
 - **Use the project's words.** [GLOSSARY.md](GLOSSARY.md) is the vocabulary; the ADRs are the decisions. Respect the ADRs in the area your change touches, and amend one in the same pull request when you change what it decided.
 - **Keep the ticket whole.** A ticket's description is written once as the brief and appended to with the outcome, never overwritten. The shape of that brief is the refiner's: `agents/refiner.md`.
 

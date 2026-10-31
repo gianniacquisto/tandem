@@ -5,20 +5,19 @@ Three kinds of fixture live here, and the rule differs by kind.
 **Scratch homes** are what the screenshot tool shoots: created on demand, never
 committed. Every picture comes from a home under this folder — never
 `~/.tandem`, never `~/.tandem-dev`, never anything outside this folder
-(`docs/screenshots/README.md`, enforced by `Scripts/shot.sh`):
+(`docs/screenshots/README.md`, enforced by the shots harness):
 
     mkdir -p Fixtures/screenshots/Home
     TANDEM_HOME=Fixtures/screenshots/Home tandem-cli ticket add --title "Fixture ticket"
     # ...seed the fixture vault the same way, then:
 
-    TANDEM_HOME=Fixtures/screenshots/Home Scripts/shot.sh list
-    TANDEM_HOME=Fixtures/screenshots/Home Scripts/shot.sh <window-id> docs/screenshots/<file>.png
+    TANDEM_SHOTS_HOME=Fixtures/screenshots/Home npm run shots
 
-The fixture data is written here by the CLI, against this folder — the script
+The fixture data is written here by the CLI, against this folder — the harness
 refuses any other home. Nothing under a scratch home is committed.
 
-**The port's homes** are the exception: authored and committed, because both
-implementations read them and their shape is part of the port's contract
+**The port's homes** are the exception: authored and committed, because both the
+app and the CLI read them and their shape is part of the port's contract
 (`docs/port.md`, Phases 1). `Fixtures/port/Home/` is the contract home (four
 session records, two board tickets); `Fixtures/port/Board/` is the 78-ticket
 board the Tickets face's pictures are shot on. No run writes into either, and

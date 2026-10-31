@@ -23,8 +23,8 @@ function binaryPath(): string {
 
 /**
  * A browser environment with the seed in it: the scratch homes, the workspace
- * binary, no `TANDEM_SHOT` (the spec drives the capture), and UTC, so a scene
- * that prints a local time prints the same one on every machine.
+ * binary, and UTC, so a scene that prints a local time prints the same one on
+ * every machine.
  *
  * `HOME` and `XDG_CONFIG_HOME` are the seeded user home, because the setup
  * report prints the agent hosts' roots from them: a Settings picture then names
@@ -38,7 +38,6 @@ function seededEnv(): Record<string, string> {
   delete env['ELECTRON_RENDERER_URL']
   env['TANDEM_HOME'] = SEEDED_HOME
   env['TANDEM_BIN'] = binaryPath()
-  env['TANDEM_SHOT'] = ''
   env['TZ'] = 'UTC'
   env['HOME'] = SEEDED_USER
   env['USERPROFILE'] = SEEDED_USER

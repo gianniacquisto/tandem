@@ -1,2 +1,0 @@
-h=--- v=--- _TtGC7SwiftUI13NSHostingViewGVS_15ModifiedContentV6Tandem8LigneRowVS_12_FrameLayout__ f=(0,0,640,56) b=(-) => <NSViewBackingLayer>
-  h=--- v=--- _TtC7SwiftUIP33_B9E8471D77A01696E0731B43A95A934614_FocusRingView f=(20,16,24,24) b=(-) => <NSViewBackingLayer>

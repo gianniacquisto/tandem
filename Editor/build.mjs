@@ -1,6 +1,6 @@
 // The editor bundle build (ticket 07; spec: Editor — Packaging).
 //
-// Regenerates the committed bundle under Sources/Tandem/Resources/Editor/:
+// Regenerates the committed bundle under app/renderer/public/editor/:
 //   index.html   — copied from Editor/index.html (one HTML page)
 //   editor.js    — esbuild bundle of Editor/src/main.js (IIFE, minified)
 //   style.css    — Editor/style.css + KaTeX's CSS folded in (fonts reduced
@@ -33,7 +33,7 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const editorDir = path.dirname(fileURLToPath(import.meta.url));
-const outDir = path.resolve(editorDir, "..", "Sources", "Tandem", "Resources", "Editor");
+const outDir = path.resolve(editorDir, "..", "app", "renderer", "public", "editor");
 const nm = path.join(editorDir, "node_modules");
 
 // 0. Clean output — the build is a total regeneration, never an overlay.

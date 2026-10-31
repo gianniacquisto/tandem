@@ -1,5 +1,5 @@
 // Ligne day/night theme for the CM6 editor (spec: Editor — Theme; palette
-// from LigneTheme.swift, values in style.css as CSS custom properties, day +
+// frozen from the app's theme, values in style.css as CSS custom properties, day +
 // night via [data-theme]). The theme references the variables so the pane
 // matches the window chrome; no literals live here.
 import { EditorView } from "@codemirror/view";

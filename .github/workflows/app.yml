@@ -51,7 +51,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: app/package-lock.json
+          cache-dependency-path: |
+            app/package-lock.json
+            Editor/package-lock.json
 
       - name: Warm the Rust toolchain
         # The artifact carries the core it runs (below). The proxy reads
@@ -72,6 +74,22 @@ jobs:
 
       - name: "Gate: build"
         run: npm run build
+
+      - name: "Gate: editor bundle tests + reproducible build"
+        # The editor bundle is committed at `app/renderer/public/editor` and is
+        # built from `Editor/`. The pinned inputs must regenerate those bytes
+        # exactly: a test passes, and a non-empty diff after the rebuild is a
+        # hand edit or a source/lockfile drift, which this step makes red.
+        if: runner.os == 'macOS'
+        working-directory: Editor
+        run: |
+          npm ci
+          node --test
+          npm run build
+
+      - name: "Gate: the committed editor bundle is current"
+        if: runner.os == 'macOS'
+        run: git diff --exit-code -- app/renderer/public/editor
 
       - name: Build the core the artifact carries
         run: npm run binary:release
@@ -107,9 +125,8 @@ jobs:
             app/dist/*.exe
           if-no-files-found: error
 
-  # The port's replacement for `Scripts/shot.sh`: the same job, a browser
-  # instead of an lldb injection. Linux only, because a display there is one
-  # command (`xvfb-run`). The run writes the PNGs and the catalogue into the
+  # The one screenshot rig, and the same job: a browser instead of an lldb
+  # injection. Linux only, because a display there is one command (`xvfb-run`). The run writes the PNGs and the catalogue into the
   # runner's checkout, which is the point: the job is the spec's verdict on the
   # pictures a developer's machine commits. The core is built first because the
   # specs drive the real shell over `rpc`, so the binary is the subject and not
@@ -127,7 +144,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: app/package-lock.json
+          cache-dependency-path: |
+            app/package-lock.json
+            Editor/package-lock.json
 
       - name: Build the core
         working-directory: rust

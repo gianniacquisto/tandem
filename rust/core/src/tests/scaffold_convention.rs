@@ -418,13 +418,13 @@ fn a_deployment_shape_is_not_a_product_property() {
 #[test]
 fn the_setup_surfaces_run_the_one_install_verb() {
     let command = "tandem-cli setup install";
-    for path in ["README.md", "Sources/Tandem/SetupWizard.swift"] {
+    for path in ["README.md", "app/renderer/src/faces/SettingsFace.tsx"] {
         assert!(file(path).contains(command), "{path} names `{command}`");
     }
     assert!(file("skills/tandem-setup/SKILL.md").contains(command));
     for path in [
         "README.md",
-        "Sources/Tandem/SetupWizard.swift",
+        "app/renderer/src/faces/SettingsFace.tsx",
         "skills/tandem-setup/SKILL.md",
     ] {
         assert!(

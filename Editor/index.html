@@ -4,13 +4,13 @@
   one HTML page, one JS bundle (editor.js), one CSS file (style.css) +
   the KaTeX woff2 font assets under fonts/.
 
-  Loaded by the Swift host via WKWebView.loadFileURL (spec: Editor —
-  Packaging; no web workers, so file:// works). The page has no network
-  access: no fetch/XHR/WebSocket/file: reads from JS — the document and
-  the bikeshed index cross the bridge (notes/bridge-contract.md):
+  Loaded by the Bikeshed face in a same-origin sandboxed iframe (spec:
+  Editor — Packaging; no web workers, so file:// works). The page has no
+  network access: no fetch/XHR/WebSocket/file: reads from JS — the document
+  and the bikeshed index cross the bridge (notes/bridge-contract.md):
 
-    Swift → JS   setDocument / insertText / revealLine / setNoteIndex / setFontSize / focusEditor
-    JS → Swift   loaded / dirty / link-opened / checkbox-toggled / font-size
+    shell → JS   setDocument / insertText / revealLine / setNoteIndex / setFontSize / focusEditor
+    JS → shell   loaded / dirty / link-opened / checkbox-toggled / font-size
 -->
 <html lang="en">
   <head>
@@ -21,8 +21,8 @@
   </head>
   <body>
     <!-- The CM6 entry (editor.js) self-mounts into this container. The
-         Swift host sets data-theme="day" | "night" on <html> so the pane
-         matches the window chrome (LigneTheme.swift). -->
+         shell sets data-theme="day" | "night" on <html> so the pane matches
+         the window chrome. -->
     <div id="tandem-editor"></div>
     <script src="editor.js"></script>
   </body>

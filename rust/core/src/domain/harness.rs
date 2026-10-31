@@ -1,10 +1,8 @@
 //! The harness read: what the reporting harness recorded, as session usage.
 //!
-//! `Scripts/usage-report.sh` reads this today with `sqlite3 -readonly` and passes
-//! the numbers back as flags (`docs/port.md`, Where the old code goes: the script
-//! becomes `tandem session end --usage-from-harness`). The port keeps the read in
-//! the core, so it ships inside the one binary and the CLI composes rather than
-//! shells out.
+//! `session end --usage-from-harness` reads this in the core, so it ships inside
+//! the one binary and the CLI composes rather than shells out (`docs/port.md`,
+//! Where the old code goes: the wrapper script became this verb at the cutover).
 //!
 //! **The database is opened read-only and its path is a path**, never text in a
 //! statement: the session id is bound, and a file that is not there answers a
@@ -306,7 +304,7 @@ fn skills(connection: &Connection, session_id: &str) -> DomainResult<Option<Skil
 ///
 /// **A JSON `null` is no model at all.** The harness writes `null` for a row it
 /// never attributed, and recording the word `"null"` would invent a model by
-/// that name, which is exactly what `Scripts/usage-report.sh` avoids by passing
+/// that name, which is exactly what the harness read avoids by passing
 /// no `--model` flag for an empty value.
 fn model_id(raw: &str) -> Option<String> {
     match serde_json::from_str::<serde_json::Value>(raw) {
