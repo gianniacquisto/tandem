@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { initialSnapshot, snapshotReducer, type SnapshotState } from '../renderer/src/shell/snapshot'
-import { writeBlocked } from '../renderer/src/shell/write'
+import { refusalBanner, writeBlocked } from '../renderer/src/shell/write'
 import type { TicketSummary } from '../renderer/src/wire/TicketSummary'
 import type { UsageReportView } from '../renderer/src/wire/UsageReportView'
 
@@ -146,5 +146,12 @@ describe('the write guard', () => {
   it('lets a write through on the revision the face rendered', () => {
     expect(writeBlocked(ready(), 12)).toBeNull()
     expect(writeBlocked(ready(), null)).toBeNull()
+  })
+
+  it("answers a sheet's refusal in the sheet, never on the shell's banner", () => {
+    // The sheet draws the same words beside the field that raised them; the
+    // shell's banner behind the modal is a second copy that survives Esc.
+    expect(refusalBanner('sheet', 'The board changed.')).toBeNull()
+    expect(refusalBanner('face', 'The board changed.')).toBe('The board changed.')
   })
 })

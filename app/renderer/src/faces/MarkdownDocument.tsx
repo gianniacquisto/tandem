@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import type { MarkdownBlockView } from '../wire/MarkdownBlockView'
 import type { MarkdownInlineView } from '../wire/MarkdownInlineView'
 
@@ -119,7 +121,11 @@ function Runs({ runs }: { runs: MarkdownInlineView[] }) {
 }
 
 function Run({ run }: { run: MarkdownInlineView }) {
-  const body =
+  // The styles are a set, not a choice: `**bold with `code`**` is one run
+  // carrying both, so each marker wraps the one inside it rather than the
+  // first match returning. The link's label sits innermost, wearing the
+  // styles around it.
+  let body: ReactNode =
     run.link === null ? (
       run.text
     ) : (
@@ -128,9 +134,9 @@ function Run({ run }: { run: MarkdownInlineView }) {
         {run.text}
       </span>
     )
-  if (run.styles.includes('code')) return <code className="markdown__inline-code">{body}</code>
-  if (run.styles.includes('bold')) return <strong>{body}</strong>
-  if (run.styles.includes('italic')) return <em>{body}</em>
-  if (run.styles.includes('strikethrough')) return <s>{body}</s>
+  if (run.styles.includes('strikethrough')) body = <s>{body}</s>
+  if (run.styles.includes('italic')) body = <em>{body}</em>
+  if (run.styles.includes('bold')) body = <strong>{body}</strong>
+  if (run.styles.includes('code')) body = <code className="markdown__inline-code">{body}</code>
   return <>{body}</>
 }

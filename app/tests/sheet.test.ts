@@ -258,10 +258,10 @@ describe('the sheet fields', () => {
 describe('the lane surface', () => {
   it('lists the default area and every cycle lane, marking the one the ticket is in', () => {
     expect(laneChoices('Port', ['Tandem', 'Port', 'Retro'])).toEqual([
-      { value: null, label: 'Uncategorized', selected: false },
-      { value: 'Tandem', label: 'Tandem', selected: false },
-      { value: 'Port', label: 'Port', selected: true },
-      { value: 'Retro', label: 'Retro', selected: false },
+      { value: null, label: 'Uncategorized', selected: false, renamable: false },
+      { value: 'Tandem', label: 'Tandem', selected: false, renamable: true },
+      { value: 'Port', label: 'Port', selected: true, renamable: true },
+      { value: 'Retro', label: 'Retro', selected: false, renamable: true },
     ])
     expect(laneChoices(null, ['Port'])[0]?.selected).toBe(true)
   })
@@ -272,6 +272,15 @@ describe('the lane surface', () => {
       'Port',
       'Dangling',
     ])
+  })
+
+  it('renames only a lane the store declares: a dangling name has no row to rename', () => {
+    // Renaming a name only a ticket carries asks the store for a lane it does
+    // not have, and `UnknownLane` is the answer.
+    const dangling = laneChoices('Dangling', ['Port']).find((lane) => lane.value === 'Dangling')
+    expect(dangling?.renamable).toBe(false)
+    const declared = laneChoices(null, ['Port']).find((lane) => lane.value === 'Port')
+    expect(declared?.renamable).toBe(true)
   })
 
   it('asks before it creates: a blank name makes no ask, a named one carries its key', () => {

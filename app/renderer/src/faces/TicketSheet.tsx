@@ -572,7 +572,7 @@ export function TicketSheet({
                         <span className="sheet__lane-current">this ticket</span>
                       ) : null}
                     </button>
-                    {lane.value === null ? null : renaming === lane.value ? null : (
+                    {lane.value === null ? null : renaming === lane.value || !lane.renamable ? null : (
                       <button
                         type="button"
                         className="sheet__lane-rename"
