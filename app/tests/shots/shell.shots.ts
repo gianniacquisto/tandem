@@ -7,7 +7,7 @@ import { scene } from '../../shots/scenes'
  * The shell a human opens: the wordmark, the four kept tabs and the store
  * revision the core answered over `rpc`, at the Swift window's floor.
  */
-test('the shell at its 760 pt floor', async ({ window }) => {
+test('the shell at its 760 pt floor', async ({ app, window }) => {
   await expect(window.locator('.shell__wordmark')).toHaveText('Tandem')
 
   const tabs = window.locator('.tabs .tab')
@@ -17,5 +17,5 @@ test('the shell at its 760 pt floor', async ({ window }) => {
 
   await expect(window.locator('.shell__revision')).toHaveText(/^rev \d+$/)
 
-  await capture(window, scene('shell'))
+  await capture(app, window, scene('shell'))
 })
