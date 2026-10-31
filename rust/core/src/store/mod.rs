@@ -53,8 +53,7 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, TryLockError};
-use std::thread;
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
@@ -88,14 +87,58 @@ const BUSY_TIMEOUT: Duration = Duration::from_millis(2_000);
 /// gate makes those writers queue, deterministically and with no file at all:
 /// it is keyed on the canonical home, it lives only in this process, and a
 /// stale `tandem.lock` has nothing to do with it.
-fn write_gate(home: &Path) -> Arc<Mutex<()>> {
-    static GATES: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+fn write_gate(home: &Path) -> Arc<Gate> {
+    static GATES: OnceLock<Mutex<HashMap<PathBuf, Arc<Gate>>>> = OnceLock::new();
     let gates = GATES.get_or_init(|| Mutex::new(HashMap::new()));
     let key = fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
     let mut gates = gates
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     Arc::clone(gates.entry(key).or_default())
+}
+
+/// The process-local write gate: the lock one home's writers queue on.
+///
+/// The flag is the lock and the condition variable is the wait: a writer that
+/// finds the gate held sleeps until the holder drops its guard, and wakes once
+/// instead of retrying on `yield_now` for the length of the window.
+struct Gate {
+    held: Mutex<bool>,
+    free: Condvar,
+    /// Test-facing: how many times a writer passed through the wait loop. A
+    /// condvar wait spends one or two; a `yield_now` retry spends thousands in
+    /// the same window.
+    #[cfg(test)]
+    wait_passes: std::sync::atomic::AtomicUsize,
+}
+
+impl Default for Gate {
+    fn default() -> Self {
+        Self {
+            held: Mutex::new(false),
+            free: Condvar::new(),
+            #[cfg(test)]
+            wait_passes: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+}
+
+/// The gate held: it clears the flag and wakes the next writer when it drops.
+struct GateGuard<'a> {
+    gate: &'a Gate,
+}
+
+impl Drop for GateGuard<'_> {
+    fn drop(&mut self) {
+        let mut held = self
+            .gate
+            .held
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *held = false;
+        drop(held);
+        self.gate.free.notify_one();
+    }
 }
 
 /// Enter the gate within the store's window, or answer the store's one word
@@ -107,21 +150,40 @@ fn write_gate(home: &Path) -> Arc<Mutex<()>> {
 /// gets [`StoreError::Locked`] rather than waiting for the writer ahead of it
 /// to finish. The holder is a local thread mid-write, and its work is bounded
 /// by the same window it was given.
-fn enter_gate(gate: &Mutex<()>) -> Result<MutexGuard<'_, ()>> {
+///
+/// The wait is a `Condvar`, not a retry loop: the waiter parks until the holder
+/// notifies it or the window closes, so contention costs the waiting thread no
+/// CPU. A notified waiter whose window closed in the meantime answers locked,
+/// exactly as a `yield_now` loop would have.
+fn enter_gate<'a>(gate: &'a Gate, home: &Path) -> Result<GateGuard<'a>> {
     let deadline = Instant::now() + BUSY_TIMEOUT;
+    let mut held = gate
+        .held
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     loop {
-        match gate.try_lock() {
-            Ok(guard) => return Ok(guard),
-            Err(TryLockError::Poisoned(poisoned)) => return Ok(poisoned.into_inner()),
-            Err(TryLockError::WouldBlock) => {
-                if Instant::now() >= deadline {
-                    return Err(StoreError::Locked);
-                }
-                // Yield, do not sleep: a local write holds the gate for
-                // milliseconds, so a retry that pauses misses the gap it frees,
-                // and the deadline still bounds the wait.
-                thread::yield_now();
-            }
+        #[cfg(test)]
+        gate.wait_passes
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if !*held {
+            *held = true;
+            drop(held);
+            return Ok(GateGuard { gate });
+        }
+        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            return Err(StoreError::Locked {
+                home: home.to_path_buf(),
+            });
+        };
+        let (woken, outcome) = gate
+            .free
+            .wait_timeout(held, remaining)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        held = woken;
+        if outcome.timed_out() && *held {
+            return Err(StoreError::Locked {
+                home: home.to_path_buf(),
+            });
         }
     }
 }
@@ -131,8 +193,10 @@ fn enter_gate(gate: &Mutex<()>) -> Result<MutexGuard<'_, ()>> {
 /// as the Swift store translates `SQLiteError` (ADR 0007).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoreError {
-    /// The gate or the write transaction was held past the window.
-    Locked,
+    /// The gate or the write transaction was held past the window. The home
+    /// names the store the caller chose, because a sibling thread of this
+    /// process answers the same words as a writer in another one.
+    Locked { home: PathBuf },
     /// Anything else: an unreadable file, a full disk, a failed migration.
     Io(String),
     /// A file this build does not read: schema newer than [`CURRENT_VERSION`].
@@ -142,8 +206,11 @@ pub enum StoreError {
 impl fmt::Display for StoreError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Locked => formatter
-                .write_str("the store is locked: another writer held it past the 2 s window"),
+            Self::Locked { home } => write!(
+                formatter,
+                "the store at {} is locked: another writer held it past the 2 s window",
+                home.display()
+            ),
             Self::Io(message) => formatter.write_str(message),
             Self::Legacy { version } => write!(
                 formatter,
@@ -171,9 +238,10 @@ pub struct Store {
     last_revision: Arc<AtomicI64>,
     /// How many times `watch` has opened a connection. Test-facing: the point
     /// of the watch is that a held connection is reused, not reopened a tick.
-    /// Unix only, because the case that reads it replaces the store under the
-    /// held watch, which Windows refuses to do (PRT-26).
-    #[cfg(all(test, unix))]
+    /// Every platform reads it: the restore's unix case replaces the store
+    /// under the held watch, and its cross-platform case attaches to the
+    /// rollback-journal file without renaming over a held one (PRT-26).
+    #[cfg(test)]
     watch_opens: Arc<std::sync::atomic::AtomicU64>,
 }
 
@@ -182,7 +250,7 @@ impl Store {
         Self {
             home,
             last_revision: Arc::new(AtomicI64::new(0)),
-            #[cfg(all(test, unix))]
+            #[cfg(test)]
             watch_opens: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
@@ -245,7 +313,7 @@ impl Store {
         schema::refuse_legacy(&connection)?;
         connection
             .execute_batch("BEGIN DEFERRED")
-            .map_err(translate)?;
+            .map_err(|error| translate(error, &connection))?;
         let outcome = (|| {
             let revision = schema::revision(&connection)?;
             let value = body(&connection)?;
@@ -253,7 +321,9 @@ impl Store {
         })();
         match outcome {
             Ok(value) => {
-                connection.execute_batch("COMMIT").map_err(translate)?;
+                connection
+                    .execute_batch("COMMIT")
+                    .map_err(|error| translate(error, &connection))?;
                 Ok(Some(value))
             }
             Err(error) => {
@@ -281,7 +351,7 @@ impl Store {
         if !database.exists() {
             return Ok(None);
         }
-        #[cfg(all(test, unix))]
+        #[cfg(test)]
         self.watch_opens.fetch_add(1, Ordering::Relaxed);
         let connection = open_read_only(&database)?;
         schema::refuse_legacy(&connection)?;
@@ -298,7 +368,7 @@ impl Store {
 
     /// How many connections `watch` has opened. Test-facing, so a case can pin
     /// that a held watch is reused rather than reopened on every tick.
-    #[cfg(all(test, unix))]
+    #[cfg(test)]
     pub(crate) fn watch_opens(&self) -> u64 {
         self.watch_opens.load(Ordering::Relaxed)
     }
@@ -319,7 +389,7 @@ impl Store {
         // after the store's window; across processes the engine's write lock
         // and the busy window are the bound (ADR 0031).
         let gate = write_gate(self.home.directory());
-        let _gate = enter_gate(&gate)?;
+        let _gate = enter_gate(&gate, self.home.directory())?;
         // A writer killed mid-backup leaves its temp beside the database, and
         // nothing renames it: the sweep under the gate clears it, the same rule
         // the bikeshed's vault applies to its notes' temps (ADR 0031).
@@ -596,11 +666,11 @@ fn switch_to_wal(connection: &Connection) -> Result<()> {
                     return Ok(());
                 }
                 if std::time::Instant::now() >= deadline {
-                    return Err(translate(error));
+                    return Err(translate(error, connection));
                 }
                 std::thread::sleep(Duration::from_millis(5));
             }
-            Err(error) => return Err(translate(error)),
+            Err(error) => return Err(translate(error, connection)),
         }
     }
 }
@@ -609,7 +679,7 @@ fn journal_mode(connection: &Connection) -> Result<Option<String>> {
     connection
         .query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0))
         .map(Some)
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 /// One transaction: the atomic write the port keeps from ADR 0031. `IMMEDIATE`
@@ -635,22 +705,38 @@ pub(crate) fn transaction<T>(
 fn begin_immediate(connection: &Connection) -> Result<()> {
     connection
         .execute_batch("BEGIN IMMEDIATE")
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 fn commit(connection: &Connection) -> Result<()> {
-    connection.execute_batch("COMMIT").map_err(translate)
+    connection
+        .execute_batch("COMMIT")
+        .map_err(|error| translate(error, connection))
 }
 
 /// The engine's contention becomes the store's "locked"; every other failure
 /// the store's I/O words with the engine's detail (ADR 0007's translation
 /// rule, at the new seam).
-pub(crate) fn translate(error: rusqlite::Error) -> StoreError {
+pub(crate) fn translate(error: rusqlite::Error, connection: &Connection) -> StoreError {
     if is_busy(&error) {
-        StoreError::Locked
+        StoreError::Locked {
+            home: home_of(connection),
+        }
     } else {
         StoreError::Io(error.to_string())
     }
+}
+
+/// The home a connection's database lives in. Every connection the store opens
+/// sits directly at `<home>/tandem.db`, so the parent names the store a
+/// contended write failed on. An in-memory connection has no path, and no
+/// store path leads there.
+fn home_of(connection: &Connection) -> PathBuf {
+    connection
+        .path()
+        .and_then(|path| Path::new(path).parent())
+        .map(Path::to_path_buf)
+        .unwrap_or_default()
 }
 
 fn is_busy(error: &rusqlite::Error) -> bool {

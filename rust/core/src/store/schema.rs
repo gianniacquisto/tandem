@@ -222,7 +222,7 @@ pub(crate) fn revision(connection: &Connection) -> Result<i64> {
             [],
             |row| row.get(0),
         )
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 /// Move the revision by one. Called inside the write's own transaction, and
@@ -233,7 +233,7 @@ pub(crate) fn bump_revision(connection: &Connection) -> Result<i64> {
             "UPDATE store_meta SET value = value + 1 WHERE key = 'revision'",
             [],
         )
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     revision(connection)
 }
 
@@ -273,14 +273,14 @@ pub(crate) fn migrate_with(
             if migration.version <= applied {
                 return Ok(());
             }
-            (migration.apply)(connection).map_err(translate)?;
+            (migration.apply)(connection).map_err(|error| translate(error, connection))?;
             connection
                 .execute(
                     "INSERT INTO schema_migrations (version, applied_at, author)
                      VALUES (?1, ?2, ?3)",
                     params![migration.version, timestamp::now(), actor.as_str()],
                 )
-                .map_err(translate)?;
+                .map_err(|error| translate(error, connection))?;
             Ok(())
         });
         if let Err(error) = outcome {
@@ -307,7 +307,7 @@ pub(crate) fn version(connection: &Connection) -> Result<Option<i64>> {
         .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
             row.get::<_, Option<i64>>(0)
         })
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 /// Whether a file is the Swift store's or newer than this build reads.
@@ -392,7 +392,7 @@ fn create_seam(connection: &Connection) -> Result<()> {
                 author     TEXT NOT NULL
             )",
         )
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 pub(crate) fn has_column(connection: &Connection, table: &str, column: &str) -> Result<bool> {
@@ -403,7 +403,7 @@ pub(crate) fn has_column(connection: &Connection, table: &str, column: &str) -> 
             |row| row.get::<_, i64>(0),
         )
         .map(|count| count > 0)
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 fn has_table(connection: &Connection, name: &str) -> Result<bool> {
@@ -414,5 +414,5 @@ fn has_table(connection: &Connection, name: &str) -> Result<bool> {
             |row| row.get::<_, i64>(0),
         )
         .map(|count| count > 0)
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }

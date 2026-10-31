@@ -105,7 +105,7 @@ impl Store {
 fn read_comments(connection: &rusqlite::Connection, ticket_id: &str) -> Result<Vec<CommentRow>> {
     let mut statement = connection
         .prepare("SELECT author, at, body FROM comments WHERE ticket_id = ?1 ORDER BY rowid")
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     let rows = statement
         .query_map([ticket_id], |row| {
             Ok(CommentRow {
@@ -114,9 +114,9 @@ fn read_comments(connection: &rusqlite::Connection, ticket_id: &str) -> Result<V
                 body: row.get(2)?,
             })
         })
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     rows.collect::<std::result::Result<Vec<_>, _>>()
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 /// The board as one read, on any connection: the store's read path and a write's
@@ -133,7 +133,7 @@ pub(crate) fn read_board(connection: &rusqlite::Connection) -> Result<BoardRows>
 fn lanes(connection: &rusqlite::Connection) -> Result<Vec<LaneRow>> {
     let mut statement = connection
         .prepare("SELECT name, key, last_number, position FROM lanes ORDER BY position, rowid")
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     let rows = statement
         .query_map([], |row| {
             Ok(LaneRow {
@@ -143,9 +143,9 @@ fn lanes(connection: &rusqlite::Connection) -> Result<Vec<LaneRow>> {
                 position: row.get(3)?,
             })
         })
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     rows.collect::<std::result::Result<Vec<_>, _>>()
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 fn tickets(connection: &rusqlite::Connection) -> Result<Vec<TicketRow>> {
@@ -155,7 +155,7 @@ fn tickets(connection: &rusqlite::Connection) -> Result<Vec<TicketRow>> {
                     assignee, link, position, created_at, completed_at
              FROM tickets ORDER BY position, rowid",
         )
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     let rows = statement
         .query_map([], |row| {
             Ok(TicketRow {
@@ -174,15 +174,15 @@ fn tickets(connection: &rusqlite::Connection) -> Result<Vec<TicketRow>> {
                 completed_at: row.get(12)?,
             })
         })
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     rows.collect::<std::result::Result<Vec<_>, _>>()
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 fn edges(connection: &rusqlite::Connection) -> Result<Vec<EdgeRow>> {
     let mut statement = connection
         .prepare("SELECT ticket_id, depends_on_id FROM ticket_dependencies ORDER BY rowid")
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     let rows = statement
         .query_map([], |row| {
             Ok(EdgeRow {
@@ -190,9 +190,9 @@ fn edges(connection: &rusqlite::Connection) -> Result<Vec<EdgeRow>> {
                 depends_on_id: row.get(1)?,
             })
         })
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     rows.collect::<std::result::Result<Vec<_>, _>>()
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 impl Write<'_> {

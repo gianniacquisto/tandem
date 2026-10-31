@@ -23,7 +23,7 @@
     "blocks": [],
     "completedAt": null,
     "createdAt": "<timestamp>",
-    "description": "## Answer — 2026-10-30\n\nThe answer stands.",
+    "description": "## Answer — <day>\n\nThe answer stands.",
     "done": false,
     "id": "<id>",
     "lane": "Cycle",

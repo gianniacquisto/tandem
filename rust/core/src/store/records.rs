@@ -35,7 +35,9 @@ pub(crate) fn session_rows(connection: &Connection) -> Result<Vec<SessionRow>> {
     } else {
         format!("SELECT {SESSION_COLUMNS}, NULL FROM sessions ORDER BY rowid")
     };
-    let mut statement = connection.prepare(&sql).map_err(translate)?;
+    let mut statement = connection
+        .prepare(&sql)
+        .map_err(|error| translate(error, connection))?;
     let rows = statement
         .query_map([], |row| {
             Ok(SessionRow {
@@ -60,9 +62,9 @@ pub(crate) fn session_rows(connection: &Connection) -> Result<Vec<SessionRow>> {
                 skills: row.get(18)?,
             })
         })
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     rows.collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 /// Every sprint row, in the order the rows were recorded.
@@ -74,7 +76,7 @@ pub(crate) fn sprint_rows(connection: &Connection) -> Result<Vec<SprintRow>> {
              FROM sprints
              ORDER BY rowid",
         )
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     let rows = statement
         .query_map([], |row| {
             Ok(SprintRow {
@@ -90,9 +92,9 @@ pub(crate) fn sprint_rows(connection: &Connection) -> Result<Vec<SprintRow>> {
                 closed_at: row.get(9)?,
             })
         })
-        .map_err(translate)?;
+        .map_err(|error| translate(error, connection))?;
     rows.collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 /// Whether the board carries a ticket id, archive included. The sprint's batch
@@ -104,7 +106,7 @@ pub(crate) fn ticket_carried(connection: &Connection, id: &str) -> Result<bool> 
             row.get::<_, i64>(0)
         })
         .map(|count| count > 0)
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
 
 /// The local calendar day `started_at` names, as a zero-padded `YYYY-MM-DD`
@@ -121,7 +123,7 @@ pub fn local_day(started_at: &str) -> Result<String> {
         .query_row("SELECT date(?1, 'localtime')", [started_at], |row| {
             row.get::<_, String>(0)
         })
-        .map_err(translate)
+        .map_err(|error| translate(error, &calendar))
 }
 
 /// The in-memory engine the calendar questions run on. Bundled SQLite, no file,
@@ -145,5 +147,5 @@ pub(crate) fn session_skills(connection: &Connection, id: &str) -> Result<Option
             params![id],
             |row| row.get::<_, Option<String>>(0),
         )
-        .map_err(translate)
+        .map_err(|error| translate(error, connection))
 }
