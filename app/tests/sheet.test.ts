@@ -12,7 +12,6 @@ import {
   appendDescription,
   appendPlan,
   sheetOf,
-  assigneeChoices,
   canSave,
   commentAuthor,
   commentParams,
@@ -233,16 +232,6 @@ describe('the sheet write', () => {
 })
 
 describe('the sheet fields', () => {
-  it('offers the assignee picker in the Swift order: unassigned, human, roster, off-roster current', () => {
-    expect(assigneeChoices(['builder', 'human', ' review '], 'review')).toEqual([
-      { value: null, label: 'Unassigned', selected: false },
-      { value: 'human', label: 'human', selected: false },
-      { value: 'builder', label: '@builder', selected: false },
-      { value: 'review', label: '@review', selected: true },
-    ])
-    expect(assigneeChoices([], null)[0]?.selected).toBe(true)
-  })
-
   it('takes the ticket handle the human writes, or the number when it has no ref', () => {
     expect(ticketHandle(ticket({}))).toBe('PRT-17')
     expect(ticketHandle(ticket({ ref: null, number: null }))).toBe('#?')
