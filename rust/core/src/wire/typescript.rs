@@ -17,11 +17,11 @@ use super::rpc::{
     LaneRenameParams, MarkdownBlocksParams, MarkdownReply, Method, NoteBacklinksReply,
     NoteHealthReply, NoteMoveParams, NoteMoveReply, NotePathParams, NoteReadReply,
     NoteRecoveriesReply, NoteTreeParams, NoteTreeReply, NoteWriteParams, NoteWriteReply, Outcome,
-    Reply, Request, Response, SettingsReply, SetupInstallParams, SetupReply, SprintListParams,
-    SprintListReply, SprintOpenParams, SprintReply, SprintShowParams, TicketAddFromNoteParams,
-    TicketAddParams, TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
-    TicketListParams, TicketListReply, TicketMoveParams, TicketReply, TicketSetParams,
-    TicketUnblockParams, UsageReportReply, WireError,
+    Reply, Request, Response, SettingsReply, SettingsSetParams, SetupInstallParams, SetupReply,
+    SprintListParams, SprintListReply, SprintOpenParams, SprintReply, SprintShowParams,
+    TicketAddFromNoteParams, TicketAddParams, TicketAnswerParams, TicketArchiveParams,
+    TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams,
+    TicketReply, TicketSetParams, TicketUnblockParams, UsageReportReply, WireError,
 };
 use super::views::{
     BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
@@ -169,6 +169,10 @@ pub fn files() -> Vec<(&'static str, String)> {
             UsageReportReply::export_to_string(&cfg),
         ),
         render("SettingsReply.ts", SettingsReply::export_to_string(&cfg)),
+        render(
+            "SettingsSetParams.ts",
+            SettingsSetParams::export_to_string(&cfg),
+        ),
         render(
             "UsageReportView.ts",
             UsageReportView::export_to_string(&cfg),
