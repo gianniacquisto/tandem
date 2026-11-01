@@ -51,13 +51,13 @@ export const SCENES: readonly Scene[] = [
     id: 'tickets-board',
     file: 'tickets-board.png',
     description:
-      'the same face on the same 78-ticket board home in its board layout: one column per lane with the default area named, the same rows set on cards, each with its own count and drop target',
+      'the same face on the same 78-ticket board home in its board layout: the lanes as rows, each named with its count and holding one cell per status, the six status columns with On hold parked last, and the same rows set on cards in the cell of their lane and status',
   },
   {
     id: 'tickets-keyboard',
     file: 'tickets-keyboard.png',
     description:
-      'the keyboard-only pass over the 78-ticket board home: a row selected with the arrows, the quick-add reached with the platform modifier and N, the search with the platform modifier and F, and a ticket moved a lane with Option and the arrows',
+      'the keyboard-only pass over the 78-ticket board home: a row selected with the arrows, the quick-add reached with the platform modifier and N, the search with the platform modifier and F, and a ticket moved one status over, inside its own lane, with Option and the arrows',
   },
 ]
 
