@@ -52,6 +52,9 @@ fn facts() -> Facts {
         ],
         opencode_has_skills: true,
         agent_face: None,
+        sessions_json: Vec::new(),
+        settings_json: Vec::new(),
+        todos_json: Vec::new(),
     }
 }
 
@@ -117,7 +120,7 @@ fn a_healthy_machine_passes_with_the_checks_in_the_pinned_order() {
             .detail
             .contains("the first comment writes a row")
     );
-    assert!(report.checks[5].detail.contains("version 0.9.0"));
+    assert!(check(&report, "app").detail.contains("version 0.9.0"));
 }
 
 #[test]
@@ -398,6 +401,94 @@ fn an_unreadable_legacy_directory_is_harmless_once_the_import_landed() {
     );
 }
 
+/// The JSON-era leftovers retire with the store, so each gets one row that names
+/// the files it found and the command that removes them (TAN-243). A row is
+/// green either way: a leftover is disk the human may clear, not a broken setup.
+#[test]
+fn the_sessions_row_names_the_imported_sidecar_and_its_removal() {
+    let mut facts = facts();
+    facts.sessions_json = vec![PathBuf::from("/Users/tester/.tandem-dev/sessions.json")];
+    let report = report(&facts);
+    assert!(report.ok, "a leftover does not fail the report");
+    assert_eq!(
+        check(&report, "sessions").detail,
+        "/Users/tester/.tandem-dev/sessions.json \u{2014} imported into the store, never read \
+         again; remove it with: rm -f '/Users/tester/.tandem-dev/sessions.json'"
+    );
+}
+
+#[test]
+fn the_settings_row_names_its_pre_import_copy_and_removes_both() {
+    let mut facts = facts();
+    facts.settings_json = vec![
+        PathBuf::from("/Users/tester/.tandem-dev/settings.json"),
+        PathBuf::from("/Users/tester/.tandem-dev/settings.json.pre-sqlite-1793309342"),
+    ];
+    let report = report(&facts);
+    assert!(report.ok);
+    assert_eq!(
+        check(&report, "settings").detail,
+        "/Users/tester/.tandem-dev/settings.json, \
+         /Users/tester/.tandem-dev/settings.json.pre-sqlite-1793309342 \u{2014} imported into the \
+         store, never read again; remove them with: rm -f \
+         '/Users/tester/.tandem-dev/settings.json' \
+         '/Users/tester/.tandem-dev/settings.json.pre-sqlite-1793309342'"
+    );
+}
+
+/// The cohort is one row, not eight: the retired board's files are one fact
+/// about the home, and one command takes all of them.
+#[test]
+fn the_todos_row_names_the_whole_cohort_with_one_removal() {
+    let mut facts = facts();
+    facts.todos_json = vec![
+        PathBuf::from("/Users/tester/.tandem-dev/todos.json.bak"),
+        PathBuf::from("/Users/tester/.tandem-dev/todos.json.bak-1792449127"),
+        PathBuf::from("/Users/tester/.tandem-dev/todos.json.corrupt-1792239875"),
+    ];
+    let report = report(&facts);
+    assert!(report.ok);
+    assert_eq!(
+        check(&report, "todos-json").detail,
+        "/Users/tester/.tandem-dev/todos.json.bak, \
+         /Users/tester/.tandem-dev/todos.json.bak-1792449127, \
+         /Users/tester/.tandem-dev/todos.json.corrupt-1792239875 \u{2014} the retired JSON board, \
+         never read again; remove them with: rm -f \
+         '/Users/tester/.tandem-dev/todos.json.bak' \
+         '/Users/tester/.tandem-dev/todos.json.bak-1792449127' \
+         '/Users/tester/.tandem-dev/todos.json.corrupt-1792239875'"
+    );
+}
+
+#[test]
+fn a_home_with_no_leftovers_prints_one_clean_sentence_per_row() {
+    let report = report(&facts());
+    assert!(report.ok);
+    for (name, detail) in [
+        ("sessions", "no sessions.json in this home"),
+        ("settings", "no settings.json in this home"),
+        ("todos-json", "no todos.json.* files in this home"),
+    ] {
+        let row = check(&report, name);
+        assert!(row.ok, "{name} is informational");
+        assert_eq!(row.detail, detail);
+    }
+}
+
+/// One quoting rule for every printed delete: a home with a space or a quote
+/// stays one word in the new rows too.
+#[test]
+fn a_leftover_path_the_shell_would_split_stays_one_word_in_its_command() {
+    let mut facts = facts();
+    facts.settings_json = vec![PathBuf::from("/Users/one two/o'brien/settings.json")];
+    let report = report(&facts);
+    assert!(
+        check(&report, "settings")
+            .detail
+            .contains("rm -f '/Users/one two/o'\\''brien/settings.json'")
+    );
+}
+
 /// The command is one shell word: a home with a space or a quote prints a
 /// delete that still names only that directory.
 #[test]
@@ -613,6 +704,63 @@ fn backup_health_is_absent_then_ages() {
         BackupHealth::Present { age } => assert!(age.as_secs() < 60),
         BackupHealth::Absent => panic!("two writes should leave a backup"),
     }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The impure gathering names the JSON leftovers beside a database: each domain's
+/// file with its `.pre-sqlite-*` copy, and the `todos.json.*` cohort. The bare
+/// `todos.json` is not in the cohort, because the store row already names it.
+#[test]
+fn gathering_names_the_json_leftovers_beside_a_database() {
+    let (store, root) = temp_store("sidecars");
+    let home = store.home().clone();
+    Board::new(store.clone())
+        .add("Sidecar probe", AddTicket::default())
+        .expect("the store is written");
+    let directory = home.directory();
+    std::fs::write(directory.join("sessions.json"), "{}").unwrap();
+    std::fs::write(directory.join("sessions.json.pre-sqlite-1793055385"), "{}").unwrap();
+    std::fs::write(directory.join("settings.json"), "{}").unwrap();
+    std::fs::write(directory.join("todos.json"), "{}").unwrap();
+    std::fs::write(directory.join("todos.json.pre-lanes"), "{}").unwrap();
+
+    let facts = diagnostics::gather(&home, &tandem_core::setup::Environment::new());
+    assert_eq!(
+        facts.sessions_json,
+        vec![
+            directory.join("sessions.json"),
+            directory.join("sessions.json.pre-sqlite-1793055385"),
+        ]
+    );
+    assert_eq!(facts.settings_json, vec![directory.join("settings.json")]);
+    assert_eq!(
+        facts.todos_json,
+        vec![directory.join("todos.json.pre-lanes")],
+        "the bare todos.json belongs to the store row's fork note"
+    );
+
+    let report = report(&facts);
+    assert!(report.ok);
+    assert!(
+        check(&report, "sessions")
+            .detail
+            .contains("sessions.json.pre-sqlite-1793055385")
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// No database, no import to retire: a home that never opened the store names no
+/// leftover, even when the old files are still there.
+#[test]
+fn no_database_means_no_leftover_is_named() {
+    let (store, root) = temp_store("sidecars-fresh");
+    let home = store.home().clone();
+    std::fs::create_dir_all(home.directory()).unwrap();
+    std::fs::write(home.directory().join("sessions.json"), "{}").unwrap();
+    let facts = diagnostics::gather(&home, &tandem_core::setup::Environment::new());
+    assert!(facts.sessions_json.is_empty());
+    assert!(facts.settings_json.is_empty());
+    assert!(facts.todos_json.is_empty());
     let _ = std::fs::remove_dir_all(&root);
 }
 

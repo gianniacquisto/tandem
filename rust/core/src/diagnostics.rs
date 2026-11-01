@@ -5,11 +5,17 @@
 //! So the report's shape, wording and pass/fail rule are covered with injected
 //! facts, and the CLI only wires the real world to it.
 //!
-//! The eight rows, in the pinned order: `home`, `store`, `bikeshed`, `comments`,
-//! `lock`, `app`, `skills`, `agent-face`. The first four and the last can fail;
-//! `app` and `skills` are informational. `ok` is the AND of the rows that can
-//! fail, so a held lock, an unreadable store or a bikeshed path that is a file
-//! makes the CLI exit 1.
+//! The eleven rows, in the pinned order: `home`, `store`, `bikeshed`, `comments`,
+//! `sessions`, `settings`, `todos-json`, `lock`, `app`, `skills`, `agent-face`.
+//! The first four and the last can fail; `app`, `skills` and the three leftover
+//! rows are informational. `ok` is the AND of the rows that can fail, so a held
+//! lock, an unreadable store or a bikeshed path that is a file makes the CLI
+//! exit 1.
+//!
+//! The leftovers are the JSON-era files the store retired: `sessions.json` and
+//! `settings.json` each with its `.pre-sqlite-*` copy, and the `todos.json.*`
+//! cohort. Each row names the files it found and the command that removes them
+//! (TAN-243).
 
 use std::path::{Path, PathBuf};
 
@@ -21,11 +27,14 @@ pub use crate::store::CommentsState;
 use crate::wire::{DoctorCheck, DoctorReport, slashed_path};
 
 /// The check order, pinned: the CLI documents and tests it.
-pub const CHECK_NAMES: [&str; 8] = [
+pub const CHECK_NAMES: [&str; 11] = [
     "home",
     "store",
     "bikeshed",
     "comments",
+    "sessions",
+    "settings",
+    "todos-json",
     "lock",
     "app",
     "skills",
@@ -70,6 +79,14 @@ pub struct Facts {
     pub comments_state: CommentsState,
     pub comment_rows: i64,
     pub comments_imported: bool,
+    /// The JSON-era leftovers the store retired, one list per row (TAN-243):
+    /// `sessions.json` with its `.pre-sqlite-*` copy, `settings.json` with its
+    /// own, and the `todos.json.*` cohort. Named only beside a database, because
+    /// the store's schema is the marker that the domain moved (ADR 0031); empty
+    /// is the clean home.
+    pub sessions_json: Vec<PathBuf>,
+    pub settings_json: Vec<PathBuf>,
+    pub todos_json: Vec<PathBuf>,
     pub app_present: bool,
     pub app_version: Option<String>,
     pub app_quarantined: bool,
@@ -97,6 +114,24 @@ pub fn report(facts: &Facts) -> DoctorReport {
     checks.push(store_check(facts));
     checks.push(bikeshed_check(facts));
     checks.push(comments_check(facts));
+    checks.push(sidecar_check(
+        "sessions",
+        "sessions.json",
+        SIDECAR_RETIRED,
+        &facts.sessions_json,
+    ));
+    checks.push(sidecar_check(
+        "settings",
+        "settings.json",
+        SIDECAR_RETIRED,
+        &facts.settings_json,
+    ));
+    checks.push(sidecar_check(
+        "todos-json",
+        "todos.json.* files",
+        TODOS_RETIRED,
+        &facts.todos_json,
+    ));
     checks.push(DoctorCheck {
         name: "lock".to_string(),
         ok: !facts.store_lock_held,
@@ -294,6 +329,44 @@ fn comments_check(facts: &Facts) -> DoctorCheck {
     }
 }
 
+/// What `sessions.json` and `settings.json` are now: imported once, never read.
+const SIDECAR_RETIRED: &str = "imported into the store, never read again";
+
+/// What the `todos.json.*` cohort is: the retired board, and not a fork.
+const TODOS_RETIRED: &str = "the retired JSON board, never read again";
+
+/// One row per retired JSON file group (TAN-243): the files it found, in the
+/// order the gathering sorted them, and one command that removes them all.
+///
+/// Informational in both states, like `comments`: a leftover is disk the human
+/// may clear, and a clean home is the same row saying so. The command is built
+/// by [`shell_quoted`], so a home the shell would split stays one path.
+fn sidecar_check(name: &str, file: &str, retired: &str, files: &[PathBuf]) -> DoctorCheck {
+    if files.is_empty() {
+        return DoctorCheck {
+            name: name.to_string(),
+            ok: true,
+            detail: format!("no {file} in this home"),
+        };
+    }
+    let named = files
+        .iter()
+        .map(|path| slashed_path(path))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let commands = files
+        .iter()
+        .map(|path| shell_quoted(path))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let pronoun = if files.len() == 1 { "it" } else { "them" };
+    DoctorCheck {
+        name: name.to_string(),
+        ok: true,
+        detail: format!("{named} \u{2014} {retired}; remove {pronoun} with: rm -f {commands}"),
+    }
+}
+
 /// The rolling backup's clause for the store check: presence and age.
 fn backup_detail(health: BackupHealth) -> String {
     match health {
@@ -465,6 +538,20 @@ pub fn gather(home: &Home, environment: &Environment) -> Facts {
         None
     };
 
+    // The store's schema is the marker that a domain moved (ADR 0031: the port
+    // ships no `store_imports`), so a leftover is named once the database is
+    // there and never before: a home that has not opened the store has nothing
+    // to have imported.
+    let (sessions_json, settings_json, todos_json) = if store.database().exists() {
+        (
+            sidecar_files(home.directory(), "sessions.json"),
+            sidecar_files(home.directory(), "settings.json"),
+            todos_cohort(home.directory()),
+        )
+    } else {
+        (Vec::new(), Vec::new(), Vec::new())
+    };
+
     Facts {
         home_path: home.directory().to_path_buf(),
         home_source: home.source(),
@@ -483,6 +570,9 @@ pub fn gather(home: &Home, environment: &Environment) -> Facts {
         comments_state,
         comment_rows: comments_health.rows,
         comments_imported: comments_health.imported,
+        sessions_json,
+        settings_json,
+        todos_json,
         app_present,
         app_version,
         app_quarantined,
@@ -490,6 +580,45 @@ pub fn gather(home: &Home, environment: &Environment) -> Facts {
         opencode_has_skills: opencode_has_skills(&context),
         agent_face,
     }
+}
+
+/// The JSON sidecar's files in a home: the file itself and any
+/// `.pre-sqlite-*` copy beside it, in name order so the printed command does
+/// not move between runs.
+fn sidecar_files(directory: &Path, name: &str) -> Vec<PathBuf> {
+    let copies = format!("{name}.pre-sqlite-");
+    let mut files = Vec::new();
+    if directory.join(name).exists() {
+        files.push(directory.join(name));
+    }
+    files.extend(children(directory, &copies));
+    files
+}
+
+/// The `todos.json.*` cohort: every retired-board file in the home. The bare
+/// `todos.json` is not one of them, because the store row already names it as
+/// a fork.
+fn todos_cohort(directory: &Path) -> Vec<PathBuf> {
+    children(directory, "todos.json.")
+}
+
+/// A home's children whose name starts with `prefix`, sorted. An unreadable
+/// home is no files: a diagnostic reports what it can see.
+fn children(directory: &Path, prefix: &str) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    let mut files = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(prefix))
+        })
+        .collect::<Vec<_>>();
+    files.sort();
+    files
 }
 
 fn note_count(nodes: &[BikeshedNode]) -> usize {
