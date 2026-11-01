@@ -8,6 +8,7 @@ import {
   ABSENT,
   DIMENSIONS,
   coverage,
+  dayBars,
   dimensionLabel,
   dimensionRows,
   money,
@@ -34,7 +35,8 @@ export type UsageFaceProps = {
  * a row.
  *
  * Every number is a field of the one report it is handed, formatted (`usage.ts`);
- * the face sums nothing and derives no percentage. A record that reported no cost
+ * the face sums nothing and scales nothing: the one height it draws comes from
+ * the chart helper beside the formatters. A record that reported no cost
  * draws the absent mark, never `$0.00`, which is why the header states its
  * coverage.
  */
@@ -51,6 +53,7 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
   }
 
   const arithmetic = ticketArithmetic(report)
+  const bars = dayBars(report.day)
   const open = selectedRow(report, dimension, selected)
 
   function choose(next: UsageDimension) {
@@ -81,6 +84,32 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
           </div>
         ) : (
           <>
+            {bars.length === 0 ? null : (
+              <div className="usage__chart" role="group" aria-label="Cost per day">
+                {bars.map(({ row, heightPercent }) => {
+                  // The bar names what the Day table names: the absent mark for
+                  // a day no record reported, never a zero dressed up.
+                  const name =
+                    row.reported === 0 ? `${row.label}: ${ABSENT}` : `${row.label}: ${money(row.cost)}`
+                  return (
+                    <div key={row.id} className="usage__bar-cell">
+                      <div className="usage__bar-track">
+                        <div
+                          className="usage__bar"
+                          role="img"
+                          aria-label={name}
+                          title={name}
+                          style={{ height: `${heightPercent}%` }}
+                        />
+                      </div>
+                      <span className="usage__bar-label" aria-hidden="true">
+                        {row.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
             <div className="usage__picker" role="tablist" aria-label="Usage dimensions">
               {DIMENSIONS.map((candidate) => (
                 <button
