@@ -74,12 +74,17 @@ jobs:
         # These are the cases that flaked on this runner: run 41080330208
         # (`concurrent_writers_keep_every_row`) and run 41099651828
         # (`a_concurrent_edit_is_not_reverted_by_another_writers_snapshot`,
-        # which answered `Locked`) on the store's old sidecar window, and PRT-37's
+        # which answered `Locked`) on the store's old sidecar window, and
+        # `two_writers_over_one_home_keep_every_row_and_issue_every_ref_once`
+        # (TAN-252: `board.rs:354` answered `Locked` on #291, #302 and the
+        # docs-only #292 with no Rust in the diff), plus PRT-37's
         # `two_writers_on_threads_interleave_without_lost_or_torn_notes` on the
         # bikeshed's bounded lock. PRT-23 removed the store's sidecar and
-        # serialized this process's writers on a home-keyed gate; PRT-37 gave the
-        # three contention cases their own wider window (the production 2 s
-        # constants are untouched). Ten runs in one job are the evidence, and a
+        # serialized this process's writers on a home-keyed gate; PRT-37 gave
+        # the store-level contention cases their own wider window (the
+        # production 2 s constants are untouched), and TAN-252 retries the
+        # board-level writers through `write_after_lock`, so a turn-away costs
+        # a retry instead of a red. Ten runs in one job are the evidence, and a
         # failure here is a red gate, not a re-run to notice.
         #
         # Each run asserts that exactly one test ran: `--exact` with a renamed
@@ -107,6 +112,13 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             if (-not ($out -match 'test result: ok\. 1 passed')) {
               Write-Error "run ${run}: a_concurrent_edit_is_not_reverted_by_another_writers_snapshot ran no test; a renamed case would pass silently"
+              exit 1
+            }
+            $out = cargo test -p tandem-core --test board -- two_writers_over_one_home_keep_every_row_and_issue_every_ref_once --exact 2>&1
+            $out | Write-Output
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if (-not ($out -match 'test result: ok\. 1 passed')) {
+              Write-Error "run ${run}: two_writers_over_one_home_keep_every_row_and_issue_every_ref_once ran no test; a renamed case would pass silently"
               exit 1
             }
           }
