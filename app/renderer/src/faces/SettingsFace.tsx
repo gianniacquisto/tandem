@@ -141,7 +141,7 @@ export function SettingsFace() {
   // holds; a refusal lands in the error row and the draft stays for another
   // try. One explicit Save, so a half-typed list never reaches the store.
   async function saveRoster(): Promise<void> {
-    const written = await window.tandem.call({ method: 'settings.set', params: { roster: draft } })
+    const written = await window.tandem.call({ method: 'settings.set', params: { roster: draft, project: null } })
     if ('error' in written) {
       setFailure(written.error.message)
       return

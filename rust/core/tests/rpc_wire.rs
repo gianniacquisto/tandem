@@ -126,6 +126,126 @@ fn a_settings_read_answers_the_stores_roster() {
     );
 }
 
+/// The faces share one focus: the Tickets face and the Notes face draw the
+/// active lane, and the CLI writes it. `settings.get` answers the resolved
+/// focus beside the roster: absent when no focus was ever stored, when it was
+/// cleared, and when the stored lane is no longer declared, so a stale focus
+/// never hides tickets.
+#[test]
+fn a_settings_read_answers_the_active_project() {
+    use tandem_core::domain::Board;
+
+    let sandbox = Sandbox::new("rpc-focus-read");
+    let store = sandbox.store();
+    Board::new(store.clone())
+        .add_lane("Tandem", None)
+        .expect("the lane is declared");
+
+    let fresh = handle(&store, &frame(1, "settings.get", json!({})));
+    assert_eq!(fresh["id"], 1);
+    assert_eq!(
+        fresh["result"]["activeProject"],
+        Value::Null,
+        "a home that never stored a focus has none: {fresh}"
+    );
+
+    let focused = handle(
+        &store,
+        &frame(2, "settings.set", json!({"project": "Tandem"})),
+    );
+    assert_eq!(focused["result"]["activeProject"], json!("Tandem"));
+
+    let read = handle(&store, &frame(3, "settings.get", json!({})));
+    assert_eq!(
+        read["result"]["activeProject"],
+        json!("Tandem"),
+        "the read answers the stored focus: {read}"
+    );
+    assert!(
+        read["result"]["roster"].is_array(),
+        "the roster still answers beside the focus: {read}"
+    );
+
+    // A stored lane the board no longer declares reads as no focus.
+    store
+        .write(&Actor::Human, |write| {
+            write.upsert_setting(NewSetting {
+                key: "active_project",
+                value: "Retro",
+            })
+        })
+        .expect("the stale row is stored");
+    let stale = handle(&store, &frame(4, "settings.get", json!({})));
+    assert_eq!(
+        stale["result"]["activeProject"],
+        Value::Null,
+        "a stale focus hides nothing: {stale}"
+    );
+}
+
+/// The focus write refuses a lane the board never declared, naming the lanes
+/// the human may pick (`lane.rename`'s `UnknownLane` precedent), and the
+/// refused write leaves the store alone.
+#[test]
+fn a_settings_write_to_an_undeclared_lane_is_refused() {
+    use tandem_core::domain::Board;
+
+    let sandbox = Sandbox::new("rpc-focus-refusal");
+    let store = sandbox.store();
+    Board::new(store.clone())
+        .add_lane("Tandem", None)
+        .expect("the lane is declared");
+
+    let refused = handle(
+        &store,
+        &frame(1, "settings.set", json!({"project": "Nope"})),
+    );
+    assert_eq!(refused["error"]["code"], "domain");
+    let message = refused["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        message.contains("Nope"),
+        "the refusal names the lane: {refused}"
+    );
+    assert!(
+        message.contains("Tandem"),
+        "the refusal names the declared lanes: {refused}"
+    );
+
+    let read = handle(&store, &frame(2, "settings.get", json!({})));
+    assert_eq!(
+        read["result"]["activeProject"],
+        Value::Null,
+        "the refused write left the store alone: {read}"
+    );
+}
+
+/// Clearing the focus restores no focus: an absent project clears, and the
+/// read answers null again.
+#[test]
+fn clearing_the_focus_restores_no_focus() {
+    use tandem_core::domain::Board;
+
+    let sandbox = Sandbox::new("rpc-focus-clear");
+    let store = sandbox.store();
+    Board::new(store.clone())
+        .add_lane("Tandem", None)
+        .expect("the lane is declared");
+    handle(
+        &store,
+        &frame(1, "settings.set", json!({"project": "Tandem"})),
+    );
+
+    let cleared = handle(&store, &frame(2, "settings.set", json!({})));
+    assert_eq!(
+        cleared["result"]["activeProject"],
+        Value::Null,
+        "an absent project clears: {cleared}"
+    );
+
+    let read = handle(&store, &frame(3, "settings.get", json!({})));
+    assert_eq!(read["result"]["activeProject"], Value::Null);
+}
+
 /// The write beside the read: `settings.set` stores the whole roster, and the
 /// receipt it answers is the cleaned list `settings.get` reads back. Cleaning
 /// is the domain's, so padding, empties and repeats never reach the store; an

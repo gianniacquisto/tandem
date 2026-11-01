@@ -122,3 +122,29 @@ export function notePaths(nodes: NoteNodeView[]): string[] {
     node.kind === 'note' ? [node.path] : notePaths(node.children),
   )
 }
+
+/**
+ * The tree the Notes face draws under a project focus: the `projects` folder
+ * holding only the focused project's folder, matched case-insensitively
+ * (a lane is `Tandem`, its folder `tandem`).
+ *
+ * No focus (the show-all escape) draws the whole vault, and so does a focus
+ * no project folder answers: an ambiguous, renamed or missing folder never
+ * hides notes. The returned nodes keep their full paths, so the wikilink
+ * index and the open note keep working.
+ */
+export function focusNodes(nodes: NoteNodeView[], active: string | null): NoteNodeView[] {
+  if (active === null || active.trim() === '') return nodes
+  const wanted = active.trim().toLowerCase()
+  const matches = (node: NoteNodeView): boolean =>
+    node.kind === 'folder' && node.name.toLowerCase() === wanted
+  let narrowed = false
+  const scoped = nodes.map((node) => {
+    if (node.kind !== 'folder' || node.path !== 'projects') return node
+    const children = node.children.filter(matches)
+    if (children.length !== 1) return node
+    narrowed = true
+    return { ...node, children }
+  })
+  return narrowed ? scoped : nodes
+}

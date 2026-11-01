@@ -582,20 +582,49 @@ fn execute(
             // The roster is a `settings` row, and the picking is the domain's
             // (`domain::Settings`): a default for a home that never stored one,
             // the stored list over it, and an explicitly empty list as empty.
-            // The read is one row and no lock: the store opens, answers and
-            // closes inside `Store::setting`.
-            let roster = Settings::new(store).roster().map_err(domain)?;
-            Ok(Reply::Settings(SettingsReply { roster }))
+            // The focus answers on the same read, resolved against the declared
+            // lanes, so a stale focus is no focus. The read is rows and no
+            // lock: the store opens, answers and closes inside `Store::setting`.
+            let settings = Settings::new(store);
+            let roster = settings.roster().map_err(domain)?;
+            let lanes = board.lanes().map_err(domain)?;
+            let active_project = settings.active_project(&lanes).map_err(domain)?;
+            Ok(Reply::Settings(SettingsReply {
+                roster,
+                active_project,
+            }))
         }
         Method::SettingsSet(params) => {
-            // The write mirrors the read: the same domain call the CLI verb
-            // makes, and the reply carries the stored roster as the receipt.
-            // The face redraws from this list, never from its request's echo,
-            // so what it draws is what the store holds.
-            let roster = Settings::new(store)
-                .set_roster(actor, params.roster)
-                .map_err(domain)?;
-            Ok(Reply::Settings(SettingsReply { roster }))
+            // One write, two axes: each is applied only when its key is
+            // present, so a roster Save leaves the focus alone and a focus
+            // pick leaves the roster alone. The focus resolves first, so a
+            // refused lane writes nothing, not even the spelled roster. A
+            // frame that spells neither key is the legacy bare write: it
+            // clears the focus and leaves the roster alone, because on the
+            // wire an explicit null reads as absent, and clearing the focus
+            // must never empty the roster. The receipt is what the store
+            // holds after both axes, so the face redraws from this reply,
+            // never from its request's echo, and the revision moves, so the
+            // faces re-read on the change event.
+            let settings = Settings::new(store);
+            let lanes = board.lanes().map_err(domain)?;
+            let active_project = match params.project.as_deref() {
+                Some(project) => settings
+                    .set_active_project(actor, Some(project), &lanes)
+                    .map_err(domain)?,
+                None if params.roster.is_none() => settings
+                    .set_active_project(actor, None, &lanes)
+                    .map_err(domain)?,
+                None => settings.active_project(&lanes).map_err(domain)?,
+            };
+            let roster = match params.roster {
+                Some(roster) => settings.set_roster(actor, roster).map_err(domain)?,
+                None => settings.roster().map_err(domain)?,
+            };
+            Ok(Reply::Settings(SettingsReply {
+                roster,
+                active_project,
+            }))
         }
         Method::MarkdownBlocks(params) => {
             // The parsing is the domain's (`TicketMarkdown`), so the sheet draws

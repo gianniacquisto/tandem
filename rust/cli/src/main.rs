@@ -100,7 +100,8 @@ enum Command {
         #[command(subcommand)]
         command: Option<SetupCommand>,
     },
-    /// The store's settings, starting with the assignee roster.
+    /// The store's settings: the roster the pickers offer and the shared focus
+    /// the faces draw (TAN-258).
     Settings {
         #[command(subcommand)]
         command: Option<SettingsCommand>,
@@ -449,15 +450,23 @@ enum SetupCommand {
 
 #[derive(Subcommand)]
 enum SettingsCommand {
+    Get,
     Set(SettingsSetArgs),
 }
 
 #[derive(Args)]
 struct SettingsSetArgs {
-    /// One roster name per flag; the whole list replaces the stored one.
-    /// No flag stores the empty list.
-    #[arg(long)]
-    roster: Vec<String>,
+    /// One roster name per flag; the spelled flags replace the stored list
+    /// whole, and a bare flag stores the empty list. Unspelled leaves the
+    /// stored list alone.
+    #[arg(long, num_args = 0..)]
+    roster: Option<Vec<String>>,
+    /// The lane to focus; a spelled flag with a name focuses it, and a bare
+    /// or empty flag clears back to every lane. Unspelled leaves the focus
+    /// alone, unless no flag is spelled at all: a bare `settings set` clears
+    /// the focus and leaves the roster alone.
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    project: Option<String>,
 }
 
 #[derive(Args)]
@@ -725,6 +734,7 @@ impl SetupCommand {
 impl SettingsCommand {
     fn help(&self) -> &'static str {
         match self {
+            Self::Get => "settings get",
             Self::Set(_) => "settings set",
         }
     }
@@ -760,7 +770,7 @@ fn run(cli: &Cli) -> Result<(), Failure> {
         Command::Session { command } => session(&home, command.as_ref()),
         Command::Sprint { command } => sprint(&home, command.as_ref()),
         Command::Setup { command } => setup_command(&home, command.as_ref()),
-        Command::Settings { command } => settings(&home, command.as_ref()),
+        Command::Settings { command } => settings_verb(&home, command.as_ref()),
     }
 }
 
@@ -1021,6 +1031,56 @@ fn lane(home: &Home, command: Option<&LaneCommand>) -> Result<(), Failure> {
                 .delete_lane(args.name.as_deref().unwrap_or(""))
                 .map_err(Failure::domain)?;
             print(&LaneDeletionView::new(&deletion, None))
+        }
+    }
+}
+
+/// The store's settings: the roster the pickers offer and the shared focus
+/// the faces draw (TAN-258). `get` is the read the app makes over `rpc`;
+/// `set` is its write, beside `settings.get` in the method table, so agents
+/// read and write the same values the faces do. Each `set` flag spells one
+/// axis: an unspelled axis is left alone, except a bare `settings set`, which
+/// clears the focus and leaves the roster alone.
+fn settings_verb(home: &Home, command: Option<&SettingsCommand>) -> Result<(), Failure> {
+    let command = command.ok_or_else(Failure::usage)?;
+    let store = if matches!(command, SettingsCommand::Get) {
+        Store::new(home.clone())
+    } else {
+        write_store(home)?
+    };
+    let settings = Settings::new(&store);
+    let board = Board::new(store);
+
+    match command {
+        SettingsCommand::Get => {
+            let lanes = board.lanes().map_err(Failure::domain)?;
+            print(&SettingsReply {
+                roster: settings.roster().map_err(Failure::domain)?,
+                active_project: settings.active_project(&lanes).map_err(Failure::domain)?,
+            })
+        }
+        SettingsCommand::Set(args) => {
+            let lanes = board.lanes().map_err(Failure::domain)?;
+            let bare = args.roster.is_none() && args.project.is_none();
+            let roster = match args.roster.clone() {
+                Some(roster) => settings
+                    .set_roster(board.actor(), roster)
+                    .map_err(Failure::domain)?,
+                None => settings.roster().map_err(Failure::domain)?,
+            };
+            let active_project = match args.project.as_deref() {
+                Some(project) => settings
+                    .set_active_project(board.actor(), Some(project), &lanes)
+                    .map_err(Failure::domain)?,
+                None if bare => settings
+                    .set_active_project(board.actor(), None, &lanes)
+                    .map_err(Failure::domain)?,
+                None => settings.active_project(&lanes).map_err(Failure::domain)?,
+            };
+            print(&SettingsReply {
+                roster,
+                active_project,
+            })
         }
     }
 }
@@ -1774,27 +1834,6 @@ fn rpc(home: &Home) -> Result<(), Failure> {
         Actor::current(),
     )
     .map_err(|error| Failure::message(format!("The rpc stream failed: {error}. Try again.")))
-}
-
-// MARK: - settings
-
-/// `settings set`: the roster's whole replacement, the same write the Settings
-/// face's Save makes over the wire. The flags are the list: one `--roster`
-/// per name, and no flag stores the empty list. Cleaning is the domain's, so
-/// the printed receipt is the cleaned list the store holds.
-fn settings(home: &Home, command: Option<&SettingsCommand>) -> Result<(), Failure> {
-    let command = command.ok_or_else(Failure::usage)?;
-    let store = write_store(home)?;
-    let actor = Actor::current();
-
-    match command {
-        SettingsCommand::Set(args) => {
-            let roster = Settings::new(&store)
-                .set_roster(&actor, args.roster.clone())
-                .map_err(Failure::domain)?;
-            print(&SettingsReply { roster })
-        }
-    }
 }
 
 // MARK: - doctor

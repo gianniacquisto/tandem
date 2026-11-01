@@ -134,14 +134,19 @@ methods! {
     // derivation `usage_report` already froze (PRT-15). An empty verb is how the
     // table says so; `the_read_methods_without_a_cli_verb_are_named_here` names it.
     UsageReport: "usage.report", EmptyParams, "";
-    // The settings the faces read, in one read message: the sheet's assignee
-    // picker and the board's filter both offer the store's roster (PRT-38),
-    // which is a `settings` row. The read writes nothing, so no UI-only write
-    // hides behind its empty verb; the write below names the CLI verb it
-    // shares with the Settings face's Save.
+    // The settings the faces read, in one message: the sheet's assignee picker
+    // and the board's filter both offer the store's roster, and the board
+    // draws the active project beside it. Both are `settings` rows; the read
+    // writes nothing, so no UI-only write hides behind its empty verb. The
+    // write below names the CLI verb it shares with the Settings face's Save
+    // and the focus control.
     SettingsGet: "settings.get", EmptyParams, "";
-    // The roster write: the Settings face's Save and `settings set` spell one
-    // act, the whole-list replace `domain::Settings::set_roster` performs.
+    // The settings write: the roster's whole-list replace and the
+    // active-project focus, each applied only when its key is present, so a
+    // roster Save leaves the focus alone and a focus pick leaves the roster
+    // alone. The bare frame clears the focus and leaves the roster alone.
+    // The CLI spells it `settings set`, so no UI-only write hides
+    // here.
     SettingsSet: "settings.set", SettingsSetParams, "settings set";
     // The ticket sheet's read: a body in, the blocks it draws out. The parsing
     // is the core's (`TicketMarkdown`), so the app and the CLI cannot read one
@@ -154,16 +159,6 @@ methods! {
 #[serde(rename_all = "camelCase", default)]
 pub struct MarkdownBlocksParams {
     pub text: Option<String>,
-}
-
-/// `settings.set`: the roster's whole replacement list. Absent is the empty
-/// list, which stores as empty: the write replaces whole, so there is no
-/// "unchanged" to spell, and an emptied roster is the human's removal rather
-/// than a value no build can read.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct SettingsSetParams {
-    pub roster: Vec<String>,
 }
 
 /// A method that takes nothing. The frame still carries `"params": {}`, so a
@@ -514,12 +509,36 @@ pub struct UsageReportReply {
 /// names the sheet's assignee picker and the board's filter offer. It is the
 /// stored list, or the default when none was ever stored; the typing is the
 /// core's (`domain::Settings`), so neither face parses a settings row. A
-/// setting added later is one more field here; the write is its own method
+/// setting added later is one more field here, never a second method: the
+/// active project answers beside the roster, resolved against the declared
+/// lanes, so a stale focus reads as no focus; the write is its own method
 /// (`settings.set`), because only reads share this reply.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsReply {
     pub roster: Vec<String>,
+    pub active_project: Option<String>,
+}
+
+/// `settings.set`: the roster's whole replacement and the focus to store, each
+/// applied only when its key is present, so one write spells one axis.
+///
+/// `roster`, when present, replaces the stored list whole: absent is not the
+/// empty list but "leave the stored list alone", and an explicitly emptied
+/// list is the human's removal rather than a value no build can read.
+/// `project`, when present, focuses the faces on one declared lane; a blank
+/// value clears back to every lane, and a name no declared lane carries is
+/// refused with nothing written. An absent project leaves the focus alone,
+/// unless the frame spells no roster either: the bare frame is the legacy
+/// bare write, which clears the focus and leaves the roster alone (an
+/// explicit null reads as absent on the wire, so clearing the focus never
+/// empties the roster). Optional throughout so the frame's
+/// empty-params round-trip still parses.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SettingsSetParams {
+    pub roster: Option<Vec<String>>,
+    pub project: Option<String>,
 }
 
 /// `ticket.list`: the full snapshot and the revision it is a snapshot of.

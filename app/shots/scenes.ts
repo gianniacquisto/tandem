@@ -54,6 +54,12 @@ export const SCENES: readonly Scene[] = [
       'the same face on the same 78-ticket board home in its board layout: the lanes as rows, each named with its count and holding one cell per status, the six status columns with On hold parked last, and the same rows set on cards in the cell of their lane and status',
   },
   {
+    id: 'tickets-focus',
+    file: 'tickets-focus.png',
+    description:
+      'the **Tickets** face with a project focus set: the focus control naming the active lane with its show-all escape, and the board drawing that lane row alone',
+  },
+  {
     id: 'tickets-keyboard',
     file: 'tickets-keyboard.png',
     description:
