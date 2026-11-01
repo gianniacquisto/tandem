@@ -1285,6 +1285,7 @@ body {
 .tree__label:focus-visible,
 .health__row:focus-visible,
 .rail__row:focus-visible,
+.sheet:focus-visible,
 .button:focus-visible {
   outline: var(--hairline) solid var(--accent);
   outline-offset: -1px;
