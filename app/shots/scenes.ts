@@ -54,10 +54,22 @@ export const SCENES: readonly Scene[] = [
       'the same face on the same 78-ticket board home in its board layout: the lanes as rows, each named with its count and holding one cell per status, the six status columns with On hold parked last, and the same rows set on cards in the cell of their lane and status',
   },
   {
+    id: 'tickets-focus',
+    file: 'tickets-focus.png',
+    description:
+      'the **Tickets** face with a project focus set: the focus control naming the active lane with its show-all escape, and the board drawing that lane row alone',
+  },
+  {
     id: 'tickets-keyboard',
     file: 'tickets-keyboard.png',
     description:
       'the keyboard-only pass over the 78-ticket board home: a row selected with the arrows, the quick-add reached with the platform modifier and N, the search with the platform modifier and F, and a ticket moved one status over, inside its own lane, with Option and the arrows',
+  },
+  {
+    id: 'ticket-sheet-passes',
+    file: 'ticket-sheet-passes.png',
+    description:
+      'the ticket sheet over the fixture home with its pass-request buttons: refine enabled on a new backlog ticket, build and review disabled with their reasons in place, each a request the next dispatch picks up',
   },
 ]
 

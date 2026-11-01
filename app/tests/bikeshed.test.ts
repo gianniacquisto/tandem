@@ -4,6 +4,7 @@ import type { NoteNodeView } from '../renderer/src/wire/NoteNodeView'
 import {
   canReparent,
   flattenTree,
+  focusNodes,
   healthSummary,
   isHiddenPath,
   recoverableLabel,
@@ -90,6 +91,22 @@ describe('the drag that re-parents', () => {
 
   it('refuses the folder the note already sits in only when it would be a no-op', () => {
     expect(canReparent('daily/2026-10-30.md', 'daily')).toBe(false)
+  })
+})
+
+describe('the project focus', () => {
+  it('draws the whole vault when nothing is focused: the show-all escape', () => {
+    expect(focusNodes(FOLDERS, null)).toBe(FOLDERS)
+  })
+
+  it('draws the focused project folder alone, matched case-insensitively', () => {
+    const focused = focusNodes(FOLDERS, 'Fixture')
+    expect(focused.map((node) => node.path)).toEqual(['daily', 'projects', 'Index.md'])
+    expect(focused[1]?.children.map((child) => child.path)).toEqual(['projects/fixture'])
+  })
+
+  it('falls back to the whole vault when no project folder matches, so a stale focus hides nothing', () => {
+    expect(focusNodes(FOLDERS, 'Retro')).toBe(FOLDERS)
   })
 })
 

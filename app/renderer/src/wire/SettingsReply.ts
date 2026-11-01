@@ -7,7 +7,9 @@
  * names the sheet's assignee picker and the board's filter offer. It is the
  * stored list, or the default when none was ever stored; the typing is the
  * core's (`domain::Settings`), so neither face parses a settings row. A
- * setting added later is one more field here; the write is its own method
+ * setting added later is one more field here, never a second method: the
+ * active project answers beside the roster, resolved against the declared
+ * lanes, so a stale focus reads as no focus; the write is its own method
  * (`settings.set`), because only reads share this reply.
  */
-export type SettingsReply = { roster: Array<string>, };
+export type SettingsReply = { roster: Array<string>, activeProject: string | null, };

@@ -116,6 +116,10 @@ A **cycle lane** is the area axis — the list groups by it, the board draws its
 
 Each lane has a **key** — the `PRB` of `PRB-1` (see "The ref" above). `lane add --abbr <key>` names it; omitted, the key is the first three alphanumerics of the name (`Tandem` → `TAN`, `code-rank` → `COD`). A key is uppercase letters and digits, unique across lanes case-insensitively, and **frozen once a ticket in the lane holds a number**: `lane rename` keeps it, and `--abbr` that would move a frozen key is refused, naming the refs that would move.
 
+## Focus
+
+One **active project** shared by the board, the notes and the agents: the lane the Tickets face (board and list) and the Notes face draw, with a visible control to change or clear it. `settings get` answers `{"roster": [...], "activeProject": <lane>|null}`, the same read the app makes over `rpc`; `settings set --project <lane>` focuses the faces on a declared lane, and an absent or empty `--project` clears back to every lane. A lane the board never declared is a domain failure naming the declared lanes, and nothing is written. Unset, cleared or stale focus draws every lane, never an empty board. `ticket list` with no flags still lists every lane: agents opt in through the settings read, the list does not narrow for them.
+
 ## Sessions
 
 A session is a record, not a ticket (ADR 0027, amended 2026-11-01 by PRT-29): one record per pass, a row of the store's `sessions` table in `tandem.db` (ADR 0031) — never a ticket, never on the board. Five verbs, two states (`running`, `ended`):
@@ -191,6 +195,6 @@ The agent face (the skills, the agent prompts and `AGENTS.md`) ships in the app 
 
 ## Streams and exit codes
 
-- **stdout** — one JSON object on success. `list` → `{"tickets": [...]}`, summary rows (no `description`, its `descriptionLength` instead); `show` → the whole ticket object; `add`, `set`, `move`, `complete` → the ticket object; `archive` → `{"archived": <n>}`; `comment add` → the comment; `comment list` → `{"comments": [...]}`; `lane list`/`add`/`rename` → `{"lanes": [...]}`, `lane delete` → `{"lanes": [...], "moved": <n>}`. A top-level `note` appears only when the call recovered a corrupt **session or sprint** record file, naming the backup path — the ticket store never recovers (ADR 0031).
+- **stdout**: one JSON object on success. `list` → `{"tickets": [...]}`, summary rows (no `description`, its `descriptionLength` instead); `show` → the whole ticket object; `add`, `set`, `move`, `complete` → the ticket object; `archive` → `{"archived": <n>}`; `comment add` → the comment; `comment list` → `{"comments": [...]}`; `lane list`/`add`/`rename` → `{"lanes": [...]}`, `lane delete` → `{"lanes": [...], "moved": <n>}`; `settings get`/`set` → `{"roster": [...], "activeProject": <lane>|null}`. A top-level `note` appears only when the call recovered a corrupt **session or sprint** record file, naming the backup path: the ticket store never recovers (ADR 0031).
 - **stderr** — short, actionable plain text on failure, naming the failed value and the next step; `complete` and `show` with an unknown id append the current open list in the `list` shape (summaries).
 - **exit** — `0` success; `1` domain failure (empty title, unknown id, locked store); `2` usage failure (no arguments, unknown subcommand or flag). A missing flag value is deliberately a domain failure, not usage — `add` with no `--title` is the empty title the domain rejects. Retry only when the text says the store is locked.

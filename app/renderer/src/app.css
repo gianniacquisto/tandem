@@ -582,8 +582,8 @@ body {
 }
 
 /* The Tickets face: the quick-add, the scope and filter row, the search, and
- * the two layouts over one set of rows. The list keeps the Swift face's 540 pt
- * column; the board takes the window's width because a lane column is a lane. */
+ * the two layouts over one set of rows. Both layouts take the window's width:
+ * a lane column is a lane, and the list reads full width with it. */
 
 .shell__notice {
   display: flex;
@@ -614,7 +614,8 @@ body {
   max-width: 540px;
 }
 
-.tickets--board {
+.tickets--board,
+.tickets--list {
   max-width: none;
 }
 
@@ -730,6 +731,42 @@ body {
   cursor: pointer;
 }
 
+/* The project focus: the draw's own lane picker and its show-all escape. The
+ * picker wears the faces' filter sizing; the escape wears the segmented
+ * control's, pressed while the face draws every lane. */
+.focus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: var(--space-lane);
+}
+
+.focus__label {
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+.focus__all {
+  display: inline-flex;
+  align-items: center;
+  height: var(--space-control);
+  padding: 0 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.focus__all[aria-pressed="true"] {
+  background: var(--parchment);
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .search {
   display: flex;
   align-items: center;
@@ -782,11 +819,8 @@ body {
   cursor: pointer;
 }
 
-/* The list: the default area flat, each named lane under its own header. */
-
-.list {
-  max-width: 540px;
-}
+/* The list: the default area flat, each named lane under its own header. It
+ * spans the wide face with the board, so rows read full width. */
 
 .list__lane-title {
   display: flex;
@@ -1820,6 +1854,30 @@ body {
   margin: 6px 0 0;
   padding: 0;
   list-style: none;
+}
+
+.sheet__passes {
+  margin-top: 10px;
+}
+
+.sheet__pass-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sheet__pass-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sheet__pass-reason {
+  font-size: 11.5px;
+  color: var(--ink-dim);
 }
 
 .sheet__lane-row {

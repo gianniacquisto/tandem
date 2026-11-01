@@ -52,6 +52,9 @@ pub enum DomainError {
     DuplicateLane(String),
     /// A lane name was referenced but does not exist.
     UnknownLane(String),
+    /// An active-project focus named a lane that is not declared. `lanes` is
+    /// the declared list, so the refusal can name what the human may pick.
+    UnknownProject { name: String, lanes: Vec<String> },
     /// A lane key that is not uppercase alphanumerics.
     InvalidLaneKey(String),
     /// A lane key another lane already holds.
@@ -216,6 +219,13 @@ impl DomainError {
             Self::UnknownLane(name) => {
                 format!("Unknown cycle lane \"{name}\". Create it first.")
             }
+            Self::UnknownProject { name, lanes } if lanes.is_empty() => {
+                format!("Unknown project \"{name}\". No lanes are declared yet; create one first.")
+            }
+            Self::UnknownProject { name, lanes } => format!(
+                "Unknown project \"{name}\". The declared lanes are: {}.",
+                lanes.join(", ")
+            ),
             Self::InvalidLaneKey(bad) => format!(
                 "Lane key \"{bad}\" is not valid. A key is uppercase letters and digits (e.g. TAN)."
             ),
