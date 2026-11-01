@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use tandem_core::diagnostics::{
-    self, CHECK_NAMES, CommentsState, Facts, SkillHost, age_text, report,
+    self, CHECK_NAMES, CommentsState, Facts, SkillHost, age_text, report, shell_quoted,
 };
 use tandem_core::domain::{AddTicket, Board};
 use tandem_core::setup::{self, Code, HostState, Severity, State, Warning};
@@ -199,6 +199,20 @@ fn the_store_row_names_the_database_version_and_how_to_clear_the_fork() {
     );
 }
 
+/// The store row and the comments row share one quoting rule, so a path the
+/// shell would split stays one word in both commands.
+#[test]
+fn the_store_fork_quotes_a_path_the_shell_would_split() {
+    let mut facts = facts();
+    facts.store_json_fork = Some(PathBuf::from("/Users/one two/tickets.json"));
+    let report = report(&facts);
+    assert!(
+        check(&report, "store")
+            .detail
+            .contains("rm '/Users/one two/tickets.json'")
+    );
+}
+
 #[test]
 fn a_pre_import_home_names_the_json_file_not_the_database() {
     let mut facts = facts();
@@ -305,7 +319,30 @@ fn the_comments_row_reads_the_live_store_not_the_legacy_directory() {
     );
     assert!(comments.detail.contains("12 comment(s)"));
     assert!(!comments.detail.contains("created on first comment"));
-    assert!(comments.detail.contains("no legacy log directory"));
+    assert_eq!(
+        comments.detail,
+        "/Users/tester/.tandem-dev/tandem.db \u{2014} 12 comment(s); no legacy log directory"
+    );
+}
+
+/// The evidence the import left behind is the human's to remove, so the row
+/// prints the command, byte for byte, with the quoted directory.
+#[test]
+fn an_imported_directory_names_its_removal() {
+    let mut facts = facts();
+    facts.comment_rows = 12;
+    facts.comments_imported = true;
+    facts.comments_state = CommentsState::Readable;
+    let report = report(&facts);
+    let comments = check(&report, "comments");
+    assert!(report.ok);
+    assert!(comments.ok);
+    assert_eq!(
+        comments.detail,
+        "/Users/tester/.tandem-dev/tandem.db \u{2014} 12 comment(s); legacy logs at \
+         /Users/tester/.tandem-dev/comments already imported; remove them with: rm -rf \
+         '/Users/tester/.tandem-dev/comments'"
+    );
 }
 
 #[test]
@@ -353,6 +390,34 @@ fn an_unreadable_legacy_directory_is_harmless_once_the_import_landed() {
     assert!(comments.ok);
     assert!(comments.detail.contains("5 comment(s)"));
     assert!(comments.detail.contains("already imported"));
+    assert_eq!(
+        comments.detail,
+        "/Users/tester/.tandem-dev/tandem.db \u{2014} 5 comment(s); legacy logs at \
+         /Users/tester/.tandem-dev/comments present but unreadable \u{2014} already imported, so \
+         not read; remove them with: rm -rf '/Users/tester/.tandem-dev/comments'"
+    );
+}
+
+/// The command is one shell word: a home with a space or a quote prints a
+/// delete that still names only that directory.
+#[test]
+fn shell_quoting_survives_a_space_and_a_quote() {
+    assert_eq!(
+        shell_quoted(std::path::Path::new("/Users/tester/plain/comments")),
+        "'/Users/tester/plain/comments'"
+    );
+    assert_eq!(
+        shell_quoted(std::path::Path::new("/Users/one two/comments")),
+        "'/Users/one two/comments'"
+    );
+    assert_eq!(
+        shell_quoted(std::path::Path::new("/Users/o'brien/comments")),
+        "'/Users/o'\\''brien/comments'"
+    );
+    assert_eq!(
+        shell_quoted(std::path::Path::new("/tmp/x' ; rm -rf ~ #")),
+        "'/tmp/x'\\'' ; rm -rf ~ #'"
+    );
 }
 
 #[test]
