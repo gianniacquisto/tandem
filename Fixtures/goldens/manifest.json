@@ -24,6 +24,10 @@
       "as": "<schema>"
     },
     {
+      "kind": "backup-age",
+      "as": "<age>"
+    },
+    {
       "kind": "uuid",
       "as": "<id>"
     },
