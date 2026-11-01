@@ -11,6 +11,7 @@ import {
   templatePath,
   writeCatalogue,
 } from '../shots/catalogue'
+import { REPO_ROOT } from '../shots/roots'
 import { SCENES, type Scene } from '../shots/scenes'
 
 const scenes: Scene[] = [
@@ -65,6 +66,22 @@ describe('the screenshot catalogue', () => {
     const written = readFileSync(cataloguePath(root), 'utf8')
     expect(written).toContain('| `first.png` | the first scene |')
     expect(written).toContain('| `second.png` | the second scene |')
+  })
+
+  it('keeps the committed catalogue the one the template and the manifest render', () => {
+    // The run writes the table from `scenes.ts`, so a reworded scene row is stale
+    // until the next run: a row that describes a layout the pictures no longer
+    // show is the drift this check exists to stop.
+    //
+    // The endings are compared as one: the table the writer builds is LF, while a
+    // Windows checkout hands both files back CRLF, so a raw compare fails there
+    // on every row without a word of prose having changed.
+    const root = REPO_ROOT
+    const lines = (text: string): string => text.replace(/\r\n/g, '\n')
+
+    expect(lines(readFileSync(cataloguePath(root), 'utf8'))).toBe(
+      lines(renderCatalogue(readFileSync(templatePath(root), 'utf8'), SCENES)),
+    )
   })
 
   it('ships one scene per file, and every file a picture', () => {

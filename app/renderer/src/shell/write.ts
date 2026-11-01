@@ -8,8 +8,20 @@ import type { SnapshotState } from './snapshot'
  */
 export type WriteOutcome = { ok: true } | { ok: false; message: string }
 
-/** The shell's one write door: guarded by the listing's revision. */
-export type Write = (call: Call, expected: number | null) => Promise<WriteOutcome>
+/**
+ * The shell's one write door: guarded by the listing's revision.
+ *
+ * `followUp` names the change an earlier write of the same act already landed
+ * (the board's lane-then-status drop). It exempts the write from the revision
+ * guard, because the first write moving the listing on is the act's own doing,
+ * and a refusal is then prefixed with the words so the human is not told that
+ * nothing happened.
+ */
+export type Write = (
+  call: Call,
+  expected: number | null,
+  followUp?: string,
+) => Promise<WriteOutcome>
 
 /**
  * Who made a write. A face has no place of its own to answer a refusal, so it

@@ -257,6 +257,59 @@ fn two_passes_in_one_harness_session_each_record_and_show_answers_the_newest() {
 }
 
 #[test]
+fn the_environment_keys_an_end_to_the_newest_record_on_its_pointer() {
+    let sandbox = Sandbox::new("env-keyed-end");
+
+    let first = sandbox.harness_json(&[
+        "session",
+        "start",
+        "--project",
+        "tandem",
+        "--agent",
+        "builder",
+        "--brief",
+        "The first pass.",
+    ]);
+    let second = sandbox.harness_json(&[
+        "session",
+        "start",
+        "--project",
+        "tandem",
+        "--agent",
+        "refiner",
+        "--brief",
+        "The second pass.",
+    ]);
+    assert_ne!(
+        first["id"], second["id"],
+        "each pass opens a record of its own on one pointer"
+    );
+
+    // The host exports the harness id and names no --session: the end resolves
+    // the environment's pointer to the record that opened last.
+    let ended = sandbox.harness_json(&[
+        "session",
+        "end",
+        "--outcome",
+        "succeeded",
+        "--summary",
+        "What landed.",
+    ]);
+    assert_eq!(
+        ended["id"], second["id"],
+        "the env-keyed end stamps the newest record naming the pointer"
+    );
+    assert_eq!(ended["status"], "ended");
+
+    let first_id = first["id"].as_str().unwrap();
+    let first = sandbox.json(&["session", "show", "--session", first_id]);
+    assert_eq!(
+        first["status"], "running",
+        "the older record on the pointer is not stamped"
+    );
+}
+
+#[test]
 fn a_run_with_no_session_and_no_harness_id_still_records() {
     let sandbox = Sandbox::new("minted");
 

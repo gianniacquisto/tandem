@@ -42,12 +42,12 @@ size follows the display's scale factor.
 
 A face taller than the window is laid out at its own height (the scroll
 constraint lifted, the width kept) and shot whole, so a picture of a table is
-the whole table; a board is laid out at the width its lanes need, so the picture
-is the whole board rather than a column and a half of it. The scratch home is
-seeded again before every test, so a spec that writes (a drag, a save, the CLI
-as a second writer) cannot change the next spec's picture or its assertions. A
-failing spec fails the run, and the catalogue is rewritten only when every
-scene's picture exists, so a picture and its row cannot drift.
+the whole table; a board is laid out at the width its six status columns need,
+so the picture is the whole board rather than a column and a half of it. The
+scratch home is seeded again before every test, so a spec that writes (a drag, a
+save, the CLI as a second writer) cannot change the next spec's picture or its
+assertions. A failing spec fails the run, and the catalogue is rewritten only
+when every scene's picture exists, so a picture and its row cannot drift.
 
 CI runs the same command on the Linux runner under a virtual display
 (`.github/workflows/app.yml`), so a deliberately broken selector is a red job

@@ -13,7 +13,7 @@
         "ok": true
       },
       {
-        "detail": "<tandem-home>/tandem.db — <schema>; 1 open, 0 done; backup 0s old",
+        "detail": "<tandem-home>/tandem.db — <schema>; 1 open, 0 done; backup <age> old",
         "name": "store",
         "ok": true
       },
@@ -25,6 +25,21 @@
       {
         "detail": "<tandem-home>/tandem.db — none yet; the first comment writes a row",
         "name": "comments",
+        "ok": true
+      },
+      {
+        "detail": "no sessions.json in this home",
+        "name": "sessions",
+        "ok": true
+      },
+      {
+        "detail": "no settings.json in this home",
+        "name": "settings",
+        "ok": true
+      },
+      {
+        "detail": "no todos.json.* files in this home",
+        "name": "todos-json",
         "ok": true
       },
       {

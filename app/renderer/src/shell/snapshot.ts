@@ -18,6 +18,8 @@ export type SnapshotState = {
   tickets: TicketSummary[]
   lanes: string[]
   usage: UsageReportView | null
+  /** The store's roster, the names both assignee surfaces offer. */
+  roster: string[]
   error: string | null
   /** A conflict or refusal the human has not dismissed yet. */
   notice: string | null
@@ -28,6 +30,7 @@ export type SnapshotState = {
 export type SnapshotAction =
   | { type: 'loaded'; reply: TicketListReply; lanes: string[] }
   | { type: 'usage'; report: UsageReportView }
+  | { type: 'settings'; roster: string[] }
   | { type: 'failed'; message: string }
   | { type: 'stale' }
   | { type: 'notice'; message: string }
@@ -39,6 +42,7 @@ export const initialSnapshot: SnapshotState = {
   tickets: [],
   lanes: [],
   usage: null,
+  roster: [],
   error: null,
   notice: null,
   stale: false,
@@ -58,6 +62,9 @@ export function snapshotReducer(state: SnapshotState, action: SnapshotAction): S
   }
   if (action.type === 'usage') {
     return { ...state, usage: action.report }
+  }
+  if (action.type === 'settings') {
+    return { ...state, roster: action.roster }
   }
   if (action.type === 'stale') {
     return { ...state, stale: true }
