@@ -61,6 +61,13 @@ One JSON report of where your state lives and whether it is healthy: the home di
 | Network | none today, the app and the CLI are local |
 | Accounts | none today, the state is files in your home directory |
 
+That table is the shipped app: every release publishes macOS artifacts only.
+Underneath, the repo builds and tests cross-platform. CI runs the Rust suite
+and the app suite (typecheck, tests, packaging, artifact check, smoke) on
+macOS, Windows and Ubuntu runners, so a checkout on any of the three builds
+and tests what it can run. [CONTRIBUTING.md](CONTRIBUTING.md) is the
+per-platform on-ramp.
+
 ## What it does
 
 The app and the agent read and write the same store, and the app watches it: a ticket an agent files appears in your window, and a ticket you close is gone from the agent's next read.
@@ -254,7 +261,7 @@ Tandem's store was `tickets.json` until v0.27.0, with the comments, sessions, sp
 
 - **Not a service yet.** There is no account to create and nothing syncs; the state is one SQLite database and a folder of notes in your home directory. A hosted core for several humans is a later deployment shape, not a feature you have now.
 - **Not a team tool yet.** One Mac, one store. There is no shared board and no realtime collaboration; the bikeshed is not shareable either.
-- **Not cross-platform.** macOS 27 or later, on Apple silicon.
+- **Not cross-platform as a shipped app.** The release publishes macOS artifacts only: macOS 27 or later, on Apple silicon. Windows and Linux app builds are unshipped and unsupported.
 - **Not a tracker with edges.** The board has no labels, no blocking edges and no child tickets — see [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
 - **Not a text file.** The store is a database the app and the CLI own; the bikeshed is where prose, and hand edits, belong. A JSON store from an older build is read once and then ignored.
 

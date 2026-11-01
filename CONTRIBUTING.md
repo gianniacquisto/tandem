@@ -8,8 +8,17 @@ the conventions the project keeps. The short version lives in the README's
 
 ## Prerequisites
 
-- An Apple silicon Mac running macOS 27 or later, for app work. The Rust core
-  builds anywhere Rust builds, but the app itself is macOS-only.
+- Any of the three CI platforms (macOS, Windows, Ubuntu) for Rust or app code,
+  test and packaging work. CI runs the Rust suite and the app suite
+  (typecheck, tests, packaging, artifact check, smoke) on all three, so a
+  checkout there builds and tests what it can run. The packaged app is
+  verified on all three by CI, but only the macOS artifact ships: Windows and
+  Linux app builds are unshipped and unsupported.
+- An Apple silicon Mac running macOS 27 or later, for anything that touches
+  the shipped app: installing the cask or the script, the Gatekeeper strip,
+  running the built `Tandem.app`. The release publishes macOS artifacts only,
+  and the scripted install is macOS-only (it refuses off Darwin/arm64 and
+  writes to `/Applications`).
 - Rust via [rustup](https://rustup.rs). The pin lives in
   [rust/rust-toolchain.toml](rust/rust-toolchain.toml) (currently 1.99.1 with
   the `rustfmt` and `clippy` components), so the right toolchain arrives on

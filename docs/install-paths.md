@@ -6,18 +6,19 @@ The install is one line today: `brew install --cask gianniacquisto/tap/tandem`, 
 
 ## The artifact
 
-A tag publishes three assets and nothing else ([`release.yml`](../.github/workflows/release.yml)):
+A tag publishes four assets and nothing else ([`release.yml`](../.github/workflows/release.yml)):
 
 | asset | size at v1.0.2 | verified by |
 | --- | --- | --- |
 | `Tandem-<version>.zip` | 119,223,329 bytes | a line in `SHA256SUMS`, and the cask's `sha256` |
 | `Tandem-<version>.dmg` | 122,951,599 bytes | nothing published |
-| `SHA256SUMS` | 83 bytes, one line | `release` job runs `shasum -a 256 -c` before publishing |
+| `install.sh` | stamped with the tag's version | a line in `SHA256SUMS` |
+| `SHA256SUMS` | two lines since TAN-253 shipped the scripted install | `release` job runs `shasum -a 256 -c` before publishing |
 
 Four properties of those bytes decide most of the comparison:
 
 - **The zip is the install unit, and its name is a contract.** The cask downloads `Tandem-<version>.zip`, the build job fails if that name is absent, and `Scripts/bump-tap.sh` reads exactly that filename out of `SHA256SUMS` (an extra line for another filename is ignored, a missing or doubled one is a red run). A second install path inherits the same name, not a new one.
-- **Only the zip has a published digest.** `SHA256SUMS` carries one line, so the DMG is a download nobody can verify against the release's own manifest. Any path that installs from the DMG would need a workflow change first, which puts the DMG out of scope here.
+- **Only the zip and `install.sh` have a published digest.** `SHA256SUMS` carries one line each, so the DMG is a download nobody can verify against the release's own manifest. Any path that installs from the DMG would need a workflow change first, which puts the DMG out of scope here.
 - **The bundle is ad-hoc signed, sealed, and not notarized.** `codesign -dv /Applications/Tandem.app` reads `Signature=adhoc`, `TeamIdentifier=not set`, `Sealed Resources version=2`; `check:artifact` and the release job refuse a bundle that does not verify and seal. Developer ID signing and notarization are `PRT-32`, on hold for the human.
 - **Every download is quarantined, so every path pays the strip.** Homebrew applies `com.apple.quarantine` to a cask download (observed on this Mac at 1.0.2), and until it is cleared the app is refused and the in-bundle `tandem-cli` is killed (exit 137) as well. The documented fix is one line, `xattr -dr com.apple.quarantine /Applications/Tandem.app`, once per install or upgrade, and each upgrade also warns that the signer changed ([ADR 0003](adr/0003-distribution.md)).
 
@@ -92,7 +93,7 @@ Any one of these reopens the investigation, with the piped script as the candida
 
 - **`PRT-32` lands a Developer ID and notarization.** Then Gatekeeper, not a hash, vouches for the payload, the strip disappears from the docs, and the piped script's residual risk is executing a short, auditable bootstrap rather than an unverifiable app. That is the shape the objection above is weakest against.
 - **A managed or fleet target arrives**, where Homebrew is not allowed on the machine and the install has to be run by a provisioning tool. One non-developer machine makes a script the only single-command path.
-- **Windows and Linux artifacts ship** (`PRT-32`'s NSIS installer and AppImage). brew is macOS-only, so on those platforms an installer script is not an alternative to the cask, it is the only one, and the macOS path would then be the odd one out.
+- **Windows and Linux artifacts ship** (`PRT-32`'s NSIS installer and AppImage). The cask is macOS-only, so on those platforms an installer script is not an alternative to the cask, it is the only one, and the macOS path would then be the odd one out.
 - **The token collision causes a regression that documentation does not hold**: a user whose bare-token upgrade replaced this app, reported after the README and the release notes already spell the tap out. A script that never names the token is then the mitigation that does not break existing installs.
 
 Any such change wants the same discipline this decision took: one page, the artifact's facts, and a test that installs the freshly built zip into a temporary prefix before the path is announced.
