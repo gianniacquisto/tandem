@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::bikeshed::health::BikeshedHealth;
+use crate::domain::sprint::Sprint;
 use crate::wire::views::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
     NoteWriteView, RecoveryView, TicketDetail, TicketSummary, UsageReportView,
@@ -108,6 +109,13 @@ methods! {
     LaneAdd: "lane.add", LaneAddParams, "lane add";
     LaneRename: "lane.rename", LaneRenameParams, "lane rename";
     LaneDelete: "lane.delete", LaneDeleteParams, "lane delete";
+    // The sprint record's reads and its one app-reachable write (TAN-254). The
+    // verbs are the CLI's own (`sprint list/show/open`), so the app configures
+    // the workflow through the same acts an agent runs. `ticket`, `run` and
+    // `close` stay CLI-only: the sprint session is the run log's only writer.
+    SprintList: "sprint.list", SprintListParams, "sprint list";
+    SprintShow: "sprint.show", SprintShowParams, "sprint show";
+    SprintOpen: "sprint.open", SprintOpenParams, "sprint open";
     // The Bikeshed face's reads. The CLI spells no verb for them today, and
     // they write nothing, so no UI-only write hides behind an empty verb. The
     // two mutations name the verbs they share with the agent face.
@@ -334,6 +342,34 @@ pub struct LaneDeleteParams {
     pub name: Option<String>,
 }
 
+/// `sprint.list`: the lane's records, each axis optional as the verb's flags
+/// are. An absent lane lists every lane; an absent status lists both states.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SprintListParams {
+    pub lane: Option<String>,
+    pub status: Option<String>,
+}
+
+/// `sprint.show`: the lane whose open record is answered. A lane with none
+/// open answers the CLI's own error, whose next step is that lane's `open`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SprintShowParams {
+    pub lane: Option<String>,
+}
+
+/// `sprint.open`: the lane, the mode and the session the record names. An
+/// absent mode is `serial`, as the CLI defaults it; an absent session is no
+/// session, which the domain files as the record without one.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SprintOpenParams {
+    pub lane: Option<String>,
+    pub mode: Option<String>,
+    pub session: Option<String>,
+}
+
 /// `setup.install`: the CLI's `--host` and `--force`, unchanged.
 ///
 /// `host` is one name or a comma-separated list, and absent means the CLI's
@@ -387,6 +423,8 @@ pub enum Reply {
     LaneList(LaneListReply),
     LaneDeletion(LaneDeletionReply),
     Archived(ArchivedReply),
+    SprintList(SprintListReply),
+    Sprint(SprintReply),
     Setup(SetupReply),
     Doctor(DoctorReply),
     NoteTree(NoteTreeReply),
@@ -552,6 +590,26 @@ pub struct LaneDeletionReply {
 pub struct ArchivedReply {
     pub revision: i64,
     pub archived: usize,
+}
+
+/// `sprint.list`: the lane's records, newest opened first, at the revision
+/// they are a snapshot of.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SprintListReply {
+    pub revision: i64,
+    pub sprints: Vec<Sprint>,
+}
+
+/// `sprint.show` and `sprint.open`: one record at its revision, with the note
+/// when the open changed nothing (a lane with an open sprint keeps it).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SprintReply {
+    pub revision: i64,
+    pub sprint: Sprint,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// One agent host's root, as the Settings surface shows it.
