@@ -72,10 +72,15 @@ describe('the screenshot catalogue', () => {
     // The run writes the table from `scenes.ts`, so a reworded scene row is stale
     // until the next run: a row that describes a layout the pictures no longer
     // show is the drift this check exists to stop.
+    //
+    // The endings are compared as one: the table the writer builds is LF, while a
+    // Windows checkout hands both files back CRLF, so a raw compare fails there
+    // on every row without a word of prose having changed.
     const root = REPO_ROOT
+    const lines = (text: string): string => text.replace(/\r\n/g, '\n')
 
-    expect(readFileSync(cataloguePath(root), 'utf8')).toBe(
-      renderCatalogue(readFileSync(templatePath(root), 'utf8'), SCENES),
+    expect(lines(readFileSync(cataloguePath(root), 'utf8'))).toBe(
+      lines(renderCatalogue(readFileSync(templatePath(root), 'utf8'), SCENES)),
     )
   })
 
