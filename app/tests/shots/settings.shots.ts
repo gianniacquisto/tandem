@@ -7,7 +7,7 @@ import { computed, token } from '../../shots/tokens'
 /**
  * The Settings face a human reads: the machine's paths (the seeded home and
  * the seeded user home's three hosts), the one theme rule, and the setup
- * report's eight checks with their state.
+ * report's eleven checks with their state.
  *
  * The paths are the seed's own, at the one fixed scratch root, so the picture
  * is the same in any checkout. What the rule pins is that they are the seed's
@@ -41,7 +41,7 @@ test('the settings face, over the seeded homes', async ({ app, window }) => {
   // The facts panel is a token card: its corner is --radius-card.
   expect(await computed(window, '.settings__facts', 'border-radius')).toBe(token('radius-card'))
 
-  await expect(window.locator('.settings__checks').first().locator('.settings__check')).toHaveCount(8)
+  await expect(window.locator('.settings__checks').first().locator('.settings__check')).toHaveCount(11)
   await expect(window.locator('.settings__action')).toHaveText(/^(Install|Repair)$/)
 
   await capture(app, window, scene('settings'))
