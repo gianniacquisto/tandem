@@ -122,7 +122,13 @@ test('the tickets face shows one board two ways: the list and the board over one
 
   // The pictures are the Open board, the face's default.
   await window.getByRole('tab', { name: /^Open/ }).click()
-  await capture(app, window, scene('tickets-board'), 1080)
+  // The grid needs 1288 px for its lane title and six status columns, and the
+  // shell spends a gutter either side of it: a 1080 window scrolls On hold off
+  // the right edge, and the picture would be half a board.
+  await capture(app, window, scene('tickets-board'), 1330)
+  // The frame just shot holds the whole board: a column past the edge is a
+  // column the photograph never has.
+  await expect(window.locator('.board__status').last()).toBeInViewport()
 
   await window.getByRole('tab', { name: 'List' }).click()
   await expect(window.locator('.list')).toBeVisible()
@@ -233,7 +239,7 @@ test('the keyboard set reaches the fields and moves a ticket, and a second write
     ),
   ).toBeVisible()
 
-  await capture(app, window, scene('tickets-keyboard'), 1080)
+  await capture(app, window, scene('tickets-keyboard'), 1330)
 
   // A second writer, the CLI in a terminal: the face updates with no reload.
   const title = 'Written from the CLI while the face was open'
