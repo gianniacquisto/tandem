@@ -128,9 +128,16 @@ jobs:
 
       - name: Compute the checksum
         run: |
-          cd app/dist
-          shasum -a 256 "Tandem-$version.zip" > SHA256SUMS
-          cat SHA256SUMS
+          # Stages the scripted install beside the artifact (TAN-253):
+          # install.sh stamped with the tag's version, and SHA256SUMS with one
+          # line each for the zip and the script. The bump script reads exactly
+          # the zip's line, so the second line changes nothing for the cask.
+          Scripts/stage-release-assets.sh "$version" app/dist
+          cat app/dist/SHA256SUMS
+
+      - name: "Verify: the staged installer names the tag version"
+        run: |
+          grep -q "DEFAULT_VERSION=\"$version\"" app/dist/install.sh
 
       - name: Upload the artifact
         uses: actions/upload-artifact@v4
@@ -139,6 +146,7 @@ jobs:
           path: |
             app/dist/Tandem-${{ env.version }}.zip
             app/dist/Tandem-${{ env.version }}.dmg
+            app/dist/install.sh
             app/dist/SHA256SUMS
 
   release:
@@ -222,7 +230,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "Tandem $version" \
             --notes "$notes" \
-            "dist/Tandem-$version.zip" "dist/Tandem-$version.dmg" dist/SHA256SUMS
+            "dist/Tandem-$version.zip" "dist/Tandem-$version.dmg" dist/install.sh dist/SHA256SUMS
 
       - name: Bump the tap cask (tag runs only)
         # The second half of the release, in the same run (ADR 0036): the tap's

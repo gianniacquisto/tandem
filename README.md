@@ -19,6 +19,20 @@ brew install --cask gianniacquisto/tap/tandem
 
 Spell the tap out in full, every time. Homebrew core has an unrelated cask named `tandem`, and the Caskroom is keyed by the token — a bare `brew install --cask tandem` installs that one over this app and offers it as an upgrade forever. The install puts `Tandem.app` in `/Applications` and links the bundled `tandem-cli` into Homebrew's `bin`.
 
+Without Homebrew, the same zip installs through a script the release publishes beside it:
+
+```sh
+curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh
+```
+
+The script verifies the zip against the release's `SHA256SUMS` before writing anything, copies `Tandem.app` to `/Applications`, and leaves an existing install (a cask or a previous script run) alone unless re-run with `--reinstall`. It reports the `tandem-cli` link state instead of changing it. To remove a script install later:
+
+```sh
+curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh -s -- --uninstall
+```
+
+(The cask stays the first-documented path; [`docs/install-paths.md`](docs/install-paths.md) compares the two.)
+
 ### First launch (once per install or upgrade)
 
 Tandem is ad-hoc signed, not Developer ID signed or notarized, so macOS still shows a Gatekeeper warning the first time you launch it after a download, and the app quits by itself a few seconds later. The bundle's signature is valid and its resources are sealed, so the warning is the missing notarization, not a damaged app. Clear the download flag once, then relaunch:
