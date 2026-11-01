@@ -344,6 +344,9 @@ describe('the sheet\'s shortcut hint', () => {
     expect(sheet).toContain('{shortcutHint()}')
 
     const stray = readdirSync(join(renderer), { recursive: true, encoding: 'utf8' })
+      // `readdirSync` joins with the checkout's separator: the Windows runner
+      // hands back `shell\keys.ts`.
+      .map((name) => name.split(/[\\/]/).join('/'))
       .filter((name) => /\.(ts|tsx)$/.test(name))
       .filter((name) => name !== 'shell/keys.ts')
       .filter((name) => readFileSync(join(renderer, name), 'utf8').includes('⌘'))
