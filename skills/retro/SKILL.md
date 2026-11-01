@@ -1,6 +1,6 @@
 ---
 name: retro
-description: "Run a retrospective on a coding session and file what it finds as backlog tickets in the Retro lane. Runs at every sprint close — the sprint dispatches it on the sprint session's own transcript — and still invocable alone: reach for it when the user asks for a retro or a retrospective, or asks what a session should have done differently."
+description: "Run a retrospective on a coding session and file what it finds as backlog tickets in the cycle lane of the project the session ran in. Runs at every sprint close — the sprint dispatches it on the sprint session's own transcript — and still invocable alone: reach for it when the user asks for a retro or a retrospective, or asks what a session should have done differently."
 ---
 
 Derived from the `retro` skill in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `NOTICE.txt`), adapted: the output is tickets on the board, not a report to the user.
@@ -26,13 +26,20 @@ You suggest improvements to the coding agent's **environment** — the files, sk
 
 A finding becomes a ticket only with all three: an **anchor** (a `file:line`, an exact command, or a message that shows the cost), a **named cost**, and an **owner's next move**. Not filed: generic advice, a preference with no cost, a restatement of an existing rule, a duplicate, your own run. More than five tickets usually means the bar was lowered — pick the clearest costs and say what you dropped.
 
+## The lane
+
+A finding files into the project's lane, on the sprint skill's one derivation (`skills/tandem-sprint/SKILL.md`, §2): the basename of the directory the retro'd session ran in, with the `-wt-<slug>` suffix stripped, matched case-insensitively against `tandem-cli lane list` and written back in the lane's stored spelling. A Tandem session, in the checkout or in a worktree beside it, files into `Tandem`: the worktree slug resolves to the project. A finding about another project's files belongs to that project and files into its lane.
+
+`Retro` is the lane for the findings that **belong to no project**: a cost with no repo to fix it, a harness rule no project owns. It is not the default, and a finding about a project's own skills, agents or checks never lands there. The origin is separate from the lane and never moves: `--origin retro`, so the board still says a retro filed it.
+
 ## File
 
 ```sh
 tandem-cli ticket list --filter all --text "<title words>"   # dedupe first
-tandem-cli lane add --name Retro                              # only when filing and the lane is missing
+lane="Tandem"                     # the project's, derived above; `Retro` when no project owns the finding
+tandem-cli lane add --name Retro  # only when filing into Retro and that lane is missing
 printf '%s' "$body" | tandem-cli ticket add --title "Retro: <one sentence, specific enough to disagree with>" \
-  --status backlog --origin retro --lane Retro --description -
+  --status backlog --origin retro --lane "$lane" --description -
 ```
 
 `--origin retro`, never assigned. The body is a **capture**, not a brief: `Filed by retro (<session id>).`, then **Why** (the anchor and the cost), **What**, **Done when** (only if the session makes it visible). No options, no recommendation. Never edit the code the session touched — a retro that fixes what it finds cannot report honestly on it.
