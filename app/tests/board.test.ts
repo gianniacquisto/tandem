@@ -10,12 +10,16 @@ import {
   assigneeChoices,
   assigneeLabel,
   blockLabel,
+  boardStatuses,
+  dropCalls,
   dropIndex,
   filterTickets,
+  firstSelection,
   laneColumns,
   laneIndexOf,
   laneKeys,
   laneMembers,
+  laneRows,
   neighbourLane,
   neighbourSelection,
   scopeCounts,
@@ -155,6 +159,53 @@ describe('the board view over the snapshot', () => {
     expect(columns[2]?.tickets).toEqual([])
   })
 
+  it('draws a row per lane and a cell per status, with on-hold parked last', () => {
+    expect(boardStatuses().map((status) => status.value)).toEqual([
+      'backlog',
+      'ready',
+      'in-progress',
+      'in-review',
+      'done',
+      'on-hold',
+    ])
+
+    const rows = laneRows(['Port'], board)
+    expect(rows.map((row) => row.title)).toEqual(['Uncategorized', 'Port', 'Tandem'])
+    expect(rows[1]?.cells.map((cell) => cell.status)).toEqual([
+      'backlog',
+      'ready',
+      'in-progress',
+      'in-review',
+      'done',
+      'on-hold',
+    ])
+    expect(rows[1]?.cells.map((cell) => cell.tickets.map((t) => t.id))).toEqual([
+      [],
+      ['a'],
+      [],
+      [],
+      ['c'],
+      [],
+    ])
+  })
+
+  it('draws every status cell of a declared lane, so each stays a drop target', () => {
+    const rows = laneRows(['Port', 'Empty'], board)
+    expect(rows.map((row) => row.title)).toEqual(['Uncategorized', 'Port', 'Empty', 'Tandem'])
+    expect(rows[2]?.cells).toHaveLength(6)
+    expect(rows[2]?.cells.every((cell) => cell.tickets.length === 0)).toBe(true)
+  })
+
+  it('selects the first card of the first lane that holds one, in either direction', () => {
+    const rows = laneRows(['Port'], board)
+    expect(firstSelection(rows, 1)).toBe('b')
+    expect(firstSelection(rows, -1)).toBe('d')
+
+    // A lane with no cards is stepped over, not answered with null.
+    const sparse = laneRows([], [ticket({ id: 'z', lane: 'Port' })])
+    expect(firstSelection(sparse, 1)).toBe('z')
+  })
+
   it('titles the default area, and keeps a dangling lane rather than hiding its tickets', () => {
     const keys = laneKeys([], [ticket({ id: 'z', lane: 'Hand edit' })])
     expect(keys).toEqual([null, 'Hand edit'])
@@ -281,6 +332,58 @@ describe('the drag arithmetic', () => {
     expect(neighbourSelection(columns, 'a', 1)).toBe('d')
     expect(neighbourSelection(columns, 'd', 1)).toBe('d')
     expect(neighbourSelection(columns, 'd', -1)).toBe('a')
+  })
+})
+
+describe('a drop on the board grid', () => {
+  const methods = (calls: ReturnType<typeof dropCalls>) => calls.map((call) => call.method)
+
+  it('issues ticket.set when only the status changes', () => {
+    const calls = dropCalls(board, 'a', { lane: 'Port', status: 'in-review', index: 0 })
+
+    expect(methods(calls)).toEqual(['ticket.set'])
+    expect(calls[0]).toEqual({
+      method: 'ticket.set',
+      params: { id: 'a', title: null, status: 'in-review', assignee: null, description: null },
+    })
+  })
+
+  it('issues ticket.move when only the lane changes', () => {
+    const calls = dropCalls(board, 'a', { lane: 'Tandem', status: 'ready', index: 3 })
+
+    expect(methods(calls)).toEqual(['ticket.move'])
+    expect(calls[0]).toEqual({
+      method: 'ticket.move',
+      params: { id: 'a', lane: 'Tandem', index: 3 },
+    })
+  })
+
+  it('issues ticket.move when neither changes, reordering inside the cell', () => {
+    const calls = dropCalls(board, 'a', { lane: 'Port', status: 'ready', index: 1 })
+
+    expect(methods(calls)).toEqual(['ticket.move'])
+    expect(calls[0]).toEqual({
+      method: 'ticket.move',
+      params: { id: 'a', lane: 'Port', index: 1 },
+    })
+  })
+
+  it('issues the lane write first, then the status write, when both change', () => {
+    const calls = dropCalls(board, 'a', { lane: 'Tandem', status: 'done', index: 2 })
+
+    expect(methods(calls)).toEqual(['ticket.move', 'ticket.set'])
+    expect(calls[0]).toEqual({
+      method: 'ticket.move',
+      params: { id: 'a', lane: 'Tandem', index: 2 },
+    })
+    expect(calls[1]).toEqual({
+      method: 'ticket.set',
+      params: { id: 'a', title: null, status: 'done', assignee: null, description: null },
+    })
+  })
+
+  it('issues nothing for a ticket the listing does not hold', () => {
+    expect(dropCalls(board, 'missing', { lane: 'Port', status: 'ready', index: 0 })).toEqual([])
   })
 })
 
