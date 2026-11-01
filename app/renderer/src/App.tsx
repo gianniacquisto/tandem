@@ -220,7 +220,8 @@ export function App() {
   // The sheet carries its own refusals, so its writes never raise the banner
   // behind the modal.
   const sheetWrite = useCallback(
-    (call: Call, expected: number | null): Promise<WriteOutcome> => write(call, expected, 'sheet'),
+    (call: Call, expected: number | null, followUp?: string): Promise<WriteOutcome> =>
+      write(call, expected, 'sheet', followUp),
     [write],
   )
 

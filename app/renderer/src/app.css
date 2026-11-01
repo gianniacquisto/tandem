@@ -1856,6 +1856,30 @@ body {
   list-style: none;
 }
 
+.sheet__passes {
+  margin-top: 10px;
+}
+
+.sheet__pass-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sheet__pass-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sheet__pass-reason {
+  font-size: 11.5px;
+  color: var(--ink-dim);
+}
+
 .sheet__lane-row {
   display: flex;
   align-items: center;

@@ -65,6 +65,12 @@ export const SCENES: readonly Scene[] = [
     description:
       'the keyboard-only pass over the 78-ticket board home: a row selected with the arrows, the quick-add reached with the platform modifier and N, the search with the platform modifier and F, and a ticket moved one status over, inside its own lane, with Option and the arrows',
   },
+  {
+    id: 'ticket-sheet-passes',
+    file: 'ticket-sheet-passes.png',
+    description:
+      'the ticket sheet over the fixture home with its pass-request buttons: refine enabled on a new backlog ticket, build and review disabled with their reasons in place, each a request the next dispatch picks up',
+  },
 ]
 
 /** The named scene, or a failure naming the ones the manifest does hold. */
