@@ -28,7 +28,13 @@ Then one write parks the ticket, so it leaves the draw and the human has the win
 tandem-cli ticket set --id <id> --status on-hold --assignee human
 ```
 
-**The human replies in comments, not in an answer block.** The ticket is a brief under review, not a question, so `ticket answer` does not apply. Every comment the window adds is part of the builder's input, and the park ends with a write, not an answer: `tandem-cli ticket set --id <id> --status ready --assignee ""` resumes it, and the next draw picks it up. The grill posts its comment and parks even when it finds nothing: the human's window is the grill's result, not a finding.
+**The park is a question put to the human, and its resume is that question's one write.** `AGENTS.md`'s contract holds the park: `human` owns a ticket only while a question is open, and `ticket answer` is the one write that records the answer and closes the hold. Every comment the window adds is part of the builder's input, and the answer block records what the human said:
+
+```sh
+tandem-cli ticket answer --id <id> --status ready --assignee "" --body -
+```
+
+`--body` carries the human's words, so the resume and their reasoning land in one write, and the next draw picks the ticket up. A `ticket set --status ready --assignee ""` would clear the owner without recording an answer, which is the debt `AGENTS.md` names and the close sweep (`skills/tandem-sprint/SKILL.md` §7) would settle as one. The grill posts its comment and parks even when it finds nothing: the human's window is the grill's result, not a finding.
 
 ## Read
 

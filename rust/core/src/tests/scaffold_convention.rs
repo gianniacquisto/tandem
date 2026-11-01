@@ -229,8 +229,16 @@ fn the_gate_grills_a_brief_before_a_builder_spends_a_pass() {
         "the human's write resumes the build"
     );
     assert!(
-        grill.contains("ticket answer") && grill.contains("does not apply"),
-        "the grill's window is comments, not an answer block"
+        grill.contains("ticket answer --id <id> --status ready --assignee \"\" --body -"),
+        "the grill's park is a question, so its resume is `ticket answer`, not `ticket set`"
+    );
+    assert!(
+        !grill.contains("ticket set --id <id> --status ready"),
+        "a `ticket set` clears the owner without recording the answer"
+    );
+    assert!(
+        !grill.contains("does not apply"),
+        "the grill's park is a question, so `ticket answer` applies to it"
     );
     assert!(
         grill.contains("no diff"),
@@ -259,6 +267,25 @@ fn the_build_and_sprint_skills_carry_the_grill() {
     assert!(
         sprint.contains("carries the grill before it is drawn"),
         "a ticket shaped in-run is grilled before it is drawn"
+    );
+    assert!(
+        sprint.contains("the grill's park"),
+        "triage names the grill's hold beside the refine-time hold"
+    );
+}
+
+/// The close sweep clears an owner only where a question is open. The grill's
+/// park is one, so the sweep names it instead of clearing the human's window.
+#[test]
+fn the_close_sweep_names_the_grill_hold() {
+    let close = section(&file("skills/tandem-sprint/SKILL.md"), "## 7. Close");
+    assert!(
+        close.contains("the grill's park"),
+        "the close sweep names the grill's hold"
+    );
+    assert!(
+        close.contains("`ticket answer`"),
+        "the grill's hold closes with the question contract's one write"
     );
 }
 
