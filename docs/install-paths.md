@@ -1,6 +1,6 @@
 # Installing Tandem: the cask, a piped script, or a zip and `install.sh`
 
-**Status**: investigated 2026-11-01, `TAN-248`. The recommendation at the end is the ticket's escalation, so the choice is the human's. No code, no installer and no workflow change rides this decision: the page is the comparison, and the follow-up ticket is filed from the answer.
+**Status**: investigated 2026-11-01, `TAN-248`; decided 2026-11-01, `TAN-253`. The recommendation at the end is the ticket's escalation, so the choice is the human's. The follow-up shipped both paths with the cask first: the page is the comparison, and the installer is `Scripts/install.sh`, published by the release run.
 
 The install is one line today: `brew install --cask gianniacquisto/tap/tandem`, a cask in [`gianniacquisto/homebrew-tap`](https://github.com/gianniacquisto/homebrew-tap) that the tag run writes itself ([ADR 0036](adr/0036-the-tag-bumps-the-tap.md), [`docs/releasing.md`](releasing.md) step 4). The question is whether a downloaded script serves better. An install path is outward-facing and hard to withdraw once people depend on it, so it is worth deciding on the artifact as it actually is, not on how a scripted install looks in principle.
 
@@ -62,31 +62,29 @@ The same script, shipped inside the zip or the repo, run by hand after a manual 
 
 Whatever the answer, these stay true, and they are the cost side of any new path:
 
-- **One run, one act.** The `release` job publishes and then bumps the cask as its last step; a red tap step cannot take a published release with it. A script's work happens at install time on the user's machine, so this job does not grow for it. Publishing the script would grow it: `SHA256SUMS` is verified with `shasum -a 256 -c` over `dist`, so any file it lists must also be an asset there, and the script would need its own line to be verifiable at all.
+- **One run, one act.** The `release` job publishes and then bumps the cask as its last step; a red tap step cannot take a published release with it. The script's work happens at install time on the user's machine, so this job does not grow for it. Publishing the script did grow the build job by one staging step (`Scripts/stage-release-assets.sh`, TAN-253): `SHA256SUMS` carries a line each for the zip and the staged `install.sh`, both are release assets, and `shasum -a 256 -c` over `dist` is still the handoff check. The staged script carries the tag's version, so each release's installer installs its own tag.
 - **The name is the contract.** `Tandem-<version>.zip` is checked in the build job, read by the bump script, and pointed at by the cask's `url`. A second path that renames or repackages the artifact breaks the cask, so it must install the same zip.
 - **No new credential.** Signing a script (minisign, GPG) or hosting it anywhere else adds a key or a token; the release already carries one credential, `TAP_TOKEN`, and one is enough.
 - **The install line is a contract in four places**: `README.md`, `docs/releasing.md` step 6, the release-notes lead in `Scripts/release-notes.sh`, and the cask itself. Changing the path moves all four in step, and a path documented in only some of them is how the token collision got its first victim.
 
-## Recommendation: the cask stands
+## Recommendation: both paths (decided 2026-11-01, TAN-253)
 
-One path, unchanged, with the strip and the tap-prefixed spelling as its two documented costs.
+The cask first, the scripted install beside it for the user with no Homebrew.
 
-- **The security lens decides it.** Tandem is ad-hoc signed and not notarized. The cask installs a bundle brew checks against a digest held in a second repo and audited by `brew style` and `brew audit --cask --strict`; a piped script asks the user to execute unverified code to perform an install macOS is actively refusing, and its verification sits on the same release as the artifact it verifies. Shipping `| sh` for a pre-1.0 app buys convenience by spending the one property the install path has, which is that installing Tandem never runs a downloaded program.
-- **The friction a script would remove is not the cask's to fix.** The Gatekeeper strip, the per-upgrade signer prompt and the "damaged" wording all come from the missing notarization. `PRT-32` owns that, and once it lands, both paths lose the strip and the script's remaining advantage is one command instead of three.
-- **The collision is the cask's one real cost, and it is a documented hazard, not an install failure.** The cure that would remove it for good is renaming the token, already decided against because it breaks every existing install's upgrade path. A script would sidestep the token, but adding a second channel to avoid a command spelling is a support surface bought to hide a doc line.
-- **The workflow already gates the cask end to end**, at no marginal cost: artifact name, digest, style, audit, all in the tag run. A script would be gated by nothing but a run somebody wrote for it.
-- **The audience has brew.** The documented prerequisites are macOS 27 and Apple silicon; the install line is a brew one-liner and the agent face is one more command. The user who needs the scripted route is the user with no Homebrew, and today that user is undocumented rather than unserved: the zip is right there on the release.
+- **The cask stays the documented install.** Its digest lives in the tap and it survives a hostile release page, which a piped script cannot claim: the script's only authentication is TLS to GitHub. Upgrades, `brew outdated`, and clean uninstall of the artifacts stay cask-only, and every user-facing command still spells the tap out in full.
+- **The script fills the gap named below instead of reopening the comparison.** It installs the same zip the cask downloads (the DMG stays out: no digest line, no installer), verifies the zip's `SHA256SUMS` line before anything is written and refuses on a mismatch, is published by the same run that publishes the zip and the DMG with the tag's version stamped in, leaves an existing cask install alone unless asked with `--reinstall`, reports the `tandem-cli` link state without touching the cask's link, and removes its own app with `--uninstall` while deferring to `brew uninstall` when the cask owns it. `Scripts/test_install.sh` covers the refusal paths.
+- **The friction neither path removes is still `PRT-32`'s.** The Gatekeeper strip, the per-upgrade signer prompt and the "damaged" wording all come from the missing notarization, and the script runs the same strip the cask documents.
 
-### The gap this leaves
+### The gap this filled
 
-A user without Homebrew has no documented path at all. The cheapest fix is a short manual section in `README.md` (download the zip, verify the line in `SHA256SUMS` with `shasum -a 256 -c`, drag `Tandem.app` to `/Applications`, strip, `tandem-cli setup install`), not an installer. It is a follow-up ticket, not part of this decision.
+A user without Homebrew had no documented path at all. The `README.md` one-liner (`curl -fsSL .../releases/latest/download/install.sh | sh`) is that path now, and the manual section this page once proposed as the cheapest fix was never needed.
 
 ## Decided against
 
-- **The piped script (`curl -fsSL <url> | sh`) as the install path.** It spends the install path's only security property (nothing downloaded is executed), its verification cannot exceed the release it fetches from, its real user-facing win is automating a quarantine strip that `PRT-32` retires, and it adds a fourth tested surface plus a publishing question to the release workflow for a command whose whole content is "download the zip, copy it, run setup". Revisit only on the triggers below.
-- **A zip plus a hand-run `install.sh`.** Strictly dominated: the same unverified-script cost as the piped path, with a manual download and a manual `chmod` in front of it, and no discovery. Its one use case, the no-brew user, is served better by documents and a manual section than by a script that has to be shipped, versioned and kept in step with the artifact.
-- **A DMG-only install.** Out of scope on the evidence: the DMG has no line in `SHA256SUMS`, so a path that installs from it cannot verify the download until the workflow computes a second digest. A path that cannot verify its download is not a candidate.
-- **An installer in this change.** The decision first; a script written before the choice argues for itself.
+- **The piped script as the *only* install path (revisited 2026-11-01, TAN-253).** The investigation above decided against replacing the cask, and that stands: the cask's second-repo digest, its upgrades and its uninstall stay. What shipped instead is the script *beside* the cask, with the properties the objection demanded: the zip is verified against `SHA256SUMS` before anything is written, the script itself is a release asset versioned with the tag (not a page that can drift), and a machine that already has the cask is left alone. The residual risk is stated, not fixed: piping still executes bytes authenticated only by TLS.
+- **A zip plus a hand-run `install.sh`.** Strictly dominated: the same script cost as the piped path, with a manual download and a manual `chmod` in front of it, and no discovery. Its one use case, the no-brew user, is served by the piped script now.
+- **A DMG-only install.** Out of scope on the evidence: the DMG has no line in `SHA256SUMS`, so a path that installs from it cannot verify the download until the workflow computes a second digest. A path that cannot verify its download is not a candidate. TAN-253 kept this: the installer takes the zip.
+- **An installer in this change.** The decision first; a script written before the choice argues for itself. (Done as the follow-up: TAN-253, decided 2026-11-01.)
 
 ## What would have to change for a scripted path to make sense
 
