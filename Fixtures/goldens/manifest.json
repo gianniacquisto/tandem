@@ -766,6 +766,7 @@
       "group": "sprint",
       "case": "open",
       "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
         {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]}
       ],
       "argv": ["sprint", "open", "--lane", "Cycle"]
@@ -774,6 +775,7 @@
       "group": "sprint",
       "case": "open-parallel",
       "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
         {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]}
       ],
       "argv": ["sprint", "open", "--lane", "Cycle", "--mode", "parallel"]
@@ -782,6 +784,7 @@
       "group": "sprint",
       "case": "open-twice",
       "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
         {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
         {"argv": ["sprint", "open", "--lane", "Cycle"]}
       ],
@@ -797,6 +800,7 @@
       "group": "sprint",
       "case": "ticket",
       "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
         {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
         {"argv": ["sprint", "open", "--lane", "Cycle"]},
         {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]}
@@ -807,6 +811,7 @@
       "group": "sprint",
       "case": "run",
       "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
         {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
         {"argv": ["sprint", "open", "--lane", "Cycle"]},
         {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]},
@@ -819,6 +824,7 @@
       "case": "run-note-stdin",
       "stdin": "The first run.\n",
       "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
         {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
         {"argv": ["sprint", "open", "--lane", "Cycle"]}
       ],
@@ -828,6 +834,7 @@
       "group": "sprint",
       "case": "close",
       "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
         {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
         {"argv": ["sprint", "open", "--lane", "Cycle"]}
       ],
@@ -837,6 +844,7 @@
       "group": "sprint",
       "case": "list",
       "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
         {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
         {"argv": ["sprint", "open", "--lane", "Cycle"]}
       ],
@@ -846,6 +854,7 @@
       "group": "sprint",
       "case": "list-closed",
       "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
         {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
         {"argv": ["sprint", "open", "--lane", "Cycle"]},
         {"argv": ["sprint", "close", "--lane", "Cycle"]}
@@ -856,6 +865,7 @@
       "group": "sprint",
       "case": "show",
       "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
         {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
         {"argv": ["sprint", "open", "--lane", "Cycle"]},
         {"argv": ["sprint", "run", "--lane", "Cycle", "--note", "The first run."]}
@@ -866,6 +876,7 @@
       "group": "sprint",
       "case": "show-unknown-number",
       "setup": [
+        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
         {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
         {"argv": ["sprint", "open", "--lane", "Cycle"]}
       ],

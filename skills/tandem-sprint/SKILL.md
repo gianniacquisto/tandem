@@ -43,7 +43,7 @@ for id in <the slots drawn in triage>; do
 done
 ```
 
-`--mode parallel` is the human's call before the first dispatch; the record stores it. The open replies with the record: its `number` is the handle's second half, and `tandem-cli sprint show --lane "$lane" --number <n>` reads it back later. The opening session is `$OPENCODE_SESSION_ID`, captured by `sprint open` — that id, not a title, is what the dead-sprint rule reads.
+`--mode parallel` is the human's call before the first dispatch; the record stores it. The open replies with the record: its `number` is the handle's second half, and `tandem-cli sprint show --lane "$lane" --number <n>` reads it back later. The opening session is the session record `sprint open` resolves (`--session`, else `$OPENCODE_SESSION_ID` at open time, the way `session end` reads it) — that record id, not the harness pointer and not a title, is what the dead-sprint rule reads.
 
 The batch lives on the record, in stored order, and nowhere else. The batch comment that named the sprint on each ticket is gone: the record is the machine truth, and a comment would be a second copy of it.
 
