@@ -59,6 +59,7 @@ import {
   BulletWidget,
   MathWidget,
   DisplayMathWidget,
+  MermaidWidget,
   ImageWidget,
   InlineImageWidget,
   FrontmatterWidget,
@@ -69,6 +70,7 @@ import {
   toggleTask,
 } from "./widgets.js";
 import { ligneTheme } from "./theme.js";
+import { currentTheme, renderDiagram } from "./mermaid.js";
 import { postDirty, postLinkOpened, postLoaded, postFontSize, postSendToTodos } from "./bridge.js";
 import { mountToolbar } from "./toolbar.js";
 
@@ -173,6 +175,8 @@ function makeWidget(d) {
       return new MathWidget(d.content);
     case "displaymath":
       return new DisplayMathWidget(d.content);
+    case "mermaid":
+      return new MermaidWidget(d.source);
     case "image":
       return new ImageWidget(d.src, d.alt, d.notePath);
     case "inlineimage":
@@ -765,6 +769,42 @@ export function editorViewExtensions() {
   ];
 }
 
+// -- Mermaid diagrams: the day/night repaint ---------------------------------------
+//
+// A diagram is the one painted surface whose colours do not come from CSS:
+// mermaid bakes the palette into the SVG at render time. A theme flip (the
+// shell sets data-theme on <html>) therefore re-renders the mounted
+// diagrams in place against the new palette, driven by one
+// MutationObserver, with no document transaction and no page reload. A node
+// the plan has since dropped is skipped by isConnected (a detached diagram
+// has no palette to win), and the widget's data-mermaid-theme keeps a second
+// flip for the same theme from drawing twice.
+export function reRenderDiagrams(doc = globalThis.document) {
+  const theme = currentTheme(doc);
+  let drawn = 0;
+  for (const node of doc?.querySelectorAll?.(".tandem-mermaid") ?? []) {
+    if (node.isConnected === false) continue;
+    const source = node.getAttribute("data-mermaid-source");
+    if (source === null) continue;
+    if (node.getAttribute("data-mermaid-theme") === theme) continue;
+    node.setAttribute("data-mermaid-theme", theme);
+    void renderDiagram(node, source, theme);
+    drawn++;
+  }
+  return drawn;
+}
+
+// The one observer: the editor page loads once per app run, so it is
+// installed with the view and lives as long as it does.
+export function observeThemeChanges(doc = globalThis.document) {
+  const observer = new MutationObserver(() => reRenderDiagrams(doc));
+  observer.observe(doc.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+  return observer;
+}
+
 export function mountEditor(parent, { doc, notes, notePath } = {}) {
   // The view-level extensions go through the state (see
   // editorViewExtensions' doc comment) — the EditorView constructor
@@ -831,7 +871,9 @@ export function mountEditor(parent, { doc, notes, notePath } = {}) {
       postSendToTodos(todoCandidateText(view.state));
   }
 
-  postLoaded(); // the page is ready; Swift then sends setNoteIndex/setDocument
+  postLoaded(); // the page is ready; the shell then sends setNoteIndex/setDocument
+  // The diagrams follow the day/night switch (mermaid bakes the palette in).
+  observeThemeChanges();
   return view;
 }
 
