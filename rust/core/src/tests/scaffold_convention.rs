@@ -495,6 +495,19 @@ fn agents_states_the_install_route() {
 }
 
 #[test]
+fn a_review_dispatches_on_its_own_pr_not_on_the_batch() {
+    let build = file("skills/tandem-build/SKILL.md");
+    assert!(build.contains("A review dispatches when its own PR is ready, first-come"));
+    assert!(
+        !build.contains("in batch order"),
+        "the gate is not the batch's to order"
+    );
+    assert!(build.contains("Neither reads another ticket"));
+    let sprint = file("skills/tandem-sprint/SKILL.md");
+    assert!(sprint.contains("a slow refine holds its own ticket only"));
+}
+
+#[test]
 fn the_questions_exit_is_one_write() {
     let agents = file("AGENTS.md");
     assert!(agents.contains("`human` is an assignee only while a question is open"));

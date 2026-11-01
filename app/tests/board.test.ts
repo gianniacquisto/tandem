@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -6,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import {
   INITIAL_FILTERS,
   appendIndex,
+  assigneeChoices,
   assigneeLabel,
   blockLabel,
   dropIndex,
@@ -23,6 +25,13 @@ import {
   type Filters,
 } from '../renderer/src/shell/board'
 import type { TicketSummary } from '../renderer/src/wire/TicketSummary'
+
+const appRoot = fileURLToPath(new URL('..', import.meta.url))
+const renderer = join(appRoot, 'renderer', 'src')
+
+function source(name: string): string {
+  return readFileSync(join(renderer, name), 'utf8')
+}
 
 function ticket(overrides: Partial<TicketSummary>): TicketSummary {
   return {
@@ -272,5 +281,40 @@ describe('the drag arithmetic', () => {
     expect(neighbourSelection(columns, 'a', 1)).toBe('d')
     expect(neighbourSelection(columns, 'd', 1)).toBe('d')
     expect(neighbourSelection(columns, 'd', -1)).toBe('a')
+  })
+})
+
+describe('the assignee lists', () => {
+  // The Swift order (`AssigneePicker.options`, PRT-35): Unassigned, the reserved
+  // word, the roster, then the ticket's own name when the roster has dropped it.
+  it('offers the picker in the Swift order: unassigned, human, roster, off-roster current', () => {
+    expect(assigneeChoices(['builder', 'human', ' review '], 'review')).toEqual([
+      { value: null, label: 'Unassigned', selected: false },
+      { value: 'human', label: 'human', selected: false },
+      { value: 'builder', label: '@builder', selected: false },
+      { value: 'review', label: '@review', selected: true },
+    ])
+    expect(assigneeChoices([], null)[0]?.selected).toBe(true)
+  })
+
+  it('offers a stored roster name that no ticket carries', () => {
+    // PRT-38: the names come from the store's `roster` setting, so a name with
+    // no row is still a name the human can assign.
+    const values = assigneeChoices(['human', 'review'], null).map((choice) => choice.value)
+    expect(values).toEqual([null, 'human', 'review'])
+  })
+
+  // The rule is one helper, not one per face: the sheet's picker and the
+  // board's filter draw the same names from the same list, so a name the sheet
+  // can assign is a name the filter can narrow to.
+  it('draws both assignee lists from the store roster, not from the board rows', () => {
+    for (const name of ['faces/TicketSheet.tsx', 'faces/TicketsFace.tsx']) {
+      expect(source(name), `${name} uses the one helper`).toContain('assigneeChoices(')
+    }
+    for (const name of ['App.tsx', 'faces/TicketsFace.tsx']) {
+      expect(source(name), `${name} derives no name from a ticket row`).not.toContain(
+        'ticket.assignee',
+      )
+    }
   })
 })

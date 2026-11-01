@@ -60,10 +60,50 @@ export function statusLabel(status: string): string {
   return STATUSES.find((entry) => entry.value === status)?.label ?? status
 }
 
+/** The reserved assignee: the human, spelled the same in every face. */
+const HUMAN = 'human'
+
 /** `human` is the reserved word; an agent is `@name`; nothing is nothing. */
 export function assigneeLabel(assignee: string | null): string | null {
   if (assignee === null) return null
-  return assignee === 'human' ? assignee : `@${assignee}`
+  return assignee === HUMAN ? assignee : `@${assignee}`
+}
+
+export type AssigneeChoice = { value: string | null; label: string; selected: boolean }
+
+/**
+ * The assignee options both faces offer, in the Swift order
+ * (`AssigneePicker.options`): Unassigned, `human`, the store's roster (trimmed,
+ * blanks dropped, duplicates collapsed), then the name the face is showing when
+ * it is off-roster. A name the roster carries cannot be hidden by a stale
+ * roster read.
+ *
+ * The roster is the `roster` setting, never the board's rows (PRT-38): a name
+ * with no ticket has no row to be derived from, and a fresh home has no rows at
+ * all. The sheet passes the ticket's assignee as `current`; the board's filter
+ * passes the name it is narrowing to.
+ */
+export function assigneeChoices(
+  roster: readonly string[],
+  current: string | null,
+): AssigneeChoice[] {
+  const seen = new Set<string>()
+  const values: Array<string | null> = [null]
+  function add(raw: string | null): void {
+    if (raw === null) return
+    const name = raw.trim()
+    if (name === '' || seen.has(name)) return
+    seen.add(name)
+    values.push(name)
+  }
+  add(HUMAN)
+  for (const name of roster) add(name)
+  add(current)
+  return values.map((value) => ({
+    value,
+    label: value === null ? 'Unassigned' : (assigneeLabel(value) ?? value),
+    selected: value === current,
+  }))
 }
 
 /**

@@ -126,6 +126,11 @@ methods! {
     // derivation `usage_report` already froze (PRT-15). An empty verb is how the
     // table says so; `the_read_methods_without_a_cli_verb_are_named_here` names it.
     UsageReport: "usage.report", EmptyParams, "";
+    // The settings the faces read, in one message: the sheet's assignee picker
+    // and the board's filter both offer the store's roster (PRT-38), which is a
+    // `settings` row with no CLI verb to spell. It writes nothing, so no
+    // UI-only write hides behind an empty verb.
+    SettingsGet: "settings.get", EmptyParams, "";
     // The ticket sheet's read: a body in, the blocks it draws out. The parsing
     // is the core's (`TicketMarkdown`), so the app and the CLI cannot read one
     // dialect two ways, and the message writes nothing: an empty verb.
@@ -361,6 +366,7 @@ pub enum Outcome {
 pub enum Reply {
     TicketList(TicketListReply),
     UsageReport(UsageReportReply),
+    Settings(SettingsReply),
     Ticket(TicketReply),
     Comment(CommentReply),
     CommentList(CommentListReply),
@@ -448,6 +454,19 @@ pub struct NoteRecoveriesReply {
 #[serde(rename_all = "camelCase")]
 pub struct UsageReportReply {
     pub report: UsageReportView,
+}
+
+/// `settings.get`: the settings a face reads.
+///
+/// The roster is the one setting the app reads (`TandemSettings.roster`): the
+/// names the sheet's assignee picker and the board's filter offer. It is the
+/// stored list, or the default when none was ever stored; the typing is the
+/// core's (`domain::Settings`), so neither face parses a settings row. A setting
+/// added later is one more field here, never a second method.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsReply {
+    pub roster: Vec<String>,
 }
 
 /// `ticket.list`: the full snapshot and the revision it is a snapshot of.
