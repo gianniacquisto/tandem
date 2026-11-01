@@ -115,6 +115,10 @@ pub enum DomainError {
     InvalidUsageFlag { flag: String, value: String },
     /// `sprint show` was given a number that is not a whole number.
     InvalidSprintNumber(String),
+    /// `sprint open` was given a mode that is not `serial` or `parallel`.
+    InvalidSprintMode(String),
+    /// `sprint list` was given a status that is not `open` or `closed`.
+    InvalidSprintStatus(String),
     /// `ticket move` was given a position that is not a whole number.
     InvalidIndex(String),
     /// `--assignee self` / `--origin self` was used and `TANDEM_AGENT` names no
@@ -314,6 +318,12 @@ impl DomainError {
             }
             Self::InvalidSprintNumber(bad) => {
                 format!("number must be a whole number (got \"{bad}\").")
+            }
+            Self::InvalidSprintMode(bad) => {
+                format!("mode must be one of serial, parallel (got \"{bad}\").")
+            }
+            Self::InvalidSprintStatus(bad) => {
+                format!("sprint status must be one of open, closed (got \"{bad}\").")
             }
             Self::InvalidIndex(bad) => {
                 format!("index must be a whole number (got \"{bad}\").")

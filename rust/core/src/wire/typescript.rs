@@ -17,10 +17,11 @@ use super::rpc::{
     LaneRenameParams, MarkdownBlocksParams, MarkdownReply, Method, NoteBacklinksReply,
     NoteHealthReply, NoteMoveParams, NoteMoveReply, NotePathParams, NoteReadReply,
     NoteRecoveriesReply, NoteTreeParams, NoteTreeReply, NoteWriteParams, NoteWriteReply, Outcome,
-    Reply, Request, Response, SettingsReply, SetupInstallParams, SetupReply,
-    TicketAddFromNoteParams, TicketAddParams, TicketAnswerParams, TicketArchiveParams,
-    TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams,
-    TicketReply, TicketSetParams, TicketUnblockParams, UsageReportReply, WireError,
+    Reply, Request, Response, SettingsReply, SetupInstallParams, SetupReply, SprintListParams,
+    SprintListReply, SprintOpenParams, SprintReply, SprintShowParams, TicketAddFromNoteParams,
+    TicketAddParams, TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
+    TicketListParams, TicketListReply, TicketMoveParams, TicketReply, TicketSetParams,
+    TicketUnblockParams, UsageReportReply, WireError,
 };
 use super::views::{
     BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
@@ -29,6 +30,7 @@ use super::views::{
 };
 use super::{DoctorCheck, DoctorReport};
 use crate::bikeshed::{BikeshedHealth, BikeshedHealthCounts, BrokenLink};
+use crate::domain::sprint::{Sprint, SprintMode, SprintStatus};
 use crate::setup;
 
 /// Every generated file, by name, in a stable order.
@@ -119,6 +121,26 @@ pub fn files() -> Vec<(&'static str, String)> {
             LaneDeletionReply::export_to_string(&cfg),
         ),
         render("ArchivedReply.ts", ArchivedReply::export_to_string(&cfg)),
+        render(
+            "SprintListParams.ts",
+            SprintListParams::export_to_string(&cfg),
+        ),
+        render(
+            "SprintShowParams.ts",
+            SprintShowParams::export_to_string(&cfg),
+        ),
+        render(
+            "SprintOpenParams.ts",
+            SprintOpenParams::export_to_string(&cfg),
+        ),
+        render(
+            "SprintListReply.ts",
+            SprintListReply::export_to_string(&cfg),
+        ),
+        render("SprintReply.ts", SprintReply::export_to_string(&cfg)),
+        render("Sprint.ts", Sprint::export_to_string(&cfg)),
+        render("SprintMode.ts", SprintMode::export_to_string(&cfg)),
+        render("SprintStatus.ts", SprintStatus::export_to_string(&cfg)),
         render("SetupReply.ts", SetupReply::export_to_string(&cfg)),
         render("HostRoot.ts", HostRoot::export_to_string(&cfg)),
         render("DoctorReply.ts", DoctorReply::export_to_string(&cfg)),

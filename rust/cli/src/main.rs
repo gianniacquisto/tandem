@@ -1274,9 +1274,7 @@ fn sprint(home: &Home, command: Option<&SprintCommand>) -> Result<(), Failure> {
             let status = match args.status.as_deref() {
                 Some(raw) => Some(
                     tandem_core::domain::sprint::SprintStatus::parse(raw).ok_or_else(|| {
-                        Failure::message(format!(
-                            "sprint status must be one of open, closed (got \"{raw}\")."
-                        ))
+                        Failure::domain(DomainError::InvalidSprintStatus(raw.to_string()))
                     })?,
                 ),
                 None => None,
@@ -1712,11 +1710,8 @@ fn grouped(value: i64) -> String {
 fn sprint_mode(raw: Option<&str>) -> Result<SprintMode, Failure> {
     match raw {
         None => Ok(SprintMode::Serial),
-        Some(raw) => SprintMode::parse(raw).ok_or_else(|| {
-            Failure::message(format!(
-                "mode must be one of serial, parallel (got \"{raw}\")."
-            ))
-        }),
+        Some(raw) => SprintMode::parse(raw)
+            .ok_or_else(|| Failure::domain(DomainError::InvalidSprintMode(raw.to_string()))),
     }
 }
 
