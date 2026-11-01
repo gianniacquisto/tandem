@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { MarkdownDocument } from '../renderer/src/faces/MarkdownDocument'
 import type { MarkdownBlockView } from '../renderer/src/wire/MarkdownBlockView'
 import type { MarkdownInlineView } from '../renderer/src/wire/MarkdownInlineView'
+import { token } from '../shots/tokens'
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
 /** A Windows checkout reads the same stylesheet with CRLF endings. */
@@ -57,6 +58,13 @@ describe('the markdown drawing', () => {
   it('draws a link label in the sheet\'s warm ink, as the Swift label did', () => {
     // `Sources/Tandem/MarkdownDocumentView.swift:145` was `palette.emberDeep`.
     const block = css.match(/\.markdown__link\s*\{([^}]*)\}/)?.[1] ?? ''
-    expect(block).toContain('color: var(--ember-deep)')
+    const colour = block.match(/color:\s*var\(--([\w-]+)\)/)?.[1]
+    if (colour === undefined) throw new Error(`.markdown__link draws no token colour: ${block}`)
+
+    // The name is not the colour: a token the sheet does not define leaves the
+    // label on the inherited ink. Resolve it through the day palette, the way
+    // `shots/tokens.ts` reads the photographed faces, and compare it to the
+    // Swift label's emberDeep, which is what a link is meant to wear.
+    expect(token(colour)).toBe(token('ember-deep'))
   })
 })
