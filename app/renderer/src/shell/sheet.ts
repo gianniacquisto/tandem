@@ -2,7 +2,8 @@ import type { Call } from '../../../src/shared/bridge'
 import type { Reply } from '../wire/Reply'
 import type { TicketDetail } from '../wire/TicketDetail'
 
-import { UNCATEGORIZED } from './board'
+import { UNCATEGORIZED, assigneeLabel } from './board'
+import { modifierLabel } from './keys'
 
 /**
  * The ticket sheet's rules, as data: what a save sends, what an append does to
@@ -18,6 +19,15 @@ import { UNCATEGORIZED } from './board'
 
 /** The app is the human's window: a comment typed here is signed as the human. */
 export const HUMAN_AUTHOR = 'human'
+
+/**
+ * The sheet's own keys, printed in the platform's modifier: the handler reads
+ * meta or ctrl as one key, so the hint names the one this keyboard has.
+ */
+export function shortcutHint(): string {
+  const mod = modifierLabel()
+  return `${mod}↩ saves · ${mod}⇧↩ posts · Esc closes`
+}
 
 /**
  * `DomainError::EmptyDescriptionBody`, verbatim: the CLI's refusal, shown by the

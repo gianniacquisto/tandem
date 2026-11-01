@@ -170,13 +170,18 @@ export function App() {
       call: Call,
       expected: number | null,
       caller: WriteCaller = 'face',
+      followUp?: string,
     ): Promise<WriteOutcome> => {
       const refuse = (message: string): WriteOutcome => {
-        const banner = refusalBanner(caller, message)
+        const words = followUp === undefined ? message : `${followUp} ${message}`
+        const banner = refusalBanner(caller, words)
         if (banner !== null) dispatch({ type: 'notice', message: banner })
-        return { ok: false, message }
+        return { ok: false, message: words }
       }
-      const blocked = writeBlocked(state.current, expected)
+      // A follow-up write is authorized by the write that landed before it: the
+      // listing moved on purpose, so the revision guard would refuse its own
+      // act, and a refusal here names the half that is already stored.
+      const blocked = followUp === undefined ? writeBlocked(state.current, expected) : null
       if (blocked !== null) {
         void load()
         return refuse(blocked)
@@ -190,6 +195,12 @@ export function App() {
       }
     },
     [load],
+  )
+
+  const faceWrite = useCallback(
+    (call: Call, expected: number | null, followUp?: string): Promise<WriteOutcome> =>
+      write(call, expected, 'face', followUp),
+    [write],
   )
 
   // The sheet carries its own refusals, so its writes never raise the banner
@@ -250,7 +261,7 @@ export function App() {
         )}
         {face(route, snapshot, {
           onReload: reload,
-          onWrite: write,
+          onWrite: faceWrite,
           onDismiss: dismiss,
           openTicket,
           onOpenTicket: open,

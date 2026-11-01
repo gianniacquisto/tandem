@@ -68,7 +68,7 @@ tandem-cli ticket answer --id "$id" --status ready --assignee "" \
 
 ## 6. Retro
 
-After the last `sprint run` entry, run the retro (`skills/retro/SKILL.md`) **inline**, in this session, on the sprint session's own transcript, then close the record (§7). The host serves no `retro` agent, so a dispatch fails with `Unknown agent: retro`: the skill is the procedure, and the sprint session reads it and runs it itself. The close is the session's final act — nothing is dispatched after it begins — so the retro precedes it, never follows it. A zero-batch (triage-only) session opens no sprint and runs no retro. The retro's bar, categories, cap and lane are the retro skill's, unchanged: `--origin retro`, the Retro lane, capture-shaped bodies, the five-ticket cap, and a retro that files nothing is a valid result.
+After the last `sprint run` entry, run the retro (`skills/retro/SKILL.md`) **inline**, in this session, on the sprint session's own transcript, then close the record (§7). The host serves no `retro` agent, so a dispatch fails with `Unknown agent: retro`: the skill is the procedure, and the sprint session reads it and runs it itself. The close is the session's final act — nothing is dispatched after it begins — so the retro precedes it, never follows it. A zero-batch (triage-only) session opens no sprint and runs no retro. The retro's bar, categories, cap and lane are the retro skill's, unchanged: `--origin retro`, capture-shaped bodies, the five-ticket cap, and a retro that files nothing is a valid result.
 
 ## 7. Close
 

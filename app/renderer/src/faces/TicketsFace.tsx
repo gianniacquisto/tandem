@@ -1,20 +1,25 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import type { Call } from '../../../src/shared/bridge'
-import type { WriteOutcome } from '../shell/write'
+import type { Write } from '../shell/write'
 import {
   INITIAL_FILTERS,
   STATUSES,
   appendIndex,
   assigneeChoices,
+  boardStatuses,
+  dropCalls,
   dropIndex,
   filterTickets,
+  firstSelection,
   laneColumns,
   laneKeys,
+  laneRows,
   neighbourLane,
   neighbourSelection,
   scopeCounts,
   visibleMoveIndex,
+  type DropCell,
   type Filters,
   type Scope,
   type View,
@@ -35,7 +40,7 @@ export type TicketsFaceProps = {
   roster: string[]
   onReload: () => void
   /** A write through the shell's one door. */
-  onWrite: (call: Call, expected: number | null) => Promise<WriteOutcome>
+  onWrite: Write
   onDismiss: () => void
   /** The sheet's subject, whichever face opened it, so one row reads as current. */
   openTicket: string | null
@@ -47,6 +52,9 @@ const SCOPES: ReadonlyArray<{ value: Scope; label: string }> = [
   { value: 'done', label: 'Done' },
   { value: 'all', label: 'All' },
 ]
+
+/** A status write that follows a landed lane write: the lane half is already stored. */
+const LANE_CHANGED = 'The lane changed, but the status did not.'
 
 /**
  * The Tickets face: one listing, two layouts, one row widget.
@@ -81,6 +89,7 @@ export function TicketsFace({
   const counts = scopeCounts(snapshot.tickets)
   const visible = filterTickets(snapshot.tickets, filters)
   const columns = laneColumns(snapshot.lanes, visible)
+  const rows = laneRows(snapshot.lanes, visible)
   const order = columns.flatMap((column) => column.tickets)
   const allKeys = laneKeys(snapshot.lanes, snapshot.tickets)
 
@@ -137,15 +146,32 @@ export function TicketsFace({
     void onWrite({ method: 'ticket.move', params: { id, lane, index } }, snapshot.revision)
   }
 
+  /**
+   * The drop's writes, in the planner's order. A second write is a follow-up:
+   * the first one moved the listing, so it is exempt from the revision guard
+   * and its refusal says that the lane change already landed.
+   */
+  async function dropAt(dragged: string, cell: DropCell): Promise<void> {
+    const calls = dropCalls(snapshot.tickets, dragged, cell)
+    for (const [at, call] of calls.entries()) {
+      const written = await onWrite(
+        call,
+        at === 0 ? snapshot.revision : null,
+        at === 0 ? undefined : LANE_CHANGED,
+      )
+      if (!written.ok) return
+    }
+  }
+
   function dropOn(dragged: string, anchor: string, after: boolean): void {
     const index = dropIndex(snapshot.tickets, dragged, anchor, after)
     const target = snapshot.tickets.find((ticket) => ticket.id === anchor)
     if (index === null || target === undefined) return
-    move(dragged, target.lane, index)
+    void dropAt(dragged, { lane: target.lane, status: target.status, index })
   }
 
-  function dropInto(dragged: string, lane: string | null): void {
-    move(dragged, lane, appendIndex(snapshot.tickets, lane))
+  function dropCell(dragged: string, lane: string | null, status: string): void {
+    void dropAt(dragged, { lane, status, index: appendIndex(snapshot.tickets, lane) })
   }
 
   useEffect(() => {
@@ -209,24 +235,35 @@ export function TicketsFace({
         }
         case 'select': {
           event.preventDefault()
-          if (intent.axis === 'column') {
-            setSelected(neighbourSelection(columns, selected, intent.delta))
-            return
-          }
           if (view === 'board') {
-            const column = columns.find((candidate) =>
-              candidate.tickets.some((ticket) => ticket.id === selected),
-            )
-            const at =
-              column === undefined
-                ? -1
-                : column.tickets.findIndex((ticket) => ticket.id === selected)
-            if (column !== undefined && at >= 0) {
-              const next = column.tickets[at + intent.delta]
-              if (next !== undefined) setSelected(next.id)
+            if (selected === null) {
+              setSelected(firstSelection(rows, intent.delta))
               return
             }
-            setSelected(neighbourSelection(columns, null, intent.delta))
+            const rowIndex = rows.findIndex((row) =>
+              row.cells.some((cell) => cell.tickets.some((ticket) => ticket.id === selected)),
+            )
+            const cellIndex =
+              rows[rowIndex]?.cells.findIndex((cell) =>
+                cell.tickets.some((ticket) => ticket.id === selected),
+              ) ?? -1
+            if (rowIndex < 0 || cellIndex < 0) {
+              setSelected(firstSelection(rows, intent.delta))
+              return
+            }
+            // Left and right step the status cells of this lane; up and down
+            // step the lanes at the same status.
+            const axis =
+              intent.axis === 'column'
+                ? (rows[rowIndex]?.cells ?? [])
+                : rows.map(
+                    (row) => row.cells[cellIndex] ?? { status: '', label: '', tickets: [] },
+                  )
+            setSelected(neighbourSelection(axis, selected, intent.delta))
+            return
+          }
+          if (intent.axis === 'column') {
+            setSelected(neighbourSelection(columns, selected, intent.delta))
             return
           }
           const at = order.findIndex((ticket) => ticket.id === selected)
@@ -238,6 +275,18 @@ export function TicketsFace({
         case 'move-in-lane': {
           const ticket = snapshot.tickets.find((candidate) => candidate.id === selected)
           if (ticket === undefined) return
+          if (view === 'board') {
+            // The lane is the row, so the vertical arrows step it.
+            const lane = neighbourLane(allKeys, ticket.lane, intent.delta)
+            if (lane === undefined) return
+            event.preventDefault()
+            void dropAt(ticket.id, {
+              lane,
+              status: ticket.status,
+              index: appendIndex(snapshot.tickets, lane),
+            })
+            return
+          }
           const lane = columns.find((column) => column.key === ticket.lane)?.tickets ?? []
           const target = visibleMoveIndex(snapshot.tickets, lane, ticket.id, intent.delta)
           if (target === null) return
@@ -248,6 +297,20 @@ export function TicketsFace({
         case 'move-across': {
           const ticket = snapshot.tickets.find((candidate) => candidate.id === selected)
           if (ticket === undefined) return
+          if (view === 'board') {
+            // The status is the column, so the horizontal arrows step it.
+            const statuses = boardStatuses()
+            const at = statuses.findIndex((status) => status.value === ticket.status)
+            const next = statuses[at + intent.delta]
+            if (at < 0 || next === undefined) return
+            event.preventDefault()
+            void dropAt(ticket.id, {
+              lane: ticket.lane,
+              status: next.value,
+              index: appendIndex(snapshot.tickets, ticket.lane),
+            })
+            return
+          }
           const lane = neighbourLane(allKeys, ticket.lane, intent.delta)
           if (lane === undefined) return
           event.preventDefault()
@@ -265,6 +328,7 @@ export function TicketsFace({
     view,
     selected,
     columns,
+    rows,
     order,
     allKeys,
     openTicket,
@@ -461,13 +525,13 @@ export function TicketsFace({
             />
           ) : (
             <BoardLayout
-              columns={columns}
+              rows={rows}
               selected={current}
               onSelect={setSelected}
               onToggle={toggle}
               onOpen={onOpenTicket}
               onDropOn={dropOn}
-              onDropInto={dropInto}
+              onDropCell={dropCell}
             />
           )
         )}

@@ -614,3 +614,44 @@ fn the_questions_exit_is_one_write() {
     let interview = file("skills/tandem-interview/SKILL.md");
     assert!(interview.contains("tandem-cli ticket answer"));
 }
+
+/// A retro finding about a project's own files files into that project's lane:
+/// `Retro` keeps only the findings that belong to no project, the worktree's
+/// slug resolves to the project, and the sprint skill points at the retro's
+/// one lane rule instead of restating a second one.
+#[test]
+fn the_retro_files_into_the_projects_lane() {
+    let retro = file("skills/retro/SKILL.md");
+    assert!(
+        retro.contains("the project's lane"),
+        "the retro derives the lane from the project"
+    );
+    assert!(
+        retro.contains("`-wt-<slug>` suffix"),
+        "the worktree slug resolves to the project"
+    );
+    assert!(
+        retro.contains("belong to no project"),
+        "`Retro` keeps the findings that belong to no project"
+    );
+    assert!(
+        retro.contains("`--origin retro`"),
+        "the origin survives the lane move"
+    );
+    for path in [
+        "skills/retro/SKILL.md",
+        "skills/tandem-sprint/SKILL.md",
+        "skills/tandem-team/SKILL.md",
+    ] {
+        assert!(
+            !file(path).contains("Retro lane"),
+            "{path} still restates the lane the retro files into"
+        );
+    }
+    let sprint = file("skills/tandem-sprint/SKILL.md");
+    let s6 = section(&sprint, "## 6. Retro");
+    assert!(
+        s6.contains("lane are the retro skill's"),
+        "section 6 delegates the lane rule to the retro skill"
+    );
+}

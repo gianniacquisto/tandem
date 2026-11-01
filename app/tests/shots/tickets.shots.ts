@@ -47,17 +47,17 @@ async function rowIds(window: import('@playwright/test').Page): Promise<Array<st
   return Promise.all(rows.map((row) => row.getAttribute('data-ticket')))
 }
 
-/** The board column a card sits in, by its lane key (the default area is the empty string). */
-async function laneOf(
+/** The board cell a card sits in: its lane key (the default area is the empty string) and status. */
+async function cellOf(
   window: import('@playwright/test').Page,
   ticket: string,
-): Promise<string | null> {
-  return window
-    .locator('.board__column', {
+): Promise<{ lane: string | null; status: string | null }> {
+  const cell = window
+    .locator('.board__cell', {
       has: window.locator(`.ticket-row[data-ticket="${ticket}"]`),
     })
     .first()
-    .getAttribute('data-lane')
+  return { lane: await cell.getAttribute('data-lane'), status: await cell.getAttribute('data-status') }
 }
 
 test('the tickets face shows one board two ways: the list and the board over one snapshot', async ({
@@ -97,24 +97,28 @@ test('the tickets face shows one board two ways: the list and the board over one
   await expect(window.locator('.search__input')).toHaveValue('')
   await expect(window.locator('.ticket-row').first()).toBeVisible()
 
-  // The same rows, laid out in lane columns: same tickets, same order, cut the
-  // other way.
+  // The same rows, laid out as lane rows and status columns: same tickets, cut
+  // the other way.
   await window.getByRole('tab', { name: 'Board' }).click()
   await expect(window.locator('.board')).toBeVisible()
-  await expect(window.locator('.board__column').first()).toBeVisible()
+  await expect(window.locator('.board__cell').first()).toBeVisible()
+  await expect(window.locator('.board__status')).toHaveCount(6)
+  // The parked status is the last column, not one among the workflow ones.
+  await expect(window.locator('.board__status').last()).toHaveText('On hold')
 
   // The board card is a token card: its corner is --radius-control.
   expect(await computed(window, '.ticket-row--board', 'border-radius')).toBe(
     token('radius-control'),
   )
 
-  // A board of one or two lanes does not stretch: a column caps at the card's
-  // readable width, so the one-lane home reads like the five-lane picture.
-  const column = await window.locator('.board__column').first().boundingBox()
-  expect(column?.width ?? 0).toBeLessThanOrEqual(320)
+  // A board of one or two lanes does not stretch: a status column caps at the
+  // card's readable width, so the one-lane home reads like the five-lane picture.
+  const cell = await window.locator('.board__cell').first().boundingBox()
+  expect(cell?.width ?? 0).toBeLessThanOrEqual(320)
 
   const boardIds = await rowIds(window)
-  expect(boardIds).toEqual(listIds)
+  expect(boardIds.length).toBe(listIds.length)
+  expect([...boardIds].sort()).toEqual([...listIds].sort())
 
   // The pictures are the Open board, the face's default.
   await window.getByRole('tab', { name: /^Open/ }).click()
@@ -126,53 +130,62 @@ test('the tickets face shows one board two ways: the list and the board over one
   await capture(app, window, scene('tickets-list'))
 })
 
-test('a drag moves a ticket to another lane, and the move survives a restart', async ({
+test('a drag moves a ticket across its lane and its status, and the move survives a restart', async ({
   app,
   window,
 }) => {
+  // Both axes of the grid in one window: the drop test needs a destination cell
+  // whose lane and status both differ from the source's.
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setContentSize(1400, 560)
+  })
   await openTab(window, 'tickets/board')
-  await expect(window.locator('.board__column').first()).toBeVisible()
+  await expect(window.locator('.board__cell').first()).toBeVisible()
   await expect(window.locator('.ticket-row').first()).toBeVisible()
 
-  const columns = window.locator('.board__column')
-  const count = await columns.count()
+  const cells = window.locator('.board__cell')
+  const count = await cells.count()
   expect(count).toBeGreaterThan(1)
 
-  // The first card of the first column that holds one.
-  let sourceColumn = -1
+  // The first cell that holds a card.
+  let sourceIndex = -1
   for (let index = 0; index < count; index += 1) {
-    if ((await columns.nth(index).locator('.ticket-row').count()) > 0) {
-      sourceColumn = index
+    if ((await cells.nth(index).locator('.ticket-row').count()) > 0) {
+      sourceIndex = index
       break
     }
   }
-  expect(sourceColumn).toBeGreaterThanOrEqual(0)
+  expect(sourceIndex).toBeGreaterThanOrEqual(0)
 
-  const card = columns.nth(sourceColumn).locator('.ticket-row').first()
+  const source = cells.nth(sourceIndex)
+  const card = source.locator('.ticket-row').first()
   const ticket = await card.getAttribute('data-ticket')
   expect(ticket).not.toBeNull()
+  const sourceLane = await source.getAttribute('data-lane')
+  const sourceStatus = await source.getAttribute('data-status')
 
-  const targetColumn = sourceColumn === 0 ? 1 : sourceColumn - 1
-  const target = columns.nth(targetColumn)
+  // A cell in another lane and another status, so the drop makes both writes,
+  // the lane first and the status after it.
+  const target = window
+    .locator(
+      `.board__cell:not([data-lane="${sourceLane}"]):not([data-status="${sourceStatus}"])`,
+    )
+    .first()
   const targetLane = await target.getAttribute('data-lane')
+  const targetStatus = await target.getAttribute('data-status')
 
-  await card.dragTo(target.locator('.board__title'))
+  // Drop near the target cell's top edge, which is inside the viewport even
+  // when the row is taller than the window.
+  await card.dragTo(target, { targetPosition: { x: 40, y: 12 } })
 
-  await expect(
-    window.locator(
-      `.board__column[data-lane="${targetLane}"] .ticket-row[data-ticket="${ticket}"]`,
-    ),
-  ).toBeVisible()
+  const landed = `.board__cell[data-lane="${targetLane}"][data-status="${targetStatus}"] .ticket-row[data-ticket="${ticket}"]`
+  await expect(window.locator(landed)).toBeVisible()
 
   // A restart is the same read: the app holds no board state of its own.
   await window.reload()
   await window.waitForSelector('.shell')
   await openTab(window, 'tickets/board')
-  await expect(
-    window.locator(
-      `.board__column[data-lane="${targetLane}"] .ticket-row[data-ticket="${ticket}"]`,
-    ),
-  ).toBeVisible()
+  await expect(window.locator(landed)).toBeVisible()
 })
 
 test('the keyboard set reaches the fields and moves a ticket, and a second writer lands live', async ({
@@ -180,7 +193,7 @@ test('the keyboard set reaches the fields and moves a ticket, and a second write
   window,
 }) => {
   await openTab(window, 'tickets/board')
-  await expect(window.locator('.board__column').first()).toBeVisible()
+  await expect(window.locator('.board__cell').first()).toBeVisible()
   await expect(window.locator('.ticket-row').first()).toBeVisible()
 
   // Quick-add and search, on the platform's modifier.
@@ -202,35 +215,22 @@ test('the keyboard set reaches the fields and moves a ticket, and a second write
   const ticket = await selected.getAttribute('data-ticket')
   expect(ticket).not.toBeNull()
 
-  const laneBefore = await laneOf(window, ticket as string)
+  const before = await cellOf(window, ticket as string)
+  const statuses = ['backlog', 'ready', 'in-progress', 'in-review', 'done', 'on-hold']
+  const atStatus = statuses.indexOf(before.status ?? '')
+  expect(atStatus).toBeGreaterThanOrEqual(0)
+  // Step away from whichever end the ticket sits at, so there is a cell to land in.
+  const step = atStatus >= statuses.length - 2 ? -1 : 1
+  const statusAfter = statuses[atStatus + step]
+  expect(statusAfter).not.toBeUndefined()
 
-  // A vertical Option arrow moves one visible row; a row a filter hides is
-  // stepped over rather than counted. On a one-row lane there is nowhere to go,
-  // so the horizontal move below is the exercise.
-  const inLane = window.locator(`.board__column[data-lane="${laneBefore}"] .ticket-row`)
-  const visibleInLane = await Promise.all(
-    (await inLane.all()).map((row) => row.getAttribute('data-ticket')),
-  )
-  const atInLane = visibleInLane.indexOf(ticket as string)
-  if (atInLane >= 0 && atInLane < visibleInLane.length - 1) {
-    await window.keyboard.press('Alt+ArrowDown')
-    await expect(
-      window.locator(`.board__column[data-lane="${laneBefore}"] .ticket-row`).nth(atInLane + 1),
-    ).toHaveAttribute('data-ticket', ticket as string)
-  }
-
-  // Option and the arrows move the selected ticket one lane over.
-  const lanes = await Promise.all(
-    (await window.locator('.board__column').all()).map((node) => node.getAttribute('data-lane')),
-  )
-  const at = lanes.indexOf(laneBefore)
-  const step = at > 0 ? -1 : 1
-  const laneAfter = lanes[at + step]
-  expect(laneAfter).not.toBeUndefined()
-
+  // Option and the horizontal arrows move the selected ticket one status over,
+  // inside its own lane: the status is the column.
   await window.keyboard.press(`Alt+Arrow${step < 0 ? 'Left' : 'Right'}`)
   await expect(
-    window.locator(`.board__column[data-lane="${laneAfter}"] .ticket-row[data-ticket="${ticket}"]`),
+    window.locator(
+      `.board__cell[data-lane="${before.lane}"][data-status="${statusAfter}"] .ticket-row[data-ticket="${ticket}"]`,
+    ),
   ).toBeVisible()
 
   await capture(app, window, scene('tickets-keyboard'), 1080)
