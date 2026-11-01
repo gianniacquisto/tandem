@@ -30,10 +30,11 @@ use tandem_core::domain::session::{
 };
 use tandem_core::domain::sprint::{SprintMode, Sprints};
 use tandem_core::domain::{
-    AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Status, TicketQuery,
+    AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Settings, Status, TicketQuery,
 };
 use tandem_core::setup::{self, Environment};
 use tandem_core::store::{self, Actor, Home, Store};
+use tandem_core::wire::rpc::SettingsReply;
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
     NoteMoveView, NotePathView, NoteWriteView, SessionDetailView, SessionList, SessionResult,
@@ -98,6 +99,11 @@ enum Command {
     Setup {
         #[command(subcommand)]
         command: Option<SetupCommand>,
+    },
+    /// The store's settings, starting with the assignee roster.
+    Settings {
+        #[command(subcommand)]
+        command: Option<SettingsCommand>,
     },
     /// Report whether this machine's Tandem setup is sound (ADR 0014).
     Doctor,
@@ -441,6 +447,19 @@ enum SetupCommand {
     Status,
 }
 
+#[derive(Subcommand)]
+enum SettingsCommand {
+    Set(SettingsSetArgs),
+}
+
+#[derive(Args)]
+struct SettingsSetArgs {
+    /// One roster name per flag; the whole list replaces the stored one.
+    /// No flag stores the empty list.
+    #[arg(long)]
+    roster: Vec<String>,
+}
+
 #[derive(Args)]
 struct SetupInstallArgs {
     /// A host name, or a comma-separated list (default: opencode).
@@ -630,6 +649,10 @@ fn help_text(cli: &Cli) -> &'static str {
             None => return usage::group("setup").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
         },
+        Some(Command::Settings { command }) => match command {
+            None => return usage::group("settings").unwrap_or(usage::ROOT),
+            Some(command) => command.help(),
+        },
     };
     usage::verb(name).unwrap_or(usage::ROOT)
 }
@@ -699,6 +722,14 @@ impl SetupCommand {
     }
 }
 
+impl SettingsCommand {
+    fn help(&self) -> &'static str {
+        match self {
+            Self::Set(_) => "settings set",
+        }
+    }
+}
+
 impl SprintCommand {
     fn help(&self) -> &'static str {
         match self {
@@ -729,6 +760,7 @@ fn run(cli: &Cli) -> Result<(), Failure> {
         Command::Session { command } => session(&home, command.as_ref()),
         Command::Sprint { command } => sprint(&home, command.as_ref()),
         Command::Setup { command } => setup_command(&home, command.as_ref()),
+        Command::Settings { command } => settings(&home, command.as_ref()),
     }
 }
 
@@ -1274,9 +1306,7 @@ fn sprint(home: &Home, command: Option<&SprintCommand>) -> Result<(), Failure> {
             let status = match args.status.as_deref() {
                 Some(raw) => Some(
                     tandem_core::domain::sprint::SprintStatus::parse(raw).ok_or_else(|| {
-                        Failure::message(format!(
-                            "sprint status must be one of open, closed (got \"{raw}\")."
-                        ))
+                        Failure::domain(DomainError::InvalidSprintStatus(raw.to_string()))
                     })?,
                 ),
                 None => None,
@@ -1712,11 +1742,8 @@ fn grouped(value: i64) -> String {
 fn sprint_mode(raw: Option<&str>) -> Result<SprintMode, Failure> {
     match raw {
         None => Ok(SprintMode::Serial),
-        Some(raw) => SprintMode::parse(raw).ok_or_else(|| {
-            Failure::message(format!(
-                "mode must be one of serial, parallel (got \"{raw}\")."
-            ))
-        }),
+        Some(raw) => SprintMode::parse(raw)
+            .ok_or_else(|| Failure::domain(DomainError::InvalidSprintMode(raw.to_string()))),
     }
 }
 
@@ -1747,6 +1774,27 @@ fn rpc(home: &Home) -> Result<(), Failure> {
         Actor::current(),
     )
     .map_err(|error| Failure::message(format!("The rpc stream failed: {error}. Try again.")))
+}
+
+// MARK: - settings
+
+/// `settings set`: the roster's whole replacement, the same write the Settings
+/// face's Save makes over the wire. The flags are the list: one `--roster`
+/// per name, and no flag stores the empty list. Cleaning is the domain's, so
+/// the printed receipt is the cleaned list the store holds.
+fn settings(home: &Home, command: Option<&SettingsCommand>) -> Result<(), Failure> {
+    let command = command.ok_or_else(Failure::usage)?;
+    let store = write_store(home)?;
+    let actor = Actor::current();
+
+    match command {
+        SettingsCommand::Set(args) => {
+            let roster = Settings::new(&store)
+                .set_roster(&actor, args.roster.clone())
+                .map_err(Failure::domain)?;
+            print(&SettingsReply { roster })
+        }
+    }
 }
 
 // MARK: - doctor

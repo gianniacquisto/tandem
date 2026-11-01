@@ -35,6 +35,7 @@ use std::time::Duration;
 use crate::bikeshed::Bikeshed;
 use crate::domain::Settings;
 use crate::domain::session::Sessions;
+use crate::domain::sprint::{SprintMode, SprintStatus, Sprints};
 use crate::domain::usage::{Calendar, UsageTicket, usage_report};
 use crate::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, Filter, Status, TicketQuery,
@@ -46,7 +47,8 @@ use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, HostRoot, LaneDeletionReply,
     LaneListReply, MarkdownReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply,
     NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, Reply, Request,
-    Response, SettingsReply, SetupReply, TicketListReply, TicketReply, UsageReportReply, WireError,
+    Response, SettingsReply, SetupReply, SprintListReply, SprintReply, TicketListReply,
+    TicketReply, UsageReportReply, WireError,
 };
 use crate::wire::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
@@ -585,6 +587,16 @@ fn execute(
             let roster = Settings::new(store).roster().map_err(domain)?;
             Ok(Reply::Settings(SettingsReply { roster }))
         }
+        Method::SettingsSet(params) => {
+            // The write mirrors the read: the same domain call the CLI verb
+            // makes, and the reply carries the stored roster as the receipt.
+            // The face redraws from this list, never from its request's echo,
+            // so what it draws is what the store holds.
+            let roster = Settings::new(store)
+                .set_roster(actor, params.roster)
+                .map_err(domain)?;
+            Ok(Reply::Settings(SettingsReply { roster }))
+        }
         Method::MarkdownBlocks(params) => {
             // The parsing is the domain's (`TicketMarkdown`), so the sheet draws
             // the same blocks the Swift sheet drew from the same dialect. The
@@ -630,6 +642,56 @@ fn execute(
                 revision: store.last_revision(),
                 lanes: deletion.lanes,
                 moved: deletion.moved,
+            }))
+        }
+        Method::SprintList(params) => {
+            // The status words are the verb's own: an unknown one is refused
+            // in the CLI's words, so both doors say one thing.
+            let status = match params.status.as_deref() {
+                Some(raw) => Some(
+                    SprintStatus::parse(raw)
+                        .ok_or_else(|| domain(DomainError::InvalidSprintStatus(raw.to_string())))?,
+                ),
+                None => None,
+            };
+            let (sprints, revision) = Sprints::new(store)
+                .list_snapshot(params.lane.as_deref(), status)
+                .map_err(domain)?;
+            Ok(Reply::SprintList(SprintListReply { revision, sprints }))
+        }
+        Method::SprintShow(params) => {
+            let (sprint, revision) = Sprints::new(store)
+                .open_in_snapshot(named(&params.lane))
+                .map_err(domain)?;
+            Ok(Reply::Sprint(SprintReply {
+                revision,
+                sprint,
+                note: None,
+            }))
+        }
+        Method::SprintOpen(params) => {
+            // The mode defaults and validates as the CLI's `sprint open`
+            // does: absent is serial, and an unknown word is the CLI's own
+            // refusal. A lane with an open sprint answers it unchanged, with
+            // the note the CLI prints on a second open.
+            let mode = match params.mode.as_deref() {
+                None => SprintMode::Serial,
+                Some(raw) => SprintMode::parse(raw)
+                    .ok_or_else(|| domain(DomainError::InvalidSprintMode(raw.to_string())))?,
+            };
+            let opened = Sprints::new(store)
+                .open(
+                    actor,
+                    named(&params.lane),
+                    mode,
+                    params.session.as_deref(),
+                    None,
+                )
+                .map_err(domain)?;
+            Ok(Reply::Sprint(SprintReply {
+                revision: store.last_revision(),
+                sprint: opened.value,
+                note: opened.note,
             }))
         }
         Method::SetupStatus(_) => {
