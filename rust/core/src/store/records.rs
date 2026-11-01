@@ -115,6 +115,21 @@ pub(crate) fn ticket_carried(connection: &Connection, id: &str) -> Result<bool> 
         .map_err(|error| translate(error, connection))
 }
 
+/// One setting's value, as the row carries it: the JSON text the Swift store
+/// wrote. An absent key is `None`, never an empty string, so a caller can tell
+/// "never edited" from "edited to nothing".
+pub(crate) fn setting(connection: &Connection, key: &str) -> Result<Option<String>> {
+    connection
+        .query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+            row.get::<_, String>(0)
+        })
+        .map(Some)
+        .or_else(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(translate(other, connection)),
+        })
+}
+
 /// The local calendar day `started_at` names, as a zero-padded `YYYY-MM-DD`
 /// key.
 ///

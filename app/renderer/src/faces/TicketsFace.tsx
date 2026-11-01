@@ -6,6 +6,7 @@ import {
   INITIAL_FILTERS,
   STATUSES,
   appendIndex,
+  assigneeChoices,
   dropIndex,
   filterTickets,
   laneColumns,
@@ -30,6 +31,8 @@ import { TicketList } from './TicketList'
 export type TicketsFaceProps = {
   snapshot: SnapshotState
   view: View
+  /** The store's roster: the names the assignee filter offers (`settings.get`). */
+  roster: string[]
   onReload: () => void
   /** A write through the shell's one door. */
   onWrite: (call: Call, expected: number | null) => Promise<WriteOutcome>
@@ -58,6 +61,7 @@ const SCOPES: ReadonlyArray<{ value: Scope; label: string }> = [
 export function TicketsFace({
   snapshot,
   view,
+  roster,
   onReload,
   onWrite,
   onDismiss,
@@ -80,13 +84,11 @@ export function TicketsFace({
   const order = columns.flatMap((column) => column.tickets)
   const allKeys = laneKeys(snapshot.lanes, snapshot.tickets)
 
-  const assignees = [
-    ...new Set(
-      snapshot.tickets
-        .map((ticket) => ticket.assignee)
-        .filter((assignee): assignee is string => assignee !== null),
-    ),
-  ].sort()
+  // The one helper the sheet's picker draws: Unassigned, `human`, the store's
+  // roster, then the name this filter is narrowing to when it is off-roster
+  // (PRT-38). The rows are not the source: a stored name with no ticket has no
+  // row to be derived from.
+  const assignees = assigneeChoices(roster, filters.assignee === '' ? null : filters.assignee)
 
   function scopeCount(scope: Scope): number {
     return scope === 'open' ? counts.open : scope === 'done' ? counts.done : counts.all
@@ -364,10 +366,9 @@ export function TicketsFace({
               }
             >
               <option value="">Anyone</option>
-              <option value=" ">Unassigned</option>
-              {assignees.map((assignee) => (
-                <option key={assignee} value={assignee}>
-                  {assignee === 'human' ? 'human' : `@${assignee}`}
+              {assignees.map((choice) => (
+                <option key={choice.value ?? 'unassigned'} value={choice.value ?? ' '}>
+                  {choice.label}
                 </option>
               ))}
             </select>
