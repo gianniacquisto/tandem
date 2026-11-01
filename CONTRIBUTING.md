@@ -10,7 +10,8 @@ the conventions the project keeps. The short version lives in the README's
 
 - Any of the three CI platforms (macOS, Windows, Ubuntu) for Rust or app code,
   test and packaging work. CI runs the Rust suite and the app suite
-  (typecheck, tests, packaging, artifact check, smoke) on all three, so a
+  (typecheck, tests, packaging, artifact check, and smoke on macOS and Linux
+  only) on all three, so a
   checkout there builds and tests what it can run. The packaged app is
   verified on all three by CI, but only the macOS artifact ships: Windows and
   Linux app builds are unshipped and unsupported.
