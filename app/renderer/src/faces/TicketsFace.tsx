@@ -340,7 +340,7 @@ export function TicketsFace({
 
   return (
     <Face wide title="Tickets" blurb="The board, its lanes and the ticket list, one face.">
-      <div className={view === 'board' ? 'tickets tickets--board' : 'tickets'}>
+      <div className={view === 'board' ? 'tickets tickets--board' : 'tickets tickets--list'}>
         <form
           className="quick-add"
           onSubmit={(event) => {
