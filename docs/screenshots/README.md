@@ -61,8 +61,9 @@ DOM, the same row ids and the same counts on unstyled text.
 
 | file | what it shows |
 | --- | --- |
-| `electron-shell.png` | the shell at its 760 pt floor: the wordmark, the four kept tabs (Tickets, Bikeshed, Usage, Settings), the Tickets face it opens on, and the store revision read over `rpc` |
+| `electron-shell.png` | the shell at its 760 pt floor: the wordmark, the five tabs (Tickets, Bikeshed, Usage, Workflow, Settings), the Tickets face it opens on, and the store revision read over `rpc` |
 | `usage-face.png` | the **Usage** face over the fixture home: the reported spend and its coverage, the cost-per-day bar chart above the picker, the ticket rows and their arithmetic, the Day/Model/Agent/Ticket picker, and a ticket row rolled down to the records behind it, each naming its session, agent, model, local start, cost, tokens and the tickets it carried |
+| `workflow-face.png` | the **Workflow** face over the fixture home with an open sprint: the lane picker and lifecycle controls, the sprint header with its stored mode, the pass DAG (Refine, Build, Review, Retro, Done) with its handoffs and batch tallies, the batch tickets on the nodes by ticket status, and the run log below |
 | `bikeshed-face.png` | the **Bikeshed** face over the fixture home: the scaffold tree with its reveal control, the committed CodeMirror bundle editing the fixture project note in its own frame, the Backlinks dock naming the Index note, the Health panel reporting the daily note as an orphan, and a draft a killed save left named as a recovery |
 | `settings-face.png` | the **Settings** face over the fixture home: the home, the bikeshed, the three agent hosts, the theme rule, the bundled and installed versions, and the doctor's checks each named with its state and detail |
 | `tickets-list.png` | the **Tickets** face in its list layout over the port's 78-ticket board home (`Fixtures/port/Board`): the quick-add, the Open/Done/All scopes with their counts, the status, assignee and lane filters, the search, and the lane-grouped rows with each ticket's ref, title, status, assignee, lane and blocked mark |
