@@ -90,6 +90,8 @@ Everything else — a **sub-page** or a **topic note** — uses the skeleton, in
 - `Facts` — expensive-to-derive facts.
 - `Threads` — as below.
 
+A note whose subject is structure carries one `mermaid` fence in its body, right after the one-line intro and before `## Where left off`. It is never a heading: the fixed `##` set stays as it is.
+
 Correct in place: the covering note is the single source of truth — edit a contradicting truth into it. Facts are corrected silently; a **decision that flips** leaves one dated line so the next session does not re-litigate it — `**X** — reversed <date>: <reason>`. Never two live contradicting lines; never append-only. Amend the covering note; create a new one only when [`CONVENTIONS.md`](CONVENTIONS.md)'s coherence test fires.
 
 Targets: ≲50 lines the Overview, ≲40 a sub-page or a topic — a *trigger*, not a rule. The **Overview is an overview**, so its ≲50 lines are an index budget, kept small by **linking out**, not by compressing detail. The scaffold's entry pages hold one line per entry; an entry that grows into a topic earns the sub-page that owns it, and keeps its one line plus link. When a section outgrows its target **or** a coherent subsystem appears ([`CONVENTIONS.md`](CONVENTIONS.md)), the pass **creates the sub-page and links it from the Overview** — it never deepens the Overview past its overview role. Pointers over restatement, one-line entries, no code, no step-by-step procedures.
