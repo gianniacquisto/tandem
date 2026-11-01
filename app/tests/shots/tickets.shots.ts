@@ -256,7 +256,15 @@ test('the sheet opens inside the palette ring, not the OS accent, in both scheme
   // A sheet takes focus when it opens, so its ring is the ring drawn round the
   // whole dialog: it must come from the palette, never the browser's default.
   await window.locator('.ticket-row').first().dblclick()
-  await expect(window.locator('.sheet')).toBeVisible()
+  const sheet = window.locator('.sheet')
+  await expect(sheet).toBeVisible()
+  // Pin the sheet's focus before reading its ring: the dialog takes focus
+  // only once its ticket read lands, so a read straight after visibility
+  // races that write and sees the browser default instead of the palette.
+  // Focusing here keeps the ring deterministic whatever the previous spec
+  // left the window's focus on.
+  await sheet.focus()
+  await expect(sheet).toBeFocused()
 
   expect(await computed(window, '.sheet', 'outline-color')).toBe(token('accent'))
 
