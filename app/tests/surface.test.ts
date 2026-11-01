@@ -55,6 +55,84 @@ describe('the preload surface', () => {
     expect(invokes).toEqual([{ channel: CALL_CHANNEL, payload: { method: 'lane.list', params: {} } }])
   })
 
+  // TAN-254 put the sprint loop on the wire (`sprint.list`, `sprint.show`,
+  // `sprint.open`); the Workflow face calls all three through `window.tandem`,
+  // so the surface pins each tag and its params crossing the one channel.
+  it('carries the sprint loop over the one channel: list, show and open', async () => {
+    const invokes: Array<{ channel: string; payload: unknown }> = []
+    const ipc: IpcSurface = {
+      invoke: async (channel, call) => {
+        invokes.push({ channel, payload: call })
+        if (call.method === 'sprint.list') {
+          return { reply: { revision: 4, sprints: [] } }
+        }
+        if (call.method === 'sprint.show') {
+          return {
+            reply: {
+              revision: 4,
+              sprint: {
+                lane: 'Tandem',
+                number: 2,
+                session: null,
+                mode: 'parallel',
+                batch: [],
+                runs: [],
+                close: null,
+                status: 'open',
+                openedAt: '2026-10-30T09:00:00Z',
+                closedAt: null,
+              },
+            },
+          }
+        }
+        return {
+          reply: {
+            revision: 5,
+            sprint: {
+              lane: 'Tandem',
+              number: 2,
+              session: null,
+              mode: 'parallel',
+              batch: [],
+              runs: [],
+              close: null,
+              status: 'open',
+              openedAt: '2026-10-30T09:00:00Z',
+              closedAt: null,
+            },
+            note: 'kept',
+          },
+        }
+      },
+      on: () => () => {},
+    }
+    const bridge = createBridge(ipc)
+
+    const listed = await bridge.call({ method: 'sprint.list', params: { lane: 'Tandem', status: 'open' } })
+    const shown = await bridge.call({ method: 'sprint.show', params: { lane: 'Tandem' } })
+    const opened = await bridge.call({
+      method: 'sprint.open',
+      params: { lane: 'Tandem', mode: 'parallel', session: null },
+    })
+
+    expect(invokes).toEqual([
+      {
+        channel: CALL_CHANNEL,
+        payload: { method: 'sprint.list', params: { lane: 'Tandem', status: 'open' } },
+      },
+      { channel: CALL_CHANNEL, payload: { method: 'sprint.show', params: { lane: 'Tandem' } } },
+      {
+        channel: CALL_CHANNEL,
+        payload: { method: 'sprint.open', params: { lane: 'Tandem', mode: 'parallel', session: null } },
+      },
+    ])
+    expect(listed).toEqual({ reply: { revision: 4, sprints: [] } })
+    expect(shown).toMatchObject({ reply: { revision: 4, sprint: { lane: 'Tandem', number: 2 } } })
+    expect(opened).toMatchObject({
+      reply: { revision: 5, sprint: { lane: 'Tandem', number: 2 }, note: 'kept' },
+    })
+  })
+
   // `contextBridge` clones the value it returns to the main world, and a thrown
   // value does not survive that clone: it becomes a plain `Error` with the
   // message alone. So a refusal crosses as data, and the check is that the data

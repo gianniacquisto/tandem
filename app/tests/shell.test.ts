@@ -26,9 +26,9 @@ const sources = filesUnder(renderer, ['.ts', '.tsx', '.css', '.html']).filter(
 )
 
 describe('the shell', () => {
-  it('keeps the four tabs, in the spec order', () => {
-    expect(TABS.map((tab) => tab.label)).toEqual(['Tickets', 'Bikeshed', 'Usage', 'Settings'])
-    expect(new Set(TABS.map((tab) => tab.id)).size).toBe(4)
+  it('keeps the five tabs, in the spec order', () => {
+    expect(TABS.map((tab) => tab.label)).toEqual(['Tickets', 'Bikeshed', 'Usage', 'Workflow', 'Settings'])
+    expect(new Set(TABS.map((tab) => tab.id)).size).toBe(5)
   })
 
   it('routes every tab to its own path and back', () => {

@@ -21,13 +21,19 @@ export const SCENES: readonly Scene[] = [
     id: 'shell',
     file: 'electron-shell.png',
     description:
-      'the shell at its 760 pt floor: the wordmark, the four kept tabs (Tickets, Bikeshed, Usage, Settings), the Tickets face it opens on, and the store revision read over `rpc`',
+      'the shell at its 760 pt floor: the wordmark, the five tabs (Tickets, Bikeshed, Usage, Workflow, Settings), the Tickets face it opens on, and the store revision read over `rpc`',
   },
   {
     id: 'usage',
     file: 'usage-face.png',
     description:
       'the **Usage** face over the fixture home: the reported spend and its coverage, the cost-per-day bar chart above the picker, the ticket rows and their arithmetic, the Day/Model/Agent/Ticket picker, and a ticket row rolled down to the records behind it, each naming its session, agent, model, local start, cost, tokens and the tickets it carried',
+  },
+  {
+    id: 'workflow',
+    file: 'workflow-face.png',
+    description:
+      'the **Workflow** face over the fixture home with an open sprint: the lane picker and lifecycle controls, the sprint header with its stored mode, the pass DAG (Refine, Build, Review, Retro, Done) with its handoffs and batch tallies, the batch tickets on the nodes by ticket status, and the run log below',
   },
   {
     id: 'bikeshed',
