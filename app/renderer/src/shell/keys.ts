@@ -33,6 +33,16 @@ export type KeyIntent =
 
 const SCOPES: Record<string, Scope> = { '1': 'open', '2': 'done', '3': 'all' }
 
+/**
+ * The one modifier this face treats as "mod" (`keyIntent` reads meta or ctrl as
+ * the same key), as the platform's keyboard spells it. A hint that printed
+ * `⌘` on Windows would name a key the keyboard does not have, and the glyph is
+ * missing from the usual Windows UI fonts besides.
+ */
+export function modifierLabel(platform: string = navigator.platform): string {
+  return platform.startsWith('Mac') ? '⌘' : 'Ctrl+'
+}
+
 export function keyIntent(input: KeyInput): KeyIntent | null {
   const mod = input.metaKey || input.ctrlKey
   if (mod) {
