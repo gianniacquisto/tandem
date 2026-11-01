@@ -13,6 +13,16 @@ export type UsageRowView = { id: string, label: string, records: number, reporte
  */
 barPercent: number, tokens: UsageTokensView, 
 /**
+ * The per-reported-record averages, in the tokens' five-piece shape: the
+ * face reads them in Average mode and derives nothing (TAN-263).
+ */
+averageTokens: UsageTokensView, 
+/**
+ * The reported cost over `reported`, at full precision for the face's
+ * `money`; `0.0` when the row reported nothing.
+ */
+averageCost: number, 
+/**
  * The records behind the row, newest start first.
  */
 sessions: Array<UsageSessionView>, };

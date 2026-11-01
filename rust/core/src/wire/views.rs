@@ -514,6 +514,12 @@ pub struct UsageRowView {
     /// report: the face writes the width and computes no percentage (PRT-15).
     pub bar_percent: f64,
     pub tokens: UsageTokensView,
+    /// The per-reported-record averages, in the tokens' five-piece shape: the
+    /// face reads them in Average mode and derives nothing (TAN-263).
+    pub average_tokens: UsageTokensView,
+    /// The reported cost over `reported`, at full precision for the face's
+    /// `money`; `0.0` when the row reported nothing.
+    pub average_cost: f64,
     /// The records behind the row, newest start first.
     pub sessions: Vec<UsageSessionView>,
 }
@@ -528,6 +534,8 @@ impl UsageRowView {
             cost: row.cost,
             bar_percent: row.bar_percent,
             tokens: UsageTokensView::new(&row.tokens),
+            average_tokens: UsageTokensView::new(&row.average_tokens),
+            average_cost: row.average_cost,
             sessions: row.sessions.iter().map(UsageSessionView::new).collect(),
         }
     }
