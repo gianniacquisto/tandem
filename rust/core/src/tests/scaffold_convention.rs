@@ -615,6 +615,26 @@ fn the_questions_exit_is_one_write() {
     assert!(interview.contains("tandem-cli ticket answer"));
 }
 
+/// CONTRIBUTING.md is the contributor on-ramp: it exists at the root and names
+/// every gate command, so a first-time contributor's PR does not fail CI for
+/// want of local guidance on what to run.
+#[test]
+fn the_contributing_guide_names_every_gate() {
+    let guide = file("CONTRIBUTING.md");
+    for phrase in [
+        "cargo test",
+        "cargo fmt",
+        "cargo clippy",
+        "npm run typecheck",
+        "node --test",
+    ] {
+        assert!(
+            guide.contains(phrase),
+            "CONTRIBUTING.md never names `{phrase}`"
+        );
+    }
+}
+
 /// A retro finding about a project's own files files into that project's lane:
 /// `Retro` keeps only the findings that belong to no project, the worktree's
 /// slug resolves to the project, and the sprint skill points at the retro's
