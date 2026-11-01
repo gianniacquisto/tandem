@@ -141,22 +141,8 @@ fn two_sprints_on_one_pointer_each_reach_their_own_record() {
     assert_ne!(first_id, second_id);
 
     // Each sprint names its own pass's record, not the shared pointer.
-    sandbox.json(&[
-        "sprint",
-        "open",
-        "--lane",
-        "Alpha",
-        "--session",
-        &first_id,
-    ]);
-    sandbox.json(&[
-        "sprint",
-        "open",
-        "--lane",
-        "Beta",
-        "--session",
-        &second_id,
-    ]);
+    sandbox.json(&["sprint", "open", "--lane", "Alpha", "--session", &first_id]);
+    sandbox.json(&["sprint", "open", "--lane", "Beta", "--session", &second_id]);
 
     // One pass ends; the dead-sprint rule must still reach each record's own
     // state through the handle the sprint stored.
