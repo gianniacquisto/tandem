@@ -1,3 +1,4 @@
+import type { Call } from '../../../src/shared/bridge'
 import type { TicketSummary } from '../wire/TicketSummary'
 
 /**
@@ -36,6 +37,29 @@ export type LaneColumn = {
   tickets: TicketSummary[]
 }
 
+/** One cell of the board grid: a lane's tickets that share a status. */
+export type StatusCell = {
+  status: string
+  label: string
+  tickets: TicketSummary[]
+}
+
+/** A lane row of status cells, the board's other axis. */
+export type LaneRow = {
+  /** `null` is the default (ungrouped) area. */
+  key: string | null
+  title: string
+  cells: StatusCell[]
+}
+
+/** Where a drop lands on the grid: both axes, and the lane index it hands `ticket.move`. */
+export type DropCell = {
+  lane: string | null
+  status: string
+  /** The index in the lane's stored order; `ticket.move` reads it, `ticket.set` ignores it. */
+  index: number
+}
+
 export const INITIAL_FILTERS: Filters = {
   scope: 'open',
   status: null,
@@ -60,10 +84,59 @@ export function statusLabel(status: string): string {
   return STATUSES.find((entry) => entry.value === status)?.label ?? status
 }
 
+/**
+ * The board's six columns: `STATUSES` in workflow order, with the parked
+ * `on-hold` cell last. Derived from the one declared list, never a copy of it.
+ */
+export function boardStatuses(): ReadonlyArray<{ value: string; label: string }> {
+  const parked = STATUSES.filter((status) => status.value === 'on-hold')
+  return [...STATUSES.filter((status) => status.value !== 'on-hold'), ...parked]
+}
+
+/** The reserved assignee: the human, spelled the same in every face. */
+const HUMAN = 'human'
+
 /** `human` is the reserved word; an agent is `@name`; nothing is nothing. */
 export function assigneeLabel(assignee: string | null): string | null {
   if (assignee === null) return null
-  return assignee === 'human' ? assignee : `@${assignee}`
+  return assignee === HUMAN ? assignee : `@${assignee}`
+}
+
+export type AssigneeChoice = { value: string | null; label: string; selected: boolean }
+
+/**
+ * The assignee options both faces offer, in the Swift order
+ * (`AssigneePicker.options`): Unassigned, `human`, the store's roster (trimmed,
+ * blanks dropped, duplicates collapsed), then the name the face is showing when
+ * it is off-roster. A name the roster carries cannot be hidden by a stale
+ * roster read.
+ *
+ * The roster is the `roster` setting, never the board's rows (PRT-38): a name
+ * with no ticket has no row to be derived from, and a fresh home has no rows at
+ * all. The sheet passes the ticket's assignee as `current`; the board's filter
+ * passes the name it is narrowing to.
+ */
+export function assigneeChoices(
+  roster: readonly string[],
+  current: string | null,
+): AssigneeChoice[] {
+  const seen = new Set<string>()
+  const values: Array<string | null> = [null]
+  function add(raw: string | null): void {
+    if (raw === null) return
+    const name = raw.trim()
+    if (name === '' || seen.has(name)) return
+    seen.add(name)
+    values.push(name)
+  }
+  add(HUMAN)
+  for (const name of roster) add(name)
+  add(current)
+  return values.map((value) => ({
+    value,
+    label: value === null ? 'Unassigned' : (assigneeLabel(value) ?? value),
+    selected: value === current,
+  }))
 }
 
 /**
@@ -195,6 +268,26 @@ export function laneColumns(
   }))
 }
 
+/**
+ * The board's rows: one per lane key, each holding a cell per board status in
+ * `boardStatuses` order. Empty cells and empty lanes stay, so every cell is a
+ * drop target. Tickets keep the store's order inside their cell.
+ */
+export function laneRows(
+  declared: readonly string[],
+  tickets: readonly TicketSummary[],
+): LaneRow[] {
+  return laneColumns(declared, tickets).map((column) => ({
+    key: column.key,
+    title: column.title,
+    cells: boardStatuses().map((status) => ({
+      status: status.value,
+      label: status.label,
+      tickets: column.tickets.filter((ticket) => ticket.status === status.value),
+    })),
+  }))
+}
+
 export function laneMembers(
   tickets: readonly TicketSummary[],
   lane: string | null,
@@ -212,6 +305,52 @@ export function laneIndexOf(tickets: readonly TicketSummary[], id: string): numb
 /** Where a drop on an empty part of a lane lands: the end of that lane. */
 export function appendIndex(tickets: readonly TicketSummary[], lane: string | null): number {
   return laneMembers(tickets, lane).length
+}
+
+/**
+ * The writes a drop on the grid makes, in the order the store must take them.
+ *
+ * Each axis has its own verb (`ticket.move` for the lane, `ticket.set` for the
+ * status), and a lane change goes first because it is the one that can be
+ * anchored where the card was dropped; the status write then follows the card
+ * into its new lane. A drop that changes nothing but the order is the same
+ * `ticket.move` the board always made. Empty when the dragged id is not in the
+ * listing (a stale drag must not write at all).
+ */
+export function dropCalls(
+  tickets: readonly TicketSummary[],
+  moving: string,
+  cell: DropCell,
+): Call[] {
+  const ticket = tickets.find((candidate) => candidate.id === moving)
+  if (ticket === undefined) return []
+
+  const calls: Call[] = []
+  if (ticket.lane !== cell.lane) {
+    calls.push({
+      method: 'ticket.move',
+      params: { id: moving, lane: cell.lane, index: cell.index },
+    })
+  }
+  if (ticket.status !== cell.status) {
+    calls.push({
+      method: 'ticket.set',
+      params: {
+        id: moving,
+        title: null,
+        status: cell.status,
+        assignee: null,
+        description: null,
+      },
+    })
+  }
+  if (calls.length === 0) {
+    calls.push({
+      method: 'ticket.move',
+      params: { id: moving, lane: cell.lane, index: cell.index },
+    })
+  }
+  return calls
 }
 
 /**
@@ -281,11 +420,27 @@ export function neighbourLane(
 }
 
 /**
+ * The ticket a plain arrow selects when the face has none: the first card of
+ * the first lane (in `delta` order) that holds one, read across that lane's
+ * status cells.
+ */
+export function firstSelection(rows: readonly LaneRow[], delta: -1 | 1): string | null {
+  const start = delta > 0 ? 0 : rows.length - 1
+  for (let index = start; index >= 0 && index < rows.length; index += delta) {
+    const row = rows[index]
+    if (row === undefined) continue
+    const first = neighbourSelection(row.cells, null, delta)
+    if (first !== null) return first
+  }
+  return null
+}
+
+/**
  * The ticket a left or right arrow selects: the next column that holds one, at
  * the same row where it can, clamped to that column's last row.
  */
 export function neighbourSelection(
-  columns: readonly LaneColumn[],
+  columns: ReadonlyArray<{ tickets: TicketSummary[] }>,
   selected: string | null,
   delta: -1 | 1,
 ): string | null {

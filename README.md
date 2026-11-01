@@ -19,6 +19,20 @@ brew install --cask gianniacquisto/tap/tandem
 
 Spell the tap out in full, every time. Homebrew core has an unrelated cask named `tandem`, and the Caskroom is keyed by the token — a bare `brew install --cask tandem` installs that one over this app and offers it as an upgrade forever. The install puts `Tandem.app` in `/Applications` and links the bundled `tandem-cli` into Homebrew's `bin`.
 
+Without Homebrew, the same zip installs through a script the release publishes beside it:
+
+```sh
+curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh
+```
+
+The script verifies the zip against the release's `SHA256SUMS` before writing anything, copies `Tandem.app` to `/Applications`, and leaves an existing install (a cask or a previous script run) alone unless re-run with `--reinstall`. It reports the `tandem-cli` link state instead of changing it. To remove a script install later:
+
+```sh
+curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh -s -- --uninstall
+```
+
+(The cask stays the first-documented path; [`docs/install-paths.md`](docs/install-paths.md) compares the two.)
+
 ### First launch (once per install or upgrade)
 
 Tandem is ad-hoc signed, not Developer ID signed or notarized, so macOS still shows a Gatekeeper warning the first time you launch it after a download, and the app quits by itself a few seconds later. The bundle's signature is valid and its resources are sealed, so the warning is the missing notarization, not a damaged app. Clear the download flag once, then relaunch:
@@ -46,6 +60,13 @@ One JSON report of where your state lives and whether it is healthy: the home di
 | Agent hosts | OpenCode (skills, agent prompts, `AGENTS.md`), Claude Code (skills), and any host that reads skills from a directory |
 | Network | none today, the app and the CLI are local |
 | Accounts | none today, the state is files in your home directory |
+
+That table is the shipped app: every release publishes macOS artifacts only.
+Underneath, the repo builds and tests cross-platform. CI runs the Rust suite
+and the app suite (typecheck, tests, packaging, artifact check, smoke) on
+macOS, Windows and Ubuntu runners, so a checkout on any of the three builds
+and tests what it can run. [CONTRIBUTING.md](CONTRIBUTING.md) is the
+per-platform on-ramp.
 
 ## What it does
 
@@ -240,13 +261,15 @@ Tandem's store was `tickets.json` until v0.27.0, with the comments, sessions, sp
 
 - **Not a service yet.** There is no account to create and nothing syncs; the state is one SQLite database and a folder of notes in your home directory. A hosted core for several humans is a later deployment shape, not a feature you have now.
 - **Not a team tool yet.** One Mac, one store. There is no shared board and no realtime collaboration; the bikeshed is not shareable either.
-- **Not cross-platform.** macOS 27 or later, on Apple silicon.
+- **Not cross-platform as a shipped app.** The release publishes macOS artifacts only: macOS 27 or later, on Apple silicon. Windows and Linux app builds are unshipped and unsupported.
 - **Not a tracker with edges.** The board has no labels, no blocking edges and no child tickets — see [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
 - **Not a text file.** The store is a database the app and the CLI own; the bikeshed is where prose, and hand edits, belong. A JSON store from an older build is read once and then ignored.
 
 ## How to contribute
 
 The tracker is the **Tandem board**, not GitHub issues — the tracker contract is the `tandem` skill (`skills/tandem/SKILL.md`).
+
+The full on-ramp is [CONTRIBUTING.md](CONTRIBUTING.md): prerequisites, setup, and the gate commands to run before you push.
 
 - **Branch off `main`.** `main` is the trunk: it takes merges, and a release is a lightweight tag on its head, so installs come from the tag ([ADR 0019](docs/adr/0019-integration-branch.md), amended 2026-10-29). Pull requests target `main`.
 - **Merge, don't rewrite.** Prefer merge commits over rebases, and avoid force pushes and other destructive git actions unless absolutely necessary — when a force push is unavoidable, `--force-with-lease`, never bare `--force`.

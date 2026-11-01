@@ -46,6 +46,7 @@ function face(
         <TicketsFace
           snapshot={snapshot}
           view={route.view}
+          roster={snapshot.roster}
           onReload={actions.onReload}
           onWrite={actions.onWrite}
           onDismiss={actions.onDismiss}
@@ -60,17 +61,6 @@ function face(
     case 'settings':
       return <SettingsFace />
   }
-}
-
-/** The names the assignee picker offers: every assignee the board carries. */
-function assignees(tickets: TicketSummary[]): string[] {
-  return [
-    ...new Set(
-      tickets
-        .map((ticket) => ticket.assignee)
-        .filter((assignee): assignee is string => assignee !== null),
-    ),
-  ].sort()
 }
 
 function revisionLabel(snapshot: SnapshotState): string {
@@ -107,13 +97,16 @@ export function App() {
 
   const load = useCallback(async (): Promise<void> => {
     try {
-      // The whole board, the lanes it is grouped into, and the one usage
-      // report, in one pass: the report is the derivation's (`usage.report`), so
-      // the Usage face sums nothing.
-      const [board, lanes, usage] = await Promise.all([
+      // The whole board, the lanes it is grouped into, the one usage report,
+      // and the settings both assignee surfaces read, in one pass: the report is
+      // the derivation's (`usage.report`), so the Usage face sums nothing, and
+      // the roster is the store's (`settings.get`), so neither surface derives
+      // its names from the rows.
+      const [board, lanes, usage, settings] = await Promise.all([
         window.tandem.call({ method: 'ticket.list', params: WHOLE_BOARD }),
         window.tandem.call({ method: 'lane.list', params: {} }),
         window.tandem.call({ method: 'usage.report', params: {} }),
+        window.tandem.call({ method: 'settings.get', params: {} }),
       ])
       if (!mounted.current) return
       if ('error' in board) {
@@ -134,6 +127,13 @@ export function App() {
         dispatch({ type: 'notice', message: usage.error.message })
       } else if ('report' in usage.reply && 'ticketTotal' in usage.reply.report) {
         dispatch({ type: 'usage', report: usage.reply.report })
+      }
+      if ('error' in settings) {
+        // A refused settings read leaves both assignee surfaces on the names
+        // they already have: Unassigned and `human`. It is not a board failure.
+        dispatch({ type: 'notice', message: settings.error.message })
+      } else if ('roster' in settings.reply) {
+        dispatch({ type: 'settings', roster: settings.reply.roster })
       }
       if ('tickets' in board.reply && 'revision' in board.reply) {
         dispatch({ type: 'loaded', reply: board.reply, lanes: lanes.reply.lanes })
@@ -170,13 +170,18 @@ export function App() {
       call: Call,
       expected: number | null,
       caller: WriteCaller = 'face',
+      followUp?: string,
     ): Promise<WriteOutcome> => {
       const refuse = (message: string): WriteOutcome => {
-        const banner = refusalBanner(caller, message)
+        const words = followUp === undefined ? message : `${followUp} ${message}`
+        const banner = refusalBanner(caller, words)
         if (banner !== null) dispatch({ type: 'notice', message: banner })
-        return { ok: false, message }
+        return { ok: false, message: words }
       }
-      const blocked = writeBlocked(state.current, expected)
+      // A follow-up write is authorized by the write that landed before it: the
+      // listing moved on purpose, so the revision guard would refuse its own
+      // act, and a refusal here names the half that is already stored.
+      const blocked = followUp === undefined ? writeBlocked(state.current, expected) : null
       if (blocked !== null) {
         void load()
         return refuse(blocked)
@@ -190,6 +195,12 @@ export function App() {
       }
     },
     [load],
+  )
+
+  const faceWrite = useCallback(
+    (call: Call, expected: number | null, followUp?: string): Promise<WriteOutcome> =>
+      write(call, expected, 'face', followUp),
+    [write],
   )
 
   // The sheet carries its own refusals, so its writes never raise the banner
@@ -250,7 +261,7 @@ export function App() {
         )}
         {face(route, snapshot, {
           onReload: reload,
-          onWrite: write,
+          onWrite: faceWrite,
           onDismiss: dismiss,
           openTicket,
           onOpenTicket: open,
@@ -259,7 +270,7 @@ export function App() {
           <TicketSheet
             ticketId={openTicket}
             lanes={snapshot.lanes}
-            roster={assignees(snapshot.tickets)}
+            roster={snapshot.roster}
             revision={snapshot.revision}
             onWrite={sheetWrite}
             onDismiss={closeSheet}

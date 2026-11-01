@@ -193,6 +193,102 @@ fn the_gate_names_a_red_head_before_reading_the_diff() {
     );
 }
 
+/// The gate's second entry point, before a build exists: one comment with the
+/// five fixed questions, then the park that gives the human the window. The set
+/// is fixed so two grills on one brief ask the same questions.
+#[test]
+fn the_gate_grills_a_brief_before_a_builder_spends_a_pass() {
+    let reviewer = file("agents/reviewer.md");
+    let grill = section(&reviewer, "## Grill");
+    assert!(
+        !grill.trim().is_empty(),
+        "the prompt has a `## Grill` section"
+    );
+    for question in [
+        "What the brief decides for the builder",
+        "What it leaves to the builder's judgement",
+        "Which files or surfaces it must touch",
+        "Whether it fits one agent session",
+        "The door class and blast radius",
+    ] {
+        assert!(
+            grill.contains(question),
+            "the grill question set dropped: {question}"
+        );
+    }
+    assert!(
+        grill.contains("ticket comment add") && grill.contains("--author reviewer"),
+        "the grill lands as one comment authored `reviewer`"
+    );
+    assert!(
+        grill.contains("--status on-hold --assignee human"),
+        "the grill parks the ticket on the human"
+    );
+    assert!(
+        grill.contains("--status ready --assignee \"\""),
+        "the human's write resumes the build"
+    );
+    assert!(
+        grill.contains("ticket answer --id <id> --status ready --assignee \"\" --body -"),
+        "the grill's park is a question, so its resume is `ticket answer`, not `ticket set`"
+    );
+    assert!(
+        !grill.contains("ticket set --id <id> --status ready"),
+        "a `ticket set` clears the owner without recording the answer"
+    );
+    assert!(
+        !grill.contains("does not apply"),
+        "the grill's park is a question, so `ticket answer` applies to it"
+    );
+    assert!(
+        grill.contains("no diff"),
+        "the grill reads no diff, because there is none"
+    );
+}
+
+/// The two entries into the grill: the build's per-ticket pass and the sprint's
+/// in-run refine. A ticket built on a brief the gate never read is the hole.
+#[test]
+fn the_build_and_sprint_skills_carry_the_grill() {
+    let build = file("skills/tandem-build/SKILL.md");
+    assert!(
+        build.contains("`## Grill`"),
+        "the build skill checks for the grill comment"
+    );
+    assert!(
+        build.contains("two dispatches"),
+        "the grill and the build are two dispatches"
+    );
+    assert!(
+        build.contains("Never both at once"),
+        "the build skill forbids dispatching both together"
+    );
+    let sprint = file("skills/tandem-sprint/SKILL.md");
+    assert!(
+        sprint.contains("carries the grill before it is drawn"),
+        "a ticket shaped in-run is grilled before it is drawn"
+    );
+    assert!(
+        sprint.contains("the grill's park"),
+        "triage names the grill's hold beside the refine-time hold"
+    );
+}
+
+/// The close sweep clears an owner only where a question is open. The grill's
+/// park is one, so the sweep names it instead of clearing the human's window.
+#[test]
+fn the_close_sweep_names_the_grill_hold() {
+    let close = section(&file("skills/tandem-sprint/SKILL.md"), "## 7. Close");
+    assert!(
+        close.contains("the grill's park"),
+        "the close sweep names the grill's hold"
+    );
+    assert!(
+        close.contains("`ticket answer`"),
+        "the grill's hold closes with the question contract's one write"
+    );
+}
+
 #[test]
 fn the_refiner_writes_the_lenses_line() {
     let refiner = file("agents/refiner.md");
@@ -495,6 +591,19 @@ fn agents_states_the_install_route() {
 }
 
 #[test]
+fn a_review_dispatches_on_its_own_pr_not_on_the_batch() {
+    let build = file("skills/tandem-build/SKILL.md");
+    assert!(build.contains("A review dispatches when its own PR is ready, first-come"));
+    assert!(
+        !build.contains("in batch order"),
+        "the gate is not the batch's to order"
+    );
+    assert!(build.contains("Neither reads another ticket"));
+    let sprint = file("skills/tandem-sprint/SKILL.md");
+    assert!(sprint.contains("a slow refine holds its own ticket only"));
+}
+
+#[test]
 fn the_questions_exit_is_one_write() {
     let agents = file("AGENTS.md");
     assert!(agents.contains("`human` is an assignee only while a question is open"));
@@ -504,4 +613,65 @@ fn the_questions_exit_is_one_write() {
     assert!(sprint.contains("that is the bookkeeping debt"));
     let interview = file("skills/tandem-interview/SKILL.md");
     assert!(interview.contains("tandem-cli ticket answer"));
+}
+
+/// CONTRIBUTING.md is the contributor on-ramp: it exists at the root and names
+/// every gate command, so a first-time contributor's PR does not fail CI for
+/// want of local guidance on what to run.
+#[test]
+fn the_contributing_guide_names_every_gate() {
+    let guide = file("CONTRIBUTING.md");
+    for phrase in [
+        "cargo test",
+        "cargo fmt",
+        "cargo clippy",
+        "npm run typecheck",
+        "node --test",
+    ] {
+        assert!(
+            guide.contains(phrase),
+            "CONTRIBUTING.md never names `{phrase}`"
+        );
+    }
+}
+
+/// A retro finding about a project's own files files into that project's lane:
+/// `Retro` keeps only the findings that belong to no project, the worktree's
+/// slug resolves to the project, and the sprint skill points at the retro's
+/// one lane rule instead of restating a second one.
+#[test]
+fn the_retro_files_into_the_projects_lane() {
+    let retro = file("skills/retro/SKILL.md");
+    assert!(
+        retro.contains("the project's lane"),
+        "the retro derives the lane from the project"
+    );
+    assert!(
+        retro.contains("`-wt-<slug>` suffix"),
+        "the worktree slug resolves to the project"
+    );
+    assert!(
+        retro.contains("belong to no project"),
+        "`Retro` keeps the findings that belong to no project"
+    );
+    assert!(
+        retro.contains("`--origin retro`"),
+        "the origin survives the lane move"
+    );
+    for path in [
+        "skills/retro/SKILL.md",
+        "skills/tandem-sprint/SKILL.md",
+        "skills/tandem-team/SKILL.md",
+    ] {
+        assert!(
+            !file(path).contains("Retro lane"),
+            "{path} still restates the lane the retro files into"
+        );
+    }
+    let sprint = file("skills/tandem-sprint/SKILL.md");
+    let s6 = section(&sprint, "## 6. Retro");
+    assert!(
+        s6.contains("lane are the retro skill's"),
+        "section 6 delegates the lane rule to the retro skill"
+    );
 }

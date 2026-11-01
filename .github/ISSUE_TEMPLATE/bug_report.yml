@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in Tandem is broken
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The tracker of record is the Tandem board, so
+        maintainer triage may move this report there. Before filing, please
+        skim the README and CONTRIBUTING.md: the gates section tells you which
+        checks cover your area, and a PR with a failing gate is the fastest
+        route to a fix.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead
+      placeholder: The board showed... but I expected...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The shortest path from a fresh state to the bug
+      placeholder: |
+        1. Open...
+        2. Click...
+        3. See the failure
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: macOS version, hardware, and the Tandem version from the release page
+      placeholder: macOS 27, Apple silicon, Tandem v0.x.y
+    validations:
+      required: true
+  - type: textarea
+    id: gates
+    attributes:
+      label: Gates
+      description: Which checks you ran, per CONTRIBUTING.md, if the bug touches the repo's code
+      placeholder: cargo test in rust/, green
+    validations:
+      required: false
