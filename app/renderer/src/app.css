@@ -153,6 +153,50 @@ body {
   font-size: 11.5px;
 }
 
+/* The cost-per-day chart: one bar per day row, oldest first, read-only like
+ * the header. Bars reuse the meter's fill token; the axis and day labels read
+ * the face's quiet text token. */
+
+.usage__chart {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+  margin-bottom: var(--space-lane);
+}
+
+.usage__bar-cell {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.usage__bar-track {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  height: 96px;
+  border-bottom: var(--hairline) solid var(--ink-dim);
+}
+
+.usage__bar {
+  width: min(100%, 44px);
+  border-radius: 3px 3px 0 0;
+  background: var(--accent);
+}
+
+.usage__bar-label {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .usage__picker {
   display: flex;
   width: 296px;
@@ -512,9 +556,34 @@ body {
   color: var(--ember-deep);
 }
 
+/* The roster draft: one row per name with its Remove, the add row, and the
+ * explicit Save. The rows are the checks' own, the buttons the action's, and
+ * the input the theme's card tokens, so both appearances follow. */
+.settings__add {
+  display: flex;
+  gap: var(--space-lane);
+  margin: 0 0 12px;
+}
+
+.settings__name {
+  flex: 1;
+  min-width: 0;
+  height: var(--space-control);
+  padding: 0 12px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ink);
+  font: inherit;
+}
+
+.settings__name::placeholder {
+  color: var(--ink-dim);
+}
+
 /* The Tickets face: the quick-add, the scope and filter row, the search, and
- * the two layouts over one set of rows. The list keeps the Swift face's 540 pt
- * column; the board takes the window's width because a lane column is a lane. */
+ * the two layouts over one set of rows. Both layouts take the window's width:
+ * a lane column is a lane, and the list reads full width with it. */
 
 .shell__notice {
   display: flex;
@@ -545,7 +614,8 @@ body {
   max-width: 540px;
 }
 
-.tickets--board {
+.tickets--board,
+.tickets--list {
   max-width: none;
 }
 
@@ -749,11 +819,8 @@ body {
   cursor: pointer;
 }
 
-/* The list: the default area flat, each named lane under its own header. */
-
-.list {
-  max-width: 540px;
-}
+/* The list: the default area flat, each named lane under its own header. It
+ * spans the wide face with the board, so rows read full width. */
 
 .list__lane-title {
   display: flex;

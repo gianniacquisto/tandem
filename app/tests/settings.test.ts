@@ -5,6 +5,11 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { checkChanges } from '../renderer/src/shell/setup'
+import {
+  addRosterName,
+  cleanRoster,
+  removeRosterName,
+} from '../renderer/src/shell/roster'
 import type { DoctorReport } from '../renderer/src/wire/DoctorReport'
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
@@ -52,12 +57,19 @@ describe('the Settings surface', () => {
     }
   })
 
-  it('adds no writer of its own: one control, and it is the CLI setup install', () => {
+  it('edits the roster through the wire write, with one explicit save', () => {
     const face = source('faces/SettingsFace.tsx')
     const called = [...new Set(calledMethods(face))].sort()
 
-    expect(called).toEqual(['doctor.report', 'setup.install', 'setup.status'])
-    expect([...face.matchAll(/<button\b/g)]).toHaveLength(1)
+    expect(called).toEqual([
+      'doctor.report',
+      'settings.get',
+      'settings.set',
+      'setup.install',
+      'setup.status',
+    ])
+    // Add, Save roster, one Remove per row (one site in source), Install/Repair.
+    expect([...face.matchAll(/<button\b/g)]).toHaveLength(4)
   })
 
   it('shows a repair as what changed, not as a verdict', () => {
@@ -83,5 +95,29 @@ describe('the Settings surface', () => {
     ])
 
     expect(checkChanges(null, after).map((change) => change.name)).toEqual(['home', 'agent-face'])
+  })
+
+  it('cleans a roster the way the store does, so the face never parses a row', () => {
+    expect(cleanRoster(['  alpha  ', '', '   ', 'beta', 'alpha', 'beta '])).toEqual([
+      'alpha',
+      'beta',
+    ])
+    expect(cleanRoster([])).toEqual([])
+  })
+
+  it('adds a name once, trimmed, and never a blank', () => {
+    expect(addRosterName(['alpha'], 'beta')).toEqual(['alpha', 'beta'])
+    expect(addRosterName(['alpha'], '  beta  ')).toEqual(['alpha', 'beta'])
+    expect(addRosterName(['alpha'], 'alpha')).toEqual(['alpha'])
+    expect(addRosterName(['alpha'], '  alpha  ')).toEqual(['alpha'])
+    expect(addRosterName(['alpha'], '   ')).toEqual(['alpha'])
+    expect(addRosterName([], '')).toEqual([])
+  })
+
+  it('removes the named row and leaves the rest in order', () => {
+    expect(removeRosterName(['alpha', 'beta', 'gamma'], 1)).toEqual(['alpha', 'gamma'])
+    expect(removeRosterName(['alpha'], 0)).toEqual([])
+    expect(removeRosterName(['alpha'], 7)).toEqual(['alpha'])
+    expect(removeRosterName(['alpha'], -1)).toEqual(['alpha'])
   })
 })

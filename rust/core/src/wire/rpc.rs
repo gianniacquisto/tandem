@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::bikeshed::health::BikeshedHealth;
+use crate::domain::sprint::Sprint;
 use crate::wire::views::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
     NoteWriteView, RecoveryView, TicketDetail, TicketSummary, UsageReportView,
@@ -108,6 +109,13 @@ methods! {
     LaneAdd: "lane.add", LaneAddParams, "lane add";
     LaneRename: "lane.rename", LaneRenameParams, "lane rename";
     LaneDelete: "lane.delete", LaneDeleteParams, "lane delete";
+    // The sprint record's reads and its one app-reachable write (TAN-254). The
+    // verbs are the CLI's own (`sprint list/show/open`), so the app configures
+    // the workflow through the same acts an agent runs. `ticket`, `run` and
+    // `close` stay CLI-only: the sprint session is the run log's only writer.
+    SprintList: "sprint.list", SprintListParams, "sprint list";
+    SprintShow: "sprint.show", SprintShowParams, "sprint show";
+    SprintOpen: "sprint.open", SprintOpenParams, "sprint open";
     // The Bikeshed face's reads. The CLI spells no verb for them today, and
     // they write nothing, so no UI-only write hides behind an empty verb. The
     // two mutations name the verbs they share with the agent face.
@@ -127,14 +135,18 @@ methods! {
     // table says so; `the_read_methods_without_a_cli_verb_are_named_here` names it.
     UsageReport: "usage.report", EmptyParams, "";
     // The settings the faces read, in one message: the sheet's assignee picker
-    // and the board's filter both offer the store's roster (PRT-38), which is a
-    // `settings` row with no CLI verb to spell. It writes nothing, so no
-    // UI-only write hides behind an empty verb. The active project answers on
-    // the same read (one more field, never a second method); its write is the
-    // `settings.set` method beside it.
+    // and the board's filter both offer the store's roster, and the board
+    // draws the active project beside it. Both are `settings` rows; the read
+    // writes nothing, so no UI-only write hides behind its empty verb. The
+    // write below names the CLI verb it shares with the Settings face's Save
+    // and the focus control.
     SettingsGet: "settings.get", EmptyParams, "";
-    // The active-project focus write: one declared lane in, the resolved focus
-    // out. The CLI spells it `settings set`, so no UI-only write hides here.
+    // The settings write: the roster's whole-list replace and the
+    // active-project focus, each applied only when its key is present, so a
+    // roster Save leaves the focus alone and a focus pick leaves the roster
+    // alone. The bare frame clears the focus and leaves the roster alone.
+    // The CLI spells it `settings set`, so no UI-only write hides
+    // here.
     SettingsSet: "settings.set", SettingsSetParams, "settings set";
     // The ticket sheet's read: a body in, the blocks it draws out. The parsing
     // is the core's (`TicketMarkdown`), so the app and the CLI cannot read one
@@ -325,6 +337,34 @@ pub struct LaneDeleteParams {
     pub name: Option<String>,
 }
 
+/// `sprint.list`: the lane's records, each axis optional as the verb's flags
+/// are. An absent lane lists every lane; an absent status lists both states.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SprintListParams {
+    pub lane: Option<String>,
+    pub status: Option<String>,
+}
+
+/// `sprint.show`: the lane whose open record is answered. A lane with none
+/// open answers the CLI's own error, whose next step is that lane's `open`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SprintShowParams {
+    pub lane: Option<String>,
+}
+
+/// `sprint.open`: the lane, the mode and the session the record names. An
+/// absent mode is `serial`, as the CLI defaults it; an absent session is no
+/// session, which the domain files as the record without one.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SprintOpenParams {
+    pub lane: Option<String>,
+    pub mode: Option<String>,
+    pub session: Option<String>,
+}
+
 /// `setup.install`: the CLI's `--host` and `--force`, unchanged.
 ///
 /// `host` is one name or a comma-separated list, and absent means the CLI's
@@ -378,6 +418,8 @@ pub enum Reply {
     LaneList(LaneListReply),
     LaneDeletion(LaneDeletionReply),
     Archived(ArchivedReply),
+    SprintList(SprintListReply),
+    Sprint(SprintReply),
     Setup(SetupReply),
     Doctor(DoctorReply),
     NoteTree(NoteTreeReply),
@@ -461,15 +503,16 @@ pub struct UsageReportReply {
     pub report: UsageReportView,
 }
 
-/// `settings.get`: the settings a face reads.
+/// `settings.get`: the settings a face reads, and `settings.set`'s receipt.
 ///
 /// The roster is the one setting the app reads (`TandemSettings.roster`): the
 /// names the sheet's assignee picker and the board's filter offer. It is the
 /// stored list, or the default when none was ever stored; the typing is the
-/// core's (`domain::Settings`), so neither face parses a settings row. A setting
-/// added later is one more field here, never a second method: the active
-/// project answers beside it, resolved against the declared lanes, so a stale
-/// focus reads as no focus.
+/// core's (`domain::Settings`), so neither face parses a settings row. A
+/// setting added later is one more field here, never a second method: the
+/// active project answers beside the roster, resolved against the declared
+/// lanes, so a stale focus reads as no focus; the write is its own method
+/// (`settings.set`), because only reads share this reply.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsReply {
@@ -477,13 +520,24 @@ pub struct SettingsReply {
     pub active_project: Option<String>,
 }
 
-/// `settings.set`: the active-project focus to store. Absent clears the focus
-/// back to every lane, which is also what a blank value means; a name no
-/// declared lane carries is refused, and nothing is written. Optional so the
-/// frame's empty-params round-trip still parses.
+/// `settings.set`: the roster's whole replacement and the focus to store, each
+/// applied only when its key is present, so one write spells one axis.
+///
+/// `roster`, when present, replaces the stored list whole: absent is not the
+/// empty list but "leave the stored list alone", and an explicitly emptied
+/// list is the human's removal rather than a value no build can read.
+/// `project`, when present, focuses the faces on one declared lane; a blank
+/// value clears back to every lane, and a name no declared lane carries is
+/// refused with nothing written. An absent project leaves the focus alone,
+/// unless the frame spells no roster either: the bare frame is the legacy
+/// bare write, which clears the focus and leaves the roster alone (an
+/// explicit null reads as absent on the wire, so clearing the focus never
+/// empties the roster). Optional throughout so the frame's
+/// empty-params round-trip still parses.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SettingsSetParams {
+    pub roster: Option<Vec<String>>,
     pub project: Option<String>,
 }
 
@@ -555,6 +609,26 @@ pub struct LaneDeletionReply {
 pub struct ArchivedReply {
     pub revision: i64,
     pub archived: usize,
+}
+
+/// `sprint.list`: the lane's records, newest opened first, at the revision
+/// they are a snapshot of.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SprintListReply {
+    pub revision: i64,
+    pub sprints: Vec<Sprint>,
+}
+
+/// `sprint.show` and `sprint.open`: one record at its revision, with the note
+/// when the open changed nothing (a lane with an open sprint keeps it).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SprintReply {
+    pub revision: i64,
+    pub sprint: Sprint,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// One agent host's root, as the Settings surface shows it.

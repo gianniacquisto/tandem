@@ -35,6 +35,7 @@ use std::time::Duration;
 use crate::bikeshed::Bikeshed;
 use crate::domain::Settings;
 use crate::domain::session::Sessions;
+use crate::domain::sprint::{SprintMode, SprintStatus, Sprints};
 use crate::domain::usage::{Calendar, UsageTicket, usage_report};
 use crate::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, Filter, Status, TicketQuery,
@@ -46,7 +47,8 @@ use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, HostRoot, LaneDeletionReply,
     LaneListReply, MarkdownReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply,
     NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, Reply, Request,
-    Response, SettingsReply, SetupReply, TicketListReply, TicketReply, UsageReportReply, WireError,
+    Response, SettingsReply, SetupReply, SprintListReply, SprintReply, TicketListReply,
+    TicketReply, UsageReportReply, WireError,
 };
 use crate::wire::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
@@ -593,16 +595,32 @@ fn execute(
             }))
         }
         Method::SettingsSet(params) => {
-            // The focus write beside the read: one declared lane in, the
-            // resolved focus out, beside the roster the faces already hold. An
-            // undeclared lane is the domain's refusal, and the revision moves,
-            // so the faces re-read the new focus on the change event.
+            // One write, two axes: each is applied only when its key is
+            // present, so a roster Save leaves the focus alone and a focus
+            // pick leaves the roster alone. The focus resolves first, so a
+            // refused lane writes nothing, not even the spelled roster. A
+            // frame that spells neither key is the legacy bare write: it
+            // clears the focus and leaves the roster alone, because on the
+            // wire an explicit null reads as absent, and clearing the focus
+            // must never empty the roster. The receipt is what the store
+            // holds after both axes, so the face redraws from this reply,
+            // never from its request's echo, and the revision moves, so the
+            // faces re-read on the change event.
             let settings = Settings::new(store);
             let lanes = board.lanes().map_err(domain)?;
-            let active_project = settings
-                .set_active_project(actor, params.project.as_deref(), &lanes)
-                .map_err(domain)?;
-            let roster = settings.roster().map_err(domain)?;
+            let active_project = match params.project.as_deref() {
+                Some(project) => settings
+                    .set_active_project(actor, Some(project), &lanes)
+                    .map_err(domain)?,
+                None if params.roster.is_none() => settings
+                    .set_active_project(actor, None, &lanes)
+                    .map_err(domain)?,
+                None => settings.active_project(&lanes).map_err(domain)?,
+            };
+            let roster = match params.roster {
+                Some(roster) => settings.set_roster(actor, roster).map_err(domain)?,
+                None => settings.roster().map_err(domain)?,
+            };
             Ok(Reply::Settings(SettingsReply {
                 roster,
                 active_project,
@@ -653,6 +671,56 @@ fn execute(
                 revision: store.last_revision(),
                 lanes: deletion.lanes,
                 moved: deletion.moved,
+            }))
+        }
+        Method::SprintList(params) => {
+            // The status words are the verb's own: an unknown one is refused
+            // in the CLI's words, so both doors say one thing.
+            let status = match params.status.as_deref() {
+                Some(raw) => Some(
+                    SprintStatus::parse(raw)
+                        .ok_or_else(|| domain(DomainError::InvalidSprintStatus(raw.to_string())))?,
+                ),
+                None => None,
+            };
+            let (sprints, revision) = Sprints::new(store)
+                .list_snapshot(params.lane.as_deref(), status)
+                .map_err(domain)?;
+            Ok(Reply::SprintList(SprintListReply { revision, sprints }))
+        }
+        Method::SprintShow(params) => {
+            let (sprint, revision) = Sprints::new(store)
+                .open_in_snapshot(named(&params.lane))
+                .map_err(domain)?;
+            Ok(Reply::Sprint(SprintReply {
+                revision,
+                sprint,
+                note: None,
+            }))
+        }
+        Method::SprintOpen(params) => {
+            // The mode defaults and validates as the CLI's `sprint open`
+            // does: absent is serial, and an unknown word is the CLI's own
+            // refusal. A lane with an open sprint answers it unchanged, with
+            // the note the CLI prints on a second open.
+            let mode = match params.mode.as_deref() {
+                None => SprintMode::Serial,
+                Some(raw) => SprintMode::parse(raw)
+                    .ok_or_else(|| domain(DomainError::InvalidSprintMode(raw.to_string())))?,
+            };
+            let opened = Sprints::new(store)
+                .open(
+                    actor,
+                    named(&params.lane),
+                    mode,
+                    params.session.as_deref(),
+                    None,
+                )
+                .map_err(domain)?;
+            Ok(Reply::Sprint(SprintReply {
+                revision: store.last_revision(),
+                sprint: opened.value,
+                note: opened.note,
             }))
         }
         Method::SetupStatus(_) => {

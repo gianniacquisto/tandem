@@ -100,7 +100,8 @@ enum Command {
         #[command(subcommand)]
         command: Option<SetupCommand>,
     },
-    /// The shared focus: the lane the faces draw (TAN-258).
+    /// The store's settings: the roster the pickers offer and the shared focus
+    /// the faces draw (TAN-258).
     Settings {
         #[command(subcommand)]
         command: Option<SettingsCommand>,
@@ -455,7 +456,15 @@ enum SettingsCommand {
 
 #[derive(Args)]
 struct SettingsSetArgs {
-    /// The lane to focus; an absent or empty flag clears back to every lane.
+    /// One roster name per flag; the spelled flags replace the stored list
+    /// whole, and a bare flag stores the empty list. Unspelled leaves the
+    /// stored list alone.
+    #[arg(long, num_args = 0..)]
+    roster: Option<Vec<String>>,
+    /// The lane to focus; a spelled flag with a name focuses it, and a bare
+    /// or empty flag clears back to every lane. Unspelled leaves the focus
+    /// alone, unless no flag is spelled at all: a bare `settings set` clears
+    /// the focus and leaves the roster alone.
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     project: Option<String>,
 }
@@ -1026,9 +1035,12 @@ fn lane(home: &Home, command: Option<&LaneCommand>) -> Result<(), Failure> {
     }
 }
 
-/// The shared focus: the lane the faces draw (TAN-258). `get` is the read the
-/// app makes over `rpc`; `set` is its write, beside `settings.get` in the
-/// method table, so agents read and write the same value the faces do.
+/// The store's settings: the roster the pickers offer and the shared focus
+/// the faces draw (TAN-258). `get` is the read the app makes over `rpc`;
+/// `set` is its write, beside `settings.get` in the method table, so agents
+/// read and write the same values the faces do. Each `set` flag spells one
+/// axis: an unspelled axis is left alone, except a bare `settings set`, which
+/// clears the focus and leaves the roster alone.
 fn settings_verb(home: &Home, command: Option<&SettingsCommand>) -> Result<(), Failure> {
     let command = command.ok_or_else(Failure::usage)?;
     let store = if matches!(command, SettingsCommand::Get) {
@@ -1049,11 +1061,24 @@ fn settings_verb(home: &Home, command: Option<&SettingsCommand>) -> Result<(), F
         }
         SettingsCommand::Set(args) => {
             let lanes = board.lanes().map_err(Failure::domain)?;
-            let active_project = settings
-                .set_active_project(board.actor(), args.project.as_deref(), &lanes)
-                .map_err(Failure::domain)?;
+            let bare = args.roster.is_none() && args.project.is_none();
+            let roster = match args.roster.clone() {
+                Some(roster) => settings
+                    .set_roster(board.actor(), roster)
+                    .map_err(Failure::domain)?,
+                None => settings.roster().map_err(Failure::domain)?,
+            };
+            let active_project = match args.project.as_deref() {
+                Some(project) => settings
+                    .set_active_project(board.actor(), Some(project), &lanes)
+                    .map_err(Failure::domain)?,
+                None if bare => settings
+                    .set_active_project(board.actor(), None, &lanes)
+                    .map_err(Failure::domain)?,
+                None => settings.active_project(&lanes).map_err(Failure::domain)?,
+            };
             print(&SettingsReply {
-                roster: settings.roster().map_err(Failure::domain)?,
+                roster,
                 active_project,
             })
         }
@@ -1341,9 +1366,7 @@ fn sprint(home: &Home, command: Option<&SprintCommand>) -> Result<(), Failure> {
             let status = match args.status.as_deref() {
                 Some(raw) => Some(
                     tandem_core::domain::sprint::SprintStatus::parse(raw).ok_or_else(|| {
-                        Failure::message(format!(
-                            "sprint status must be one of open, closed (got \"{raw}\")."
-                        ))
+                        Failure::domain(DomainError::InvalidSprintStatus(raw.to_string()))
                     })?,
                 ),
                 None => None,
@@ -1779,11 +1802,8 @@ fn grouped(value: i64) -> String {
 fn sprint_mode(raw: Option<&str>) -> Result<SprintMode, Failure> {
     match raw {
         None => Ok(SprintMode::Serial),
-        Some(raw) => SprintMode::parse(raw).ok_or_else(|| {
-            Failure::message(format!(
-                "mode must be one of serial, parallel (got \"{raw}\")."
-            ))
-        }),
+        Some(raw) => SprintMode::parse(raw)
+            .ok_or_else(|| Failure::domain(DomainError::InvalidSprintMode(raw.to_string()))),
     }
 }
 

@@ -233,7 +233,7 @@ export function App() {
   // over it, and the change event re-reads the new focus into the snapshot.
   const pickProject = useCallback(
     (lane: string | null) => {
-      void faceWrite({ method: 'settings.set', params: { project: lane } }, null).then(
+      void faceWrite({ method: 'settings.set', params: { project: lane, roster: null } }, null).then(
         (outcome) => {
           if (outcome.ok) reload()
         },

@@ -123,6 +123,14 @@ describe('the shell', () => {
     expect(css).toMatch(/min-width:\s*var\(--window-floor\)/)
   })
 
+  it('lets the tickets list span the wide face with the board', () => {
+    // The board's wide treatment is a modifier that lifts the column cap; the
+    // list carries the same modifier, and no rule caps `.list` on its own.
+    const css = readFileSync(join(renderer, 'src', 'app.css'), 'utf8')
+    expect(css).toMatch(/\.tickets--list/)
+    expect(css).not.toMatch(/\.list\s*\{[^}]*max-width/)
+  })
+
   it('exposes one world key, named tandem', () => {
     const preload = readFileSync(join(appRoot, 'src', 'preload', 'index.ts'), 'utf8')
     const worlds = [...preload.matchAll(/exposeInMainWorld\(\s*['"]([^'"]+)['"]/g)]

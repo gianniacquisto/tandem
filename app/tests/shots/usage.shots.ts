@@ -5,9 +5,10 @@ import { scene } from '../../shots/scenes'
 import { computed, token } from '../../shots/tokens'
 
 /**
- * The Usage face a human reads: the spend the records reported, the arithmetic
- * the ticket rows carry, and one ticket row rolled down to the records behind
- * it. Every figure is the report's own over the fixture home.
+ * The Usage face a human reads: the spend the records reported, the cost-per-day
+ * bar chart above the picker, the arithmetic the ticket rows carry, and one
+ * ticket row rolled down to the records behind it. Every figure is the report's
+ * own over the fixture home.
  */
 test('the usage face, with a ticket row rolled down', async ({ app, window }) => {
   await openTab(window, 'usage')
@@ -18,6 +19,28 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
 
   // The face reads the day palette: its quiet text is --ink-dim.
   expect(await computed(window, '.usage__coverage', 'color')).toBe(token('ink-dim'))
+
+  // The chart draws one bar per day row, above the picker, each named with its
+  // day and dollar figure. The bars reuse the meter's fill token.
+  const dayRowCount = await window.locator('.usage__row').count()
+  const chart = window.locator('.usage__chart')
+  await expect(chart).toBeVisible()
+  const bars = chart.getByRole('img')
+  await expect(bars).toHaveCount(dayRowCount)
+  const found = await bars.all()
+  const names = await Promise.all(found.map((bar) => bar.getAttribute('aria-label')))
+  expect(names).toHaveLength(dayRowCount)
+  for (const name of names) {
+    expect(name).toMatch(/^.+?: (?:\$[\d,]+\.\d{2}|\u2014)$/)
+  }
+  const chartBox = await chart.boundingBox()
+  const pickerBox = await window.locator('.usage__picker').boundingBox()
+  expect(chartBox === null || pickerBox === null).toBe(false)
+  if (chartBox !== null && pickerBox !== null) {
+    expect(chartBox.y + chartBox.height).toBeLessThanOrEqual(pickerBox.y)
+  }
+  expect(await computed(window, '.usage__bar', 'background-color')).toBe(token('accent'))
+  expect(await computed(window, '.usage__bar-label', 'color')).toBe(token('ink-dim'))
 
   const picker = window.locator('.usage__segment')
   await expect(picker).toHaveText(['Day', 'Model', 'Agent', 'Ticket'])

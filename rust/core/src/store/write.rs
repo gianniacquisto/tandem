@@ -254,9 +254,11 @@ impl Write<'_> {
         )
     }
 
-    /// Store a setting whether or not a row already carries the key: the focus
-    /// write lands on a home that may have set one before, and a second focus
-    /// is a replacement, never a duplicate row.
+    /// Store a setting whether or not the key was stored before: the roster and
+    /// the focus are whole-value replaces, so the second write overwrites the
+    /// first in one statement. A first write inserts; a later one updates the
+    /// value and the author, and a write that changes nothing still reads its
+    /// receipt after.
     pub fn upsert_setting(&self, setting: NewSetting<'_>) -> Result<()> {
         self.before_mutation()?;
         self.execute(

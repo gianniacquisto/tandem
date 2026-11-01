@@ -183,3 +183,58 @@ fn ticket_list_defaults_are_untouched_by_a_focus() {
         "the focus hides nothing from the default list: {listed}"
     );
 }
+
+#[test]
+fn a_focus_only_write_leaves_the_roster_alone() {
+    let sandbox = Sandbox::new("focus-keeps-roster");
+    declare(&sandbox, "Tandem");
+
+    let stored = json(&tandem(
+        &sandbox,
+        &["settings", "set", "--roster", "human", "--roster", "review"],
+    ));
+    assert_eq!(stored["roster"], serde_json::json!(["human", "review"]));
+
+    let focused = json(&tandem(
+        &sandbox,
+        &["settings", "set", "--project", "Tandem"],
+    ));
+    assert_eq!(
+        focused["activeProject"],
+        Value::String("Tandem".to_string())
+    );
+    assert_eq!(
+        focused["roster"],
+        serde_json::json!(["human", "review"]),
+        "focusing the faces must not rewrite the roster: {focused}"
+    );
+}
+
+#[test]
+fn a_bare_roster_flag_stores_the_empty_list_and_leaves_the_focus() {
+    let sandbox = Sandbox::new("empty-roster");
+    declare(&sandbox, "Tandem");
+    json(&tandem(
+        &sandbox,
+        &[
+            "settings",
+            "set",
+            "--roster",
+            "human",
+            "--project",
+            "Tandem",
+        ],
+    ));
+
+    let emptied = json(&tandem(&sandbox, &["settings", "set", "--roster"]));
+    assert_eq!(
+        emptied["roster"],
+        serde_json::json!([]),
+        "a bare --roster stores the empty list: {emptied}"
+    );
+    assert_eq!(
+        emptied["activeProject"],
+        Value::String("Tandem".to_string()),
+        "emptying the roster must not clear the focus: {emptied}"
+    );
+}
