@@ -598,11 +598,13 @@ fn token_averages_round_half_up() {
 
     let row = &report.day[0];
     assert_eq!(
-        row.average_tokens.input, Some(501),
+        row.average_tokens.input,
+        Some(501),
         "1001 over 2 is 500.5, rounded up"
     );
     assert_eq!(
-        row.average_tokens.output, Some(1),
+        row.average_tokens.output,
+        Some(1),
         "1 over 2 is 0.5, rounded up"
     );
 }

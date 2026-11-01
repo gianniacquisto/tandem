@@ -317,9 +317,8 @@ impl Summary {
             return (SessionTokens::default(), 0.0);
         }
         let denominator = self.reported as f64;
-        let piece = |total: Option<i64>| {
-            total.map(|total| (total as f64 / denominator).round() as i64)
-        };
+        let piece =
+            |total: Option<i64>| total.map(|total| (total as f64 / denominator).round() as i64);
         (
             SessionTokens {
                 input: piece(self.input),
