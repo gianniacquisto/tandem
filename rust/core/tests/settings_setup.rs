@@ -9,7 +9,7 @@
 //!   face, so the renderer computes no path of its own;
 //! - `setup.install` answers the report the CLI prints, so the repair's result
 //!   is the files it wrote and not a verdict;
-//! - `doctor.report` answers ADR 0014's eight rows by name and state;
+//! - `doctor.report` answers ADR 0014's eleven rows by name and state;
 //! - a broken host is red, and the repair turns it green in place;
 //! - every method the rendered Settings face calls is a method the wire speaks,
 //!   so a control cannot reach a writer the CLI does not have.

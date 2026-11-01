@@ -81,9 +81,12 @@ pub struct Facts {
     pub comments_imported: bool,
     /// The JSON-era leftovers the store retired, one list per row (TAN-243):
     /// `sessions.json` with its `.pre-sqlite-*` copy, `settings.json` with its
-    /// own, and the `todos.json.*` cohort. Named only beside a database, because
-    /// the store's schema is the marker that the domain moved (ADR 0031); empty
-    /// is the clean home.
+    /// own, and the `todos.json.*` cohort. Named in every home, because a file
+    /// nothing reads should not be found by `ls`; empty is the clean home. Only
+    /// `sessions.json` and `settings.json` are import evidence, so their rows
+    /// print a removal command only beside a database (ADR 0031: the store's
+    /// schema is the marker that the domain moved). The cohort is ADR 0030's
+    /// retirement and needs no marker.
     pub sessions_json: Vec<PathBuf>,
     pub settings_json: Vec<PathBuf>,
     pub todos_json: Vec<PathBuf>,
@@ -114,23 +117,32 @@ pub fn report(facts: &Facts) -> DoctorReport {
     checks.push(store_check(facts));
     checks.push(bikeshed_check(facts));
     checks.push(comments_check(facts));
+    // The two imported sidecars print their removal only beside a database: a
+    // home that never opened the store has imported nothing, and the row names
+    // what it sees instead of claiming the file is absent.
+    let store_present = !matches!(facts.store_health, Health::Absent);
     checks.push(sidecar_check(
         "sessions",
         "sessions.json",
         SIDECAR_RETIRED,
         &facts.sessions_json,
+        store_present,
     ));
     checks.push(sidecar_check(
         "settings",
         "settings.json",
         SIDECAR_RETIRED,
         &facts.settings_json,
+        store_present,
     ));
+    // The `todos.json.*` cohort is ADR 0030's retirement, not import evidence,
+    // so it is removable in any home, database or not.
     checks.push(sidecar_check(
         "todos-json",
         "todos.json.* files",
         TODOS_RETIRED,
         &facts.todos_json,
+        true,
     ));
     checks.push(DoctorCheck {
         name: "lock".to_string(),
@@ -336,12 +348,22 @@ const SIDECAR_RETIRED: &str = "imported into the store, never read again";
 const TODOS_RETIRED: &str = "the retired JSON board, never read again";
 
 /// One row per retired JSON file group (TAN-243): the files it found, in the
-/// order the gathering sorted them, and one command that removes them all.
+/// order the gathering sorted them, and, when the files may be removed, one
+/// command that removes them all.
 ///
 /// Informational in both states, like `comments`: a leftover is disk the human
-/// may clear, and a clean home is the same row saying so. The command is built
-/// by [`shell_quoted`], so a home the shell would split stays one path.
-fn sidecar_check(name: &str, file: &str, retired: &str, files: &[PathBuf]) -> DoctorCheck {
+/// may clear, and a clean home is the same row saying so. `removable` is false
+/// for an imported sidecar in a home with no database: nothing there has
+/// imported it, so the row names the file and prints no `rm` rather than
+/// claiming the file is absent. The command is built by [`shell_quoted`], so a
+/// home the shell would split stays one path.
+fn sidecar_check(
+    name: &str,
+    file: &str,
+    retired: &str,
+    files: &[PathBuf],
+    removable: bool,
+) -> DoctorCheck {
     if files.is_empty() {
         return DoctorCheck {
             name: name.to_string(),
@@ -354,16 +376,21 @@ fn sidecar_check(name: &str, file: &str, retired: &str, files: &[PathBuf]) -> Do
         .map(|path| slashed_path(path))
         .collect::<Vec<_>>()
         .join(", ");
-    let commands = files
-        .iter()
-        .map(|path| shell_quoted(path))
-        .collect::<Vec<_>>()
-        .join(" ");
     let pronoun = if files.len() == 1 { "it" } else { "them" };
+    let detail = if removable {
+        let commands = files
+            .iter()
+            .map(|path| shell_quoted(path))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!("{named} \u{2014} {retired}; remove {pronoun} with: rm -f {commands}")
+    } else {
+        format!("{named} \u{2014} present; no store in this home has imported {pronoun} yet")
+    };
     DoctorCheck {
         name: name.to_string(),
         ok: true,
-        detail: format!("{named} \u{2014} {retired}; remove {pronoun} with: rm -f {commands}"),
+        detail,
     }
 }
 
@@ -538,19 +565,15 @@ pub fn gather(home: &Home, environment: &Environment) -> Facts {
         None
     };
 
-    // The store's schema is the marker that a domain moved (ADR 0031: the port
-    // ships no `store_imports`), so a leftover is named once the database is
-    // there and never before: a home that has not opened the store has nothing
-    // to have imported.
-    let (sessions_json, settings_json, todos_json) = if store.database().exists() {
-        (
-            sidecar_files(home.directory(), "sessions.json"),
-            sidecar_files(home.directory(), "settings.json"),
-            todos_cohort(home.directory()),
-        )
-    } else {
-        (Vec::new(), Vec::new(), Vec::new())
-    };
+    // The JSON-era leftovers are read in every home, not only beside a
+    // database: the `todos.json.*` cohort is ADR 0030's retirement and needs no
+    // marker, and a home that has not opened the store still has files a
+    // diagnostic should name. The report alone decides what may be removed,
+    // because only a database can have imported `sessions.json` and
+    // `settings.json` (ADR 0031).
+    let sessions_json = sidecar_files(home.directory(), "sessions.json");
+    let settings_json = sidecar_files(home.directory(), "settings.json");
+    let todos_json = todos_cohort(home.directory());
 
     Facts {
         home_path: home.directory().to_path_buf(),

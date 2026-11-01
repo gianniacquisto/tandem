@@ -22,7 +22,7 @@
 //!   copy, the host links, the manifest and the warning model `setup status` and
 //!   `doctor` both read.
 //!
-//! - [`diagnostics`]: ADR 0014's eight-row setup report, a pure assembly over
+//! - [`diagnostics`]: ADR 0014's eleven-row setup report, a pure assembly over
 //!   injected facts with one impure gatherer.
 
 pub mod bikeshed;

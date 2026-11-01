@@ -475,6 +475,27 @@ fn a_home_with_no_leftovers_prints_one_clean_sentence_per_row() {
     }
 }
 
+/// No database, no import: the row still names the file it sees, and prints no
+/// `rm` for a leftover the store never carried over (TAN-243).
+#[test]
+fn a_home_without_a_store_names_its_sidecar_and_prints_no_removal() {
+    let mut facts = facts();
+    facts.store_health = Health::Absent;
+    facts.store_version = None;
+    facts.sessions_json = vec![PathBuf::from("/Users/tester/.tandem-dev/sessions.json")];
+    let report = report(&facts);
+    assert!(report.ok);
+    assert_eq!(
+        check(&report, "sessions").detail,
+        "/Users/tester/.tandem-dev/sessions.json \u{2014} present; no store in this home has \
+         imported it yet"
+    );
+    assert!(
+        !check(&report, "sessions").detail.contains("rm -f"),
+        "nothing imported it, so the row prints no removal command"
+    );
+}
+
 /// One quoting rule for every printed delete: a home with a space or a quote
 /// stays one word in the new rows too.
 #[test]
@@ -749,18 +770,45 @@ fn gathering_names_the_json_leftovers_beside_a_database() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// No database, no import to retire: a home that never opened the store names no
-/// leftover, even when the old files are still there.
+/// No database, no import: the leftovers are still named, so `ls` is not the
+/// only surface, but the two imported sidecars print no removal command. The
+/// `todos.json.*` cohort is ADR 0030's retirement and carries no import marker,
+/// so its row names the removal in any home.
 #[test]
-fn no_database_means_no_leftover_is_named() {
+fn no_database_names_the_leftovers_but_removes_only_the_retired_board() {
     let (store, root) = temp_store("sidecars-fresh");
     let home = store.home().clone();
     std::fs::create_dir_all(home.directory()).unwrap();
     std::fs::write(home.directory().join("sessions.json"), "{}").unwrap();
+    std::fs::write(
+        home.directory().join("settings.json.pre-sqlite-1793055385"),
+        "{}",
+    )
+    .unwrap();
+    std::fs::write(home.directory().join("todos.json.corrupt"), "{}").unwrap();
+
     let facts = diagnostics::gather(&home, &tandem_core::setup::Environment::new());
-    assert!(facts.sessions_json.is_empty());
-    assert!(facts.settings_json.is_empty());
-    assert!(facts.todos_json.is_empty());
+    let directory = home.directory();
+    assert_eq!(facts.sessions_json, vec![directory.join("sessions.json")]);
+    assert_eq!(
+        facts.settings_json,
+        vec![directory.join("settings.json.pre-sqlite-1793055385")]
+    );
+    assert_eq!(facts.todos_json, vec![directory.join("todos.json.corrupt")]);
+
+    let report = report(&facts);
+    assert!(report.ok);
+    let sessions = &check(&report, "sessions").detail;
+    assert!(sessions.contains("sessions.json"), "{sessions}");
+    assert!(
+        !sessions.contains("rm -f"),
+        "nothing imported it, so the row prints no removal command: {sessions}"
+    );
+    let todos = &check(&report, "todos-json").detail;
+    assert!(
+        todos.contains("rm -f"),
+        "the cohort needs no store to be removable: {todos}"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
