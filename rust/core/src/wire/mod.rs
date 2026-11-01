@@ -35,7 +35,7 @@ pub use views::{
 
 /// What `doctor` answers: ADR 0014's shape, `{"ok": bool, "checks": [...]}`.
 ///
-/// The eleven rows, in the pinned order, are built by
+/// The twelve rows, in the pinned order, are built by
 /// [`crate::diagnostics::report`]. `ok` is the AND of the rows that can fail;
 /// `app`, `skills` and the three leftover rows are informational and always
 /// pass.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-import type { Call } from '../../../src/shared/bridge'
+import type { Method } from '../../../src/shared/bridge'
 import type { Write } from '../shell/write'
 import {
   INITIAL_FILTERS,
@@ -145,7 +145,7 @@ export function TicketsFace({
   }
 
   function toggle(ticket: TicketSummary): void {
-    const call: Call = ticket.done
+    const call: Method = ticket.done
       ? {
           method: 'ticket.set',
           params: {

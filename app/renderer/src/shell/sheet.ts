@@ -1,4 +1,4 @@
-import type { Call } from '../../../src/shared/bridge'
+import type { Method } from '../../../src/shared/bridge'
 import type { Reply } from '../wire/Reply'
 import type { TicketDetail } from '../wire/TicketDetail'
 
@@ -135,7 +135,7 @@ export type SheetDraft = {
  * two would otherwise be overwritten by the older body.
  */
 export type AppendPlan =
-  | { ok: true; call: Call; expected: number }
+  | { ok: true; call: Method; expected: number }
   | { ok: false; message: string }
 
 export function appendPlan(read: SheetRead, addition: string): AppendPlan {
