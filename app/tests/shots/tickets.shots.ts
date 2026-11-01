@@ -240,3 +240,22 @@ test('the keyboard set reaches the fields and moves a ticket, and a second write
   cli(['ticket', 'add', '--title', title])
   await expect(window.locator('.ticket-row', { hasText: title })).toBeVisible({ timeout: 15_000 })
 })
+
+test('the sheet opens inside the palette ring, not the OS accent, in both schemes', async ({
+  window,
+}) => {
+  await openTab(window, 'tickets')
+  await expect(window.locator('.ticket-row').first()).toBeVisible()
+
+  // A sheet takes focus when it opens, so its ring is the ring drawn round the
+  // whole dialog: it must come from the palette, never the browser's default.
+  await window.locator('.ticket-row').first().dblclick()
+  await expect(window.locator('.sheet')).toBeVisible()
+
+  expect(await computed(window, '.sheet', 'outline-color')).toBe(token('accent'))
+
+  // The night scheme overrides --accent, so the same rule must follow it.
+  await window.emulateMedia({ colorScheme: 'dark' })
+  expect(await computed(window, '.sheet', 'outline-color')).toBe(token('accent', 'night'))
+  await window.emulateMedia({ colorScheme: 'light' })
+})
