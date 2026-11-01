@@ -61,7 +61,9 @@ test('the workflow face draws the open sprint on the pass DAG', async ({ app, wi
     }
   }
   expect(lane).not.toBeNull()
-  cli(['sprint', 'open', '--lane', lane as string, '--mode', 'parallel'])
+  // The open names its session the way a sprint session does: the CLI refuses
+  // an open with no session to file, and the shot is that second writer.
+  cli(['sprint', 'open', '--lane', lane as string, '--mode', 'parallel', '--session', 'ses_shots'])
   const drawn = new Set<string>()
   for (const ticket of batch) {
     if (drawn.has(ticket.status)) continue
