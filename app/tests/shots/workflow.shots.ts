@@ -94,6 +94,9 @@ test('the workflow face draws the open sprint on the pass DAG', async ({ app, wi
   // The run log is empty on a fresh open, and says so in the face's words.
   await expect(window.locator('.workflow__fact')).toContainText('No runs yet')
 
+  // Host setup stays a link into the Settings face, not a second copy.
+  await expect(window.locator('.workflow__hint a')).toHaveAttribute('href', '#/settings')
+
   // A lane with no open sprint draws the empty state with the mode opener.
   const others = lanes.filter((name) => name !== lane)
   if (others.length > 0) {
