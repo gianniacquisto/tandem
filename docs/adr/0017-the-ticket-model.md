@@ -71,3 +71,13 @@ Consequences: `refined` in the ADRs above and in the skill prose before this dat
 Why: the read was the odd verb, and its silence was indistinguishable from "no comments" for a ticket with a full log, which is exactly the answer a reader cannot check.
 
 Consequence: a deleted ticket's log still stays on disk, as this record says, but no verb reads it now, because a read starts from the board. The write path is unchanged; it already resolved refs.
+
+## Amendment, 2026-11-01: after the import the comments sidecar is evidence, and `doctor` names its removal
+
+The sidecar this record added is spent: [ADR 0031](0031-one-database-the-store.md) made the `comments` table the log, and the `<home>/comments/` directory holds only the import's proof, `.jsonl` logs plus their `.pre-sqlite-<ts>` copies. Nothing reads it once the rows exist. So the row stops presenting it as live evidence and names the one command that retires it.
+
+The Rust face's `comments_check` prints `; remove them with: rm -rf '<dir>'` after the "already imported" sentence, in both the readable and the unreadable branch, and keeps `ok: true` in both: a leftover the human can remove is not a broken setup. The absent branch is unchanged (`no legacy log directory`, green), and that is the state after the command runs. The two pre-import branches are untouched, so a home whose database was deleted beside untouched logs still reads them.
+
+No verb deletes the directory: `doctor` is a reader, and a recursive delete behind a subcommand or a repair button is irreversible in one call. The removal is the human's act, taken from a command the report prints. The command's path comes from the environment, so both printed deletions (this one and the tickets.json fork's) go through one `shell_quoted` helper, POSIX single-quoting with an embedded `'` written `'\''`; a home path with a space or a quote cannot print a delete that names somewhere else.
+
+The port has no importer and no read fallback, and with the Swift targets gone ([ADR 0037](0037-one-stack-rust-core-electron-ui.md)) the fallback rule earlier in this record applies to no live reader. A directory beside a port store is imported evidence, never something the port reads. The removal stays per home and never a side effect of a write: the `.pre-sqlite` copy is the import's own proof, and [ADR 0018](0018-rolling-store-backup.md)'s `tandem.db.bak` is the recovery path that holds every comment the logs hold.

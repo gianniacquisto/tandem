@@ -139,11 +139,11 @@ fn store_check(facts: &Facts) -> DoctorCheck {
         .store_json_fork
         .as_ref()
         .map(|path| {
-            let quoted = slashed_path(path).replace('\'', "'\\''");
             format!(
                 "; a JSON store file is also present at {} \u{2014} a fork, ignored since the \
-                 database took over; remove it with: rm '{quoted}'",
-                slashed_path(path)
+                 database took over; remove it with: rm {}",
+                slashed_path(path),
+                shell_quoted(path)
             )
         })
         .unwrap_or_default();
@@ -231,23 +231,36 @@ fn bikeshed_check(facts: &Facts) -> DoctorCheck {
     }
 }
 
-/// The comments row: the live log is the database, and the legacy
-/// `<home>/comments/` directory is the import's evidence. The port has no
-/// import marker, so a directory is only ever absent; the shape is the ported
-/// contract and a home that carries one still reads correctly.
+/// A path as one POSIX shell word: single-quoted, with an embedded `'` written
+/// `'\''`. Both commands the report prints remove a path that comes from the
+/// environment, so the quoting is what keeps the delete inside the path it
+/// names.
+pub fn shell_quoted(path: &Path) -> String {
+    format!("'{}'", slashed_path(path).replace('\'', "'\\''"))
+}
+
+/// The comments row: the live log is the database, and `<home>/comments/` is
+/// the import's evidence. The port has no importer: a directory beside a port
+/// store is evidence of an import that already happened, never something the
+/// port reads. So a present directory is named with the command that removes
+/// it, and an absent one is the clean state after the human runs that command.
 fn comments_check(facts: &Facts) -> DoctorCheck {
     let path = slashed_path(&facts.comments_path);
     let store = slashed_path(&facts.store_path);
     if facts.comments_imported {
         let live = format!("{store} \u{2014} {} comment(s)", facts.comment_rows);
+        let removal = format!(
+            "; remove them with: rm -rf {}",
+            shell_quoted(&facts.comments_path)
+        );
         let detail = match facts.comments_state {
             CommentsState::Absent => format!("{live}; no legacy log directory"),
             CommentsState::Readable => {
-                format!("{live}; legacy logs at {path} already imported")
+                format!("{live}; legacy logs at {path} already imported{removal}")
             }
             CommentsState::Unreadable => format!(
                 "{live}; legacy logs at {path} present but unreadable \u{2014} already \
-                 imported, so not read"
+                 imported, so not read{removal}"
             ),
         };
         return DoctorCheck {
