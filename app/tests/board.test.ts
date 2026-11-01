@@ -14,6 +14,7 @@ import {
   dropCalls,
   dropIndex,
   filterTickets,
+  firstSelection,
   laneColumns,
   laneIndexOf,
   laneKeys,
@@ -193,6 +194,16 @@ describe('the board view over the snapshot', () => {
     expect(rows.map((row) => row.title)).toEqual(['Uncategorized', 'Port', 'Empty', 'Tandem'])
     expect(rows[2]?.cells).toHaveLength(6)
     expect(rows[2]?.cells.every((cell) => cell.tickets.length === 0)).toBe(true)
+  })
+
+  it('selects the first card of the first lane that holds one, in either direction', () => {
+    const rows = laneRows(['Port'], board)
+    expect(firstSelection(rows, 1)).toBe('b')
+    expect(firstSelection(rows, -1)).toBe('d')
+
+    // A lane with no cards is stepped over, not answered with null.
+    const sparse = laneRows([], [ticket({ id: 'z', lane: 'Port' })])
+    expect(firstSelection(sparse, 1)).toBe('z')
   })
 
   it('titles the default area, and keeps a dangling lane rather than hiding its tickets', () => {

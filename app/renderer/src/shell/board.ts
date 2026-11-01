@@ -420,6 +420,22 @@ export function neighbourLane(
 }
 
 /**
+ * The ticket a plain arrow selects when the face has none: the first card of
+ * the first lane (in `delta` order) that holds one, read across that lane's
+ * status cells.
+ */
+export function firstSelection(rows: readonly LaneRow[], delta: -1 | 1): string | null {
+  const start = delta > 0 ? 0 : rows.length - 1
+  for (let index = start; index >= 0 && index < rows.length; index += delta) {
+    const row = rows[index]
+    if (row === undefined) continue
+    const first = neighbourSelection(row.cells, null, delta)
+    if (first !== null) return first
+  }
+  return null
+}
+
+/**
  * The ticket a left or right arrow selects: the next column that holds one, at
  * the same row where it can, clamped to that column's last row.
  */

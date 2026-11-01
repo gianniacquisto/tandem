@@ -11,6 +11,7 @@ import {
   dropCalls,
   dropIndex,
   filterTickets,
+  firstSelection,
   laneColumns,
   laneKeys,
   laneRows,
@@ -236,8 +237,7 @@ export function TicketsFace({
           event.preventDefault()
           if (view === 'board') {
             if (selected === null) {
-              const cells = intent.delta > 0 ? (rows[0]?.cells ?? []) : (rows.at(-1)?.cells ?? [])
-              setSelected(neighbourSelection(cells, null, intent.delta))
+              setSelected(firstSelection(rows, intent.delta))
               return
             }
             const rowIndex = rows.findIndex((row) =>
@@ -248,8 +248,7 @@ export function TicketsFace({
                 cell.tickets.some((ticket) => ticket.id === selected),
               ) ?? -1
             if (rowIndex < 0 || cellIndex < 0) {
-              const cells = intent.delta > 0 ? (rows[0]?.cells ?? []) : (rows.at(-1)?.cells ?? [])
-              setSelected(neighbourSelection(cells, null, intent.delta))
+              setSelected(firstSelection(rows, intent.delta))
               return
             }
             // Left and right step the status cells of this lane; up and down
