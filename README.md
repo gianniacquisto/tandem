@@ -248,6 +248,8 @@ Tandem's store was `tickets.json` until v0.27.0, with the comments, sessions, sp
 
 The tracker is the **Tandem board**, not GitHub issues — the tracker contract is the `tandem` skill (`skills/tandem/SKILL.md`).
 
+The full on-ramp is [CONTRIBUTING.md](CONTRIBUTING.md): prerequisites, setup, and the gate commands to run before you push.
+
 - **Branch off `main`.** `main` is the trunk: it takes merges, and a release is a lightweight tag on its head, so installs come from the tag ([ADR 0019](docs/adr/0019-integration-branch.md), amended 2026-10-29). Pull requests target `main`.
 - **Merge, don't rewrite.** Prefer merge commits over rebases, and avoid force pushes and other destructive git actions unless absolutely necessary — when a force push is unavoidable, `--force-with-lease`, never bare `--force`.
 - **Run the gates.** `cargo test`, `cargo fmt --all --check` and `cargo clippy --all-targets -- -D warnings` in `rust/`; `npm run typecheck && npm test` in `app/`; and in `Editor/`: `npm ci && node --test`. The committed editor bundle is prebuilt, and CI rebuilds it and fails on any byte that differs.
