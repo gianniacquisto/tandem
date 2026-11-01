@@ -63,7 +63,8 @@ One JSON report of where your state lives and whether it is healthy: the home di
 
 That table is the shipped app: every release publishes macOS artifacts only.
 Underneath, the repo builds and tests cross-platform. CI runs the Rust suite
-and the app suite (typecheck, tests, packaging, artifact check, smoke) on
+and the app suite (typecheck, tests, packaging, artifact check, and smoke
+on macOS and Linux only) on
 macOS, Windows and Ubuntu runners, so a checkout on any of the three builds
 and tests what it can run. [CONTRIBUTING.md](CONTRIBUTING.md) is the
 per-platform on-ramp.
