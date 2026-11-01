@@ -254,6 +254,19 @@ impl Write<'_> {
         )
     }
 
+    /// Store a setting whether or not the key was stored before: the roster is
+    /// a whole-list replace, so the second write overwrites the first in one
+    /// statement. A first write inserts; a later one updates the value and the
+    /// author, and a write that changes nothing still reads its receipt after.
+    pub fn upsert_setting(&self, setting: NewSetting<'_>) -> Result<()> {
+        self.before_mutation()?;
+        self.execute(
+            "INSERT INTO settings (key, value, author) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, author = excluded.author",
+            params![setting.key, setting.value, self.actor.as_str()],
+        )
+    }
+
     /// Whether the sprints table carries a (lane, number). The sprints domain is
     /// a read-modify-write in one transaction, so it asks inside the write.
     pub fn sprint_exists(&self, lane: &str, number: i64) -> Result<bool> {

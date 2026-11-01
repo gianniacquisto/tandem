@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   coverage,
+  dayBars,
   dimensionLabel,
   dimensionRows,
   money,
@@ -199,5 +200,48 @@ describe('the usage face over one report', () => {
     expect(selectedRow(reloaded, 'day', '2026-10-29')).toBeNull()
     expect(selectedRow(reloaded, 'agent', 'builder')?.label).toBe('builder')
     expect(selectedRow(reloaded, 'model', 'builder')).toBeNull()
+  })
+
+  it('scales the day chart to the largest day cost', () => {
+    const days = [
+      row({ id: '2026-10-31', label: '2026-10-31', cost: 1, barPercent: 50 }),
+      row({ id: '2026-10-30', label: '2026-10-30', cost: 2, barPercent: 100 }),
+    ]
+    const bars = dayBars(days)
+    expect(bars.map((bar) => bar.row.id)).toEqual(['2026-10-30', '2026-10-31'])
+    expect(bars.map((bar) => bar.heightPercent)).toEqual([100, 50])
+  })
+
+  it('draws zero heights when no day reported anything', () => {
+    const days = [
+      row({ id: '2026-10-31', label: '2026-10-31', reported: 0, cost: 0, barPercent: 0 }),
+      row({ id: '2026-10-30', label: '2026-10-30', reported: 0, cost: 0, barPercent: 0 }),
+    ]
+    const bars = dayBars(days)
+    expect(bars.map((bar) => bar.heightPercent)).toEqual([0, 0])
+  })
+
+  it('orders the day chart oldest first', () => {
+    const days = [
+      row({ id: '2026-11-01', label: '2026-11-01', cost: 3 }),
+      row({ id: '2026-10-31', label: '2026-10-31', cost: 3 }),
+      row({ id: '2026-10-30', label: '2026-10-30', cost: 3 }),
+    ]
+    expect(dayBars(days).map((bar) => bar.row.id)).toEqual([
+      '2026-10-30',
+      '2026-10-31',
+      '2026-11-01',
+    ])
+  })
+
+  it('keeps a zero-cost day in its slot with zero height', () => {
+    const days = [
+      row({ id: '2026-10-31', label: '2026-10-31', cost: 2 }),
+      row({ id: '2026-10-30', label: '2026-10-30', cost: 0 }),
+      row({ id: '2026-10-29', label: '2026-10-29', cost: 1 }),
+    ]
+    const bars = dayBars(days)
+    expect(bars.map((bar) => bar.row.id)).toEqual(['2026-10-29', '2026-10-30', '2026-10-31'])
+    expect(bars.map((bar) => bar.heightPercent)).toEqual([50, 0, 100])
   })
 })

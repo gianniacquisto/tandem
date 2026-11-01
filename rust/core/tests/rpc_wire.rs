@@ -126,6 +126,57 @@ fn a_settings_read_answers_the_stores_roster() {
     );
 }
 
+/// The write beside the read: `settings.set` stores the whole roster, and the
+/// receipt it answers is the cleaned list `settings.get` reads back. Cleaning
+/// is the domain's, so padding, empties and repeats never reach the store; an
+/// explicitly emptied list reads back empty, not the default.
+#[test]
+fn a_settings_write_stores_the_roster_a_read_answers_back() {
+    let sandbox = Sandbox::new("rpc-settings-write");
+    let store = sandbox.store();
+
+    let written = handle(
+        &store,
+        &frame(1, "settings.set", json!({"roster": ["human", "review"]})),
+    );
+    assert_eq!(written["id"], 1, "the frame echoes its id");
+    assert_eq!(
+        written["result"]["roster"],
+        json!(["human", "review"]),
+        "the receipt carries the stored roster"
+    );
+    let read = handle(&store, &frame(2, "settings.get", json!({})));
+    assert_eq!(
+        read["result"]["roster"],
+        json!(["human", "review"]),
+        "the read answers what the write stored"
+    );
+
+    // The second write replaces the first whole, and entries with
+    // padding, empties and repeats come back cleaned.
+    let cleaned = handle(
+        &store,
+        &frame(
+            3,
+            "settings.set",
+            json!({"roster": ["  alpha  ", "", "   ", "beta", "alpha", "beta "]}),
+        ),
+    );
+    assert_eq!(cleaned["result"]["roster"], json!(["alpha", "beta"]));
+    let reread = handle(&store, &frame(4, "settings.get", json!({})));
+    assert_eq!(
+        reread["result"]["roster"],
+        json!(["alpha", "beta"]),
+        "the read answers the cleaned list, not the request's echo"
+    );
+
+    // An emptied list stays empty: the receipt and the re-read agree.
+    let emptied = handle(&store, &frame(5, "settings.set", json!({"roster": []})));
+    assert_eq!(emptied["result"]["roster"], json!([]));
+    let empty = handle(&store, &frame(6, "settings.get", json!({})));
+    assert_eq!(empty["result"]["roster"], json!([]));
+}
+
 /// The ticket sheet draws a body as markdown (`TicketMarkdown`, TAN-219). The
 /// parsing stays the core's: the app sends the text it holds, and gets blocks
 /// back, so the sheet and the CLI cannot read one dialect two ways.

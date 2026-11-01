@@ -585,6 +585,16 @@ fn execute(
             let roster = Settings::new(store).roster().map_err(domain)?;
             Ok(Reply::Settings(SettingsReply { roster }))
         }
+        Method::SettingsSet(params) => {
+            // The write mirrors the read: the same domain call the CLI verb
+            // makes, and the reply carries the stored roster as the receipt.
+            // The face redraws from this list, never from its request's echo,
+            // so what it draws is what the store holds.
+            let roster = Settings::new(store)
+                .set_roster(actor, params.roster)
+                .map_err(domain)?;
+            Ok(Reply::Settings(SettingsReply { roster }))
+        }
         Method::MarkdownBlocks(params) => {
             // The parsing is the domain's (`TicketMarkdown`), so the sheet draws
             // the same blocks the Swift sheet drew from the same dialect. The

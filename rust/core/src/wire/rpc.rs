@@ -126,11 +126,15 @@ methods! {
     // derivation `usage_report` already froze (PRT-15). An empty verb is how the
     // table says so; `the_read_methods_without_a_cli_verb_are_named_here` names it.
     UsageReport: "usage.report", EmptyParams, "";
-    // The settings the faces read, in one message: the sheet's assignee picker
-    // and the board's filter both offer the store's roster (PRT-38), which is a
-    // `settings` row with no CLI verb to spell. It writes nothing, so no
-    // UI-only write hides behind an empty verb.
+    // The settings the faces read, in one read message: the sheet's assignee
+    // picker and the board's filter both offer the store's roster (PRT-38),
+    // which is a `settings` row. The read writes nothing, so no UI-only write
+    // hides behind its empty verb; the write below names the CLI verb it
+    // shares with the Settings face's Save.
     SettingsGet: "settings.get", EmptyParams, "";
+    // The roster write: the Settings face's Save and `settings set` spell one
+    // act, the whole-list replace `domain::Settings::set_roster` performs.
+    SettingsSet: "settings.set", SettingsSetParams, "settings set";
     // The ticket sheet's read: a body in, the blocks it draws out. The parsing
     // is the core's (`TicketMarkdown`), so the app and the CLI cannot read one
     // dialect two ways, and the message writes nothing: an empty verb.
@@ -142,6 +146,16 @@ methods! {
 #[serde(rename_all = "camelCase", default)]
 pub struct MarkdownBlocksParams {
     pub text: Option<String>,
+}
+
+/// `settings.set`: the roster's whole replacement list. Absent is the empty
+/// list, which stores as empty: the write replaces whole, so there is no
+/// "unchanged" to spell, and an emptied roster is the human's removal rather
+/// than a value no build can read.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SettingsSetParams {
+    pub roster: Vec<String>,
 }
 
 /// A method that takes nothing. The frame still carries `"params": {}`, so a
@@ -456,13 +470,14 @@ pub struct UsageReportReply {
     pub report: UsageReportView,
 }
 
-/// `settings.get`: the settings a face reads.
+/// `settings.get`: the settings a face reads, and `settings.set`'s receipt.
 ///
 /// The roster is the one setting the app reads (`TandemSettings.roster`): the
 /// names the sheet's assignee picker and the board's filter offer. It is the
 /// stored list, or the default when none was ever stored; the typing is the
-/// core's (`domain::Settings`), so neither face parses a settings row. A setting
-/// added later is one more field here, never a second method.
+/// core's (`domain::Settings`), so neither face parses a settings row. A
+/// setting added later is one more field here; the write is its own method
+/// (`settings.set`), because only reads share this reply.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsReply {
