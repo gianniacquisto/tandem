@@ -50,12 +50,22 @@ fn tokens(
     output: Option<i64>,
     reasoning: Option<i64>,
 ) -> Option<SessionTokens> {
+    tokens5(input, output, reasoning, None, None)
+}
+
+fn tokens5(
+    input: Option<i64>,
+    output: Option<i64>,
+    reasoning: Option<i64>,
+    cache_read: Option<i64>,
+    cache_write: Option<i64>,
+) -> Option<SessionTokens> {
     let tokens = SessionTokens {
         input,
         output,
         reasoning,
-        cache_read: None,
-        cache_write: None,
+        cache_read,
+        cache_write,
     };
     tokens.reported().then_some(tokens)
 }
@@ -434,4 +444,207 @@ fn the_calendar_decides_what_a_day_is() {
         Calendar::Local.day_key("2026-10-30T23:30:00Z"),
         crate::store::local_day("2026-10-30T23:30:00Z").unwrap()
     );
+}
+
+/// The per-reported-record averages: every token piece and the cost over
+/// `reported`, tokens rounded to whole tokens (.5 up), cost at full precision.
+#[test]
+fn a_row_averages_its_reported_records() {
+    let sessions = vec![
+        session(
+            "ses_a",
+            "2026-10-30T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(600), Some(300), None, Some(120), Some(60)),
+            Some(1.0),
+            &[],
+        ),
+        session(
+            "ses_b",
+            "2026-10-30T10:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(400), Some(200), None, Some(80), Some(40)),
+            Some(2.0),
+            &[],
+        ),
+    ];
+    let report = usage_report(&sessions, &[], &Calendar::Utc);
+
+    let row = &report.day[0];
+    assert_eq!(row.reported, 2);
+    assert_eq!(row.average_tokens.input, Some(500));
+    assert_eq!(row.average_tokens.output, Some(250));
+    assert_eq!(row.average_tokens.cache_read, Some(100));
+    assert_eq!(row.average_tokens.cache_write, Some(50));
+    assert_eq!(row.average_cost, 1.5);
+}
+
+#[test]
+fn a_row_that_reported_nothing_carries_absent_averages() {
+    // No model either: a reported model alone counts as reported.
+    let sessions = vec![session(
+        "ses_a",
+        "2026-10-30T09:00:00Z",
+        Some("builder"),
+        None,
+        None,
+        None,
+        &[],
+    )];
+    let report = usage_report(&sessions, &[], &Calendar::Utc);
+
+    let row = &report.day[0];
+    assert_eq!(row.reported, 0);
+    assert_eq!(row.average_tokens.input, None);
+    assert_eq!(row.average_tokens.output, None);
+    assert_eq!(row.average_tokens.reasoning, None);
+    assert_eq!(row.average_tokens.cache_read, None);
+    assert_eq!(row.average_tokens.cache_write, None);
+    assert_eq!(row.average_cost, 0.0);
+}
+
+#[test]
+fn a_piece_no_record_reported_averages_to_absent() {
+    let sessions = vec![
+        session(
+            "ses_a",
+            "2026-10-30T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(1000), None, None, None, None),
+            Some(1.0),
+            &[],
+        ),
+        session(
+            "ses_b",
+            "2026-10-30T10:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(1000), None, None, None, None),
+            Some(1.0),
+            &[],
+        ),
+    ];
+    let report = usage_report(&sessions, &[], &Calendar::Utc);
+
+    let row = &report.day[0];
+    assert_eq!(row.tokens.output, None);
+    assert_eq!(row.average_tokens.input, Some(1000));
+    assert_eq!(
+        row.average_tokens.output, None,
+        "a piece no record reported stays absent"
+    );
+    assert_eq!(row.average_cost, 1.0);
+}
+
+#[test]
+fn the_denominator_is_reported_not_records() {
+    // One record reports usage, one reports nothing: the average divides by
+    // the one that reported, not by the two behind the row.
+    let sessions = vec![
+        session(
+            "ses_a",
+            "2026-10-30T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(1000), Some(500), None, None, None),
+            Some(1.0),
+            &[],
+        ),
+        session(
+            "ses_b",
+            "2026-10-30T10:00:00Z",
+            Some("builder"),
+            None,
+            None,
+            None,
+            &[],
+        ),
+    ];
+    let report = usage_report(&sessions, &[], &Calendar::Utc);
+
+    let row = &report.day[0];
+    assert_eq!((row.records, row.reported), (2, 1));
+    assert_eq!(row.average_tokens.input, Some(1000));
+    assert_eq!(row.average_tokens.output, Some(500));
+    assert_eq!(row.average_cost, 1.0);
+}
+
+#[test]
+fn token_averages_round_half_up() {
+    let sessions = vec![
+        session(
+            "ses_a",
+            "2026-10-30T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(501), Some(1), None, None, None),
+            Some(1.0),
+            &[],
+        ),
+        session(
+            "ses_b",
+            "2026-10-30T10:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(500), Some(0), None, None, None),
+            Some(1.0),
+            &[],
+        ),
+    ];
+    let report = usage_report(&sessions, &[], &Calendar::Utc);
+
+    let row = &report.day[0];
+    assert_eq!(
+        row.average_tokens.input,
+        Some(501),
+        "1001 over 2 is 500.5, rounded up"
+    );
+    assert_eq!(
+        row.average_tokens.output,
+        Some(1),
+        "1 over 2 is 0.5, rounded up"
+    );
+}
+
+#[test]
+fn the_frozen_home_rows_carry_their_per_reported_averages() {
+    let report = report();
+
+    let day = report
+        .day
+        .iter()
+        .find(|row| row.id == "2026-10-30")
+        .expect("the fixture home holds its first day");
+    assert_eq!((day.records, day.reported), (2, 2));
+    assert_eq!(day.average_tokens.input, Some(1500));
+    assert_eq!(day.average_tokens.output, Some(750));
+    assert_eq!(day.average_tokens.reasoning, Some(50));
+    assert_eq!(day.average_tokens.cache_read, Some(100));
+    assert_eq!(day.average_tokens.cache_write, Some(25));
+    assert_eq!(day.average_cost, 0.5);
+
+    let ticket_two = report
+        .ticket
+        .iter()
+        .find(|row| row.id == TICKET_TWO)
+        .expect("the fixture home holds its second ticket");
+    assert_eq!((ticket_two.records, ticket_two.reported), (2, 1));
+    assert_eq!(ticket_two.average_tokens.input, Some(2000));
+    assert_eq!(
+        ticket_two.average_tokens.cache_read, None,
+        "ses_b reported no cache piece, so the average stays absent"
+    );
+    assert_eq!(ticket_two.average_cost, 0.75);
+
+    let unreported = report
+        .model
+        .iter()
+        .find(|row| row.id.is_empty())
+        .expect("the missing model gets its own row");
+    assert_eq!(unreported.reported, 0);
+    assert_eq!(unreported.average_tokens.input, None);
+    assert_eq!(unreported.average_cost, 0.0);
 }

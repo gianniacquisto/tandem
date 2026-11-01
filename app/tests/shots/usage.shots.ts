@@ -46,6 +46,27 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
   await expect(picker).toHaveText(['Day', 'Model', 'Agent', 'Ticket'])
   await expect(window.locator('.usage__table thead th').first()).toHaveText('DAY')
 
+  // The Total/Average toggle beside the picker, defaulting to totals, and the
+  // cache columns the table carries in both modes.
+  const mode = window.locator('.usage__mode-segment')
+  await expect(mode).toHaveText(['Total', 'Average'])
+  await expect(window.locator('.usage__mode [aria-selected="true"]')).toHaveText('Total')
+  const headers = window.locator('.usage__table thead th')
+  await expect(headers.filter({ hasText: 'Cache read' })).toHaveCount(1)
+  await expect(headers.filter({ hasText: 'Cache write' })).toHaveCount(1)
+
+  // Switching to Average rewrites the frozen day's In cell to its
+  // per-reported-record average: 3,000 over 2 reported records.
+  const frozenDay = window.locator('.usage__row', { hasText: '2026-10-30' })
+  const inCell = frozenDay.locator('td').nth(1)
+  await expect(inCell).toHaveText('3,000')
+  await mode.filter({ hasText: 'Average' }).click()
+  await expect(window.locator('.usage__mode [aria-selected="true"]')).toHaveText('Average')
+  await expect(inCell).toHaveText('1,500')
+  await expect(frozenDay.locator('td').nth(5)).toHaveText('$0.50')
+  await mode.filter({ hasText: 'Total' }).click()
+  await expect(inCell).toHaveText('3,000')
+
   await window.locator('.usage__segment', { hasText: 'Ticket' }).click()
   await expect(window.locator('.usage__table thead th').first()).toHaveText('TICKET')
 
@@ -60,6 +81,12 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
   await expect(roll).toBeVisible()
   await expect(roll.locator('.usage__session').first()).toHaveText(/^ses_/)
   await expect(roll.locator('.usage__record').first()).toContainText(/\d+ in/)
+
+  // The selection survives the mode switch: the rolled-down records stay open.
+  await mode.filter({ hasText: 'Average' }).click()
+  await expect(roll).toBeVisible()
+  await mode.filter({ hasText: 'Total' }).click()
+  await expect(roll).toBeVisible()
 
   await capture(app, window, scene('usage'))
 })
