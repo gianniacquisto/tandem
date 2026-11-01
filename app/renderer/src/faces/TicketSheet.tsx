@@ -17,6 +17,7 @@ import {
   laneRenameParams,
   sheetChanges,
   sheetOf,
+  shortcutHint,
   ticketHandle,
 } from '../shell/sheet'
 import type { Write } from '../shell/write'
@@ -708,7 +709,7 @@ export function TicketSheet({
             </section>
 
             <footer className="sheet__footer">
-              <span className="sheet__hint">⌘↩ saves · ⌘⇧↩ posts · Esc closes</span>
+              <span className="sheet__hint">{shortcutHint()}</span>
             </footer>
           </div>
         )}

@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   EMPTY_COMMENT_REFUSAL,
@@ -22,6 +22,7 @@ import {
   laneCreateParams,
   laneRenameParams,
   sheetChanges,
+  shortcutHint,
   ticketHandle,
 } from '../renderer/src/shell/sheet'
 import type { TicketDetail } from '../renderer/src/wire/TicketDetail'
@@ -322,6 +323,31 @@ describe('the sheet comments', () => {
 
   it('writes a comment stamp as the stored date and minute', () => {
     expect(commentTime('2026-10-31T14:17:40Z')).toBe('2026-10-31 14:17')
+  })
+})
+
+describe('the sheet\'s shortcut hint', () => {
+  it('names the platform\'s modifier, the one the key seam reads', () => {
+    vi.stubGlobal('navigator', { platform: 'Win32' })
+    expect(shortcutHint()).toBe('Ctrl+↩ saves · Ctrl+⇧↩ posts · Esc closes')
+
+    vi.stubGlobal('navigator', { platform: 'Linux x86_64' })
+    expect(shortcutHint()).toBe('Ctrl+↩ saves · Ctrl+⇧↩ posts · Esc closes')
+
+    vi.stubGlobal('navigator', { platform: 'MacIntel' })
+    expect(shortcutHint()).toBe('⌘↩ saves · ⌘⇧↩ posts · Esc closes')
+    vi.unstubAllGlobals()
+  })
+
+  it('draws the hint through the seam, and prints no bare ⌘ anywhere else', () => {
+    const sheet = source('faces/TicketSheet.tsx')
+    expect(sheet).toContain('{shortcutHint()}')
+
+    const stray = readdirSync(join(renderer), { recursive: true, encoding: 'utf8' })
+      .filter((name) => /\.(ts|tsx)$/.test(name))
+      .filter((name) => name !== 'shell/keys.ts')
+      .filter((name) => readFileSync(join(renderer, name), 'utf8').includes('⌘'))
+    expect(stray).toEqual([])
   })
 })
 
