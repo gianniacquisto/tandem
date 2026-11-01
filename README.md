@@ -189,6 +189,7 @@ tandem-cli sprint show --lane <name> --number <n>
 tandem-cli setup install [--host <opencode|claude|agents>] [--force]
 tandem-cli setup uninstall [--host <opencode|claude|agents>]
 tandem-cli setup status
+tandem-cli settings set [--roster <name>]...
 tandem-cli doctor
 ```
 

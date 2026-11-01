@@ -556,6 +556,31 @@ body {
   color: var(--ember-deep);
 }
 
+/* The roster draft: one row per name with its Remove, the add row, and the
+ * explicit Save. The rows are the checks' own, the buttons the action's, and
+ * the input the theme's card tokens, so both appearances follow. */
+.settings__add {
+  display: flex;
+  gap: var(--space-lane);
+  margin: 0 0 12px;
+}
+
+.settings__name {
+  flex: 1;
+  min-width: 0;
+  height: var(--space-control);
+  padding: 0 12px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ink);
+  font: inherit;
+}
+
+.settings__name::placeholder {
+  color: var(--ink-dim);
+}
+
 /* The Tickets face: the quick-add, the scope and filter row, the search, and
  * the two layouts over one set of rows. The list keeps the Swift face's 540 pt
  * column; the board takes the window's width because a lane column is a lane. */
