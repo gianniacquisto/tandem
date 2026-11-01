@@ -16,11 +16,12 @@
 //!   that file where it sits. Nothing carries between cases, and no run sees
 //!   `~/.tandem`: the child gets an `env_clear`ed environment whose `HOME` and
 //!   `TANDEM_HOME` are directories this test made.
-//! - **Ids, timestamps, the two sandbox paths, the store's schema version and the
-//!   answer block's day are names, nothing else.** `<id>`, `<timestamp>`,
-//!   `<tandem-home>`, `<home>`, `<schema>`, `<day>`. The manifest says so, in its
-//!   own `normalize` list; a value that differs between machines and is not in
-//!   that list is a difference this test reports.
+//! - **Ids, timestamps, the two sandbox paths, the store's schema version, the
+//!   store row's backup age and the answer block's day are names, nothing else.**
+//!   `<id>`, `<timestamp>`, `<tandem-home>`, `<home>`, `<schema>`, `<age>`,
+//!   `<day>`. The manifest says so, in its own `normalize` list; a value that
+//!   differs between machines and is not in that list is a difference this test
+//!   reports.
 //! - **A case's `mask` is the case admitting what the machine owns.** `doctor`'s
 //!   `app` and `skills` rows read this machine, not the fixture home, so their
 //!   names still compare and their detail is `<environment>`.
@@ -109,6 +110,7 @@ fn transform(text: &str, rule: &Value, prefixes: &[(String, String)]) -> String 
         "timestamp" => replace_timestamps(text, rule["as"].as_str().unwrap_or("<timestamp>")),
         "answer-day" => replace_answer_day(text, rule["as"].as_str().unwrap_or("<day>")),
         "schema" => replace_schema_version(text, rule["as"].as_str().unwrap_or("<schema>")),
+        "backup-age" => replace_backup_age(text, rule["as"].as_str().unwrap_or("<age>")),
         _ => text.to_owned(),
     }
 }
@@ -296,6 +298,37 @@ fn replace_schema_version(text: &str, name: &str) -> String {
         }
         out.push_str(name);
         rest = &version[digits..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The rolling backup's age in the store row is a clock reading, and the row
+/// prints it in whole seconds: a run that crosses a second boundary between the
+/// write that rolls the backup and the read that reports it says `1s` where a
+/// faster run says `0s` (PRT-39). The age is a name, like a timestamp; the
+/// clause's presence, its separator and the words around it still compare.
+fn replace_backup_age(text: &str, name: &str) -> String {
+    const MARKER: &str = "; backup ";
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(at) = rest.find(MARKER) {
+        let after = at + MARKER.len();
+        out.push_str(&rest[..after]);
+        let age = &rest[after..];
+        let digits = age.chars().take_while(char::is_ascii_digit).count();
+        let unit = age.get(digits..).and_then(|tail| tail.chars().next());
+        let timed = digits > 0
+            && matches!(unit, Some('s' | 'm' | 'h' | 'd'))
+            && age
+                .get(digits + 1..)
+                .is_some_and(|tail| tail.starts_with(" old"));
+        if timed {
+            out.push_str(name);
+            rest = &age[digits + 1..];
+        } else {
+            rest = age;
+        }
     }
     out.push_str(rest);
     out
@@ -730,6 +763,47 @@ fn a_schema_version_is_its_name() {
         replace_schema_version("schema v5 is refused", "<schema>"),
         "schema v5 is refused",
         "only the store row's number is the port's own"
+    );
+}
+
+#[test]
+fn a_backup_age_is_its_name() {
+    assert_eq!(
+        replace_backup_age(
+            "<tandem-home>/tandem.db \u{2014} <schema>; 1 open, 0 done; backup 0s old",
+            "<age>"
+        ),
+        "<tandem-home>/tandem.db \u{2014} <schema>; 1 open, 0 done; backup <age> old",
+        "the store row's backup clause reports a clock reading, so it is a name"
+    );
+    assert_eq!(
+        replace_backup_age(
+            "tandem.db \u{2014} <schema>; 1 open, 0 done; backup 1s old",
+            "<age>"
+        ),
+        "tandem.db \u{2014} <schema>; 1 open, 0 done; backup <age> old",
+        "the second the slow run crosses is the same name as the one the fast run sees"
+    );
+    assert_eq!(
+        replace_backup_age(
+            "tandem.db \u{2014} <schema>; 1 open, 0 done; backup 2h old",
+            "<age>"
+        ),
+        "tandem.db \u{2014} <schema>; 1 open, 0 done; backup <age> old",
+        "every unit age_text prints is a name"
+    );
+    assert_eq!(
+        replace_backup_age(
+            "<tandem-home>/tandem.db \u{2014} absent (a valid empty store); no backup yet",
+            "<age>"
+        ),
+        "<tandem-home>/tandem.db \u{2014} absent (a valid empty store); no backup yet",
+        "an absent backup has no age"
+    );
+    assert_eq!(
+        replace_backup_age("the notes say backup 3d old is normal", "<age>"),
+        "the notes say backup 3d old is normal",
+        "only the store clause's age is the clock's: a body's words stay"
     );
 }
 
