@@ -118,17 +118,19 @@ Each lane has a **key** — the `PRB` of `PRB-1` (see "The ref" above). `lane ad
 
 ## Sessions
 
-A session is a record, not a ticket (ADR 0027): one record per agent session, a row of the store's `sessions` table in `tandem.db` (ADR 0031) — never a ticket, never on the board. Five verbs, two states (`running`, `ended`):
+A session is a record, not a ticket (ADR 0027, amended 2026-11-01 by PRT-29): one record per pass, a row of the store's `sessions` table in `tandem.db` (ADR 0031) — never a ticket, never on the board. Five verbs, two states (`running`, `ended`):
 
 | command | returns |
 | --- | --- |
-| `session start [--project <name>] [--agent <name>] [--session <id>] [--brief <string\|->]` | the session record |
+| `session start [--project <name>] [--agent <name>] [--session <id>] [--harness-session <id>] [--harness-transport <value>] [--brief <string\|->]` | the session record |
 | `session link --ticket <id> [--session <id>]` | the session record |
 | `session end [--session <id>] [--outcome <value>] [--summary <string\|->] [--usage-from-harness] [--harness-events <path>] [--tokens-input <n>] [--tokens-output <n>] [--tokens-reasoning <n>] [--tokens-cache-read <n>] [--tokens-cache-write <n>] [--cost <dollars>] [--model <name>]` | the session record |
 | `session list [--project <name>] [--status <value>]` | `{"sessions": [...]}` |
 | `session show [--session <id>]` | the session record |
 
-- **Defaults** — `--project` is the working directory's last path component; `--agent` is `$TANDEM_AGENT`; `--session` is `$OPENCODE_SESSION_ID`, else a generated token.
+- **Defaults** — `--project` is the working directory's last path component; `--agent` is `$TANDEM_AGENT`; `--harness-session` is `$OPENCODE_SESSION_ID`, and no `--harness-transport` beside it is `database`, the external opencode this host runs.
+- **The handle is Tandem's:** `start` mints the record's id unless `--session` names one, so two passes in one harness session open two records. `show`, `link` and `end` take `--session`, else `$OPENCODE_SESSION_ID`, and resolve it as an exact record id first, then as the newest record naming it in `harness_session_id`; an unset id is a domain failure, never a mint.
+- **The harness session is a pointer:** `harnessSessionId` and `harnessTransport` (`database` or `event-stream`) answer on `show` and on every `list` row, and an absent pointer is absent on the wire, never null.
 - **Two states** — `running` from `start` to `end`; `ended` carries `endedAt`, `outcome` (`succeeded | failed | interrupted | unknown`), and `summary`. A session that dies leaves a `running` record.
 - **The ticket link is stored** — `link --ticket` appends the ticket id to the record's `tickets`; the record, not the ticket, holds the link.
 - **The note link is derived** — `note capture --session <id>` files the capture under `projects/<project>/.raw/<session>/`, and `show` lists those paths as `notes`. There is no linking verb for notes, and `list` rows omit the field.
@@ -136,25 +138,25 @@ A session is a record, not a ticket (ADR 0027): one record per agent session, a 
 - **Re-`start` on a recorded id** returns the record unchanged with a `note` — nothing is overwritten.
 - **The usage is reported at `end`** — the seven optional flags (`--tokens-input`, `--tokens-output`, `--tokens-reasoning`, `--tokens-cache-read`, `--tokens-cache-write`, `--cost`, `--model`) write what the harness measured beside the outcome; a flag that is absent is absent on the record, never an invented zero. When any usage is present, the end posts **one usage comment, signed by the record's agent (the `--agent` the session started with; `usage` when it carries none), on every ticket the session linked** — a header naming the session id and the model, then one line per reported metric with thousands separators; a piece the harness did not report is left out — and stamps once, so a second `end` cannot double-post it. A session with no linked tickets stores the usage and posts nothing. On this host the numbers come from the harness read: `tandem-cli session end --usage-from-harness --outcome <…>` (summary on stdin) reads the session row from opencode's database, the harness session `session start` recorded from `$OPENCODE_SESSION_ID`, and writes its tokens, cost, model and skill counts on the record; a row that is missing is said out loud and the pass falls back to a plain `session end`.
 
-One session, start to end (`ses_demo2` against a scratch home):
+One session, start to end: the record is named `ses_pass_1` by `--session`, the harness exports `ses_demo2` as its pointer, and `link` and `end` name no record at all: the environment's pointer resolves to the newest record that carries it (`TAN-1` against a scratch home):
 
 ```sh
 $ export OPENCODE_SESSION_ID="ses_demo2"
-$ tandem-cli session start --project tandem --agent builder --brief "Docs pass: write the session record documents"
-{"agent":"builder","brief":"Docs pass: write the session record documents","endedAt":null,"id":"ses_demo2","outcome":null,"project":"tandem","startedAt":"2026-10-23T12:33:55Z","status":"running","summary":null,"tickets":[]}
-$ tandem-cli session link --ticket TAN-42
-{"agent":"builder","brief":"Docs pass: write the session record documents","endedAt":null,"id":"ses_demo2","outcome":null,"project":"tandem","startedAt":"2026-10-23T12:33:55Z","status":"running","summary":null,"tickets":["9879916B-2F32-4999-AEEC-A963DA951DFF"]}
+$ tandem-cli session start --project tandem --agent builder --session ses_pass_1 --brief "Docs pass: write the session record documents"
+{"id":"ses_pass_1","harnessSessionId":"ses_demo2","harnessTransport":"database","project":"tandem","agent":"builder","brief":"Docs pass: write the session record documents","summary":null,"status":"running","outcome":null,"tickets":[],"startedAt":"2026-11-01T15:21:40Z","endedAt":null}
+$ tandem-cli session link --ticket TAN-1
+{"id":"ses_pass_1","harnessSessionId":"ses_demo2","harnessTransport":"database","project":"tandem","agent":"builder","brief":"Docs pass: write the session record documents","summary":null,"status":"running","outcome":null,"tickets":["9cf45df2-ddb9-4288-a5de-f6326c1d2cad"],"startedAt":"2026-11-01T15:21:40Z","endedAt":null}
 $ tandem-cli session end --outcome succeeded --summary "Documents landed on the PR" \
     --tokens-input 12345 --tokens-output 4567 --tokens-reasoning 567 \
     --tokens-cache-read 89012 --tokens-cache-write 1234 --cost 0.42 --model z-ai/glm-5.3-flash
-{"agent":"builder","brief":"Docs pass: write the session record documents","cost":0.42,"endedAt":"2026-10-23T12:33:55Z","id":"ses_demo2","model":"z-ai/glm-5.3-flash","outcome":"succeeded","project":"tandem","startedAt":"2026-10-23T12:33:55Z","status":"ended","summary":"Documents landed on the PR","tickets":["9879916B-2F32-4999-AEEC-A963DA951DFF"],"tokens":{"cacheRead":89012,"cacheWrite":1234,"input":12345,"output":4567,"reasoning":567}}
+{"id":"ses_pass_1","harnessSessionId":"ses_demo2","harnessTransport":"database","project":"tandem","agent":"builder","brief":"Docs pass: write the session record documents","summary":"Documents landed on the PR","status":"ended","outcome":"succeeded","tickets":["9cf45df2-ddb9-4288-a5de-f6326c1d2cad"],"startedAt":"2026-11-01T15:21:40Z","endedAt":"2026-11-01T15:21:41Z","tokens":{"input":12345,"output":4567,"reasoning":567,"cacheRead":89012,"cacheWrite":1234},"cost":0.42,"model":"z-ai/glm-5.3-flash"}
 ```
 
-The end above also posted one usage comment on ticket `9879916B…` — the only notice a linked ticket gets, composed by the CLI, signed by the session's agent (`usage` when the record carries no agent), one line per reported metric:
+The end above also posted one usage comment on ticket `9cf45df2…` — the only notice a linked ticket gets, composed by the CLI, signed by the session's agent (`usage` when the record carries no agent), one line per reported metric:
 
 ```sh
-$ tandem-cli ticket comment list --id TAN-42
-{"comments":[{"at":"2026-10-23T12:33:55Z","author":"builder","body":"Usage — ses_demo2 · z-ai/glm-5.3-flash\ninput 12,345\noutput 4,567\ncache read 89,012\ncache write 1,234\nreasoning 567\ncost $0.42"}]}
+$ tandem-cli ticket comment list --id TAN-1
+{"comments":[{"at":"2026-11-01T15:21:41Z","author":"builder","body":"Usage — ses_pass_1 · z-ai/glm-5.3-flash\ninput 12,345\noutput 4,567\ncache read 89,012\ncache write 1,234\nreasoning 567\ncost $0.42"}]}
 ```
 
 ## Notes
