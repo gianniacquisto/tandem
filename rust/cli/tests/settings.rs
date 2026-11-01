@@ -83,7 +83,8 @@ fn a_fresh_home_shows_no_focus() {
     let shown = json(&tandem(&sandbox, &["settings", "get"]));
 
     assert_eq!(
-        shown["activeProject"], Value::Null,
+        shown["activeProject"],
+        Value::Null,
         "a home that never stored a focus has none: {shown}"
     );
     assert!(
@@ -97,7 +98,10 @@ fn the_cli_sets_shows_and_clears_the_active_project() {
     let sandbox = Sandbox::new("round-trip");
     declare(&sandbox, "Tandem");
 
-    let set = json(&tandem(&sandbox, &["settings", "set", "--project", "Tandem"]));
+    let set = json(&tandem(
+        &sandbox,
+        &["settings", "set", "--project", "Tandem"],
+    ));
     assert_eq!(set["activeProject"], Value::String("Tandem".to_string()));
 
     let shown = json(&tandem(&sandbox, &["settings", "get"]));
@@ -109,13 +113,15 @@ fn the_cli_sets_shows_and_clears_the_active_project() {
 
     let cleared = json(&tandem(&sandbox, &["settings", "set"]));
     assert_eq!(
-        cleared["activeProject"], Value::Null,
+        cleared["activeProject"],
+        Value::Null,
         "an absent --project clears: {cleared}"
     );
 
     let shown = json(&tandem(&sandbox, &["settings", "get"]));
     assert_eq!(
-        shown["activeProject"], Value::Null,
+        shown["activeProject"],
+        Value::Null,
         "clearing restores no focus: {shown}"
     );
 }
@@ -144,7 +150,8 @@ fn setting_an_undeclared_lane_is_refused_naming_the_declared_lanes() {
 
     let shown = json(&tandem(&sandbox, &["settings", "get"]));
     assert_eq!(
-        shown["activeProject"], Value::Null,
+        shown["activeProject"],
+        Value::Null,
         "the refused write left the store alone: {shown}"
     );
 }
@@ -159,7 +166,10 @@ fn ticket_list_defaults_are_untouched_by_a_focus() {
         &["ticket", "add", "--title", "Elsewhere", "--lane", "Port"],
     ));
     assert_eq!(added["lane"], Value::String("Port".to_string()));
-    json(&tandem(&sandbox, &["settings", "set", "--project", "Tandem"]));
+    json(&tandem(
+        &sandbox,
+        &["settings", "set", "--project", "Tandem"],
+    ));
 
     // `ticket list` with no flags still lists every lane: agents opt in
     // through the settings read, the list does not narrow for them.

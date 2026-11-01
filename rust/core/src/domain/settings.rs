@@ -9,8 +9,8 @@
 use crate::store::Store;
 use crate::store::{Actor, NewSetting};
 
-use super::error::DomainResult;
 use super::error::DomainError;
+use super::error::DomainResult;
 
 /// The roster's key: the names the assignee picker offers (`roster` in the
 /// Swift store, `TandemSettings.swift`).
@@ -250,7 +250,10 @@ mod tests {
             settings.set_active_project(&Actor::Human, Some("Port"), &declared),
             Ok(Some("Port".to_string()))
         );
-        assert_eq!(settings.active_project(&declared), Ok(Some("Port".to_string())));
+        assert_eq!(
+            settings.active_project(&declared),
+            Ok(Some("Port".to_string()))
+        );
 
         assert_eq!(
             settings.set_active_project(&Actor::Human, None, &declared),

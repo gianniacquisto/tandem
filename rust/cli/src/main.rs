@@ -34,12 +34,12 @@ use tandem_core::domain::{
 };
 use tandem_core::setup::{self, Environment};
 use tandem_core::store::{self, Actor, Home, Store};
+use tandem_core::wire::rpc::SettingsReply;
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
     NoteMoveView, NotePathView, NoteWriteView, SessionDetailView, SessionList, SessionResult,
     SprintList, SprintResult, TicketDetail, TicketList, TicketSummary,
 };
-use tandem_core::wire::rpc::SettingsReply;
 
 // MARK: - The grammar
 

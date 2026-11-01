@@ -144,7 +144,8 @@ fn a_settings_read_answers_the_active_project() {
     let fresh = handle(&store, &frame(1, "settings.get", json!({})));
     assert_eq!(fresh["id"], 1);
     assert_eq!(
-        fresh["result"]["activeProject"], Value::Null,
+        fresh["result"]["activeProject"],
+        Value::Null,
         "a home that never stored a focus has none: {fresh}"
     );
 
@@ -156,7 +157,8 @@ fn a_settings_read_answers_the_active_project() {
 
     let read = handle(&store, &frame(3, "settings.get", json!({})));
     assert_eq!(
-        read["result"]["activeProject"], json!("Tandem"),
+        read["result"]["activeProject"],
+        json!("Tandem"),
         "the read answers the stored focus: {read}"
     );
     assert!(
@@ -175,7 +177,8 @@ fn a_settings_read_answers_the_active_project() {
         .expect("the stale row is stored");
     let stale = handle(&store, &frame(4, "settings.get", json!({})));
     assert_eq!(
-        stale["result"]["activeProject"], Value::Null,
+        stale["result"]["activeProject"],
+        Value::Null,
         "a stale focus hides nothing: {stale}"
     );
 }
@@ -210,7 +213,8 @@ fn a_settings_write_to_an_undeclared_lane_is_refused() {
 
     let read = handle(&store, &frame(2, "settings.get", json!({})));
     assert_eq!(
-        read["result"]["activeProject"], Value::Null,
+        read["result"]["activeProject"],
+        Value::Null,
         "the refused write left the store alone: {read}"
     );
 }
@@ -233,7 +237,8 @@ fn clearing_the_focus_restores_no_focus() {
 
     let cleared = handle(&store, &frame(2, "settings.set", json!({})));
     assert_eq!(
-        cleared["result"]["activeProject"], Value::Null,
+        cleared["result"]["activeProject"],
+        Value::Null,
         "an absent project clears: {cleared}"
     );
 
