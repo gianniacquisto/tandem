@@ -256,6 +256,21 @@ export function laneKeys(
   return keys
 }
 
+/**
+ * The lane keys the faces draw under a project focus: the active lane alone.
+ * No focus (the show-all escape), a blank one, or a focus naming no lane key
+ * all draw every key in render order, so an unset, cleared or stale focus
+ * never hides tickets.
+ */
+export function visibleLaneKeys(
+  keys: ReadonlyArray<string | null>,
+  active: string | null,
+): Array<string | null> {
+  if (active === null || active === '') return [...keys]
+  if (!keys.includes(active)) return [...keys]
+  return [active]
+}
+
 /** The board's columns: one per lane key, in render order, empty ones included. */
 export function laneColumns(
   declared: readonly string[],

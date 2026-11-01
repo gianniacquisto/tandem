@@ -254,6 +254,25 @@ impl Write<'_> {
         )
     }
 
+    /// Store a setting whether or not a row already carries the key: the focus
+    /// write lands on a home that may have set one before, and a second focus
+    /// is a replacement, never a duplicate row.
+    pub fn upsert_setting(&self, setting: NewSetting<'_>) -> Result<()> {
+        self.before_mutation()?;
+        self.execute(
+            "INSERT INTO settings (key, value, author) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, author = excluded.author",
+            params![setting.key, setting.value, self.actor.as_str()],
+        )
+    }
+
+    /// Drop a setting's row: clearing the focus removes the key, so an absent
+    /// row and a cleared one read the same way. A missing row is a no-op.
+    pub fn delete_setting(&self, key: &str) -> Result<()> {
+        self.before_mutation()?;
+        self.execute("DELETE FROM settings WHERE key = ?1", params![key])
+    }
+
     /// Whether the sprints table carries a (lane, number). The sprints domain is
     /// a read-modify-write in one transaction, so it asks inside the write.
     pub fn sprint_exists(&self, lane: &str, number: i64) -> Result<bool> {

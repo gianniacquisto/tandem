@@ -661,6 +661,42 @@ body {
   cursor: pointer;
 }
 
+/* The project focus: the draw's own lane picker and its show-all escape. The
+ * picker wears the faces' filter sizing; the escape wears the segmented
+ * control's, pressed while the face draws every lane. */
+.focus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: var(--space-lane);
+}
+
+.focus__label {
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+.focus__all {
+  display: inline-flex;
+  align-items: center;
+  height: var(--space-control);
+  padding: 0 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.focus__all[aria-pressed="true"] {
+  background: var(--parchment);
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .search {
   display: flex;
   align-items: center;

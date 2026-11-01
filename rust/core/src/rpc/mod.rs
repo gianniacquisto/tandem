@@ -580,10 +580,33 @@ fn execute(
             // The roster is a `settings` row, and the picking is the domain's
             // (`domain::Settings`): a default for a home that never stored one,
             // the stored list over it, and an explicitly empty list as empty.
-            // The read is one row and no lock: the store opens, answers and
-            // closes inside `Store::setting`.
-            let roster = Settings::new(store).roster().map_err(domain)?;
-            Ok(Reply::Settings(SettingsReply { roster }))
+            // The focus answers on the same read, resolved against the declared
+            // lanes, so a stale focus is no focus. The read is rows and no
+            // lock: the store opens, answers and closes inside `Store::setting`.
+            let settings = Settings::new(store);
+            let roster = settings.roster().map_err(domain)?;
+            let lanes = board.lanes().map_err(domain)?;
+            let active_project = settings.active_project(&lanes).map_err(domain)?;
+            Ok(Reply::Settings(SettingsReply {
+                roster,
+                active_project,
+            }))
+        }
+        Method::SettingsSet(params) => {
+            // The focus write beside the read: one declared lane in, the
+            // resolved focus out, beside the roster the faces already hold. An
+            // undeclared lane is the domain's refusal, and the revision moves,
+            // so the faces re-read the new focus on the change event.
+            let settings = Settings::new(store);
+            let lanes = board.lanes().map_err(domain)?;
+            let active_project = settings
+                .set_active_project(actor, params.project.as_deref(), &lanes)
+                .map_err(domain)?;
+            let roster = settings.roster().map_err(domain)?;
+            Ok(Reply::Settings(SettingsReply {
+                roster,
+                active_project,
+            }))
         }
         Method::MarkdownBlocks(params) => {
             // The parsing is the domain's (`TicketMarkdown`), so the sheet draws

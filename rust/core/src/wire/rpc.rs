@@ -129,8 +129,13 @@ methods! {
     // The settings the faces read, in one message: the sheet's assignee picker
     // and the board's filter both offer the store's roster (PRT-38), which is a
     // `settings` row with no CLI verb to spell. It writes nothing, so no
-    // UI-only write hides behind an empty verb.
+    // UI-only write hides behind an empty verb. The active project answers on
+    // the same read (one more field, never a second method); its write is the
+    // `settings.set` method beside it.
     SettingsGet: "settings.get", EmptyParams, "";
+    // The active-project focus write: one declared lane in, the resolved focus
+    // out. The CLI spells it `settings set`, so no UI-only write hides here.
+    SettingsSet: "settings.set", SettingsSetParams, "settings set";
     // The ticket sheet's read: a body in, the blocks it draws out. The parsing
     // is the core's (`TicketMarkdown`), so the app and the CLI cannot read one
     // dialect two ways, and the message writes nothing: an empty verb.
@@ -462,11 +467,24 @@ pub struct UsageReportReply {
 /// names the sheet's assignee picker and the board's filter offer. It is the
 /// stored list, or the default when none was ever stored; the typing is the
 /// core's (`domain::Settings`), so neither face parses a settings row. A setting
-/// added later is one more field here, never a second method.
+/// added later is one more field here, never a second method: the active
+/// project answers beside it, resolved against the declared lanes, so a stale
+/// focus reads as no focus.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsReply {
     pub roster: Vec<String>,
+    pub active_project: Option<String>,
+}
+
+/// `settings.set`: the active-project focus to store. Absent clears the focus
+/// back to every lane, which is also what a blank value means; a name no
+/// declared lane carries is refused, and nothing is written. Optional so the
+/// frame's empty-params round-trip still parses.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SettingsSetParams {
+    pub project: Option<String>,
 }
 
 /// `ticket.list`: the full snapshot and the revision it is a snapshot of.

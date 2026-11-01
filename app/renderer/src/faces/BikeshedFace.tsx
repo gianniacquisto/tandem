@@ -8,6 +8,7 @@ import type { Reply } from '../wire/Reply'
 import type { TicketSummary } from '../wire/TicketSummary'
 import {
   ancestorsOf,
+  focusNodes,
   folderPaths,
   notePaths,
   resolveWikilink,
@@ -27,6 +28,7 @@ import {
 import { BikeshedEditor } from './BikeshedEditor'
 import { BikeshedTree } from './BikeshedTree'
 import { Face } from './Face'
+import { FocusControl } from './FocusControl'
 import { NoteRail } from './NoteRail'
 
 const HIDDEN_KEY = 'tandem.bikeshed.hidden'
@@ -80,9 +82,15 @@ function message(error: unknown): string {
 export type BikeshedFaceProps = {
   /** The note's ticket rows open the one sheet, over the bikeshed. */
   onOpenTicket?: (ticket: TicketSummary) => void
+  /** The declared lanes, in render order, for the focus picker. */
+  lanes: string[]
+  /** The stored focus: the project the tree draws, or null for the vault. */
+  activeProject: string | null
+  /** Persist a new focus; null clears back to the whole vault. */
+  onPickProject: (lane: string | null) => void
 }
 
-export function BikeshedFace({ onOpenTicket }: BikeshedFaceProps) {
+export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject }: BikeshedFaceProps) {
   const [hidden, setHidden] = useState(() => window.localStorage.getItem(HIDDEN_KEY) === 'true')
   const [nodes, setNodes] = useState<NoteNodeView[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -96,12 +104,17 @@ export function BikeshedFace({ onOpenTicket }: BikeshedFaceProps) {
   const [health, setHealth] = useState<BikeshedHealth | null>(null)
   const [recoveries, setRecoveries] = useState<RecoveryView[]>([])
   const [token, setToken] = useState(0)
+  // The show-all escape: the whole vault without clearing the stored focus.
+  const [showAll, setShowAll] = useState(false)
   const seeded = useRef(false)
   const openRef = useRef<NoteBuffer | null>(null)
   openRef.current = open
   const savingRef = useRef(false)
 
   const noteIndex = useMemo(() => notePaths(nodes), [nodes])
+  // The tree the focus draws: the focused project's folder alone, or the
+  // whole vault when nothing is focused or no folder answers the focus.
+  const drawn = focusNodes(nodes, showAll ? null : activeProject)
 
   async function refreshVault(): Promise<void> {
     try {
@@ -384,6 +397,13 @@ export function BikeshedFace({ onOpenTicket }: BikeshedFaceProps) {
 
   return (
     <Face wide title="Bikeshed" blurb="The notes vault: tree, editor, backlinks and health.">
+      <FocusControl
+        lanes={lanes}
+        active={activeProject}
+        showAll={showAll}
+        onPick={onPickProject}
+        onToggleShowAll={() => setShowAll((current) => !current)}
+      />
       {error === null ? null : (
         <div className="banner" role="alert">
           <span>{error}</span>
@@ -434,7 +454,7 @@ export function BikeshedFace({ onOpenTicket }: BikeshedFaceProps) {
 
       <div className="bikeshed">
         <BikeshedTree
-          nodes={nodes}
+          nodes={drawn}
           expanded={expanded}
           hidden={hidden}
           openPath={open?.path ?? null}

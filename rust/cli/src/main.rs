@@ -30,7 +30,7 @@ use tandem_core::domain::session::{
 };
 use tandem_core::domain::sprint::{SprintMode, Sprints};
 use tandem_core::domain::{
-    AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Status, TicketQuery,
+    AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Settings, Status, TicketQuery,
 };
 use tandem_core::setup::{self, Environment};
 use tandem_core::store::{self, Actor, Home, Store};
@@ -39,6 +39,7 @@ use tandem_core::wire::{
     NoteMoveView, NotePathView, NoteWriteView, SessionDetailView, SessionList, SessionResult,
     SprintList, SprintResult, TicketDetail, TicketList, TicketSummary,
 };
+use tandem_core::wire::rpc::SettingsReply;
 
 // MARK: - The grammar
 
@@ -98,6 +99,11 @@ enum Command {
     Setup {
         #[command(subcommand)]
         command: Option<SetupCommand>,
+    },
+    /// The shared focus: the lane the faces draw (TAN-258).
+    Settings {
+        #[command(subcommand)]
+        command: Option<SettingsCommand>,
     },
     /// Report whether this machine's Tandem setup is sound (ADR 0014).
     Doctor,
@@ -441,6 +447,19 @@ enum SetupCommand {
     Status,
 }
 
+#[derive(Subcommand)]
+enum SettingsCommand {
+    Get,
+    Set(SettingsSetArgs),
+}
+
+#[derive(Args)]
+struct SettingsSetArgs {
+    /// The lane to focus; an absent or empty flag clears back to every lane.
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    project: Option<String>,
+}
+
 #[derive(Args)]
 struct SetupInstallArgs {
     /// A host name, or a comma-separated list (default: opencode).
@@ -630,6 +649,10 @@ fn help_text(cli: &Cli) -> &'static str {
             None => return usage::group("setup").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
         },
+        Some(Command::Settings { command }) => match command {
+            None => return usage::group("settings").unwrap_or(usage::ROOT),
+            Some(command) => command.help(),
+        },
     };
     usage::verb(name).unwrap_or(usage::ROOT)
 }
@@ -699,6 +722,15 @@ impl SetupCommand {
     }
 }
 
+impl SettingsCommand {
+    fn help(&self) -> &'static str {
+        match self {
+            Self::Get => "settings get",
+            Self::Set(_) => "settings set",
+        }
+    }
+}
+
 impl SprintCommand {
     fn help(&self) -> &'static str {
         match self {
@@ -729,6 +761,7 @@ fn run(cli: &Cli) -> Result<(), Failure> {
         Command::Session { command } => session(&home, command.as_ref()),
         Command::Sprint { command } => sprint(&home, command.as_ref()),
         Command::Setup { command } => setup_command(&home, command.as_ref()),
+        Command::Settings { command } => settings_verb(&home, command.as_ref()),
     }
 }
 
@@ -989,6 +1022,40 @@ fn lane(home: &Home, command: Option<&LaneCommand>) -> Result<(), Failure> {
                 .delete_lane(args.name.as_deref().unwrap_or(""))
                 .map_err(Failure::domain)?;
             print(&LaneDeletionView::new(&deletion, None))
+        }
+    }
+}
+
+/// The shared focus: the lane the faces draw (TAN-258). `get` is the read the
+/// app makes over `rpc`; `set` is its write, beside `settings.get` in the
+/// method table, so agents read and write the same value the faces do.
+fn settings_verb(home: &Home, command: Option<&SettingsCommand>) -> Result<(), Failure> {
+    let command = command.ok_or_else(Failure::usage)?;
+    let store = if matches!(command, SettingsCommand::Get) {
+        Store::new(home.clone())
+    } else {
+        write_store(home)?
+    };
+    let settings = Settings::new(&store);
+    let board = Board::new(store);
+
+    match command {
+        SettingsCommand::Get => {
+            let lanes = board.lanes().map_err(Failure::domain)?;
+            print(&SettingsReply {
+                roster: settings.roster().map_err(Failure::domain)?,
+                active_project: settings.active_project(&lanes).map_err(Failure::domain)?,
+            })
+        }
+        SettingsCommand::Set(args) => {
+            let lanes = board.lanes().map_err(Failure::domain)?;
+            let active_project = settings
+                .set_active_project(board.actor(), args.project.as_deref(), &lanes)
+                .map_err(Failure::domain)?;
+            print(&SettingsReply {
+                roster: settings.roster().map_err(Failure::domain)?,
+                active_project,
+            })
         }
     }
 }
