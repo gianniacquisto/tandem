@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type { Call } from '../../../src/shared/bridge'
-import { STATUSES } from '../shell/board'
+import { STATUSES, assigneeChoices } from '../shell/board'
 import {
   EMPTY_COMMENT_REFUSAL,
   answerBlock,
   appendPlan,
-  assigneeChoices,
   canSave,
   commentAuthor,
   commentParams,

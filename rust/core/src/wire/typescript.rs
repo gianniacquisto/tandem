@@ -17,10 +17,10 @@ use super::rpc::{
     LaneRenameParams, MarkdownBlocksParams, MarkdownReply, Method, NoteBacklinksReply,
     NoteHealthReply, NoteMoveParams, NoteMoveReply, NotePathParams, NoteReadReply,
     NoteRecoveriesReply, NoteTreeParams, NoteTreeReply, NoteWriteParams, NoteWriteReply, Outcome,
-    Reply, Request, Response, SetupInstallParams, SetupReply, TicketAddFromNoteParams,
-    TicketAddParams, TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
-    TicketListParams, TicketListReply, TicketMoveParams, TicketReply, TicketSetParams,
-    TicketUnblockParams, UsageReportReply, WireError,
+    Reply, Request, Response, SettingsReply, SetupInstallParams, SetupReply,
+    TicketAddFromNoteParams, TicketAddParams, TicketAnswerParams, TicketArchiveParams,
+    TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams,
+    TicketReply, TicketSetParams, TicketUnblockParams, UsageReportReply, WireError,
 };
 use super::views::{
     BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
@@ -146,6 +146,7 @@ pub fn files() -> Vec<(&'static str, String)> {
             "UsageReportReply.ts",
             UsageReportReply::export_to_string(&cfg),
         ),
+        render("SettingsReply.ts", SettingsReply::export_to_string(&cfg)),
         render(
             "UsageReportView.ts",
             UsageReportView::export_to_string(&cfg),
