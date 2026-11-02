@@ -62,6 +62,8 @@ fn the_read_methods_without_a_cli_verb_are_named_here() {
             "usage.report",
             "settings.get",
             "markdown.blocks",
+            "session.list",
+            "session.transcript",
         ],
         "a read with no CLI verb joins this list deliberately"
     );
