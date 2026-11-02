@@ -1,8 +1,10 @@
 import { join } from 'node:path'
+import { spawn } from 'node:child_process'
 
-import { app, BrowserWindow, ipcMain, session } from 'electron'
+import { app, BrowserWindow, ipcMain, session, shell as electronShell } from 'electron'
 
 import { resolveBinary } from './binary'
+import { answerHarness, HarnessController, isHarnessCall, tandemHomeDir } from './harness'
 import { RpcClient } from './rpcClient'
 import { contentSecurityPolicy } from '../shared/security'
 import { CALL_CHANNEL, CHANGED_CHANNEL, type BridgeCall, type Call } from '../shared/bridge'
@@ -20,12 +22,60 @@ const devServerUrl: string | undefined = process.env['ELECTRON_RENDERER_URL']
 
 let client: RpcClient | null = null
 let shell: BrowserWindow | null = null
+let harness: HarnessController | null = null
 
 function homeEnvironment(): Record<string, string> {
   const named = process.env['TANDEM_HOME']
   if (named !== undefined && named.trim() !== '') return { TANDEM_HOME: named }
   if (app.isPackaged) return {}
   return { TANDEM_HOME: join(app.getAppPath(), '..', 'Fixtures', 'port', 'Home') }
+}
+
+/**
+ * The harness sign-in's controller, created once: every `harness.*` call runs
+ * through it, so at most one device flow is ever pending. The Tandem home is
+ * the shell's own rule, resolved here rather than in the renderer.
+ */
+function harnessController(): HarnessController {
+  if (harness === null) {
+    harness = new HarnessController({
+      spawn: (binary, args, options) => {
+        const child = spawn(binary, args, {
+          env: options.env,
+          cwd: options.cwd,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true,
+        })
+        return {
+          onStdout: (listener) => {
+            child.stdout?.on('data', (chunk: Buffer) => listener(chunk.toString()))
+          },
+          onStderr: (listener) => {
+            child.stderr?.on('data', (chunk: Buffer) => listener(chunk.toString()))
+          },
+          onExit: (listener) => {
+            child.on('exit', (code) => listener(code))
+            child.on('error', () => listener(null))
+          },
+          kill: () => {
+            child.kill()
+          },
+        }
+      },
+      openUrl: (url) => {
+        void electronShell.openExternal(url)
+      },
+      tandemHome: tandemHomeDir({
+        env: process.env,
+        packaged: app.isPackaged,
+        appPath: app.getAppPath(),
+        homeDir: app.getPath('home'),
+      }),
+      env: process.env,
+      baseEnv: process.env,
+    })
+  }
+  return harness
 }
 
 function connect(): RpcClient {
@@ -49,6 +99,19 @@ function connect(): RpcClient {
 }
 
 function replyTo(call: Call): Promise<BridgeCall> {
+  // The harness sign-in is answered here, never by the core: the renderer
+  // reaches the harness home only through this door (TAN-265).
+  if (isHarnessCall(call)) {
+    return answerHarness(call, harnessController()).then(
+      (reply) => ({ reply }),
+      (error: unknown) => ({
+        error: {
+          code: 'harness',
+          message: error instanceof Error ? error.message : 'The sign-in failed.',
+        },
+      }),
+    )
+  }
   if (client === null) {
     return Promise.resolve({ error: { code: 'transport', message: 'The rpc child is not running.' } })
   }

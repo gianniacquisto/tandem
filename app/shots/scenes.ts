@@ -39,7 +39,7 @@ export const SCENES: readonly Scene[] = [
     id: 'settings',
     file: 'settings-face.png',
     description:
-      'the **Settings** face over the fixture home: the home, the bikeshed, the three agent hosts, the theme rule, the bundled and installed versions, and the doctor\'s checks each named with its state and detail',
+      'the **Settings** face over the fixture home: the home, the bikeshed, the three agent hosts, the theme rule, the bundled and installed versions, the doctor\'s checks each named with its state and detail, and the harness sign-in section',
   },
   {
     id: 'tickets-list',

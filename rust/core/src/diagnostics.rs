@@ -5,9 +5,11 @@
 //! So the report's shape, wording and pass/fail rule are covered with injected
 //! facts, and the CLI only wires the real world to it.
 //!
-//! The eleven rows, in the pinned order: `home`, `store`, `bikeshed`, `comments`,
-//! `sessions`, `settings`, `todos-json`, `lock`, `app`, `skills`, `agent-face`.
-//! The first four and the last can fail; `app`, `skills` and the three leftover
+//! The twelve rows, in the pinned order: `home`, `store`, `bikeshed`, `comments`,
+//! `sessions`, `settings`, `todos-json`, `lock`, `app`, `skills`, `agent-face`,
+//! `harness-auth`.
+//! The first four and `agent-face` can fail; `app`, `skills`, `harness-auth`
+//! and the three leftover
 //! rows are informational. `ok` is the AND of the rows that can fail, so a held
 //! lock, an unreadable store or a bikeshed path that is a file makes the CLI
 //! exit 1.
@@ -20,6 +22,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::bikeshed::{Bikeshed, BikeshedNode, NodeKind};
+use crate::harness::{self, HarnessAuth};
 use crate::setup::{self, Environment, State};
 use crate::store::{self, BackupHealth, Health, Home, HomeSource, Store};
 
@@ -27,7 +30,7 @@ pub use crate::store::CommentsState;
 use crate::wire::{DoctorCheck, DoctorReport, slashed_path};
 
 /// The check order, pinned: the CLI documents and tests it.
-pub const CHECK_NAMES: [&str; 11] = [
+pub const CHECK_NAMES: [&str; 12] = [
     "home",
     "store",
     "bikeshed",
@@ -39,6 +42,7 @@ pub const CHECK_NAMES: [&str; 11] = [
     "app",
     "skills",
     "agent-face",
+    "harness-auth",
 ];
 
 /// An agent host whose skills directory was checked. Informational: a host that
@@ -98,6 +102,10 @@ pub struct Facts {
     /// The agent face's state (ADR 0034), from [`setup::state`]. `None` in a
     /// test that injects no state, which reads as no warnings.
     pub agent_face: Option<State>,
+    /// The harness sign-in state (TAN-265), from [`harness::read`]. The row is
+    /// informational: the harness starts unauthenticated, so an unsigned home
+    /// is the state the sign-in changes, not a failure.
+    pub harness_auth: HarnessAuth,
 }
 
 /// Assemble the report from observed `facts`. Pure.
@@ -160,6 +168,7 @@ pub fn report(facts: &Facts) -> DoctorReport {
         detail: skill_detail(facts),
     });
     checks.push(agent_face_check(facts));
+    checks.push(harness_auth_check(&facts.harness_auth));
 
     let ok = checks.iter().all(|check| check.ok);
     DoctorReport { ok, checks }
@@ -513,6 +522,36 @@ fn agent_face_check(facts: &Facts) -> DoctorCheck {
     }
 }
 
+/// The `harness-auth` row (TAN-265): stored or not, from the same credential
+/// table `auth list` reads. Informational in both states, like `skills`: an
+/// unsigned harness is the state the Settings sign-in changes, and a stored
+/// one names the account and every integration beside it.
+fn harness_auth_check(auth: &HarnessAuth) -> DoctorCheck {
+    match auth {
+        HarnessAuth::Stored {
+            account,
+            integrations,
+        } => DoctorCheck {
+            name: "harness-auth".to_string(),
+            ok: true,
+            detail: format!(
+                "signed in as {account} ({} stored)",
+                integrations.join(", ")
+            ),
+        },
+        HarnessAuth::NotStored => DoctorCheck {
+            name: "harness-auth".to_string(),
+            ok: true,
+            detail: "not signed in; sign in from Settings".to_string(),
+        },
+        HarnessAuth::Unreadable { detail } => DoctorCheck {
+            name: "harness-auth".to_string(),
+            ok: true,
+            detail: detail.clone(),
+        },
+    }
+}
+
 /// The app the cask installs (ADR 0003). The shell's Windows and Linux install
 /// paths land with PRT-12; until then the row names this one, which exists on no
 /// other host, and reads as "not installed" there.
@@ -602,6 +641,7 @@ pub fn gather(home: &Home, environment: &Environment) -> Facts {
         skill_hosts: skill_hosts(environment, &context),
         opencode_has_skills: opencode_has_skills(&context),
         agent_face,
+        harness_auth: harness::read(home),
     }
 }
 

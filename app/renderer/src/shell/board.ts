@@ -1,4 +1,4 @@
-import type { Call } from '../../../src/shared/bridge'
+import type { Method } from '../../../src/shared/bridge'
 import type { TicketSummary } from '../wire/TicketSummary'
 
 /**
@@ -336,11 +336,11 @@ export function dropCalls(
   tickets: readonly TicketSummary[],
   moving: string,
   cell: DropCell,
-): Call[] {
+): Method[] {
   const ticket = tickets.find((candidate) => candidate.id === moving)
   if (ticket === undefined) return []
 
-  const calls: Call[] = []
+  const calls: Method[] = []
   if (ticket.lane !== cell.lane) {
     calls.push({
       method: 'ticket.move',

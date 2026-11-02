@@ -9,8 +9,8 @@ import { computed, token } from '../../shots/tokens'
 
 /**
  * The Settings face a human reads: the machine's paths (the seeded home and
- * the seeded user home's three hosts), the one theme rule, and the setup
- * report's eleven checks with their state.
+ * the seeded user home's three hosts), the one theme rule, the setup
+ * report's twelve checks with their state, and the harness sign-in section.
  *
  * The paths are the seed's own, at the one fixed scratch root, so the picture
  * is the same in any checkout. What the rule pins is that they are the seed's
@@ -20,7 +20,12 @@ test('the settings face, over the seeded homes', async ({ app, window }) => {
   await openTab(window, 'settings')
 
   await expect(window.locator('.face__title')).toHaveText('Settings')
-  await expect(window.locator('.settings__heading')).toHaveText(['Paths', 'Roster', 'Setup'])
+  await expect(window.locator('.settings__heading')).toHaveText([
+    'Paths',
+    'Roster',
+    'Setup',
+    'Harness sign-in',
+  ])
 
   const facts = window.locator('.settings__fact')
   await expect(facts.first()).toContainText('Home')
@@ -49,7 +54,7 @@ test('the settings face, over the seeded homes', async ({ app, window }) => {
   const setup = window.locator('.settings__section', {
     has: window.locator('.settings__heading', { hasText: 'Setup' }),
   })
-  await expect(setup.locator('.settings__check')).toHaveCount(11)
+  await expect(setup.locator('.settings__check')).toHaveCount(12)
   await expect(setup.locator('.settings__action')).toHaveText(/^(Install|Repair)$/)
 
   await capture(app, window, scene('settings'))
