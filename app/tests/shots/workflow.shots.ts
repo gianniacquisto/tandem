@@ -76,8 +76,11 @@ test('the workflow face draws the open sprint on the pass DAG', async ({ app, wi
   await openTab(window, 'workflow')
 
   await expect(window.locator('.face__title')).toHaveText('Workflow')
-  await expect(window.locator('.workflow__heading').first()).toContainText('Sprint 1')
-  await expect(window.locator('.workflow__heading').first()).toContainText(lane as string)
+  // The Lane section carries the first heading, so the sprint's reads scoped
+  // to its own section.
+  const sprintHeading = window.locator('section[aria-label="Open sprint"] .workflow__heading')
+  await expect(sprintHeading).toContainText('Sprint 1')
+  await expect(sprintHeading).toContainText(lane as string)
   await expect(window.locator('.workflow__mode')).toHaveText('parallel')
 
   // The five passes, joined by their four handoffs.
@@ -106,7 +109,9 @@ test('the workflow face draws the open sprint on the pass DAG', async ({ app, wi
     await expect(window.locator('.empty__title')).toContainText('No sprint is open')
     await expect(window.locator('.workflow__opener')).toBeVisible()
     await window.locator('.workflow__select').selectOption(lane as string)
-    await expect(window.locator('.workflow__heading').first()).toContainText('Sprint 1')
+    await expect(
+      window.locator('section[aria-label="Open sprint"] .workflow__heading'),
+    ).toContainText('Sprint 1')
   }
 
   await capture(app, window, scene('workflow'))
