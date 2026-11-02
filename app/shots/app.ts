@@ -9,6 +9,7 @@ import {
 
 import { clockScript } from './clock'
 import { seedHome, seedPath, seedUserPath, shotsSource } from './home'
+import { screenshotPath } from './output'
 import { WINDOW_FLOOR } from '../src/main/window'
 import { APP_ROOT, REPO_ROOT } from './roots'
 import type { Scene } from './scenes'
@@ -100,7 +101,10 @@ export async function openTab(page: Page, tab: string): Promise<void> {
 
 /**
  * One scene, one PNG: the file the manifest names, as the spec asserted it, at
- * the window's width. The window grows to the face's own content height (never
+ * the window's width. A scratch look (`TANDEM_SHOTS_OUT`) writes under the
+ * named directory and leaves the committed folder alone; otherwise the PNG
+ * lands in `docs/screenshots` and the run's teardown keeps the catalogue.
+ * The window grows to the face's own content height (never
  * below the floor), so a face taller than the window is shot whole rather than
  * clipped: a picture of half a table is a picture of no table.
  */
@@ -124,7 +128,7 @@ export async function capture(
   }, width)
   await window.addStyleTag({ content: FULL_HEIGHT })
   await window.screenshot({
-    path: join(REPO_ROOT, 'docs', 'screenshots', entry.file),
+    path: screenshotPath(process.env, REPO_ROOT, entry),
     animations: 'disabled',
     caret: 'hide',
     fullPage: true,
