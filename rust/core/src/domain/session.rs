@@ -182,13 +182,14 @@ impl SessionOutcome {
     }
 }
 
-/// How Tandem reads a harness session's usage (PRT-29).
+/// Which harness a session ran in (PRT-29, TAN-276).
 ///
-/// The record names its transport so `session end --usage-from-harness` reads
-/// the same way the pass was recorded: `event-stream` is the embedded harness,
-/// whose events Tandem holds; `database` is the external opencode on this Mac,
-/// whose store Tandem reads read-only. Neither is a join on identity: the
-/// session record is Tandem's, and the harness session is a foreign pointer.
+/// The transport is provenance, stamped at start and never rewritten at end:
+/// `event-stream` is the embedded harness, `database` the external opencode on
+/// this Mac. It no longer selects the read path; the loopback API is the only
+/// read, and the transport only selects which rendezvous file names the server
+/// when no URL is given. Neither is a join on identity: the session record is
+/// Tandem's, and the harness session is a foreign pointer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HarnessTransport {
@@ -216,11 +217,11 @@ impl HarnessTransport {
     }
 }
 
-/// The harness session a record points at, and the transport that reported it.
+/// The harness session a record points at, and which harness it ran in.
 ///
-/// One value because the two travel together: a harness id with no transport
-/// would leave `--usage-from-harness` with no way to read it. The id is the
-/// harness's own and is trimmed; an empty one is refused at the write.
+/// One value because the two travel together: the id is the harness's own and
+/// is trimmed, and an empty one is refused at the write. The transport is the
+/// provenance above, not a read-path switch.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HarnessSession {
@@ -284,7 +285,8 @@ pub struct Session {
     /// harness recorded, and it is absent on a hand-driven run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub harness_session_id: Option<String>,
-    /// How the harness session's usage is read: `event-stream` or `database`.
+    /// Which harness the pass ran in: `event-stream` or `database`, provenance
+    /// for the rendezvous lookup, never a read-path switch.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub harness_transport: Option<HarnessTransport>,
     pub project: String,

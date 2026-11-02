@@ -4,11 +4,11 @@
 //!
 //! The external opencode path records through the environment it always did, the
 //! hand-driven path names its record and no harness at all, and usage arrives
-//! from the harness event stream at `session end` rather than from a scrape of
+//! over the harness loopback API at `session end` rather than from a scrape of
 //! another application's database.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -49,6 +49,10 @@ impl Sandbox {
     }
 
     fn run_with(&self, args: &[&str], harness: Option<&str>) -> Output {
+        self.run_with_env(args, harness, &[])
+    }
+
+    fn run_with_env(&self, args: &[&str], harness: Option<&str>, extra: &[(&str, &str)]) -> Output {
         let mut command = Command::new(BINARY);
         command
             .arg("--home")
@@ -57,10 +61,21 @@ impl Sandbox {
             .env("HOME", &self.root)
             .env("USERPROFILE", &self.root)
             .env_remove("TANDEM_HOME")
-            .env_remove("OPENCODE_SESSION_ID");
+            .env_remove("OPENCODE_SESSION_ID")
+            .env_remove("TANDEM_HARNESS_URL")
+            .env_remove("TANDEM_HARNESS_PASSWORD")
+            .env_remove("XDG_STATE_HOME")
+            .env_remove("OPENCODE_DB");
         if let Some(harness) = harness {
             command.env("OPENCODE_SESSION_ID", harness);
         }
+        for (key, value) in extra {
+            command.env(key, value);
+        }
+        // The old SQL path is gone: a database at OPENCODE_DB must never be
+        // read. Point it at a missing file so a regression answers a failure,
+        // not the usage the stub would have answered.
+        command.env("OPENCODE_DB", self.root.join("missing-opencode.db"));
         command.output().expect("the binary runs")
     }
 
@@ -90,23 +105,178 @@ fn json_of(output: Output, args: &[&str]) -> Value {
     serde_json::from_slice(&output.stdout).expect("the verb answers JSON")
 }
 
-fn events(path: &Path) {
-    fs::write(
-        path,
-        [
-            r#"{"type":"message.updated","properties":{"info":{"id":"msg_1","sessionID":"ses_events","role":"assistant","cost":0.25,"tokens":{"input":1000,"output":200,"reasoning":50,"cache":{"read":100,"write":10}},"providerID":"opencode-go","modelID":"deepseek-v4.1-flash"}}}"#,
-            r#"{"type":"message.updated","properties":{"info":{"id":"msg_2","sessionID":"ses_events","role":"assistant","cost":0.25,"tokens":{"input":500,"output":100,"reasoning":0,"cache":{"read":0,"write":0}},"providerID":"opencode-go","modelID":"deepseek-v4.1-flash"}}}"#,
-        ]
-        .join("\n"),
-    )
-    .expect("the event stream is written");
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpListener;
+use std::thread;
+
+struct Stub {
+    base: String,
+}
+
+impl Stub {
+    fn start(password: &str, session: &str, messages: &str) -> (Self, thread::JoinHandle<()>) {
+        Self::start_hits("ses_events", password, session, messages, 2)
+    }
+
+    fn start_one(password: &str, session: &str, messages: &str) -> (Self, thread::JoinHandle<()>) {
+        Self::start_hits("ses_events", password, session, messages, 1)
+    }
+
+    fn start_hits(
+        expected_id: &str,
+        password: &str,
+        session: &str,
+        messages: &str,
+        hits: usize,
+    ) -> (Self, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("the stub binds loopback");
+        let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let expected = format!("Basic {}", basic(password));
+        let session = session.to_string();
+        let messages = messages.to_string();
+        let wanted = expected_id.to_string();
+        let password_check = password.to_string();
+        let base_clone = base.clone();
+        let handle = thread::spawn(move || {
+            for stream in listener.incoming().take(hits) {
+                let mut stream = stream.expect("a harness connection arrives");
+                let mut reader = BufReader::new(stream.try_clone().expect("the stub clones"));
+                let mut headline = String::new();
+                reader
+                    .read_line(&mut headline)
+                    .expect("the request line arrives");
+                let mut length = 0usize;
+                let mut auth = String::new();
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).expect("headers arrive");
+                    let trimmed = line.trim_end();
+                    if trimmed.is_empty() {
+                        break;
+                    }
+                    if let Some(colon) = trimmed.find(':') {
+                        let (name, value) = trimmed.split_at(colon);
+                        if name.eq_ignore_ascii_case("authorization") {
+                            auth = value[1..].trim().to_string();
+                        }
+                        if name.eq_ignore_ascii_case("content-length") {
+                            length = value[1..].trim().parse().unwrap_or(0);
+                        }
+                    }
+                }
+                if length > 0 {
+                    let mut discard = vec![0u8; length];
+                    reader.read_exact(&mut discard).ok();
+                }
+                let path = headline
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap_or("/")
+                    .to_string();
+                let authorized = auth == expected;
+                let (status, body) = if !authorized {
+                    (
+                        401,
+                        r#"{"_tag":"UnauthorizedError","message":"Authentication required"}"#
+                            .to_string(),
+                    )
+                } else if path.contains("/message") {
+                    if path.contains(wanted.as_str()) {
+                        if path.contains("/message?limit=100&cursor=") {
+                            (200, r#"{"data":[],"cursor":{"next":null}}"#.to_string())
+                        } else {
+                            (200, messages.clone())
+                        }
+                    } else {
+                        (
+                            404,
+                            r#"{"_tag":"SessionNotFoundError","message":"Session not found"}"#
+                                .to_string(),
+                        )
+                    }
+                } else if path.contains("/api/session/") {
+                    if path.contains(wanted.as_str()) {
+                        (200, session.clone())
+                    } else {
+                        (
+                            404,
+                            r#"{"_tag":"SessionNotFoundError","message":"Session not found"}"#
+                                .to_string(),
+                        )
+                    }
+                } else {
+                    (
+                        404,
+                        r#"{"_tag":"SessionNotFoundError","message":"Session not found"}"#
+                            .to_string(),
+                    )
+                };
+                let _ = password_check.clone();
+                let reason = match status {
+                    200 => "OK",
+                    401 => "Unauthorized",
+                    _ => "Not Found",
+                };
+                let reply = format!(
+                    "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream
+                    .write_all(reply.as_bytes())
+                    .expect("the stub answers");
+            }
+        });
+        (Self { base: base_clone }, handle)
+    }
+}
+
+fn basic(password: &str) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes = format!("opencode:{password}").into_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let a = bytes[i] as u32;
+        let b = if i + 1 < bytes.len() {
+            bytes[i + 1] as u32
+        } else {
+            0
+        };
+        let c = if i + 2 < bytes.len() {
+            bytes[i + 2] as u32
+        } else {
+            0
+        };
+        let triple = (a << 16) | (b << 8) | c;
+        out.push(TABLE[((triple >> 18) & 63) as usize] as char);
+        out.push(TABLE[((triple >> 12) & 63) as usize] as char);
+        out.push(if i + 1 < bytes.len() {
+            TABLE[((triple >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if i + 2 < bytes.len() {
+            TABLE[(triple & 63) as usize] as char
+        } else {
+            '='
+        });
+        i += 3;
+    }
+    out
+}
+
+fn session_body() -> String {
+    r#"{"data":{"id":"ses_events","tokens":{"input":1500,"output":300,"reasoning":50,"cache":{"read":100,"write":10}},"cost":0.5,"model":{"id":"deepseek-v4.1-flash"}}}"#.to_string()
+}
+
+fn messages_body() -> String {
+    r#"{"data":[{"id":"msg_1","content":[{"type":"tool","id":"prt_1","name":"skill","state":{"input":{"id":"opencode"}}}]},{"id":"msg_2","content":[{"type":"tool","id":"prt_2","name":"skill","state":{"input":{"id":"tdd"}}},{"type":"tool","id":"prt_3","name":"shell","state":{"input":{"command":"ls"}}}]}],"cursor":{"next":null}}"#.to_string()
 }
 
 #[test]
-fn a_harness_session_is_a_foreign_pointer_show_answers_and_end_reads_the_stream() {
+fn a_harness_session_is_a_foreign_pointer_show_answers_and_end_reads_the_api() {
     let sandbox = Sandbox::new("harness-pointer");
-    let path = sandbox.root.join("events.jsonl");
-    events(&path);
+    let (stub, handle) = Stub::start("harness-secret", &session_body(), &messages_body());
 
     let started = sandbox.json(&[
         "session",
@@ -138,27 +308,361 @@ fn a_harness_session_is_a_foreign_pointer_show_answers_and_end_reads_the_stream(
         "and the transport it came from"
     );
 
-    let ended = sandbox.json(&[
-        "session",
-        "end",
-        "--session",
-        "ses_pass_1",
-        "--outcome",
-        "succeeded",
-        "--summary",
-        "What landed.",
-        "--usage-from-harness",
-        "--harness-events",
-        path.to_str().expect("a UTF-8 path"),
-    ]);
-    assert_eq!(ended["status"], "ended");
-    assert_eq!(
-        ended["cost"], 0.5,
-        "the stream's cost, summed over messages"
+    let output = sandbox.run_with_env(
+        &[
+            "session",
+            "end",
+            "--session",
+            "ses_pass_1",
+            "--outcome",
+            "succeeded",
+            "--summary",
+            "What landed.",
+            "--usage-from-harness",
+            "--harness-url",
+            &stub.base,
+        ],
+        None,
+        &[("TANDEM_HARNESS_PASSWORD", "harness-secret")],
     );
+    let ended: Value = {
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "end reads the loopback: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).expect("the verb answers JSON")
+    };
+    assert_eq!(ended["status"], "ended");
+    assert_eq!(ended["cost"], 0.5, "the API cost");
     assert_eq!(ended["tokens"]["input"], 1500);
     assert_eq!(ended["tokens"]["output"], 300);
     assert_eq!(ended["model"], "deepseek-v4.1-flash");
+    assert_eq!(ended["skills"]["opencode"], 1);
+    assert_eq!(ended["skills"]["tdd"], 1);
+    handle.join().expect("the stub ends");
+}
+
+#[test]
+fn an_explicit_url_wins_over_the_environment_and_the_rendezvous() {
+    let sandbox = Sandbox::new("url-precedence");
+    let (good, good_handle) = Stub::start("harness-secret", &session_body(), &messages_body());
+    let (decoy, decoy_handle) = Stub::start_hits(
+        "ses_events",
+        "harness-secret",
+        &session_body(),
+        &messages_body(),
+        0,
+    );
+    // A rendezvous file the explicit URL must beat: it points at the decoy,
+    // so a read through it would still answer, but with the decoy's port.
+    let rendezvous = sandbox
+        .home()
+        .join("harness")
+        .join("state")
+        .join("opencode");
+    std::fs::create_dir_all(&rendezvous).expect("the rendezvous dir is creatable");
+    std::fs::write(
+        rendezvous.join("service.json"),
+        format!(r#"{{"url":"{}","password":"harness-secret"}}"#, decoy.base),
+    )
+    .expect("the rendezvous is writable");
+
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_url",
+        "--harness-session",
+        "ses_events",
+        "--harness-transport",
+        "event-stream",
+        "--project",
+        "tandem",
+        "--brief",
+        "A pass.",
+    ]);
+    let output = sandbox.run_with_env(
+        &[
+            "session",
+            "end",
+            "--session",
+            "ses_url",
+            "--summary",
+            "What landed.",
+            "--usage-from-harness",
+            "--harness-url",
+            &good.base,
+        ],
+        None,
+        &[
+            ("TANDEM_HARNESS_URL", decoy.base.as_str()),
+            ("TANDEM_HARNESS_PASSWORD", "harness-secret"),
+        ],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "the flag wins: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    good_handle.join().expect("the good stub ends");
+    decoy_handle
+        .join()
+        .expect("the decoy is never read, so it still ends");
+}
+
+#[test]
+fn the_environment_url_wins_over_the_rendezvous_file() {
+    let sandbox = Sandbox::new("env-wins");
+    let (good, good_handle) = Stub::start("harness-secret", &session_body(), &messages_body());
+    let (decoy, decoy_handle) = Stub::start_hits(
+        "ses_events",
+        "harness-secret",
+        &session_body(),
+        &messages_body(),
+        0,
+    );
+    let rendezvous = sandbox
+        .home()
+        .join("harness")
+        .join("state")
+        .join("opencode");
+    std::fs::create_dir_all(&rendezvous).expect("the rendezvous dir is creatable");
+    std::fs::write(
+        rendezvous.join("service.json"),
+        format!(r#"{{"url":"{}","password":"harness-secret"}}"#, decoy.base),
+    )
+    .expect("the rendezvous is writable");
+
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_env",
+        "--harness-session",
+        "ses_events",
+        "--harness-transport",
+        "event-stream",
+        "--project",
+        "tandem",
+        "--brief",
+        "A pass.",
+    ]);
+    let output = sandbox.run_with_env(
+        &[
+            "session",
+            "end",
+            "--session",
+            "ses_env",
+            "--summary",
+            "What landed.",
+            "--usage-from-harness",
+        ],
+        None,
+        &[
+            ("TANDEM_HARNESS_URL", good.base.as_str()),
+            ("TANDEM_HARNESS_PASSWORD", "harness-secret"),
+        ],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "the env wins: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    good_handle.join().expect("the good stub ends");
+    decoy_handle
+        .join()
+        .expect("the decoy is never read, so it still ends");
+}
+
+#[test]
+fn the_rendezvous_file_answers_when_no_url_is_given() {
+    let sandbox = Sandbox::new("rendezvous");
+    let (stub, handle) = Stub::start("file-secret", &session_body(), &messages_body());
+    let rendezvous = sandbox
+        .home()
+        .join("harness")
+        .join("state")
+        .join("opencode");
+    std::fs::create_dir_all(&rendezvous).expect("the rendezvous dir is creatable");
+    std::fs::write(
+        rendezvous.join("service.json"),
+        format!(
+            r#"{{"url":"{}","password":"file-secret","extra":"ignored"}}"#,
+            stub.base
+        ),
+    )
+    .expect("the rendezvous is writable");
+
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_file",
+        "--harness-session",
+        "ses_events",
+        "--harness-transport",
+        "event-stream",
+        "--project",
+        "tandem",
+        "--brief",
+        "A pass.",
+    ]);
+    let output = sandbox.run_with_env(
+        &[
+            "session",
+            "end",
+            "--session",
+            "ses_file",
+            "--summary",
+            "What landed.",
+            "--usage-from-harness",
+        ],
+        None,
+        &[],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "the rendezvous answers: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let ended: Value = serde_json::from_slice(&output.stdout).expect("the verb answers JSON");
+    assert_eq!(ended["model"], "deepseek-v4.1-flash");
+    handle.join().expect("the stub ends");
+}
+
+#[test]
+fn a_wrong_password_names_the_password_sources_and_leaks_nothing() {
+    let sandbox = Sandbox::new("wrong-password");
+    let (stub, handle) = Stub::start_one("harness-secret", &session_body(), &messages_body());
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_pw",
+        "--harness-session",
+        "ses_events",
+        "--project",
+        "tandem",
+        "--brief",
+        "A pass.",
+    ]);
+    let output = sandbox.run_with_env(
+        &[
+            "session",
+            "end",
+            "--session",
+            "ses_pw",
+            "--summary",
+            "What landed.",
+            "--usage-from-harness",
+            "--harness-url",
+            &stub.base,
+        ],
+        None,
+        &[("TANDEM_HARNESS_PASSWORD", "wrong-secret")],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("refused the password"),
+        "the failure names the password: {stderr}"
+    );
+    assert!(
+        stderr.contains("TANDEM_HARNESS_PASSWORD"),
+        "and where it came from: {stderr}"
+    );
+    assert!(
+        !stderr.contains("wrong-secret") && !stderr.contains("harness-secret"),
+        "no password leaks: {stderr}"
+    );
+    handle.join().expect("the stub ends");
+}
+
+#[test]
+fn an_unknown_harness_session_names_the_id() {
+    let sandbox = Sandbox::new("unknown-session");
+    let (stub, handle) = Stub::start_one("harness-secret", &session_body(), &messages_body());
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_gone",
+        "--harness-session",
+        "ses_missing",
+        "--project",
+        "tandem",
+        "--brief",
+        "A pass.",
+    ]);
+    let output = sandbox.run_with_env(
+        &[
+            "session",
+            "end",
+            "--session",
+            "ses_gone",
+            "--summary",
+            "What landed.",
+            "--usage-from-harness",
+            "--harness-url",
+            &stub.base,
+        ],
+        None,
+        &[("TANDEM_HARNESS_PASSWORD", "harness-secret")],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("ses_missing"),
+        "the failure names the id: {stderr}"
+    );
+    handle.join().expect("the stub ends");
+}
+
+#[test]
+fn an_unreachable_harness_names_the_flag_and_the_env() {
+    let sandbox = Sandbox::new("unreachable");
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_down",
+        "--harness-session",
+        "ses_events",
+        "--project",
+        "tandem",
+        "--brief",
+        "A pass.",
+    ]);
+    let output = sandbox.run_with_env(
+        &[
+            "session",
+            "end",
+            "--session",
+            "ses_down",
+            "--summary",
+            "What landed.",
+            "--usage-from-harness",
+            "--harness-url",
+            "http://127.0.0.1:1",
+        ],
+        None,
+        &[("TANDEM_HARNESS_PASSWORD", "harness-secret")],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("127.0.0.1:1"),
+        "the failure names what was tried: {stderr}"
+    );
+    assert!(
+        stderr.contains("--harness-url") && stderr.contains("TANDEM_HARNESS_URL"),
+        "and how to override it: {stderr}"
+    );
 }
 
 #[test]
