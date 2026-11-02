@@ -31,6 +31,16 @@ fn main() {
         // LF on every platform: the generator's copy is the one the staleness
         // test compares, and a Windows checkout may hand the same file back
         // with CRLF. Written as bytes, never through a text translation.
+        // A nested name (`serde_json/JsonValue`) owns its parent, so the
+        // exporter makes it before it writes.
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap_or_else(|error| {
+                panic!(
+                    "the wire directory {} is creatable: {error}",
+                    parent.display()
+                )
+            });
+        }
         let body = body.replace("\r\n", "\n");
         fs::write(&path, body.as_bytes())
             .unwrap_or_else(|error| panic!("{} is writable: {error}", path.display()));

@@ -27,6 +27,7 @@
 //! transaction.
 
 use std::io::{self, BufRead, Read, Write};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -34,7 +35,8 @@ use std::time::Duration;
 
 use crate::bikeshed::Bikeshed;
 use crate::domain::Settings;
-use crate::domain::session::Sessions;
+use crate::domain::harness;
+use crate::domain::session::{HarnessTransport, SessionStatus, Sessions};
 use crate::domain::sprint::{SprintMode, SprintStatus, Sprints};
 use crate::domain::usage::{Calendar, UsageTicket, usage_report};
 use crate::domain::{
@@ -47,8 +49,8 @@ use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, HostRoot, LaneDeletionReply,
     LaneListReply, MarkdownReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply,
     NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, Reply, Request,
-    Response, SettingsReply, SetupReply, SprintListReply, SprintReply, TicketListReply,
-    TicketReply, UsageReportReply, WireError,
+    Response, SessionListReply, SessionTranscriptReply, SettingsReply, SetupReply, SprintListReply,
+    SprintReply, TicketListReply, TicketReply, UsageReportReply, WireError,
 };
 use crate::wire::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
@@ -638,6 +640,37 @@ fn execute(
                 )),
             }))
         }
+        Method::SessionList(params) => {
+            // The sheet's Sessions section: the ticket's linked records, newest
+            // first, or every record when the caller names no ticket. A status
+            // the store does not know is the domain's refusal, the same one
+            // `session list` makes.
+            let sessions = Sessions::new(store);
+            let ticket = named(&params.ticket);
+            let records = if ticket.is_empty() {
+                let status = match params.status.as_deref() {
+                    Some(raw) if !raw.trim().is_empty() => {
+                        Some(SessionStatus::parse(raw.trim()).ok_or_else(|| {
+                            WireError::domain(format!(
+                                "session status must be one of running, ended (got \"{raw}\")."
+                            ))
+                        })?)
+                    }
+                    _ => None,
+                };
+                sessions.list(None, status).map_err(domain)?
+            } else {
+                sessions.for_ticket(ticket).map_err(domain)?
+            };
+            Ok(Reply::SessionList(SessionListReply { sessions: records }))
+        }
+        Method::SessionTranscript(params) => session_transcript(
+            store,
+            environment,
+            named(&params.id),
+            params.cursor,
+            params.limit,
+        ),
         Method::LaneList(_) => {
             let (lanes, revision) = board.lanes_snapshot().map_err(domain)?;
             Ok(Reply::LaneList(LaneListReply { revision, lanes }))
@@ -854,6 +887,96 @@ fn process_environment() -> Environment {
 /// so the domain's unknown-id refusal is the same answer on both doors.
 fn named(value: &Option<String>) -> &str {
     value.as_deref().unwrap_or("")
+}
+
+/// `session.transcript`: one record's harness transcript, or the reason it
+/// cannot be read.
+///
+/// The id is the Tandem record's or the raw harness pointer: `Sessions::resolve`
+/// answers the record either way, and an id neither names is the wire's
+/// refusal, the same one `session show` makes. Everything past the resolve is a
+/// reason beside empty entries, never a refusal: the section draws every row,
+/// and a row the harness no longer holds says why. The bytes stay out of
+/// `tandem.db`: the record's pointer is the join, and the read opens the
+/// harness store read-only, the way the usage read does.
+fn session_transcript(
+    store: &Store,
+    environment: &Environment,
+    id: &str,
+    cursor: Option<i64>,
+    limit: Option<i64>,
+) -> Result<Reply, WireError> {
+    let sessions = Sessions::new(store);
+    let record = sessions
+        .resolve(id)
+        .and_then(|resolved| sessions.show(&resolved))
+        .map_err(domain)?;
+    let unavailable = |reason: String| {
+        Reply::SessionTranscript(SessionTranscriptReply {
+            entries: Vec::new(),
+            next_cursor: None,
+            unavailable: Some(reason),
+        })
+    };
+    let Some(pointer) = record.harness_session_id.clone() else {
+        return Ok(unavailable(format!(
+            "Session \"{}\" names no harness session, so there is no transcript to read.",
+            record.id
+        )));
+    };
+    let limit = limit.unwrap_or(50).clamp(1, 200) as usize;
+    // A record from the embedded harness (`event-stream`) carries its rows in
+    // the home's own `harness/opencode.db`; a CLI run (`database`) carries its
+    // rows in the external store `OPENCODE_DB` names. A record with a pointer
+    // and no known transport reads the external store: it is the only source
+    // that needs no path the record does not carry.
+    let page = match record
+        .harness_transport
+        .unwrap_or(HarnessTransport::Database)
+    {
+        HarnessTransport::Database => harness::transcript(
+            &external_harness_database(environment),
+            &pointer,
+            cursor,
+            limit,
+        ),
+        HarnessTransport::EventStream => harness::transcript(
+            &store.home().directory().join("harness").join("opencode.db"),
+            &pointer,
+            cursor,
+            limit,
+        ),
+    };
+    match page {
+        Ok(page) => Ok(Reply::SessionTranscript(SessionTranscriptReply {
+            entries: page.entries,
+            next_cursor: page.next_cursor,
+            unavailable: None,
+        })),
+        Err(error) => Ok(unavailable(error.message())),
+    }
+}
+
+/// The external opencode store: `OPENCODE_DB`, else the path its own default
+/// names. Tandem reads it read-only and never writes it.
+fn external_harness_database(environment: &Environment) -> PathBuf {
+    if let Some(path) = environment
+        .get("OPENCODE_DB")
+        .map(|path| path.trim())
+        .filter(|path| !path.is_empty())
+    {
+        return PathBuf::from(path);
+    }
+    let home = environment
+        .get("HOME")
+        .cloned()
+        .or_else(|| std::env::var("HOME").ok())
+        .unwrap_or_default();
+    PathBuf::from(home)
+        .join(".local")
+        .join("share")
+        .join("opencode")
+        .join("opencode.db")
 }
 
 /// A ticket receipt: the ticket a write answered and the revision that write

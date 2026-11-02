@@ -2243,6 +2243,172 @@ body {
   border-top: var(--hairline) solid var(--sand);
 }
 
+/* The sheet's Sessions section: the linked records, newest first, with the
+ * transcript behind each row. A row is a toggle over its pass; the transcript
+ * is the harness's own words, thinking, calls and outputs, oldest first. */
+.sheet__session-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sheet__session-row {
+  padding: 7px 9px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+}
+
+.sheet__session-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sheet__session-header {
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.sheet__session-brief {
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+.sheet__session-live {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: var(--hairline) solid var(--moss-deep);
+  border-radius: 999px;
+  color: var(--moss-deep);
+  font-size: 9.5px;
+}
+
+.sheet__session-summary {
+  margin: 4px 0 0;
+  font-size: 11px;
+}
+
+.sheet__session-meta {
+  margin: 3px 0 0;
+  color: var(--ink-dim);
+  font-size: 10.5px;
+}
+
+.sheet__session-notice {
+  margin: 6px 0 0;
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+.sheet__session-transcript {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: var(--hairline) solid var(--sand);
+}
+
+.sheet__session-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.sheet__session-entry-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.sheet__session-role {
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.sheet__session-agent,
+.sheet__session-model {
+  color: var(--ink-dim);
+  font-size: 10.5px;
+}
+
+.sheet__session-text {
+  margin: 0;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sheet__session-thinking {
+  margin: 0;
+  border-left: 2px solid var(--sand);
+  padding-left: 6px;
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-style: italic;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sheet__session-tool {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: var(--hairline) solid var(--sand);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+}
+
+.sheet__session-tool-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.sheet__session-tool-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sheet__session-tool-status {
+  color: var(--ink-dim);
+  font-size: 10.5px;
+}
+
+.sheet__session-io {
+  margin: 0;
+  overflow: auto;
+  max-height: 240px;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sheet__session-output {
+  margin-top: 4px;
+}
+
+.sheet__session-output .sheet__toggle {
+  margin-top: 4px;
+}
+
 .sheet__hint {
   color: var(--ink-dim);
   font-size: 10.5px;
