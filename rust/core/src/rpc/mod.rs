@@ -978,8 +978,6 @@ mod tests {
     }
 
     /// A home with one write, so the watch can attach and read a revision.
-    /// Unix only with the cases that use it.
-    #[cfg(unix)]
     fn store_with_a_revision(name: &str) -> (std::path::PathBuf, Store) {
         use crate::store::{Home, NewSetting};
 
@@ -1000,12 +998,10 @@ mod tests {
     }
 
     /// The stream the latency case reads its events from.
-    #[cfg(unix)]
     struct Recorder {
         frames: Mutex<Vec<String>>,
     }
 
-    #[cfg(unix)]
     impl Recorder {
         fn new() -> Self {
             Self {
@@ -1029,7 +1025,6 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     impl Stream for Recorder {
         fn read_frame(&self) -> io::Result<Option<String>> {
             Ok(None)
@@ -1048,7 +1043,6 @@ mod tests {
     // An idle watch must not query the revision on every tick: the files do
     // not move, so the held connection stays quiet and the 40 ms cadence
     // costs two stats, not a `SELECT`.
-    #[cfg(unix)]
     #[test]
     fn an_idle_watch_issues_no_revision_read() {
         let (root, store) = store_with_a_revision("idle");
@@ -1080,7 +1074,6 @@ mod tests {
     // A write from another store (the second terminal's door) arrives on the
     // stream quickly: the 40 ms ceiling is the bound, and the case retries up
     // to two seconds so scheduling jitter cannot flake it.
-    #[cfg(unix)]
     #[test]
     fn a_write_from_another_store_reports_changed_quickly() {
         use crate::store::NewSetting;
