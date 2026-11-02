@@ -1,4 +1,4 @@
-import type { Call } from '../../../src/shared/bridge'
+import type { Method } from '../../../src/shared/bridge'
 
 import { HUMAN_AUTHOR } from './sheet'
 
@@ -48,10 +48,10 @@ export type PassButton = {
   /** The reason drawn in place of the act when disabled; null when enabled. */
   reason: string | null
   /** The writes the request makes, in order. */
-  calls: Call[]
+  calls: Method[]
 }
 
-function commentCall(id: string, kind: PassKind): Call {
+function commentCall(id: string, kind: PassKind): Method {
   return {
     method: 'ticket.comment.add',
     params: { id, author: HUMAN_AUTHOR, body: PASS_COMMENT[kind] },
@@ -169,7 +169,7 @@ const PASS_STATUS: Record<PassKind, string> = {
  * without its comment (or a comment without its claim) is never half-told.
  */
 export async function requestPass(
-  call: (call: Call) => Promise<{ ok: boolean }>,
+  call: (call: Method) => Promise<{ ok: boolean }>,
   ticketId: string,
   kind: PassKind,
 ): Promise<boolean> {

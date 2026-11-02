@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import type { Call } from '../../../src/shared/bridge'
+import type { Method } from '../../../src/shared/bridge'
 import { STATUSES, assigneeChoices } from '../shell/board'
 import { passButtons, type PassKind } from '../shell/pass'
 import {
@@ -214,7 +214,7 @@ export function TicketSheet({
   }, [ticket, title, status, assignee, commentDraft, revision, sheetRevision])
 
   async function write(
-    call: Call,
+    call: Method,
     expected: number | null = revision,
     followUp?: string,
   ): Promise<boolean> {

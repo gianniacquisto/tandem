@@ -1,4 +1,4 @@
-import type { BridgeCall, Call } from '../../../src/shared/bridge'
+import type { Method, MethodCall } from '../../../src/shared/bridge'
 import type { NoteContentView } from '../wire/NoteContentView'
 
 /**
@@ -30,7 +30,7 @@ export type Arrival =
   | { type: 'adopted'; buffer: NoteBuffer }
   | { type: 'unchanged' }
 
-export type NoteCall = (call: Call) => Promise<BridgeCall>
+export type NoteCall = (call: Method) => Promise<MethodCall>
 
 /** The buffer an open note starts from: clean, at the hash the read reported. */
 export function openBuffer(note: { path: string; text: string; hash: string }): NoteBuffer {

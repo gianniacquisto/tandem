@@ -61,6 +61,11 @@
         "detail": "no warnings",
         "name": "agent-face",
         "ok": true
+      },
+      {
+        "detail": "not signed in; sign in from Settings",
+        "name": "harness-auth",
+        "ok": true
       }
     ],
     "ok": true

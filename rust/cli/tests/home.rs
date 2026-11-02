@@ -109,15 +109,15 @@ fn report(output: &Output) -> Value {
     value
 }
 
-/// The `home` row, shaped as ADR 0014 pins it, inside the eleven-row report.
+/// The `home` row, shaped as ADR 0014 pins it, inside the twelve-row report.
 fn home_row(value: &Value) -> &Value {
     let rows = value["checks"]
         .as_array()
         .expect("`checks` is an array of rows");
     assert_eq!(
         rows.len(),
-        11,
-        "the report carries the eleven checks: {value}"
+        12,
+        "the report carries the twelve checks: {value}"
     );
     let row = rows
         .iter()
