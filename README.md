@@ -2,16 +2,16 @@
 
 [![CI](https://github.com/gianniacquisto/tandem/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/gianniacquisto/tandem/actions/workflows/release.yml)
 [![Release](https://img.shields.io/github/v/release/gianniacquisto/tandem)](https://github.com/gianniacquisto/tandem/releases/latest)
-[![macOS](https://img.shields.io/badge/macOS-27%2B%20%2B%20Apple%20silicon-lightgrey.svg)](https://github.com/gianniacquisto/tandem/releases/latest)
+[![shipped app: macOS 27+ on Apple silicon](https://img.shields.io/badge/shipped%20app-macOS%2027%2B%20on%20Apple%20silicon-lightgrey.svg)](https://github.com/gianniacquisto/tandem/releases/latest)
 [![Licence](https://img.shields.io/badge/licence-MIT-sage.svg)](LICENSE)
 
 ![The tandem bike — the app's brand mark and icon](Resources/TandemBike.jpg)
 
-**Tandem is a macOS board for you and your AI coding agents.** One ticket list, one board by status and lane, an inbox for what the agents owe you, and the bikeshed — a folder of markdown notes — that doubles as the agents' memory. Your agent and you share one list: it files tickets you see, and it sees the ones you close. Everything runs on your Mac today: one SQLite database and a folder of markdown notes you own, with no account to create. A hosted core is a later deployment shape, so the boundary is today's, not the product's.
+**Tandem is a board for you and your AI coding agents that ships as a macOS app.** One ticket list, one board by status and lane, an inbox for what the agents owe you, and the bikeshed — a folder of markdown notes — that doubles as the agents' memory. Your agent and you share one list: it files tickets you see, and it sees the ones you close. Everything runs on your Mac today: one SQLite database and a folder of markdown notes you own, with no account to create. A hosted core is a later deployment shape, so the boundary is today's, not the product's.
 
 ## Install
 
-macOS 27 (Golden Gate) or later, on an Apple silicon Mac.
+The shipped app needs macOS 27 (Golden Gate) or later, on an Apple silicon Mac.
 
 ```sh
 brew install --cask gianniacquisto/tap/tandem
@@ -51,7 +51,7 @@ tandem-cli doctor
 
 One JSON report of where your state lives and whether it is healthy: the home directory, the store, the bikeshed, the comment log, the write lock, the installed app and the agent skills. It exits `1` when something needs attention, so it is the quickest way to know a fresh install is whole.
 
-### What it runs on
+### What the shipped app runs on
 
 | | Supported |
 | --- | --- |
