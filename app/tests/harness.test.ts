@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
 import {
+  ensureHarnessHome,
   HarnessController,
   harnessEnv,
   loginArgs,
@@ -116,6 +117,30 @@ describe('the harness environment', () => {
 
   it('leaves HOME alone, so the harness keeps the human shell, git and keychain', () => {
     expect(harnessEnv('/tandem/here')).not.toHaveProperty('HOME')
+  })
+
+  it('creates every directory root the env names, and never the database file', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tandem-harness-home-'))
+    try {
+      ensureHarnessHome(root)
+      const env = harnessEnv(root)
+      for (const dir of [
+        root,
+        join(root, 'harness'),
+        env.XDG_DATA_HOME,
+        env.XDG_CACHE_HOME,
+        env.XDG_CONFIG_HOME,
+        env.XDG_STATE_HOME,
+        env.TMPDIR,
+      ]) {
+        expect(statSync(dir).isDirectory(), dir).toBe(true)
+      }
+      // OPENCODE_DB is a file path in the env, not a root: creating it as a
+      // directory would be the binary's job to fail on, not the app's.
+      expect(existsSync(env.OPENCODE_DB)).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('lets TANDEM_OPENCODE_BIN name the binary, defaulting to PATH', () => {

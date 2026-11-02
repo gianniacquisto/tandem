@@ -55,11 +55,26 @@ export function tandemHomeDir(source: TandemHomeSource): string {
 }
 
 /**
- * The harness environment (ADR 0038): every global path the binary resolves
- * rooted in `<TandemHome>/harness`. `HOME` is deliberately absent: the harness
- * runs tools in the human's name, and a fake home would break that quietly.
+ * The harness environment (ADR 0038): every global path the binary resolves,
+ * rooted in `<TandemHome>/harness`. A closed struct, not a `Record`: with
+ * `noUncheckedIndexedAccess`, indexing a `Record<string, string>` reads as
+ * `string | undefined`, while every key of this type is present by
+ * construction, so a consumer can dot-access without a guard. `HOME` is
+ * deliberately absent: the harness runs tools in the human's name, and a fake
+ * home would break that quietly. `OPENCODE_SERVER_PASSWORD` is not here: the
+ * server launcher adds it at spawn (`harnessServer.ts`).
  */
-export function harnessEnv(tandemHome: string): Record<string, string> {
+export type HarnessEnv = {
+  XDG_DATA_HOME: string
+  XDG_CACHE_HOME: string
+  XDG_CONFIG_HOME: string
+  XDG_STATE_HOME: string
+  TMPDIR: string
+  OPENCODE_DB: string
+  OPENCODE_CONFIG_DIR: string
+}
+
+export function harnessEnv(tandemHome: string): HarnessEnv {
   const root = join(tandemHome, 'harness')
   const data = join(root, 'data')
   const config = join(root, 'config')
@@ -88,17 +103,16 @@ export function resolveHarnessBinary(env: Record<string, string | undefined>): s
  */
 export function ensureHarnessHome(tandemHome: string): void {
   const env = harnessEnv(tandemHome)
-  for (const dir of [
+  const roots: string[] = [
     tandemHome,
     join(tandemHome, 'harness'),
-    env['XDG_DATA_HOME'],
-    env['XDG_CACHE_HOME'],
-    env['XDG_CONFIG_HOME'],
-    env['XDG_STATE_HOME'],
-    env['TMPDIR'],
-  ]) {
-    if (dir !== undefined) mkdirSync(dir, { recursive: true })
-  }
+    env.XDG_DATA_HOME,
+    env.XDG_CACHE_HOME,
+    env.XDG_CONFIG_HOME,
+    env.XDG_STATE_HOME,
+    env.TMPDIR,
+  ]
+  for (const dir of roots) mkdirSync(dir, { recursive: true })
 }
 
 /** `auth list` against the harness home, never the live service. */

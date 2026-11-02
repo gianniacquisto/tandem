@@ -173,7 +173,9 @@ export class HarnessServer {
   }
 
   private spawnEnv(password: string | null): Record<string, string> {
-    const env = { ...this.baseEnv(), ...harnessEnv(this.deps.tandemHome) }
+    // The sealed table is the closed `HarnessEnv` struct; the password is the
+    // one key the struct does not name, so the spawn env is the wide record.
+    const env: Record<string, string> = { ...this.baseEnv(), ...harnessEnv(this.deps.tandemHome) }
     if (password !== null) env['OPENCODE_SERVER_PASSWORD'] = password
     return env
   }
