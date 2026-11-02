@@ -70,8 +70,11 @@ def platform_key():
 
 
 def find_harness(explicit):
+    # Realpath either way: `pass_once` serves the binary with `cwd` pointed at
+    # the scratch work dir, so a relative path would resolve against that and
+    # the spawn would fail with ENOENT after the pin checks passed.
     if explicit:
-        return explicit
+        return os.path.realpath(explicit)
     found = shutil.which("opencode")
     if not found:
         raise Check("no opencode on PATH; pass --harness <path>")
