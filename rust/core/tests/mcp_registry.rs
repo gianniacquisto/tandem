@@ -85,7 +85,7 @@ fn tool_name(tag: &str) -> String {
     if tag == "ticket.addFromNote" {
         return "ticket_file".to_string();
     }
-    tag.replace('.', "_").replace('-', "_")
+    tag.replace(['.', '-'], "_")
 }
 
 #[test]
