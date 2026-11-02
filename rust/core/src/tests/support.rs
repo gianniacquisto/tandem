@@ -6,7 +6,7 @@
 //! write, so a ticket the batch takes is a ticket the store really carries.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::store::{Actor, Home, NewTicket, Store};
@@ -27,6 +27,10 @@ impl Sandbox {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).expect("the sandbox is creatable");
         Self { root }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.root
     }
 
     pub fn home(&self) -> Home {

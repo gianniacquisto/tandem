@@ -139,6 +139,10 @@ pub enum DomainError {
     /// `session end --usage-from-harness` named a record with no harness
     /// session: there is no foreign pointer to read usage through.
     NoHarnessSession { id: String },
+    /// The harness database the run asked for is not a file.
+    NoHarnessDatabase { path: String },
+    /// The harness event stream the run asked for is not a file.
+    NoHarnessEvents { path: String },
     /// The harness loopback server the run asked for is not reachable: no
     /// server at the URL, a timeout, a refused non-loopback host, or no
     /// rendezvous file to read the URL from. `url` names what was tried.
@@ -360,6 +364,14 @@ impl DomainError {
                 "Session \"{id}\" has no harness session id, so --usage-from-harness has \
                  nothing to read. End it with explicit usage flags, or start it again with \
                  --harness-session."
+            ),
+            Self::NoHarnessDatabase { path } => format!(
+                "No harness database at {path}. Check the path, or let the harness run once, \
+                 and try again."
+            ),
+            Self::NoHarnessEvents { path } => format!(
+                "No harness event stream at {path}. Check the path, or let the harness run \
+                 once, and try again."
             ),
             Self::NoHarnessServer { url } => format!(
                 "Cannot reach the harness at {url}. Check that the harness is running, or pass --harness-url <url> or set TANDEM_HARNESS_URL, and try again."

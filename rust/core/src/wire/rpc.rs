@@ -29,6 +29,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::bikeshed::health::BikeshedHealth;
+use crate::domain::harness::TranscriptEntry;
+use crate::domain::session::Session;
 use crate::domain::sprint::Sprint;
 use crate::wire::views::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
@@ -152,6 +154,15 @@ methods! {
     // is the core's (`TicketMarkdown`), so the app and the CLI cannot read one
     // dialect two ways, and the message writes nothing: an empty verb.
     MarkdownBlocks: "markdown.blocks", MarkdownBlocksParams, "";
+    // The ticket sheet's Sessions section (TAN-264). Two reads, and both write
+    // nothing, so no UI-only write hides behind their empty verbs. `session
+    // list` answers the ticket's linked records newest first; `session
+    // transcript` answers one record's harness transcript, resolving the Tandem
+    // id (or the raw harness id) to the newest record naming the pointer, per
+    // `Sessions::resolve`. A record the harness no longer holds answers with
+    // an unavailable reason, never a refusal, so the section still renders.
+    SessionList: "session.list", SessionListParams, "";
+    SessionTranscript: "session.transcript", SessionTranscriptParams, "";
 }
 
 /// `markdown.blocks`: the text to parse. Absent is no body, which draws nothing.
@@ -159,6 +170,30 @@ methods! {
 #[serde(rename_all = "camelCase", default)]
 pub struct MarkdownBlocksParams {
     pub text: Option<String>,
+}
+
+/// `session.list`: the ticket whose linked records the sheet draws, and the
+/// record state it keeps. A ticket the caller names answers the records that
+/// carried it, newest first; an absent one answers every record. A blank ticket
+/// is no filter, the way an absent filter is none on `ticket.list`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SessionListParams {
+    pub ticket: Option<String>,
+    pub status: Option<String>,
+}
+
+/// `session.transcript`: the record whose harness transcript the sheet draws,
+/// the Tandem id or the raw harness id, and the page. `cursor` is the last
+/// position the caller holds; absent reads from the start. `limit` caps the
+/// page: below one reads one, past two hundred reads two hundred, absent reads
+/// fifty.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SessionTranscriptParams {
+    pub id: Option<String>,
+    pub cursor: Option<i64>,
+    pub limit: Option<i64>,
 }
 
 /// A method that takes nothing. The frame still carries `"params": {}`, so a
@@ -430,6 +465,8 @@ pub enum Reply {
     NoteBacklinks(NoteBacklinksReply),
     NoteRecoveries(NoteRecoveriesReply),
     Markdown(MarkdownReply),
+    SessionList(SessionListReply),
+    SessionTranscript(SessionTranscriptReply),
 }
 
 /// `markdown.blocks`: the document's blocks, top level first.
@@ -437,6 +474,31 @@ pub enum Reply {
 #[serde(rename_all = "camelCase")]
 pub struct MarkdownReply {
     pub blocks: Vec<MarkdownBlockView>,
+}
+
+/// `session.list`: the records the sheet draws, newest first.
+///
+/// The sheet re-reads on every store change, so the reply carries no revision:
+/// the listing's number is the shell's, and a change event is what makes the
+/// sheet read again.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionListReply {
+    pub sessions: Vec<Session>,
+}
+
+/// `session.transcript`: one page of the record's harness transcript, oldest
+/// first.
+///
+/// `unavailable` names why the harness holds nothing to read: a record with no
+/// pointer, a database that is not there, a row the harness pruned. A page
+/// that reads answers null beside its entries, so the row still draws.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionTranscriptReply {
+    pub entries: Vec<TranscriptEntry>,
+    pub next_cursor: Option<i64>,
+    pub unavailable: Option<String>,
 }
 
 /// `note.tree`: the folder and note rows, folders first as the core walks them.
