@@ -327,16 +327,26 @@ fn a_restored_store_re_attaches_and_reports_the_restored_revision() {
 
     // The child notices the replacement, re-attaches to the rollback-journal
     // store and reports the restored revision, which is earlier than the one it
-    // held: the app re-lists instead of staying on the pre-restore board.
-    let event = session.receive_where(|frame| {
-        frame["event"] == "changed" && frame["revision"].as_i64().is_some_and(|at| at < before)
-    });
-    let restored = event["revision"]
-        .as_i64()
-        .expect("the event carries a revision");
-
-    session.send(json!({"id": 4, "method": "ticket.list", "params": {}}));
-    let after = session.receive_where(|frame| frame["id"] == 4);
+    // held: the app re-lists instead of staying on the pre-restore board. The
+    // stream may still hold pre-restore events queued before the list above,
+    // so retry until the event and the listing agree: a stale event names a
+    // number the listing no longer shows, and the next event is the restore.
+    let mut restored = 0;
+    let mut after = serde_json::Value::Null;
+    for attempt in 0..5 {
+        let event = session.receive_where(|frame| {
+            frame["event"] == "changed" && frame["revision"].as_i64().is_some_and(|at| at < before)
+        });
+        restored = event["revision"]
+            .as_i64()
+            .expect("the event carries a revision");
+        let id = 4 + attempt;
+        session.send(json!({"id": id, "method": "ticket.list", "params": {}}));
+        after = session.receive_where(|frame| frame["id"] == id);
+        if revision(&after) == restored {
+            break;
+        }
+    }
     assert_eq!(
         revision(&after),
         restored,
@@ -348,9 +358,10 @@ fn a_restored_store_re_attaches_and_reports_the_restored_revision() {
     );
 
     // The held watch does not block the next write's switch back to WAL, and
-    // the stream carries the write's revision.
-    session.send(json!({"id": 5, "method": "ticket.add", "params": {"title": "After"}}));
-    let added = session.receive_where(|frame| frame["id"] == 5);
+    // the stream carries the write's revision. Ids 4 through 8 were the
+    // retry listings above, so the next frames start past them.
+    session.send(json!({"id": 10, "method": "ticket.add", "params": {"title": "After"}}));
+    let added = session.receive_where(|frame| frame["id"] == 10);
     let moved = revision(&added);
     assert!(
         moved > restored,
