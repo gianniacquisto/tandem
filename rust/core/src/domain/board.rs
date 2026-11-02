@@ -63,6 +63,10 @@ pub struct SetFields<'a> {
     pub status: Edit<Status>,
     pub assignee: Edit<Option<&'a str>>,
     pub description: Edit<Option<&'a str>>,
+    /// The text to append after the existing body, separated by one blank
+    /// line. Bare text onto an empty body. Naming this with `description` is
+    /// refused: a replace and an append in one call cannot both win.
+    pub append_description: Edit<&'a str>,
     pub archived: Edit<bool>,
 }
 
@@ -490,6 +494,9 @@ impl Board {
     /// `set(id, ...)`: change the named fields in one write, leaving the rest
     /// untouched. A call that changes nothing writes nothing.
     pub fn set(&self, handle: &str, fields: SetFields<'_>) -> Result<Ticket, DomainError> {
+        if fields.description.is_set() && fields.append_description.is_set() {
+            return Err(DomainError::ConflictingDescriptionEdit);
+        }
         let new_title = match fields.title {
             Edit::Set(raw) => {
                 let trimmed = raw.trim();
@@ -511,6 +518,10 @@ impl Board {
                 Edit::Set(value) => description::normalize(value),
                 Edit::Unchanged => None,
             });
+        let new_append = match fields.append_description {
+            Edit::Set(raw) => Some(DescriptionBody::required(raw)?),
+            Edit::Unchanged => None,
+        };
         self.mutate(|contents| {
             let index = contents.require_ticket(handle)?.1;
             // The human hold: only `ticket answer` moves the owner off `human`
@@ -554,6 +565,10 @@ impl Board {
                 && &ticket.description != new_description
             {
                 ticket.description = new_description.clone();
+                changed = true;
+            }
+            if let Some(appended) = &new_append {
+                ticket.description = Some(appending(appended, ticket.description.as_deref()));
                 changed = true;
             }
             if let Edit::Set(archived) = fields.archived
