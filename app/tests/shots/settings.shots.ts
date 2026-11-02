@@ -10,7 +10,7 @@ import { computed, token } from '../../shots/tokens'
 /**
  * The Settings face a human reads: the machine's paths (the seeded home and
  * the seeded user home's three hosts), the one theme rule, the setup
- * report's twelve checks with their state, and the harness sign-in section.
+ * report's thirteen checks with their state, and the harness sign-in section.
  *
  * The paths are the seed's own, at the one fixed scratch root, so the picture
  * is the same in any checkout. What the rule pins is that they are the seed's
@@ -54,7 +54,7 @@ test('the settings face, over the seeded homes', async ({ app, window }) => {
   const setup = window.locator('.settings__section', {
     has: window.locator('.settings__heading', { hasText: 'Setup' }),
   })
-  await expect(setup.locator('.settings__check')).toHaveCount(12)
+  await expect(setup.locator('.settings__check')).toHaveCount(13)
   await expect(setup.locator('.settings__action')).toHaveText(/^(Install|Repair)$/)
 
   await capture(app, window, scene('settings'))

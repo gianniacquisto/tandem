@@ -66,6 +66,11 @@
         "detail": "not signed in; sign in from Settings",
         "name": "harness-auth",
         "ok": true
+      },
+      {
+        "detail": "tandem-mcp 0.1.0: 29 tools over 29 covered wire methods",
+        "name": "mcp",
+        "ok": true
       }
     ],
     "ok": true
