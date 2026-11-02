@@ -26,10 +26,13 @@ import type { MarkdownBlockView } from '../wire/MarkdownBlockView'
 import type { Reply } from '../wire/Reply'
 import type { TicketDetail } from '../wire/TicketDetail'
 import { MarkdownDocument } from './MarkdownDocument'
+import { SessionsSection } from './SessionsSection'
 
 export type TicketSheetProps = {
   /** The sheet's subject: the one selection every entry point sets. */
   ticketId: string
+  /** The deep-linked Tandem record id, or null when the link names none. */
+  expandedSession: string | null
   /** The board's declared lanes, in render order. */
   lanes: string[]
   /** The names the assignee picker offers, off-roster names aside. */
@@ -69,6 +72,7 @@ const CLAIM_CHANGED = 'The claim landed, but the comment did not.'
  */
 export function TicketSheet({
   ticketId,
+  expandedSession,
   lanes,
   roster,
   revision,
@@ -769,6 +773,12 @@ export function TicketSheet({
                 </button>
               </div>
             </section>
+
+            <SessionsSection
+              ticketId={ticket.id}
+              revision={revision}
+              expandedSession={expandedSession}
+            />
 
             <footer className="sheet__footer">
               <span className="sheet__hint">{shortcutHint()}</span>
