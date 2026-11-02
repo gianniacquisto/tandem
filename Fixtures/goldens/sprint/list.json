@@ -17,7 +17,7 @@
         "number": 1,
         "openedAt": "<timestamp>",
         "runs": [],
-        "session": "golden-session",
+        "session": "<id>",
         "status": "open"
       }
     ]

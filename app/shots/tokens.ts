@@ -14,20 +14,23 @@ function rgb(hex: string): string {
 }
 
 /**
- * The day palette's value for a token, as a computed style reports it: a colour
- * as `rgb(...)`, a length as its px value. Read from `tokens.css`, never
- * restated, so a palette change still passes.
+ * A palette token's value, as a computed style reports it: a colour as
+ * `rgb(...)`, a length as its px value. Read from `tokens.css`, never restated,
+ * so a palette change still passes.
  *
  * The day block is the unindented `:root` rule; the night block lives inside
  * the media query and is indented, so a file that loses the day block fails
  * here rather than silently asserting the night palette.
  */
-export function token(name: string): string {
+export function token(name: string, scheme: 'day' | 'night' = 'day'): string {
   const css = readFileSync(TOKENS, 'utf8').replace(/\r\n/g, '\n')
-  const block = css.match(/^:root\s*\{([\s\S]*?)^\}/m)?.[1]
-  if (block === undefined) throw new Error('tokens.css has no day :root block')
+  const block =
+    scheme === 'day'
+      ? css.match(/^:root\s*\{([\s\S]*?)^\}/m)?.[1]
+      : css.match(/@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{([\s\S]*?)\n  \}/)?.[1]
+  if (block === undefined) throw new Error(`tokens.css has no ${scheme} :root block`)
   const value = block.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1]?.trim()
-  if (value === undefined) throw new Error(`the day :root block has no --${name}`)
+  if (value === undefined) throw new Error(`the ${scheme} :root block has no --${name}`)
   return value.startsWith('#') ? rgb(value) : value
 }
 

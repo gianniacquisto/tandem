@@ -476,6 +476,15 @@ impl Store {
         Ok(self.read(records::sprint_rows)?.unwrap_or_default())
     }
 
+    /// One setting's stored value, the JSON text the row carries (ADR 0031: a
+    /// setting is a `key`/`value` row, never a column or a migration). A home
+    /// with no database, or no such key, reads `None`.
+    pub fn setting(&self, key: &str) -> Result<Option<String>> {
+        Ok(self
+            .read(|connection| records::setting(connection, key))?
+            .flatten())
+    }
+
     /// Whether the board carries a ticket id, archive included. A read, never a
     /// write: the sprint's batch check asks the store, it does not touch it.
     pub fn carries_ticket(&self, id: &str) -> Result<bool> {

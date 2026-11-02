@@ -54,6 +54,7 @@ describe('the shell snapshot', () => {
       tickets: [],
       lanes: [],
       usage: null,
+      roster: [],
       error: null,
       notice: null,
       stale: false,
@@ -93,6 +94,19 @@ describe('the shell snapshot', () => {
     })
     expect(caughtUp.stale).toBe(false)
     expect(caughtUp.revision).toBe(13)
+  })
+
+  it('carries the roster the settings read answers, so both faces draw one list', () => {
+    const next = snapshotReducer(initialSnapshot, {
+      type: 'settings',
+      roster: ['human', 'review'],
+    })
+    expect(next.roster).toEqual(['human', 'review'])
+
+    // A failed settings read leaves the roster as it was: the board keeps its
+    // names, and the picker does not empty itself over one refused read.
+    const failed = snapshotReducer(next, { type: 'failed', message: 'no store' })
+    expect(failed.roster).toEqual(['human', 'review'])
   })
 
   it('carries the one usage report the Usage face draws', () => {

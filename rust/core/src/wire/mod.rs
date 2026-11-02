@@ -35,9 +35,10 @@ pub use views::{
 
 /// What `doctor` answers: ADR 0014's shape, `{"ok": bool, "checks": [...]}`.
 ///
-/// The eight rows, in the pinned order, are built by
+/// The eleven rows, in the pinned order, are built by
 /// [`crate::diagnostics::report`]. `ok` is the AND of the rows that can fail;
-/// `app` and `skills` are informational and always pass.
+/// `app`, `skills` and the three leftover rows are informational and always
+/// pass.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 pub struct DoctorReport {
     /// The AND of the rows that can fail. This stub's one row cannot.

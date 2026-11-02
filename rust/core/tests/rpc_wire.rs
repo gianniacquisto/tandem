@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use support::Sandbox;
 use tandem_core::domain::DomainError;
 use tandem_core::domain::session::{Ending, SessionOutcome, Sessions};
-use tandem_core::store::Actor;
+use tandem_core::store::{Actor, NewSetting};
 use tandem_core::wire::rpc::{METHODS, Request};
 
 fn frame(id: u64, method: &str, params: Value) -> String {
@@ -60,9 +60,69 @@ fn the_read_methods_without_a_cli_verb_are_named_here() {
             "note.backlinks",
             "note.recoveries",
             "usage.report",
+            "settings.get",
             "markdown.blocks",
         ],
         "a read with no CLI verb joins this list deliberately"
+    );
+}
+
+/// The sheet's assignee picker and the board's filter read the store's roster,
+/// not the board's rows (PRT-38): a roster name with no ticket has no row to be
+/// derived from, and a fresh home has no rows at all. The read answers the
+/// stored list, its default when the human never edited one, and empty when the
+/// human emptied it.
+#[test]
+fn a_settings_read_answers_the_stores_roster() {
+    let roster = |home: &str, stored: Option<&str>| -> Value {
+        let sandbox = Sandbox::new(home);
+        let store = sandbox.store();
+        if let Some(value) = stored {
+            store
+                .write(&Actor::Human, |write| {
+                    write.insert_setting(NewSetting {
+                        key: "roster",
+                        value,
+                    })
+                })
+                .expect("the roster is stored");
+        }
+        let answer = handle(&store, &frame(1, "settings.get", json!({})));
+        assert_eq!(answer["id"], 1, "the frame echoes its id");
+        answer["result"]["roster"].clone()
+    };
+
+    let default = json!([
+        "human",
+        "builder",
+        "refiner",
+        "reviewer",
+        "consolidator",
+        "sprint"
+    ]);
+    assert_eq!(
+        roster("rpc-settings-fresh", None),
+        default,
+        "a roster that was never stored reads as the default"
+    );
+
+    // Stored names replace the default whole: `review` has no ticket, and the
+    // picker must still offer it.
+    assert_eq!(
+        roster("rpc-settings-stored", Some(r#"["human", "review"]"#)),
+        json!(["human", "review"])
+    );
+
+    // A list the human emptied stays empty: absent means "never edited", and
+    // the default is not a floor the picker is stuck above.
+    assert_eq!(roster("rpc-settings-empty", Some("[]")), json!([]));
+
+    // A value this build cannot read is the default too: a broken row must not
+    // shrink the picker, and it must not panic the stream either.
+    assert_eq!(
+        roster("rpc-settings-broken", Some("not json")),
+        default,
+        "a malformed roster reads as the default"
     );
 }
 

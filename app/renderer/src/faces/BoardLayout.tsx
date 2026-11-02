@@ -1,45 +1,71 @@
-import type { LaneColumn } from '../shell/board'
+import { boardStatuses, type LaneRow } from '../shell/board'
 import type { TicketSummary } from '../wire/TicketSummary'
-import { BoardColumn } from './BoardColumn'
+import { BoardCell } from './BoardCell'
 
 export type BoardLayoutProps = {
-  columns: LaneColumn[]
+  rows: LaneRow[]
   selected: string | null
   onSelect: (id: string) => void
   onToggle: (ticket: TicketSummary) => void
   onOpen?: (ticket: TicketSummary) => void
   onDropOn: (draggedId: string, anchorId: string, after: boolean) => void
-  onDropInto: (draggedId: string, lane: string | null) => void
+  onDropCell: (draggedId: string, lane: string | null, status: string) => void
 }
 
 /**
- * The board layout: one column per lane, the same rows set on cards. A drop on a
- * card reorders inside that lane; a drop anywhere else in the column files the
- * ticket at that lane's end. Both writes are `ticket.move`, the verb the list
- * uses, so the two layouts cannot drift apart.
+ * The board grid: lanes are rows and the six statuses are columns, `on-hold`
+ * parked last, so the workflow reads left to right inside each lane.
+ *
+ * A drop on a card reorders inside its cell; a drop on the cell itself files
+ * the ticket there. The cell's own state change goes through `ticket.set` and
+ * its lane change through `ticket.move`, both verbs the list already uses, so
+ * the two layouts cannot drift apart.
  */
 export function BoardLayout({
-  columns,
+  rows,
   selected,
   onSelect,
   onToggle,
   onOpen,
   onDropOn,
-  onDropInto,
+  onDropCell,
 }: BoardLayoutProps) {
   return (
     <div className="board">
-      {columns.map((column) => (
-        <BoardColumn
-          key={column.key ?? 'uncategorized'}
-          column={column}
-          selected={selected}
-          onSelect={onSelect}
-          onToggle={onToggle}
-          onOpen={onOpen}
-          onDropOn={onDropOn}
-          onDropInto={onDropInto}
-        />
+      <div className="board__lane board__lane--head">
+        <span className="board__title board__title--head" aria-hidden="true" />
+        {boardStatuses().map((status) => (
+          <h2 key={status.value} className="board__status" data-status={status.value}>
+            {status.label}
+          </h2>
+        ))}
+      </div>
+      {rows.map((row) => (
+        <div
+          className="board__lane"
+          key={row.key ?? 'uncategorized'}
+          data-lane={row.key ?? ''}
+        >
+          <h2 className="board__title">
+            <span>{row.title}</span>
+            <span className="board__count">
+              {row.cells.reduce((count, cell) => count + cell.tickets.length, 0)}
+            </span>
+          </h2>
+          {row.cells.map((cell) => (
+            <BoardCell
+              key={cell.status}
+              lane={row}
+              cell={cell}
+              selected={selected}
+              onSelect={onSelect}
+              onToggle={onToggle}
+              onOpen={onOpen}
+              onDropOn={onDropOn}
+              onDropCell={onDropCell}
+            />
+          ))}
+        </div>
       ))}
     </div>
   )

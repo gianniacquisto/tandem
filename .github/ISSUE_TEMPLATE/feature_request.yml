@@ -1,0 +1,35 @@
+name: Feature request
+description: An idea for what Tandem should do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. The tracker of record is the Tandem board, so
+        maintainer triage may move this request there. Please check the README
+        first: the "What it is not yet" section already answers some asks.
+        Contributors implement features behind the gates in CONTRIBUTING.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: The job you cannot do today, without the fix you have in mind
+      placeholder: When I..., I have to work around it by...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The proposal
+      description: What you would like Tandem to do
+      placeholder: Tandem should...
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and words
+      description: Which area it touches, and which GLOSSARY.md words it uses
+      placeholder: The board face; uses Status and lane as GLOSSARY.md defines them
+    validations:
+      required: false

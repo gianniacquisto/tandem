@@ -875,43 +875,66 @@ body {
   white-space: nowrap;
 }
 
-/* The board: one column per lane, the same rows on cards. */
+/* The board: lanes are rows and the six statuses are columns, `on-hold` parked
+ * last. The lane title holds the left edge while the statuses scroll; a column
+ * never grows past a card's readable width (PRT-35). */
 
 .board {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  /* The lane title, then one track per status: wide enough for a card, capped
+     so one or two lanes do not stretch a column to the window. */
+  grid-template-columns: minmax(120px, 160px) repeat(6, minmax(180px, 320px));
+  align-items: start;
   gap: 8px;
   padding-bottom: var(--space-lane);
   overflow-x: auto;
 }
 
-.board__column {
+/* A lane row (and the status head) only places its children in the grid; the
+   row itself owns no box, so the title can stick to the scrolling board. */
+.board__lane {
+  display: contents;
+}
+
+.board__title {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   display: flex;
-  /* Grows into the board but stops at a card's readable width: one or two
-     lanes must not stretch a column to the window. */
-  flex: 1 1 180px;
-  max-width: 320px;
+  justify-content: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 4px;
+  background: var(--paper);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.board__title--head {
+  padding: 0;
+}
+
+.board__status {
+  margin: 0;
+  padding: 0 4px 4px;
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.board__cell {
+  display: flex;
   box-sizing: border-box;
   flex-direction: column;
   gap: 6px;
-  min-width: 180px;
   min-height: 120px;
   padding: 4px;
   border-radius: var(--radius-control);
 }
 
-.board__column[data-targeted] {
+.board__cell[data-targeted] {
   background: var(--parchment);
   outline: var(--hairline) solid var(--accent);
-}
-
-.board__title {
-  display: flex;
-  justify-content: flex-start;
-  gap: 6px;
-  margin: 0;
-  font-size: 12.5px;
-  font-weight: 600;
 }
 
 .board__count {
@@ -1285,6 +1308,7 @@ body {
 .tree__label:focus-visible,
 .health__row:focus-visible,
 .rail__row:focus-visible,
+.sheet:focus-visible,
 .button:focus-visible {
   outline: var(--hairline) solid var(--accent);
   outline-offset: -1px;

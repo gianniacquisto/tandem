@@ -329,6 +329,16 @@ fn an_unknown_lane_or_id_is_rejected_and_the_store_is_left_alone() {
 /// The read-modify-write is one transaction: the write lock is held before the
 /// rows are read, so two writers over one home cannot hand out the same lane number
 /// or write a stale row back over the other's.
+///
+/// What this case does about the gate: a queue of 40 writes on a loaded runner
+/// can outlast the store's 2 s window (`store::BUSY_TIMEOUT`), and a writer
+/// turned away with [`DomainError::Locked`] is retried ([`write_after_lock`])
+/// rather than panicking, exactly like
+/// `a_concurrent_edit_is_not_reverted_by_another_writers_snapshot` below.
+/// What the case asserts is that no write reverts another's row, not who wins
+/// the gate, so a turn-away costs a retry, never a false red (`rust
+/// (windows-latest)` answered `Locked` here on #291, #302 and the docs-only
+/// #292 before the retry).
 #[test]
 fn two_writers_over_one_home_keep_every_row_and_issue_every_ref_once() {
     let sandbox = Sandbox::new("board-writers");
@@ -343,15 +353,15 @@ fn two_writers_over_one_home_keep_every_row_and_issue_every_ref_once() {
                 let board =
                     Board::with_actor(store, tandem_core::store::Actor::Agent(group.to_string()));
                 for index in 0..20 {
-                    board
-                        .add(
+                    write_after_lock(|| {
+                        board.add(
                             &format!("{group}-{index}"),
                             AddTicket {
                                 lane: Some("Tandem"),
                                 ..AddTicket::default()
                             },
                         )
-                        .unwrap_or_else(|error| panic!("{group}-{index} answered {error}"));
+                    });
                 }
             });
         }
@@ -378,7 +388,7 @@ fn two_writers_over_one_home_keep_every_row_and_issue_every_ref_once() {
 /// The process-local gate is bounded: a writer that cannot enter it within the
 /// store's 2 s window (`store::BUSY_TIMEOUT`) gets `Locked` instead of waiting
 /// for the writer ahead of it (PRT-25). A queue of 40 writes on a loaded runner
-/// can reach that bound, and what this file's contention case asserts is that
+/// can reach that bound, and what this file's contention cases assert is that
 /// no write reverts another's row, not who wins the gate. So a turn-away is
 /// retried until the write is served; the attempt cap keeps a real deadlock a
 /// failure rather than a hang.

@@ -1210,13 +1210,14 @@ fn sprint(home: &Home, command: Option<&SprintCommand>) -> Result<(), Failure> {
         write_store(home)?
     };
     let sprints = Sprints::new(&store);
+    let sessions = Sessions::new(&store);
     let actor = Actor::current();
 
     match command {
         SprintCommand::Open(args) => {
             let lane = args.lane.as_deref().unwrap_or("");
             let mode = sprint_mode(args.mode.as_deref())?;
-            let id = session_id(args.session.as_deref())?;
+            let id = session_handle(&sessions, args.session.as_deref())?;
             let result = sprints
                 .open(&actor, lane, mode, Some(&id), None)
                 .map_err(Failure::domain)?;
@@ -1476,18 +1477,6 @@ fn session_handle(sessions: &Sessions, raw: Option<&str>) -> Result<String, Fail
         },
     };
     sessions.resolve(&handle).map_err(Failure::domain)
-}
-
-/// A sprint's session id: `--session`, else `$OPENCODE_SESSION_ID`. The
-/// fallback is the environment's, never an invented one.
-fn session_id(raw: Option<&str>) -> Result<String, Failure> {
-    if let Some(raw) = raw {
-        return Ok(raw.to_string());
-    }
-    match env::var("OPENCODE_SESSION_ID") {
-        Ok(id) if !id.trim().is_empty() => Ok(id),
-        _ => Err(Failure::domain(DomainError::SessionIdUnset)),
-    }
 }
 
 /// A session's agent: `--agent`, else `$TANDEM_AGENT`; nobody when the

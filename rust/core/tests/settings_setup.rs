@@ -9,7 +9,7 @@
 //!   face, so the renderer computes no path of its own;
 //! - `setup.install` answers the report the CLI prints, so the repair's result
 //!   is the files it wrote and not a verdict;
-//! - `doctor.report` answers ADR 0014's eight rows by name and state;
+//! - `doctor.report` answers ADR 0014's eleven rows by name and state;
 //! - a broken host is red, and the repair turns it green in place;
 //! - every method the rendered Settings face calls is a method the wire speaks,
 //!   so a control cannot reach a writer the CLI does not have.
@@ -181,7 +181,7 @@ fn setup_status_names_the_roots_a_settings_surface_shows() {
 }
 
 #[test]
-fn a_fresh_home_reports_no_installed_face_and_the_eight_checks() {
+fn a_fresh_home_reports_no_installed_face_and_the_eleven_checks() {
     let fixture = Fixture::new("fresh");
 
     let answer = status(&fixture);
@@ -215,12 +215,15 @@ fn a_fresh_home_reports_no_installed_face_and_the_eight_checks() {
             "store",
             "bikeshed",
             "comments",
+            "sessions",
+            "settings",
+            "todos-json",
             "lock",
             "app",
             "skills",
             "agent-face"
         ],
-        "ADR 0014's pinned order, unchanged"
+        "ADR 0014's pinned order, with TAN-243's three leftover rows after `comments`"
     );
     assert_eq!(
         check(&report, "agent-face")["ok"],

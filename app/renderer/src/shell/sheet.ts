@@ -3,6 +3,7 @@ import type { Reply } from '../wire/Reply'
 import type { TicketDetail } from '../wire/TicketDetail'
 
 import { UNCATEGORIZED, assigneeLabel } from './board'
+import { modifierLabel } from './keys'
 
 /**
  * The ticket sheet's rules, as data: what a save sends, what an append does to
@@ -18,6 +19,15 @@ import { UNCATEGORIZED, assigneeLabel } from './board'
 
 /** The app is the human's window: a comment typed here is signed as the human. */
 export const HUMAN_AUTHOR = 'human'
+
+/**
+ * The sheet's own keys, printed in the platform's modifier: the handler reads
+ * meta or ctrl as one key, so the hint names the one this keyboard has.
+ */
+export function shortcutHint(): string {
+  const mod = modifierLabel()
+  return `${mod}↩ saves · ${mod}⇧↩ posts · Esc closes`
+}
 
 /**
  * `DomainError::EmptyDescriptionBody`, verbatim: the CLI's refusal, shown by the
@@ -174,37 +184,6 @@ export function sheetChanges(
 /** A save needs a title, exactly as the domain's `EmptyTitle` would. */
 export function canSave(draft: Pick<SheetDraft, 'title'>): boolean {
   return draft.title.trim() !== ''
-}
-
-export type AssigneeChoice = { value: string | null; label: string; selected: boolean }
-
-/**
- * The assignee picker's options, in the Swift order (`AssigneePicker.options`):
- * Unassigned, `human`, the roster (trimmed, blanks dropped, duplicates
- * collapsed), then the ticket's own assignee when it is off-roster. A name the
- * roster carries cannot be hidden by a stale roster read.
- */
-export function assigneeChoices(
-  roster: readonly string[],
-  current: string | null,
-): AssigneeChoice[] {
-  const seen = new Set<string>()
-  const values: Array<string | null> = [null]
-  function add(raw: string | null): void {
-    if (raw === null) return
-    const name = raw.trim()
-    if (name === '' || seen.has(name)) return
-    seen.add(name)
-    values.push(name)
-  }
-  add(HUMAN_AUTHOR)
-  for (const name of roster) add(name)
-  add(current)
-  return values.map((value) => ({
-    value,
-    label: value === null ? 'Unassigned' : (assigneeLabel(value) ?? value),
-    selected: value === current,
-  }))
 }
 
 /** The handle a human writes in chat: the ref, or the number when it has none. */

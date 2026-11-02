@@ -28,6 +28,21 @@
         "ok": true
       },
       {
+        "detail": "no sessions.json in this home",
+        "name": "sessions",
+        "ok": true
+      },
+      {
+        "detail": "no settings.json in this home",
+        "name": "settings",
+        "ok": true
+      },
+      {
+        "detail": "no todos.json.* files in this home",
+        "name": "todos-json",
+        "ok": true
+      },
+      {
         "detail": "free",
         "name": "lock",
         "ok": true

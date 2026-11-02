@@ -13,6 +13,7 @@ import type { NoteReadReply } from "./NoteReadReply";
 import type { NoteRecoveriesReply } from "./NoteRecoveriesReply";
 import type { NoteTreeReply } from "./NoteTreeReply";
 import type { NoteWriteReply } from "./NoteWriteReply";
+import type { SettingsReply } from "./SettingsReply";
 import type { SetupReply } from "./SetupReply";
 import type { TicketListReply } from "./TicketListReply";
 import type { TicketReply } from "./TicketReply";
@@ -22,4 +23,4 @@ import type { UsageReportReply } from "./UsageReportReply";
  * What a method answers. Untagged: the client knows which method it called,
  * so the payload needs no second tag on the wire.
  */
-export type Reply = TicketListReply | UsageReportReply | TicketReply | CommentReply | CommentListReply | LaneListReply | LaneDeletionReply | ArchivedReply | SetupReply | DoctorReply | NoteTreeReply | NoteReadReply | NoteWriteReply | NoteMoveReply | NoteHealthReply | NoteBacklinksReply | NoteRecoveriesReply | MarkdownReply;
+export type Reply = TicketListReply | UsageReportReply | SettingsReply | TicketReply | CommentReply | CommentListReply | LaneListReply | LaneDeletionReply | ArchivedReply | SetupReply | DoctorReply | NoteTreeReply | NoteReadReply | NoteWriteReply | NoteMoveReply | NoteHealthReply | NoteBacklinksReply | NoteRecoveriesReply | MarkdownReply;

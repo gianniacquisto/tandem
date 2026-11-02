@@ -33,6 +33,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::bikeshed::Bikeshed;
+use crate::domain::Settings;
 use crate::domain::session::Sessions;
 use crate::domain::usage::{Calendar, UsageTicket, usage_report};
 use crate::domain::{
@@ -45,7 +46,7 @@ use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, HostRoot, LaneDeletionReply,
     LaneListReply, MarkdownReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply,
     NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, Reply, Request,
-    Response, SetupReply, TicketListReply, TicketReply, UsageReportReply, WireError,
+    Response, SettingsReply, SetupReply, TicketListReply, TicketReply, UsageReportReply, WireError,
 };
 use crate::wire::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
@@ -574,6 +575,15 @@ fn execute(
             Ok(Reply::UsageReport(UsageReportReply {
                 report: UsageReportView::new(&report),
             }))
+        }
+        Method::SettingsGet(_) => {
+            // The roster is a `settings` row, and the picking is the domain's
+            // (`domain::Settings`): a default for a home that never stored one,
+            // the stored list over it, and an explicitly empty list as empty.
+            // The read is one row and no lock: the store opens, answers and
+            // closes inside `Store::setting`.
+            let roster = Settings::new(store).roster().map_err(domain)?;
+            Ok(Reply::Settings(SettingsReply { roster }))
         }
         Method::MarkdownBlocks(params) => {
             // The parsing is the domain's (`TicketMarkdown`), so the sheet draws
