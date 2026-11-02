@@ -463,8 +463,8 @@ fn a_scripted_two_ticket_run_closes_with_the_run_log_only() {
     let drawn = draw(&tickets);
     let batch: Vec<&str> = drawn.batch.iter().map(|t| t.id.as_str()).collect();
     assert_eq!(batch, vec!["TAN-2", "TAN-1"]);
-    assert_eq!(
-        drawn.batch[1].needs_refine, true,
+    assert!(
+        drawn.batch[1].needs_refine,
         "the backlog ticket refines first"
     );
 
