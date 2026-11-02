@@ -320,11 +320,12 @@ jobs:
       - name: Assemble the release directory
         run: |
           # One directory of everything the release publishes, with one merged
-          # SHA256SUMS covering all three artifacts. The tap bump reads the
-          # zip's line out of that file, so the zip's entry must survive the
-          # merge (Scripts/bump-tap.sh).
+          # SHA256SUMS covering every published file: the zip, the dmg,
+          # install.sh (staged by the macOS build) and the AppImage. The tap
+          # bump reads the zip's line out of that file, so the zip's entry must
+          # survive the merge (Scripts/bump-tap.sh).
           mkdir dist
-          cp dist-mac/Tandem-$version.zip dist-mac/Tandem-$version.dmg dist/
+          cp dist-mac/Tandem-$version.zip dist-mac/Tandem-$version.dmg dist-mac/install.sh dist/
           cp dist-linux/Tandem-$version-linux-x86_64.AppImage dist/
           cat dist-mac/SHA256SUMS dist-linux/SHA256SUMS > dist/SHA256SUMS
           cd dist
