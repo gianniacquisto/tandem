@@ -246,6 +246,8 @@ struct SetArgs {
     assignee: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     description: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    append_description: Option<String>,
 }
 
 #[derive(Args)]
@@ -863,6 +865,9 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
             print(&TicketDetail::new(&ticket))
         }
         TicketCommand::Set(args) => {
+            if args.description.is_some() && args.append_description.is_some() {
+                return Err(Failure::domain(DomainError::ConflictingDescriptionEdit));
+            }
             let status = match args.status.as_deref() {
                 Some(raw) => Edit::Set(Status::parse(raw).map_err(Failure::domain)?),
                 None => Edit::Unchanged,
@@ -873,6 +878,10 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
             };
             let description = match args.description.as_deref() {
                 Some(raw) => Edit::Set(Some(description_body(raw)?)),
+                None => Edit::Unchanged,
+            };
+            let append_description = match args.append_description.as_deref() {
+                Some(raw) => Edit::Set(append_description_body(raw)?),
                 None => Edit::Unchanged,
             };
             let ticket = board
@@ -890,6 +899,10 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                         },
                         description: match &description {
                             Edit::Set(body) => Edit::Set(body.as_deref()),
+                            Edit::Unchanged => Edit::Unchanged,
+                        },
+                        append_description: match &append_description {
+                            Edit::Set(body) => Edit::Set(body.as_str()),
                             Edit::Unchanged => Edit::Unchanged,
                         },
                         archived: Edit::Unchanged,
@@ -1586,6 +1599,18 @@ fn description_body(flag: &str) -> Result<String, Failure> {
         return Err(Failure::domain(DomainError::EmptyDescriptionBody));
     }
     Ok(body)
+}
+
+/// `--append-description` on `ticket set`: the addition's own value, or stdin
+/// when it is `-`. A named addition must carry text on either path: an empty
+/// pipe is a failed write, not a silent no-op. The refusal is the core's
+/// (`DescriptionBody::required`), the same one `ticket add --description` makes.
+fn append_description_body(flag: &str) -> Result<String, Failure> {
+    if flag != "-" {
+        return DescriptionBody::required(flag).map_err(Failure::domain);
+    }
+    let body = read_standard_input()?;
+    DescriptionBody::required(&body).map_err(Failure::domain)
 }
 
 /// `--description` on `ticket add`: no flag is no description, and a named flag

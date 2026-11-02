@@ -247,6 +247,7 @@ fn origin_is_written_once_at_add_and_set_move_place_reopen_leave_it() {
                 status: Edit::Set(Status::InProgress),
                 assignee: Edit::Set(Some("human")),
                 description: Edit::Set(Some("Body")),
+                append_description: Edit::Unchanged,
                 archived: Edit::Set(true),
             },
         )

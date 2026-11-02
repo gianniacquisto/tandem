@@ -13,13 +13,18 @@
     "Usage:",
     "  tandem-cli ticket set --id <id> [--title <string>] [--status <value>]",
     "                        [--assignee <name|self>] [--description <string|->]",
+    "                        [--append-description <string|->]",
     "",
     "Values:",
     "  status    backlog | on-hold | ready | in-progress | in-review | done",
     "  assignee  a name, `self` ($TANDEM_AGENT), or \"\" for the unassigned",
     "",
     "A flag not named leaves its field alone. `--description -` reads the body",
-    "from stdin; `--description \"\"` clears the description deliberately."
+    "from stdin; `--description \"\"` clears the description deliberately.",
+    "`--append-description` appends after a blank line, or writes the bare text",
+    "when the body is empty; `-` reads the addition from stdin. An empty addition",
+    "is refused, and naming `--description` with `--append-description` is refused;",
+    "the description is left as it was."
   ],
   "stdoutKind": "text"
 }

@@ -150,6 +150,7 @@ tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self
                       [--lane <name>] [--origin <name|self>] [--description <string|->]
 tandem-cli ticket set --id <id> [--title <string>] [--status <value>]
                       [--assignee <name|self>] [--description <string|->]
+                      [--append-description <string|->]
 tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
 tandem-cli ticket block --id <id> --on <id>
 tandem-cli ticket unblock --id <id> [--on <id>]
