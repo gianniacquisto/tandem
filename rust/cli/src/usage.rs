@@ -1132,6 +1132,29 @@ pub const RPC: &str = concat!(
     "stdin ends it.",
 );
 
+/// `mcp`: the agent host's door (TAN-274). Like `rpc` it is reachable by its
+/// own `--help` and is not listed among the agent verbs: hosts discover it
+/// through the protocol handshake, and agents call its tools.
+pub const MCP: &str = concat!(
+    "tandem-cli mcp: serve the agent face as an MCP server on stdin and stdout.",
+    "\n",
+    "",
+    "\n",
+    "Usage:",
+    "\n",
+    "  tandem-cli mcp [--home <path>]",
+    "\n",
+    "",
+    "\n",
+    "One JSON-RPC 2.0 frame per line: `initialize` negotiates the protocol",
+    "\n",
+    "version, `tools/list` names the 29 tools, and `tools/call` runs one",
+    "\n",
+    "through the same dispatch the `rpc` door answers. The host spawns this",
+    "\n",
+    "mode; a closed stdin ends it.",
+);
+
 #[cfg(test)]
 mod tests {
     //! The README's grammar block is a hand-copy of [`ROOT`], and a hand-copy

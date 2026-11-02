@@ -2,7 +2,8 @@
 
 /**
  * `sprint.open`: the lane, the mode and the session the record names. An
- * absent mode is `serial`, as the CLI defaults it; an absent session is no
- * session, which the domain files as the record without one.
+ * absent mode is `serial`, as the CLI defaults it; the session resolves as
+ * the verb resolves it (the caller's value, else `$OPENCODE_SESSION_ID`),
+ * and an absent one is the verb's own refusal.
  */
 export type SprintOpenParams = { lane: string | null, mode: string | null, session: string | null, };

@@ -7,6 +7,64 @@ description: "Read and write the shared Tandem ticket list, manage its cycle lan
 
 `tandem-cli` is Tandem's agent-facing interface on this Mac — the binary the app bundles (`/Applications/Tandem.app/Contents/MacOS/tandem-cli`, stable across upgrades), so an agent reads and writes the same list and notes a human uses in the app. `tandem-cli --help` prints the syntax and exits `0`.
 
+## MCP tools
+
+This host speaks to Tandem through tools, not the shell: `tandem-cli mcp` serves the agent face as an MCP server over stdio, and the tools below are its 29 verbs, one per CLI verb, typed end to end. A tool call runs the CLI verb's own domain call, so the two doors cannot disagree. The CLI stays documented below as the fallback and the human's door; where the two spellings differ, the tool's description says how.
+
+To serve it, the host spawns the bundled binary at session start:
+
+```json
+"mcp": {
+  "tandem": {
+    "type": "local",
+    "command": ["/Applications/Tandem.app/Contents/MacOS/tandem-cli", "mcp"]
+  }
+}
+```
+
+The server inherits the host's environment: the Tandem home resolves the way `rpc` does (`TANDEM_HOME`, else the default), and the actor is the pass's own (`TANDEM_AGENT`, with `self` expansion where the verb has it). No other configuration is needed.
+
+| tool | the CLI verb it runs |
+| --- | --- |
+| `ticket_list` | `ticket list` |
+| `ticket_show` | `ticket show` |
+| `ticket_add` | `ticket add` |
+| `ticket_file` | `ticket file` |
+| `ticket_set` | `ticket set` |
+| `ticket_move` | `ticket move` |
+| `ticket_block` | `ticket block` |
+| `ticket_unblock` | `ticket unblock` |
+| `ticket_complete` | `ticket complete` |
+| `ticket_answer` | `ticket answer` |
+| `ticket_archive` | `ticket archive` |
+| `ticket_comment_add` | `ticket comment add` |
+| `ticket_comment_list` | `ticket comment list` |
+| `lane_list` | `lane list` |
+| `lane_add` | `lane add` |
+| `lane_rename` | `lane rename` |
+| `lane_delete` | `lane delete` |
+| `session_start` | `session start` |
+| `session_link` | `session link` |
+| `session_end` | `session end` |
+| `session_list` | `session list` |
+| `session_show` | `session show` |
+| `sprint_open` | `sprint open` |
+| `sprint_ticket` | `sprint ticket` |
+| `sprint_run` | `sprint run` |
+| `sprint_close` | `sprint close` |
+| `sprint_list` | `sprint list` |
+| `sprint_show` | `sprint show` |
+| `note_capture` | `note capture` |
+
+Four things the tools spell differently from the flags:
+
+- **Bodies ride JSON strings.** Every stdin body on the CLI (`--description -`, `--body -`, `--brief -`, `--summary -`, capture bodies, sprint notes) is a JSON string on the tool. An empty one is refused the same way an empty pipe is.
+- **`session_end` reads the harness by default.** The tool stamps the harness usage without being asked; a harness with no row for the record stamps without usage and says so in the answer's note, never failing. Pass `usageFromHarness: false` with explicit usage flags to stamp by hand.
+- **A stamped `session_end` posts the usage comment** on every ticket the session carried, signed by the record's agent, exactly as the CLI does.
+- **A domain refusal is a tool result with `isError`**, in the CLI's words (an unknown id carries the open list the same way stderr does). Only a call the door cannot route is a protocol error.
+
+`setup install`, the curated note writes and rename, the vault's link-graph read and the app's reads stay off the tools: host mutation is a human CLI act, agents edit curated notes as files, and the app's faces draw what agents do not.
+
 ## The store
 
 `~/.tandem/tandem.db`, the human's real list — one SQLite database holding the tickets and lanes, the comment logs, the session and sprint records and the settings (ADR 0031). A from-source build (`swift run tandem-cli`) writes `~/.tandem-dev/` instead, so development can never reach the real list; notes live beside it (`~/.tandem/bikeshed/`, `~/.tandem-dev/bikeshed/` from source). Every changed write keeps one previous complete copy beside it — `tandem.db.bak`, taken through SQLite's own backup API — and recovery is the backup and two commands, the journal files first: `rm -f ~/.tandem/tandem.db-wal ~/.tandem/tandem.db-shm ~/.tandem/tandem.db` then `mv ~/.tandem/tandem.db.bak ~/.tandem/tandem.db`. A store from before v0.27.0 is a JSON file: it is read as the fallback and imported once on the domain's first write, and after that a copy put back beside the database is **ignored** — the backup is the recovery, not the file.
@@ -191,7 +249,7 @@ The agent face (the skills, the agent prompts and `AGENTS.md`) ships in the app 
 
 ## Setup check
 
-`tandem-cli doctor` reports where this machine's Tandem state lives and whether it is healthy. One JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "detail": "..."}]}`. The checks, in order: `home` (the resolved state directory and why: `TANDEM_HOME` override, shipped app, or development build), `store` (the `tandem.db` path, its schema version, open/done counts, the rolling backup, and a fork note when a JSON store file sits beside an imported database), `bikeshed`, `comments` (`absent` is a valid early state), `sessions`, `settings` and `todos-json` (the JSON-era leftovers: `sessions.json`, `settings.json` and their `.pre-sqlite-*` copies, and the `todos.json.*` cohort; each row names the files it found, or says the home has none, and prints the `rm -f` that removes them once a store is there to have imported them, while the `todos.json.*` cohort needs no store and names its removal in any home), `lock` (a write transaction another process is holding), `app` (the installed version, with the quarantine-strip hint), `skills` (whether this skill is found for each agent host), `agent-face` (the installed face's warnings: the count, the first code and its hint). `store`, `bikeshed`, `comments`, `lock` and `agent-face` can fail; a missing app, an uninstalled host or a leftover file is informational, not failure. An informational warning (a checkout link) leaves `agent-face` green; a `warn` or `error` turns it red. Exit `0` healthy, `1` not, `2` usage error.
+`tandem-cli doctor` reports where this machine's Tandem state lives and whether it is healthy. One JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "detail": "..."}]}`. The checks, in order: `home` (the resolved state directory and why: `TANDEM_HOME` override, shipped app, or development build), `store` (the `tandem.db` path, its schema version, open/done counts, the rolling backup, and a fork note when a JSON store file sits beside an imported database), `bikeshed`, `comments` (`absent` is a valid early state), `sessions`, `settings` and `todos-json` (the JSON-era leftovers: `sessions.json`, `settings.json` and their `.pre-sqlite-*` copies, and the `todos.json.*` cohort; each row names the files it found, or says the home has none, and prints the `rm -f` that removes them once a store is there to have imported them, while the `todos.json.*` cohort needs no store and names its removal in any home), `lock` (a write transaction another process is holding), `app` (the installed version, with the quarantine-strip hint), `skills` (whether this skill is found for each agent host), `agent-face` (the installed face's warnings: the count, the first code and its hint), `harness-auth` (the harness sign-in state), `mcp` (the `tandem-mcp` server's version and its tool count over the covered wire-method count). `store`, `bikeshed`, `comments`, `lock` and `agent-face` can fail; a missing app, an uninstalled host or a leftover file is informational, not failure. An informational warning (a checkout link) leaves `agent-face` green; a `warn` or `error` turns it red. Exit `0` healthy, `1` not, `2` usage error.
 
 ## Streams and exit codes
 

@@ -124,6 +124,10 @@ pub enum DomainError {
     InvalidSprintMode(String),
     /// `sprint list` was given a status that is not `open` or `closed`.
     InvalidSprintStatus(String),
+    /// `session end` was given an outcome that is not one of the four.
+    InvalidSessionOutcome(String),
+    /// `session list` was given a status that is not `running` or `ended`.
+    InvalidSessionStatus(String),
     /// `ticket move` was given a position that is not a whole number.
     InvalidIndex(String),
     /// `--assignee self` / `--origin self` was used and `TANDEM_AGENT` names no
@@ -343,6 +347,14 @@ impl DomainError {
             }
             Self::InvalidSprintStatus(bad) => {
                 format!("sprint status must be one of open, closed (got \"{bad}\").")
+            }
+            Self::InvalidSessionOutcome(bad) => {
+                format!(
+                    "outcome must be one of succeeded, failed, interrupted, unknown (got \"{bad}\")."
+                )
+            }
+            Self::InvalidSessionStatus(bad) => {
+                format!("session status must be one of running, ended (got \"{bad}\").")
             }
             Self::InvalidIndex(bad) => {
                 format!("index must be a whole number (got \"{bad}\").")

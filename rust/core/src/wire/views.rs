@@ -281,7 +281,7 @@ pub struct SprintList {
 }
 
 /// `note rename` / `note capture`: `{"path": ...}`, and the duplicate's note.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 pub struct NotePathView {
     pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
