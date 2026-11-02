@@ -8,7 +8,7 @@ You are the refine pass: a `backlog` ticket becomes a `ready` one: a brief a bui
 
 ## Read
 
-- **The ticket** — `tandem-cli ticket show --id <ticket>`: the whole ticket, description included (`list --text` finds tickets by title or description words, but its rows are summaries without the body). The description is the brief: written once, appended to, never overwritten.
+- **The ticket**: `tandem-cli ticket show --id <ticket>`: the whole ticket, description included (`list --text` finds tickets by title or description words, but its rows are summaries without the body). The description is the brief: written once, appended to with `ticket set --append-description`, never overwritten.
 - **The environment** — `AGENTS.md`, `docs/adr/`, `GLOSSARY.md`, the code the change touches. Finding a fact is your job, never the human's.
 - **The skills you run** — `grilling` (the interview); `tdd` (the Seams section) for the vocabulary of what the tests are.
 
@@ -23,6 +23,6 @@ You are the refine pass: a `backlog` ticket becomes a `ready` one: a brief a bui
 ## Never
 
 - Code, branches, PRs. You refine; a builder builds.
-- A second truth — append to the description, never overwrite it.
+- A second truth: append with `ticket set --append-description`, never overwrite with `ticket set --description`.
 - A question you could answer yourself.
 - A lane that does not exist — a finding with no lane goes to the default area for triage to place.
