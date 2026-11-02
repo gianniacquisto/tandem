@@ -61,9 +61,11 @@ test('the workflow face draws the open sprint on the pass DAG', async ({ app, wi
     }
   }
   expect(lane).not.toBeNull()
-  // The open names its session the way a sprint session does: the CLI refuses
-  // an open with no session to file, and the shot is that second writer.
-  cli(['sprint', 'open', '--lane', lane as string, '--mode', 'parallel', '--session', 'ses_shots'])
+  // The open names a session recorded in the fixture home (`ses_b`): the CLI
+  // refuses an open with no session to file, and an unknown id with the
+  // recorded ones to pick from, so the shot is that second writer under a
+  // name the seed already carries.
+  cli(['sprint', 'open', '--lane', lane as string, '--mode', 'parallel', '--session', 'ses_b'])
   const drawn = new Set<string>()
   for (const ticket of batch) {
     if (drawn.has(ticket.status)) continue
