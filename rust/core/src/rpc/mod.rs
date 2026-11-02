@@ -480,6 +480,7 @@ fn execute(
                         status,
                         assignee,
                         description,
+                        append_description: Edit::Unchanged,
                         archived: Edit::Unchanged,
                     },
                 )
