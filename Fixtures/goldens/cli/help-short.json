@@ -47,7 +47,7 @@
     "                         [--tokens-reasoning <n>] [--tokens-cache-read <n>]",
     "                         [--tokens-cache-write <n>] [--cost <dollars>]",
     "                         [--model <name>] [--skills <name=count[,name=count]>]",
-    "                         [--usage-from-harness] [--harness-events <path>]",
+    "                         [--usage-from-harness] [--harness-url <url>]",
     "  tandem-cli session link --ticket <id> [--session <id>]",
     "  tandem-cli session list [--project <name>] [--status <value>]",
     "  tandem-cli session show [--session <id>]",
