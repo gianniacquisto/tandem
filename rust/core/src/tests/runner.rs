@@ -54,7 +54,16 @@ fn snap(
 }
 
 fn ready(id: &str, reference: &str) -> TicketSnapshot {
-    snap(id, reference, Status::Ready, false, vec![], None, None, false)
+    snap(
+        id,
+        reference,
+        Status::Ready,
+        false,
+        vec![],
+        None,
+        None,
+        false,
+    )
 }
 
 fn backlog_plain(id: &str, reference: &str) -> TicketSnapshot {
@@ -107,7 +116,16 @@ fn draw_takes_ready_first_up_to_five_and_skips_blocked() {
             false,
         ),
         ready("r2", "TAN-4"),
-        snap("o1", "TAN-5", Status::OnHold, false, vec![], None, None, false),
+        snap(
+            "o1",
+            "TAN-5",
+            Status::OnHold,
+            false,
+            vec![],
+            None,
+            None,
+            false,
+        ),
         snap(
             "b2",
             "TAN-6",
@@ -133,7 +151,16 @@ fn draw_takes_ready_first_up_to_five_and_skips_blocked() {
         ready("r4", "TAN-12"),
         ready("r5", "TAN-13"),
         ready("r9", "TAN-14"),
-        snap("d1", "TAN-15", Status::Done, false, vec![], None, None, false),
+        snap(
+            "d1",
+            "TAN-15",
+            Status::Done,
+            false,
+            vec![],
+            None,
+            None,
+            false,
+        ),
         snap(
             "a1",
             "TAN-16",
@@ -241,7 +268,9 @@ fn every_state_and_result_names_a_next_state() {
     .expect("a merge records and closes a one-ticket batch");
     assert_eq!(next.phase, Phase::Closing);
     match effect {
-        Effect::RecordAndAdvance { ticket, pr, next, .. } => {
+        Effect::RecordAndAdvance {
+            ticket, pr, next, ..
+        } => {
             assert_eq!(ticket, "a");
             assert_eq!(pr, 7);
             assert_eq!(next, Next::Close);
@@ -430,10 +459,7 @@ fn a_failed_pass_leaves_a_state_triage_can_read() {
 
 #[test]
 fn a_scripted_two_ticket_run_closes_with_the_run_log_only() {
-    let tickets = vec![
-        ready("TAN-2", "TAN-2"),
-        backlog_plain("TAN-1", "TAN-1"),
-    ];
+    let tickets = vec![ready("TAN-2", "TAN-2"), backlog_plain("TAN-1", "TAN-1")];
     let drawn = draw(&tickets);
     let batch: Vec<&str> = drawn.batch.iter().map(|t| t.id.as_str()).collect();
     assert_eq!(batch, vec!["TAN-2", "TAN-1"]);
@@ -442,8 +468,7 @@ fn a_scripted_two_ticket_run_closes_with_the_run_log_only() {
         "the backlog ticket refines first"
     );
 
-    let (mut state, first) =
-        crate::domain::runner::start(handle(), &drawn.batch);
+    let (mut state, first) = crate::domain::runner::start(handle(), &drawn.batch);
     assert_eq!(
         first,
         Effect::Spawn {
@@ -502,10 +527,25 @@ fn a_scripted_two_ticket_run_closes_with_the_run_log_only() {
     }
 
     assert_eq!(state.phase, Phase::Closing);
-    assert_eq!(state.completed, vec!["TAN-2".to_string(), "TAN-1".to_string()]);
-    assert_eq!(run_log.len(), 2, "the run log is the only record of the run");
-    assert!(run_log[0].contains("TAN-2"), "entries land in run order: {}", run_log[0]);
-    assert!(run_log[1].contains("TAN-1"), "entries land in run order: {}", run_log[1]);
+    assert_eq!(
+        state.completed,
+        vec!["TAN-2".to_string(), "TAN-1".to_string()]
+    );
+    assert_eq!(
+        run_log.len(),
+        2,
+        "the run log is the only record of the run"
+    );
+    assert!(
+        run_log[0].contains("TAN-2"),
+        "entries land in run order: {}",
+        run_log[0]
+    );
+    assert!(
+        run_log[1].contains("TAN-1"),
+        "entries land in run order: {}",
+        run_log[1]
+    );
 
     let note = crate::domain::runner::close_note(&state);
     assert!(

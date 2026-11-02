@@ -138,9 +138,7 @@ pub struct BlockerRef {
 
 impl BlockerRef {
     fn display_name(&self) -> String {
-        self.reference
-            .clone()
-            .unwrap_or_else(|| self.title.clone())
+        self.reference.clone().unwrap_or_else(|| self.title.clone())
     }
 }
 
@@ -171,9 +169,7 @@ pub struct TicketSnapshot {
 
 impl TicketSnapshot {
     fn display_name(&self) -> String {
-        self.reference
-            .clone()
-            .unwrap_or_else(|| self.title.clone())
+        self.reference.clone().unwrap_or_else(|| self.title.clone())
     }
 }
 
@@ -532,10 +528,7 @@ pub fn step(
                 ready: false,
             },
         ) => Ok(park(state, ticket, at)),
-        (
-            Phase::Building { ticket },
-            PassResult::Built { ticket: _, pr },
-        ) => {
+        (Phase::Building { ticket }, PassResult::Built { ticket: _, pr }) => {
             let next = Driver {
                 phase: Phase::Reviewing {
                     ticket: ticket.clone(),
