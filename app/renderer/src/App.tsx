@@ -6,6 +6,7 @@ import { SettingsFace } from './faces/SettingsFace'
 import { TicketSheet } from './faces/TicketSheet'
 import { TicketsFace } from './faces/TicketsFace'
 import { UsageFace } from './faces/UsageFace'
+import { WorkflowFace } from './faces/WorkflowFace'
 import { closeHref, parseRoute, tabHref, type Route } from './shell/route'
 import { initialSnapshot, snapshotReducer, type SnapshotState } from './shell/snapshot'
 import { refusalBanner, writeBlocked, type WriteCaller, type WriteOutcome } from './shell/write'
@@ -68,6 +69,15 @@ function face(
       )
     case 'usage':
       return <UsageFace report={snapshot.usage} />
+    case 'workflow':
+      return (
+        <WorkflowFace
+          tickets={snapshot.tickets}
+          lanes={snapshot.lanes}
+          activeProject={snapshot.activeProject}
+          onOpenTicket={actions.onOpenTicket}
+        />
+      )
     case 'settings':
       return <SettingsFace />
   }
