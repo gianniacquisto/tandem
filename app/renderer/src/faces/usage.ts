@@ -26,6 +26,66 @@ const LABELS: Record<UsageDimension, string> = {
 /** The ticketless row's key, the report's own (`NO_TICKET_ID`). */
 export const NO_TICKET = 'no-ticket'
 
+/** The table's two readings: summed totals, or per-reported-record averages. */
+export type UsageMode = 'total' | 'average'
+
+export const MODES: readonly UsageMode[] = ['total', 'average']
+
+const MODE_LABELS: Record<UsageMode, string> = {
+  total: 'Total',
+  average: 'Average',
+}
+
+export function modeLabel(mode: UsageMode): string {
+  return MODE_LABELS[mode]
+}
+
+/** The toggle's accessible name: what the two readings share, in the glossary's words. */
+export const MODE_CONTROL_LABEL = 'Totals or per-record averages'
+
+/** One row's numeric cells, formatted for the table in the active mode. */
+export type UsageCells = {
+  input: string
+  output: string
+  cacheRead: string
+  cacheWrite: string
+  cost: string
+}
+
+/**
+ * The row's cells in one mode: its totals in Total mode, byte-identical to
+ * today, and its per-reported-record averages in Average mode. A row that
+ * reported nothing draws the absent mark in every numeric cell either way,
+ * and the Records column never averages, so it is not one of these cells.
+ */
+export function rowCells(row: UsageRowView, mode: UsageMode): UsageCells {
+  if (mode === 'average' && row.reported > 0) {
+    return {
+      input: tokens(row.averageTokens.input),
+      output: tokens(row.averageTokens.output),
+      cacheRead: tokens(row.averageTokens.cacheRead),
+      cacheWrite: tokens(row.averageTokens.cacheWrite),
+      cost: money(row.averageCost),
+    }
+  }
+  if (row.reported === 0) {
+    return {
+      input: ABSENT,
+      output: ABSENT,
+      cacheRead: ABSENT,
+      cacheWrite: ABSENT,
+      cost: ABSENT,
+    }
+  }
+  return {
+    input: tokens(row.tokens.input),
+    output: tokens(row.tokens.output),
+    cacheRead: tokens(row.tokens.cacheRead),
+    cacheWrite: tokens(row.tokens.cacheWrite),
+    cost: money(row.cost),
+  }
+}
+
 /** The mark a piece no record reported draws, never a zero dressed up. */
 export const ABSENT = '\u2014'
 
