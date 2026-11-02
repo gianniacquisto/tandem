@@ -247,6 +247,11 @@ pub struct Store {
     /// rollback-journal file without renaming over a held one (PRT-26).
     #[cfg(test)]
     watch_opens: Arc<std::sync::atomic::AtomicU64>,
+    /// How many times a held watch has read the revision. Test-facing: the
+    /// file watch must not query on every tick, so an idle case pins that
+    /// this stays put while the 40 ms cadence stats the files.
+    #[cfg(test)]
+    watch_revision_reads: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Store {
@@ -257,6 +262,8 @@ impl Store {
             last_revision: Arc::new(AtomicI64::new(0)),
             #[cfg(test)]
             watch_opens: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            #[cfg(test)]
+            watch_revision_reads: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
 
@@ -290,6 +297,26 @@ impl Store {
     /// The rolling backup: `<home>/tandem.db.bak`, one generation (ADR 0018).
     pub fn backup(&self) -> PathBuf {
         self.home.directory().join("tandem.db.bak")
+    }
+
+    /// The write-ahead log the engine appends to between checkpoints:
+    /// `<home>/tandem.db-wal`. Absent in rollback-journal mode and after a
+    /// checkpoint, so the file watch treats a missing file as a state of its
+    /// own rather than an error.
+    pub fn wal(&self) -> PathBuf {
+        self.home.directory().join("tandem.db-wal")
+    }
+
+    /// What the file watch stats on every tick: the database and its WAL, each
+    /// as its size and modification time. Two stats, no connection and no
+    /// query, so an idle child costs nothing a human would notice. A missing
+    /// file is `None`, because a fresh home has no database yet and a
+    /// checkpointed store has no WAL.
+    pub fn watch_files(&self) -> WatchFiles {
+        WatchFiles {
+            db: FileSig::of(&self.database()),
+            wal: FileSig::of(&self.wal()),
+        }
     }
 
     /// A read: read-only, lock-free, and never writing. `None` when there is no
@@ -348,9 +375,11 @@ impl Store {
         }
     }
 
-    /// A read-only connection kept open for the change watch. The watch polls
-    /// this instead of opening a connection per tick: an idle child runs one
-    /// query on one connection, not ~25 opens a second.
+    /// A read-only connection kept open for the change watch. The file watch
+    /// stats the database and its WAL on every tick and reads the revision
+    /// through this only when the files move (or the 5 s fallback fires), so
+    /// an idle child stats twice a tick instead of querying ~25 times a
+    /// second.
     ///
     /// **Any readable store is watchable, WAL or not.** ADR 0031's restore
     /// renames the rollback-journal backup over `tandem.db`; refusing a
@@ -378,6 +407,8 @@ impl Store {
             connection,
             database,
             file,
+            #[cfg(test)]
+            reads: Arc::clone(&self.watch_revision_reads),
         }))
     }
 
@@ -386,6 +417,13 @@ impl Store {
     #[cfg(test)]
     pub(crate) fn watch_opens(&self) -> u64 {
         self.watch_opens.load(Ordering::Relaxed)
+    }
+
+    /// How many revision reads a held watch has issued. Test-facing, so an
+    /// idle case can pin that the 40 ms file-stat cadence costs no query.
+    #[cfg(test)]
+    pub(crate) fn watch_revision_reads(&self) -> u64 {
+        self.watch_revision_reads.load(Ordering::Relaxed)
     }
 
     /// A write: one `BEGIN IMMEDIATE` transaction with the caller's inserts
@@ -521,7 +559,8 @@ impl Store {
     }
 }
 
-/// A read-only connection the change watch keeps open and polls.
+/// A read-only connection the change watch keeps open and reads only when
+/// the files move.
 ///
 /// ADR 0031's restore replaces `tandem.db` by rename, so a connection held for
 /// the process's life would keep reading the retired inode after a restore and
@@ -531,6 +570,11 @@ pub struct RevisionWatch {
     connection: Connection,
     database: PathBuf,
     file: StoreFile,
+    /// Test-facing: how many revision reads this held connection has issued,
+    /// shared with the `Store` that opened it so an idle case can read the
+    /// count off the store.
+    #[cfg(test)]
+    reads: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl RevisionWatch {
@@ -542,8 +586,39 @@ impl RevisionWatch {
                 self.database.display()
             )));
         }
+        #[cfg(test)]
+        self.reads.fetch_add(1, Ordering::Relaxed);
         schema::revision(&self.connection)
     }
+}
+
+/// One file the watch stats: its size and its modification time. Two stats
+/// and no query, so the 40 ms cadence is cheap enough to run all day. A write
+/// moves one of the two (the WAL grows, a checkpoint moves the database), and
+/// a coarse filesystem that reports neither is what the 5 s fallback is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileSig {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+}
+
+impl FileSig {
+    fn of(path: &Path) -> Option<Self> {
+        let metadata = fs::metadata(path).ok()?;
+        Some(Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+        })
+    }
+}
+
+/// What the file watch compares on every tick: the database and its WAL. The
+/// revision is read only when this moves (or the fallback fires), so an idle
+/// app stats twice a tick and queries nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WatchFiles {
+    db: Option<FileSig>,
+    wal: Option<FileSig>,
 }
 
 /// The identity of the file a watch holds, enough to tell that the path now

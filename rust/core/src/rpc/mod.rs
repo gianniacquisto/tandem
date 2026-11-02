@@ -11,12 +11,15 @@
 //!   same domain calls the CLI's verbs make. A malformed frame is an error
 //!   frame and never a panic: stdin is untrusted input, and the child may hold
 //!   the store's lock on the next request.
-//! - **The watch**: a thread polls the store's revision on one read-only
-//!   connection it keeps open, and pushes [`Event::Changed`] when any writer
-//!   moves it, this process's own writes included. Polling the revision (rather
-//!   than watching a file) is what makes "another process under the lock"
-//!   observable on every platform; reusing the connection is what keeps an idle
-//!   child from opening one a tick. An event is a hint to re-read: it may name
+//! - **The watch**: a thread stats the store's files (`tandem.db` and its
+//!   `-wal`) every 40 ms on one read-only connection it keeps open, and reads
+//!   the revision only when the files move, pushing [`Event::Changed`] when
+//!   any writer moves it, this process's own writes included. Watching the
+//!   files (rather than querying the revision) is what keeps an idle child
+//!   quiet on every platform with no new dependency; the 40 ms cadence is the
+//!   latency ceiling and a 5 s fallback covers a filesystem that reports
+//!   nothing. Reusing the connection is what keeps an idle child from opening
+//!   one a tick. An event is a hint to re-read: it may name
 //!   an intermediate revision (a migration is a commit of its own) and the
 //!   listing's revision is the authoritative one.
 //!
@@ -30,7 +33,7 @@ use std::io::{self, BufRead, Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::bikeshed::Bikeshed;
 use crate::domain::Settings;
@@ -62,10 +65,17 @@ use crate::{diagnostics, setup};
 /// bytes is legal; the newline that ends it is the stream's, not the frame's.
 pub const MAX_FRAME: usize = 4 * 1024 * 1024;
 
-/// How often the watch asks the store whether the revision moved, on the one
-/// connection it keeps open. Short enough that the face updates before a human
-/// notices, and one query a tick is what an idle child costs.
+/// How often the watch stats the store's files, on the one connection it
+/// keeps open. Short enough that the face updates before a human notices.
+/// A tick stats twice and queries nothing unless the files moved, so an idle
+/// child costs no query; the revision is read only on a move or the fallback.
 const WATCH_INTERVAL: Duration = Duration::from_millis(40);
+
+/// How often the watch re-reads the revision even when the files look still.
+/// A filesystem that reports no mtime or size change must not silence the
+/// stream: the fallback bounds the staleness at five seconds while the fast
+/// path stays quiet.
+const WATCH_FALLBACK: Duration = Duration::from_secs(5);
 
 /// The longest wait after a store the watch cannot attach to: refused,
 /// unreadable, or readable with no revision row yet. A legacy or broken home
@@ -228,25 +238,31 @@ pub fn serve<S: Stream>(stream: S, store: Store, actor: Actor) -> io::Result<()>
     outcome
 }
 
-/// The watch: poll the store's revision on one read-only connection and push a
-/// change event whenever it moves, until `stop`.
+/// The watch: stat the store's files on one read-only connection and push a
+/// change event whenever the revision moves, until `stop`.
 fn watch<S: Stream>(stream: &S, store: &Store, stop: &AtomicBool) {
-    // One read-only connection, reused: an idle child runs one query per tick,
-    // not an open and a close. The watch waits for the store to exist and for
-    // its one-time WAL switch (`Store::watch`).
+    // One read-only connection, reused: an idle child stats twice a tick and
+    // queries nothing, not an open and a close. The watch waits for the store
+    // to exist and for its one-time WAL switch (`Store::watch`). The 40 ms
+    // cadence is the latency ceiling; the 5 s fallback covers a filesystem
+    // that reports no mtime or size change.
     let mut watch = store.watch().ok().flatten();
     let mut last = watch
         .as_ref()
         .and_then(|watch| watch.revision().ok())
         .unwrap_or(0);
+    let mut files = store.watch_files();
+    let mut last_read = Instant::now();
     let mut wait = WATCH_INTERVAL;
     while !stop.load(Ordering::Relaxed) {
         thread::sleep(wait);
+        let mut force_read = false;
         if watch.is_none() {
             match store.watch() {
                 Ok(Some(found)) => {
                     watch = Some(found);
                     wait = WATCH_INTERVAL;
+                    force_read = true;
                 }
                 // No store yet: the first write has not run, and asking again
                 // costs a stat and no connection, so keep the normal cadence.
@@ -272,6 +288,13 @@ fn watch<S: Stream>(stream: &S, store: &Store, stop: &AtomicBool) {
         let Some(current) = watch.as_ref() else {
             continue;
         };
+        let now_files = store.watch_files();
+        let files_moved = now_files != files;
+        let fallback_due = last_read.elapsed() >= WATCH_FALLBACK;
+        if !force_read && !files_moved && !fallback_due {
+            continue;
+        }
+        files = now_files;
         let Ok(revision) = current.revision() else {
             // The connection is unusable (the store was replaced or
             // removed): drop it and reopen with the backoff.
@@ -279,6 +302,7 @@ fn watch<S: Stream>(stream: &S, store: &Store, stop: &AtomicBool) {
             wait = backoff(wait);
             continue;
         };
+        last_read = Instant::now();
         if revision == last {
             continue;
         }
@@ -950,6 +974,160 @@ mod tests {
         assert!(
             opens <= 10,
             "a pre-v4 store is opened {opens} times in a second, not at the 40 ms cadence"
+        );
+    }
+
+    /// A home with one write, so the watch can attach and read a revision.
+    /// Unix only with the cases that use it.
+    #[cfg(unix)]
+    fn store_with_a_revision(name: &str) -> (std::path::PathBuf, Store) {
+        use crate::store::{Home, NewSetting};
+
+        let root =
+            std::env::temp_dir().join(format!("tandem-rpc-watch-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let home = Home::resolve(Some(&root.join("home")), None, &root.join("user"));
+        let store = Store::new(home);
+        store
+            .write(&Actor::Human, |write| {
+                write.insert_setting(NewSetting {
+                    key: "k",
+                    value: "v",
+                })
+            })
+            .expect("the first write creates the schema");
+        (root, store)
+    }
+
+    /// The stream the latency case reads its events from.
+    #[cfg(unix)]
+    struct Recorder {
+        frames: Mutex<Vec<String>>,
+    }
+
+    #[cfg(unix)]
+    impl Recorder {
+        fn new() -> Self {
+            Self {
+                frames: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn changed_revisions(&self) -> Vec<i64> {
+            let frames = self
+                .frames
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            frames
+                .iter()
+                .filter_map(|frame| serde_json::from_str::<serde_json::Value>(frame).ok())
+                .filter(|value| {
+                    value.get("event").and_then(|event| event.as_str()) == Some("changed")
+                })
+                .filter_map(|value| value.get("revision").and_then(|revision| revision.as_i64()))
+                .collect()
+        }
+    }
+
+    #[cfg(unix)]
+    impl Stream for Recorder {
+        fn read_frame(&self) -> io::Result<Option<String>> {
+            Ok(None)
+        }
+
+        fn write_frame(&self, frame: &str) -> io::Result<()> {
+            let mut frames = self
+                .frames
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            frames.push(frame.to_string());
+            Ok(())
+        }
+    }
+
+    // An idle watch must not query the revision on every tick: the files do
+    // not move, so the held connection stays quiet and the 40 ms cadence
+    // costs two stats, not a `SELECT`.
+    #[cfg(unix)]
+    #[test]
+    fn an_idle_watch_issues_no_revision_read() {
+        let (root, store) = store_with_a_revision("idle");
+        let store = Arc::new(store);
+        let stop = Arc::new(AtomicBool::new(false));
+        let reads_before = store.watch_revision_reads();
+        let recorder = Arc::new(Recorder::new());
+        let handle = {
+            let store = Arc::clone(&store);
+            let stop = Arc::clone(&stop);
+            let recorder = Arc::clone(&recorder);
+            thread::spawn(move || watch(&*recorder, &store, &stop))
+        };
+        thread::sleep(Duration::from_millis(600));
+        stop.store(true, Ordering::Relaxed);
+        handle.join().expect("the watch stops");
+        let reads = store.watch_revision_reads() - reads_before;
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            reads <= 2,
+            "an idle watch read the revision {reads} times in 600 ms, not once at attach"
+        );
+        assert!(
+            recorder.changed_revisions().is_empty(),
+            "an idle watch emits no change event"
+        );
+    }
+
+    // A write from another store (the second terminal's door) arrives on the
+    // stream quickly: the 40 ms ceiling is the bound, and the case retries up
+    // to two seconds so scheduling jitter cannot flake it.
+    #[cfg(unix)]
+    #[test]
+    fn a_write_from_another_store_reports_changed_quickly() {
+        use crate::store::NewSetting;
+
+        let (root, store) = store_with_a_revision("latency");
+        let store = Arc::new(store);
+        let stop = Arc::new(AtomicBool::new(false));
+        let recorder = Arc::new(Recorder::new());
+        let handle = {
+            let store = Arc::clone(&store);
+            let stop = Arc::clone(&stop);
+            let recorder = Arc::clone(&recorder);
+            thread::spawn(move || watch(&*recorder, &store, &stop))
+        };
+        thread::sleep(Duration::from_millis(120));
+        let before = store.revision().expect("the revision reads");
+        let started = std::time::Instant::now();
+        store
+            .write(&Actor::Human, |write| {
+                write.insert_setting(NewSetting {
+                    key: "k2",
+                    value: "v2",
+                })
+            })
+            .expect("the other writer writes");
+        let moved = store.revision().expect("the revision moved");
+        assert!(moved > before, "the write moved the revision");
+        let mut seen = Vec::new();
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            seen = recorder.changed_revisions();
+            if seen.contains(&moved) {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        let elapsed = started.elapsed();
+        stop.store(true, Ordering::Relaxed);
+        handle.join().expect("the watch stops");
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            seen.contains(&moved),
+            "a write to {moved} never arrived within 2 s (saw {seen:?})"
+        );
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "a write took {elapsed:?} to arrive, past the 40 ms ceiling plus jitter"
         );
     }
 }
