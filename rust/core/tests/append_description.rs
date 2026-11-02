@@ -216,10 +216,7 @@ fn naming_replace_and_append_together_is_refused_and_leaves_the_body() {
             ..SetFields::default()
         },
     );
-    assert!(
-        refused.is_err(),
-        "naming both verbs in one call must fail"
-    );
+    assert!(refused.is_err(), "naming both verbs in one call must fail");
 
     let reread = board.ticket(&id).unwrap();
     assert_eq!(
