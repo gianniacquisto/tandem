@@ -106,9 +106,16 @@ describe('the harness binary lookup', () => {
     expect(resolveServerBinary({ ...source, env: { TANDEM_OPENCODE_BIN: '/opt/opencode' } })).toBe(
       '/opt/opencode',
     )
-    expect(resolveServerBinary({ ...source, env: {} })).toBe(join('/r', 'harness', 'opencode'))
     expect(
-      resolveServerBinary({ ...source, platform: 'win32', env: {} }),
+      resolveServerBinary({ ...source, env: {}, exists: () => true }),
+    ).toBe(join('/r', 'harness', 'opencode'))
+    expect(
+      resolveServerBinary({
+        ...source,
+        platform: 'win32',
+        env: {},
+        exists: () => true,
+      }),
     ).toBe(join('/r', 'harness', 'opencode.exe'))
     expect(
       resolveServerBinary({
@@ -128,6 +135,21 @@ describe('the harness binary lookup', () => {
         exists: () => false,
       }),
     ).toBe('opencode')
+  })
+
+  it('falls back to PATH when the packaged bundle carries no harness (darwin today)', () => {
+    // Only the Linux bundle embeds the harness (electron-builder.yml stages it
+    // under `linux:`), so a packaged darwin app must resolve like the days
+    // before the launcher: PATH, never a bundled path that does not exist.
+    const source = { packaged: true, platform: 'darwin' as const, appPath: '/x', resourcesPath: '/r' }
+    expect(
+      resolveServerBinary({ ...source, env: {}, exists: () => true }),
+    ).toBe(join('/r', 'harness', 'opencode'))
+    expect(resolveServerBinary({ ...source, env: {}, exists: () => false })).toBe('opencode')
+    // The same fallback holds for a Linux bundle that somehow dropped the
+    // binary: PATH, the behaviour the sign-in controller had all along.
+    const linux = { ...source, platform: 'linux' as const }
+    expect(resolveServerBinary({ ...linux, env: {}, exists: () => false })).toBe('opencode')
   })
 
   it('spawns serve with stdin as the lifetime handle and port 0, and probes --version', () => {
