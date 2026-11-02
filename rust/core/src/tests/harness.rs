@@ -457,8 +457,6 @@ fn parts_of_another_session_are_not_this_session_usage() {
         {"type":"tool","id":"prt_1","name":"skill","sessionID":"ses_other","state":{"input":{"id":"other"}}},
         {"type":"tool","id":"prt_2","name":"skill","sessionID":"ses_1","state":{"input":{"id":"mine"}}}
     ]}],"cursor":{"next":null}}"#.to_string();
-    // Note: the last object above is intentionally missing its closing brace
-    // in this draft; the real file is fixed below.
     let stub = Stub::start(
         "harness-secret",
         vec![
