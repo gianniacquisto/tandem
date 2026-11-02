@@ -81,6 +81,26 @@ export function resolveHarnessBinary(env: Record<string, string | undefined>): s
   return 'opencode'
 }
 
+/**
+ * Create the harness home and every root the environment names (ADR 0038):
+ * the binary creates the `XDG_*` leaves itself, so the app creates the home
+ * and the temp root before spawn and the rest is the binary's.
+ */
+export function ensureHarnessHome(tandemHome: string): void {
+  const env = harnessEnv(tandemHome)
+  for (const dir of [
+    tandemHome,
+    join(tandemHome, 'harness'),
+    env['XDG_DATA_HOME'],
+    env['XDG_CACHE_HOME'],
+    env['XDG_CONFIG_HOME'],
+    env['XDG_STATE_HOME'],
+    env['TMPDIR'],
+  ]) {
+    if (dir !== undefined) mkdirSync(dir, { recursive: true })
+  }
+}
+
 /** `auth list` against the harness home, never the live service. */
 export function statusArgs(): string[] {
   return ['auth', 'list', '--format', 'json', '--standalone']
@@ -184,18 +204,7 @@ export class HarnessController {
   }
 
   private ensureHome(): void {
-    const env = harnessEnv(this.deps.tandemHome)
-    for (const dir of [
-      this.deps.tandemHome,
-      join(this.deps.tandemHome, 'harness'),
-      env['XDG_DATA_HOME'],
-      env['XDG_CACHE_HOME'],
-      env['XDG_CONFIG_HOME'],
-      env['XDG_STATE_HOME'],
-      env['TMPDIR'],
-    ]) {
-      if (dir !== undefined) mkdirSync(dir, { recursive: true })
-    }
+    ensureHarnessHome(this.deps.tandemHome)
   }
 
   /** The URLs and codes the device flow has printed so far. */
