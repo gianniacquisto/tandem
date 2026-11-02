@@ -4,24 +4,24 @@
 //! the one binary and the CLI composes rather than shells out (`docs/port.md`,
 //! Where the old code goes: the wrapper script became this verb at the cutover).
 //!
-//! **The database is opened read-only and its path is a path**, never text in a
-//! statement: the session id is bound, and a file that is not there answers a
-//! domain failure rather than a panic. Nothing here writes: the harness owns its
-//! database, and Tandem only reads it.
+//! The loopback API is the only read (TAN-276). The harness serves its numbers
+//! as first-class fields: `GET /api/session/{id}` carries the tokens, the cost
+//! and the model, and `GET /api/session/{id}/message?limit=100` carries the
+//! tool parts a skill load rides in, one `skill` part per load counted by name
+//! (TAN-241). A number the harness did not report stays absent, and a skill
+//! object with no loads stays absent too, never an empty map.
 //!
-//! **Two transports, one shape.** The `database` transport reads the row
-//! (`session_v2` in opencode's own schema) for the tokens, the cost and the
-//! model, and the messages for the skill loads, one `skill` tool part per load,
-//! counted by name (TAN-241). The `event-stream` transport reads the harness's
-//! own event JSON, one object per line as the app forwards it, and sums the
-//! assistant messages the same way; the skill loads ride the `message.part`
-//! events. A number the harness did not report stays absent, and a skill object
-//! with no loads stays absent too, never an empty map.
+//! Authentication is ADR 0038's: `Authorization: Basic base64("opencode:" +
+//! password)` on every request. The password never reaches an error string, a
+//! log, or argv. The URL's host must be loopback, and the connect and read
+//! budgets are bounded in single-digit seconds, so a hung server cannot hang
+//! `session end`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::time::Duration;
 
 use rusqlite::{Connection, OpenFlags, params};
 use serde_json::Value;
@@ -48,104 +48,63 @@ impl HarnessUsage {
     }
 }
 
-/// Read `session_id`'s usage out of the harness database at `database`.
+/// Read `session_id`'s usage over the harness loopback API.
 ///
-/// A missing file is [`DomainError::NoHarnessDatabase`]; a session the harness
-/// never recorded is [`DomainError::UnknownHarnessSession`]. Neither is an I/O
-/// surprise the caller has to recognise: both name what to do next.
-pub fn read(database: &Path, session_id: &str) -> DomainResult<HarnessUsage> {
-    if !database.is_file() {
-        return Err(DomainError::NoHarnessDatabase {
-            path: database.display().to_string(),
+/// `base_url` is the harness origin (`http://127.0.0.1:port`), `password` the
+/// loopback credential. A host that is not loopback is refused without
+/// connecting; an unreachable server, a timeout, or a refused host answers
+/// [`DomainError::NoHarnessServer`]. A wrong password answers
+/// [`DomainError::HarnessUnauthorized`]; a session the harness never recorded
+/// answers [`DomainError::UnknownHarnessSession`].
+pub fn read_api(base_url: &str, password: &str, session_id: &str) -> DomainResult<HarnessUsage> {
+    let base = base_url.trim().trim_end_matches('/').to_string();
+    if !is_loopback(&base) {
+        return Err(DomainError::NoHarnessServer { url: base });
+    }
+    let id = encode_segment(session_id.trim());
+    if id.is_empty() {
+        return Err(DomainError::UnknownHarnessSession {
+            id: session_id.to_string(),
         });
     }
-    let connection = Connection::open_with_flags(database, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|error| {
-            DomainError::from(StoreError::Io(format!(
-                "could not open the harness database at {} read-only: {error}",
-                database.display()
-            )))
-        })?;
-    let mut usage = row(&connection, session_id)?;
-    usage.skills = skills(&connection, session_id)?;
-    Ok(usage)
-}
+    let agent = loopback_agent();
+    let auth = format!(
+        "Basic {}",
+        encode_base64(format!("opencode:{password}").as_bytes())
+    );
 
-/// Read `session_id`'s usage out of the harness event stream at `stream`.
-///
-/// The stream is the harness's own event JSON, one object per line. Tandem
-/// reads the `message.updated` events (`info.sessionID`, `info.tokens`,
-/// `info.cost`, `info.modelID`) and the `message.part.updated` events for the
-/// `skill` tool loads, and it reads only the events of `session_id`: another
-/// session's events, a line that is not JSON and a type this build does not use
-/// are skipped, not failures. A missing file is
-/// [`DomainError::NoHarnessEvents`]; a stream with no message for the session
-/// answers no usage at all.
-///
-/// A message is updated repeatedly as it streams, so the last event per message
-/// id is the one that counts and a message is never billed twice. The model is
-/// the last assistant message's, and a skill load is counted once per part id.
-pub fn read_events(stream: &Path, session_id: &str) -> DomainResult<HarnessUsage> {
-    if !stream.is_file() {
-        return Err(DomainError::NoHarnessEvents {
-            path: stream.display().to_string(),
-        });
-    }
-    let file = File::open(stream).map_err(|error| {
-        DomainError::from(StoreError::Io(format!(
-            "could not open the harness event stream at {}: {error}",
-            stream.display()
-        )))
-    })?;
-    let mut messages: BTreeMap<String, (SessionTokens, Option<f64>)> = BTreeMap::new();
-    let mut parts: BTreeSet<String> = BTreeSet::new();
+    let session_url = format!("{base}/api/session/{id}");
+    let session_body = get_json(&agent, &session_url, &auth, &base)?;
+    let data = session_body
+        .get("data")
+        .ok_or_else(|| unreadable(&base, 200, &session_body.to_string()))?;
+    let mut usage = HarnessUsage {
+        tokens: session_tokens(data.get("tokens")),
+        cost: data.get("cost").and_then(Value::as_f64),
+        model: session_model(data.get("model")),
+        skills: None,
+    };
+
     let mut skills: BTreeMap<String, i64> = BTreeMap::new();
-    let mut model: Option<String> = None;
-    for (index, line) in BufReader::new(file).lines().enumerate() {
-        let line = line.map_err(|error| {
-            DomainError::from(StoreError::Io(format!(
-                "could not read the harness event stream at {}: {error}",
-                stream.display()
-            )))
-        })?;
-        let Ok(event) = serde_json::from_str::<Value>(line.trim()) else {
-            continue;
-        };
-        match event.get("type").and_then(Value::as_str) {
-            Some("message.updated") => {
-                let Some(info) = event.pointer("/properties/info") else {
-                    continue;
-                };
-                if !of_session(info, session_id) {
-                    continue;
-                }
-                let key = info
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-                    .unwrap_or_else(|| format!("event-{index}"));
-                messages.insert(
-                    key,
-                    (
-                        event_tokens(info.get("tokens")),
-                        info.get("cost").and_then(Value::as_f64),
-                    ),
-                );
-                if let Some(name) = info
-                    .get("modelID")
-                    .and_then(Value::as_str)
-                    .and_then(non_blank)
-                {
-                    model = Some(name);
-                }
-            }
-            Some("message.part.updated") => {
-                let Some(part) = event.pointer("/properties/part") else {
-                    continue;
-                };
-                if !of_session(part, session_id) {
-                    continue;
-                }
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    let mut part_index = 0usize;
+    let mut cursor: Option<String> = None;
+    loop {
+        let mut page_url = format!("{base}/api/session/{id}/message?limit=100");
+        if let Some(next) = cursor.as_deref() {
+            page_url.push_str("&cursor=");
+            page_url.push_str(&encode_segment(next));
+        }
+        let page_body = get_json(&agent, &page_url, &auth, &base)?;
+        let messages = page_body
+            .get("data")
+            .and_then(Value::as_array)
+            .ok_or_else(|| unreadable(&base, 200, &page_body.to_string()))?;
+        for message in messages {
+            let Some(content) = message.get("content").and_then(Value::as_array) else {
+                continue;
+            };
+            for part in content {
                 if part.get("type").and_then(Value::as_str) != Some("tool") {
                     continue;
                 }
@@ -156,12 +115,21 @@ pub fn read_events(stream: &Path, session_id: &str) -> DomainResult<HarnessUsage
                 if tool != Some("skill") {
                     continue;
                 }
+                if let Some(owner) = part.get("sessionID").and_then(Value::as_str)
+                    && owner != session_id.trim()
+                {
+                    continue;
+                }
                 let key = part
                     .get("id")
                     .and_then(Value::as_str)
                     .map(str::to_string)
-                    .unwrap_or_else(|| format!("part-{index}"));
-                if !parts.insert(key) {
+                    .unwrap_or_else(|| {
+                        part_index += 1;
+                        format!("part-{part_index}")
+                    });
+                part_index += 1;
+                if !seen.insert(key) {
                     continue;
                 }
                 if let Some(name) = part
@@ -172,36 +140,189 @@ pub fn read_events(stream: &Path, session_id: &str) -> DomainResult<HarnessUsage
                     *skills.entry(name).or_insert(0) += 1;
                 }
             }
-            _ => {}
+        }
+        let next = page_body
+            .pointer("/cursor/next")
+            .and_then(Value::as_str)
+            .filter(|next| !next.is_empty())
+            .map(str::to_string);
+        match next {
+            Some(next) => cursor = Some(next),
+            None => break,
         }
     }
-    let mut usage = HarnessUsage {
-        model,
-        skills: (!skills.is_empty()).then_some(skills),
-        ..HarnessUsage::default()
-    };
-    let mut spent: Option<f64> = None;
-    for (tokens, cost) in messages.values() {
-        add(&mut usage.tokens.input, tokens.input);
-        add(&mut usage.tokens.output, tokens.output);
-        add(&mut usage.tokens.reasoning, tokens.reasoning);
-        add(&mut usage.tokens.cache_read, tokens.cache_read);
-        add(&mut usage.tokens.cache_write, tokens.cache_write);
-        if let Some(cost) = cost {
-            spent = Some(spent.unwrap_or(0.0) + cost);
-        }
-    }
-    usage.cost = spent;
+    usage.skills = (!skills.is_empty()).then_some(skills);
     Ok(usage)
 }
 
-/// Whether an event value belongs to `session_id`.
-fn of_session(value: &Value, session_id: &str) -> bool {
-    value.get("sessionID").and_then(Value::as_str) == Some(session_id)
+/// A bounded blocking client for the loopback: a 3 s connect budget and an
+/// 8 s whole-call budget, so a hung server cannot hang `session end`.
+fn loopback_agent() -> ureq::Agent {
+    let config = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(3)))
+        .timeout_global(Some(Duration::from_secs(8)))
+        .http_status_as_error(false)
+        .build();
+    ureq::Agent::new_with_config(config)
 }
 
-/// The five counts one assistant message reported, absent where it reported none.
-fn event_tokens(value: Option<&Value>) -> SessionTokens {
+/// One GET with the harness credential, mapped to the domain failures.
+/// A 401 names the password sources; a 404 on the session names the id; any
+/// other non-2xx or an unreadable body is an `Io` with the status and a body
+/// prefix. Transport failures (unreachable, timeout, refused) name the URL
+/// tried and the flag or env that overrides it.
+fn get_json(agent: &ureq::Agent, url: &str, auth: &str, base: &str) -> DomainResult<Value> {
+    let mut response = agent
+        .get(url)
+        .header("Authorization", auth)
+        .call()
+        .map_err(|error| match error {
+            ureq::Error::StatusCode(401) => DomainError::HarnessUnauthorized {
+                url: base.to_string(),
+            },
+            ureq::Error::StatusCode(status) => {
+                DomainError::from(StoreError::Io(harness_io(base, status, "")))
+            }
+            ureq::Error::Timeout(_)
+            | ureq::Error::ConnectionFailed
+            | ureq::Error::Io(_)
+            | ureq::Error::HostNotFound
+            | ureq::Error::BadUri(_) => DomainError::NoHarnessServer {
+                url: base.to_string(),
+            },
+            _ => DomainError::NoHarnessServer {
+                url: base.to_string(),
+            },
+        })?;
+    let status = response.status().as_u16();
+    let body = response.body_mut().read_to_string().map_err(|error| {
+        DomainError::from(StoreError::Io(format!(
+            "could not read the harness response from {base} (status {status}): {error}"
+        )))
+    })?;
+    if status == 401 {
+        return Err(DomainError::HarnessUnauthorized {
+            url: base.to_string(),
+        });
+    }
+    if status == 404 && url.contains("/api/session/") {
+        let id = url
+            .rsplit("/api/session/")
+            .next()
+            .unwrap_or("")
+            .split(['/', '?'])
+            .next()
+            .unwrap_or("");
+        let id = percent_decode(id);
+        return Err(DomainError::UnknownHarnessSession { id });
+    }
+    if !(200..300).contains(&status) {
+        return Err(DomainError::from(StoreError::Io(harness_io(
+            base, status, &body,
+        ))));
+    }
+    serde_json::from_str::<Value>(&body).map_err(|_| unreadable(base, status, &body))
+}
+
+/// Whether `base_url` names a loopback host. The credential never leaves the
+/// machine, so a URL that would send it elsewhere is refused before connecting.
+fn is_loopback(base_url: &str) -> bool {
+    let Some(after_scheme) = base_url.split_once("://").map(|(_, rest)| rest) else {
+        return false;
+    };
+    let host_port = after_scheme.split('/').next().unwrap_or("");
+    let host = if let Some(bracketed) = host_port.strip_prefix('[') {
+        bracketed.split(']').next().unwrap_or("")
+    } else {
+        host_port.split(':').next().unwrap_or("")
+    };
+    matches!(
+        host.to_ascii_lowercase().as_str(),
+        "127.0.0.1" | "localhost" | "::1"
+    )
+}
+
+/// Percent-encode one path segment: session ids are URL-safe (`ses_...`), and
+/// anything else rides encoded rather than breaking the path.
+fn encode_segment(text: &str) -> String {
+    let mut out = String::new();
+    for byte in text.bytes() {
+        if matches!(byte, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+fn percent_decode(text: &str) -> String {
+    let mut out = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(high), Some(low)) = (hex(bytes[i + 1]), hex(bytes[i + 2]))
+        {
+            out.push((high << 4) | low);
+            i += 3;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| text.to_string())
+}
+
+fn hex(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        _ => None,
+    }
+}
+
+/// Standard base64 for `Basic opencode:password`. The harness credential is
+/// small and the alphabet is fixed, so the encoder lives here rather than as
+/// a second dependency beside the HTTP client.
+fn encode_base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let a = bytes[i] as u32;
+        let b = if i + 1 < bytes.len() {
+            bytes[i + 1] as u32
+        } else {
+            0
+        };
+        let c = if i + 2 < bytes.len() {
+            bytes[i + 2] as u32
+        } else {
+            0
+        };
+        let triple = (a << 16) | (b << 8) | c;
+        out.push(TABLE[((triple >> 18) & 63) as usize] as char);
+        out.push(TABLE[((triple >> 12) & 63) as usize] as char);
+        out.push(if i + 1 < bytes.len() {
+            TABLE[((triple >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if i + 2 < bytes.len() {
+            TABLE[(triple & 63) as usize] as char
+        } else {
+            '='
+        });
+        i += 3;
+    }
+    out
+}
+
+/// The five counts the session reported, each absent where it reported none.
+fn session_tokens(value: Option<&Value>) -> SessionTokens {
     let Some(value) = value else {
         return SessionTokens::default();
     };
@@ -214,113 +335,30 @@ fn event_tokens(value: Option<&Value>) -> SessionTokens {
     }
 }
 
-/// Add one message's piece to the session's total, keeping absence absent.
-fn add(total: &mut Option<i64>, piece: Option<i64>) {
-    if let Some(piece) = piece {
-        *total = Some(total.unwrap_or(0) + piece);
-    }
-}
-
-/// The session row: the five token counts, the cost and the model.
-fn row(connection: &Connection, session_id: &str) -> DomainResult<HarnessUsage> {
-    let found = connection
-        .query_row(
-            "SELECT tokens_input, tokens_output, tokens_reasoning,
-                    tokens_cache_read, tokens_cache_write, cost, model
-             FROM session_v2 WHERE id = ?1 LIMIT 1",
-            params![session_id],
-            |row| {
-                let model: Option<String> = row.get(6)?;
-                Ok(HarnessUsage {
-                    tokens: SessionTokens {
-                        input: row.get(0)?,
-                        output: row.get(1)?,
-                        reasoning: row.get(2)?,
-                        cache_read: row.get(3)?,
-                        cache_write: row.get(4)?,
-                    },
-                    cost: row.get(5)?,
-                    model: model.as_deref().and_then(model_id),
-                    skills: None,
-                })
-            },
-        )
-        .map_err(|error| match error {
-            rusqlite::Error::QueryReturnedNoRows => DomainError::UnknownHarnessSession {
-                id: session_id.to_string(),
-            },
-            other => DomainError::from(translate(other, connection)),
-        })?;
-    Ok(found)
-}
-
-/// The skill loads: one count per `skill` tool part in the session's messages,
-/// by the name the part asked for.
-///
-/// A message whose `data` is not the JSON this build reads is skipped rather than
-/// failing the stamp: the usage the pass spent is the fact the record exists for,
-/// and one unreadable message is not a reason to lose it. No loads at all is
-/// `None`, so the record says nothing rather than "nothing was loaded".
-fn skills(connection: &Connection, session_id: &str) -> DomainResult<Option<SkillCounts>> {
-    let mut statement = connection
-        .prepare("SELECT data FROM session_message WHERE session_id = ?1")
-        .map_err(|error| DomainError::from(translate(error, connection)))?;
-    let rows = statement
-        .query_map(params![session_id], |row| row.get::<_, String>(0))
-        .map_err(|error| DomainError::from(translate(error, connection)))?;
-    let mut counts: BTreeMap<String, i64> = BTreeMap::new();
-    for data in rows {
-        let data = data.map_err(|error| DomainError::from(translate(error, connection)))?;
-        let Ok(message) = serde_json::from_str::<serde_json::Value>(&data) else {
-            continue;
-        };
-        let Some(content) = message
-            .get("content")
-            .and_then(|content| content.as_array())
-        else {
-            continue;
-        };
-        for part in content {
-            if part.get("type").and_then(|kind| kind.as_str()) != Some("tool")
-                || part.get("name").and_then(|name| name.as_str()) != Some("skill")
-            {
-                continue;
-            }
-            let Some(name) = part
-                .pointer("/state/input/id")
-                .and_then(|name| name.as_str())
-                .filter(|name| !name.trim().is_empty())
-            else {
-                continue;
-            };
-            *counts.entry(name.trim().to_string()).or_insert(0) += 1;
-        }
-    }
-    Ok((!counts.is_empty()).then_some(counts))
-}
-
-/// The model string the harness reports: the `id` inside the row's JSON model, a
-/// JSON string's own value, or the text itself when it is not JSON.
-///
-/// **A JSON `null` is no model at all.** The harness writes `null` for a row it
-/// never attributed, and recording the word `"null"` would invent a model by
-/// that name, which is exactly what the harness read avoids by passing
-/// no `--model` flag for an empty value.
-fn model_id(raw: &str) -> Option<String> {
-    match serde_json::from_str::<serde_json::Value>(raw) {
-        Ok(serde_json::Value::Object(model)) => model
-            .get("id")
-            .and_then(|id| id.as_str())
-            .map(str::to_string),
-        Ok(serde_json::Value::String(text)) => non_blank(&text),
-        Ok(_) => None,
-        Err(_) => non_blank(raw),
+/// The model the session reports: the `id` inside the harness's model object.
+/// A JSON `null` or a missing model is no model at all, never a model called
+/// `"null"`, under the same rule the retired reader used.
+fn session_model(value: Option<&Value>) -> Option<String> {
+    match value {
+        None | Some(Value::Null) => None,
+        Some(Value::Object(model)) => model.get("id").and_then(Value::as_str).and_then(non_blank),
+        Some(Value::String(text)) => non_blank(text),
+        Some(_) => None,
     }
 }
 
 fn non_blank(text: &str) -> Option<String> {
     let trimmed = text.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn unreadable(base: &str, status: u16, body: &str) -> DomainError {
+    DomainError::from(StoreError::Io(harness_io(base, status, body)))
+}
+
+fn harness_io(base: &str, status: u16, body: &str) -> String {
+    let prefix: String = body.chars().take(200).collect();
+    format!("could not read the harness response from {base} (status {status}): {prefix}")
 }
 
 /// One page of a harness session's transcript: the messages oldest first, and
@@ -645,6 +683,11 @@ pub fn transcript_events(
         entries,
         next_cursor,
     })
+}
+
+/// Whether an event value belongs to `session_id`.
+fn of_session(value: &Value, session_id: &str) -> bool {
+    value.get("sessionID").and_then(Value::as_str) == Some(session_id)
 }
 
 /// Whether the harness database holds a row for `session_id` at all.
