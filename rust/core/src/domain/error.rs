@@ -39,6 +39,8 @@ pub enum DomainError {
     EmptyCommentBody,
     /// A stdin description body was empty after trimming.
     EmptyDescriptionBody,
+    /// `set` named `--description` and `--append-description` together.
+    ConflictingDescriptionEdit,
     /// A stdin body was not UTF-8. A body is text, not a vault path, so this is
     /// its own failure rather than the bikeshed's I/O one.
     StandardInputNotUtf8,
@@ -201,6 +203,9 @@ impl DomainError {
             }
             Self::EmptyDescriptionBody => "Description body is empty. Provide a non-empty body on \
                  stdin, or pass --description \"\" to clear the description."
+                .to_string(),
+            Self::ConflictingDescriptionEdit => "--description and --append-description cannot be \
+                 combined. Use one or the other and try again."
                 .to_string(),
             Self::StandardInputNotUtf8 => "stdin is not valid UTF-8. Try again.".to_string(),
             Self::InvalidFilter(bad) => {

@@ -23,7 +23,7 @@ Ten verbs under `ticket`: `list`, `show`, `add`, `set`, `move`, `block`, `unbloc
 | `title` | one line, trimmed |
 | `status` | `backlog` (default), `on-hold`, `ready`, `in-progress`, `in-review`, `done` |
 | `archived` | true when set aside — out of the default views, still in the store |
-| `description` | markdown body, or null; write from stdin with `ticket add --description -` or `ticket set --description -`, read it back whole with `ticket show --id` |
+| `description` | markdown body, or null; write from stdin with `ticket add --description -`, replace with `ticket set --description -`, append with `ticket set --append-description -`, read it back whole with `ticket show --id` |
 | `assignee` | `human`, an agent's name, or null for unowned |
 | `origin` | who filed it — written at add, never changed |
 | `lane` | the **cycle lane**, or null for the default area |
@@ -67,9 +67,9 @@ One ticket, **whole** — the only read that carries the description, and the on
 
 Title required, trimmed, empty rejected; duplicates allowed. A title alone lands `backlog`, unowned, on top of the default area. `--description -` reads the body from stdin, so a body'd ticket is **one write**, not an add-then-set round trip; naming the flag means the body must carry text (`""` and an empty pipe are both exit `1`, `Description body is empty…`), and omitting it files a ticket with no body. `--assignee self` claims it — `add` never assigns implicitly, because agents routinely file tickets *for* the human (`--assignee human`). A lane must already exist. `--origin` stamps who filed it, never changed after: pass `--origin self` when you file — an omitted flag means `human`, the app's own stamp, and your proposal filed under the human's name is the exact mix-up the field ends. When the host exports no `TANDEM_AGENT`, `self` has nothing to resolve to and the add fails: pass your own agent name instead, e.g. `--origin general`.
 
-### `ticket set --id <id> [--title …] [--status …] [--assignee …] [--description …]`
+### `ticket set --id <id> [--title …] [--status …] [--assignee …] [--description …] [--append-description …]`
 
-Change the fields you name in **one write**; everything unnamed is left alone. `--description -` reads the body from stdin, which is how multi-line markdown lands intact. `--assignee ""` clears the owner, `--description ""` clears the body, `--assignee human` hands the ticket to the human. Moving to `done` stamps `completedAt`; moving out clears it. An empty `--title` is rejected, and an empty or whitespace-only `--description -` body is rejected too — exit `1`, `Description body is empty…`, the description left as it was: an empty pipe is a failed write, not a clear.
+Change the fields you name in **one write**; everything unnamed is left alone. `--description -` reads the body from stdin, which is how multi-line markdown lands intact, and it **replaces** the stored body. `--append-description -` appends instead: the new text after a blank line in the same write, or the bare text when the body is empty, so a delta never needs the whole body re-sent. `--assignee ""` clears the owner, `--description ""` clears the body, `--assignee human` hands the ticket to the human. Moving to `done` stamps `completedAt`; moving out clears it. An empty `--title` is rejected, and an empty or whitespace-only `--description -` or `--append-description` body is rejected too: exit `1`, `Description body is empty…`, the description left as it was. An empty pipe is a failed write, not a clear, and naming `--description` with `--append-description` is refused the same way.
 
 ### `ticket move --id <id> [--lane <name>] [--index <number>]`
 
