@@ -33,11 +33,21 @@ describe('the shell', () => {
 
   it('routes every tab to its own path and back', () => {
     for (const tab of TABS) {
-      expect(parseRoute(tabHref(tab.id))).toEqual({ tab: tab.id, view: 'list', ticket: null })
+      expect(parseRoute(tabHref(tab.id))).toEqual({
+        tab: tab.id,
+        view: 'list',
+        ticket: null,
+        session: null,
+      })
       expect(tabHref(tab.id)).toBe(`#/${tab.id}`)
     }
-    expect(parseRoute('')).toEqual({ tab: 'tickets', view: 'list', ticket: null })
-    expect(parseRoute('#/nowhere')).toEqual({ tab: 'tickets', view: 'list', ticket: null })
+    expect(parseRoute('')).toEqual({ tab: 'tickets', view: 'list', ticket: null, session: null })
+    expect(parseRoute('#/nowhere')).toEqual({
+      tab: 'tickets',
+      view: 'list',
+      ticket: null,
+      session: null,
+    })
   })
 
   it('routes the Tickets face two ways: the list and the board', () => {
@@ -45,15 +55,22 @@ describe('the shell', () => {
       tab: 'tickets',
       view: 'list',
       ticket: null,
+      session: null,
     })
     expect(parseRoute(viewHref('tickets', 'board'))).toEqual({
       tab: 'tickets',
       view: 'board',
       ticket: null,
+      session: null,
     })
     expect(viewHref('tickets', 'board')).toBe('#/tickets/board')
     // Only the Tickets face has a board; another tab's second segment is ignored.
-    expect(parseRoute('#/usage/board')).toEqual({ tab: 'usage', view: 'list', ticket: null })
+    expect(parseRoute('#/usage/board')).toEqual({
+      tab: 'usage',
+      view: 'list',
+      ticket: null,
+      session: null,
+    })
   })
 
   it('opens the sheet from a kept ticket link, on whatever tab carries it', () => {
@@ -63,11 +80,13 @@ describe('the shell', () => {
       tab: 'tickets',
       view: 'list',
       ticket: 'D5BAD6F7-5D45-4910-9A69-1C0409479BAD',
+      session: null,
     })
     expect(parseRoute('#/bikeshed?ticket=PRT-17')).toEqual({
       tab: 'bikeshed',
       view: 'list',
       ticket: 'PRT-17',
+      session: null,
     })
     expect(parseRoute('#/tickets/board?ticket=PRT-17').view).toBe('board')
     // An empty or unnamed ticket is no ticket: the face, not an empty sheet.

@@ -17,7 +17,8 @@ use super::rpc::{
     LaneRenameParams, MarkdownBlocksParams, MarkdownReply, Method, NoteBacklinksReply,
     NoteHealthReply, NoteMoveParams, NoteMoveReply, NotePathParams, NoteReadReply,
     NoteRecoveriesReply, NoteTreeParams, NoteTreeReply, NoteWriteParams, NoteWriteReply, Outcome,
-    Reply, Request, Response, SettingsReply, SettingsSetParams, SetupInstallParams, SetupReply,
+    Reply, Request, Response, SessionListParams, SessionListReply, SessionTranscriptParams,
+    SessionTranscriptReply, SettingsReply, SettingsSetParams, SetupInstallParams, SetupReply,
     SprintListParams, SprintListReply, SprintOpenParams, SprintReply, SprintShowParams,
     TicketAddFromNoteParams, TicketAddParams, TicketAnswerParams, TicketArchiveParams,
     TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams,
@@ -30,6 +31,10 @@ use super::views::{
 };
 use super::{DoctorCheck, DoctorReport};
 use crate::bikeshed::{BikeshedHealth, BikeshedHealthCounts, BrokenLink};
+use crate::domain::harness::{TranscriptBlock, TranscriptEntry, TranscriptPage};
+use crate::domain::session::{
+    HarnessTransport, Session, SessionOutcome, SessionStatus, SessionTokens,
+};
 use crate::domain::sprint::{Sprint, SprintMode, SprintStatus};
 use crate::setup;
 
@@ -141,6 +146,46 @@ pub fn files() -> Vec<(&'static str, String)> {
         render("Sprint.ts", Sprint::export_to_string(&cfg)),
         render("SprintMode.ts", SprintMode::export_to_string(&cfg)),
         render("SprintStatus.ts", SprintStatus::export_to_string(&cfg)),
+        render(
+            "SessionListParams.ts",
+            SessionListParams::export_to_string(&cfg),
+        ),
+        render(
+            "SessionTranscriptParams.ts",
+            SessionTranscriptParams::export_to_string(&cfg),
+        ),
+        render(
+            "SessionListReply.ts",
+            SessionListReply::export_to_string(&cfg),
+        ),
+        render(
+            "SessionTranscriptReply.ts",
+            SessionTranscriptReply::export_to_string(&cfg),
+        ),
+        render("Session.ts", Session::export_to_string(&cfg)),
+        render("SessionTokens.ts", SessionTokens::export_to_string(&cfg)),
+        render("SessionStatus.ts", SessionStatus::export_to_string(&cfg)),
+        render("SessionOutcome.ts", SessionOutcome::export_to_string(&cfg)),
+        render(
+            "HarnessTransport.ts",
+            HarnessTransport::export_to_string(&cfg),
+        ),
+        render("TranscriptPage.ts", TranscriptPage::export_to_string(&cfg)),
+        render(
+            "TranscriptEntry.ts",
+            TranscriptEntry::export_to_string(&cfg),
+        ),
+        render(
+            "TranscriptBlock.ts",
+            TranscriptBlock::export_to_string(&cfg),
+        ),
+        // The transcript's tool inputs are arbitrary harness JSON, so the
+        // union ts-rs generates for `serde_json::Value` rides along as a
+        // nested file, the way ts-rs names it.
+        render(
+            "serde_json/JsonValue.ts",
+            serde_json::Value::export_to_string(&cfg),
+        ),
         render("SetupReply.ts", SetupReply::export_to_string(&cfg)),
         render("HostRoot.ts", HostRoot::export_to_string(&cfg)),
         render("DoctorReply.ts", DoctorReply::export_to_string(&cfg)),

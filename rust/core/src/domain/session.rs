@@ -82,8 +82,9 @@ pub fn parse_skills(text: &str) -> DomainResult<Option<SkillCounts>> {
 ///
 /// A member the harness did not report is `None`, absent on the wire, never a
 /// zero dressed up as a count.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
 pub struct SessionTokens {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input: Option<i64>,
@@ -113,7 +114,7 @@ impl SessionTokens {
 /// `interrupted` is an outcome, not a state, and there is no third state to
 /// fall back on: a row whose word this build does not know is a corrupt row,
 /// never a guess at which half of the record was true.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionStatus {
     Running,
@@ -146,7 +147,7 @@ impl SessionStatus {
 /// also what a row carrying a word this build does not know reads as. Flattening
 /// one record's outcome is recoverable where refusing the whole store is not
 /// (the store's own rule for a value it cannot read).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionOutcome {
     Succeeded,
@@ -189,7 +190,7 @@ impl SessionOutcome {
 /// whose events Tandem holds; `database` is the external opencode on this Mac,
 /// whose store Tandem reads read-only. Neither is a join on identity: the
 /// session record is Tandem's, and the harness session is a foreign pointer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "kebab-case")]
 pub enum HarnessTransport {
     EventStream,
@@ -275,8 +276,9 @@ pub struct Stamp {
 /// Timestamps are ISO-8601 UTC text, whole seconds, which is the store's own
 /// form and sorts chronologically as text. `tickets` is the tickets the session
 /// carried, in link order.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
 pub struct Session {
     pub id: String,
     /// The harness's own session, as a foreign pointer (PRT-29). Tandem's `id`
@@ -629,6 +631,22 @@ impl Sessions {
             .collect();
         newest_first(&mut filtered);
         Ok(filtered)
+    }
+
+    /// `session list`, filtered to one ticket: the records that carried it, in
+    /// link order read newest first, so the sheet draws the latest pass first.
+    ///
+    /// The link stores the ticket's id (the CLI resolves the handle before it
+    /// links), so a ref like `TAN-264` matches nothing here: the sheet passes
+    /// the id `ticket.show` answered.
+    pub fn for_ticket(&self, ticket: &str) -> DomainResult<Vec<Session>> {
+        let mut carried: Vec<Session> = self
+            .records()?
+            .into_iter()
+            .filter(|session| session.tickets.iter().any(|carried| carried == ticket))
+            .collect();
+        newest_first(&mut carried);
+        Ok(carried)
     }
 
     /// `session show`: one record, or the failure naming the ids the store does
