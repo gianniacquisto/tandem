@@ -118,10 +118,19 @@ describe('the harness environment', () => {
     expect(harnessEnv('/tandem/here')).not.toHaveProperty('HOME')
   })
 
-  it('lets TANDEM_OPENCODE_BIN name the binary, defaulting to PATH', () => {
-    expect(resolveHarnessBinary({ TANDEM_OPENCODE_BIN: '/opt/opencode' })).toBe('/opt/opencode')
-    expect(resolveHarnessBinary({ TANDEM_OPENCODE_BIN: '  ' })).toBe('opencode')
-    expect(resolveHarnessBinary({})).toBe('opencode')
+  it('names the binary: override, then install locations, then the PATH', () => {
+    const present = new Set(['/opt/homebrew/bin/opencode', '/usr/local/bin/opencode'])
+    const exists = (path: string): boolean => present.has(path)
+    expect(resolveHarnessBinary({ TANDEM_OPENCODE_BIN: '/opt/opencode' }, exists)).toBe(
+      '/opt/opencode',
+    )
+    expect(
+      resolveHarnessBinary({ HOME: '/Users/t' }, (path) => path === '/Users/t/.opencode/bin/opencode'),
+    ).toBe('/Users/t/.opencode/bin/opencode')
+    expect(resolveHarnessBinary({ HOME: '/Users/t' }, exists)).toBe('/opt/homebrew/bin/opencode')
+    expect(resolveHarnessBinary({}, () => false)).toBe('opencode')
+    expect(resolveHarnessBinary({ TANDEM_OPENCODE_BIN: '  ' }, () => false)).toBe('opencode')
+    expect(resolveHarnessBinary({ HOME: '' }, () => false)).toBe('opencode')
   })
 
   it('resolves the Tandem home the way the shell does', () => {
@@ -186,7 +195,7 @@ describe('the sign-in lifecycle', () => {
         spawn,
         openUrl: (url) => opened.push(url),
         tandemHome: root,
-        env: {},
+        env: { TANDEM_OPENCODE_BIN: 'opencode' },
       })
 
       const started = controller.login()
