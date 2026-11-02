@@ -157,6 +157,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch, verify and run the pinned harness
+        # The workflow's default working-directory is `app`, but the pin lives
+        # in the repo-root `Scripts/`, so this step runs at the workspace root
+        # like the retired-paths gate above.
+        working-directory: ${{ github.workspace }}
         run: |
           # The pin is read from the check script itself, the one source of
           # truth: version, release asset and digest for this platform.
