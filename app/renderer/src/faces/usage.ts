@@ -3,11 +3,12 @@ import type { UsageRowView } from '../wire/UsageRowView'
 import type { UsageSessionView } from '../wire/UsageSessionView'
 
 /**
- * The Usage face's reading, in one place and with no arithmetic of its own: the
- * report is the derivation (`rust/core/src/domain/usage.rs`) and every number
- * drawn here is one of its fields, formatted. The only quantity this file would
- * have had to derive is a bar's width, and the report carries that too
- * (`barPercent`), so a percentage cannot drift between the two implementations.
+ * The report is the derivation (`rust/core/src/domain/usage.rs`) and every number
+ * drawn here is one of its fields, formatted. The two quantities this file
+ * derives are a row meter's width, which the report carries (`barPercent`), and
+ * a day bar's height, which the report cannot carry: the chart reads the day
+ * table the face is already handed, so the scale is the table's own max and a
+ * height cannot drift from the rows beside it.
  */
 
 /** The four row sets of the report, one table at a time. */
@@ -24,6 +25,66 @@ const LABELS: Record<UsageDimension, string> = {
 
 /** The ticketless row's key, the report's own (`NO_TICKET_ID`). */
 export const NO_TICKET = 'no-ticket'
+
+/** The table's two readings: summed totals, or per-reported-record averages. */
+export type UsageMode = 'total' | 'average'
+
+export const MODES: readonly UsageMode[] = ['total', 'average']
+
+const MODE_LABELS: Record<UsageMode, string> = {
+  total: 'Total',
+  average: 'Average',
+}
+
+export function modeLabel(mode: UsageMode): string {
+  return MODE_LABELS[mode]
+}
+
+/** The toggle's accessible name: what the two readings share, in the glossary's words. */
+export const MODE_CONTROL_LABEL = 'Totals or per-record averages'
+
+/** One row's numeric cells, formatted for the table in the active mode. */
+export type UsageCells = {
+  input: string
+  output: string
+  cacheRead: string
+  cacheWrite: string
+  cost: string
+}
+
+/**
+ * The row's cells in one mode: its totals in Total mode, byte-identical to
+ * today, and its per-reported-record averages in Average mode. A row that
+ * reported nothing draws the absent mark in every numeric cell either way,
+ * and the Records column never averages, so it is not one of these cells.
+ */
+export function rowCells(row: UsageRowView, mode: UsageMode): UsageCells {
+  if (mode === 'average' && row.reported > 0) {
+    return {
+      input: tokens(row.averageTokens.input),
+      output: tokens(row.averageTokens.output),
+      cacheRead: tokens(row.averageTokens.cacheRead),
+      cacheWrite: tokens(row.averageTokens.cacheWrite),
+      cost: money(row.averageCost),
+    }
+  }
+  if (row.reported === 0) {
+    return {
+      input: ABSENT,
+      output: ABSENT,
+      cacheRead: ABSENT,
+      cacheWrite: ABSENT,
+      cost: ABSENT,
+    }
+  }
+  return {
+    input: tokens(row.tokens.input),
+    output: tokens(row.tokens.output),
+    cacheRead: tokens(row.tokens.cacheRead),
+    cacheWrite: tokens(row.tokens.cacheWrite),
+    cost: money(row.cost),
+  }
+}
 
 /** The mark a piece no record reported draws, never a zero dressed up. */
 export const ABSENT = '\u2014'
@@ -90,6 +151,31 @@ export function ticketArithmetic(report: UsageReportView): string | null {
 /** A dollar figure with two decimals, the shape the usage comment carries. */
 export function money(cost: number): string {
   return `$${cost.toFixed(2)}`
+}
+
+/** One column of the cost-per-day chart: its row and its height. */
+export type DayBar = {
+  row: UsageRowView
+  /**
+   * The bar's height as a percentage of the chart, scaled to the largest day
+   * cost in the table being drawn, the same rule the row meters use.
+   */
+  heightPercent: number
+}
+
+/**
+ * The day rows as chart columns, oldest first: the report's day rows arrive
+ * newest first, so the chart reverses them. A day that reported nothing keeps
+ * its slot with zero height, and a table whose days all cost nothing draws
+ * zero heights rather than dividing by zero.
+ */
+export function dayBars(days: UsageRowView[]): DayBar[] {
+  const oldestFirst = [...days].reverse()
+  const largest = oldestFirst.reduce((top, row) => Math.max(top, row.cost), 0)
+  return oldestFirst.map((row) => ({
+    row,
+    heightPercent: largest > 0 ? (row.cost / largest) * 100 : 0,
+  }))
 }
 
 /** A token count with thousands separators; a piece no record reported draws the mark. */

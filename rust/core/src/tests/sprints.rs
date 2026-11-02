@@ -432,3 +432,244 @@ fn a_sprint_survives_a_reopen_of_the_store() {
     assert_eq!(record.opened_at, at(0));
     assert_eq!(record.closed_at.as_deref(), Some(at(20).as_str()));
 }
+
+// The rpc wire's three sprint verbs (TAN-254): each case calls the method by
+// its tag through one frame, the seam the app's `window.tandem.call` reads.
+
+/// One frame through the dispatch, answered as JSON.
+fn rpc(
+    store: &crate::store::Store,
+    actor: &crate::store::Actor,
+    id: u64,
+    method: &str,
+    params: serde_json::Value,
+) -> serde_json::Value {
+    let frame = serde_json::json!({"id": id, "method": method, "params": params}).to_string();
+    let answer = crate::rpc::handle(&frame, store, actor);
+    serde_json::from_str(&answer).expect("the answer is one JSON frame")
+}
+
+#[test]
+fn sprint_list_answers_open_and_closed_records_per_lane() {
+    let sandbox = Sandbox::new("rpc-sprint-list");
+    let store = sandbox.store();
+    let sprints = Sprints::new(&store);
+    let actor = sandbox.actor();
+    sprints
+        .open(&actor, "Port", SprintMode::Serial, None, Some(&at(0)))
+        .unwrap();
+    sprints
+        .close(&actor, "Port", 1, None, Some(&at(10)))
+        .unwrap();
+    sprints
+        .open(&actor, "Port", SprintMode::Serial, None, Some(&at(20)))
+        .unwrap();
+    sprints
+        .open(&actor, "Tandem", SprintMode::Parallel, None, Some(&at(30)))
+        .unwrap();
+
+    let port = rpc(
+        &store,
+        &actor,
+        1,
+        "sprint.list",
+        serde_json::json!({"lane": "Port"}),
+    );
+    assert_eq!(port["id"], 1, "the frame echoes its id");
+    let revision = port["result"]["revision"]
+        .as_i64()
+        .expect("the listing carries its revision");
+    assert!(revision > 0, "the writes moved the revision");
+    let records = port["result"]["sprints"]
+        .as_array()
+        .expect("the listing carries records");
+    assert_eq!(records.len(), 2, "the lane's two records");
+    assert_eq!(records[0]["number"], 2, "newest opened first");
+    assert_eq!(records[0]["status"], "open");
+    assert_eq!(records[1]["number"], 1);
+    assert_eq!(records[1]["status"], "closed");
+
+    let open = rpc(
+        &store,
+        &actor,
+        2,
+        "sprint.list",
+        serde_json::json!({"lane": "Port", "status": "open"}),
+    );
+    assert_eq!(open["result"]["revision"], revision, "one snapshot");
+    assert_eq!(open["result"]["sprints"].as_array().unwrap().len(), 1);
+
+    let closed = rpc(
+        &store,
+        &actor,
+        3,
+        "sprint.list",
+        serde_json::json!({"status": "closed"}),
+    );
+    let shut = closed["result"]["sprints"].as_array().unwrap();
+    assert_eq!(shut.len(), 1, "the one closed record across lanes");
+    assert_eq!(shut[0]["lane"], "Port");
+    assert_eq!(shut[0]["number"], 1);
+
+    let all = rpc(&store, &actor, 4, "sprint.list", serde_json::json!({}));
+    assert_eq!(all["result"]["sprints"].as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn sprint_show_answers_the_open_record_and_its_error_when_none_is_open() {
+    let sandbox = Sandbox::new("rpc-sprint-show");
+    sandbox.ticket(TICKET_ONE);
+    let store = sandbox.store();
+    let sprints = Sprints::new(&store);
+    let actor = sandbox.actor();
+    sprints
+        .open(
+            &actor,
+            "Port",
+            SprintMode::Parallel,
+            Some("ses_1"),
+            Some(&at(0)),
+        )
+        .unwrap();
+    sprints.ticket(&actor, "Port", 1, TICKET_ONE).unwrap();
+    sprints
+        .run(&actor, "Port", 1, "PRT-5 landed.", Some(&at(10)))
+        .unwrap();
+
+    let shown = rpc(
+        &store,
+        &actor,
+        1,
+        "sprint.show",
+        serde_json::json!({"lane": "Port"}),
+    );
+    assert_eq!(shown["id"], 1);
+    assert!(shown["result"]["revision"].as_i64().unwrap() > 0);
+    let record = &shown["result"]["sprint"];
+    assert_eq!(record["lane"], "Port");
+    assert_eq!(record["number"], 1);
+    assert_eq!(record["mode"], "parallel");
+    assert_eq!(record["status"], "open");
+    assert_eq!(record["session"], "ses_1");
+    assert_eq!(record["batch"], serde_json::json!([TICKET_ONE]));
+    assert_eq!(record["runs"].as_array().unwrap().len(), 1);
+    assert!(
+        record["runs"][0]
+            .as_str()
+            .unwrap()
+            .contains("PRT-5 landed."),
+        "the run log entry: {}",
+        record["runs"][0]
+    );
+
+    sprints
+        .close(&actor, "Port", 1, None, Some(&at(20)))
+        .unwrap();
+    let refused = rpc(
+        &store,
+        &actor,
+        2,
+        "sprint.show",
+        serde_json::json!({"lane": "Port"}),
+    );
+    assert_eq!(refused["id"], 2);
+    assert_eq!(refused["error"]["code"], "domain");
+    assert_eq!(
+        refused["error"]["message"],
+        DomainError::NoOpenSprint("Port".to_string()).message(),
+        "the CLI's own error when none is open"
+    );
+}
+
+#[test]
+fn sprint_open_validates_like_the_cli_and_repeats_unchanged() {
+    let sandbox = Sandbox::new("rpc-sprint-open");
+    let store = sandbox.store();
+    let actor = sandbox.actor();
+
+    let opened = rpc(
+        &store,
+        &actor,
+        1,
+        "sprint.open",
+        serde_json::json!({"lane": "Port", "mode": "serial"}),
+    );
+    assert_eq!(opened["id"], 1);
+    assert!(opened["result"]["revision"].as_i64().unwrap() > 0);
+    assert_eq!(opened["result"]["sprint"]["number"], 1);
+    assert_eq!(opened["result"]["sprint"]["mode"], "serial");
+    assert_eq!(opened["result"]["sprint"]["status"], "open");
+    assert!(
+        opened["result"]["note"].is_null(),
+        "a first open says nothing"
+    );
+
+    let again = rpc(
+        &store,
+        &actor,
+        2,
+        "sprint.open",
+        serde_json::json!({"lane": "Port", "mode": "parallel"}),
+    );
+    assert_eq!(
+        again["result"]["sprint"]["number"], 1,
+        "a lane keeps one open sprint"
+    );
+    assert_eq!(
+        again["result"]["sprint"]["mode"], "serial",
+        "the stored record, not the second call's mode"
+    );
+    assert_eq!(
+        again["result"]["note"], "Sprint 1 — Port is already open",
+        "the CLI's own note on a second open"
+    );
+
+    let parallel = rpc(
+        &store,
+        &actor,
+        3,
+        "sprint.open",
+        serde_json::json!({"lane": "Tandem", "mode": "parallel"}),
+    );
+    assert_eq!(parallel["result"]["sprint"]["number"], 1);
+    assert_eq!(parallel["result"]["sprint"]["mode"], "parallel");
+
+    let default = rpc(
+        &store,
+        &actor,
+        4,
+        "sprint.open",
+        serde_json::json!({"lane": "Retro"}),
+    );
+    assert_eq!(
+        default["result"]["sprint"]["mode"], "serial",
+        "an absent mode is serial, as the CLI defaults it"
+    );
+
+    let refused = rpc(
+        &store,
+        &actor,
+        5,
+        "sprint.open",
+        serde_json::json!({"lane": "Port", "mode": "sideways"}),
+    );
+    assert_eq!(refused["error"]["code"], "domain");
+    assert_eq!(
+        refused["error"]["message"],
+        DomainError::InvalidSprintMode("sideways".to_string()).message()
+    );
+
+    let blank = rpc(
+        &store,
+        &actor,
+        6,
+        "sprint.open",
+        serde_json::json!({"lane": "  "}),
+    );
+    assert_eq!(blank["error"]["code"], "domain");
+    assert_eq!(
+        blank["error"]["message"],
+        DomainError::EmptyLaneName.message(),
+        "the lane validates as the CLI's does"
+    );
+}

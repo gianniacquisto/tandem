@@ -1,15 +1,21 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  ABSENT,
   coverage,
+  dayBars,
   dimensionLabel,
   dimensionRows,
+  modeLabel,
   money,
   recordNoun,
+  rowCells,
   selectedRow,
   startedAt,
   ticketArithmetic,
   DIMENSIONS,
+  MODES,
+  MODE_CONTROL_LABEL,
   tokenLine,
   tokens,
 } from '../renderer/src/faces/usage'
@@ -44,6 +50,8 @@ function row(overrides: Partial<UsageRowView> = {}): UsageRowView {
     cost: 1,
     barPercent: 100,
     tokens: { input: 1000, output: 500, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+    averageTokens: { input: 500, output: 250, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+    averageCost: 0.5,
     sessions: [session()],
     ...overrides,
   }
@@ -199,5 +207,110 @@ describe('the usage face over one report', () => {
     expect(selectedRow(reloaded, 'day', '2026-10-29')).toBeNull()
     expect(selectedRow(reloaded, 'agent', 'builder')?.label).toBe('builder')
     expect(selectedRow(reloaded, 'model', 'builder')).toBeNull()
+  })
+
+  it('scales the day chart to the largest day cost', () => {
+    const days = [
+      row({ id: '2026-10-31', label: '2026-10-31', cost: 1, barPercent: 50 }),
+      row({ id: '2026-10-30', label: '2026-10-30', cost: 2, barPercent: 100 }),
+    ]
+    const bars = dayBars(days)
+    expect(bars.map((bar) => bar.row.id)).toEqual(['2026-10-30', '2026-10-31'])
+    expect(bars.map((bar) => bar.heightPercent)).toEqual([100, 50])
+  })
+
+  it('draws zero heights when no day reported anything', () => {
+    const days = [
+      row({ id: '2026-10-31', label: '2026-10-31', reported: 0, cost: 0, barPercent: 0 }),
+      row({ id: '2026-10-30', label: '2026-10-30', reported: 0, cost: 0, barPercent: 0 }),
+    ]
+    const bars = dayBars(days)
+    expect(bars.map((bar) => bar.heightPercent)).toEqual([0, 0])
+  })
+
+  it('orders the day chart oldest first', () => {
+    const days = [
+      row({ id: '2026-11-01', label: '2026-11-01', cost: 3 }),
+      row({ id: '2026-10-31', label: '2026-10-31', cost: 3 }),
+      row({ id: '2026-10-30', label: '2026-10-30', cost: 3 }),
+    ]
+    expect(dayBars(days).map((bar) => bar.row.id)).toEqual([
+      '2026-10-30',
+      '2026-10-31',
+      '2026-11-01',
+    ])
+  })
+
+  it('keeps a zero-cost day in its slot with zero height', () => {
+    const days = [
+      row({ id: '2026-10-31', label: '2026-10-31', cost: 2 }),
+      row({ id: '2026-10-30', label: '2026-10-30', cost: 0 }),
+      row({ id: '2026-10-29', label: '2026-10-29', cost: 1 }),
+    ]
+    const bars = dayBars(days)
+    expect(bars.map((bar) => bar.row.id)).toEqual(['2026-10-29', '2026-10-30', '2026-10-31'])
+    expect(bars.map((bar) => bar.heightPercent)).toEqual([50, 0, 100])
+  })
+
+  it('reads totals in Total mode, byte-identical to today', () => {
+    const entry = row({
+      records: 2,
+      reported: 2,
+      cost: 3,
+      tokens: { input: 1000, output: 500, reasoning: 0, cacheRead: 200, cacheWrite: 100 },
+      averageTokens: { input: 500, output: 250, reasoning: 0, cacheRead: 100, cacheWrite: 50 },
+      averageCost: 1.5,
+    })
+    expect(MODES.map(modeLabel)).toEqual(['Total', 'Average'])
+    expect(rowCells(entry, 'total')).toEqual({
+      input: '1,000',
+      output: '500',
+      cacheRead: '200',
+      cacheWrite: '100',
+      cost: '$3.00',
+    })
+  })
+
+  it('reads per-reported-record averages in Average mode', () => {
+    const entry = row({
+      records: 2,
+      reported: 2,
+      cost: 3,
+      tokens: { input: 1000, output: 500, reasoning: 0, cacheRead: 200, cacheWrite: 100 },
+      averageTokens: { input: 500, output: 250, reasoning: 0, cacheRead: 100, cacheWrite: 50 },
+      averageCost: 1.5,
+    })
+    expect(rowCells(entry, 'average')).toEqual({
+      input: '500',
+      output: '250',
+      cacheRead: '100',
+      cacheWrite: '50',
+      cost: '$1.50',
+    })
+  })
+
+  it('selects absent for every numeric cell when the row reported nothing', () => {
+    const entry = row({
+      records: 2,
+      reported: 0,
+      cost: 0,
+      tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
+      averageTokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
+      averageCost: 0,
+    })
+    expect(rowCells(entry, 'average')).toEqual({
+      input: ABSENT,
+      output: ABSENT,
+      cacheRead: ABSENT,
+      cacheWrite: ABSENT,
+      cost: ABSENT,
+    })
+    expect(rowCells(entry, 'total').cost).toBe(ABSENT)
+  })
+
+  it('names the toggle for records, never tasks', () => {
+    const copy = [...MODES.map(modeLabel), MODE_CONTROL_LABEL].join(' ')
+    expect(copy).toContain('record')
+    expect(copy).not.toMatch(/task/i)
   })
 })

@@ -23,6 +23,7 @@ import {
   neighbourLane,
   neighbourSelection,
   scopeCounts,
+  visibleLaneKeys,
   visibleMoveIndex,
   statusLabel,
   titleMatches,
@@ -419,5 +420,23 @@ describe('the assignee lists', () => {
         'ticket.assignee',
       )
     }
+  })
+})
+
+describe('the project focus', () => {
+  const keys = laneKeys(['Port', 'Tandem'], board)
+
+  it('draws the active lane alone', () => {
+    expect(visibleLaneKeys(keys, 'Port')).toEqual(['Port'])
+  })
+
+  it('draws every lane key in render order when nothing is focused: the show-all escape', () => {
+    expect(visibleLaneKeys(keys, null)).toEqual(keys)
+    expect(visibleLaneKeys(keys, null)).toEqual([null, 'Port', 'Tandem'])
+  })
+
+  it('falls back to every lane when the focus names no lane key, so a stale focus hides nothing', () => {
+    expect(visibleLaneKeys(keys, 'Retro')).toEqual(keys)
+    expect(visibleLaneKeys(keys, '')).toEqual(keys)
   })
 })

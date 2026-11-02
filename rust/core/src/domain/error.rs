@@ -52,6 +52,9 @@ pub enum DomainError {
     DuplicateLane(String),
     /// A lane name was referenced but does not exist.
     UnknownLane(String),
+    /// An active-project focus named a lane that is not declared. `lanes` is
+    /// the declared list, so the refusal can name what the human may pick.
+    UnknownProject { name: String, lanes: Vec<String> },
     /// A lane key that is not uppercase alphanumerics.
     InvalidLaneKey(String),
     /// A lane key another lane already holds.
@@ -115,6 +118,10 @@ pub enum DomainError {
     InvalidUsageFlag { flag: String, value: String },
     /// `sprint show` was given a number that is not a whole number.
     InvalidSprintNumber(String),
+    /// `sprint open` was given a mode that is not `serial` or `parallel`.
+    InvalidSprintMode(String),
+    /// `sprint list` was given a status that is not `open` or `closed`.
+    InvalidSprintStatus(String),
     /// `ticket move` was given a position that is not a whole number.
     InvalidIndex(String),
     /// `--assignee self` / `--origin self` was used and `TANDEM_AGENT` names no
@@ -212,6 +219,13 @@ impl DomainError {
             Self::UnknownLane(name) => {
                 format!("Unknown cycle lane \"{name}\". Create it first.")
             }
+            Self::UnknownProject { name, lanes } if lanes.is_empty() => {
+                format!("Unknown project \"{name}\". No lanes are declared yet; create one first.")
+            }
+            Self::UnknownProject { name, lanes } => format!(
+                "Unknown project \"{name}\". The declared lanes are: {}.",
+                lanes.join(", ")
+            ),
             Self::InvalidLaneKey(bad) => format!(
                 "Lane key \"{bad}\" is not valid. A key is uppercase letters and digits (e.g. TAN)."
             ),
@@ -314,6 +328,12 @@ impl DomainError {
             }
             Self::InvalidSprintNumber(bad) => {
                 format!("number must be a whole number (got \"{bad}\").")
+            }
+            Self::InvalidSprintMode(bad) => {
+                format!("mode must be one of serial, parallel (got \"{bad}\").")
+            }
+            Self::InvalidSprintStatus(bad) => {
+                format!("sprint status must be one of open, closed (got \"{bad}\").")
             }
             Self::InvalidIndex(bad) => {
                 format!("index must be a whole number (got \"{bad}\").")

@@ -133,7 +133,24 @@ test('the tickets face shows one board two ways: the list and the board over one
   await window.getByRole('tab', { name: 'List' }).click()
   await expect(window.locator('.list')).toBeVisible()
   await expect(window.locator('.list__lane-title').first()).toBeVisible()
-  await capture(app, window, scene('tickets-list'))
+
+  // The list uses the wide face like the board does: at the board capture's
+  // width the list spans the face instead of holding a 540px column, and
+  // every store ticket still draws as a row.
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setContentSize(1330, 560)
+  })
+  const listBox = await window.locator('.list').boundingBox()
+  expect(listBox?.width ?? 0).toBeGreaterThan(540)
+  // The picture is the Open scope, so the wide list must draw every Open
+  // ticket: the count the face's own tab names, each one a store ticket.
+  const openLabel = (await window.getByRole('tab', { name: /^Open/ }).innerText()).trim()
+  const openCount = Number(openLabel.split(/\s+/).pop())
+  const wideIds = await rowIds(window)
+  expect(wideIds).toHaveLength(openCount)
+  for (const id of wideIds) expect(storeIds).toContain(id)
+
+  await capture(app, window, scene('tickets-list'), 1330)
 })
 
 test('a drag moves a ticket across its lane and its status, and the move survives a restart', async ({

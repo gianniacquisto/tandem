@@ -254,6 +254,27 @@ impl Write<'_> {
         )
     }
 
+    /// Store a setting whether or not the key was stored before: the roster and
+    /// the focus are whole-value replaces, so the second write overwrites the
+    /// first in one statement. A first write inserts; a later one updates the
+    /// value and the author, and a write that changes nothing still reads its
+    /// receipt after.
+    pub fn upsert_setting(&self, setting: NewSetting<'_>) -> Result<()> {
+        self.before_mutation()?;
+        self.execute(
+            "INSERT INTO settings (key, value, author) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, author = excluded.author",
+            params![setting.key, setting.value, self.actor.as_str()],
+        )
+    }
+
+    /// Drop a setting's row: clearing the focus removes the key, so an absent
+    /// row and a cleared one read the same way. A missing row is a no-op.
+    pub fn delete_setting(&self, key: &str) -> Result<()> {
+        self.before_mutation()?;
+        self.execute("DELETE FROM settings WHERE key = ?1", params![key])
+    }
+
     /// Whether the sprints table carries a (lane, number). The sprints domain is
     /// a read-modify-write in one transaction, so it asks inside the write.
     pub fn sprint_exists(&self, lane: &str, number: i64) -> Result<bool> {

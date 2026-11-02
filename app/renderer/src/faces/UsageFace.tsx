@@ -7,18 +7,23 @@ import { Face } from './Face'
 import {
   ABSENT,
   DIMENSIONS,
+  MODES,
+  MODE_CONTROL_LABEL,
   coverage,
+  dayBars,
   dimensionLabel,
   dimensionRows,
+  modeLabel,
   money,
   recordNoun,
+  rowCells,
   selectedRow,
   startedAt,
   ticketArithmetic,
   ticketLabel,
   tokenLine,
-  tokens,
   type UsageDimension,
+  type UsageMode,
 } from './usage'
 
 export type UsageFaceProps = {
@@ -34,12 +39,14 @@ export type UsageFaceProps = {
  * a row.
  *
  * Every number is a field of the one report it is handed, formatted (`usage.ts`);
- * the face sums nothing and derives no percentage. A record that reported no cost
+ * the face sums nothing and scales nothing: the one height it draws comes from
+ * the chart helper beside the formatters. A record that reported no cost
  * draws the absent mark, never `$0.00`, which is why the header states its
  * coverage.
  */
 export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
   const [dimension, setDimension] = useState<UsageDimension>('day')
+  const [mode, setMode] = useState<UsageMode>('total')
   const [selected, setSelected] = useState<string | null>(null)
 
   if (report === null) {
@@ -51,6 +58,7 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
   }
 
   const arithmetic = ticketArithmetic(report)
+  const bars = dayBars(report.day)
   const open = selectedRow(report, dimension, selected)
 
   function choose(next: UsageDimension) {
@@ -81,19 +89,61 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
           </div>
         ) : (
           <>
-            <div className="usage__picker" role="tablist" aria-label="Usage dimensions">
-              {DIMENSIONS.map((candidate) => (
-                <button
-                  key={candidate}
-                  type="button"
-                  role="tab"
-                  className="usage__segment"
-                  aria-selected={candidate === dimension}
-                  onClick={() => choose(candidate)}
-                >
-                  {dimensionLabel(candidate)}
-                </button>
-              ))}
+            {bars.length === 0 ? null : (
+              <div className="usage__chart" role="group" aria-label="Cost per day">
+                {bars.map(({ row, heightPercent }) => {
+                  // The bar names what the Day table names: the absent mark for
+                  // a day no record reported, never a zero dressed up.
+                  const name =
+                    row.reported === 0 ? `${row.label}: ${ABSENT}` : `${row.label}: ${money(row.cost)}`
+                  return (
+                    <div key={row.id} className="usage__bar-cell">
+                      <div className="usage__bar-track">
+                        <div
+                          className="usage__bar"
+                          role="img"
+                          aria-label={name}
+                          title={name}
+                          style={{ height: `${heightPercent}%` }}
+                        />
+                      </div>
+                      <span className="usage__bar-label" aria-hidden="true">
+                        {row.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <div className="usage__controls">
+              <div className="usage__picker" role="tablist" aria-label="Usage dimensions">
+                {DIMENSIONS.map((candidate) => (
+                  <button
+                    key={candidate}
+                    type="button"
+                    role="tab"
+                    className="usage__segment"
+                    aria-selected={candidate === dimension}
+                    onClick={() => choose(candidate)}
+                  >
+                    {dimensionLabel(candidate)}
+                  </button>
+                ))}
+              </div>
+              <div className="usage__mode" role="tablist" aria-label={MODE_CONTROL_LABEL}>
+                {MODES.map((candidate) => (
+                  <button
+                    key={candidate}
+                    type="button"
+                    role="tab"
+                    className="usage__mode-segment"
+                    aria-selected={candidate === mode}
+                    onClick={() => setMode(candidate)}
+                  >
+                    {modeLabel(candidate)}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <table className="usage__table">
@@ -103,6 +153,8 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
                   <th scope="col">Records</th>
                   <th scope="col">In</th>
                   <th scope="col">Out</th>
+                  <th scope="col">Cache read</th>
+                  <th scope="col">Cache write</th>
                   <th scope="col">Cost</th>
                   <th scope="col">
                     <span className="usage__sr-only">Share</span>
@@ -110,54 +162,59 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
                 </tr>
               </thead>
               <tbody>
-                {dimensionRows(report, dimension).map((row) => (
-                  <Fragment key={row.id}>
-                    <tr className="usage__row" aria-selected={row.id === selected}>
-                      <th scope="row">
-                        <button
-                          type="button"
-                          className="usage__label"
-                          aria-expanded={row.id === selected}
-                          onClick={() => select(row)}
-                          title={`Show the ${recordNoun(row.records)} behind this row`}
-                        >
-                          {row.label}
-                        </button>
-                      </th>
-                      <td className="usage__count">{row.records}</td>
-                      <td className="usage__count">{tokens(row.tokens.input)}</td>
-                      <td className="usage__count">{tokens(row.tokens.output)}</td>
-                      <td className="usage__cost">
-                        {row.reported === 0 ? ABSENT : money(row.cost)}
-                      </td>
-                      <td className="usage__share">
-                        {/* The bar is a meter over the report's own percentage: no
-                            inline width, no percentage derived here. */}
-                        <meter
-                          className="usage__meter"
-                          min={0}
-                          max={100}
-                          value={row.barPercent}
-                          aria-label={`${row.label}: ${recordNoun(row.reported)} reported`}
-                        />
-                      </td>
-                    </tr>
-                    {row.id === selected && open !== null ? (
-                      <tr className="usage__roll">
-                        <td colSpan={6}>
-                          {open.sessions.map((session) => (
-                            <Record
-                              key={session.id}
-                              session={session}
-                              ticketName={(id) => ticketLabel(report, id)}
-                              onOpenTicket={onOpenTicket}
-                            />
-                          ))}
+                {dimensionRows(report, dimension).map((row) => {
+                  // Every numeric cell is the report's own in the active mode:
+                  // totals, or per-reported-record averages.
+                  const cells = rowCells(row, mode)
+                  return (
+                    <Fragment key={row.id}>
+                      <tr className="usage__row" aria-selected={row.id === selected}>
+                        <th scope="row">
+                          <button
+                            type="button"
+                            className="usage__label"
+                            aria-expanded={row.id === selected}
+                            onClick={() => select(row)}
+                            title={`Show the ${recordNoun(row.records)} behind this row`}
+                          >
+                            {row.label}
+                          </button>
+                        </th>
+                        <td className="usage__count">{row.records}</td>
+                        <td className="usage__count">{cells.input}</td>
+                        <td className="usage__count">{cells.output}</td>
+                        <td className="usage__count">{cells.cacheRead}</td>
+                        <td className="usage__count">{cells.cacheWrite}</td>
+                        <td className="usage__cost">{cells.cost}</td>
+                        <td className="usage__share">
+                          {/* The bar is a meter over the report's own percentage: no
+                              inline width, no percentage derived here. */}
+                          <meter
+                            className="usage__meter"
+                            min={0}
+                            max={100}
+                            value={row.barPercent}
+                            aria-label={`${row.label}: ${recordNoun(row.reported)} reported`}
+                          />
                         </td>
                       </tr>
-                    ) : null}
-                  </Fragment>
-                ))}
+                      {row.id === selected && open !== null ? (
+                        <tr className="usage__roll">
+                          <td colSpan={8}>
+                            {open.sessions.map((session) => (
+                              <Record
+                                key={session.id}
+                                session={session}
+                                ticketName={(id) => ticketLabel(report, id)}
+                                onOpenTicket={onOpenTicket}
+                              />
+                            ))}
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </>

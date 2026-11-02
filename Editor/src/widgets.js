@@ -25,6 +25,7 @@ import { WidgetType } from "@codemirror/view";
 import katex from "katex";
 import { postCheckboxToggled } from "./bridge.js";
 import { resolveImageTarget } from "./pure/image.js";
+import { currentTheme, renderDiagram } from "./mermaid.js";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -211,6 +212,38 @@ export class DisplayMathWidget extends WidgetType {
   toDOM() {
     const div = el("div", "tandem-display-math");
     renderMath(div, this.content, true, "$$");
+    return div;
+  }
+}
+
+// -- Mermaid diagram ---------------------------------------------------------------
+
+// Block widget replacing a ```mermaid fence: a div the async renderer draws
+// into (src/mermaid.js). No event handler and no editing affordance: the
+// source is edited by putting the caret in the fence, where the plan's
+// reveal rule drops this widget and shows the fence's source (spec: the
+// fence is the interface). eq() watches the source alone, so a caret move
+// off the fence reuses the widget, and the module-level diagram cache
+// (keyed by source plus theme) keeps that from re-rendering the SVG.
+export class MermaidWidget extends WidgetType {
+  constructor(source) {
+    super();
+    this.source = source;
+    this.block = true;
+  }
+  eq(other) {
+    return other instanceof MermaidWidget && other.source === this.source;
+  }
+  toDOM() {
+    const div = el("div", "tandem-mermaid");
+    // The source and the theme the SVG was drawn for: the theme observer in
+    // main.js reads both to re-render in place on a day/night flip.
+    div.setAttribute("data-mermaid-source", this.source);
+    const theme = currentTheme();
+    div.setAttribute("data-mermaid-theme", theme);
+    // Async and view-only: renderDiagram handles its own rejection (the raw
+    // source stays visible under .tandem-mermaid-error).
+    void renderDiagram(div, this.source, theme);
     return div;
   }
 }

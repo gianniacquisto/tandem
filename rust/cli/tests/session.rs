@@ -339,6 +339,174 @@ fn a_run_with_no_session_and_no_harness_id_still_records() {
 }
 
 #[test]
+fn ending_with_a_skills_flag_round_trips_through_show() {
+    let sandbox = Sandbox::new("skills-round-trip");
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_skills",
+        "--project",
+        "tandem",
+        "--agent",
+        "builder",
+        "--brief",
+        "A pass that loaded two skills.",
+    ]);
+
+    let ended = sandbox.json(&[
+        "session",
+        "end",
+        "--session",
+        "ses_skills",
+        "--summary",
+        "What landed.",
+        "--skills",
+        "grilling=2,tandem-memory=1",
+    ]);
+    assert_eq!(ended["skills"]["grilling"], 2);
+    assert_eq!(ended["skills"]["tandem-memory"], 1);
+
+    let shown = sandbox.json(&["session", "show", "--session", "ses_skills"]);
+    assert_eq!(
+        shown["skills"], ended["skills"],
+        "show reads back the stamped map: {shown}"
+    );
+}
+
+#[test]
+fn a_malformed_skills_flag_is_a_domain_failure_and_writes_nothing() {
+    let sandbox = Sandbox::new("skills-malformed");
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_skills_bad",
+        "--project",
+        "tandem",
+        "--agent",
+        "builder",
+        "--brief",
+        "A pass with a mistyped flag.",
+    ]);
+
+    for bad in [
+        "grilling",
+        "=2",
+        "grilling=x",
+        "grilling=1,grilling=2",
+        "a=1,",
+    ] {
+        let output = sandbox.run(&[
+            "session",
+            "end",
+            "--session",
+            "ses_skills_bad",
+            "--summary",
+            "What landed.",
+            "--skills",
+            bad,
+        ]);
+        assert_eq!(output.status.code(), Some(1), "a domain failure is exit 1");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("--skills must be comma-separated name=count pairs"),
+            "the failure names the flag for {bad:?}: {stderr}"
+        );
+        assert!(
+            stderr.contains(&format!("(got \"{bad}\")")),
+            "the failure names the value for {bad:?}: {stderr}"
+        );
+    }
+
+    let shown = sandbox.json(&["session", "show", "--session", "ses_skills_bad"]);
+    assert_eq!(
+        shown["status"], "running",
+        "the failed ends wrote nothing: {shown}"
+    );
+
+    let ended = sandbox.json(&[
+        "session",
+        "end",
+        "--session",
+        "ses_skills_bad",
+        "--summary",
+        "What landed.",
+        "--skills",
+        "grilling=1",
+    ]);
+    assert_eq!(ended["skills"]["grilling"], 1);
+    assert_eq!(ended["status"], "ended");
+}
+
+#[test]
+fn an_end_without_a_skills_flag_carries_no_skills_key() {
+    let sandbox = Sandbox::new("skills-absent");
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_no_skills",
+        "--project",
+        "tandem",
+        "--agent",
+        "builder",
+        "--brief",
+        "A pass that loaded no skill.",
+    ]);
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_empty_skills",
+        "--project",
+        "tandem",
+        "--agent",
+        "builder",
+        "--brief",
+        "A pass with an empty flag.",
+    ]);
+
+    let ended = sandbox.json(&[
+        "session",
+        "end",
+        "--session",
+        "ses_no_skills",
+        "--summary",
+        "What landed.",
+    ]);
+    assert!(
+        ended.get("skills").is_none(),
+        "no flag is an absent key, not a map: {ended}"
+    );
+    let shown = sandbox.json(&["session", "show", "--session", "ses_no_skills"]);
+    assert!(
+        shown.get("skills").is_none(),
+        "show prints no skills key either: {shown}"
+    );
+
+    let ended = sandbox.json(&[
+        "session",
+        "end",
+        "--session",
+        "ses_empty_skills",
+        "--summary",
+        "What landed.",
+        "--skills",
+        "",
+    ]);
+    assert!(
+        ended.get("skills").is_none(),
+        "an empty flag is absent too: {ended}"
+    );
+    let shown = sandbox.json(&["session", "show", "--session", "ses_empty_skills"]);
+    assert!(
+        shown.get("skills").is_none(),
+        "show prints no skills key either: {shown}"
+    );
+}
+
+#[test]
 fn ending_with_usage_from_harness_without_a_pointer_names_the_failure() {
     let sandbox = Sandbox::new("no-pointer");
     sandbox.json(&[

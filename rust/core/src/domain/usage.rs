@@ -150,6 +150,13 @@ pub struct UsageRow {
     pub bar_percent: f64,
     /// The reported records' summed token counts.
     pub tokens: SessionTokens,
+    /// The per-reported-record averages: each token piece over `reported`,
+    /// rounded to whole tokens (.5 up); `None` for a piece no record reported,
+    /// and every piece `None` when the row reported nothing.
+    pub average_tokens: SessionTokens,
+    /// The reported cost over `reported`, at full precision for the face's
+    /// `money`; `0.0` when the row reported nothing.
+    pub average_cost: f64,
     /// The records behind the row, newest `started_at` first.
     pub sessions: Vec<Session>,
 }
@@ -300,6 +307,29 @@ impl Summary {
             cache_write: self.cache_write,
         }
     }
+
+    /// The per-reported-record averages: every piece and the cost over
+    /// `reported`, the tokens rounded to whole tokens (.5 up) and the cost at
+    /// full precision. A row that reported nothing carries absent pieces and a
+    /// zero cost, so the face's reported==0 guard draws the absent mark.
+    fn averages(&self) -> (SessionTokens, f64) {
+        if self.reported == 0 {
+            return (SessionTokens::default(), 0.0);
+        }
+        let denominator = self.reported as f64;
+        let piece =
+            |total: Option<i64>| total.map(|total| (total as f64 / denominator).round() as i64);
+        (
+            SessionTokens {
+                input: piece(self.input),
+                output: piece(self.output),
+                reasoning: piece(self.reasoning),
+                cache_read: piece(self.cache_read),
+                cache_write: piece(self.cache_write),
+            },
+            self.cost / denominator,
+        )
+    }
 }
 
 fn summarize(sessions: &[Session]) -> Summary {
@@ -337,6 +367,7 @@ fn summarize(sessions: &[Session]) -> Summary {
 fn row(id: String, label: String, mut sessions: Vec<Session>) -> UsageRow {
     let summary = summarize(&sessions);
     newest_first(&mut sessions);
+    let (average_tokens, average_cost) = summary.averages();
     UsageRow {
         id,
         label,
@@ -345,6 +376,8 @@ fn row(id: String, label: String, mut sessions: Vec<Session>) -> UsageRow {
         cost: summary.cost,
         bar_percent: 0.0,
         tokens: summary.tokens(),
+        average_tokens,
+        average_cost,
         sessions,
     }
 }

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 
-import type { Call } from '../../src/shared/bridge'
+import type { Method } from '../../src/shared/bridge'
 import { BikeshedFace } from './faces/BikeshedFace'
 import { SettingsFace } from './faces/SettingsFace'
 import { TicketSheet } from './faces/TicketSheet'
 import { TicketsFace } from './faces/TicketsFace'
 import { UsageFace } from './faces/UsageFace'
+import { WorkflowFace } from './faces/WorkflowFace'
 import { closeHref, parseRoute, tabHref, type Route } from './shell/route'
 import { initialSnapshot, snapshotReducer, type SnapshotState } from './shell/snapshot'
 import { refusalBanner, writeBlocked, type WriteCaller, type WriteOutcome } from './shell/write'
@@ -34,10 +35,11 @@ function face(
   snapshot: SnapshotState,
   actions: {
     onReload: () => void
-    onWrite: (call: Call, expected: number | null) => Promise<WriteOutcome>
+    onWrite: (call: Method, expected: number | null) => Promise<WriteOutcome>
     onDismiss: () => void
     openTicket: string | null
     onOpenTicket: (ticket: TicketSummary) => void
+    onPickProject: (lane: string | null) => void
   },
 ) {
   switch (route.tab) {
@@ -47,6 +49,8 @@ function face(
           snapshot={snapshot}
           view={route.view}
           roster={snapshot.roster}
+          activeProject={snapshot.activeProject}
+          onPickProject={actions.onPickProject}
           onReload={actions.onReload}
           onWrite={actions.onWrite}
           onDismiss={actions.onDismiss}
@@ -55,9 +59,25 @@ function face(
         />
       )
     case 'bikeshed':
-      return <BikeshedFace onOpenTicket={actions.onOpenTicket} />
+      return (
+        <BikeshedFace
+          onOpenTicket={actions.onOpenTicket}
+          lanes={snapshot.lanes}
+          activeProject={snapshot.activeProject}
+          onPickProject={actions.onPickProject}
+        />
+      )
     case 'usage':
       return <UsageFace report={snapshot.usage} />
+    case 'workflow':
+      return (
+        <WorkflowFace
+          tickets={snapshot.tickets}
+          lanes={snapshot.lanes}
+          activeProject={snapshot.activeProject}
+          onOpenTicket={actions.onOpenTicket}
+        />
+      )
     case 'settings':
       return <SettingsFace />
   }
@@ -133,7 +153,11 @@ export function App() {
         // they already have: Unassigned and `human`. It is not a board failure.
         dispatch({ type: 'notice', message: settings.error.message })
       } else if ('roster' in settings.reply) {
-        dispatch({ type: 'settings', roster: settings.reply.roster })
+        dispatch({
+          type: 'settings',
+          roster: settings.reply.roster,
+          activeProject: settings.reply.activeProject ?? null,
+        })
       }
       if ('tickets' in board.reply && 'revision' in board.reply) {
         dispatch({ type: 'loaded', reply: board.reply, lanes: lanes.reply.lanes })
@@ -167,7 +191,7 @@ export function App() {
 
   const write = useCallback(
     async (
-      call: Call,
+      call: Method,
       expected: number | null,
       caller: WriteCaller = 'face',
       followUp?: string,
@@ -198,7 +222,7 @@ export function App() {
   )
 
   const faceWrite = useCallback(
-    (call: Call, expected: number | null, followUp?: string): Promise<WriteOutcome> =>
+    (call: Method, expected: number | null, followUp?: string): Promise<WriteOutcome> =>
       write(call, expected, 'face', followUp),
     [write],
   )
@@ -206,7 +230,8 @@ export function App() {
   // The sheet carries its own refusals, so its writes never raise the banner
   // behind the modal.
   const sheetWrite = useCallback(
-    (call: Call, expected: number | null): Promise<WriteOutcome> => write(call, expected, 'sheet'),
+    (call: Method, expected: number | null, followUp?: string): Promise<WriteOutcome> =>
+      write(call, expected, 'sheet', followUp),
     [write],
   )
 
@@ -214,6 +239,19 @@ export function App() {
   const reload = useCallback(() => {
     void load()
   }, [load])
+  // Persist the project focus through the shell's one door: the revision guard
+  // still applies, so a pick on a stale listing re-reads instead of writing
+  // over it, and the change event re-reads the new focus into the snapshot.
+  const pickProject = useCallback(
+    (lane: string | null) => {
+      void faceWrite({ method: 'settings.set', params: { project: lane, roster: null } }, null).then(
+        (outcome) => {
+          if (outcome.ok) reload()
+        },
+      )
+    },
+    [faceWrite, reload],
+  )
   const open = useCallback((ticket: TicketSummary) => setOpenTicket(ticket.id), [])
   const closeSheet = useCallback(() => {
     setOpenTicket(null)
@@ -265,6 +303,7 @@ export function App() {
           onDismiss: dismiss,
           openTicket,
           onOpenTicket: open,
+          onPickProject: pickProject,
         })}
         {openTicket === null ? null : (
           <TicketSheet

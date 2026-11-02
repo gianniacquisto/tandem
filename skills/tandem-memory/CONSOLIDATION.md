@@ -52,6 +52,8 @@ Use the one-line entries and length targets in [`WRITE-PROTOCOL.md`](WRITE-PROTO
 
 Write behind the boundary ([`CONCURRENCY.md`](CONCURRENCY.md)): re-read → minimal patch → write, prune on write. Never invent state the inputs do not support.
 
+**Draw the structure.** A note whose subject is structure (a component map, a flow, a pipeline, a stack) carries one diagram in its own `mermaid` fence, written by the pass directly after the note's one-line intro. Only the nodes and edges the note's own text supports: the fence is the truth and the editor draws it, so the diagram is a reading of the prose, never a second source of facts.
+
 ## Dedupe threads against tickets
 
 A `thread` note usually already has a Ticket — the working agent files it the moment the thread opens. **Do not create a second one**: run `tandem-cli ticket list` first, match by title, and write the Threads bullet against the existing Ticket. Only a `thread` with no matching Ticket earns a new one (`tandem-cli ticket add`).

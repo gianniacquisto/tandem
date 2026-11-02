@@ -14,7 +14,7 @@ use rusqlite::params;
 use rusqlite::{Connection, OpenFlags};
 
 use super::rows::{SessionRow, SprintRow};
-use super::{Result, StoreError, translate};
+use super::{Result, Store, StoreError, translate};
 
 /// The session columns every version carries, in read order.
 const SESSION_COLUMNS: &str = "id, project, agent, brief, status, outcome, summary,
@@ -101,6 +101,18 @@ pub(crate) fn sprint_rows(connection: &Connection) -> Result<Vec<SprintRow>> {
         .map_err(|error| translate(error, connection))?;
     rows.collect::<rusqlite::Result<Vec<_>>>()
         .map_err(|error| translate(error, connection))
+}
+
+/// The sprints and the revision they are a snapshot of, read in one
+/// transaction: a listing's rows and its number cannot be split by a
+/// concurrent writer. `None` when there is no database yet.
+impl Store {
+    /// The sprints and the revision they are a snapshot of, read in one
+    /// transaction: a listing's rows and its number cannot be split by a
+    /// concurrent writer. `None` when there is no database yet.
+    pub(crate) fn sprint_snapshot(&self) -> Result<Option<(Vec<SprintRow>, i64)>> {
+        self.read_snapshot(sprint_rows)
+    }
 }
 
 /// Whether the board carries a ticket id, archive included. The sprint's batch

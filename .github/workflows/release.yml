@@ -1,7 +1,7 @@
 name: Release
 
 # The cutover's release: a tag v* push (or a manual dispatch) packages the
-# Electron app per platform (`build` on a GitHub-hosted macOS runner, the new
+# Electron app per platform (`build-macos` on a GitHub-hosted macOS runner, the new
 # `build-linux` on an Ubuntu runner), verifies each artifact and publishes the
 # GitHub release; pull-request runs do the same build-and-verify work and upload
 # the artifacts, never publishing. The contract is this file and
@@ -18,7 +18,7 @@ name: Release
 # resolves it, the zip is intact, and the checksum the tap bump reads is the
 # checksum of those bytes.
 #
-# The work is split in three: `build` and `build-linux` each produce and verify
+# The work is split in three: `build-macos` and `build-linux` each produce and verify
 # their platform's artifact, and `release` publishes them. The publisher keeps
 # the name `release` for one reason: `main` requires a status check by that
 # name, and a required check that never reports blocks every merge. The name
@@ -37,7 +37,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-macos:
     # The artifact. macOS runs the Electron package and arm64 is the port's one
     # macOS target; the core is built by the same pinned toolchain `rust.yml`
     # tests because `prepare-binary.mjs` runs the cargo proxy from `rust/`.
@@ -152,7 +152,7 @@ jobs:
 
   build-linux:
     # The Linux artifact (PRT-1): the AppImage `app.yml` builds as a workflow
-    # artifact, promoted here to a release asset. Same shape as `build`: the
+    # artifact, promoted here to a release asset. Same shape as `build-macos`: the
     # core is built by the same pinned toolchain `rust.yml` tests because
     # `prepare-binary.mjs` runs the cargo proxy from `rust/`. Ubuntu because
     # that is the AppImage's build platform; no signing identity exists, the
@@ -182,7 +182,7 @@ jobs:
 
       - name: Resolve the version
         run: |
-          # The same rule as `build`: tag runs take the tag's version, PR /
+          # The same rule as `build-macos`: tag runs take the tag's version, PR /
           # dispatch runs take a fixed dev version, and both jobs must agree
           # on which artifact to hand over.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
@@ -194,7 +194,7 @@ jobs:
       - name: Package the app
         working-directory: app
         run: |
-          # Same as `build`: electron-builder names the artifact from the app's
+          # Same as `build-macos`: electron-builder names the artifact from the app's
           # version, so the tag's version is stamped before packaging.
           npm version "$version" --no-git-tag-version --allow-same-version
           npm run dist
@@ -219,6 +219,13 @@ jobs:
           test -x "$root/resources/tandem"
           test -f "$root/resources/agent/AGENTS.md"
           test "$(cat "$root/resources/agent/VERSION")" = "$version"
+          # The pinned harness (PRT-1): staged by `harness:stage`, carried at
+          # resources/harness/opencode, verified against the pin like the
+          # `harness` job in app.yml verifies the download.
+          eval "$(python3 Scripts/check-harness-home.py --print-pin)"
+          test -x "$root/resources/harness/opencode"
+          test "$("$root/resources/harness/opencode" --version)" = "opencode v$PINNED_VERSION"
+          test "$(sha256sum "$root/resources/harness/opencode" | cut -d' ' -f1)" = "$PINNED_SHA256"
 
       - name: Compute the checksum
         run: |
@@ -229,7 +236,7 @@ jobs:
       - name: Upload the artifact
         uses: actions/upload-artifact@v4
         with:
-          # A second artifact name, so the macOS `build` and this job never
+          # A second artifact name, so the macOS `build-macos` and this job never
           # overwrite one another; `release` downloads both.
           name: Tandem-${{ env.version }}-linux
           path: |
@@ -247,7 +254,7 @@ jobs:
     # passing status), so the required check would read as green on a red build.
     # This job runs instead, and the step below turns a red build into a red
     # `release`, the check the protection watches.
-    needs: [build, build-linux]
+    needs: [build-macos, build-linux]
     if: ${{ !cancelled() }}
     # macOS because the tap step runs brew (`--verify`), and the runner has it.
     runs-on: macos-latest
@@ -257,11 +264,11 @@ jobs:
     steps:
       - name: "Verify: the builds are green"
         env:
-          BUILD_RESULT: ${{ needs.build.result }}
+          BUILD_MACOS_RESULT: ${{ needs['build-macos'].result }}
           BUILD_LINUX_RESULT: ${{ needs['build-linux'].result }}
         run: |
-          if [[ "$BUILD_RESULT" != "success" ]]; then
-            echo "::error::the release aggregator needs the build green (build: $BUILD_RESULT)"
+          if [[ "$BUILD_MACOS_RESULT" != "success" ]]; then
+            echo "::error::the release aggregator needs the build green (build-macos: $BUILD_MACOS_RESULT)"
             exit 1
           fi
           if [[ "$BUILD_LINUX_RESULT" != "success" ]]; then

@@ -16,6 +16,7 @@
 //! order they were appended in.
 
 use serde::Serialize;
+use ts_rs::TS;
 
 use super::error::{DomainError, DomainResult};
 use super::operation::Operation;
@@ -25,7 +26,7 @@ use crate::store::{
 };
 
 /// How a sprint's batch was built: the human's choice at open, stored.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum SprintMode {
     Serial,
@@ -54,7 +55,7 @@ impl SprintMode {
 
 /// The two states a sprint record has. `close` is stamped against this state,
 /// and there is no third one to fall back on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum SprintStatus {
     Open,
@@ -86,7 +87,7 @@ impl SprintStatus {
 /// `batch` is the tickets the sprint carried, in stored order, and `runs` is one
 /// dated entry per landing: the core's ISO-8601 UTC stamp, an em dash and the
 /// caller's words, so a run log reads as a log.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct Sprint {
     pub lane: String,
@@ -352,6 +353,32 @@ impl Sprints {
         Ok(sprints)
     }
 
+    /// `sprint list` and the revision its rows are a snapshot of, read in one
+    /// transaction: the wire's listing pairs rows with a number no concurrent
+    /// writer split, the board's `list_snapshot` shape for sprints.
+    pub fn list_snapshot(
+        &self,
+        lane: Option<&str>,
+        status: Option<SprintStatus>,
+    ) -> DomainResult<(Vec<Sprint>, i64)> {
+        let lane = match lane {
+            Some(name) => Some(lane_name(name)?),
+            None => None,
+        };
+        let Some((rows, revision)) = self.store.sprint_snapshot()? else {
+            return Ok((Vec::new(), 0));
+        };
+        let mut sprints = rows
+            .into_iter()
+            .map(Sprint::from_row)
+            .collect::<StoreResult<Vec<_>>>()
+            .map_err(DomainError::from)?;
+        sprints.retain(|sprint| lane.as_ref().is_none_or(|name| &sprint.lane == name));
+        sprints.retain(|sprint| status.is_none_or(|state| sprint.status == state));
+        newest_first(&mut sprints);
+        Ok((sprints, revision))
+    }
+
     /// `sprint show`: one record by the (lane, number) handle, or the failure
     /// carrying the numbers the lane does hold.
     pub fn show(&self, lane: &str, number: i64) -> DomainResult<Sprint> {
@@ -370,6 +397,25 @@ impl Sprints {
         let lane = lane_name(lane)?;
         self.open_record(&lane)?
             .ok_or(DomainError::NoOpenSprint(lane))
+    }
+
+    /// [`open_in`](Self::open_in) and the revision the record is a snapshot
+    /// of, read in one transaction: the wire's `sprint.show` answers the open
+    /// sprint and its number together.
+    pub fn open_in_snapshot(&self, lane: &str) -> DomainResult<(Sprint, i64)> {
+        let lane = lane_name(lane)?;
+        let Some((rows, revision)) = self.store.sprint_snapshot()? else {
+            return Err(DomainError::NoOpenSprint(lane));
+        };
+        let record = rows
+            .into_iter()
+            .map(Sprint::from_row)
+            .collect::<StoreResult<Vec<_>>>()
+            .map_err(DomainError::from)?
+            .into_iter()
+            .find(|sprint| sprint.lane == lane && sprint.status == SprintStatus::Open)
+            .ok_or(DomainError::NoOpenSprint(lane))?;
+        Ok((record, revision))
     }
 
     /// The lane's open record, if the lane holds one. The one rule both

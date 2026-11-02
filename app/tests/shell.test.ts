@@ -26,9 +26,9 @@ const sources = filesUnder(renderer, ['.ts', '.tsx', '.css', '.html']).filter(
 )
 
 describe('the shell', () => {
-  it('keeps the four tabs, in the spec order', () => {
-    expect(TABS.map((tab) => tab.label)).toEqual(['Tickets', 'Bikeshed', 'Usage', 'Settings'])
-    expect(new Set(TABS.map((tab) => tab.id)).size).toBe(4)
+  it('keeps the five tabs, in the spec order', () => {
+    expect(TABS.map((tab) => tab.label)).toEqual(['Tickets', 'Bikeshed', 'Usage', 'Workflow', 'Settings'])
+    expect(new Set(TABS.map((tab) => tab.id)).size).toBe(5)
   })
 
   it('routes every tab to its own path and back', () => {
@@ -121,6 +121,14 @@ describe('the shell', () => {
   it('enforces the window floor in the document as well as the window', () => {
     const css = readFileSync(join(renderer, 'src', 'app.css'), 'utf8')
     expect(css).toMatch(/min-width:\s*var\(--window-floor\)/)
+  })
+
+  it('lets the tickets list span the wide face with the board', () => {
+    // The board's wide treatment is a modifier that lifts the column cap; the
+    // list carries the same modifier, and no rule caps `.list` on its own.
+    const css = readFileSync(join(renderer, 'src', 'app.css'), 'utf8')
+    expect(css).toMatch(/\.tickets--list/)
+    expect(css).not.toMatch(/\.list\s*\{[^}]*max-width/)
   })
 
   it('exposes one world key, named tandem', () => {

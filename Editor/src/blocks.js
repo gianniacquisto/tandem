@@ -304,19 +304,50 @@ function visit(cur, ctx) {
   descend(cur, ctx);
 }
 
+// The info string's first word decides the fence's treatment: `mermaid`
+// (trimmed, case-insensitive) draws a diagram, everything else (including
+// `mermaidjs`) is code.
+function isMermaidInfo(info) {
+  return info.trim().split(/\s+/)[0].toLowerCase() === "mermaid";
+}
+
 function fence(node, ctx) {
   const { text, lines, addReplace, addLineClass, blocks } = ctx;
   const firstNl = text.indexOf("\n", node.from);
   if (firstNl === -1) return; // malformed one-liner: leave literal
   let info = "";
   let closeMark = null;
+  const codeText = [];
   for (const c of childrenOf(node)) {
     if (c.name === "CodeInfo") info = text.slice(c.from, c.to).trim();
+    else if (c.name === "CodeText") codeText.push(text.slice(c.from, c.to));
     else if (c.name === "CodeMark") closeMark = c; // last CodeMark = closing fence
   }
-  if (!closeMark) return;
+  // An unclosed fence has one CodeMark (its opener): the closing mark must
+  // come after the opening line or there is nothing to close.
+  if (!closeMark || closeMark.from <= firstNl) return;
   const openIdx = lines.indexAt(node.from);
   const closeIdx = lines.indexAt(closeMark.from);
+  // A mermaid fence is drawn, not shown: one replace over the whole fence
+  // (opening line through the closing fence line, whose newline goes with it
+  // as for every other block widget, so the diagram leaves no empty line
+  // behind) plus one block widget on the opening line. The source is the
+  // fence body verbatim as the tree spells it: the CodeText runs, so a
+  // blockquote's `>` markers and a list item's indent are gone, and the
+  // body's own leading spaces stay, with its trailing newlines trimmed.
+  // Every other info string keeps the code plan below.
+  if (isMermaidInfo(info)) {
+    addReplace(lines.from(openIdx), lines.withBreak(closeIdx)[1]);
+    blocks.push({
+      at: lines.from(openIdx),
+      side: 0,
+      widget: {
+        kind: "mermaid",
+        source: codeText.join("").replace(/\n+$/, ""),
+      },
+    });
+    return;
+  }
   addReplace(node.from, firstNl + 1); // opening line, incl. its newline
   addReplace(closeMark.from, closeMark.to); // closing fence text only
   for (let i = openIdx + 1; i <= closeIdx; i++) {

@@ -308,3 +308,64 @@ test("no overlapping replaces in any plan", () => {
       assert.ok(rs[i].from >= rs[i - 1].to, `overlap in ${JSON.stringify(text)}`);
   }
 });
+
+// -- mermaid fences ----------------------------------------------------------
+//
+// A ```mermaid fence is drawn by the mermaid widget instead of the code
+// plan: one replace over the whole fence (opening line through the closing
+// fence line) plus one block widget on the opening line whose source is the
+// fence body verbatim. Every other info string keeps the code plan, and an
+// unclosed fence stays literal (shown as source).
+
+test("mermaid fence: one replace over the whole fence, one mermaid block widget", () => {
+  const text = "```mermaid\ngraph TD\nA-->B\n```\nnext";
+  const p = plan(text);
+  // whole fence replaced: opening line through the closing line's newline
+  assert.ok(p.replaces.some((r) => r.from === 0 && r.to === 30 && !r.widget));
+  const m = blockOf(p, "mermaid");
+  assert.equal(m.at, 0);
+  assert.equal(m.widget.source, "graph TD\nA-->B");
+  // no code treatment at all
+  assert.equal(blockOf(p, "codelangtag"), undefined);
+  assert.equal(p.lines.filter((l) => l.className.includes("tandem-code")).length, 0);
+});
+
+test("mermaid info string: first word, trimmed and case-insensitive", () => {
+  const upper = plan("```Mermaid\ngraph TD\n```");
+  assert.equal(blockOf(upper, "mermaid")?.widget.source, "graph TD");
+  const spaced = plan("```  Mermaid  \ngraph TD\n```");
+  assert.equal(blockOf(spaced, "mermaid")?.widget.source, "graph TD");
+});
+
+test("other info strings keep the code plan (mermaidjs, text, no info)", () => {
+  for (const text of ["```mermaidjs\nx\n```", "```text\nx\n```", "```\nx\n```"]) {
+    const p = plan(text);
+    assert.equal(blockOf(p, "mermaid"), undefined, text);
+    assert.ok(blockOf(p, "codelangtag"), text);
+  }
+});
+
+test("mermaid fence: the source is the body verbatim, trailing newlines trimmed", () => {
+  const p = plan("```mermaid\n  graph TD\n    A --> B\n\n```");
+  assert.equal(blockOf(p, "mermaid").widget.source, "  graph TD\n    A --> B");
+});
+
+test("mermaid fence: a reveal inside the fence plans no widget, source visible", () => {
+  const text = "```mermaid\ngraph TD\nA-->B\n```";
+  const p = plan(text, { reveal: { from: 14, to: 14 } }); // inside "graph TD"
+  assert.equal(blockOf(p, "mermaid"), undefined);
+  assert.equal(p.replaces.filter((r) => r.from <= 14 && r.to > 14).length, 0);
+});
+
+test("mermaid fence: unclosed stays literal", () => {
+  const p = plan("```mermaid\ngraph TD");
+  assert.equal(blockOf(p, "mermaid"), undefined);
+  assert.equal(p.replaces.length, 0);
+});
+
+test("mermaid fence inside a blockquote and a list item still plans its widget", () => {
+  const quoted = plan("> ```mermaid\n> graph TD\n> ```");
+  assert.equal(blockOf(quoted, "mermaid")?.widget.source, "graph TD");
+  const listed = plan("- item\n\n  ```mermaid\n  graph TD\n  ```");
+  assert.equal(blockOf(listed, "mermaid")?.widget.source, "graph TD");
+});
