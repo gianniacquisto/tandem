@@ -45,13 +45,18 @@ describe('the Settings surface', () => {
   // `docs/port.md` (Transport and the UI contract): every UI mutation maps to a
   // message the CLI also exposes. The Rust half is
   // `cli/src/main.rs::wire_parity`; this half catches a method the wire never
-  // declared, which is the one way a renderer could invent a writer.
+  // declared, which is the one way a renderer could invent a writer. The one
+  // exception is `harness.*` (TAN-265): answered by the main process, never by
+  // the core, so no CLI verb spells it and the wire never declares it.
+  const HARNESS_OWNED = new Set(['harness.status', 'harness.login', 'harness.cancel', 'harness.logout'])
+
   it('calls only methods the wire declares, so a UI-only write cannot appear', () => {
     const known = wireMethods()
     expect(known.size).toBeGreaterThan(0)
 
     for (const name of ['App.tsx', 'faces/SettingsFace.tsx']) {
       for (const tag of calledMethods(source(name))) {
+        if (HARNESS_OWNED.has(tag)) continue
         expect(known, `${name} calls ${tag}`).toContain(tag)
       }
     }
@@ -63,13 +68,18 @@ describe('the Settings surface', () => {
 
     expect(called).toEqual([
       'doctor.report',
+      'harness.cancel',
+      'harness.login',
+      'harness.logout',
+      'harness.status',
       'settings.get',
       'settings.set',
       'setup.install',
       'setup.status',
     ])
-    // Add, Save roster, one Remove per row (one site in source), Install/Repair.
-    expect([...face.matchAll(/<button\b/g)]).toHaveLength(4)
+    // Add, Save roster, one Remove per row (one site in source),
+    // Install/Repair, and the sign-in's three: sign in, cancel, sign out.
+    expect([...face.matchAll(/<button\b/g)]).toHaveLength(7)
   })
 
   it('shows a repair as what changed, not as a verdict', () => {

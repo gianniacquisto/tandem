@@ -1,4 +1,4 @@
-import type { Call } from '../../../src/shared/bridge'
+import type { Method } from '../../../src/shared/bridge'
 import type { SnapshotState } from './snapshot'
 
 /**
@@ -18,7 +18,7 @@ export type WriteOutcome = { ok: true } | { ok: false; message: string }
  * nothing happened.
  */
 export type Write = (
-  call: Call,
+  call: Method,
   expected: number | null,
   followUp?: string,
 ) => Promise<WriteOutcome>

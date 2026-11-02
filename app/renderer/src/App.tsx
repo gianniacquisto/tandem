@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 
-import type { Call } from '../../src/shared/bridge'
+import type { Method } from '../../src/shared/bridge'
 import { BikeshedFace } from './faces/BikeshedFace'
 import { SettingsFace } from './faces/SettingsFace'
 import { TicketSheet } from './faces/TicketSheet'
@@ -34,7 +34,7 @@ function face(
   snapshot: SnapshotState,
   actions: {
     onReload: () => void
-    onWrite: (call: Call, expected: number | null) => Promise<WriteOutcome>
+    onWrite: (call: Method, expected: number | null) => Promise<WriteOutcome>
     onDismiss: () => void
     openTicket: string | null
     onOpenTicket: (ticket: TicketSummary) => void
@@ -181,7 +181,7 @@ export function App() {
 
   const write = useCallback(
     async (
-      call: Call,
+      call: Method,
       expected: number | null,
       caller: WriteCaller = 'face',
       followUp?: string,
@@ -212,7 +212,7 @@ export function App() {
   )
 
   const faceWrite = useCallback(
-    (call: Call, expected: number | null, followUp?: string): Promise<WriteOutcome> =>
+    (call: Method, expected: number | null, followUp?: string): Promise<WriteOutcome> =>
       write(call, expected, 'face', followUp),
     [write],
   )
@@ -220,7 +220,7 @@ export function App() {
   // The sheet carries its own refusals, so its writes never raise the banner
   // behind the modal.
   const sheetWrite = useCallback(
-    (call: Call, expected: number | null, followUp?: string): Promise<WriteOutcome> =>
+    (call: Method, expected: number | null, followUp?: string): Promise<WriteOutcome> =>
       write(call, expected, 'sheet', followUp),
     [write],
   )

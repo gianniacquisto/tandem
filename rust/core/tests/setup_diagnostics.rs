@@ -11,6 +11,7 @@ use tandem_core::diagnostics::{
     self, CHECK_NAMES, CommentsState, Facts, SkillHost, age_text, report, shell_quoted,
 };
 use tandem_core::domain::{AddTicket, Board};
+use tandem_core::harness::HarnessAuth;
 use tandem_core::setup::{self, Code, HostState, Severity, State, Warning};
 use tandem_core::store::{BackupHealth, Health, Home, HomeSource, Store};
 
@@ -52,6 +53,7 @@ fn facts() -> Facts {
         ],
         opencode_has_skills: true,
         agent_face: None,
+        harness_auth: HarnessAuth::NotStored,
         sessions_json: Vec::new(),
         settings_json: Vec::new(),
         todos_json: Vec::new(),
@@ -622,6 +624,42 @@ fn the_agent_face_row_is_green_clean_and_red_with_the_count_on_a_dead_link() {
     assert!(row.detail.contains("1 warning: dead-link"));
     assert!(row.detail.contains("tandem-cli setup install"));
     assert!(!red_report.ok, "a warn stands, so the report fails");
+}
+
+#[test]
+fn the_harness_auth_row_reports_the_sign_in_state_without_failing() {
+    let unsigned = report(&facts());
+    let row = check(&unsigned, "harness-auth");
+    assert!(
+        row.ok,
+        "an unsigned harness waits for a sign-in; nothing failed"
+    );
+    assert_eq!(row.detail, "not signed in; sign in from Settings");
+
+    let mut stored = facts();
+    stored.harness_auth = HarnessAuth::Stored {
+        account: "Personal".to_string(),
+        integrations: vec!["opencode".to_string(), "openrouter".to_string()],
+    };
+    let stored_report = report(&stored);
+    let row = check(&stored_report, "harness-auth");
+    assert!(row.ok);
+    assert_eq!(
+        row.detail,
+        "signed in as Personal (opencode, openrouter stored)"
+    );
+
+    let mut unreadable = facts();
+    unreadable.harness_auth = HarnessAuth::Unreadable {
+        detail: "the harness store is not readable: file is not a database".to_string(),
+    };
+    let unreadable_report = report(&unreadable);
+    let row = check(&unreadable_report, "harness-auth");
+    assert!(
+        row.ok,
+        "an unreadable harness store names itself; it does not fail the home"
+    );
+    assert!(row.detail.contains("not readable"));
 }
 
 #[test]
