@@ -124,7 +124,7 @@ export function SessionsSection({ ticketId, revision, expandedSession }: Session
   useEffect(() => {
     let live = true
     async function load(): Promise<void> {
-      const answer = await window.tandem.call({ method: 'session.list', params: { ticket: ticketId, status: null } })
+      const answer = await window.tandem.call({ method: 'session.list', params: { project: null, ticket: ticketId, status: null } })
       if (!live) return
       if ('error' in answer) {
         setReadError(answer.error.message)
