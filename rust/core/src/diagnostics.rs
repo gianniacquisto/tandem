@@ -5,11 +5,11 @@
 //! So the report's shape, wording and pass/fail rule are covered with injected
 //! facts, and the CLI only wires the real world to it.
 //!
-//! The twelve rows, in the pinned order: `home`, `store`, `bikeshed`, `comments`,
+//! The thirteen rows, in the pinned order: `home`, `store`, `bikeshed`, `comments`,
 //! `sessions`, `settings`, `todos-json`, `lock`, `app`, `skills`, `agent-face`,
-//! `harness-auth`.
-//! The first four and `agent-face` can fail; `app`, `skills`, `harness-auth`
-//! and the three leftover
+//! `harness-auth`, `mcp`.
+//! The first four and `agent-face` can fail; `app`, `skills`, `harness-auth`,
+//! `mcp` and the three leftover
 //! rows are informational. `ok` is the AND of the rows that can fail, so a held
 //! lock, an unreadable store or a bikeshed path that is a file makes the CLI
 //! exit 1.
@@ -30,7 +30,7 @@ pub use crate::store::CommentsState;
 use crate::wire::{DoctorCheck, DoctorReport, slashed_path};
 
 /// The check order, pinned: the CLI documents and tests it.
-pub const CHECK_NAMES: [&str; 12] = [
+pub const CHECK_NAMES: [&str; 13] = [
     "home",
     "store",
     "bikeshed",
@@ -43,6 +43,7 @@ pub const CHECK_NAMES: [&str; 12] = [
     "skills",
     "agent-face",
     "harness-auth",
+    "mcp",
 ];
 
 /// An agent host whose skills directory was checked. Informational: a host that
@@ -169,6 +170,7 @@ pub fn report(facts: &Facts) -> DoctorReport {
     });
     checks.push(agent_face_check(facts));
     checks.push(harness_auth_check(&facts.harness_auth));
+    checks.push(mcp_check());
 
     let ok = checks.iter().all(|check| check.ok);
     DoctorReport { ok, checks }
@@ -549,6 +551,33 @@ fn harness_auth_check(auth: &HarnessAuth) -> DoctorCheck {
             ok: true,
             detail: detail.clone(),
         },
+    }
+}
+
+/// The `mcp` row (TAN-274): the door's presence, asserted statically against
+/// the registry rather than by spawning the server: the tool count over the
+/// covered wire-method count, at the binary's own version. Green on a current
+/// install; a drift fails the registry test before it can ship, so this row
+/// names the numbers rather than probing a process.
+fn mcp_check() -> DoctorCheck {
+    let tools = crate::mcp::tools();
+    let named = tools
+        .iter()
+        .filter(|tool| {
+            crate::wire::rpc::METHODS
+                .iter()
+                .any(|(tag, _)| *tag == tool.method_tag)
+        })
+        .count();
+    DoctorCheck {
+        name: "mcp".to_string(),
+        ok: named == tools.len(),
+        detail: format!(
+            "tandem-mcp {}: {} tools over {} covered wire methods",
+            env!("CARGO_PKG_VERSION"),
+            tools.len(),
+            named,
+        ),
     }
 }
 

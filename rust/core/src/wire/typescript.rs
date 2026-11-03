@@ -15,19 +15,23 @@ use super::rpc::{
     ArchivedReply, CommentAddParams, CommentListReply, CommentReply, DoctorReply, EmptyParams,
     Event, HostRoot, LaneAddParams, LaneDeleteParams, LaneDeletionReply, LaneListReply,
     LaneRenameParams, MarkdownBlocksParams, MarkdownReply, Method, NoteBacklinksReply,
-    NoteHealthReply, NoteMoveParams, NoteMoveReply, NotePathParams, NoteReadReply,
-    NoteRecoveriesReply, NoteTreeParams, NoteTreeReply, NoteWriteParams, NoteWriteReply, Outcome,
-    Reply, Request, Response, SessionListParams, SessionListReply, SessionTranscriptParams,
-    SessionTranscriptReply, SettingsReply, SettingsSetParams, SetupInstallParams, SetupReply,
-    SprintListParams, SprintListReply, SprintOpenParams, SprintReply, SprintShowParams,
-    TicketAddFromNoteParams, TicketAddParams, TicketAnswerParams, TicketArchiveParams,
-    TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams,
-    TicketReply, TicketSetParams, TicketUnblockParams, UsageReportReply, WireError,
+    NoteCaptureParams, NoteHealthReply, NoteMoveParams, NoteMoveReply, NotePathParams,
+    NoteReadReply, NoteRecoveriesReply, NoteTreeParams, NoteTreeReply, NoteWriteParams,
+    NoteWriteReply, Outcome, Reply, Request, Response, SessionDetailReply, SessionEndParams,
+    SessionLinkParams, SessionListParams, SessionListReply, SessionReply, SessionShowParams,
+    SessionStartParams, SessionTranscriptParams, SessionTranscriptReply, SettingsReply,
+    SettingsSetParams, SetupInstallParams, SetupReply, SprintCloseParams, SprintListParams,
+    SprintListReply, SprintOpenParams, SprintReply, SprintRunParams, SprintShowParams,
+    SprintTicketParams, TicketAddFromNoteParams, TicketAddParams, TicketAnswerParams,
+    TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply,
+    TicketMoveParams, TicketReply, TicketSetParams, TicketUnblockParams, UsageReportReply,
+    WireError,
 };
 use super::views::{
     BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
-    NoteContentView, NoteMoveView, NoteNodeView, NoteWriteView, RecoveryView, TicketBlockView,
-    TicketDetail, TicketSummary, UsageReportView, UsageRowView, UsageSessionView, UsageTokensView,
+    NoteContentView, NoteMoveView, NoteNodeView, NotePathView, NoteWriteView, RecoveryView,
+    TicketBlockView, TicketDetail, TicketSummary, UsageReportView, UsageRowView, UsageSessionView,
+    UsageTokensView,
 };
 use super::{DoctorCheck, DoctorReport};
 use crate::bikeshed::{BikeshedHealth, BikeshedHealthCounts, BrokenLink};
@@ -147,16 +151,53 @@ pub fn files() -> Vec<(&'static str, String)> {
         render("SprintMode.ts", SprintMode::export_to_string(&cfg)),
         render("SprintStatus.ts", SprintStatus::export_to_string(&cfg)),
         render(
+            "SessionStartParams.ts",
+            SessionStartParams::export_to_string(&cfg),
+        ),
+        render(
+            "SessionLinkParams.ts",
+            SessionLinkParams::export_to_string(&cfg),
+        ),
+        render(
+            "SessionEndParams.ts",
+            SessionEndParams::export_to_string(&cfg),
+        ),
+        render(
             "SessionListParams.ts",
             SessionListParams::export_to_string(&cfg),
+        ),
+        render(
+            "SessionShowParams.ts",
+            SessionShowParams::export_to_string(&cfg),
         ),
         render(
             "SessionTranscriptParams.ts",
             SessionTranscriptParams::export_to_string(&cfg),
         ),
         render(
+            "SprintTicketParams.ts",
+            SprintTicketParams::export_to_string(&cfg),
+        ),
+        render(
+            "SprintRunParams.ts",
+            SprintRunParams::export_to_string(&cfg),
+        ),
+        render(
+            "SprintCloseParams.ts",
+            SprintCloseParams::export_to_string(&cfg),
+        ),
+        render(
+            "NoteCaptureParams.ts",
+            NoteCaptureParams::export_to_string(&cfg),
+        ),
+        render("SessionReply.ts", SessionReply::export_to_string(&cfg)),
+        render(
             "SessionListReply.ts",
             SessionListReply::export_to_string(&cfg),
+        ),
+        render(
+            "SessionDetailReply.ts",
+            SessionDetailReply::export_to_string(&cfg),
         ),
         render(
             "SessionTranscriptReply.ts",
@@ -186,6 +227,7 @@ pub fn files() -> Vec<(&'static str, String)> {
             "serde_json/JsonValue.ts",
             serde_json::Value::export_to_string(&cfg),
         ),
+        render("NotePathView.ts", NotePathView::export_to_string(&cfg)),
         render("SetupReply.ts", SetupReply::export_to_string(&cfg)),
         render("HostRoot.ts", HostRoot::export_to_string(&cfg)),
         render("DoctorReply.ts", DoctorReply::export_to_string(&cfg)),

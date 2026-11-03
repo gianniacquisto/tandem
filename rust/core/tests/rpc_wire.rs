@@ -44,7 +44,9 @@ fn every_method_round_trips_through_its_wire_tag() {
 
 /// The contract is "no UI-only write": a write names a CLI verb, and a read may
 /// name none. The list is spelled out so a new read is a decision a reviewer
-/// reads, not a verb someone forgot.
+/// reads, not a verb someone forgot. `session.list` names the CLI verb
+/// `session list` since the MCP door (TAN-274) shares the sheet's method, so
+/// only `session.transcript` stays wire-only for the sheet.
 #[test]
 fn the_read_methods_without_a_cli_verb_are_named_here() {
     let reads: Vec<&str> = METHODS
@@ -62,7 +64,6 @@ fn the_read_methods_without_a_cli_verb_are_named_here() {
             "usage.report",
             "settings.get",
             "markdown.blocks",
-            "session.list",
             "session.transcript",
         ],
         "a read with no CLI verb joins this list deliberately"

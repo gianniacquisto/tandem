@@ -27,20 +27,21 @@
 //! transaction.
 
 use std::io::{self, BufRead, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use crate::bikeshed::Bikeshed;
-use crate::domain::Settings;
+use crate::bikeshed::{Bikeshed, CaptureKind};
 use crate::domain::harness;
-use crate::domain::session::{HarnessTransport, SessionStatus, Sessions};
+use crate::domain::session::{
+    Ending, HarnessSession, HarnessTransport, SessionOutcome, SessionStatus, Sessions, parse_skills,
+};
 use crate::domain::sprint::{SprintMode, SprintStatus, Sprints};
 use crate::domain::usage::{Calendar, UsageTicket, usage_report};
 use crate::domain::{
-    AddTicket, Board, DescriptionBody, DomainError, Edit, Filter, Status, TicketQuery,
+    AddTicket, Board, DescriptionBody, DomainError, Edit, Filter, Settings, Status, TicketQuery,
     resolve_assignee, resolve_origin,
 };
 use crate::setup::Environment;
@@ -49,12 +50,14 @@ use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, HostRoot, LaneDeletionReply,
     LaneListReply, MarkdownReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply,
     NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, Reply, Request,
-    Response, SessionListReply, SessionTranscriptReply, SettingsReply, SetupReply, SprintListReply,
-    SprintReply, TicketListReply, TicketReply, UsageReportReply, WireError,
+    Response, SessionDetailReply, SessionListReply, SessionReply, SessionTranscriptReply,
+    SettingsReply, SetupReply, SprintListReply, SprintReply, TicketListReply, TicketReply,
+    UsageReportReply, WireError,
 };
 use crate::wire::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
-    NoteWriteView, RecoveryView, TicketDetail, TicketSummary, UsageReportView, slashed_path,
+    NotePathView, NoteWriteView, RecoveryView, TicketDetail, TicketSummary, UsageReportView,
+    slashed_path,
 };
 use crate::{diagnostics, setup};
 
@@ -641,28 +644,47 @@ fn execute(
             }))
         }
         Method::SessionList(params) => {
-            // The sheet's Sessions section: the ticket's linked records, newest
-            // first, or every record when the caller names no ticket. A status
-            // the store does not know is the domain's refusal, the same one
-            // `session list` makes.
-            let sessions = Sessions::new(store);
-            let ticket = named(&params.ticket);
-            let records = if ticket.is_empty() {
-                let status = match params.status.as_deref() {
-                    Some(raw) if !raw.trim().is_empty() => {
-                        Some(SessionStatus::parse(raw.trim()).ok_or_else(|| {
-                            WireError::domain(format!(
-                                "session status must be one of running, ended (got \"{raw}\")."
-                            ))
-                        })?)
-                    }
-                    _ => None,
-                };
-                sessions.list(None, status).map_err(domain)?
-            } else {
-                sessions.for_ticket(ticket).map_err(domain)?
+            // The records, newest first: the CLI/MCP listing by project, and
+            // the sheet's Sessions section by ticket (TAN-264). A ticket the
+            // caller names narrows to the records that carried it; a blank
+            // ticket or project is no filter, as an absent filter is none on
+            // `ticket.list`. A status the store does not know is the domain's
+            // refusal, the same one `session list` makes.
+            let status = match params.status.as_deref() {
+                Some(raw) if !raw.trim().is_empty() => {
+                    Some(SessionStatus::parse(raw.trim()).ok_or_else(|| {
+                        WireError::domain(format!(
+                            "session status must be one of running, ended (got \"{raw}\")."
+                        ))
+                    })?)
+                }
+                _ => None,
             };
-            Ok(Reply::SessionList(SessionListReply { sessions: records }))
+            let project = params
+                .project
+                .as_deref()
+                .map(str::trim)
+                .filter(|project| !project.is_empty());
+            let ticket = params
+                .ticket
+                .as_deref()
+                .map(str::trim)
+                .filter(|ticket| !ticket.is_empty());
+            let records = match ticket {
+                Some(ticket) => {
+                    let carried = Sessions::new(store).for_ticket(ticket).map_err(domain)?;
+                    carried
+                        .into_iter()
+                        .filter(|session| project.is_none_or(|name| session.project == name))
+                        .filter(|session| status.is_none_or(|state| session.status == state))
+                        .collect()
+                }
+                None => Sessions::new(store).list(project, status).map_err(domain)?,
+            };
+            Ok(Reply::SessionList(SessionListReply {
+                revision: store.last_revision(),
+                sessions: records,
+            }))
         }
         Method::SessionTranscript(params) => session_transcript(
             store,
@@ -841,6 +863,191 @@ fn execute(
                 .map(RecoveryView::new)
                 .collect(),
         })),
+        Method::SessionStart(params) => {
+            let id = match params.session.as_deref() {
+                Some(raw) => raw.to_string(),
+                None => uuid::Uuid::new_v4().to_string(),
+            };
+            let project = match params.project.as_deref() {
+                Some(project) => project.to_string(),
+                None => project_default(),
+            };
+            let agent = session_agent(params.agent.as_deref(), environment);
+            let brief = params.brief.as_deref().unwrap_or("");
+            let harness = session_harness(&params, environment)?;
+            let sessions = Sessions::new(store);
+            let result = match harness {
+                Some(harness) => sessions.start_with_harness(
+                    actor,
+                    &id,
+                    &project,
+                    agent.as_deref(),
+                    brief,
+                    harness,
+                    None,
+                ),
+                None => sessions.start(actor, &id, &project, agent.as_deref(), brief, None),
+            }
+            .map_err(domain)?;
+            Ok(Reply::Session(SessionReply {
+                revision: store.last_revision(),
+                session: result.value,
+                note: result.note,
+            }))
+        }
+        Method::SessionLink(params) => {
+            let sessions = Sessions::new(store);
+            let id = resolve_session(&sessions, params.session.as_deref(), environment)?;
+            let ticket = board.ticket(named(&params.ticket)).map_err(domain)?;
+            let result = sessions
+                .link(actor, &id, &ticket.id.to_string())
+                .map_err(domain)?;
+            Ok(Reply::Session(SessionReply {
+                revision: store.last_revision(),
+                session: result.value,
+                note: result.note,
+            }))
+        }
+        Method::SessionEnd(params) => {
+            let sessions = Sessions::new(store);
+            let id = resolve_session(&sessions, params.session.as_deref(), environment)?;
+            let outcome = match params.outcome.as_deref() {
+                None => SessionOutcome::Unknown,
+                Some(raw) => SessionOutcome::parse(raw)
+                    .ok_or_else(|| domain(DomainError::InvalidSessionOutcome(raw.to_string())))?,
+            };
+            let summary = params.summary.as_deref().map(str::to_string);
+            let mut tokens = end_tokens(&params)?;
+            let mut cost = end_cost(params.cost)?;
+            let mut model = end_model(params.model.as_deref());
+            let mut skills = match params.skills.as_deref() {
+                Some(raw) => parse_skills(raw).map_err(domain)?,
+                None => None,
+            };
+            let mut note: Option<String> = None;
+            if params.usage_from_harness.unwrap_or(true) {
+                let record = sessions.show(&id).map_err(domain)?;
+                match harness_usage(store, &record, params.harness_url.as_deref(), environment) {
+                    Ok(reported) => {
+                        tokens = reported.tokens().or(tokens);
+                        cost = reported.cost.or(cost);
+                        model = reported.model.or(model);
+                        skills = reported.skills.or(skills);
+                    }
+                    Err(error) if is_absent_harness(&error) => {
+                        note = Some(format!("{}. Stamped without usage.", error.message()));
+                    }
+                    Err(error) => return Err(domain(error)),
+                }
+            }
+            let stamp = sessions
+                .end(
+                    actor,
+                    &id,
+                    Ending {
+                        outcome,
+                        summary: summary.as_deref(),
+                        tokens,
+                        cost,
+                        model: model.as_deref(),
+                        skills,
+                        at: None,
+                    },
+                )
+                .map_err(domain)?;
+            if stamp.stamped && stamp.session.carries_usage() {
+                post_usage_comments(store, &stamp.session, actor).map_err(domain)?;
+            }
+            let stamp_note = stamp.note.or(note);
+            Ok(Reply::Session(SessionReply {
+                revision: store.last_revision(),
+                session: stamp.session,
+                note: stamp_note,
+            }))
+        }
+        Method::SessionShow(params) => {
+            let sessions = Sessions::new(store);
+            let id = resolve_session(&sessions, params.session.as_deref(), environment)?;
+            let record = sessions.show(&id).map_err(domain)?;
+            let notes = open_bikeshed(store)
+                .session_notes(&id)
+                .map_err(domain)?
+                .value;
+            Ok(Reply::SessionDetail(SessionDetailReply {
+                revision: store.last_revision(),
+                session: record,
+                notes,
+                note: None,
+            }))
+        }
+        Method::SprintTicket(params) => {
+            let lane = named(&params.lane);
+            let ticket = board.ticket(named(&params.ticket)).map_err(domain)?;
+            let number = Sprints::new(store).open_in(lane).map_err(domain)?.number;
+            let result = Sprints::new(store)
+                .ticket(actor, lane, number, &ticket.id.to_string())
+                .map_err(domain)?;
+            Ok(Reply::Sprint(SprintReply {
+                revision: store.last_revision(),
+                sprint: result.value,
+                note: result.note,
+            }))
+        }
+        Method::SprintRun(params) => {
+            let lane = named(&params.lane);
+            let note = params.note.as_deref().unwrap_or("");
+            let number = Sprints::new(store).open_in(lane).map_err(domain)?.number;
+            let result = Sprints::new(store)
+                .run(actor, lane, number, note, None)
+                .map_err(domain)?;
+            Ok(Reply::Sprint(SprintReply {
+                revision: store.last_revision(),
+                sprint: result.value,
+                note: result.note,
+            }))
+        }
+        Method::SprintClose(params) => {
+            let lane = named(&params.lane);
+            let number = match params.number {
+                Some(number) => number,
+                None => Sprints::new(store).close_in(lane).map_err(domain)?.number,
+            };
+            let note = params.note.as_deref().map(str::to_string);
+            let result = Sprints::new(store)
+                .close(actor, lane, number, note.as_deref(), None)
+                .map_err(domain)?;
+            Ok(Reply::Sprint(SprintReply {
+                revision: store.last_revision(),
+                sprint: result.value,
+                note: result.note,
+            }))
+        }
+        Method::NoteCapture(params) => {
+            store.home().ensure().map_err(|error| {
+                WireError::store(format!(
+                    "Cannot create the Tandem home at {}: {error}. Try again.",
+                    store.home().directory().display()
+                ))
+            })?;
+            let kind = CaptureKind::parse(params.kind.as_deref().unwrap_or("")).map_err(domain)?;
+            let project = match params.project.as_deref() {
+                Some(project) => project.to_string(),
+                None => project_default(),
+            };
+            let session = match params.session.as_deref() {
+                Some(session) => session.to_string(),
+                None => capture_session_default(environment),
+            };
+            let body = params.body.as_deref().unwrap_or("");
+            let vault = Bikeshed::new(store.home().directory().join("bikeshed"));
+            let result = vault
+                .capture(&project, kind, body, &session, std::time::SystemTime::now())
+                .map_err(domain)?;
+            Ok(Reply::NotePath(NotePathView {
+                path: result.value,
+                note: result.note,
+            }))
+        }
     }
 }
 
@@ -977,6 +1184,365 @@ fn external_harness_database(environment: &Environment) -> PathBuf {
         .join("share")
         .join("opencode")
         .join("opencode.db")
+}
+
+/// A session record's handle: the caller's value, else `$OPENCODE_SESSION_ID`,
+/// resolved to the record, as the CLI's verbs resolve it. An absent handle is
+/// the CLI's own refusal, never a mint.
+fn resolve_session(
+    sessions: &Sessions,
+    raw: Option<&str>,
+    environment: &Environment,
+) -> Result<String, WireError> {
+    let handle = match raw {
+        Some(raw) => raw.to_string(),
+        None => match environment.get("OPENCODE_SESSION_ID") {
+            Some(id) if !id.trim().is_empty() => id.clone(),
+            _ => return Err(domain(DomainError::SessionIdUnset)),
+        },
+    };
+    sessions.resolve(&handle).map_err(domain)
+}
+
+/// The harness session a record points at: the caller's value, else
+/// `$OPENCODE_SESSION_ID`; no transport beside it is `database`, the external
+/// opencode, as the verb defaults it.
+fn session_harness(
+    params: &crate::wire::rpc::SessionStartParams,
+    environment: &Environment,
+) -> Result<Option<HarnessSession>, WireError> {
+    let id = match params.harness_session.as_deref() {
+        Some(raw) => raw.trim().to_string(),
+        None => environment
+            .get("OPENCODE_SESSION_ID")
+            .map(|id| id.trim().to_string())
+            .unwrap_or_default(),
+    };
+    if id.is_empty() {
+        if params.harness_session.is_some() {
+            return Err(domain(DomainError::EmptyHarnessSessionId));
+        }
+        if params.harness_transport.is_some() {
+            return Err(domain(DomainError::EmptyHarnessSessionId));
+        }
+        return Ok(None);
+    }
+    let transport = match params.harness_transport.as_deref() {
+        Some(raw) => HarnessTransport::parse(raw.trim())
+            .ok_or_else(|| domain(DomainError::InvalidHarnessTransport(raw.to_string())))?,
+        None => HarnessTransport::Database,
+    };
+    Ok(Some(HarnessSession { id, transport }))
+}
+
+/// A session's agent: the caller's value, else `$TANDEM_AGENT`; nobody when the
+/// environment names no agent. The core trims the name.
+fn session_agent(raw: Option<&str>, environment: &Environment) -> Option<String> {
+    raw.map(str::to_string).or_else(|| {
+        environment
+            .get(crate::store::ACTOR_ENVIRONMENT)
+            .map(|name| name.trim().to_string())
+            .filter(|name| !name.is_empty())
+    })
+}
+
+/// The token counts the end call reports; absent is absent on the record. A
+/// negative value names its flag, as the verb's flags do.
+fn end_tokens(
+    params: &crate::wire::rpc::SessionEndParams,
+) -> Result<Option<crate::domain::session::SessionTokens>, WireError> {
+    fn count(flag: &str, value: Option<i64>) -> Result<Option<i64>, WireError> {
+        match value {
+            None => Ok(None),
+            Some(value) if value >= 0 => Ok(Some(value)),
+            Some(value) => Err(domain(DomainError::InvalidUsageFlag {
+                flag: flag.to_string(),
+                value: value.to_string(),
+            })),
+        }
+    }
+    let input = count("tokens-input", params.tokens_input)?;
+    let output = count("tokens-output", params.tokens_output)?;
+    let reasoning = count("tokens-reasoning", params.tokens_reasoning)?;
+    let cache_read = count("tokens-cache-read", params.tokens_cache_read)?;
+    let cache_write = count("tokens-cache-write", params.tokens_cache_write)?;
+    if input.is_none()
+        && output.is_none()
+        && reasoning.is_none()
+        && cache_read.is_none()
+        && cache_write.is_none()
+    {
+        return Ok(None);
+    }
+    Ok(Some(crate::domain::session::SessionTokens {
+        input,
+        output,
+        reasoning,
+        cache_read,
+        cache_write,
+    }))
+}
+
+/// The cost the end call reports; a negative value names the flag.
+fn end_cost(cost: Option<f64>) -> Result<Option<f64>, WireError> {
+    match cost {
+        None => Ok(None),
+        Some(value) if value.is_finite() && value >= 0.0 => Ok(Some(value)),
+        Some(value) => Err(domain(DomainError::InvalidUsageFlag {
+            flag: "cost".to_string(),
+            value: value.to_string(),
+        })),
+    }
+}
+
+/// `--model`: absent is absent; an empty value is no model.
+fn end_model(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(str::to_string)
+}
+
+/// The usage a record's harness session reported, read over the harness
+/// loopback API (TAN-276), as the CLI's `session end` reads it. The server is
+/// the call's `harness_url`, else `TANDEM_HARNESS_URL`, else the rendezvous
+/// file for the record's transport; an explicit URL always wins whatever the
+/// transport. The password is `TANDEM_HARNESS_PASSWORD` else the rendezvous
+/// file, never a flag.
+fn harness_usage(
+    store: &Store,
+    record: &crate::domain::session::Session,
+    url_flag: Option<&str>,
+    environment: &Environment,
+) -> Result<crate::domain::harness::HarnessUsage, DomainError> {
+    use crate::domain::harness;
+    let id = record
+        .harness_session_id
+        .clone()
+        .ok_or_else(|| DomainError::NoHarnessSession {
+            id: record.id.clone(),
+        })?;
+    let (base, password) = harness_server(store, record.harness_transport, url_flag, environment)?;
+    harness::read_api(&base, &password, &id)
+}
+
+/// The loopback server and its credential: an explicit URL wins, else the
+/// rendezvous file for the transport. The transport is provenance (which
+/// harness the pass ran in), so it only selects which rendezvous file is read
+/// when no URL is given.
+fn harness_server(
+    store: &Store,
+    transport: Option<HarnessTransport>,
+    url_flag: Option<&str>,
+    environment: &Environment,
+) -> Result<(String, String), DomainError> {
+    let explicit = url_flag
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            environment
+                .get("TANDEM_HARNESS_URL")
+                .map(|url| url.trim().to_string())
+                .filter(|url| !url.is_empty())
+        });
+    let rendezvous = rendezvous_path(store, transport, environment);
+    let password_from_file = || rendezvous_password(&rendezvous).unwrap_or_default();
+    if let Some(base) = explicit {
+        let password = environment
+            .get("TANDEM_HARNESS_PASSWORD")
+            .cloned()
+            .unwrap_or_else(password_from_file);
+        return Ok((base, password));
+    }
+    let (base, file_password) = rendezvous_server(&rendezvous)?;
+    let password = environment
+        .get("TANDEM_HARNESS_PASSWORD")
+        .cloned()
+        .unwrap_or(file_password);
+    Ok((base, password))
+}
+
+/// Which rendezvous file names the server when no URL is given: the embedded
+/// harness's `state/opencode/service.json` under the Tandem home for
+/// `event-stream` records, else the external state dir the binary mirrors
+/// (`XDG_STATE_HOME/opencode/service.json`, else
+/// `~/.local/state/opencode/service.json`).
+fn rendezvous_path(
+    store: &Store,
+    transport: Option<HarnessTransport>,
+    environment: &Environment,
+) -> PathBuf {
+    if transport == Some(HarnessTransport::EventStream) {
+        return store
+            .home()
+            .directory()
+            .join("harness")
+            .join("state")
+            .join("opencode")
+            .join("service.json");
+    }
+    if let Some(state) = environment
+        .get("XDG_STATE_HOME")
+        .map(|state| state.trim())
+        .filter(|state| !state.is_empty())
+    {
+        return PathBuf::from(state).join("opencode").join("service.json");
+    }
+    let home_dir = environment
+        .get("HOME")
+        .map(|home| home.trim())
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
+        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+        .unwrap_or_default();
+    home_dir
+        .join(".local")
+        .join("state")
+        .join("opencode")
+        .join("service.json")
+}
+
+/// The server the rendezvous file names, with its password. Extra keys are
+/// ignored; the file is service-written, mode 0600.
+fn rendezvous_server(path: &Path) -> Result<(String, String), DomainError> {
+    let text = std::fs::read_to_string(path).map_err(|_| DomainError::NoHarnessServer {
+        url: path.display().to_string(),
+    })?;
+    let value: serde_json::Value =
+        serde_json::from_str(&text).map_err(|_| DomainError::NoHarnessServer {
+            url: path.display().to_string(),
+        })?;
+    let base = value
+        .get("url")
+        .and_then(|url| url.as_str())
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| DomainError::NoHarnessServer {
+            url: path.display().to_string(),
+        })?;
+    let password = value
+        .get("password")
+        .and_then(|password| password.as_str())
+        .unwrap_or_default()
+        .to_string();
+    Ok((base, password))
+}
+
+/// The password the rendezvous file holds, or empty when it holds none.
+fn rendezvous_password(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    Some(
+        value
+            .get("password")
+            .and_then(|password| password.as_str())
+            .unwrap_or_default()
+            .to_string(),
+    )
+}
+
+/// Whether a harness failure is an absence the stamp survives: a record with
+/// no pointer, no server to read through, or a session the harness never
+/// recorded. A wrong password is still a failure, because the numbers may
+/// exist and be unreachable.
+fn is_absent_harness(error: &DomainError) -> bool {
+    matches!(
+        error,
+        DomainError::NoHarnessSession { .. }
+            | DomainError::NoHarnessDatabase { .. }
+            | DomainError::NoHarnessEvents { .. }
+            | DomainError::NoHarnessServer { .. }
+            | DomainError::UnknownHarnessSession { .. }
+    )
+}
+
+/// The one `usage` comment a stamped session posts on every ticket it carried,
+/// in the words the CLI posts: a header naming the session id and the model,
+/// then one line per reported metric.
+fn post_usage_comments(
+    store: &Store,
+    session: &crate::domain::session::Session,
+    actor: &Actor,
+) -> Result<(), DomainError> {
+    if session.tickets.is_empty() {
+        return Ok(());
+    }
+    let board = Board::with_actor(store.clone(), actor.clone());
+    let author = session.agent.clone().unwrap_or_else(|| "usage".to_string());
+    let body = usage_comment_body(session);
+    for ticket in &session.tickets {
+        board.append_comment(ticket, &author, &body)?;
+    }
+    Ok(())
+}
+
+/// `Usage` plus the session id and model, then one line per reported piece.
+fn usage_comment_body(session: &crate::domain::session::Session) -> String {
+    let mut lines = Vec::new();
+    let mut header = format!("Usage \u{2014} {}", session.id);
+    if let Some(model) = &session.model {
+        header.push_str(" \u{00b7} ");
+        header.push_str(model);
+    }
+    lines.push(header);
+    let mut metric = |name: &str, value: Option<i64>| {
+        if let Some(value) = value {
+            lines.push(format!("{name} {}", grouped(value)));
+        }
+    };
+    if let Some(tokens) = &session.tokens {
+        metric("input", tokens.input);
+        metric("output", tokens.output);
+        metric("cache read", tokens.cache_read);
+        metric("cache write", tokens.cache_write);
+        metric("reasoning", tokens.reasoning);
+    }
+    if let Some(cost) = session.cost {
+        lines.push(format!("cost ${cost:.2}"));
+    }
+    lines.join("\n")
+}
+
+/// Thousands grouped with commas, en_US style, so a bare count reads.
+fn grouped(value: i64) -> String {
+    let text = value.to_string();
+    let (sign, digits) = match text.strip_prefix('-') {
+        Some(digits) => ("-", digits),
+        None => ("", text.as_str()),
+    };
+    let mut out = String::new();
+    for (index, character) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(character);
+    }
+    format!("{sign}{out}")
+}
+
+/// The working directory's last component: the project a capture or session
+/// defaults to.
+fn project_default() -> String {
+    std::env::current_dir()
+        .ok()
+        .and_then(|directory| {
+            directory
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .unwrap_or_default()
+}
+
+/// A capture's session default: `$OPENCODE_SESSION_ID`, else a short generated
+/// token.
+fn capture_session_default(environment: &Environment) -> String {
+    environment
+        .get("OPENCODE_SESSION_ID")
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()[..8].to_string())
 }
 
 /// A ticket receipt: the ticket a write answered and the revision that write

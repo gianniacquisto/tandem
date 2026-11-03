@@ -110,6 +110,8 @@ enum Command {
     Doctor,
     /// Speak the app's JSON protocol on stdin and stdout (PRT-11).
     Rpc,
+    /// Serve the agent face as an MCP server over stdio (TAN-274).
+    Mcp,
 }
 
 #[derive(Subcommand)]
@@ -629,6 +631,7 @@ fn help_text(cli: &Cli) -> &'static str {
         None => return usage::ROOT,
         Some(Command::Doctor) => return usage::verb("doctor").unwrap_or(usage::ROOT),
         Some(Command::Rpc) => return usage::RPC,
+        Some(Command::Mcp) => return usage::MCP,
         Some(Command::Ticket { command }) => match command {
             None => return usage::group("ticket").unwrap_or(usage::ROOT),
             Some(TicketCommand::Comment { command: None }) => "ticket comment",
@@ -766,6 +769,7 @@ fn run(cli: &Cli) -> Result<(), Failure> {
     match command {
         Command::Doctor => doctor(&home),
         Command::Rpc => rpc(&home),
+        Command::Mcp => mcp(&home),
         Command::Ticket { command } => ticket(&home, command.as_ref()),
         Command::Lane { command } => lane(&home, command.as_ref()),
         Command::Note { command } => note(&home, command.as_ref()),
@@ -1946,6 +1950,22 @@ fn rpc(home: &Home) -> Result<(), Failure> {
         Actor::current(),
     )
     .map_err(|error| Failure::message(format!("The rpc stream failed: {error}. Try again.")))
+}
+
+// MARK: - mcp
+
+/// The agent host's door: MCP frames on stdin, MCP frames on stdout, and an
+/// exit on a closed stdin. The protocol lives in the core (`tandem_core::mcp`);
+/// this arm is only the process that owns the two streams. The home resolves
+/// the way `rpc` does, and the actor is the pass's own (`TANDEM_AGENT`).
+fn mcp(home: &Home) -> Result<(), Failure> {
+    tandem_core::mcp::serve(
+        tandem_core::rpc::StdioStream::new(),
+        Store::new(home.clone()),
+        Actor::current(),
+        environment(),
+    )
+    .map_err(|error| Failure::message(format!("The mcp stream failed: {error}. Try again.")))
 }
 
 // MARK: - doctor
