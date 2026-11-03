@@ -294,7 +294,6 @@ fn watch<S: Stream>(stream: &S, store: &Store, stop: &AtomicBool) {
         if !force_read && !files_moved && !fallback_due {
             continue;
         }
-        files = now_files;
         let Ok(revision) = current.revision() else {
             // The connection is unusable (the store was replaced or
             // removed): drop it and reopen with the backoff.
@@ -304,8 +303,16 @@ fn watch<S: Stream>(stream: &S, store: &Store, stop: &AtomicBool) {
         };
         last_read = Instant::now();
         if revision == last {
+            // A tick can land mid-commit: the WAL grows before COMMIT moves
+            // the revision, so a file move with no revision move is a write
+            // in flight, not noise. Keep the old baseline so the next tick
+            // retries the read once the commit has landed; advancing it here
+            // would lose the event until the fallback. A rolled-back write
+            // can leave the WAL grown with no revision move, in which case
+            // the ticks keep rereading until the next commit re-baselines.
             continue;
         }
+        files = now_files;
         last = revision;
         let frame = match serde_json::to_string(&Event::changed(revision)) {
             Ok(frame) => frame,
@@ -1106,6 +1113,7 @@ mod tests {
         );
         thread::sleep(WATCH_INTERVAL * 2);
         let before = store.revision().expect("the revision reads");
+        let files_before = store.watch_files();
         let started = std::time::Instant::now();
         store
             .write(&Actor::Human, |write| {
@@ -1132,7 +1140,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         assert!(
             seen.contains(&moved),
-            "a write to {moved} never arrived within 2 s (saw {seen:?})"
+            "a write to {moved} never arrived within 2 s (saw {seen:?}): files {files_before:?} -> {:?}, revision {:?}, reads {}",
+            store.watch_files(),
+            store.revision().ok(),
+            store.watch_revision_reads(),
         );
         assert!(
             elapsed < Duration::from_secs(1),
