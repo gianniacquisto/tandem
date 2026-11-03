@@ -124,9 +124,13 @@ describe('the harness environment', () => {
     expect(resolveHarnessBinary({ TANDEM_OPENCODE_BIN: '/opt/opencode' }, exists)).toBe(
       '/opt/opencode',
     )
-    expect(
-      resolveHarnessBinary({ HOME: '/Users/t' }, (path) => path === '/Users/t/.opencode/bin/opencode'),
-    ).toBe('/Users/t/.opencode/bin/opencode')
+    // The home candidate comes from `join`, like the resolver builds it, so
+    // the order holds on win32 too (its separators, not posix ones). Real
+    // Windows install locations arrive with TAN-273's platform seam.
+    const homeCandidate = join('/Users/t', '.opencode', 'bin', 'opencode')
+    expect(resolveHarnessBinary({ HOME: '/Users/t' }, (path) => path === homeCandidate)).toBe(
+      homeCandidate,
+    )
     expect(resolveHarnessBinary({ HOME: '/Users/t' }, exists)).toBe('/opt/homebrew/bin/opencode')
     expect(resolveHarnessBinary({}, () => false)).toBe('opencode')
     expect(resolveHarnessBinary({ TANDEM_OPENCODE_BIN: '  ' }, () => false)).toBe('opencode')
