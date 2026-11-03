@@ -1097,9 +1097,7 @@ mod tests {
         // up; one more tick settles the baseline stat, so a late start on a
         // loaded runner cannot flake the case the way a fixed sleep can.
         let attached = std::time::Instant::now() + Duration::from_secs(10);
-        while store.watch_revision_reads() == reads_before
-            && std::time::Instant::now() < attached
-        {
+        while store.watch_revision_reads() == reads_before && std::time::Instant::now() < attached {
             thread::sleep(Duration::from_millis(5));
         }
         assert!(
