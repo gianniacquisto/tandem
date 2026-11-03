@@ -1083,9 +1083,7 @@ mod schema {
         fs::create_dir_all(sandbox.home_path()).unwrap();
         let connection = Connection::open(sandbox.database()).unwrap();
         migrate_with(&connection, &MIGRATIONS[..5], &Actor::Human).expect("v5 applies");
-        for (name, key, last_number, position) in
-            [("Tandem", "TAN", 2, 0), ("Port", "PRT", 1, 1)]
-        {
+        for (name, key, last_number, position) in [("Tandem", "TAN", 2, 0), ("Port", "PRT", 1, 1)] {
             connection
                 .execute(
                     "INSERT INTO lanes (name, key, last_number, position, author)
@@ -1156,10 +1154,7 @@ mod schema {
         projects.sort_by(|left, right| left.1.cmp(&right.1));
         assert_eq!(
             projects,
-            vec![
-                ("Tandem".to_string(), 0),
-                ("Port".to_string(), 1),
-            ],
+            vec![("Tandem".to_string(), 0), ("Port".to_string(), 1),],
             "one project per lane, order follows lane order"
         );
         let mut lanes: Vec<(String, String, i64, i64)> = connection

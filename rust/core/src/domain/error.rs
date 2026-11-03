@@ -262,7 +262,9 @@ impl DomainError {
                 format!("A project named \"{name}\" already exists.")
             }
             Self::UnknownProjectName { name, projects } if projects.is_empty() => {
-                format!("Unknown project \"{name}\". No projects are declared yet; create one first.")
+                format!(
+                    "Unknown project \"{name}\". No projects are declared yet; create one first."
+                )
             }
             Self::UnknownProjectName { name, projects } => format!(
                 "Unknown project \"{name}\". The known projects are: {}.",

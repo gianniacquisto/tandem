@@ -109,7 +109,10 @@ fn add_lane_appends_and_empty_and_duplicate_names_are_rejected() {
         board.add_lane("Play", None, None).unwrap(),
         ["Work", "Home", "Play"]
     );
-    assert_eq!(board.add_lane("   ", None, None), Err(DomainError::EmptyLaneName));
+    assert_eq!(
+        board.add_lane("   ", None, None),
+        Err(DomainError::EmptyLaneName)
+    );
     assert_eq!(
         board.add_lane("Work", None, None),
         Err(DomainError::DuplicateLane("Work".to_string()))
@@ -187,7 +190,10 @@ fn rename_lane_rewrites_the_lane_list_and_every_ticket_that_belongs_to_it() {
     board.add("d1", AddTicket::default()).unwrap();
     board.rename_lane("Work", "Job", None, None).unwrap();
     // Renaming to itself is a no-op that still reports the list.
-    assert_eq!(board.rename_lane("Job", "Job", None, None).unwrap(), ["Job"]);
+    assert_eq!(
+        board.rename_lane("Job", "Job", None, None).unwrap(),
+        ["Job"]
+    );
 
     assert_eq!(board.lanes().unwrap(), ["Job"]);
     let tickets = support::all(&board);

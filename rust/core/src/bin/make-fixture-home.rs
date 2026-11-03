@@ -20,7 +20,9 @@ use std::process::ExitCode;
 
 use rusqlite::Connection;
 use serde::Deserialize;
-use tandem_core::store::{Actor, Home, NewDependency, NewLane, NewProject, NewSession, NewTicket, Store};
+use tandem_core::store::{
+    Actor, Home, NewDependency, NewLane, NewProject, NewSession, NewTicket, Store,
+};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

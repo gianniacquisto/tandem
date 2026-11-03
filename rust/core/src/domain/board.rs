@@ -245,9 +245,7 @@ impl Board {
                 None => super::lane::LaneKey::generate(name, &taken),
             };
             let key = unique_key(&key, contents)?;
-            contents
-                .lanes
-                .push(Lane::with_project(name, key, parent));
+            contents.lanes.push(Lane::with_project(name, key, parent));
             Ok((contents.known_lanes(), true))
         })
     }
@@ -436,9 +434,7 @@ impl Board {
             if contents.projects.iter().any(|p| p.name == name) {
                 return Err(DomainError::DuplicateProject(name.to_string()));
             }
-            contents
-                .projects
-                .push(super::lane::Project::new(name));
+            contents.projects.push(super::lane::Project::new(name));
             Ok((contents.projects_with_lanes(), true))
         })
     }
@@ -458,11 +454,7 @@ impl Board {
             return Err(DomainError::EmptyProjectName);
         }
         self.mutate(|contents| {
-            let Some(i) = contents
-                .projects
-                .iter()
-                .position(|p| p.name == from)
-            else {
+            let Some(i) = contents.projects.iter().position(|p| p.name == from) else {
                 return Err(DomainError::UnknownProjectName {
                     name: from.to_string(),
                     projects: contents.known_projects(),
@@ -496,11 +488,7 @@ impl Board {
             return Err(DomainError::EmptyProjectName);
         }
         self.mutate(|contents| {
-            let Some(i) = contents
-                .projects
-                .iter()
-                .position(|p| p.name == name)
-            else {
+            let Some(i) = contents.projects.iter().position(|p| p.name == name) else {
                 return Err(DomainError::UnknownProjectName {
                     name: name.to_string(),
                     projects: contents.known_projects(),

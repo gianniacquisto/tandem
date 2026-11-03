@@ -796,7 +796,9 @@ impl LaneAddParams {
             ),
             (
                 "project",
-                string("the parent project; omit to create or reuse the project named for the lane"),
+                string(
+                    "the parent project; omit to create or reuse the project named for the lane",
+                ),
             ),
         ])
     }

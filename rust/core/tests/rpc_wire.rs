@@ -957,10 +957,17 @@ fn project_messages_round_trip_like_the_lane_ones() {
 
     let listed = handle(&store, &frame(1, "project.list", json!({})));
     assert_eq!(listed["id"], 1);
-    assert_eq!(listed["result"]["projects"], json!([]), "an empty home lists no projects");
+    assert_eq!(
+        listed["result"]["projects"],
+        json!([]),
+        "an empty home lists no projects"
+    );
 
     let added = handle(&store, &frame(2, "project.add", json!({"name": "Alpha"})));
-    assert_eq!(added["result"]["projects"], json!([{"name": "Alpha", "lanes": []}]));
+    assert_eq!(
+        added["result"]["projects"],
+        json!([{"name": "Alpha", "lanes": []}])
+    );
 
     let renamed = handle(
         &store,
@@ -973,7 +980,11 @@ fn project_messages_round_trip_like_the_lane_ones() {
     );
 
     let deleted = handle(&store, &frame(4, "project.delete", json!({"name": "Beta"})));
-    assert_eq!(deleted["result"]["projects"], json!([]), "an empty project deletes");
+    assert_eq!(
+        deleted["result"]["projects"],
+        json!([]),
+        "an empty project deletes"
+    );
 
     // A lane auto-parents the project named for it, and a project rename moves
     // the lane with it while refs stay lane-keyed.
@@ -997,6 +1008,12 @@ fn project_messages_round_trip_like_the_lane_ones() {
     let refused = handle(&store, &frame(8, "project.delete", json!({"name": "Beta"})));
     assert_eq!(refused["error"]["code"], "domain");
     let message = refused["error"]["message"].as_str().unwrap_or("");
-    assert!(message.contains("Beta"), "the refusal names the project: {refused}");
-    assert!(message.contains("Cycle"), "the refusal names its lanes: {refused}");
+    assert!(
+        message.contains("Beta"),
+        "the refusal names the project: {refused}"
+    );
+    assert!(
+        message.contains("Cycle"),
+        "the refusal names its lanes: {refused}"
+    );
 }

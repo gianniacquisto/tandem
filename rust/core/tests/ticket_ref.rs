@@ -182,7 +182,9 @@ fn a_rename_keeps_the_key_and_every_ref_still_resolves() {
 
     board.rename_lane("Probe", "Probe Two", None, None).unwrap();
     assert_eq!(
-        board.rename_lane("Probe Two", "Probe Two", None, None).unwrap(),
+        board
+            .rename_lane("Probe Two", "Probe Two", None, None)
+            .unwrap(),
         ["Probe Two"]
     );
 

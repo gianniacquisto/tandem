@@ -58,7 +58,9 @@ fn lane_list_reports_a_lane_a_hand_edit_leaves_on_a_ticket() {
     // A rename is the only way a lane name changes in the port; a name a ticket
     // carries that the list has dropped is still drawn, because otherwise a row
     // could be hidden by deleting a name.
-    board.rename_lane("Tandem", "Tandem Two", None, None).unwrap();
+    board
+        .rename_lane("Tandem", "Tandem Two", None, None)
+        .unwrap();
     assert_eq!(board.lanes().unwrap(), ["Tandem Two"]);
     assert_eq!(
         board

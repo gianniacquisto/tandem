@@ -44,10 +44,7 @@ impl Contents {
                 name: lane.name.clone(),
                 key: lane.key.clone(),
                 last_number: lane.last_number,
-                project: lane
-                    .project
-                    .clone()
-                    .unwrap_or_else(|| lane.name.clone()),
+                project: lane.project.clone().unwrap_or_else(|| lane.name.clone()),
             })
             .collect();
         let projects: Vec<Project> = rows
