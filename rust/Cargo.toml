@@ -44,3 +44,7 @@ uuid = { version = "1.29", features = ["v4"] }
 # `rusqlite`'s transitive dependency. Unix only: Windows has no portable
 # equivalent, and the probe there assumes a present path is writable.
 libc = "0.2"
+# The harness loopback read is plain HTTP with no TLS and no async runtime:
+# `ureq` blocking over `http://127.0.0.1`, default features off so no TLS is
+# linked (TAN-276).
+ureq = { version = "3.5.1", default-features = false }

@@ -139,14 +139,18 @@ pub enum DomainError {
     /// `session end --usage-from-harness` named a record with no harness
     /// session: there is no foreign pointer to read usage through.
     NoHarnessSession { id: String },
-    /// `--usage-from-harness` on a record read from the event stream, with no
-    /// `--harness-events` path to read it from.
-    NoHarnessEventsPath,
     /// The harness database the run asked for is not a file.
     NoHarnessDatabase { path: String },
     /// The harness event stream the run asked for is not a file.
     NoHarnessEvents { path: String },
-    /// The harness database carries no row for the session id.
+    /// The harness loopback server the run asked for is not reachable: no
+    /// server at the URL, a timeout, a refused non-loopback host, or no
+    /// rendezvous file to read the URL from. `url` names what was tried.
+    NoHarnessServer { url: String },
+    /// The harness loopback server refused the password. `url` names the server;
+    /// the password itself is never in the message.
+    HarnessUnauthorized { url: String },
+    /// The harness carries no session for the id.
     UnknownHarnessSession { id: String },
     /// The bikeshed lock could not be acquired within its bounded retry window.
     BikeshedLocked,
@@ -361,9 +365,6 @@ impl DomainError {
                  nothing to read. End it with explicit usage flags, or start it again with \
                  --harness-session."
             ),
-            Self::NoHarnessEventsPath => "This record's usage came from the harness event \
-                 stream; pass --harness-events <path> to the stream it wrote."
-                .to_string(),
             Self::NoHarnessDatabase { path } => format!(
                 "No harness database at {path}. Check the path, or let the harness run once, \
                  and try again."
@@ -372,8 +373,14 @@ impl DomainError {
                 "No harness event stream at {path}. Check the path, or let the harness run \
                  once, and try again."
             ),
+            Self::NoHarnessServer { url } => format!(
+                "Cannot reach the harness at {url}. Check that the harness is running, or pass --harness-url <url> or set TANDEM_HARNESS_URL, and try again."
+            ),
+            Self::HarnessUnauthorized { url } => format!(
+                "The harness at {url} refused the password. Check TANDEM_HARNESS_PASSWORD or the rendezvous file it was read from, and try again."
+            ),
             Self::UnknownHarnessSession { id } => format!(
-                "No harness row for session \"{id}\". Check the session id, or end the record \
+                "No harness session for \"{id}\". Check the session id, or end the record \
                  without harness usage, and try again."
             ),
             Self::BikeshedLocked => {

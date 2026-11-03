@@ -19,6 +19,7 @@ export type Session = { id: string,
  */
 harnessSessionId: string | null, 
 /**
- * How the harness session's usage is read: `event-stream` or `database`.
+ * Which harness the pass ran in: `event-stream` or `database`, provenance
+ * for the rendezvous lookup, never a read-path switch.
  */
 harnessTransport: HarnessTransport | null, project: string, agent: string | null, brief: string, summary: string | null, status: SessionStatus, outcome: SessionOutcome | null, tickets: Array<string>, startedAt: string, endedAt: string | null, tokens: SessionTokens | null, cost: number | null, model: string | null, skills: { [key in string]: number } | null, };
