@@ -12,10 +12,13 @@ import {
   parseAuthList,
   parseLoginCode,
   parseLoginUrl,
+  parseServeHandshake,
   resolveHarnessBinary,
+  serveArgs,
   statusArgs,
   tandemHomeDir,
   type HarnessChild,
+  type HarnessRequest,
   type HarnessSpawn,
 } from '../src/main/harness'
 import { harnessPhase, harnessRows } from '../renderer/src/shell/harnessAuth'
@@ -44,6 +47,47 @@ const LOGIN_OUT = [
   'https://opencode.ai/console/device?user_code=FQCF-TLPL&client_id=opencode-cli',
   'Waiting for authorization...',
 ].join('\n')
+
+/** The served API's handshake, as `serve --stdio --port 0` prints it first. */
+const SERVE_HANDSHAKE = '{"url":"http://127.0.0.1:4096"}'
+
+/** One HTTP call the key sign-in made. */
+type RequestCall = {
+  url: string
+  method: string
+  headers: Record<string, string>
+  body?: string
+}
+
+/** The request seam the key sign-in drives: calls recorded, answers in order. */
+function fakeRequest(answers: Array<{ status: number; body: string }>) {
+  const calls: RequestCall[] = []
+  const request: HarnessRequest = (url, init) => {
+    calls.push({ url, method: init.method, headers: init.headers, body: init.body })
+    return Promise.resolve(answers.shift() ?? { status: 204, body: '' })
+  }
+  return { request, calls }
+}
+
+/** A controller over a fake spawn, with a request seam that answers nothing. */
+function fakeController(
+  driven: { emitAuthList: () => string; children: ReturnType<typeof fakeChild>[] },
+  answers: Array<{ status: number; body: string }> = [],
+) {
+  const { spawn, calls: spawnCalls } = fakeSpawn(driven)
+  const { request, calls: requestCalls } = fakeRequest(answers)
+  const root = mkdtempSync(join(tmpdir(), 'tandem-harness-'))
+  const controller = new HarnessController({
+    spawn,
+    openUrl: () => {},
+    tandemHome: root,
+    // The override pins the binary name, so the assertion holds on win32 too,
+    // where the resolver would otherwise answer `opencode.exe`.
+    env: { TANDEM_OPENCODE_BIN: 'opencode' },
+    request,
+  })
+  return { controller, spawnCalls, requestCalls, root }
+}
 
 function statusReply(overrides: Partial<HarnessStatusReply> = {}): HarnessStatusReply {
   return {
@@ -227,6 +271,15 @@ describe('the auth list read', () => {
   it('runs every read against the harness home, never the live service', () => {
     expect(statusArgs()).toEqual(['auth', 'list', '--format', 'json', '--standalone'])
     expect(loginArgs()).toEqual(['auth', 'login', 'opencode', '--method', 'device', '--standalone'])
+    expect(loginArgs('mistral')).toEqual([
+      'auth',
+      'login',
+      'mistral',
+      '--method',
+      'device',
+      '--standalone',
+    ])
+    expect(serveArgs()).toEqual(['serve', '--stdio', '--port', '0'])
     expect(logoutArgs('opencode', 'cred_1')).toEqual([
       'auth',
       'logout',
@@ -234,6 +287,12 @@ describe('the auth list read', () => {
       'cred_1',
       '--standalone',
     ])
+  })
+
+  it('reads the served loopback url from the handshake line, per ADR 0038', () => {
+    expect(parseServeHandshake(SERVE_HANDSHAKE)).toBe('http://127.0.0.1:4096')
+    expect(() => parseServeHandshake('not json')).toThrow()
+    expect(() => parseServeHandshake('{"port":4096}')).toThrow()
   })
 
   it('finds the device URL and the code in the login output', () => {
@@ -258,12 +317,14 @@ describe('the sign-in lifecycle', () => {
         openUrl: (url) => opened.push(url),
         tandemHome: root,
         env: { TANDEM_OPENCODE_BIN: 'opencode' },
+        request: () => Promise.resolve({ status: 204, body: '' }),
       })
 
       const started = controller.login()
       await new Promise((resolve) => setTimeout(resolve, 0))
       driven.children[0]?.emitStdout(LOGIN_OUT)
       const attempt = await started
+      if (!('url' in attempt)) throw new Error('the device flow answers a URL, not a receipt')
 
       expect(attempt.url).toContain('https://opencode.ai/console/device?')
       expect(attempt.code).toBe('FQCF-TLPL')
@@ -294,6 +355,7 @@ describe('the sign-in lifecycle', () => {
         openUrl: () => {},
         tandemHome: root,
         env: {},
+        request: () => Promise.resolve({ status: 204, body: '' }),
       })
 
       const started = controller.login()
@@ -323,6 +385,7 @@ describe('the sign-in lifecycle', () => {
         openUrl: () => {},
         tandemHome: root,
         env: {},
+        request: () => Promise.resolve({ status: 204, body: '' }),
       })
 
       const started = controller.login()
@@ -345,6 +408,7 @@ describe('the sign-in lifecycle', () => {
         openUrl: () => {},
         tandemHome: root,
         env: {},
+        request: () => Promise.resolve({ status: 204, body: '' }),
       })
 
       const receipt = await controller.logout('opencode')
@@ -373,6 +437,13 @@ describe('the sign-in phase', () => {
     expect(harnessPhase(statusReply({ failure: 'no such integration' }))).toBe('failure')
   })
 
+  it('is stored when any integration holds an account, not only the Console', () => {
+    const keyOnly = JSON.stringify([
+      { id: 'mistral', name: 'Mistral', connections: [{ id: 'cred_9', label: 'Mistral', method: 'key' }] },
+    ])
+    expect(harnessPhase(statusReply({ integrations: parseAuthList(keyOnly) }))).toBe('stored')
+  })
+
   it('draws one row per integration, stored or not', () => {
     const rows = harnessRows(statusReply({ integrations: parseAuthList(AUTH_LIST) }))
     expect(rows.map((row) => row.id)).toEqual(['opencode', 'openrouter'])
@@ -383,5 +454,74 @@ describe('the sign-in phase', () => {
       stored: true,
     })
     expect(harnessRows(statusReply())).toEqual([])
+  })
+})
+
+describe('the key sign-in over the served loopback API', () => {
+  it('spawns serve, warms the catalog, then posts the key to connect/key', async () => {
+    const driven = { emitAuthList: () => '[]', children: [] as ReturnType<typeof fakeChild>[] }
+    const { controller, spawnCalls, requestCalls, root } = fakeController(driven, [
+      { status: 200, body: '[]' },
+      { status: 204, body: '' },
+    ])
+    try {
+      const started = controller.login({ integration: 'mistral', key: 'sk-test-secret' })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(spawnCalls[0]).toMatchObject({ binary: 'opencode', args: serveArgs() })
+
+      driven.children[0]?.emitStdout(`${SERVE_HANDSHAKE}\n`)
+      const receipt = await started
+      expect(receipt).toEqual({ stored: 'mistral' })
+
+      expect(requestCalls.map((call) => `${call.method} ${call.url}`)).toEqual([
+        'GET http://127.0.0.1:4096/api/integration',
+        'POST http://127.0.0.1:4096/api/integration/mistral/connect/key',
+      ])
+      const post = requestCalls[1]
+      expect(post?.method).toBe('POST')
+      expect(JSON.parse(post?.body ?? '')).toEqual({ key: 'sk-test-secret' })
+      expect(post?.headers['Authorization']).toMatch(/^Basic /)
+      expect(driven.children[0]?.killed()).toBe(true)
+
+      const status = await controller.status()
+      expect(status.pending).toBeNull()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses a key the server did not store, naming the status and never the key', async () => {
+    const driven = { emitAuthList: () => '[]', children: [] as ReturnType<typeof fakeChild>[] }
+    const { controller, requestCalls, root } = fakeController(driven, [
+      { status: 200, body: '[]' },
+      { status: 404, body: 'Integration not found: mistral' },
+    ])
+    try {
+      const started = controller.login({ integration: 'mistral', key: 'sk-test-secret' })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      driven.children[0]?.emitStdout(`${SERVE_HANDSHAKE}\n`)
+      await expect(started).rejects.toThrow('404')
+      await started.catch((error: unknown) => {
+        expect(String(error)).not.toContain('sk-test-secret')
+      })
+      expect(requestCalls).toHaveLength(2)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('cancels a key sign-in before the handshake by killing the server child', async () => {
+    const driven = { emitAuthList: () => '[]', children: [] as ReturnType<typeof fakeChild>[] }
+    const { controller, root } = fakeController(driven)
+    try {
+      const started = controller.login({ integration: 'mistral', key: 'sk-test-secret' })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const cancelled = await controller.cancel()
+      expect(cancelled).toEqual({ cancelled: true })
+      expect(driven.children[0]?.killed()).toBe(true)
+      void started.catch(() => {})
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

@@ -649,6 +649,16 @@ fn the_harness_auth_row_reports_the_sign_in_state_without_failing() {
         "signed in as Personal (opencode, openrouter stored)"
     );
 
+    let mut key_only = facts();
+    key_only.harness_auth = HarnessAuth::Stored {
+        account: "Mistral".to_string(),
+        integrations: vec!["mistral".to_string()],
+    };
+    let key_report = report(&key_only);
+    let row = check(&key_report, "harness-auth");
+    assert!(row.ok);
+    assert_eq!(row.detail, "signed in as Mistral (mistral stored)");
+
     let mut unreadable = facts();
     unreadable.harness_auth = HarnessAuth::Unreadable {
         detail: "the harness store is not readable: file is not a database".to_string(),

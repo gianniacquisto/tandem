@@ -78,18 +78,21 @@ fn a_console_credential_in_the_harness_home_is_stored() {
 }
 
 #[test]
-fn other_integrations_alone_are_not_a_console_sign_in() {
+fn other_integrations_alone_are_a_sign_in() {
     let sandbox = Sandbox::new("harness-other");
     harness_database(
         &harness::database(&sandbox.home()),
         &[("openrouter", "OpenRouter")],
     );
     match harness::read(&sandbox.home()) {
-        HarnessAuth::Stored { .. } => {
-            panic!("a key for another provider is not the Console sign-in")
+        HarnessAuth::Stored {
+            account,
+            integrations,
+        } => {
+            assert_eq!(account, "OpenRouter");
+            assert_eq!(integrations, vec!["openrouter".to_string()]);
         }
-        HarnessAuth::NotStored => {}
-        other => panic!("expected not-stored, got {other:?}"),
+        other => panic!("a stored key for any provider is a sign-in, got {other:?}"),
     }
 }
 

@@ -78,8 +78,9 @@ describe('the Settings surface', () => {
       'setup.status',
     ])
     // Add, Save roster, one Remove per row (one site in source),
-    // Install/Repair, and the sign-in's three: sign in, cancel, sign out.
-    expect([...face.matchAll(/<button\b/g)]).toHaveLength(7)
+    // Install/Repair, and the sign-in's four: Console sign in, key sign in,
+    // cancel, sign out.
+    expect([...face.matchAll(/<button\b/g)]).toHaveLength(8)
   })
 
   it('shows a repair as what changed, not as a verdict', () => {

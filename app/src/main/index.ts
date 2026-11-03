@@ -4,7 +4,13 @@ import { spawn } from 'node:child_process'
 import { app, BrowserWindow, ipcMain, session, shell as electronShell } from 'electron'
 
 import { resolveBinary } from './binary'
-import { answerHarness, HarnessController, isHarnessCall, tandemHomeDir } from './harness'
+import {
+  answerHarness,
+  HarnessController,
+  isHarnessCall,
+  tandemHomeDir,
+  type HarnessRequest,
+} from './harness'
 import { RpcClient } from './rpcClient'
 import { contentSecurityPolicy } from '../shared/security'
 import { CALL_CHANNEL, CHANGED_CHANNEL, type BridgeCall, type Call } from '../shared/bridge'
@@ -65,6 +71,16 @@ function harnessController(): HarnessController {
       openUrl: (url) => {
         void electronShell.openExternal(url)
       },
+      // The loopback API seam (ADR 0038): the main process holds the url and
+      // the password, so the harness credential never enters the renderer.
+      request: (async (url: string, init: Parameters<HarnessRequest>[1]) => {
+        const response = await fetch(url, {
+          method: init.method,
+          headers: init.headers,
+          body: init.body,
+        })
+        return { status: response.status, body: await response.text() }
+      }) as HarnessRequest,
       tandemHome: tandemHomeDir({
         env: process.env,
         packaged: app.isPackaged,
