@@ -376,7 +376,11 @@ describe('the harness server', () => {
       const parsed = JSON.parse(text) as { url?: unknown; password?: unknown }
       expect(parsed.url).toBe(handle.url)
       expect(parsed.password).toBe(password)
-      expect(statSync(path).mode & 0o777).toBe(0o600)
+      // POSIX modes do not apply on Windows (chmod is best-effort there), so
+      // the 0600 pin holds where the platform reports them.
+      if (process.platform !== 'win32') {
+        expect(statSync(path).mode & 0o777).toBe(0o600)
+      }
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
