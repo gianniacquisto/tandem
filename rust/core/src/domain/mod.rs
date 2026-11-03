@@ -38,6 +38,7 @@ pub mod layout;
 pub mod markdown;
 pub mod operation;
 pub mod ordering;
+pub mod preflight;
 pub mod query;
 pub mod runner;
 pub mod session;
