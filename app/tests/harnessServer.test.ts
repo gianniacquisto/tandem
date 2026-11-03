@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -357,6 +357,56 @@ describe('the harness server', () => {
       const { server } = makeServer(root, driven, { timeoutMs: 5 })
       await expect(server.start()).rejects.toThrow('no handshake')
       expect(driven.children[0]?.killed()).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('writes the rendezvous file with the handshake url and password at mode 0600', async () => {
+    const root = scratchHome()
+    try {
+      const driven: Driven = { version: '2.2.5', children: [] }
+      const { calls, handle } = await startAndHandshake(root, driven)
+      const serve = calls.find((call) => call.args[0] === 'serve')
+      const password = serve?.env['OPENCODE_SERVER_PASSWORD'] ?? ''
+      expect(password).toMatch(/^[0-9a-f]{48}$/)
+
+      const path = join(root, 'harness', 'state', 'opencode', 'service.json')
+      const text = readFileSync(path, 'utf8')
+      const parsed = JSON.parse(text) as { url?: unknown; password?: unknown }
+      expect(parsed.url).toBe(handle.url)
+      expect(parsed.password).toBe(password)
+      // POSIX modes do not apply on Windows (chmod is best-effort there), so
+      // the 0600 pin holds where the platform reports them.
+      if (process.platform !== 'win32') {
+        expect(statSync(path).mode & 0o777).toBe(0o600)
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('never reports the password in a handshake failure', async () => {
+    const root = scratchHome()
+    try {
+      const driven: Driven = { version: '2.2.5', children: [] }
+      const { server, calls } = makeServer(root, driven)
+      const started = server.start()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      driven.children[0]?.emitStdout('{"url":"http://0.0.0.0:4096"}\n')
+      await expect(started).rejects.toThrow('no handshake')
+      const password = calls.find((call) => call.args[0] === 'serve')?.env[
+        'OPENCODE_SERVER_PASSWORD'
+      ] as string
+      expect(password).toMatch(/^[0-9a-f]{48}$/)
+      await expect(started).rejects.toThrow(/no handshake/)
+      try {
+        await started
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        expect(message).not.toContain(password)
+        expect(message).not.toContain('OPENCODE_SERVER_PASSWORD')
+      }
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
