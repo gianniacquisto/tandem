@@ -76,17 +76,46 @@ export function harnessEnv(tandemHome: string): Record<string, string> {
 
 /**
  * The opencode binary: an override for a checkout, then the installs a
- * packaged app cannot see on its PATH (TAN-270). A packaged Electron app
- * inherits the launchd PATH, not the shell's, so bare `opencode` resolves
- * nowhere while the binary sits in the install locations below. First hit
- * wins; the PATH is the last resort, never the first guess.
+ * packaged app cannot see on its PATH (TAN-270, TAN-273). A packaged app
+ * inherits the launchd PATH on macOS and a bare PATH on Windows, not the
+ * user's shell PATH, so a bare name resolves nowhere while the binary sits in
+ * the install locations below. First hit wins; the PATH is the last resort,
+ * never the first guess. `platform` is the `BinarySource.platform` seam: the
+ * suite drives it, and the shell leaves the host default.
  */
 export function resolveHarnessBinary(
   env: Record<string, string | undefined>,
   exists: (path: string) => boolean = existsSync,
+  platform: NodeJS.Platform = process.platform,
 ): string {
   const named = env['TANDEM_OPENCODE_BIN']
   if (named !== undefined && named.trim() !== '') return named
+  if (platform === 'win32') {
+    // The profile install mirrors the unix home install; Programs is the
+    // per-user installer default; the npm entry is the real binary inside the
+    // global opencode-ai module (spawnable as-is, unlike the .cmd shim, which
+    // would need a shell). Every candidate names its `.exe`, and the fallback
+    // does too, so the spawn never depends on PATHEXT.
+    const profile = [env['USERPROFILE'], env['HOME']].find(
+      (value) => value !== undefined && value.trim() !== '',
+    )
+    const localApp = env['LOCALAPPDATA']
+    const roaming = env['APPDATA']
+    const candidates: string[] = []
+    if (profile !== undefined) candidates.push(join(profile, '.opencode', 'bin', 'opencode.exe'))
+    if (localApp !== undefined && localApp.trim() !== '') {
+      candidates.push(join(localApp, 'Programs', 'opencode', 'opencode.exe'))
+    }
+    if (roaming !== undefined && roaming.trim() !== '') {
+      candidates.push(
+        join(roaming, 'npm', 'node_modules', 'opencode-ai', 'bin', 'opencode.exe'),
+      )
+    }
+    for (const candidate of candidates) {
+      if (exists(candidate)) return candidate
+    }
+    return 'opencode.exe'
+  }
   const home = env['HOME']
   const candidates =
     home === undefined || home.trim() === '' ? [] : [join(home, '.opencode', 'bin', 'opencode')]
