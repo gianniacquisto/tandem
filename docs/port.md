@@ -37,6 +37,7 @@ The app holds no domain logic. The binary the agents call and the core the app t
 | message types | `ts-rs` | generated from the Rust structs, so a shape cannot drift without a compile error on both sides |
 | UI screenshots | Playwright against the real app | a spec in CI, replacing the lldb shot script; answers `TAN-210`, unblocks `TAN-217` |
 | harness | `opencode` v2.2.5, pinned by digest, spawned as a child | no host install, no terminal in onboarding ([ADR 0038](adr/0038-the-harness-home.md)) |
+| harness read | `ureq`, blocking, default features off | plain HTTP over loopback needs no TLS and no async runtime (TAN-276) |
 
 No ORM and no async runtime: the store is one writer on one file.
 
