@@ -675,3 +675,60 @@ fn the_retro_files_into_the_projects_lane() {
         "section 6 delegates the lane rule to the retro skill"
     );
 }
+
+/// Sprint runner part 2 (TAN-281): the dispatch builds no shell string.
+///
+/// The pass-execution effect speaks HTTP to the harness loopback API with Basic
+/// auth (ADR 0038) over the transport seam (ADR 0037). A shell-out to
+/// `opencode` would bypass the version pin, the harness-home isolation and the
+/// fixed result shape, and it re-lays the surface TAN-274 removes: the shell
+/// stays out of the path, so the executor module holds no child-process import
+/// and no command-string call.
+#[test]
+fn dispatch_builds_no_shell_string() {
+    let executor = file("app/src/main/passExecutor.ts");
+    assert!(
+        !executor.trim().is_empty(),
+        "the executor module is missing: main owns the pass-execution effect (ADR 0038)"
+    );
+    for marker in [
+        "child_process",
+        "node:child_process",
+        "spawn(",
+        "spawnSync(",
+        "execFile",
+        "execSync(",
+        "exec(",
+        "shell: true",
+        "windowsHide",
+        "/bin/sh",
+        "cmd.exe",
+        "opencode serve",
+        "opencode auth",
+        "auth list",
+        "--standalone",
+        "--stdio",
+        "--port 0",
+    ] {
+        assert!(
+            !executor.contains(marker),
+            "the executor builds a shell string around `{marker}`: dispatch speaks HTTP, never a shell (TAN-274)"
+        );
+    }
+    assert!(
+        executor.contains("fetch"),
+        "the executor speaks HTTP: the transport is a seam (ADR 0037)"
+    );
+    assert!(
+        executor.contains("/api/sprint/pass"),
+        "the executor posts the structured brief to the harness pass endpoint"
+    );
+    assert!(
+        executor.contains("Authorization"),
+        "the executor sends the Basic credential main owns (ADR 0038)"
+    );
+    assert!(
+        executor.contains("ADR 0037") && executor.contains("ADR 0038"),
+        "the executor cites its two ADRs: the seam (0037) and the ownership (0038)"
+    );
+}
