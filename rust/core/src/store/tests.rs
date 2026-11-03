@@ -1151,13 +1151,13 @@ mod schema {
             .unwrap()
             .map(|row| row.unwrap())
             .collect();
-        projects.sort_by(|left, right| left.1.cmp(&right.1));
+        projects.sort_by_key(|left| left.1);
         assert_eq!(
             projects,
             vec![("Tandem".to_string(), 0), ("Port".to_string(), 1),],
             "one project per lane, order follows lane order"
         );
-        let mut lanes: Vec<(String, String, i64, i64)> = connection
+        let lanes: Vec<(String, String, i64, i64)> = connection
             .prepare("SELECT name, key, last_number, position FROM lanes ORDER BY position, rowid")
             .unwrap()
             .query_map([], |row| {
@@ -1196,7 +1196,7 @@ mod schema {
             ],
             "each lane's parent is the project named for it"
         );
-        let mut tickets: Vec<(String, Option<String>, Option<i64>, i64)> = connection
+        let tickets: Vec<(String, Option<String>, Option<i64>, i64)> = connection
             .prepare("SELECT id, lane, number, position FROM tickets ORDER BY position, rowid")
             .unwrap()
             .query_map([], |row| {
