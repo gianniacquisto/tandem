@@ -100,7 +100,7 @@ fn promotion_writes_the_note_links_the_ticket_and_changes_nothing_else() {
     let sandbox = Sandbox::new("promote");
     let board = sandbox.board();
     let notes = MemNotes::default();
-    board.add_lane("Cycle", None).unwrap();
+    board.add_lane("Cycle", None, None).unwrap();
     let added = board
         .add(
             "Ship the bikeshed",

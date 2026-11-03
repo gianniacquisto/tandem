@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "project",
+    "add",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli project add \u2014 a new, empty project.",
+    "",
+    "Usage:",
+    "  tandem-cli project add --name <name>"
+  ],
+  "stdoutKind": "text"
+}

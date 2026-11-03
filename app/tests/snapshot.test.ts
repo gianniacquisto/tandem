@@ -43,6 +43,7 @@ function ready(): SnapshotState {
     type: 'loaded',
     reply: { revision: 12, tickets: [ticket] },
     lanes: ['Port'],
+    projects: [{ name: 'Port', lanes: ['Port'] }],
   })
 }
 
@@ -53,6 +54,7 @@ describe('the shell snapshot', () => {
       revision: null,
       tickets: [],
       lanes: [],
+      projects: [],
       usage: null,
       roster: [],
       activeProject: null,
@@ -92,6 +94,7 @@ describe('the shell snapshot', () => {
       type: 'loaded',
       reply: { revision: 13, tickets: [ticket] },
       lanes: ['Port'],
+      projects: [{ name: 'Port', lanes: ['Port'] }],
     })
     expect(caughtUp.stale).toBe(false)
     expect(caughtUp.revision).toBe(13)
@@ -150,6 +153,7 @@ describe('the shell snapshot', () => {
       type: 'loaded',
       reply: { revision: 13, tickets: [ticket] },
       lanes: ['Port'],
+      projects: [{ name: 'Port', lanes: ['Port'] }],
     })
     expect(reloaded.notice).toBe('the board moved')
 

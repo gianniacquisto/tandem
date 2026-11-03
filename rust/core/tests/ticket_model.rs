@@ -24,7 +24,7 @@ fn temp_board() -> (Sandbox, Board) {
 #[test]
 fn a_ticket_round_trips_status_archived_description_assignee_and_lane() {
     let (sandbox, board) = temp_board();
-    board.add_lane("Core", None).unwrap();
+    board.add_lane("Core", None, None).unwrap();
     let added = board
         .add(
             "Ship the model",
@@ -227,7 +227,7 @@ fn add_stamps_its_origin_defaulting_to_human_with_the_assignees_spelling_rules()
 #[test]
 fn origin_is_written_once_at_add_and_set_move_place_reopen_leave_it() {
     let (_sandbox, board) = temp_board();
-    board.add_lane("Core", None).unwrap();
+    board.add_lane("Core", None, None).unwrap();
     let added = board
         .add(
             "Task",
@@ -326,7 +326,7 @@ fn reopening_after_done_lands_in_backlog() {
 #[test]
 fn set_changes_only_the_fields_it_names() {
     let (_sandbox, board) = temp_board();
-    board.add_lane("Core", None).unwrap();
+    board.add_lane("Core", None, None).unwrap();
     let added = board
         .add(
             "Title",

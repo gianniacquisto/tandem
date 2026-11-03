@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "project",
+    "rename",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli project rename \u2014 a project's name, its lanes moving with it.",
+    "",
+    "Usage:",
+    "  tandem-cli project rename --from <name> --to <name>",
+    "",
+    "Lane names, keys, numbers and refs are unchanged; only the parent moves."
+  ],
+  "stdoutKind": "text"
+}

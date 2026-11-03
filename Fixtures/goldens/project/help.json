@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "project",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli project \u2014 the project lifecycle: a lane's parent.",
+    "",
+    "Usage:",
+    "  tandem-cli project list",
+    "  tandem-cli project add --name <name>",
+    "  tandem-cli project rename --from <name> --to <name>",
+    "  tandem-cli project delete --name <name>"
+  ],
+  "stdoutKind": "text"
+}

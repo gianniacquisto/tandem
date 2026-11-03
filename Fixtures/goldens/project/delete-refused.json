@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "project",
+    "delete",
+    "--name",
+    "Cycle"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Project \"Cycle\" still holds lanes: Cycle. Re-parent them first, then delete."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

@@ -68,8 +68,12 @@ _Avoid_: closed, deleted, cleared, hidden
 A ticket waiting on another ticket: a `ticket_dependencies` edge from the dependent to its blocker, derived onto both faces (`blockedBy` on the dependent, `blocks` on the blocker), so the board can order, skip and draw it (ADR 0035). The state is derived, never stored: a block lifts the moment its blocker reaches `done`, with no write to the dependent. Why it waits is the body's `## Blocked on` section, read not copied; a wait that is not a ticket stays prose, with the ticket parked `on-hold`.
 _Avoid_: blocked on (as a field), dependency column, gated (that is the gate's word), waiting (as a state)
 
+**Project**:
+A lane's parent: the store's `projects` table, one row per project with its render order. A project holds several lanes, and every lane belongs to exactly one project; a ticket's project is derived via its lane, never stored. The default area has no project: cross-project capture, first on the board (ADR 0039).
+_Avoid_: epic, portfolio, workspace
+
 **Cycle lane**:
-The named area a ticket belongs to: the board's row and the list's grouping. Every ticket sits in one lane, or in the unnamed default area, which stays first.
+The named area a ticket belongs to: the board's row and the list's grouping. Every ticket sits in one lane, or in the unnamed default area, which stays first. Every lane belongs to exactly one parent project (ADR 0039).
 _Avoid_: section, swimlane, epic, list (Trello's word)
 
 **Origin**:

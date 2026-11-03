@@ -3,7 +3,7 @@
 //! The brief's contract, three assertions plus the exclusion pin:
 //!
 //! - every covered [`Method`](tandem_core::wire::rpc::Method) has a tool;
-//! - every tool names a covered method, and the count is exactly 29;
+//! - every tool names a covered method, and the count is exactly 33;
 //! - every tool's schema derives from its params struct: the schema's
 //!   property set is the struct's serialized field set, and `required` is
 //!   empty, because every wire param is optional at parse (an absent field is
@@ -22,9 +22,10 @@ use serde_json::Value;
 use tandem_core::wire::rpc::METHODS;
 
 /// The wire methods the MCP door covers: the 17 ticket, comment and lane
-/// verbs on the wire today, the 5 session verbs, the 6 sprint verbs (three of
-/// which already rode the wire for the app) and the capture verb.
-const COVERED: [&str; 29] = [
+/// verbs on the wire today, the 4 project verbs, the 5 session verbs, the 6
+/// sprint verbs (three of which already rode the wire for the app) and the
+/// capture verb.
+const COVERED: [&str; 33] = [
     "ticket.list",
     "ticket.show",
     "ticket.add",
@@ -42,6 +43,10 @@ const COVERED: [&str; 29] = [
     "lane.add",
     "lane.rename",
     "lane.delete",
+    "project.list",
+    "project.add",
+    "project.rename",
+    "project.delete",
     "session.start",
     "session.link",
     "session.end",
@@ -103,7 +108,7 @@ fn every_covered_method_has_a_tool_with_its_name() {
 }
 
 #[test]
-fn every_tool_has_a_covered_method_and_the_count_is_29() {
+fn every_tool_has_a_covered_method_and_the_count_is_pinned() {
     let tools = tandem_core::mcp::tools();
     assert_eq!(
         tools.len(),

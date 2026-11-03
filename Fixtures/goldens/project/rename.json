@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "project",
+    "rename",
+    "--from",
+    "Alpha",
+    "--to",
+    "Beta"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "projects": [
+      {
+        "name": "Beta",
+        "lanes": []
+      }
+    ]
+  },
+  "stdoutKind": "json"
+}
