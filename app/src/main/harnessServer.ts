@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { ensureHarnessHome, harnessEnv, type HarnessChild } from './harness'
+import { ensureHarnessHome, harnessEnv, resolveHarnessBinary, type HarnessChild } from './harness'
 
 /**
  * The harness server's main-process half (ADR 0038, PRT-1): the long-lived
@@ -41,12 +41,14 @@ export type HarnessBinarySource = {
 /**
  * Where the shell finds the harness binary the launcher spawns (ADR 0038):
  * `TANDEM_OPENCODE_BIN` wins; a packaged app reads the copy bundled at
- * `<resourcesPath>/harness/opencode` when the bundle carries one, and PATH
- * when it does not, because only the Linux bundle embeds the harness today
- * (the darwin bundle does not yet, so its packaged apps resolve like before
- * this launcher existed); development reads the staged copy `harness:stage`
- * wrote at `build/harness/opencode`, falling back to PATH when nothing was
- * staged.
+ * `<resourcesPath>/harness/opencode` when the bundle carries one, and
+ * development reads the staged copy `harness:stage` wrote at
+ * `build/harness/opencode`. When neither is there, the resolution is the
+ * sign-in controller's own (`resolveHarnessBinary`, TAN-270): the install
+ * locations first, because a GUI app's PATH is the launchd PATH and a bare
+ * `opencode` fails there, and the PATH name last. Only the Linux bundle
+ * embeds the harness today, so a packaged darwin app resolves exactly like
+ * the sign-in face does.
  */
 export function resolveServerBinary(source: HarnessBinarySource): string {
   const named = source.env['TANDEM_OPENCODE_BIN']
@@ -55,10 +57,12 @@ export function resolveServerBinary(source: HarnessBinarySource): string {
   const exists = source.exists ?? existsSync
   if (source.packaged) {
     const bundled = join(source.resourcesPath, 'harness', name)
-    return exists(bundled) ? bundled : 'opencode'
+    if (exists(bundled)) return bundled
+    return resolveHarnessBinary(source.env, exists)
   }
   const staged = join(source.appPath, 'build', 'harness', name)
-  return exists(staged) ? staged : 'opencode'
+  if (exists(staged)) return staged
+  return resolveHarnessBinary(source.env, exists)
 }
 
 /** The serve invocation: stdin is the lifetime handle, port 0 leaves the port to the handshake. */

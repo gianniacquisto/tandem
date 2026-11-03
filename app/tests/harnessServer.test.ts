@@ -137,17 +137,28 @@ describe('the harness binary lookup', () => {
     ).toBe('opencode')
   })
 
-  it('falls back to PATH when the packaged bundle carries no harness (darwin today)', () => {
+  it('falls back to the sign-in resolution when the packaged bundle carries no harness (darwin today)', () => {
     // Only the Linux bundle embeds the harness (electron-builder.yml stages it
-    // under `linux:`), so a packaged darwin app must resolve like the days
-    // before the launcher: PATH, never a bundled path that does not exist.
+    // under `linux:`), so a packaged darwin app resolves like the sign-in face:
+    // TAN-270's install locations, then PATH, never a bundled path that does
+    // not exist. A bare PATH name would defeat that resolution where it was
+    // hardest, because a GUI app's PATH is the launchd PATH.
     const source = { packaged: true, platform: 'darwin' as const, appPath: '/x', resourcesPath: '/r' }
     expect(
       resolveServerBinary({ ...source, env: {}, exists: () => true }),
     ).toBe(join('/r', 'harness', 'opencode'))
     expect(resolveServerBinary({ ...source, env: {}, exists: () => false })).toBe('opencode')
+    // The fallback is the controller's own resolution (TAN-270): the install
+    // locations are tried before the PATH name.
+    expect(
+      resolveServerBinary({
+        ...source,
+        env: {},
+        exists: (path) => path === '/opt/homebrew/bin/opencode',
+      }),
+    ).toBe('/opt/homebrew/bin/opencode')
     // The same fallback holds for a Linux bundle that somehow dropped the
-    // binary: PATH, the behaviour the sign-in controller had all along.
+    // binary.
     const linux = { ...source, platform: 'linux' as const }
     expect(resolveServerBinary({ ...linux, env: {}, exists: () => false })).toBe('opencode')
   })

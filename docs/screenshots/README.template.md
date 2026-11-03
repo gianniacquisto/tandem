@@ -18,7 +18,7 @@ writes one PNG per scene into this folder, and rewrites the table below from
     npm ci
     npm run binary
     TANDEM_SHOTS_HOME=../Fixtures/port/Home npm run shots
-    TANDEM_SHOTS_HOME=../Fixtures/port/Board npx playwright test tests/shots/tickets.shots.ts
+    TANDEM_SHOTS_HOME=../Fixtures/port/Board npx playwright test tests/shots/tickets.shots.ts tests/shots/focus.shots.ts
 
 `TANDEM_SHOTS_HOME` is required, and it must resolve under the repository's
 `Fixtures/`: a run that names no home is refused, and so is `~/.tandem` or any
@@ -28,8 +28,37 @@ home, so no run writes into the fixture.
 The port has two committed homes. `Fixtures/port/Home` is the contract home: the
 four session records and two board tickets the shell, Usage and Settings scenes
 read. `Fixtures/port/Board` is the 78-ticket board home, and the Tickets scenes
-are shot on it. CI runs the first command above; the Tickets pictures in this
-folder are the second.
+are shot on it. CI runs both commands above in order; the Tickets pictures in
+this folder are the second.
+
+## The agent loop
+
+A session iterating on a face looks without dirtying the committed pictures:
+set `TANDEM_SHOTS_OUT` to a scratch directory and run one spec. The PNG lands
+under the named directory, the committed folder is untouched, and the catalogue
+is not rewritten:
+
+    cd app
+    TANDEM_SHOTS_HOME=../Fixtures/port/Home TANDEM_SHOTS_OUT=/tmp/shots-look npx playwright test tests/shots/shell.shots.ts
+
+Run a single spec file while iterating; run both home commands to regenerate
+every committed picture before opening the PR:
+
+    TANDEM_SHOTS_HOME=../Fixtures/port/Home npm run shots
+    TANDEM_SHOTS_HOME=../Fixtures/port/Board npx playwright test tests/shots/tickets.shots.ts tests/shots/focus.shots.ts
+
+CI runs both commands in this order on the Linux runner under a virtual display
+(`.github/workflows/app.yml`), so a deliberately broken selector is a red job
+rather than a human reading a diff.
+
+Three traps, and what the harness does about each. Paint: the clock is pinned
+to `2026-10-30T12:00:00Z` with `TZ` at UTC, every scene asserts its face before
+it captures, and no step sleeps for a paint. Focus: one worker, one app per
+test, and the app is closed after every test, so a second window never steals
+the shot. Seed: the named home is copied to the fixed scratch seed
+(`/tmp/tandem-shots/Home`) before every test and the app opens the copy, so a
+spec that writes cannot change the next spec's picture and no run writes into
+the committed fixture.
 
 The seed is the named fixture home plus a fixed clock: the page's `Date` is
 pinned to `2026-10-30T12:00:00Z` before the first application script runs, and
@@ -49,9 +78,9 @@ save, the CLI as a second writer) cannot change the next spec's picture or its
 assertions. A failing spec fails the run, and the catalogue is rewritten only
 when every scene's picture exists, so a picture and its row cannot drift.
 
-CI runs the same command on the Linux runner under a virtual display
-(`.github/workflows/app.yml`), so a deliberately broken selector is a red job
-rather than a human reading a diff.
+CI runs both home commands on the Linux runner under a virtual display
+(`.github/workflows/app.yml`, the agent loop above), so a deliberately broken
+selector is a red job rather than a human reading a diff.
 
 The suite asserts a face, not only its contents: every photographed face checks
 one computed style against the token it reads from

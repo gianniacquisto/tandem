@@ -7,6 +7,64 @@ description: "Read and write the shared Tandem ticket list, manage its cycle lan
 
 `tandem-cli` is Tandem's agent-facing interface on this Mac — the binary the app bundles (`/Applications/Tandem.app/Contents/MacOS/tandem-cli`, stable across upgrades), so an agent reads and writes the same list and notes a human uses in the app. `tandem-cli --help` prints the syntax and exits `0`.
 
+## MCP tools
+
+This host speaks to Tandem through tools, not the shell: `tandem-cli mcp` serves the agent face as an MCP server over stdio, and the tools below are its 29 verbs, one per CLI verb, typed end to end. A tool call runs the CLI verb's own domain call, so the two doors cannot disagree. The CLI stays documented below as the fallback and the human's door; where the two spellings differ, the tool's description says how.
+
+To serve it, the host spawns the bundled binary at session start:
+
+```json
+"mcp": {
+  "tandem": {
+    "type": "local",
+    "command": ["/Applications/Tandem.app/Contents/MacOS/tandem-cli", "mcp"]
+  }
+}
+```
+
+The server inherits the host's environment: the Tandem home resolves the way `rpc` does (`TANDEM_HOME`, else the default), and the actor is the pass's own (`TANDEM_AGENT`, with `self` expansion where the verb has it). No other configuration is needed.
+
+| tool | the CLI verb it runs |
+| --- | --- |
+| `ticket_list` | `ticket list` |
+| `ticket_show` | `ticket show` |
+| `ticket_add` | `ticket add` |
+| `ticket_file` | `ticket file` |
+| `ticket_set` | `ticket set` |
+| `ticket_move` | `ticket move` |
+| `ticket_block` | `ticket block` |
+| `ticket_unblock` | `ticket unblock` |
+| `ticket_complete` | `ticket complete` |
+| `ticket_answer` | `ticket answer` |
+| `ticket_archive` | `ticket archive` |
+| `ticket_comment_add` | `ticket comment add` |
+| `ticket_comment_list` | `ticket comment list` |
+| `lane_list` | `lane list` |
+| `lane_add` | `lane add` |
+| `lane_rename` | `lane rename` |
+| `lane_delete` | `lane delete` |
+| `session_start` | `session start` |
+| `session_link` | `session link` |
+| `session_end` | `session end` |
+| `session_list` | `session list` |
+| `session_show` | `session show` |
+| `sprint_open` | `sprint open` |
+| `sprint_ticket` | `sprint ticket` |
+| `sprint_run` | `sprint run` |
+| `sprint_close` | `sprint close` |
+| `sprint_list` | `sprint list` |
+| `sprint_show` | `sprint show` |
+| `note_capture` | `note capture` |
+
+Four things the tools spell differently from the flags:
+
+- **Bodies ride JSON strings.** Every stdin body on the CLI (`--description -`, `--body -`, `--brief -`, `--summary -`, capture bodies, sprint notes) is a JSON string on the tool. An empty one is refused the same way an empty pipe is.
+- **`session_end` reads the harness by default.** The tool stamps the harness usage without being asked; a harness with no row for the record stamps without usage and says so in the answer's note, never failing. Pass `usageFromHarness: false` with explicit usage flags to stamp by hand.
+- **A stamped `session_end` posts the usage comment** on every ticket the session carried, signed by the record's agent, exactly as the CLI does.
+- **A domain refusal is a tool result with `isError`**, in the CLI's words (an unknown id carries the open list the same way stderr does). Only a call the door cannot route is a protocol error.
+
+`setup install`, the curated note writes and rename, the vault's link-graph read and the app's reads stay off the tools: host mutation is a human CLI act, agents edit curated notes as files, and the app's faces draw what agents do not.
+
 ## The store
 
 `~/.tandem/tandem.db`, the human's real list — one SQLite database holding the tickets and lanes, the comment logs, the session and sprint records and the settings (ADR 0031). A from-source build (`swift run tandem-cli`) writes `~/.tandem-dev/` instead, so development can never reach the real list; notes live beside it (`~/.tandem/bikeshed/`, `~/.tandem-dev/bikeshed/` from source). Every changed write keeps one previous complete copy beside it — `tandem.db.bak`, taken through SQLite's own backup API — and recovery is the backup and two commands, the journal files first: `rm -f ~/.tandem/tandem.db-wal ~/.tandem/tandem.db-shm ~/.tandem/tandem.db` then `mv ~/.tandem/tandem.db.bak ~/.tandem/tandem.db`. A store from before v0.27.0 is a JSON file: it is read as the fallback and imported once on the domain's first write, and after that a copy put back beside the database is **ignored** — the backup is the recovery, not the file.
@@ -23,7 +81,7 @@ Ten verbs under `ticket`: `list`, `show`, `add`, `set`, `move`, `block`, `unbloc
 | `title` | one line, trimmed |
 | `status` | `backlog` (default), `on-hold`, `ready`, `in-progress`, `in-review`, `done` |
 | `archived` | true when set aside — out of the default views, still in the store |
-| `description` | markdown body, or null; write from stdin with `ticket add --description -` or `ticket set --description -`, read it back whole with `ticket show --id` |
+| `description` | markdown body, or null; write from stdin with `ticket add --description -`, replace with `ticket set --description -`, append with `ticket set --append-description -`, read it back whole with `ticket show --id` |
 | `assignee` | `human`, an agent's name, or null for unowned |
 | `origin` | who filed it — written at add, never changed |
 | `lane` | the **cycle lane**, or null for the default area |
@@ -67,9 +125,9 @@ One ticket, **whole** — the only read that carries the description, and the on
 
 Title required, trimmed, empty rejected; duplicates allowed. A title alone lands `backlog`, unowned, on top of the default area. `--description -` reads the body from stdin, so a body'd ticket is **one write**, not an add-then-set round trip; naming the flag means the body must carry text (`""` and an empty pipe are both exit `1`, `Description body is empty…`), and omitting it files a ticket with no body. `--assignee self` claims it — `add` never assigns implicitly, because agents routinely file tickets *for* the human (`--assignee human`). A lane must already exist. `--origin` stamps who filed it, never changed after: pass `--origin self` when you file — an omitted flag means `human`, the app's own stamp, and your proposal filed under the human's name is the exact mix-up the field ends. When the host exports no `TANDEM_AGENT`, `self` has nothing to resolve to and the add fails: pass your own agent name instead, e.g. `--origin general`.
 
-### `ticket set --id <id> [--title …] [--status …] [--assignee …] [--description …]`
+### `ticket set --id <id> [--title …] [--status …] [--assignee …] [--description …] [--append-description …]`
 
-Change the fields you name in **one write**; everything unnamed is left alone. `--description -` reads the body from stdin, which is how multi-line markdown lands intact. `--assignee ""` clears the owner, `--description ""` clears the body, `--assignee human` hands the ticket to the human. Moving to `done` stamps `completedAt`; moving out clears it. An empty `--title` is rejected, and an empty or whitespace-only `--description -` body is rejected too — exit `1`, `Description body is empty…`, the description left as it was: an empty pipe is a failed write, not a clear.
+Change the fields you name in **one write**; everything unnamed is left alone. `--description -` reads the body from stdin, which is how multi-line markdown lands intact, and it **replaces** the stored body. `--append-description -` appends instead: the new text after a blank line in the same write, or the bare text when the body is empty, so a delta never needs the whole body re-sent. `--assignee ""` clears the owner, `--description ""` clears the body, `--assignee human` hands the ticket to the human. Moving to `done` stamps `completedAt`; moving out clears it. An empty `--title` is rejected, and an empty or whitespace-only `--description -` or `--append-description` body is rejected too: exit `1`, `Description body is empty…`, the description left as it was. An empty pipe is a failed write, not a clear, and naming `--description` with `--append-description` is refused the same way.
 
 ### `ticket move --id <id> [--lane <name>] [--index <number>]`
 
@@ -128,7 +186,7 @@ A session is a record, not a ticket (ADR 0027, amended 2026-11-01 by PRT-29): on
 | --- | --- |
 | `session start [--project <name>] [--agent <name>] [--session <id>] [--harness-session <id>] [--harness-transport <value>] [--brief <string\|->]` | the session record |
 | `session link --ticket <id> [--session <id>]` | the session record |
-| `session end [--session <id>] [--outcome <value>] [--summary <string\|->] [--usage-from-harness] [--harness-events <path>] [--tokens-input <n>] [--tokens-output <n>] [--tokens-reasoning <n>] [--tokens-cache-read <n>] [--tokens-cache-write <n>] [--cost <dollars>] [--model <name>]` | the session record |
+| `session end [--session <id>] [--outcome <value>] [--summary <string\|->] [--usage-from-harness] [--harness-url <url>] [--tokens-input <n>] [--tokens-output <n>] [--tokens-reasoning <n>] [--tokens-cache-read <n>] [--tokens-cache-write <n>] [--cost <dollars>] [--model <name>]` | the session record |
 | `session list [--project <name>] [--status <value>]` | `{"sessions": [...]}` |
 | `session show [--session <id>]` | the session record |
 
@@ -140,7 +198,7 @@ A session is a record, not a ticket (ADR 0027, amended 2026-11-01 by PRT-29): on
 - **The note link is derived** — `note capture --session <id>` files the capture under `projects/<project>/.raw/<session>/`, and `show` lists those paths as `notes`. There is no linking verb for notes, and `list` rows omit the field.
 - **`--brief` and `--summary` take stdin** like `--description`: `-` reads stdin, and an empty body is a domain failure — omit the flag to leave the field unset. `--brief` takes the literal text or `-`, never a file path (a path is refused: pipe the file with `--brief -`). An unknown `--outcome` or `--status` is a domain failure.
 - **Re-`start` on a recorded id** returns the record unchanged with a `note` — nothing is overwritten.
-- **The usage is reported at `end`** — the seven optional flags (`--tokens-input`, `--tokens-output`, `--tokens-reasoning`, `--tokens-cache-read`, `--tokens-cache-write`, `--cost`, `--model`) write what the harness measured beside the outcome; a flag that is absent is absent on the record, never an invented zero. When any usage is present, the end posts **one usage comment, signed by the record's agent (the `--agent` the session started with; `usage` when it carries none), on every ticket the session linked** — a header naming the session id and the model, then one line per reported metric with thousands separators; a piece the harness did not report is left out — and stamps once, so a second `end` cannot double-post it. A session with no linked tickets stores the usage and posts nothing. On this host the numbers come from the harness read: `tandem-cli session end --usage-from-harness --outcome <…>` (summary on stdin) reads the session row from opencode's database, the harness session `session start` recorded from `$OPENCODE_SESSION_ID`, and writes its tokens, cost, model and skill counts on the record; a row that is missing is said out loud and the pass falls back to a plain `session end`.
+- **The usage is reported at `end`** — the seven optional flags (`--tokens-input`, `--tokens-output`, `--tokens-reasoning`, `--tokens-cache-read`, `--tokens-cache-write`, `--cost`, `--model`) write what the harness measured beside the outcome; a flag that is absent is absent on the record, never an invented zero. When any usage is present, the end posts **one usage comment, signed by the record's agent (the `--agent` the session started with; `usage` when it carries none), on every ticket the session linked** — a header naming the session id and the model, then one line per reported metric with thousands separators; a piece the harness did not report is left out — and stamps once, so a second `end` cannot double-post it. A session with no linked tickets stores the usage and posts nothing. On this host the numbers come from the harness loopback API: `tandem-cli session end --usage-from-harness --outcome <…>` (summary on stdin) reads the record's harness session, the harness session `session start` recorded from `$OPENCODE_SESSION_ID`, and writes its tokens, cost, model and skill counts on the record. The server is `--harness-url`, else `TANDEM_HARNESS_URL`, else the rendezvous file the record's transport names; the password is `TANDEM_HARNESS_PASSWORD` else the rendezvous file, never a flag. A failure names what was tried and the flag or env that overrides it, and the pass falls back to a plain `session end`.
 
 One session, start to end: the record is named `ses_pass_1` by `--session`, the harness exports `ses_demo2` as its pointer, and `link` and `end` name no record at all: the environment's pointer resolves to the newest record that carries it (`TAN-1` against a scratch home):
 
@@ -191,7 +249,7 @@ The agent face (the skills, the agent prompts and `AGENTS.md`) ships in the app 
 
 ## Setup check
 
-`tandem-cli doctor` reports where this machine's Tandem state lives and whether it is healthy. One JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "detail": "..."}]}`. The checks, in order: `home` (the resolved state directory and why: `TANDEM_HOME` override, shipped app, or development build), `store` (the `tandem.db` path, its schema version, open/done counts, the rolling backup, and a fork note when a JSON store file sits beside an imported database), `bikeshed`, `comments` (`absent` is a valid early state), `sessions`, `settings` and `todos-json` (the JSON-era leftovers: `sessions.json`, `settings.json` and their `.pre-sqlite-*` copies, and the `todos.json.*` cohort; each row names the files it found, or says the home has none, and prints the `rm -f` that removes them once a store is there to have imported them, while the `todos.json.*` cohort needs no store and names its removal in any home), `lock` (a write transaction another process is holding), `app` (the installed version, with the quarantine-strip hint), `skills` (whether this skill is found for each agent host), `agent-face` (the installed face's warnings: the count, the first code and its hint). `store`, `bikeshed`, `comments`, `lock` and `agent-face` can fail; a missing app, an uninstalled host or a leftover file is informational, not failure. An informational warning (a checkout link) leaves `agent-face` green; a `warn` or `error` turns it red. Exit `0` healthy, `1` not, `2` usage error.
+`tandem-cli doctor` reports where this machine's Tandem state lives and whether it is healthy. One JSON object: `{"ok": true, "checks": [{"name": "...", "ok": true, "detail": "..."}]}`. The checks, in order: `home` (the resolved state directory and why: `TANDEM_HOME` override, shipped app, or development build), `store` (the `tandem.db` path, its schema version, open/done counts, the rolling backup, and a fork note when a JSON store file sits beside an imported database), `bikeshed`, `comments` (`absent` is a valid early state), `sessions`, `settings` and `todos-json` (the JSON-era leftovers: `sessions.json`, `settings.json` and their `.pre-sqlite-*` copies, and the `todos.json.*` cohort; each row names the files it found, or says the home has none, and prints the `rm -f` that removes them once a store is there to have imported them, while the `todos.json.*` cohort needs no store and names its removal in any home), `lock` (a write transaction another process is holding), `app` (the installed version, with the quarantine-strip hint), `skills` (whether this skill is found for each agent host), `agent-face` (the installed face's warnings: the count, the first code and its hint), `harness-auth` (the harness sign-in state), `mcp` (the `tandem-mcp` server's version and its tool count over the covered wire-method count). `store`, `bikeshed`, `comments`, `lock` and `agent-face` can fail; a missing app, an uninstalled host or a leftover file is informational, not failure. An informational warning (a checkout link) leaves `agent-face` green; a `warn` or `error` turns it red. Exit `0` healthy, `1` not, `2` usage error.
 
 ## Streams and exit codes
 

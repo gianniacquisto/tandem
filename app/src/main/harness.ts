@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
@@ -89,10 +89,26 @@ export function harnessEnv(tandemHome: string): HarnessEnv {
   }
 }
 
-/** The opencode binary: an override for a checkout, else the PATH. */
-export function resolveHarnessBinary(env: Record<string, string | undefined>): string {
+/**
+ * The opencode binary: an override for a checkout, then the installs a
+ * packaged app cannot see on its PATH (TAN-270). A packaged Electron app
+ * inherits the launchd PATH, not the shell's, so bare `opencode` resolves
+ * nowhere while the binary sits in the install locations below. First hit
+ * wins; the PATH is the last resort, never the first guess.
+ */
+export function resolveHarnessBinary(
+  env: Record<string, string | undefined>,
+  exists: (path: string) => boolean = existsSync,
+): string {
   const named = env['TANDEM_OPENCODE_BIN']
   if (named !== undefined && named.trim() !== '') return named
+  const home = env['HOME']
+  const candidates =
+    home === undefined || home.trim() === '' ? [] : [join(home, '.opencode', 'bin', 'opencode')]
+  candidates.push('/opt/homebrew/bin/opencode', '/usr/local/bin/opencode')
+  for (const candidate of candidates) {
+    if (exists(candidate)) return candidate
+  }
   return 'opencode'
 }
 

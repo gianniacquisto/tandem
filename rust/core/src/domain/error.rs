@@ -39,6 +39,8 @@ pub enum DomainError {
     EmptyCommentBody,
     /// A stdin description body was empty after trimming.
     EmptyDescriptionBody,
+    /// `set` named `--description` and `--append-description` together.
+    ConflictingDescriptionEdit,
     /// A stdin body was not UTF-8. A body is text, not a vault path, so this is
     /// its own failure rather than the bikeshed's I/O one.
     StandardInputNotUtf8,
@@ -82,6 +84,10 @@ pub enum DomainError {
     TicketBlockerArchived { reference: String },
     /// A ticket that already links to a note cannot be promoted again.
     AlreadyLinked { path: String },
+    /// `set` was asked to move the owner away from `human` on a ticket that
+    /// carries no `## Answer` block and is not done. Only `ticket answer`
+    /// closes the hold.
+    HumanHoldNeedsAnswer { reference: String },
     /// `start` was given an empty or whitespace-only brief.
     EmptySessionBrief,
     /// `--brief` named a regular file: the flag never read it, so the path would
@@ -122,6 +128,10 @@ pub enum DomainError {
     InvalidSprintMode(String),
     /// `sprint list` was given a status that is not `open` or `closed`.
     InvalidSprintStatus(String),
+    /// `session end` was given an outcome that is not one of the four.
+    InvalidSessionOutcome(String),
+    /// `session list` was given a status that is not `running` or `ended`.
+    InvalidSessionStatus(String),
     /// `ticket move` was given a position that is not a whole number.
     InvalidIndex(String),
     /// `--assignee self` / `--origin self` was used and `TANDEM_AGENT` names no
@@ -137,14 +147,18 @@ pub enum DomainError {
     /// `session end --usage-from-harness` named a record with no harness
     /// session: there is no foreign pointer to read usage through.
     NoHarnessSession { id: String },
-    /// `--usage-from-harness` on a record read from the event stream, with no
-    /// `--harness-events` path to read it from.
-    NoHarnessEventsPath,
     /// The harness database the run asked for is not a file.
     NoHarnessDatabase { path: String },
     /// The harness event stream the run asked for is not a file.
     NoHarnessEvents { path: String },
-    /// The harness database carries no row for the session id.
+    /// The harness loopback server the run asked for is not reachable: no
+    /// server at the URL, a timeout, a refused non-loopback host, or no
+    /// rendezvous file to read the URL from. `url` names what was tried.
+    NoHarnessServer { url: String },
+    /// The harness loopback server refused the password. `url` names the server;
+    /// the password itself is never in the message.
+    HarnessUnauthorized { url: String },
+    /// The harness carries no session for the id.
     UnknownHarnessSession { id: String },
     /// The bikeshed lock could not be acquired within its bounded retry window.
     BikeshedLocked,
@@ -201,6 +215,9 @@ impl DomainError {
             }
             Self::EmptyDescriptionBody => "Description body is empty. Provide a non-empty body on \
                  stdin, or pass --description \"\" to clear the description."
+                .to_string(),
+            Self::ConflictingDescriptionEdit => "--description and --append-description cannot be \
+                 combined. Use one or the other and try again."
                 .to_string(),
             Self::StandardInputNotUtf8 => "stdin is not valid UTF-8. Try again.".to_string(),
             Self::InvalidFilter(bad) => {
@@ -262,6 +279,11 @@ impl DomainError {
             Self::AlreadyLinked { path } => format!(
                 "This ticket already links to a note (\"{path}\"). Open that note, or remove \
                  the link before promoting again."
+            ),
+            Self::HumanHoldNeedsAnswer { reference } => format!(
+                "{reference} is waiting on the human and carries no `## Answer` block. \
+                 Record the decision with `ticket answer`, which writes the block and closes \
+                 the hold in one write."
             ),
             Self::EmptySessionBrief => "Session brief is empty. Provide a non-empty brief, what \
                  the session is for and what done looks like, and try again."
@@ -335,6 +357,14 @@ impl DomainError {
             Self::InvalidSprintStatus(bad) => {
                 format!("sprint status must be one of open, closed (got \"{bad}\").")
             }
+            Self::InvalidSessionOutcome(bad) => {
+                format!(
+                    "outcome must be one of succeeded, failed, interrupted, unknown (got \"{bad}\")."
+                )
+            }
+            Self::InvalidSessionStatus(bad) => {
+                format!("session status must be one of running, ended (got \"{bad}\").")
+            }
             Self::InvalidIndex(bad) => {
                 format!("index must be a whole number (got \"{bad}\").")
             }
@@ -356,9 +386,6 @@ impl DomainError {
                  nothing to read. End it with explicit usage flags, or start it again with \
                  --harness-session."
             ),
-            Self::NoHarnessEventsPath => "This record's usage came from the harness event \
-                 stream; pass --harness-events <path> to the stream it wrote."
-                .to_string(),
             Self::NoHarnessDatabase { path } => format!(
                 "No harness database at {path}. Check the path, or let the harness run once, \
                  and try again."
@@ -367,8 +394,14 @@ impl DomainError {
                 "No harness event stream at {path}. Check the path, or let the harness run \
                  once, and try again."
             ),
+            Self::NoHarnessServer { url } => format!(
+                "Cannot reach the harness at {url}. Check that the harness is running, or pass --harness-url <url> or set TANDEM_HARNESS_URL, and try again."
+            ),
+            Self::HarnessUnauthorized { url } => format!(
+                "The harness at {url} refused the password. Check TANDEM_HARNESS_PASSWORD or the rendezvous file it was read from, and try again."
+            ),
             Self::UnknownHarnessSession { id } => format!(
-                "No harness row for session \"{id}\". Check the session id, or end the record \
+                "No harness session for \"{id}\". Check the session id, or end the record \
                  without harness usage, and try again."
             ),
             Self::BikeshedLocked => {

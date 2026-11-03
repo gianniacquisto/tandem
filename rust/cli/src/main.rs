@@ -110,6 +110,8 @@ enum Command {
     Doctor,
     /// Speak the app's JSON protocol on stdin and stdout (PRT-11).
     Rpc,
+    /// Serve the agent face as an MCP server over stdio (TAN-274).
+    Mcp,
 }
 
 #[derive(Subcommand)]
@@ -246,6 +248,8 @@ struct SetArgs {
     assignee: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     description: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    append_description: Option<String>,
 }
 
 #[derive(Args)]
@@ -416,7 +420,7 @@ struct SessionEndArgs {
     #[arg(long)]
     usage_from_harness: bool,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    harness_events: Option<String>,
+    harness_url: Option<String>,
 }
 
 #[derive(Args)]
@@ -627,6 +631,7 @@ fn help_text(cli: &Cli) -> &'static str {
         None => return usage::ROOT,
         Some(Command::Doctor) => return usage::verb("doctor").unwrap_or(usage::ROOT),
         Some(Command::Rpc) => return usage::RPC,
+        Some(Command::Mcp) => return usage::MCP,
         Some(Command::Ticket { command }) => match command {
             None => return usage::group("ticket").unwrap_or(usage::ROOT),
             Some(TicketCommand::Comment { command: None }) => "ticket comment",
@@ -764,6 +769,7 @@ fn run(cli: &Cli) -> Result<(), Failure> {
     match command {
         Command::Doctor => doctor(&home),
         Command::Rpc => rpc(&home),
+        Command::Mcp => mcp(&home),
         Command::Ticket { command } => ticket(&home, command.as_ref()),
         Command::Lane { command } => lane(&home, command.as_ref()),
         Command::Note { command } => note(&home, command.as_ref()),
@@ -863,6 +869,9 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
             print(&TicketDetail::new(&ticket))
         }
         TicketCommand::Set(args) => {
+            if args.description.is_some() && args.append_description.is_some() {
+                return Err(Failure::domain(DomainError::ConflictingDescriptionEdit));
+            }
             let status = match args.status.as_deref() {
                 Some(raw) => Edit::Set(Status::parse(raw).map_err(Failure::domain)?),
                 None => Edit::Unchanged,
@@ -873,6 +882,10 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
             };
             let description = match args.description.as_deref() {
                 Some(raw) => Edit::Set(Some(description_body(raw)?)),
+                None => Edit::Unchanged,
+            };
+            let append_description = match args.append_description.as_deref() {
+                Some(raw) => Edit::Set(append_description_body(raw)?),
                 None => Edit::Unchanged,
             };
             let ticket = board
@@ -890,6 +903,10 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                         },
                         description: match &description {
                             Edit::Set(body) => Edit::Set(body.as_deref()),
+                            Edit::Unchanged => Edit::Unchanged,
+                        },
+                        append_description: match &append_description {
+                            Edit::Set(body) => Edit::Set(body.as_str()),
                             Edit::Unchanged => Edit::Unchanged,
                         },
                         archived: Edit::Unchanged,
@@ -1220,7 +1237,7 @@ fn session(home: &Home, command: Option<&SessionCommand>) -> Result<(), Failure>
             };
             if args.usage_from_harness {
                 let record = sessions.show(&id).map_err(Failure::domain)?;
-                let reported = harness_usage(&record, args.harness_events.as_deref())?;
+                let reported = harness_usage(&record, home, args.harness_url.as_deref())?;
                 tokens = reported.tokens().or(tokens);
                 cost = reported.cost.or(cost);
                 model = reported.model.or(model);
@@ -1507,41 +1524,128 @@ fn harness_session(
     Ok(Some(HarnessSession { id, transport }))
 }
 
-/// The usage a record's harness session reported, read through the transport
-/// the record names: the event stream `--harness-events` points at, or the
-/// external opencode database.
+/// The usage a record's harness session reported, read over the harness
+/// loopback API (TAN-276). The server is `--harness-url`, else
+/// `TANDEM_HARNESS_URL`, else the rendezvous file for the record's transport;
+/// an explicit URL always wins whatever the transport. The password is
+/// `TANDEM_HARNESS_PASSWORD` else the rendezvous file, never a flag.
 fn harness_usage(
     record: &tandem_core::domain::session::Session,
-    events: Option<&str>,
+    home: &Home,
+    url_flag: Option<&str>,
 ) -> Result<harness::HarnessUsage, Failure> {
     let id = record.harness_session_id.clone().ok_or_else(|| {
         Failure::domain(DomainError::NoHarnessSession {
             id: record.id.clone(),
         })
     })?;
-    match record.harness_transport {
-        Some(HarnessTransport::EventStream) => {
-            let stream = events
-                .map(str::trim)
-                .filter(|path| !path.is_empty())
-                .ok_or_else(|| Failure::domain(DomainError::NoHarnessEventsPath))?;
-            harness::read_events(Path::new(stream), &id).map_err(Failure::domain)
-        }
-        _ => harness::read(&opencode_database(), &id).map_err(Failure::domain),
-    }
+    let (base, password) = harness_server(home, record.harness_transport, url_flag)?;
+    harness::read_api(&base, &password, &id).map_err(Failure::domain)
 }
 
-/// The external opencode store: `$OPENCODE_DB`, else the path its own default
-/// names. Tandem reads it read-only and never writes it.
-fn opencode_database() -> PathBuf {
-    if let Some(path) = env::var_os("OPENCODE_DB") {
-        return PathBuf::from(path);
+/// The loopback server and its credential: an explicit URL wins, else the
+/// rendezvous file for the transport. The transport is provenance (which
+/// harness the pass ran in), so it only selects which rendezvous file is read
+/// when no URL is given.
+fn harness_server(
+    home: &Home,
+    transport: Option<HarnessTransport>,
+    url_flag: Option<&str>,
+) -> Result<(String, String), Failure> {
+    let explicit = url_flag
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            env::var("TANDEM_HARNESS_URL")
+                .ok()
+                .map(|url| url.trim().to_string())
+                .filter(|url| !url.is_empty())
+        });
+    let rendezvous = rendezvous_path(home, transport);
+    let password_from_file = || rendezvous_password(&rendezvous).unwrap_or_default();
+    if let Some(base) = explicit {
+        let password = env::var("TANDEM_HARNESS_PASSWORD").unwrap_or_else(|_| password_from_file());
+        return Ok((base, password));
     }
-    let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-    home.join(".local")
-        .join("share")
+    let (base, file_password) = rendezvous_server(&rendezvous)?;
+    let password = env::var("TANDEM_HARNESS_PASSWORD").unwrap_or(file_password);
+    Ok((base, password))
+}
+
+/// Which rendezvous file names the server when no URL is given: the embedded
+/// harness's `state/opencode/service.json` under the Tandem home for
+/// `event-stream` records, else the external state dir the binary mirrors
+/// (`XDG_STATE_HOME/opencode/service.json`, else
+/// `~/.local/state/opencode/service.json`).
+fn rendezvous_path(home: &Home, transport: Option<HarnessTransport>) -> PathBuf {
+    if transport == Some(HarnessTransport::EventStream) {
+        return home
+            .directory()
+            .join("harness")
+            .join("state")
+            .join("opencode")
+            .join("service.json");
+    }
+    if let Some(state) = env::var_os("XDG_STATE_HOME")
+        && !state.is_empty()
+    {
+        return PathBuf::from(state).join("opencode").join("service.json");
+    }
+    let home_dir = env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    home_dir
+        .join(".local")
+        .join("state")
         .join("opencode")
-        .join("opencode.db")
+        .join("service.json")
+}
+
+/// The server the rendezvous file names, with its password. Extra keys are
+/// ignored; the file is service-written, mode 0600.
+fn rendezvous_server(path: &Path) -> Result<(String, String), Failure> {
+    let text = std::fs::read_to_string(path).map_err(|_| {
+        Failure::domain(DomainError::NoHarnessServer {
+            url: path.display().to_string(),
+        })
+    })?;
+    let value: serde_json::Value = serde_json::from_str(&text).map_err(|_| {
+        Failure::domain(DomainError::NoHarnessServer {
+            url: path.display().to_string(),
+        })
+    })?;
+    let base = value
+        .get("url")
+        .and_then(|url| url.as_str())
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            Failure::domain(DomainError::NoHarnessServer {
+                url: path.display().to_string(),
+            })
+        })?;
+    let password = value
+        .get("password")
+        .and_then(|password| password.as_str())
+        .unwrap_or_default()
+        .to_string();
+    Ok((base, password))
+}
+
+/// The password the rendezvous file holds, or empty when it holds none.
+fn rendezvous_password(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    Some(
+        value
+            .get("password")
+            .and_then(|password| password.as_str())
+            .unwrap_or_default()
+            .to_string(),
+    )
 }
 
 /// A session record's handle when the verb opens one: `--session`, else a
@@ -1586,6 +1690,18 @@ fn description_body(flag: &str) -> Result<String, Failure> {
         return Err(Failure::domain(DomainError::EmptyDescriptionBody));
     }
     Ok(body)
+}
+
+/// `--append-description` on `ticket set`: the addition's own value, or stdin
+/// when it is `-`. A named addition must carry text on either path: an empty
+/// pipe is a failed write, not a silent no-op. The refusal is the core's
+/// (`DescriptionBody::required`), the same one `ticket add --description` makes.
+fn append_description_body(flag: &str) -> Result<String, Failure> {
+    if flag != "-" {
+        return DescriptionBody::required(flag).map_err(Failure::domain);
+    }
+    let body = read_standard_input()?;
+    DescriptionBody::required(&body).map_err(Failure::domain)
 }
 
 /// `--description` on `ticket add`: no flag is no description, and a named flag
@@ -1834,6 +1950,22 @@ fn rpc(home: &Home) -> Result<(), Failure> {
         Actor::current(),
     )
     .map_err(|error| Failure::message(format!("The rpc stream failed: {error}. Try again.")))
+}
+
+// MARK: - mcp
+
+/// The agent host's door: MCP frames on stdin, MCP frames on stdout, and an
+/// exit on a closed stdin. The protocol lives in the core (`tandem_core::mcp`);
+/// this arm is only the process that owns the two streams. The home resolves
+/// the way `rpc` does, and the actor is the pass's own (`TANDEM_AGENT`).
+fn mcp(home: &Home) -> Result<(), Failure> {
+    tandem_core::mcp::serve(
+        tandem_core::rpc::StdioStream::new(),
+        Store::new(home.clone()),
+        Actor::current(),
+        environment(),
+    )
+    .map_err(|error| Failure::message(format!("The mcp stream failed: {error}. Try again.")))
 }
 
 // MARK: - doctor
