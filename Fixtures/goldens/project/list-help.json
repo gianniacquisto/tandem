@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "project",
+    "list",
+    "--help"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": [
+    "tandem-cli project list \u2014 every project with its lanes, in render order.",
+    "",
+    "Usage:",
+    "  tandem-cli project list"
+  ],
+  "stdoutKind": "text"
+}

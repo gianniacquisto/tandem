@@ -7,17 +7,18 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli lane — the lane lifecycle.",
+    "tandem-cli lane \u2014 the lane lifecycle.",
     "",
     "Usage:",
     "  tandem-cli lane list",
-    "  tandem-cli lane add --name <name> [--abbr <key>]",
-    "  tandem-cli lane rename --from <name> --to <name> [--abbr <key>]",
+    "  tandem-cli lane add --name <name> [--abbr <key>] [--project <name>]",
+    "  tandem-cli lane rename --from <name> --to <name> [--abbr <key>] [--project <name>]",
     "  tandem-cli lane delete --name <name>",
     "",
     "Values:",
     "  key       a lane's ref key: uppercase letters and digits, unique across lanes;",
-    "            omitted, the first three letters of the name (Tandem → TAN)"
+    "            omitted, the first three letters of the name (Tandem \u2192 TAN)",
+    "  project   the parent project; omitted, the project named for the lane"
   ],
   "stdoutKind": "text"
 }

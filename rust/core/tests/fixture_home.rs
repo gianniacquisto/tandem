@@ -65,7 +65,7 @@ fn the_board_lives_a_whole_life_against_the_fixture_home() {
     let committed = fs::read(fixture.join("tandem.db")).expect("the committed store reads");
 
     // Created, in a lane that issues a ref.
-    board.add_lane("Port", Some("PRT")).unwrap();
+    board.add_lane("Port", Some("PRT"), None).unwrap();
     let ticket = board
         .add(
             "Port the board",
@@ -111,7 +111,7 @@ fn the_board_lives_a_whole_life_against_the_fixture_home() {
     assert!(!unblocked.blocked());
 
     // Ordered within a lane, and moved across lanes and back.
-    board.add_lane("Memory", Some("MEM")).unwrap();
+    board.add_lane("Memory", Some("MEM"), None).unwrap();
     board.move_ticket("PRT-2", Some("Port"), 0).unwrap();
     let moved = board
         .move_ticket("PRT-2", Some("Memory"), usize::MAX)
@@ -222,7 +222,7 @@ fn the_board_lives_a_whole_life_against_the_fixture_home() {
 #[test]
 fn an_unknown_ref_against_the_fixture_home_names_the_range_it_does_have() {
     let (root, board) = sandbox_copy("unknown-ref");
-    board.add_lane("Port", Some("PRT")).unwrap();
+    board.add_lane("Port", Some("PRT"), None).unwrap();
     board
         .add(
             "one",

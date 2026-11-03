@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "project",
+    "add",
+    "--name",
+    "Alpha"
+  ],
+  "exit": 1,
+  "stderr": [
+    "A project named \"Alpha\" already exists."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

@@ -166,7 +166,7 @@ fn the_ticket_lands_on_top_of_the_default_lane_in_backlog() {
 fn the_ticket_files_into_the_lane_it_is_given_and_an_unknown_lane_is_rejected() {
     let sandbox = Sandbox::new("note-lane");
     let board = sandbox.board();
-    board.add_lane("Tandem", None).unwrap();
+    board.add_lane("Tandem", None, None).unwrap();
     let added = board
         .add_from_note(
             "A lane ticket",

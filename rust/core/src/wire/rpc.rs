@@ -110,6 +110,10 @@ methods! {
     LaneAdd: "lane.add", LaneAddParams, "lane add";
     LaneRename: "lane.rename", LaneRenameParams, "lane rename";
     LaneDelete: "lane.delete", LaneDeleteParams, "lane delete";
+    ProjectList: "project.list", EmptyParams, "project list";
+    ProjectAdd: "project.add", ProjectAddParams, "project add";
+    ProjectRename: "project.rename", ProjectRenameParams, "project rename";
+    ProjectDelete: "project.delete", ProjectDeleteParams, "project delete";
     // The sprint record's reads and its one app-reachable write (TAN-254). The
     // verbs are the CLI's own (`sprint list/show/open`), so the app configures
     // the workflow through the same acts an agent runs. Below, `ticket`, `run`
@@ -366,27 +370,53 @@ pub struct CommentAddParams {
     pub body: Option<String>,
 }
 
-/// `lane.add`: the name, and the ref key it issues.
+/// `lane.add`: the name, the ref key it issues, and the parent project.
+/// An absent project creates or reuses the project named for the lane.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LaneAddParams {
     pub name: Option<String>,
     pub abbr: Option<String>,
+    pub project: Option<String>,
 }
 
-/// `lane.rename`: from one name to another, optionally re-keying the refs.
+/// `lane.rename`: from one name to another, optionally re-keying the refs and
+/// re-parenting the lane. An absent project keeps the lane's parent.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LaneRenameParams {
     pub from: Option<String>,
     pub to: Option<String>,
     pub abbr: Option<String>,
+    pub project: Option<String>,
 }
 
 /// `lane.delete`: the name, and nothing else.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LaneDeleteParams {
+    pub name: Option<String>,
+}
+
+/// `project.add`: the name, and nothing else. Add appends, there is no move.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ProjectAddParams {
+    pub name: Option<String>,
+}
+
+/// `project.rename`: from one name to another, moving its lanes with it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ProjectRenameParams {
+    pub from: Option<String>,
+    pub to: Option<String>,
+}
+
+/// `project.delete`: the name, and nothing else. Refused while lanes belong.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ProjectDeleteParams {
     pub name: Option<String>,
 }
 
@@ -764,6 +794,12 @@ impl LaneAddParams {
                 "abbr",
                 string("the ref key it issues; omit for the first three alphanumerics"),
             ),
+            (
+                "project",
+                string(
+                    "the parent project; omit to create or reuse the project named for the lane",
+                ),
+            ),
         ])
     }
 }
@@ -778,6 +814,10 @@ impl LaneRenameParams {
                 "abbr",
                 string("the new ref key; refused once the key is frozen"),
             ),
+            (
+                "project",
+                string("the new parent project; omit to keep the lane's project"),
+            ),
         ])
     }
 }
@@ -787,6 +827,30 @@ impl LaneDeleteParams {
     /// area, never deleted.
     pub fn schema() -> serde_json::Value {
         object_schema(&[("name", string("the lane name"))])
+    }
+}
+
+impl ProjectAddParams {
+    /// The tool input for `project.add`.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[("name", string("the project name; required"))])
+    }
+}
+
+impl ProjectRenameParams {
+    /// The tool input for `project.rename`: lanes move with the project.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[
+            ("from", string("the project's current name")),
+            ("to", string("the new name")),
+        ])
+    }
+}
+
+impl ProjectDeleteParams {
+    /// The tool input for `project.delete`: refused while lanes belong.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[("name", string("the project name"))])
     }
 }
 
@@ -1049,6 +1113,7 @@ pub enum Reply {
     CommentList(CommentListReply),
     LaneList(LaneListReply),
     LaneDeletion(LaneDeletionReply),
+    ProjectList(ProjectListReply),
     Archived(ArchivedReply),
     SprintList(SprintListReply),
     Sprint(SprintReply),
@@ -1252,6 +1317,27 @@ pub struct LaneDeletionReply {
     pub revision: i64,
     pub lanes: Vec<String>,
     pub moved: usize,
+}
+
+/// One project and its lanes, in render order: the answer to `project list`
+/// and every project write's receipt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectEntry {
+    pub name: String,
+    pub lanes: Vec<String>,
+}
+
+/// `project.list`, `project.add`, `project.rename`, `project.delete`: every
+/// project in render order, each with its lanes in lane order.
+///
+/// The `revision` is the number the projects are a snapshot of: the write's
+/// own for a mutation, the read transaction's for `project.list`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectListReply {
+    pub revision: i64,
+    pub projects: Vec<ProjectEntry>,
 }
 
 /// `ticket.archive` without an id: how many tickets the sweep archived.

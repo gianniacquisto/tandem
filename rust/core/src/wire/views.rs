@@ -233,6 +233,37 @@ impl LaneDeletionView {
     }
 }
 
+/// One project and its lanes, in render order: the CLI's `project list` row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProjectView {
+    pub name: String,
+    pub lanes: Vec<String>,
+}
+
+/// `project list`, `project add`, `project rename`, `project delete`:
+/// `{"projects": [{"name": ..., "lanes": [...]}]}` in project order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProjectList {
+    pub projects: Vec<ProjectView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+impl ProjectList {
+    pub fn new(projects: &[crate::domain::ProjectWithLanes], note: Option<String>) -> Self {
+        Self {
+            projects: projects
+                .iter()
+                .map(|entry| ProjectView {
+                    name: entry.name.clone(),
+                    lanes: entry.lanes.clone(),
+                })
+                .collect(),
+            note,
+        }
+    }
+}
+
 /// `ticket archive` without an id: `{"archived": n}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ArchivedView {

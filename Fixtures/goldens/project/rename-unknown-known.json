@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "project",
+    "rename",
+    "--from",
+    "Nope",
+    "--to",
+    "Beta"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Unknown project \"Nope\". The known projects are: Alpha."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

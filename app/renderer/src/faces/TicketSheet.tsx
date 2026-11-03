@@ -109,7 +109,7 @@ export function TicketSheet({
   const [creating, setCreating] = useState(false)
   const [laneName, setLaneName] = useState('')
   const [laneKey, setLaneKey] = useState('')
-  const [asking, setAsking] = useState<{ name: string; abbr: string | null } | null>(null)
+  const [asking, setAsking] = useState<{ name: string; abbr: string | null; project: string | null } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameTo, setRenameTo] = useState('')
   const [renameKey, setRenameKey] = useState('')
@@ -328,7 +328,7 @@ export function TicketSheet({
     if (asking === null) return
     const written = await write({
       method: 'lane.add',
-      params: { name: asking.name, abbr: asking.abbr },
+      params: { name: asking.name, abbr: asking.abbr, project: asking.project ?? null },
     })
     if (written) {
       setAsking(null)
@@ -348,7 +348,7 @@ export function TicketSheet({
     }
     const written = await write({
       method: 'lane.rename',
-      params: { from: params.from, to: params.to, abbr: params.abbr },
+      params: { from: params.from, to: params.to, abbr: params.abbr, project: params.project ?? null },
     })
     if (written) {
       setRenaming(null)

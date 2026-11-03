@@ -141,7 +141,7 @@ fn a_settings_read_answers_the_active_project() {
     let sandbox = Sandbox::new("rpc-focus-read");
     let store = sandbox.store();
     Board::new(store.clone())
-        .add_lane("Tandem", None)
+        .add_lane("Tandem", None, None)
         .expect("the lane is declared");
 
     let fresh = handle(&store, &frame(1, "settings.get", json!({})));
@@ -196,7 +196,7 @@ fn a_settings_write_to_an_undeclared_lane_is_refused() {
     let sandbox = Sandbox::new("rpc-focus-refusal");
     let store = sandbox.store();
     Board::new(store.clone())
-        .add_lane("Tandem", None)
+        .add_lane("Tandem", None, None)
         .expect("the lane is declared");
 
     let refused = handle(
@@ -231,7 +231,7 @@ fn clearing_the_focus_restores_no_focus() {
     let sandbox = Sandbox::new("rpc-focus-clear");
     let store = sandbox.store();
     Board::new(store.clone())
-        .add_lane("Tandem", None)
+        .add_lane("Tandem", None, None)
         .expect("the lane is declared");
     handle(
         &store,
@@ -947,5 +947,73 @@ fn a_note_write_without_text_is_refused_rather_than_emptied() {
     assert_eq!(
         read["result"]["note"]["text"], "keep me",
         "the refused write left the note alone"
+    );
+}
+
+#[test]
+fn project_messages_round_trip_like_the_lane_ones() {
+    let sandbox = Sandbox::new("rpc-project");
+    let store = sandbox.store();
+
+    let listed = handle(&store, &frame(1, "project.list", json!({})));
+    assert_eq!(listed["id"], 1);
+    assert_eq!(
+        listed["result"]["projects"],
+        json!([]),
+        "an empty home lists no projects"
+    );
+
+    let added = handle(&store, &frame(2, "project.add", json!({"name": "Alpha"})));
+    assert_eq!(
+        added["result"]["projects"],
+        json!([{"name": "Alpha", "lanes": []}])
+    );
+
+    let renamed = handle(
+        &store,
+        &frame(3, "project.rename", json!({"from": "Alpha", "to": "Beta"})),
+    );
+    assert_eq!(
+        renamed["result"]["projects"],
+        json!([{"name": "Beta", "lanes": []}]),
+        "a rename moves its lanes with it (none here)"
+    );
+
+    let deleted = handle(&store, &frame(4, "project.delete", json!({"name": "Beta"})));
+    assert_eq!(
+        deleted["result"]["projects"],
+        json!([]),
+        "an empty project deletes"
+    );
+
+    // A lane auto-parents the project named for it, and a project rename moves
+    // the lane with it while refs stay lane-keyed.
+    handle(&store, &frame(5, "lane.add", json!({"name": "Cycle"})));
+    let grouped = handle(&store, &frame(6, "project.list", json!({})));
+    assert_eq!(
+        grouped["result"]["projects"],
+        json!([{"name": "Cycle", "lanes": ["Cycle"]}]),
+        "lane add without a project auto-parents"
+    );
+    let moved = handle(
+        &store,
+        &frame(7, "project.rename", json!({"from": "Cycle", "to": "Beta"})),
+    );
+    assert_eq!(
+        moved["result"]["projects"],
+        json!([{"name": "Beta", "lanes": ["Cycle"]}]),
+        "the lane moves with its project"
+    );
+
+    let refused = handle(&store, &frame(8, "project.delete", json!({"name": "Beta"})));
+    assert_eq!(refused["error"]["code"], "domain");
+    let message = refused["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        message.contains("Beta"),
+        "the refusal names the project: {refused}"
+    );
+    assert!(
+        message.contains("Cycle"),
+        "the refusal names its lanes: {refused}"
     );
 }

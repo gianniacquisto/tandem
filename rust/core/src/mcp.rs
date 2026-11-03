@@ -30,11 +30,12 @@ use crate::setup::Environment;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     CommentAddParams, EmptyParams, LaneAddParams, LaneDeleteParams, LaneRenameParams, Method,
-    NoteCaptureParams, SessionEndParams, SessionLinkParams, SessionListParams, SessionShowParams,
-    SessionStartParams, SprintCloseParams, SprintListParams, SprintOpenParams, SprintRunParams,
-    SprintShowParams, SprintTicketParams, TicketAddFromNoteParams, TicketAddParams,
-    TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
-    TicketMoveParams, TicketSetParams, TicketUnblockParams,
+    NoteCaptureParams, ProjectAddParams, ProjectDeleteParams, ProjectRenameParams,
+    SessionEndParams, SessionLinkParams, SessionListParams, SessionShowParams, SessionStartParams,
+    SprintCloseParams, SprintListParams, SprintOpenParams, SprintRunParams, SprintShowParams,
+    SprintTicketParams, TicketAddFromNoteParams, TicketAddParams, TicketAnswerParams,
+    TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams, TicketMoveParams,
+    TicketSetParams, TicketUnblockParams,
 };
 
 /// The server name the `initialize` answer carries.
@@ -308,7 +309,7 @@ impl Tool {
     }
 }
 
-/// The 29 tools: one per covered wire method. The schema beside each entry is
+/// The 33 tools: one per covered wire method. The schema beside each entry is
 /// the params struct's own derivation, so the list cannot drift from the wire
 /// without the registry test failing.
 pub fn tools() -> Vec<Tool> {
@@ -431,6 +432,34 @@ pub fn tools() -> Vec<Tool> {
             description: "Delete a lane; members fall back to the default area, never deleted.",
             input_schema: LaneDeleteParams::schema(),
             method: Method::LaneDelete(LaneDeleteParams::default()),
+        },
+        Tool {
+            name: "project_list",
+            method_tag: "project.list",
+            description: "List every project with its lanes, in render order.",
+            input_schema: EmptyParams::schema(),
+            method: Method::ProjectList(EmptyParams {}),
+        },
+        Tool {
+            name: "project_add",
+            method_tag: "project.add",
+            description: "Declare a project. A project must exist before lanes name it as parent.",
+            input_schema: ProjectAddParams::schema(),
+            method: Method::ProjectAdd(ProjectAddParams::default()),
+        },
+        Tool {
+            name: "project_rename",
+            method_tag: "project.rename",
+            description: "Rename a project, moving its lanes with it.",
+            input_schema: ProjectRenameParams::schema(),
+            method: Method::ProjectRename(ProjectRenameParams::default()),
+        },
+        Tool {
+            name: "project_delete",
+            method_tag: "project.delete",
+            description: "Delete an empty project; refused while lanes belong to it.",
+            input_schema: ProjectDeleteParams::schema(),
+            method: Method::ProjectDelete(ProjectDeleteParams::default()),
         },
         Tool {
             name: "session_start",

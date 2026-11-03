@@ -8,14 +8,15 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli lane add — a new lane.",
+    "tandem-cli lane add \u2014 a new lane.",
     "",
     "Usage:",
-    "  tandem-cli lane add --name <name> [--abbr <key>]",
+    "  tandem-cli lane add --name <name> [--abbr <key>] [--project <name>]",
     "",
     "Values:",
     "  key       a lane's ref key: uppercase letters and digits, unique across lanes;",
-    "            omitted, the first three letters of the name (Tandem → TAN)",
+    "            omitted, the first three letters of the name (Tandem \u2192 TAN)",
+    "  project   the parent project; omitted, the project named for the lane",
     "",
     "The key is the `TAN` of a ticket ref (`TAN-42`): it is frozen once a ticket in",
     "the lane holds a number."

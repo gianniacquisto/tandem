@@ -52,10 +52,10 @@ use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, HostRoot, LaneDeletionReply,
     LaneListReply, MarkdownReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply,
-    NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, Reply, Request,
-    Response, SessionDetailReply, SessionListReply, SessionReply, SessionTranscriptReply,
-    SettingsReply, SetupReply, SprintListReply, SprintReply, TicketListReply, TicketReply,
-    UsageReportReply, WireError,
+    NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, ProjectEntry,
+    ProjectListReply, Reply, Request, Response, SessionDetailReply, SessionListReply, SessionReply,
+    SessionTranscriptReply, SettingsReply, SetupReply, SprintListReply, SprintReply,
+    TicketListReply, TicketReply, UsageReportReply, WireError,
 };
 use crate::wire::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
@@ -730,7 +730,11 @@ fn execute(
         }
         Method::LaneAdd(params) => {
             let lanes = board
-                .add_lane(params.name.as_deref().unwrap_or(""), params.abbr.as_deref())
+                .add_lane(
+                    params.name.as_deref().unwrap_or(""),
+                    params.abbr.as_deref(),
+                    params.project.as_deref(),
+                )
                 .map_err(domain)?;
             Ok(Reply::LaneList(LaneListReply {
                 revision: store.last_revision(),
@@ -743,6 +747,7 @@ fn execute(
                     params.from.as_deref().unwrap_or(""),
                     params.to.as_deref().unwrap_or(""),
                     params.abbr.as_deref(),
+                    params.project.as_deref(),
                 )
                 .map_err(domain)?;
             Ok(Reply::LaneList(LaneListReply {
@@ -758,6 +763,67 @@ fn execute(
                 revision: store.last_revision(),
                 lanes: deletion.lanes,
                 moved: deletion.moved,
+            }))
+        }
+        Method::ProjectList(_) => {
+            let (projects, revision) = board.projects_snapshot().map_err(domain)?;
+            Ok(Reply::ProjectList(ProjectListReply {
+                revision,
+                projects: projects
+                    .into_iter()
+                    .map(|entry| ProjectEntry {
+                        name: entry.name,
+                        lanes: entry.lanes,
+                    })
+                    .collect(),
+            }))
+        }
+        Method::ProjectAdd(params) => {
+            let projects = board
+                .add_project(params.name.as_deref().unwrap_or(""))
+                .map_err(domain)?;
+            Ok(Reply::ProjectList(ProjectListReply {
+                revision: store.last_revision(),
+                projects: projects
+                    .into_iter()
+                    .map(|entry| ProjectEntry {
+                        name: entry.name,
+                        lanes: entry.lanes,
+                    })
+                    .collect(),
+            }))
+        }
+        Method::ProjectRename(params) => {
+            let projects = board
+                .rename_project(
+                    params.from.as_deref().unwrap_or(""),
+                    params.to.as_deref().unwrap_or(""),
+                )
+                .map_err(domain)?;
+            Ok(Reply::ProjectList(ProjectListReply {
+                revision: store.last_revision(),
+                projects: projects
+                    .into_iter()
+                    .map(|entry| ProjectEntry {
+                        name: entry.name,
+                        lanes: entry.lanes,
+                    })
+                    .collect(),
+            }))
+        }
+        Method::ProjectDelete(params) => {
+            let projects = board
+                .delete_project(params.name.as_deref().unwrap_or(""))
+                .map_err(domain)?;
+            Ok(Reply::ProjectList(ProjectListReply {
+                revision: store.last_revision(),
+                projects: projects
+                    .into_iter()
+                    .map(|entry| ProjectEntry {
+                        name: entry.name,
+                        lanes: entry.lanes,
+                    })
+                    .collect(),
             }))
         }
         Method::SprintList(params) => {

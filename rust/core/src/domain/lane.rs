@@ -15,16 +15,63 @@ pub struct Lane {
     pub name: String,
     pub key: String,
     pub last_number: i64,
+    /// The lane's exactly-one parent project.
+    pub project: String,
 }
 
 impl Lane {
     pub fn new(name: impl Into<String>, key: impl Into<String>) -> Self {
+        let name = name.into();
+        let project = name.clone();
+        Self {
+            name,
+            key: key.into(),
+            last_number: 0,
+            project,
+        }
+    }
+
+    pub fn with_project(
+        name: impl Into<String>,
+        key: impl Into<String>,
+        project: impl Into<String>,
+    ) -> Self {
         Self {
             name: name.into(),
             key: key.into(),
             last_number: 0,
+            project: project.into(),
         }
     }
+}
+
+/// One project: a lane's parent. A project holds several lanes; an empty
+/// project lists truthfully but draws no board rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Project {
+    pub name: String,
+}
+
+impl Project {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self { name: name.into() }
+    }
+}
+
+/// The outcome of deleting a project: the project list after the write, with
+/// each project's lanes. A delete that would strand lanes is refused before
+/// this is built, so this only answers the allowed empty-project delete.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectDeletion {
+    pub projects: Vec<ProjectWithLanes>,
+}
+
+/// One project and its lanes, in render order: the answer `project list` and
+/// every project write receipt gives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectWithLanes {
+    pub name: String,
+    pub lanes: Vec<String>,
 }
 
 /// The outcome of deleting a lane: how many tickets fell back to the default

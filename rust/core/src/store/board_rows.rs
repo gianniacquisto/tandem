@@ -14,16 +14,25 @@
 
 use rusqlite::params;
 
-use super::rows::{NewLane, NewTicket};
+use super::rows::{NewLane, NewProject, NewTicket};
+use super::schema::{has_column, has_table};
 use super::{Result, Store, Write, translate};
 
 /// One lane row: its name (the key the board groups by), its ref prefix, the last
-/// number it issued and its render position.
+/// number it issued, its render position and its parent project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LaneRow {
     pub name: String,
     pub key: String,
     pub last_number: i64,
+    pub position: i64,
+    pub project: Option<String>,
+}
+
+/// One project row: its name and its render position.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProjectRow {
+    pub name: String,
     pub position: i64,
 }
 
@@ -61,6 +70,7 @@ pub(crate) struct BoardRows {
     pub lanes: Vec<LaneRow>,
     pub tickets: Vec<TicketRow>,
     pub edges: Vec<EdgeRow>,
+    pub projects: Vec<ProjectRow>,
 }
 
 /// One comment row, in the order it was appended.
@@ -127,10 +137,33 @@ pub(crate) fn read_board(connection: &rusqlite::Connection) -> Result<BoardRows>
         lanes: lanes(connection)?,
         tickets: tickets(connection)?,
         edges: edges(connection)?,
+        projects: projects(connection)?,
     })
 }
 
 fn lanes(connection: &rusqlite::Connection) -> Result<Vec<LaneRow>> {
+    if has_column(connection, "lanes", "project")? {
+        let mut statement = connection
+            .prepare(
+                "SELECT name, key, last_number, position, project FROM lanes
+                 ORDER BY position, rowid",
+            )
+            .map_err(|error| translate(error, connection))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok(LaneRow {
+                    name: row.get(0)?,
+                    key: row.get(1)?,
+                    last_number: row.get(2)?,
+                    position: row.get(3)?,
+                    project: row.get(4)?,
+                })
+            })
+            .map_err(|error| translate(error, connection))?;
+        return rows
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|error| translate(error, connection));
+    }
     let mut statement = connection
         .prepare("SELECT name, key, last_number, position FROM lanes ORDER BY position, rowid")
         .map_err(|error| translate(error, connection))?;
@@ -141,6 +174,26 @@ fn lanes(connection: &rusqlite::Connection) -> Result<Vec<LaneRow>> {
                 key: row.get(1)?,
                 last_number: row.get(2)?,
                 position: row.get(3)?,
+                project: None,
+            })
+        })
+        .map_err(|error| translate(error, connection))?;
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|error| translate(error, connection))
+}
+
+fn projects(connection: &rusqlite::Connection) -> Result<Vec<ProjectRow>> {
+    if !has_table(connection, "projects")? {
+        return Ok(Vec::new());
+    }
+    let mut statement = connection
+        .prepare("SELECT name, position FROM projects ORDER BY position, rowid")
+        .map_err(|error| translate(error, connection))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(ProjectRow {
+                name: row.get(0)?,
+                position: row.get(1)?,
             })
         })
         .map_err(|error| translate(error, connection))?;
@@ -208,6 +261,26 @@ impl Write<'_> {
     /// write that did not concern it.
     pub(crate) fn save_board(&self, before: &BoardRows, after: &BoardRows) -> Result<()> {
         self.before_mutation()?;
+        for old in &before.projects {
+            if !after.projects.iter().any(|new| new.name == old.name) {
+                self.execute("DELETE FROM projects WHERE name = ?1", [&old.name])?;
+            }
+        }
+        for new in &after.projects {
+            match before.projects.iter().find(|old| old.name == new.name) {
+                Some(old) if old == new => {}
+                Some(_) => self.execute(
+                    "UPDATE projects SET position = ?2, author = ?3
+                     WHERE name = ?1
+                       AND (position IS NOT ?2 OR author IS NOT ?3)",
+                    params![new.name, new.position, self.actor().as_str()],
+                )?,
+                None => self.insert_project(NewProject {
+                    name: &new.name,
+                    position: new.position,
+                })?,
+            }
+        }
         for old in &before.lanes {
             if !after.lanes.iter().any(|new| new.name == old.name) {
                 self.execute("DELETE FROM lanes WHERE name = ?1", [&old.name])?;
@@ -217,15 +290,17 @@ impl Write<'_> {
             match before.lanes.iter().find(|old| old.name == new.name) {
                 Some(old) if old == new => {}
                 Some(_) => self.execute(
-                    "UPDATE lanes SET key = ?2, last_number = ?3, position = ?4, author = ?5
+                    "UPDATE lanes SET key = ?2, last_number = ?3, position = ?4, project = ?5,
+                            author = ?6
                      WHERE name = ?1
                        AND (key IS NOT ?2 OR last_number IS NOT ?3
-                            OR position IS NOT ?4 OR author IS NOT ?5)",
+                            OR position IS NOT ?4 OR project IS NOT ?5 OR author IS NOT ?6)",
                     params![
                         new.name,
                         new.key,
                         new.last_number,
                         new.position,
+                        new.project,
                         self.actor().as_str()
                     ],
                 )?,
@@ -234,6 +309,7 @@ impl Write<'_> {
                     key: &new.key,
                     last_number: new.last_number,
                     position: new.position,
+                    project: new.project.as_deref().unwrap_or(&new.name),
                 })?,
             }
         }
