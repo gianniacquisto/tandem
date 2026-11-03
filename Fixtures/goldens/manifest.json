@@ -44,12 +44,16 @@
     {
       "group": "cli",
       "case": "help",
-      "argv": ["--help"]
+      "argv": [
+        "--help"
+      ]
     },
     {
       "group": "cli",
       "case": "help-short",
-      "argv": ["-h"]
+      "argv": [
+        "-h"
+      ]
     },
     {
       "group": "cli",
@@ -60,959 +64,3213 @@
     {
       "group": "cli",
       "case": "unknown-verb",
-      "argv": ["frobnicate"],
+      "argv": [
+        "frobnicate"
+      ],
       "exit": 2
     },
     {
       "group": "cli",
       "case": "unknown-flag",
-      "argv": ["ticket", "list", "--frobnicate"],
+      "argv": [
+        "ticket",
+        "list",
+        "--frobnicate"
+      ],
       "exit": 2
     },
-
     {
       "group": "ticket",
       "case": "help",
-      "argv": ["ticket", "--help"]
+      "argv": [
+        "ticket",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "list-empty",
-      "argv": ["ticket", "list"]
+      "argv": [
+        "ticket",
+        "list"
+      ]
     },
     {
       "group": "ticket",
       "case": "list",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]},
-        {"argv": ["ticket", "add", "--title", "Second ticket", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Second ticket",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["ticket", "list"]
+      "argv": [
+        "ticket",
+        "list"
+      ]
     },
     {
       "group": "ticket",
       "case": "list-all",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]},
-        {"argv": ["ticket", "add", "--title", "Second ticket", "--lane", "Cycle"]},
-        {"argv": ["ticket", "complete", "--id", "CYC-1"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Second ticket",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "complete",
+            "--id",
+            "CYC-1"
+          ]
+        }
       ],
-      "argv": ["ticket", "list", "--filter", "all"]
+      "argv": [
+        "ticket",
+        "list",
+        "--filter",
+        "all"
+      ]
     },
     {
       "group": "ticket",
       "case": "list-lane",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["lane", "add", "--name", "Port", "--abbr", "PRT"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]},
-        {"argv": ["ticket", "add", "--title", "Port ticket", "--lane", "Port"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Port",
+            "--abbr",
+            "PRT"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Port ticket",
+            "--lane",
+            "Port"
+          ]
+        }
       ],
-      "argv": ["ticket", "list", "--lane", "Cycle"]
+      "argv": [
+        "ticket",
+        "list",
+        "--lane",
+        "Cycle"
+      ]
     },
     {
       "group": "ticket",
       "case": "list-status",
       "setup": [
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--status", "ready"]},
-        {"argv": ["ticket", "add", "--title", "Second ticket"]}
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--status",
+            "ready"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Second ticket"
+          ]
+        }
       ],
-      "argv": ["ticket", "list", "--status", "ready"]
+      "argv": [
+        "ticket",
+        "list",
+        "--status",
+        "ready"
+      ]
     },
     {
       "group": "ticket",
       "case": "list-assignee-self",
       "setup": [
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--assignee", "self"]},
-        {"argv": ["ticket", "add", "--title", "Second ticket", "--assignee", "someone"]}
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--assignee",
+            "self"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Second ticket",
+            "--assignee",
+            "someone"
+          ]
+        }
       ],
-      "argv": ["ticket", "list", "--assignee", "self"]
+      "argv": [
+        "ticket",
+        "list",
+        "--assignee",
+        "self"
+      ]
     },
     {
       "group": "ticket",
       "case": "list-text",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem"]},
-        {"argv": ["ticket", "add", "--title", "Second ticket"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Second ticket"
+          ]
+        }
       ],
-      "argv": ["ticket", "list", "--text", "Second"]
+      "argv": [
+        "ticket",
+        "list",
+        "--text",
+        "Second"
+      ]
     },
     {
       "group": "ticket",
       "case": "list-archived",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem"]},
-        {"argv": ["ticket", "complete", "--id", "TAN-1"]},
-        {"argv": ["ticket", "archive"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "complete",
+            "--id",
+            "TAN-1"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "archive"
+          ]
+        }
       ],
-      "argv": ["ticket", "list", "--filter", "all", "--archived"]
+      "argv": [
+        "ticket",
+        "list",
+        "--filter",
+        "all",
+        "--archived"
+      ]
     },
     {
       "group": "ticket",
       "case": "list-blocked",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]},
-        {"argv": ["ticket", "add", "--title", "Second ticket", "--lane", "Cycle"]},
-        {"argv": ["ticket", "block", "--id", "CYC-1", "--on", "CYC-2"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Second ticket",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "block",
+            "--id",
+            "CYC-1",
+            "--on",
+            "CYC-2"
+          ]
+        }
       ],
-      "argv": ["ticket", "list", "--blocked"]
+      "argv": [
+        "ticket",
+        "list",
+        "--blocked"
+      ]
     },
     {
       "group": "ticket",
       "case": "show",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle", "--description", "A body the golden keeps."]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle",
+            "--description",
+            "A body the golden keeps."
+          ]
+        }
       ],
-      "argv": ["ticket", "show", "--id", "CYC-1"]
+      "argv": [
+        "ticket",
+        "show",
+        "--id",
+        "CYC-1"
+      ]
     },
     {
       "group": "ticket",
       "case": "show-unknown-ref",
-      "argv": ["ticket", "show", "--id", "CYC-9"],
+      "argv": [
+        "ticket",
+        "show",
+        "--id",
+        "CYC-9"
+      ],
       "exit": 1
     },
     {
       "group": "ticket",
       "case": "add",
-      "argv": ["ticket", "add", "--title", "Golden ticket"]
+      "argv": [
+        "ticket",
+        "add",
+        "--title",
+        "Golden ticket"
+      ]
     },
     {
       "group": "ticket",
       "case": "add-flags",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        }
       ],
-      "argv": ["ticket", "add", "--title", "Golden ticket", "--status", "ready",
-               "--assignee", "self", "--lane", "Cycle", "--origin", "self",
-               "--description", "A body the golden keeps."]
+      "argv": [
+        "ticket",
+        "add",
+        "--title",
+        "Golden ticket",
+        "--status",
+        "ready",
+        "--assignee",
+        "self",
+        "--lane",
+        "Cycle",
+        "--origin",
+        "self",
+        "--description",
+        "A body the golden keeps."
+      ]
     },
     {
       "group": "ticket",
       "case": "add-description-stdin",
       "stdin": "A body from stdin.\n",
-      "argv": ["ticket", "add", "--title", "Stdin ticket", "--description", "-"]
+      "argv": [
+        "ticket",
+        "add",
+        "--title",
+        "Stdin ticket",
+        "--description",
+        "-"
+      ]
     },
     {
       "group": "ticket",
       "case": "add-missing-title",
-      "argv": ["ticket", "add"],
+      "argv": [
+        "ticket",
+        "add"
+      ],
       "exit": 1
     },
     {
       "group": "ticket",
       "case": "add-bad-status",
-      "argv": ["ticket", "add", "--title", "Golden ticket", "--status", "nope"],
+      "argv": [
+        "ticket",
+        "add",
+        "--title",
+        "Golden ticket",
+        "--status",
+        "nope"
+      ],
       "exit": 1
     },
     {
       "group": "ticket",
       "case": "set",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["ticket", "set", "--id", "CYC-1", "--title", "Renamed ticket",
-               "--status", "in-progress", "--assignee", "self"]
+      "argv": [
+        "ticket",
+        "set",
+        "--id",
+        "CYC-1",
+        "--title",
+        "Renamed ticket",
+        "--status",
+        "in-progress",
+        "--assignee",
+        "self"
+      ]
     },
     {
       "group": "ticket",
       "case": "set-description",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem", "--description", "An old body."]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem",
+            "--description",
+            "An old body."
+          ]
+        }
       ],
-      "argv": ["ticket", "set", "--id", "TAN-1", "--description", "A replaced body."]
+      "argv": [
+        "ticket",
+        "set",
+        "--id",
+        "TAN-1",
+        "--description",
+        "A replaced body."
+      ]
     },
     {
       "group": "ticket",
       "case": "set-description-stdin",
       "stdin": "A body from stdin.\n",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem", "--description", "An old body."]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem",
+            "--description",
+            "An old body."
+          ]
+        }
       ],
-      "argv": ["ticket", "set", "--id", "TAN-1", "--description", "-"]
+      "argv": [
+        "ticket",
+        "set",
+        "--id",
+        "TAN-1",
+        "--description",
+        "-"
+      ]
     },
     {
       "group": "ticket",
       "case": "move",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]},
-        {"argv": ["ticket", "add", "--title", "Second ticket", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Second ticket",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["ticket", "move", "--id", "CYC-2", "--index", "0"]
+      "argv": [
+        "ticket",
+        "move",
+        "--id",
+        "CYC-2",
+        "--index",
+        "0"
+      ]
     },
     {
       "group": "ticket",
       "case": "move-to-default",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["ticket", "move", "--id", "CYC-1"]
+      "argv": [
+        "ticket",
+        "move",
+        "--id",
+        "CYC-1"
+      ]
     },
     {
       "group": "ticket",
       "case": "block",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]},
-        {"argv": ["ticket", "add", "--title", "Second ticket", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Second ticket",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["ticket", "block", "--id", "CYC-1", "--on", "CYC-2"]
+      "argv": [
+        "ticket",
+        "block",
+        "--id",
+        "CYC-1",
+        "--on",
+        "CYC-2"
+      ]
     },
     {
       "group": "ticket",
       "case": "block-self",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["ticket", "block", "--id", "CYC-1", "--on", "CYC-1"],
+      "argv": [
+        "ticket",
+        "block",
+        "--id",
+        "CYC-1",
+        "--on",
+        "CYC-1"
+      ],
       "exit": 1
     },
     {
       "group": "ticket",
       "case": "unblock",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]},
-        {"argv": ["ticket", "add", "--title", "Second ticket", "--lane", "Cycle"]},
-        {"argv": ["ticket", "block", "--id", "CYC-1", "--on", "CYC-2"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Second ticket",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "block",
+            "--id",
+            "CYC-1",
+            "--on",
+            "CYC-2"
+          ]
+        }
       ],
-      "argv": ["ticket", "unblock", "--id", "CYC-1"]
+      "argv": [
+        "ticket",
+        "unblock",
+        "--id",
+        "CYC-1"
+      ]
     },
     {
       "group": "ticket",
       "case": "complete",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem"
+          ]
+        }
       ],
-      "argv": ["ticket", "complete", "--id", "TAN-1"]
+      "argv": [
+        "ticket",
+        "complete",
+        "--id",
+        "TAN-1"
+      ]
     },
     {
       "group": "ticket",
       "case": "answer",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle", "--assignee", "human"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle",
+            "--assignee",
+            "human"
+          ]
+        }
       ],
-      "argv": ["ticket", "answer", "--id", "CYC-1", "--status", "ready",
-               "--assignee", "self", "--body", "The answer stands."]
+      "argv": [
+        "ticket",
+        "answer",
+        "--id",
+        "CYC-1",
+        "--status",
+        "ready",
+        "--assignee",
+        "self",
+        "--body",
+        "The answer stands."
+      ]
     },
     {
       "group": "ticket",
       "case": "archive",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem"]},
-        {"argv": ["ticket", "complete", "--id", "TAN-1"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "complete",
+            "--id",
+            "TAN-1"
+          ]
+        }
       ],
-      "argv": ["ticket", "archive"]
+      "argv": [
+        "ticket",
+        "archive"
+      ]
     },
     {
       "group": "ticket",
       "case": "archive-one",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem"]},
-        {"argv": ["ticket", "add", "--title", "Second ticket"]},
-        {"argv": ["ticket", "complete", "--id", "TAN-1"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Second ticket"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "complete",
+            "--id",
+            "TAN-1"
+          ]
+        }
       ],
-      "argv": ["ticket", "archive", "--id", "TAN-1"]
+      "argv": [
+        "ticket",
+        "archive",
+        "--id",
+        "TAN-1"
+      ]
     },
     {
       "group": "ticket",
       "case": "comment-add",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem"
+          ]
+        }
       ],
-      "argv": ["ticket", "comment", "add", "--id", "TAN-1", "--author", "golden-agent",
-               "--body", "A comment the golden keeps."]
+      "argv": [
+        "ticket",
+        "comment",
+        "add",
+        "--id",
+        "TAN-1",
+        "--author",
+        "golden-agent",
+        "--body",
+        "A comment the golden keeps."
+      ]
     },
     {
       "group": "ticket",
       "case": "comment-add-stdin",
       "stdin": "A comment from stdin.\n",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem"
+          ]
+        }
       ],
-      "argv": ["ticket", "comment", "add", "--id", "TAN-1", "--body", "-"]
+      "argv": [
+        "ticket",
+        "comment",
+        "add",
+        "--id",
+        "TAN-1",
+        "--body",
+        "-"
+      ]
     },
     {
       "group": "ticket",
       "case": "comment-list",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem"]},
-        {"argv": ["ticket", "comment", "add", "--id", "TAN-1", "--author", "golden-agent", "--body", "A comment the golden keeps."]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "comment",
+            "add",
+            "--id",
+            "TAN-1",
+            "--author",
+            "golden-agent",
+            "--body",
+            "A comment the golden keeps."
+          ]
+        }
       ],
-      "argv": ["ticket", "comment", "list", "--id", "TAN-1"]
+      "argv": [
+        "ticket",
+        "comment",
+        "list",
+        "--id",
+        "TAN-1"
+      ]
     },
     {
       "group": "ticket",
       "case": "list-help",
-      "argv": ["ticket", "list", "--help"]
+      "argv": [
+        "ticket",
+        "list",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "show-help",
-      "argv": ["ticket", "show", "--help"]
+      "argv": [
+        "ticket",
+        "show",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "add-help",
-      "argv": ["ticket", "add", "--help"]
+      "argv": [
+        "ticket",
+        "add",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "set-help",
-      "argv": ["ticket", "set", "--help"]
+      "argv": [
+        "ticket",
+        "set",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "move-help",
-      "argv": ["ticket", "move", "--help"]
+      "argv": [
+        "ticket",
+        "move",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "block-help",
-      "argv": ["ticket", "block", "--help"]
+      "argv": [
+        "ticket",
+        "block",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "unblock-help",
-      "argv": ["ticket", "unblock", "--help"]
+      "argv": [
+        "ticket",
+        "unblock",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "complete-help",
-      "argv": ["ticket", "complete", "--help"]
+      "argv": [
+        "ticket",
+        "complete",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "answer-help",
-      "argv": ["ticket", "answer", "--help"]
+      "argv": [
+        "ticket",
+        "answer",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "archive-help",
-      "argv": ["ticket", "archive", "--help"]
+      "argv": [
+        "ticket",
+        "archive",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "comment-help",
-      "argv": ["ticket", "comment", "--help"]
+      "argv": [
+        "ticket",
+        "comment",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "comment-add-help",
-      "argv": ["ticket", "comment", "add", "--help"]
+      "argv": [
+        "ticket",
+        "comment",
+        "add",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "comment-list-help",
-      "argv": ["ticket", "comment", "list", "--help"]
+      "argv": [
+        "ticket",
+        "comment",
+        "list",
+        "--help"
+      ]
     },
     {
       "group": "ticket",
       "case": "bad-verb-help",
-      "argv": ["ticket", "bogus", "--help"],
+      "argv": [
+        "ticket",
+        "bogus",
+        "--help"
+      ],
       "exit": 2
     },
-
     {
       "group": "lane",
       "case": "help",
-      "argv": ["lane", "--help"]
+      "argv": [
+        "lane",
+        "--help"
+      ]
     },
     {
       "group": "lane",
       "case": "list-empty",
-      "argv": ["lane", "list"]
+      "argv": [
+        "lane",
+        "list"
+      ]
     },
     {
       "group": "lane",
       "case": "list",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["lane", "add", "--name", "Port", "--abbr", "PRT"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Port",
+            "--abbr",
+            "PRT"
+          ]
+        }
       ],
-      "argv": ["lane", "list"]
+      "argv": [
+        "lane",
+        "list"
+      ]
     },
     {
       "group": "lane",
       "case": "add",
-      "argv": ["lane", "add", "--name", "Cycle"]
+      "argv": [
+        "lane",
+        "add",
+        "--name",
+        "Cycle"
+      ]
     },
     {
       "group": "lane",
       "case": "add-abbr",
-      "argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]
+      "argv": [
+        "lane",
+        "add",
+        "--name",
+        "Cycle",
+        "--abbr",
+        "CYC"
+      ]
     },
     {
       "group": "lane",
       "case": "add-duplicate",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        }
       ],
-      "argv": ["lane", "add", "--name", "Cycle"],
+      "argv": [
+        "lane",
+        "add",
+        "--name",
+        "Cycle"
+      ],
       "exit": 1
     },
     {
       "group": "lane",
       "case": "rename",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        }
       ],
-      "argv": ["lane", "rename", "--from", "Cycle", "--to", "Loop"]
+      "argv": [
+        "lane",
+        "rename",
+        "--from",
+        "Cycle",
+        "--to",
+        "Loop"
+      ]
     },
     {
       "group": "lane",
       "case": "rename-abbr",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        }
       ],
-      "argv": ["lane", "rename", "--from", "Cycle", "--to", "Loop", "--abbr", "LOP"]
+      "argv": [
+        "lane",
+        "rename",
+        "--from",
+        "Cycle",
+        "--to",
+        "Loop",
+        "--abbr",
+        "LOP"
+      ]
     },
     {
       "group": "lane",
       "case": "rename-unknown",
-      "argv": ["lane", "rename", "--from", "Cycle", "--to", "Loop"],
+      "argv": [
+        "lane",
+        "rename",
+        "--from",
+        "Cycle",
+        "--to",
+        "Loop"
+      ],
       "exit": 1
     },
     {
       "group": "lane",
       "case": "delete",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["lane", "delete", "--name", "Cycle"]
+      "argv": [
+        "lane",
+        "delete",
+        "--name",
+        "Cycle"
+      ]
     },
     {
       "group": "lane",
       "case": "delete-unknown",
-      "argv": ["lane", "delete", "--name", "Cycle"],
+      "argv": [
+        "lane",
+        "delete",
+        "--name",
+        "Cycle"
+      ],
       "exit": 1
     },
     {
       "group": "lane",
       "case": "list-help",
-      "argv": ["lane", "list", "--help"]
+      "argv": [
+        "lane",
+        "list",
+        "--help"
+      ]
     },
     {
       "group": "lane",
       "case": "add-help",
-      "argv": ["lane", "add", "--help"]
+      "argv": [
+        "lane",
+        "add",
+        "--help"
+      ]
     },
     {
       "group": "lane",
       "case": "rename-help",
-      "argv": ["lane", "rename", "--help"]
+      "argv": [
+        "lane",
+        "rename",
+        "--help"
+      ]
     },
     {
       "group": "lane",
       "case": "delete-help",
-      "argv": ["lane", "delete", "--help"]
+      "argv": [
+        "lane",
+        "delete",
+        "--help"
+      ]
     },
-
     {
       "group": "note",
       "case": "help",
-      "argv": ["note", "--help"]
+      "argv": [
+        "note",
+        "--help"
+      ]
     },
     {
       "group": "note",
       "case": "capture",
       "stdin": "A fact the golden keeps.\n",
-      "argv": ["note", "capture", "--kind", "fact", "--project", "fixture"]
+      "argv": [
+        "note",
+        "capture",
+        "--kind",
+        "fact",
+        "--project",
+        "fixture"
+      ]
     },
     {
       "group": "note",
       "case": "capture-duplicate",
       "stdin": "A fact the golden keeps.\n",
       "setup": [
-        {"argv": ["note", "capture", "--kind", "fact", "--project", "fixture"], "stdin": "A fact the golden keeps.\n"}
+        {
+          "argv": [
+            "note",
+            "capture",
+            "--kind",
+            "fact",
+            "--project",
+            "fixture"
+          ],
+          "stdin": "A fact the golden keeps.\n"
+        }
       ],
-      "argv": ["note", "capture", "--kind", "fact", "--project", "fixture"]
+      "argv": [
+        "note",
+        "capture",
+        "--kind",
+        "fact",
+        "--project",
+        "fixture"
+      ]
     },
     {
       "group": "note",
       "case": "capture-empty-body",
-      "argv": ["note", "capture", "--kind", "fact"],
+      "argv": [
+        "note",
+        "capture",
+        "--kind",
+        "fact"
+      ],
       "exit": 2
     },
     {
       "group": "note",
       "case": "stats",
       "setup": [
-        {"argv": ["note", "capture", "--kind", "decision", "--project", "fixture"], "stdin": "A decision the golden keeps.\n"}
+        {
+          "argv": [
+            "note",
+            "capture",
+            "--kind",
+            "decision",
+            "--project",
+            "fixture"
+          ],
+          "stdin": "A decision the golden keeps.\n"
+        }
       ],
-      "argv": ["note", "stats"]
+      "argv": [
+        "note",
+        "stats"
+      ]
     },
     {
       "group": "note",
       "case": "stats-project",
       "setup": [
-        {"argv": ["note", "capture", "--kind", "decision", "--project", "fixture"], "stdin": "A decision the golden keeps.\n"}
+        {
+          "argv": [
+            "note",
+            "capture",
+            "--kind",
+            "decision",
+            "--project",
+            "fixture"
+          ],
+          "stdin": "A decision the golden keeps.\n"
+        }
       ],
-      "argv": ["note", "stats", "--project", "fixture"]
+      "argv": [
+        "note",
+        "stats",
+        "--project",
+        "fixture"
+      ]
     },
     {
       "group": "note",
       "case": "links",
-      "argv": ["note", "links"]
+      "argv": [
+        "note",
+        "links"
+      ]
     },
     {
       "group": "note",
       "case": "rename",
-      "argv": ["note", "rename", "--from", "projects/fixture/fixture.md",
-               "--to", "projects/fixture/overview.md"]
+      "argv": [
+        "note",
+        "rename",
+        "--from",
+        "projects/fixture/fixture.md",
+        "--to",
+        "projects/fixture/overview.md"
+      ]
     },
     {
       "group": "note",
       "case": "rename-unknown",
-      "argv": ["note", "rename", "--from", "projects/fixture/nope.md",
-               "--to", "projects/fixture/overview.md"],
+      "argv": [
+        "note",
+        "rename",
+        "--from",
+        "projects/fixture/nope.md",
+        "--to",
+        "projects/fixture/overview.md"
+      ],
       "exit": 1
     },
     {
       "group": "note",
       "case": "rename-help",
-      "argv": ["note", "rename", "--help"]
+      "argv": [
+        "note",
+        "rename",
+        "--help"
+      ]
     },
     {
       "group": "note",
       "case": "capture-help",
-      "argv": ["note", "capture", "--help"]
+      "argv": [
+        "note",
+        "capture",
+        "--help"
+      ]
     },
     {
       "group": "note",
       "case": "stats-help",
-      "argv": ["note", "stats", "--help"]
+      "argv": [
+        "note",
+        "stats",
+        "--help"
+      ]
     },
     {
       "group": "note",
       "case": "links-help",
-      "argv": ["note", "links", "--help"]
+      "argv": [
+        "note",
+        "links",
+        "--help"
+      ]
     },
-
     {
       "group": "session",
       "case": "help",
-      "argv": ["session", "--help"]
+      "argv": [
+        "session",
+        "--help"
+      ]
     },
     {
       "group": "session",
       "case": "start",
-      "argv": ["session", "start", "--project", "fixture", "--agent", "builder",
-               "--brief", "A brief the golden keeps."]
+      "argv": [
+        "session",
+        "start",
+        "--project",
+        "fixture",
+        "--agent",
+        "builder",
+        "--brief",
+        "A brief the golden keeps."
+      ]
     },
     {
       "group": "session",
       "case": "start-id",
-      "argv": ["session", "start", "--session", "golden-other", "--project", "fixture",
-               "--agent", "builder", "--brief", "A brief the golden keeps."]
+      "argv": [
+        "session",
+        "start",
+        "--session",
+        "golden-other",
+        "--project",
+        "fixture",
+        "--agent",
+        "builder",
+        "--brief",
+        "A brief the golden keeps."
+      ]
     },
     {
       "group": "session",
       "case": "start-brief-stdin",
       "stdin": "A brief from stdin.\n",
-      "argv": ["session", "start", "--session", "golden-other", "--brief", "-"]
+      "argv": [
+        "session",
+        "start",
+        "--session",
+        "golden-other",
+        "--brief",
+        "-"
+      ]
     },
     {
       "group": "session",
       "case": "start-no-id",
-      "env": {"OPENCODE_SESSION_ID": null},
-      "argv": ["session", "start", "--project", "fixture", "--agent", "builder",
-                  "--brief", "A brief the golden keeps."]
+      "env": {
+        "OPENCODE_SESSION_ID": null
+      },
+      "argv": [
+        "session",
+        "start",
+        "--project",
+        "fixture",
+        "--agent",
+        "builder",
+        "--brief",
+        "A brief the golden keeps."
+      ]
     },
     {
       "group": "session",
       "case": "link",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder",
-                     "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem"
+          ]
+        }
       ],
-      "argv": ["session", "link", "--ticket", "TAN-1"]
+      "argv": [
+        "session",
+        "link",
+        "--ticket",
+        "TAN-1"
+      ]
     },
     {
       "group": "session",
       "case": "link-unknown-ticket",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder",
-                     "--brief", "A brief the golden keeps."]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        }
       ],
-      "argv": ["session", "link", "--ticket", "TAN-1"],
+      "argv": [
+        "session",
+        "link",
+        "--ticket",
+        "TAN-1"
+      ],
       "exit": 1
     },
     {
       "group": "session",
       "case": "list",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder",
-                     "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem"]},
-        {"argv": ["session", "link", "--ticket", "TAN-1"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem"
+          ]
+        },
+        {
+          "argv": [
+            "session",
+            "link",
+            "--ticket",
+            "TAN-1"
+          ]
+        }
       ],
-      "argv": ["session", "list"]
+      "argv": [
+        "session",
+        "list"
+      ]
     },
     {
       "group": "session",
       "case": "list-project",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder",
-                     "--brief", "A brief the golden keeps."]},
-        {"argv": ["session", "start", "--session", "golden-other", "--project", "other",
-               "--agent", "builder", "--brief", "A brief the golden keeps."]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "session",
+            "start",
+            "--session",
+            "golden-other",
+            "--project",
+            "other",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        }
       ],
-      "argv": ["session", "list", "--project", "fixture"]
+      "argv": [
+        "session",
+        "list",
+        "--project",
+        "fixture"
+      ]
     },
     {
       "group": "session",
       "case": "show",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder",
-                     "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem"]},
-        {"argv": ["session", "link", "--ticket", "TAN-1"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem"
+          ]
+        },
+        {
+          "argv": [
+            "session",
+            "link",
+            "--ticket",
+            "TAN-1"
+          ]
+        }
       ],
-      "argv": ["session", "show"]
+      "argv": [
+        "session",
+        "show"
+      ]
     },
     {
       "group": "session",
       "case": "show-unknown",
-      "argv": ["session", "show", "--session", "golden-other"],
+      "argv": [
+        "session",
+        "show",
+        "--session",
+        "golden-other"
+      ],
       "exit": 1
     },
     {
       "group": "session",
       "case": "end",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder",
-                     "--brief", "A brief the golden keeps."]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        }
       ],
-      "argv": ["session", "end", "--outcome", "succeeded", "--summary", "What landed."]
+      "argv": [
+        "session",
+        "end",
+        "--outcome",
+        "succeeded",
+        "--summary",
+        "What landed."
+      ]
     },
     {
       "group": "session",
       "case": "end-usage",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder",
-                     "--brief", "A brief the golden keeps."]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        }
       ],
-      "argv": ["session", "end", "--outcome", "succeeded", "--summary", "What landed.",
-               "--tokens-input", "10", "--tokens-output", "20", "--tokens-reasoning", "5",
-               "--tokens-cache-read", "3", "--tokens-cache-write", "1",
-               "--cost", "0.5", "--model", "golden-model"]
+      "argv": [
+        "session",
+        "end",
+        "--outcome",
+        "succeeded",
+        "--summary",
+        "What landed.",
+        "--tokens-input",
+        "10",
+        "--tokens-output",
+        "20",
+        "--tokens-reasoning",
+        "5",
+        "--tokens-cache-read",
+        "3",
+        "--tokens-cache-write",
+        "1",
+        "--cost",
+        "0.5",
+        "--model",
+        "golden-model"
+      ]
     },
     {
       "group": "session",
       "case": "end-skills",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder",
-                     "--brief", "A brief the golden keeps."]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        }
       ],
-      "argv": ["session", "end", "--outcome", "succeeded", "--summary", "What landed.",
-               "--skills", "grilling=2,tandem-memory=1"]
+      "argv": [
+        "session",
+        "end",
+        "--outcome",
+        "succeeded",
+        "--summary",
+        "What landed.",
+        "--skills",
+        "grilling=2,tandem-memory=1"
+      ]
     },
     {
       "group": "session",
       "case": "start-help",
-      "argv": ["session", "start", "--help"]
+      "argv": [
+        "session",
+        "start",
+        "--help"
+      ]
     },
     {
       "group": "session",
       "case": "end-help",
-      "argv": ["session", "end", "--help"]
+      "argv": [
+        "session",
+        "end",
+        "--help"
+      ]
     },
     {
       "group": "session",
       "case": "link-help",
-      "argv": ["session", "link", "--help"]
+      "argv": [
+        "session",
+        "link",
+        "--help"
+      ]
     },
     {
       "group": "session",
       "case": "list-help",
-      "argv": ["session", "list", "--help"]
+      "argv": [
+        "session",
+        "list",
+        "--help"
+      ]
     },
     {
       "group": "session",
       "case": "show-help",
-      "argv": ["session", "show", "--help"]
+      "argv": [
+        "session",
+        "show",
+        "--help"
+      ]
     },
-
     {
       "group": "sprint",
       "case": "help",
-      "argv": ["sprint", "--help"]
+      "argv": [
+        "sprint",
+        "--help"
+      ]
     },
     {
       "group": "sprint",
       "case": "open",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        }
       ],
-      "argv": ["sprint", "open", "--lane", "Cycle"]
+      "argv": [
+        "sprint",
+        "open",
+        "--lane",
+        "Cycle"
+      ]
     },
     {
       "group": "sprint",
       "case": "open-parallel",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        }
       ],
-      "argv": ["sprint", "open", "--lane", "Cycle", "--mode", "parallel"]
+      "argv": [
+        "sprint",
+        "open",
+        "--lane",
+        "Cycle",
+        "--mode",
+        "parallel"
+      ]
     },
     {
       "group": "sprint",
       "case": "open-twice",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["sprint", "open", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "sprint",
+            "open",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["sprint", "open", "--lane", "Cycle"]
+      "argv": [
+        "sprint",
+        "open",
+        "--lane",
+        "Cycle"
+      ]
     },
     {
       "group": "sprint",
       "case": "close-no-open-sprint",
-      "argv": ["sprint", "close", "--lane", "Cycle"],
+      "argv": [
+        "sprint",
+        "close",
+        "--lane",
+        "Cycle"
+      ],
       "exit": 1
     },
     {
       "group": "sprint",
       "case": "ticket",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["sprint", "open", "--lane", "Cycle"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "sprint",
+            "open",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["sprint", "ticket", "--lane", "Cycle", "--ticket", "CYC-1"]
+      "argv": [
+        "sprint",
+        "ticket",
+        "--lane",
+        "Cycle",
+        "--ticket",
+        "CYC-1"
+      ]
     },
     {
       "group": "sprint",
       "case": "run",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["sprint", "open", "--lane", "Cycle"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Cycle"]},
-        {"argv": ["sprint", "ticket", "--lane", "Cycle", "--ticket", "CYC-1"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "sprint",
+            "open",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "sprint",
+            "ticket",
+            "--lane",
+            "Cycle",
+            "--ticket",
+            "CYC-1"
+          ]
+        }
       ],
-      "argv": ["sprint", "run", "--lane", "Cycle", "--note", "The first run."]
+      "argv": [
+        "sprint",
+        "run",
+        "--lane",
+        "Cycle",
+        "--note",
+        "The first run."
+      ]
     },
     {
       "group": "sprint",
       "case": "run-note-stdin",
       "stdin": "The first run.\n",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["sprint", "open", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "sprint",
+            "open",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["sprint", "run", "--lane", "Cycle", "--note", "-"]
+      "argv": [
+        "sprint",
+        "run",
+        "--lane",
+        "Cycle",
+        "--note",
+        "-"
+      ]
     },
     {
       "group": "sprint",
       "case": "close",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["sprint", "open", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "sprint",
+            "open",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["sprint", "close", "--lane", "Cycle", "--note", "What closed it."]
+      "argv": [
+        "sprint",
+        "close",
+        "--lane",
+        "Cycle",
+        "--note",
+        "What closed it."
+      ]
     },
     {
       "group": "sprint",
       "case": "list",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["sprint", "open", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "sprint",
+            "open",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["sprint", "list"]
+      "argv": [
+        "sprint",
+        "list"
+      ]
     },
     {
       "group": "sprint",
       "case": "list-closed",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["sprint", "open", "--lane", "Cycle"]},
-        {"argv": ["sprint", "close", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "sprint",
+            "open",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "sprint",
+            "close",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["sprint", "list", "--status", "closed"]
+      "argv": [
+        "sprint",
+        "list",
+        "--status",
+        "closed"
+      ]
     },
     {
       "group": "sprint",
       "case": "show",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["sprint", "open", "--lane", "Cycle"]},
-        {"argv": ["sprint", "run", "--lane", "Cycle", "--note", "The first run."]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "sprint",
+            "open",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "sprint",
+            "run",
+            "--lane",
+            "Cycle",
+            "--note",
+            "The first run."
+          ]
+        }
       ],
-      "argv": ["sprint", "show", "--lane", "Cycle", "--number", "1"]
+      "argv": [
+        "sprint",
+        "show",
+        "--lane",
+        "Cycle",
+        "--number",
+        "1"
+      ]
     },
     {
       "group": "sprint",
       "case": "show-unknown-number",
       "setup": [
-        {"argv": ["session", "start", "--project", "fixture", "--agent", "builder", "--brief", "A brief the golden keeps."]},
-        {"argv": ["lane", "add", "--name", "Cycle", "--abbr", "CYC"]},
-        {"argv": ["sprint", "open", "--lane", "Cycle"]}
+        {
+          "argv": [
+            "session",
+            "start",
+            "--project",
+            "fixture",
+            "--agent",
+            "builder",
+            "--brief",
+            "A brief the golden keeps."
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "sprint",
+            "open",
+            "--lane",
+            "Cycle"
+          ]
+        }
       ],
-      "argv": ["sprint", "show", "--lane", "Cycle", "--number", "9"],
+      "argv": [
+        "sprint",
+        "show",
+        "--lane",
+        "Cycle",
+        "--number",
+        "9"
+      ],
       "exit": 1
     },
     {
       "group": "sprint",
       "case": "open-help",
-      "argv": ["sprint", "open", "--help"]
+      "argv": [
+        "sprint",
+        "open",
+        "--help"
+      ]
     },
     {
       "group": "sprint",
       "case": "ticket-help",
-      "argv": ["sprint", "ticket", "--help"]
+      "argv": [
+        "sprint",
+        "ticket",
+        "--help"
+      ]
     },
     {
       "group": "sprint",
       "case": "run-help",
-      "argv": ["sprint", "run", "--help"]
+      "argv": [
+        "sprint",
+        "run",
+        "--help"
+      ]
     },
     {
       "group": "sprint",
       "case": "close-help",
-      "argv": ["sprint", "close", "--help"]
+      "argv": [
+        "sprint",
+        "close",
+        "--help"
+      ]
     },
     {
       "group": "sprint",
       "case": "list-help",
-      "argv": ["sprint", "list", "--help"]
+      "argv": [
+        "sprint",
+        "list",
+        "--help"
+      ]
     },
     {
       "group": "sprint",
       "case": "show-help",
-      "argv": ["sprint", "show", "--help"]
+      "argv": [
+        "sprint",
+        "show",
+        "--help"
+      ]
     },
-
     {
       "group": "setup",
       "case": "help",
-      "argv": ["setup", "--help"]
+      "argv": [
+        "setup",
+        "--help"
+      ]
     },
     {
       "group": "setup",
       "case": "status",
-      "argv": ["setup", "status"]
+      "argv": [
+        "setup",
+        "status"
+      ]
     },
     {
       "group": "setup",
       "case": "install",
-      "argv": ["setup", "install"]
+      "argv": [
+        "setup",
+        "install"
+      ]
     },
     {
       "group": "setup",
       "case": "install-twice",
       "setup": [
-        {"argv": ["setup", "install"]}
+        {
+          "argv": [
+            "setup",
+            "install"
+          ]
+        }
       ],
-      "argv": ["setup", "install"]
+      "argv": [
+        "setup",
+        "install"
+      ]
     },
     {
       "group": "setup",
       "case": "install-claude",
-      "argv": ["setup", "install", "--host", "claude"]
+      "argv": [
+        "setup",
+        "install",
+        "--host",
+        "claude"
+      ]
     },
     {
       "group": "setup",
       "case": "status-installed",
       "setup": [
-        {"argv": ["setup", "install"]}
+        {
+          "argv": [
+            "setup",
+            "install"
+          ]
+        }
       ],
-      "argv": ["setup", "status"]
+      "argv": [
+        "setup",
+        "status"
+      ]
     },
     {
       "group": "setup",
       "case": "uninstall",
       "setup": [
-        {"argv": ["setup", "install"]}
+        {
+          "argv": [
+            "setup",
+            "install"
+          ]
+        }
       ],
-      "argv": ["setup", "uninstall"]
+      "argv": [
+        "setup",
+        "uninstall"
+      ]
     },
     {
       "group": "setup",
       "case": "install-help",
-      "argv": ["setup", "install", "--help"]
+      "argv": [
+        "setup",
+        "install",
+        "--help"
+      ]
     },
     {
       "group": "setup",
       "case": "uninstall-help",
-      "argv": ["setup", "uninstall", "--help"]
+      "argv": [
+        "setup",
+        "uninstall",
+        "--help"
+      ]
     },
     {
       "group": "setup",
       "case": "status-help",
-      "argv": ["setup", "status", "--help"]
+      "argv": [
+        "setup",
+        "status",
+        "--help"
+      ]
     },
-
     {
       "group": "doctor",
       "case": "help",
-      "argv": ["doctor", "--help"]
+      "argv": [
+        "doctor",
+        "--help"
+      ]
     },
     {
       "group": "doctor",
       "case": "doctor",
-      "mask": {"at": "checks", "names": ["app", "skills"], "as": "<environment>"},
-      "argv": ["doctor"]
+      "mask": {
+        "at": "checks",
+        "names": [
+          "app",
+          "skills"
+        ],
+        "as": "<environment>"
+      },
+      "argv": [
+        "doctor"
+      ]
     },
     {
       "group": "doctor",
       "case": "doctor-with-store",
       "setup": [
-        {"argv": ["lane", "add", "--name", "Tandem", "--abbr", "TAN"]},
-        {"argv": ["ticket", "add", "--title", "Fixture ticket", "--lane", "Tandem"]}
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Tandem",
+            "--abbr",
+            "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Tandem"
+          ]
+        }
       ],
-      "mask": {"at": "checks", "names": ["app", "skills"], "as": "<environment>"},
-      "argv": ["doctor"]
+      "mask": {
+        "at": "checks",
+        "names": [
+          "app",
+          "skills"
+        ],
+        "as": "<environment>"
+      },
+      "argv": [
+        "doctor"
+      ]
     },
     {
       "group": "doctor",
       "case": "doctor-installed",
       "setup": [
-        {"argv": ["setup", "install"]}
+        {
+          "argv": [
+            "setup",
+            "install"
+          ]
+        }
       ],
-      "mask": {"at": "checks", "names": ["app", "skills"], "as": "<environment>"},
-      "argv": ["doctor"]
+      "mask": {
+        "at": "checks",
+        "names": [
+          "app",
+          "skills"
+        ],
+        "as": "<environment>"
+      },
+      "argv": [
+        "doctor"
+      ]
     },
     {
       "group": "doctor",
       "case": "doctor-broken-bikeshed",
       "setup": [
-        {"rm": "bikeshed"},
-        {"write": {"at": "bikeshed", "text": "not a folder\n"}}
+        {
+          "rm": "bikeshed"
+        },
+        {
+          "write": {
+            "at": "bikeshed",
+            "text": "not a folder\n"
+          }
+        }
       ],
-      "mask": {"at": "checks", "names": ["app", "skills"], "as": "<environment>"},
-      "argv": ["doctor"],
+      "mask": {
+        "at": "checks",
+        "names": [
+          "app",
+          "skills"
+        ],
+        "as": "<environment>"
+      },
+      "argv": [
+        "doctor"
+      ],
+      "exit": 1
+    },
+    {
+      "group": "project",
+      "case": "help",
+      "argv": [
+        "project",
+        "--help"
+      ]
+    },
+    {
+      "group": "project",
+      "case": "list-empty",
+      "argv": [
+        "project",
+        "list"
+      ]
+    },
+    {
+      "group": "project",
+      "case": "add",
+      "argv": [
+        "project",
+        "add",
+        "--name",
+        "Alpha"
+      ]
+    },
+    {
+      "group": "project",
+      "case": "list",
+      "argv": [
+        "project",
+        "list"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Port"
+          ]
+        }
+      ]
+    },
+    {
+      "group": "project",
+      "case": "rename",
+      "argv": [
+        "project",
+        "rename",
+        "--from",
+        "Alpha",
+        "--to",
+        "Beta"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Alpha"
+          ]
+        }
+      ]
+    },
+    {
+      "group": "project",
+      "case": "rename-moves-lanes",
+      "argv": [
+        "project",
+        "rename",
+        "--from",
+        "Cycle",
+        "--to",
+        "Beta"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle"
+          ]
+        }
+      ]
+    },
+    {
+      "group": "project",
+      "case": "delete-empty",
+      "argv": [
+        "project",
+        "delete",
+        "--name",
+        "Alpha"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Alpha"
+          ]
+        }
+      ]
+    },
+    {
+      "group": "project",
+      "case": "delete-refused",
+      "argv": [
+        "project",
+        "delete",
+        "--name",
+        "Cycle"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle"
+          ]
+        }
+      ],
+      "exit": 1
+    },
+    {
+      "group": "project",
+      "case": "add-duplicate",
+      "argv": [
+        "project",
+        "add",
+        "--name",
+        "Alpha"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Alpha"
+          ]
+        }
+      ],
+      "exit": 1
+    },
+    {
+      "group": "project",
+      "case": "rename-unknown",
+      "argv": [
+        "project",
+        "rename",
+        "--from",
+        "Nope",
+        "--to",
+        "Beta"
+      ],
+      "exit": 1
+    },
+    {
+      "group": "project",
+      "case": "rename-unknown-known",
+      "argv": [
+        "project",
+        "rename",
+        "--from",
+        "Nope",
+        "--to",
+        "Beta"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Alpha"
+          ]
+        }
+      ],
+      "exit": 1
+    },
+    {
+      "group": "project",
+      "case": "delete-unknown",
+      "argv": [
+        "project",
+        "delete",
+        "--name",
+        "Nope"
+      ],
+      "exit": 1
+    },
+    {
+      "group": "project",
+      "case": "add-help",
+      "argv": [
+        "project",
+        "add",
+        "--help"
+      ]
+    },
+    {
+      "group": "project",
+      "case": "rename-help",
+      "argv": [
+        "project",
+        "rename",
+        "--help"
+      ]
+    },
+    {
+      "group": "project",
+      "case": "delete-help",
+      "argv": [
+        "project",
+        "delete",
+        "--help"
+      ]
+    },
+    {
+      "group": "project",
+      "case": "list-help",
+      "argv": [
+        "project",
+        "list",
+        "--help"
+      ]
+    },
+    {
+      "group": "lane",
+      "case": "add-project",
+      "argv": [
+        "lane",
+        "add",
+        "--name",
+        "Beta",
+        "--project",
+        "Alpha"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Alpha"
+          ]
+        }
+      ]
+    },
+    {
+      "group": "lane",
+      "case": "rename-project",
+      "argv": [
+        "lane",
+        "rename",
+        "--from",
+        "Cycle",
+        "--to",
+        "Loop",
+        "--project",
+        "Alpha"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Fixture ticket",
+            "--lane",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Alpha"
+          ]
+        }
+      ]
+    },
+    {
+      "group": "lane",
+      "case": "add-unknown-project",
+      "argv": [
+        "lane",
+        "add",
+        "--name",
+        "Beta",
+        "--project",
+        "Nope"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Alpha"
+          ]
+        }
+      ],
+      "exit": 1
+    },
+    {
+      "group": "lane",
+      "case": "rename-unknown-project",
+      "argv": [
+        "lane",
+        "rename",
+        "--from",
+        "Cycle",
+        "--to",
+        "Loop",
+        "--project",
+        "Nope"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "lane",
+            "add",
+            "--name",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Alpha"
+          ]
+        }
+      ],
       "exit": 1
     }
   ]

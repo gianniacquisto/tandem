@@ -16,7 +16,7 @@ use tandem_core::domain::{AddTicket, DomainError, Filter, Status, TicketRef};
 fn a_lanes_tickets_are_numbered_and_the_ref_is_on_add_and_list() {
     let sandbox = Sandbox::new("ref-numbers");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB")).unwrap();
+    board.add_lane("Probe", Some("PRB"), None).unwrap();
     let first = board
         .add(
             "first",
@@ -65,9 +65,9 @@ fn a_lanes_tickets_are_numbered_and_the_ref_is_on_add_and_list() {
 fn an_absent_key_is_the_first_three_of_the_name_separators_stripped() {
     let sandbox = Sandbox::new("ref-keys");
     let board = sandbox.board();
-    board.add_lane("Tandem", None).unwrap();
-    board.add_lane("Retro", None).unwrap();
-    board.add_lane("code-rank", None).unwrap();
+    board.add_lane("Tandem", None, None).unwrap();
+    board.add_lane("Retro", None, None).unwrap();
+    board.add_lane("code-rank", None, None).unwrap();
 
     let reference = |lane: &str| {
         board
@@ -90,9 +90,9 @@ fn an_absent_key_is_the_first_three_of_the_name_separators_stripped() {
 fn a_key_already_in_use_is_refused_case_insensitively() {
     let sandbox = Sandbox::new("ref-duplicate");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB")).unwrap();
+    board.add_lane("Probe", Some("PRB"), None).unwrap();
     assert_eq!(
-        board.add_lane("Pilot", Some("prb")),
+        board.add_lane("Pilot", Some("prb"), None),
         Err(DomainError::DuplicateLaneKey("PRB".to_string()))
     );
 
@@ -103,7 +103,7 @@ fn a_key_already_in_use_is_refused_case_insensitively() {
             .contains("PRB")
     );
     assert_eq!(
-        board.add_lane("Bad", Some("P-R")),
+        board.add_lane("Bad", Some("P-R"), None),
         Err(DomainError::InvalidLaneKey("P-R".to_string())),
         "a key is alphanumerics only"
     );
@@ -113,7 +113,7 @@ fn a_key_already_in_use_is_refused_case_insensitively() {
 fn show_resolves_a_ref_in_either_case_and_an_unissued_number_names_the_lanes_range() {
     let sandbox = Sandbox::new("ref-resolve");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB")).unwrap();
+    board.add_lane("Probe", Some("PRB"), None).unwrap();
     let first = board
         .add(
             "first",
@@ -169,7 +169,7 @@ fn show_resolves_a_ref_in_either_case_and_an_unissued_number_names_the_lanes_ran
 fn a_rename_keeps_the_key_and_every_ref_still_resolves() {
     let sandbox = Sandbox::new("ref-rename");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB")).unwrap();
+    board.add_lane("Probe", Some("PRB"), None).unwrap();
     board
         .add(
             "first",
@@ -180,9 +180,9 @@ fn a_rename_keeps_the_key_and_every_ref_still_resolves() {
         )
         .unwrap();
 
-    board.rename_lane("Probe", "Probe Two", None).unwrap();
+    board.rename_lane("Probe", "Probe Two", None, None).unwrap();
     assert_eq!(
-        board.rename_lane("Probe Two", "Probe Two", None).unwrap(),
+        board.rename_lane("Probe Two", "Probe Two", None, None).unwrap(),
         ["Probe Two"]
     );
 
@@ -198,7 +198,7 @@ fn a_rename_keeps_the_key_and_every_ref_still_resolves() {
 fn a_key_on_a_lane_with_a_numbered_ticket_is_refused_naming_its_refs() {
     let sandbox = Sandbox::new("ref-frozen");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB")).unwrap();
+    board.add_lane("Probe", Some("PRB"), None).unwrap();
     board
         .add(
             "first",
@@ -210,7 +210,7 @@ fn a_key_on_a_lane_with_a_numbered_ticket_is_refused_naming_its_refs() {
         .unwrap();
 
     match board
-        .rename_lane("Probe", "Probe Two", Some("PBX"))
+        .rename_lane("Probe", "Probe Two", Some("PBX"), None)
         .unwrap_err()
     {
         DomainError::FrozenLaneKey { key, lane, refs } => {
@@ -231,9 +231,9 @@ fn a_key_on_a_lane_with_a_numbered_ticket_is_refused_naming_its_refs() {
     );
 
     // An empty lane's key is not frozen: it may move.
-    board.add_lane("Empty", None).unwrap();
+    board.add_lane("Empty", None, None).unwrap();
     board
-        .rename_lane("Empty", "Empty Two", Some("EMP"))
+        .rename_lane("Empty", "Empty Two", Some("EMP"), None)
         .unwrap();
     assert_eq!(board.lanes().unwrap(), ["Probe", "Empty Two"]);
 }
@@ -242,8 +242,8 @@ fn a_key_on_a_lane_with_a_numbered_ticket_is_refused_naming_its_refs() {
 fn a_move_between_lanes_assigns_the_target_lanes_next_number_and_drops_the_old_one() {
     let sandbox = Sandbox::new("ref-move");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB")).unwrap();
-    board.add_lane("Retro", Some("RET")).unwrap();
+    board.add_lane("Probe", Some("PRB"), None).unwrap();
+    board.add_lane("Retro", Some("RET"), None).unwrap();
     let ticket = board
         .add(
             "moving",
@@ -302,7 +302,7 @@ fn the_ref_parser_is_case_insensitive_on_the_key_and_digit_only_on_the_number() 
 fn a_done_ticket_keeps_its_ref_and_its_number() {
     let sandbox = Sandbox::new("ref-done");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB")).unwrap();
+    board.add_lane("Probe", Some("PRB"), None).unwrap();
     let ticket = board
         .add(
             "done soon",

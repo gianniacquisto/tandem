@@ -20,7 +20,7 @@ use std::process::ExitCode;
 
 use rusqlite::Connection;
 use serde::Deserialize;
-use tandem_core::store::{Actor, Home, NewDependency, NewLane, NewSession, NewTicket, Store};
+use tandem_core::store::{Actor, Home, NewDependency, NewLane, NewProject, NewSession, NewTicket, Store};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -154,7 +154,22 @@ fn write(seed_path: &Path, target: &Path) -> Result<(), String> {
                     key: &lane.key,
                     last_number: lane.last_number,
                     position: lane.position,
+                    project: &lane.name,
                 })?;
+            }
+            {
+                use std::collections::HashSet;
+                let mut seen = HashSet::new();
+                let mut position: i64 = 0;
+                for lane in &seed.lanes {
+                    if seen.insert(lane.name.clone()) {
+                        write.insert_project(NewProject {
+                            name: &lane.name,
+                            position,
+                        })?;
+                        position += 1;
+                    }
+                }
             }
             for ticket in &seed.tickets {
                 write.insert_ticket(NewTicket {

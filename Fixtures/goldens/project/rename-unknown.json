@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "project",
+    "rename",
+    "--from",
+    "Nope",
+    "--to",
+    "Beta"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Unknown project \"Nope\". No projects are declared yet; create one first."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

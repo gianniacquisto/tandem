@@ -199,39 +199,71 @@ impl Board {
 
     // MARK: - Lanes
 
-    /// `add_lane(name, key)`: append a new, empty lane. The name is trimmed; an
+    /// `add_lane(name, key, project)`: append a new, empty lane. The name is trimmed; an
     /// empty or already-used name is rejected. An absent key is the first three
     /// alphanumerics of the name; a present one is uppercased and must be
-    /// alphanumerics. Returns the lane list after the write.
-    pub fn add_lane(&self, name: &str, key: Option<&str>) -> Result<Vec<String>, DomainError> {
+    /// alphanumerics. An absent project creates or reuses the project named for
+    /// the lane, so every existing `lane add` call behaves exactly as before;
+    /// a present one must name a known project. Returns the lane list after the write.
+    pub fn add_lane(
+        &self,
+        name: &str,
+        key: Option<&str>,
+        project: Option<&str>,
+    ) -> Result<Vec<String>, DomainError> {
         let name = name.trim();
         if name.is_empty() {
             return Err(DomainError::EmptyLaneName);
         }
         let requested = key.map(super::lane::LaneKey::normalize).transpose()?;
+        let project = project.map(str::trim);
         self.mutate(|contents| {
             if contents.known_lanes().iter().any(|known| known == name) {
                 return Err(DomainError::DuplicateLane(name.to_string()));
             }
+            let parent = match project {
+                Some(raw) if !raw.is_empty() => {
+                    let known = contents.known_projects();
+                    if !known.iter().any(|known| known == raw) {
+                        return Err(DomainError::UnknownProjectName {
+                            name: raw.to_string(),
+                            projects: known,
+                        });
+                    }
+                    raw.to_string()
+                }
+                _ => {
+                    if !contents.projects.iter().any(|p| p.name == name) {
+                        contents.projects.push(super::lane::Project::new(name));
+                    }
+                    name.to_string()
+                }
+            };
             let taken: Vec<String> = contents.lanes.iter().map(|lane| lane.key.clone()).collect();
             let key = match requested {
                 Some(key) => key,
                 None => super::lane::LaneKey::generate(name, &taken),
             };
             let key = unique_key(&key, contents)?;
-            contents.lanes.push(Lane::new(name, key));
+            contents
+                .lanes
+                .push(Lane::with_project(name, key, parent));
             Ok((contents.known_lanes(), true))
         })
     }
 
-    /// `rename_lane(from, to, key)`: rename a lane in place, the lane list and
+    /// `rename_lane(from, to, key, project)`: rename a lane in place, the lane list and
     /// every ticket that belongs to it, in one write. The key survives a rename by
     /// default; a key may move it only while the lane holds no numbered ticket.
+    /// The project survives by default; a present project re-parents the lane
+    /// and must name a known project. Re-parenting never touches keys, numbers
+    /// or refs.
     pub fn rename_lane(
         &self,
         from: &str,
         to: &str,
         key: Option<&str>,
+        project: Option<&str>,
     ) -> Result<Vec<String>, DomainError> {
         let from = from.trim();
         let to = to.trim();
@@ -239,9 +271,23 @@ impl Board {
             return Err(DomainError::EmptyLaneName);
         }
         let requested = key.map(super::lane::LaneKey::normalize).transpose()?;
+        let project = project.map(str::trim);
         self.mutate(|contents| {
             let Some(i) = contents.lanes.iter().position(|lane| lane.name == from) else {
                 return Err(DomainError::UnknownLane(from.to_string()));
+            };
+            let new_parent = match project {
+                Some(raw) if !raw.is_empty() => {
+                    let known = contents.known_projects();
+                    if !known.iter().any(|known| known == raw) {
+                        return Err(DomainError::UnknownProjectName {
+                            name: raw.to_string(),
+                            projects: known,
+                        });
+                    }
+                    Some(raw.to_string())
+                }
+                _ => None,
             };
             let current = contents.lanes[i].clone();
             let new_key = match requested {
@@ -265,10 +311,20 @@ impl Board {
                 _ => None,
             };
             if from == to {
-                let Some(new_key) = new_key else {
+                let mut changed = false;
+                if let Some(new_key) = new_key {
+                    contents.lanes[i].key = new_key;
+                    changed = true;
+                }
+                if let Some(parent) = new_parent
+                    && parent != contents.lanes[i].project
+                {
+                    contents.lanes[i].project = parent;
+                    changed = true;
+                }
+                if !changed {
                     return Ok((contents.known_lanes(), false));
-                };
-                contents.lanes[i].key = new_key;
+                }
                 contents.normalize();
                 return Ok((contents.known_lanes(), true));
             }
@@ -278,6 +334,9 @@ impl Board {
             contents.lanes[i].name = to.to_string();
             if let Some(new_key) = new_key {
                 contents.lanes[i].key = new_key;
+            }
+            if let Some(parent) = new_parent {
+                contents.lanes[i].project = parent;
             }
             for ticket in &mut contents.tickets {
                 if ticket.lane.as_deref() == Some(from) {
@@ -339,6 +398,128 @@ impl Board {
                     .collect(),
                 to != from,
             ))
+        })
+    }
+
+    // MARK: - Projects
+
+    /// `projects()`: every project in render order, each with its lanes in lane
+    /// order. Empty projects list truthfully; the board draws only projects
+    /// with lanes.
+    pub fn projects(&self) -> Result<Vec<super::lane::ProjectWithLanes>, DomainError> {
+        Ok(self.load()?.projects_with_lanes())
+    }
+
+    /// [`projects`](Self::projects) and the revision its rows are a snapshot of.
+    pub fn projects_snapshot(
+        &self,
+    ) -> Result<(Vec<super::lane::ProjectWithLanes>, i64), DomainError> {
+        let Some((rows, revision)) = self.store.board_snapshot()? else {
+            return Ok((Vec::new(), 0));
+        };
+        let contents = Contents::from_rows(&rows)?;
+        Ok((contents.projects_with_lanes(), revision))
+    }
+
+    /// `add_project(name)`: append a new, empty project. The name is trimmed;
+    /// an empty or already-used name is rejected. Returns the project list
+    /// after the write, lane-verb style.
+    pub fn add_project(
+        &self,
+        name: &str,
+    ) -> Result<Vec<super::lane::ProjectWithLanes>, DomainError> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(DomainError::EmptyProjectName);
+        }
+        self.mutate(|contents| {
+            if contents.projects.iter().any(|p| p.name == name) {
+                return Err(DomainError::DuplicateProject(name.to_string()));
+            }
+            contents
+                .projects
+                .push(super::lane::Project::new(name));
+            Ok((contents.projects_with_lanes(), true))
+        })
+    }
+
+    /// `rename_project(from, to)`: rename a project in place, moving its lanes
+    /// with it. Lane names, keys, numbers and refs are unchanged; only the
+    /// parent moves. An empty or already-used name is rejected; an unknown
+    /// project names the known projects.
+    pub fn rename_project(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<Vec<super::lane::ProjectWithLanes>, DomainError> {
+        let from = from.trim();
+        let to = to.trim();
+        if to.is_empty() {
+            return Err(DomainError::EmptyProjectName);
+        }
+        self.mutate(|contents| {
+            let Some(i) = contents
+                .projects
+                .iter()
+                .position(|p| p.name == from)
+            else {
+                return Err(DomainError::UnknownProjectName {
+                    name: from.to_string(),
+                    projects: contents.known_projects(),
+                });
+            };
+            if from == to {
+                return Ok((contents.projects_with_lanes(), false));
+            }
+            if contents.projects.iter().any(|p| p.name == to) {
+                return Err(DomainError::DuplicateProject(to.to_string()));
+            }
+            contents.projects[i].name = to.to_string();
+            for lane in &mut contents.lanes {
+                if lane.project == from {
+                    lane.project = to.to_string();
+                }
+            }
+            Ok((contents.projects_with_lanes(), true))
+        })
+    }
+
+    /// `delete_project(name)`: remove an empty project. A project that still
+    /// holds lanes is refused, naming those lanes: re-parent first, delete
+    /// after, so a delete can never strand or silently re-home numbered lanes.
+    pub fn delete_project(
+        &self,
+        name: &str,
+    ) -> Result<Vec<super::lane::ProjectWithLanes>, DomainError> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(DomainError::EmptyProjectName);
+        }
+        self.mutate(|contents| {
+            let Some(i) = contents
+                .projects
+                .iter()
+                .position(|p| p.name == name)
+            else {
+                return Err(DomainError::UnknownProjectName {
+                    name: name.to_string(),
+                    projects: contents.known_projects(),
+                });
+            };
+            let lanes: Vec<String> = contents
+                .lanes
+                .iter()
+                .filter(|lane| lane.project == name)
+                .map(|lane| lane.name.clone())
+                .collect();
+            if !lanes.is_empty() {
+                return Err(DomainError::ProjectNotEmpty {
+                    project: name.to_string(),
+                    lanes,
+                });
+            }
+            contents.projects.remove(i);
+            Ok((contents.projects_with_lanes(), true))
         })
     }
 

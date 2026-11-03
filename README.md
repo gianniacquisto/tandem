@@ -162,9 +162,13 @@ tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
 tandem-cli ticket comment list --id <id>
 
 tandem-cli lane list
-tandem-cli lane add --name <name> [--abbr <key>]
-tandem-cli lane rename --from <name> --to <name> [--abbr <key>]
+tandem-cli lane add --name <name> [--abbr <key>] [--project <name>]
+tandem-cli lane rename --from <name> --to <name> [--abbr <key>] [--project <name>]
 tandem-cli lane delete --name <name>
+tandem-cli project list
+tandem-cli project add --name <name>
+tandem-cli project rename --from <name> --to <name>
+tandem-cli project delete --name <name>
 
 tandem-cli settings get
 tandem-cli settings set [--project <name>]

@@ -120,6 +120,21 @@ test('the tickets face shows one board two ways: the list and the board over one
   expect(boardIds.length).toBe(listIds.length)
   expect([...boardIds].sort()).toEqual([...listIds].sort())
 
+  // Projects own lanes: the default area first and ungrouped, then each
+  // project header with its lanes beneath in lane order. Empty projects draw
+  // no rows, so every header on the board names a project with lanes.
+  const headers = window.locator('[data-project]')
+  await expect(headers).not.toHaveCount(0)
+  const firstLane = window.locator('.board__lane[data-lane]').first()
+  await expect(firstLane).toHaveAttribute('data-lane', '')
+  if ((process.env['TANDEM_SHOTS_HOME'] ?? '').endsWith('Fixtures/port/Board')) {
+    await expect(headers).toHaveCount(4)
+    await expect(headers.nth(0)).toHaveAttribute('data-project', 'Port')
+    await expect(headers.nth(1)).toHaveAttribute('data-project', 'Tandem')
+    await expect(headers.nth(2)).toHaveAttribute('data-project', 'Retro')
+    await expect(headers.nth(3)).toHaveAttribute('data-project', 'Fleet')
+  }
+
   // The pictures are the Open board, the face's default.
   await window.getByRole('tab', { name: /^Open/ }).click()
   // The grid needs 1288 px for its lane title and six status columns, and the

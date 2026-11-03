@@ -37,8 +37,8 @@ use tandem_core::store::{self, Actor, Home, Store};
 use tandem_core::wire::rpc::SettingsReply;
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
-    NoteMoveView, NotePathView, NoteWriteView, SessionDetailView, SessionList, SessionResult,
-    SprintList, SprintResult, TicketDetail, TicketList, TicketSummary,
+    NoteMoveView, NotePathView, NoteWriteView, ProjectList, SessionDetailView, SessionList,
+    SessionResult, SprintList, SprintResult, TicketDetail, TicketList, TicketSummary,
 };
 
 // MARK: - The grammar
@@ -79,6 +79,11 @@ enum Command {
     Lane {
         #[command(subcommand)]
         command: Option<LaneCommand>,
+    },
+    /// The project lifecycle: a lane's parent.
+    Project {
+        #[command(subcommand)]
+        command: Option<ProjectCommand>,
     },
     /// The bikeshed's agent face.
     Note {
@@ -145,6 +150,14 @@ enum LaneCommand {
     Add(LaneAddArgs),
     Rename(LaneRenameArgs),
     Delete(LaneDeleteArgs),
+}
+
+#[derive(Subcommand)]
+enum ProjectCommand {
+    List,
+    Add(ProjectAddArgs),
+    Rename(ProjectRenameArgs),
+    Delete(ProjectDeleteArgs),
 }
 
 #[derive(Subcommand)]
@@ -318,6 +331,8 @@ struct LaneAddArgs {
     name: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     abbr: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    project: Option<String>,
 }
 
 #[derive(Args)]
@@ -328,10 +343,32 @@ struct LaneRenameArgs {
     to: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     abbr: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    project: Option<String>,
 }
 
 #[derive(Args)]
 struct LaneDeleteArgs {
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    name: Option<String>,
+}
+
+#[derive(Args)]
+struct ProjectAddArgs {
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    name: Option<String>,
+}
+
+#[derive(Args)]
+struct ProjectRenameArgs {
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    from: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    to: Option<String>,
+}
+
+#[derive(Args)]
+struct ProjectDeleteArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     name: Option<String>,
 }
@@ -647,6 +684,10 @@ fn help_text(cli: &Cli) -> &'static str {
             None => return usage::group("lane").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
         },
+        Some(Command::Project { command }) => match command {
+            None => return usage::group("project").unwrap_or(usage::ROOT),
+            Some(command) => command.help(),
+        },
         Some(Command::Note { command }) => match command {
             None => return usage::group("note").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
@@ -697,6 +738,17 @@ impl LaneCommand {
             Self::Add(_) => "lane add",
             Self::Rename(_) => "lane rename",
             Self::Delete(_) => "lane delete",
+        }
+    }
+}
+
+impl ProjectCommand {
+    fn help(&self) -> &'static str {
+        match self {
+            Self::List => "project list",
+            Self::Add(_) => "project add",
+            Self::Rename(_) => "project rename",
+            Self::Delete(_) => "project delete",
         }
     }
 }
@@ -772,6 +824,7 @@ fn run(cli: &Cli) -> Result<(), Failure> {
         Command::Mcp => mcp(&home),
         Command::Ticket { command } => ticket(&home, command.as_ref()),
         Command::Lane { command } => lane(&home, command.as_ref()),
+        Command::Project { command } => project(&home, command.as_ref()),
         Command::Note { command } => note(&home, command.as_ref()),
         Command::Session { command } => session(&home, command.as_ref()),
         Command::Sprint { command } => sprint(&home, command.as_ref()),
@@ -1029,7 +1082,11 @@ fn lane(home: &Home, command: Option<&LaneCommand>) -> Result<(), Failure> {
         }),
         LaneCommand::Add(args) => {
             let lanes = board
-                .add_lane(args.name.as_deref().unwrap_or(""), args.abbr.as_deref())
+                .add_lane(
+                    args.name.as_deref().unwrap_or(""),
+                    args.abbr.as_deref(),
+                    args.project.as_deref(),
+                )
                 .map_err(Failure::domain)?;
             print(&LaneList { lanes, note: None })
         }
@@ -1039,6 +1096,7 @@ fn lane(home: &Home, command: Option<&LaneCommand>) -> Result<(), Failure> {
                     args.from.as_deref().unwrap_or(""),
                     args.to.as_deref().unwrap_or(""),
                     args.abbr.as_deref(),
+                    args.project.as_deref(),
                 )
                 .map_err(Failure::domain)?;
             print(&LaneList { lanes, note: None })
@@ -1048,6 +1106,44 @@ fn lane(home: &Home, command: Option<&LaneCommand>) -> Result<(), Failure> {
                 .delete_lane(args.name.as_deref().unwrap_or(""))
                 .map_err(Failure::domain)?;
             print(&LaneDeletionView::new(&deletion, None))
+        }
+    }
+}
+
+fn project(home: &Home, command: Option<&ProjectCommand>) -> Result<(), Failure> {
+    let command = command.ok_or_else(Failure::usage)?;
+    let store = if matches!(command, ProjectCommand::List) {
+        Store::new(home.clone())
+    } else {
+        write_store(home)?
+    };
+    let board = Board::new(store);
+
+    match command {
+        ProjectCommand::List => {
+            let projects = board.projects().map_err(Failure::domain)?;
+            print(&ProjectList::new(&projects, None))
+        }
+        ProjectCommand::Add(args) => {
+            let projects = board
+                .add_project(args.name.as_deref().unwrap_or(""))
+                .map_err(Failure::domain)?;
+            print(&ProjectList::new(&projects, None))
+        }
+        ProjectCommand::Rename(args) => {
+            let projects = board
+                .rename_project(
+                    args.from.as_deref().unwrap_or(""),
+                    args.to.as_deref().unwrap_or(""),
+                )
+                .map_err(Failure::domain)?;
+            print(&ProjectList::new(&projects, None))
+        }
+        ProjectCommand::Delete(args) => {
+            let projects = board
+                .delete_project(args.name.as_deref().unwrap_or(""))
+                .map_err(Failure::domain)?;
+            print(&ProjectList::new(&projects, None))
         }
     }
 }

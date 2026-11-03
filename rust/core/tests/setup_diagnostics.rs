@@ -675,7 +675,7 @@ fn the_mcp_row_names_the_server_its_version_and_its_tool_count() {
     assert_eq!(
         row.detail,
         format!(
-            "tandem-mcp {}: 29 tools over 29 covered wire methods",
+            "tandem-mcp {}: 33 tools over 33 covered wire methods",
             env!("CARGO_PKG_VERSION")
         ),
         "the tool count stands against the covered method count"

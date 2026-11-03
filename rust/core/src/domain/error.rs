@@ -57,6 +57,18 @@ pub enum DomainError {
     /// An active-project focus named a lane that is not declared. `lanes` is
     /// the declared list, so the refusal can name what the human may pick.
     UnknownProject { name: String, lanes: Vec<String> },
+    /// A project name was empty or whitespace-only.
+    EmptyProjectName,
+    /// A project name was already in use.
+    DuplicateProject(String),
+    /// A `--project` named a project the store does not carry. `projects` is
+    /// the declared list, so the refusal names what the caller may pick, the
+    /// way an unknown sprint names its lane's numbers.
+    UnknownProjectName { name: String, projects: Vec<String> },
+    /// A project delete named a project that still holds lanes. `lanes` names
+    /// them, so the caller re-parents first and deletes after: a delete never
+    /// strands or silently re-homes numbered lanes.
+    ProjectNotEmpty { project: String, lanes: Vec<String> },
     /// A lane key that is not uppercase alphanumerics.
     InvalidLaneKey(String),
     /// A lane key another lane already holds.
@@ -241,6 +253,23 @@ impl DomainError {
             }
             Self::UnknownProject { name, lanes } => format!(
                 "Unknown project \"{name}\". The declared lanes are: {}.",
+                lanes.join(", ")
+            ),
+            Self::EmptyProjectName => {
+                "Project name is empty. Provide a non-empty name and try again.".to_string()
+            }
+            Self::DuplicateProject(name) => {
+                format!("A project named \"{name}\" already exists.")
+            }
+            Self::UnknownProjectName { name, projects } if projects.is_empty() => {
+                format!("Unknown project \"{name}\". No projects are declared yet; create one first.")
+            }
+            Self::UnknownProjectName { name, projects } => format!(
+                "Unknown project \"{name}\". The known projects are: {}.",
+                projects.join(", ")
+            ),
+            Self::ProjectNotEmpty { project, lanes } => format!(
+                "Project \"{project}\" still holds lanes: {}. Re-parent them first, then delete.",
                 lanes.join(", ")
             ),
             Self::InvalidLaneKey(bad) => format!(

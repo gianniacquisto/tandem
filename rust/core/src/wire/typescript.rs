@@ -17,15 +17,16 @@ use super::rpc::{
     LaneRenameParams, MarkdownBlocksParams, MarkdownReply, Method, NoteBacklinksReply,
     NoteCaptureParams, NoteHealthReply, NoteMoveParams, NoteMoveReply, NotePathParams,
     NoteReadReply, NoteRecoveriesReply, NoteTreeParams, NoteTreeReply, NoteWriteParams,
-    NoteWriteReply, Outcome, Reply, Request, Response, SessionDetailReply, SessionEndParams,
-    SessionLinkParams, SessionListParams, SessionListReply, SessionReply, SessionShowParams,
-    SessionStartParams, SessionTranscriptParams, SessionTranscriptReply, SettingsReply,
-    SettingsSetParams, SetupInstallParams, SetupReply, SprintCloseParams, SprintListParams,
-    SprintListReply, SprintOpenParams, SprintReply, SprintRunParams, SprintShowParams,
-    SprintTicketParams, TicketAddFromNoteParams, TicketAddParams, TicketAnswerParams,
-    TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply,
-    TicketMoveParams, TicketReply, TicketSetParams, TicketUnblockParams, UsageReportReply,
-    WireError,
+    NoteWriteReply, Outcome, ProjectAddParams, ProjectDeleteParams, ProjectEntry,
+    ProjectListReply, ProjectRenameParams, Reply, Request, Response, SessionDetailReply,
+    SessionEndParams, SessionLinkParams, SessionListParams, SessionListReply, SessionReply,
+    SessionShowParams, SessionStartParams, SessionTranscriptParams, SessionTranscriptReply,
+    SettingsReply, SettingsSetParams, SetupInstallParams, SetupReply, SprintCloseParams,
+    SprintListParams, SprintListReply, SprintOpenParams, SprintReply, SprintRunParams,
+    SprintShowParams, SprintTicketParams, TicketAddFromNoteParams, TicketAddParams,
+    TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
+    TicketListReply, TicketMoveParams, TicketReply, TicketSetParams, TicketUnblockParams,
+    UsageReportReply, WireError,
 };
 use super::views::{
     BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
@@ -113,6 +114,23 @@ pub fn files() -> Vec<(&'static str, String)> {
         render(
             "LaneDeleteParams.ts",
             LaneDeleteParams::export_to_string(&cfg),
+        ),
+        render(
+            "ProjectAddParams.ts",
+            ProjectAddParams::export_to_string(&cfg),
+        ),
+        render(
+            "ProjectRenameParams.ts",
+            ProjectRenameParams::export_to_string(&cfg),
+        ),
+        render(
+            "ProjectDeleteParams.ts",
+            ProjectDeleteParams::export_to_string(&cfg),
+        ),
+        render("ProjectEntry.ts", ProjectEntry::export_to_string(&cfg)),
+        render(
+            "ProjectListReply.ts",
+            ProjectListReply::export_to_string(&cfg),
         ),
         render(
             "TicketListReply.ts",

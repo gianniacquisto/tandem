@@ -275,8 +275,8 @@ describe('the lane surface', () => {
 
   it('asks before it creates: a blank name makes no ask, a named one carries its key', () => {
     expect(laneCreateParams('   ', '')).toBeNull()
-    expect(laneCreateParams(' Platform ', '')).toEqual({ name: 'Platform', abbr: null })
-    expect(laneCreateParams('Platform', 'plat')).toEqual({ name: 'Platform', abbr: 'PLAT' })
+    expect(laneCreateParams(' Platform ', '')).toEqual({ name: 'Platform', abbr: null, project: null })
+    expect(laneCreateParams('Platform', 'plat')).toEqual({ name: 'Platform', abbr: 'PLAT', project: null })
   })
 
   it('renames only when the name or the key moved', () => {
@@ -286,11 +286,13 @@ describe('the lane surface', () => {
       from: 'Port',
       to: 'Port',
       abbr: 'PRT',
+      project: null,
     })
     expect(laneRenameParams('Port', ' Platform ', '')).toEqual({
       from: 'Port',
       to: 'Platform',
       abbr: null,
+      project: null,
     })
   })
 })

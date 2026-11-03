@@ -117,14 +117,17 @@ export function App() {
 
   const load = useCallback(async (): Promise<void> => {
     try {
-      // The whole board, the lanes it is grouped into, the one usage report,
-      // and the settings both assignee surfaces read, in one pass: the report is
-      // the derivation's (`usage.report`), so the Usage face sums nothing, and
-      // the roster is the store's (`settings.get`), so neither surface derives
-      // its names from the rows.
-      const [board, lanes, usage, settings] = await Promise.all([
+      // The whole board, the lanes it is grouped into, the projects those
+      // lanes belong to, the one usage report, and the settings both assignee
+      // surfaces read, in one pass: the report is the derivation's
+      // (`usage.report`), so the Usage face sums nothing, and the roster is
+      // the store's (`settings.get`), so neither surface derives its names
+      // from the rows. The board snapshot stays lane-keyed; the renderer joins
+      // `project.list` for the mapping instead of growing the snapshot.
+      const [board, lanes, projects, usage, settings] = await Promise.all([
         window.tandem.call({ method: 'ticket.list', params: WHOLE_BOARD }),
         window.tandem.call({ method: 'lane.list', params: {} }),
+        window.tandem.call({ method: 'project.list', params: {} }),
         window.tandem.call({ method: 'usage.report', params: {} }),
         window.tandem.call({ method: 'settings.get', params: {} }),
       ])
@@ -140,6 +143,15 @@ export function App() {
       if (!('lanes' in lanes.reply)) {
         dispatch({ type: 'failed', message: 'The lanes could not be read.' })
         return
+      }
+      // A refused project listing leaves the board ungrouped rather than
+      // taking it down: the lanes still draw, flat, in lane order.
+      const projectRows =
+        !('error' in projects) && 'projects' in projects.reply
+          ? projects.reply.projects
+          : []
+      if ('error' in projects) {
+        dispatch({ type: 'notice', message: projects.error.message })
       }
       if ('error' in usage) {
         // A refused report leaves the Usage face waiting; it does not take the
@@ -160,7 +172,12 @@ export function App() {
         })
       }
       if ('tickets' in board.reply && 'revision' in board.reply) {
-        dispatch({ type: 'loaded', reply: board.reply, lanes: lanes.reply.lanes })
+        dispatch({
+          type: 'loaded',
+          reply: board.reply,
+          lanes: lanes.reply.lanes,
+          projects: projectRows,
+        })
       }    } catch {
       if (mounted.current) {
         dispatch({ type: 'failed', message: 'The store could not be read.' })

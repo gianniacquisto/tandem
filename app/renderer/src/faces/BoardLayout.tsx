@@ -2,8 +2,15 @@ import { boardStatuses, type LaneRow } from '../shell/board'
 import type { TicketSummary } from '../wire/TicketSummary'
 import { BoardCell } from './BoardCell'
 
+export type BoardProject = {
+  name: string
+  lanes: string[]
+}
+
 export type BoardLayoutProps = {
   rows: LaneRow[]
+  /** Every project with its lanes, in render order: the board's grouping. */
+  projects?: BoardProject[]
   selected: string | null
   onSelect: (id: string) => void
   onToggle: (ticket: TicketSummary) => void
@@ -16,6 +23,11 @@ export type BoardLayoutProps = {
  * The board grid: lanes are rows and the six statuses are columns, `on-hold`
  * parked last, so the workflow reads left to right inside each lane.
  *
+ * Lanes group under project headers: projects in list order, their lanes
+ * beneath in lane order, the default area first and ungrouped, empty projects
+ * not drawn. Headers reuse the lane-head style with no new tokens; lane heads
+ * are unchanged.
+ *
  * A drop on a card reorders inside its cell; a drop on the cell itself files
  * the ticket there. The cell's own state change goes through `ticket.set` and
  * its lane change through `ticket.move`, both verbs the list already uses, so
@@ -23,6 +35,7 @@ export type BoardLayoutProps = {
  */
 export function BoardLayout({
   rows,
+  projects = [],
   selected,
   onSelect,
   onToggle,
@@ -30,6 +43,7 @@ export function BoardLayout({
   onDropOn,
   onDropCell,
 }: BoardLayoutProps) {
+  const groups = groupRows(rows, projects)
   return (
     <div className="board">
       <div className="board__lane board__lane--head">
@@ -40,7 +54,90 @@ export function BoardLayout({
           </h2>
         ))}
       </div>
-      {rows.map((row) => (
+      {groups.map((group) => (
+        <GroupRows
+          key={group.project ?? 'uncategorized'}
+          group={group}
+          selected={selected}
+          onSelect={onSelect}
+          onToggle={onToggle}
+          onOpen={onOpen}
+          onDropOn={onDropOn}
+          onDropCell={onDropCell}
+        />
+      ))}
+    </div>
+  )
+}
+
+type RowGroup = {
+  /** Null is the default area: first on the board, ungrouped, no header. */
+  project: string | null
+  rows: LaneRow[]
+}
+
+function groupRows(rows: LaneRow[], projects: BoardProject[]): RowGroup[] {
+  if (projects.length === 0) {
+    return rows.length === 0 ? [] : [{ project: null, rows }]
+  }
+  const byLane = new Map<string | null, LaneRow>()
+  for (const row of rows) {
+    byLane.set(row.key, row)
+  }
+  const groups: RowGroup[] = []
+  const grouped = new Set<string | null>()
+  // The default area first, ungrouped, no header.
+  const uncategorized = rows.filter((row) => row.key === null)
+  if (uncategorized.length > 0) {
+    groups.push({ project: null, rows: uncategorized })
+    grouped.add(null)
+  }
+  for (const project of projects) {
+    const lanes = project.lanes
+      .map((name) => byLane.get(name))
+      .filter((row): row is LaneRow => row !== undefined)
+    if (lanes.length === 0) continue
+    for (const row of lanes) grouped.add(row.key)
+    groups.push({ project: project.name, rows: lanes })
+  }
+  // Lanes no project names (a hand edit, or a stale listing): after the
+  // grouped rows, ungrouped, so no ticket is hidden.
+  const leftover = rows.filter((row) => !grouped.has(row.key))
+  if (leftover.length > 0) {
+    groups.push({ project: null, rows: leftover })
+  }
+  return groups
+}
+
+function GroupRows({
+  group,
+  selected,
+  onSelect,
+  onToggle,
+  onOpen,
+  onDropOn,
+  onDropCell,
+}: {
+  group: RowGroup
+} & Pick<
+  BoardLayoutProps,
+  'selected' | 'onSelect' | 'onToggle' | 'onOpen' | 'onDropOn' | 'onDropCell'
+>) {
+  const count = group.rows.reduce(
+    (total, row) => total + row.cells.reduce((sum, cell) => sum + cell.tickets.length, 0),
+    0,
+  )
+  return (
+    <>
+      {group.project === null ? null : (
+        <div className="board__lane" data-project={group.project}>
+          <h2 className="board__title" style={{ gridColumn: '1 / -1' }}>
+            <span>{group.project}</span>
+            <span className="board__count">{count}</span>
+          </h2>
+        </div>
+      )}
+      {group.rows.map((row) => (
         <div
           className="board__lane"
           key={row.key ?? 'uncategorized'}
@@ -67,6 +164,6 @@ export function BoardLayout({
           ))}
         </div>
       ))}
-    </div>
+    </>
   )
 }

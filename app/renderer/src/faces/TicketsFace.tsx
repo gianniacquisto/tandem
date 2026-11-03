@@ -551,6 +551,7 @@ export function TicketsFace({
           ) : (
             <BoardLayout
               rows={rows}
+              projects={snapshot.projects}
               selected={current}
               onSelect={setSelected}
               onToggle={toggle}

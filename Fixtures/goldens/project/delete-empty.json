@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "project",
+    "delete",
+    "--name",
+    "Alpha"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "projects": []
+  },
+  "stdoutKind": "json"
+}

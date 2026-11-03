@@ -23,8 +23,8 @@ fn lane_list_on_an_empty_store_is_an_empty_lane_list() {
 fn lane_list_prints_the_declared_lanes_empty_lanes_included_with_no_ticket_rows() {
     let sandbox = Sandbox::new("lane-verb-list");
     let board = sandbox.board();
-    board.add_lane("Tandem", None).unwrap();
-    board.add_lane("Retro", None).unwrap();
+    board.add_lane("Tandem", None, None).unwrap();
+    board.add_lane("Retro", None, None).unwrap();
     // A ticket in one lane must not change what `list` reports: the lanes come
     // from the store's lane list, not from ticket rows.
     let ticket = board.add("In a lane", AddTicket::default()).unwrap();
@@ -45,7 +45,7 @@ fn lane_list_prints_the_declared_lanes_empty_lanes_included_with_no_ticket_rows(
 fn lane_list_reports_a_lane_a_hand_edit_leaves_on_a_ticket() {
     let sandbox = Sandbox::new("lane-verb-dangling");
     let board = sandbox.board();
-    board.add_lane("Tandem", None).unwrap();
+    board.add_lane("Tandem", None, None).unwrap();
     let ticket = board
         .add(
             "in Tandem",
@@ -58,7 +58,7 @@ fn lane_list_reports_a_lane_a_hand_edit_leaves_on_a_ticket() {
     // A rename is the only way a lane name changes in the port; a name a ticket
     // carries that the list has dropped is still drawn, because otherwise a row
     // could be hidden by deleting a name.
-    board.rename_lane("Tandem", "Tandem Two", None).unwrap();
+    board.rename_lane("Tandem", "Tandem Two", None, None).unwrap();
     assert_eq!(board.lanes().unwrap(), ["Tandem Two"]);
     assert_eq!(
         board
@@ -74,9 +74,9 @@ fn lane_list_reports_a_lane_a_hand_edit_leaves_on_a_ticket() {
 fn every_lane_write_answers_the_list_after_its_write() {
     let sandbox = Sandbox::new("lane-verb-writes");
     let board = sandbox.board();
-    assert_eq!(board.add_lane("Tandem", None).unwrap(), ["Tandem"]);
+    assert_eq!(board.add_lane("Tandem", None, None).unwrap(), ["Tandem"]);
     assert_eq!(
-        board.rename_lane("Tandem", "Board", None).unwrap(),
+        board.rename_lane("Tandem", "Board", None, None).unwrap(),
         ["Board"]
     );
     assert_eq!(board.move_lane("Board", 0).unwrap(), ["Board"]);

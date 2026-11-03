@@ -62,10 +62,12 @@ test('the focused tickets face draws only the active lane plus the focus control
   await expect(picker).toBeVisible()
   await expect(picker).toHaveValue(focus as string)
 
-  // ...and the board draws that lane row alone.
-  const rows = window.locator('.board__lane:not(.board__lane--head)')
+  // ...and the board draws that lane row alone, under its project header.
+  const rows = window.locator('.board__lane[data-lane]')
   await expect(rows).toHaveCount(1)
   await expect(rows.first().locator('.board__title').first()).toContainText(focus as string)
+  const headers = window.locator('.board__lane[data-project]')
+  await expect(headers).toHaveCount(1)
 
   // The list draws the same lane alone.
   await window.getByRole('tab', { name: 'List' }).click()
@@ -74,7 +76,7 @@ test('the focused tickets face draws only the active lane plus the focus control
 
   await window.getByRole('tab', { name: 'Board' }).click()
 
-  // The picture is the focused face: one lane row plus the focus control.
+  // The picture is the focused face: one project header, one lane row, plus the focus control.
   await capture(app, window, scene('tickets-focus'), 1330)
 
   // The show-all escape draws every lane without clearing the stored focus.
@@ -85,5 +87,5 @@ test('the focused tickets face draws only the active lane plus the focus control
   )
   await expect(picker).toHaveValue(focus as string)
   await window.getByRole('button', { name: 'Show focus' }).click()
-  await expect(window.locator('.board__lane:not(.board__lane--head)')).toHaveCount(1)
+  await expect(window.locator('.board__lane[data-lane]')).toHaveCount(1)
 })
