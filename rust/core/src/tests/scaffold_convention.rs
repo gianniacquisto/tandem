@@ -675,3 +675,34 @@ fn the_retro_files_into_the_projects_lane() {
         "section 6 delegates the lane rule to the retro skill"
     );
 }
+
+/// The precedence rule for ticket descriptions: the store treats the Answer
+/// block as authoritative (a line whose trimmed start is `## Answer`,
+/// case-insensitively, per `rust/core/src/domain/description.rs`; `ticket
+/// answer` is the one write that records it and closes a human hold, per
+/// `rust/core/src/domain/board.rs`), so every prompt that reads a brief
+/// carries the rule: the Answer block supersedes the sections above it, a
+/// What/Answer conflict resolves in the Answer's favor, and the conflict is
+/// named in the PR body.
+#[test]
+fn the_agent_prompts_carry_the_answer_precedence_rule() {
+    for path in [
+        "agents/builder.md",
+        "agents/refiner.md",
+        "agents/reviewer.md",
+    ] {
+        let prompt = file(path);
+        assert!(
+            prompt.contains("supersedes the sections above it"),
+            "{path}: the Answer block supersedes the sections above it"
+        );
+        assert!(
+            prompt.contains("resolves in the Answer's favor"),
+            "{path}: a What/Answer conflict resolves in the Answer's favor"
+        );
+        assert!(
+            prompt.contains("named in the PR body"),
+            "{path}: the conflict is named in the PR body"
+        );
+    }
+}
