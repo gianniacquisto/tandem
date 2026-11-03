@@ -39,6 +39,7 @@ pub mod markdown;
 pub mod operation;
 pub mod ordering;
 pub mod query;
+pub mod runner;
 pub mod session;
 pub mod settings;
 pub mod sprint;

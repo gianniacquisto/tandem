@@ -663,6 +663,31 @@ fn the_harness_auth_row_reports_the_sign_in_state_without_failing() {
 }
 
 #[test]
+fn the_mcp_row_names_the_server_its_version_and_its_tool_count() {
+    let report = report(&facts());
+    let row = check(&report, "mcp");
+    assert!(row.ok, "the door is present on a current install");
+    assert!(
+        row.detail.contains("tandem-mcp"),
+        "the row names the server: {}",
+        row.detail
+    );
+    assert_eq!(
+        row.detail,
+        format!(
+            "tandem-mcp {}: 29 tools over 29 covered wire methods",
+            env!("CARGO_PKG_VERSION")
+        ),
+        "the tool count stands against the covered method count"
+    );
+    assert_eq!(
+        report.checks.last().expect("a last row").name,
+        "mcp",
+        "the door joins the pinned order last"
+    );
+}
+
+#[test]
 fn the_home_check_names_which_branch_of_the_rule_this_process_takes() {
     let mut flag = facts();
     flag.home_source = HomeSource::Flag;

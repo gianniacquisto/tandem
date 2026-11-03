@@ -21,6 +21,7 @@
 //! Each module is one suite, so `cargo test <suite>` runs it alone.
 
 mod harness;
+mod runner;
 mod scaffold_convention;
 mod sessions;
 mod sprints;

@@ -2,10 +2,7 @@
 import type { Session } from "./Session";
 
 /**
- * `session.list`: the records the sheet draws, newest first.
- *
- * The sheet re-reads on every store change, so the reply carries no revision:
- * the listing's number is the shell's, and a change event is what makes the
- * sheet read again.
+ * `session.list`: the records, newest first, at the revision they are a
+ * snapshot of.
  */
-export type SessionListReply = { sessions: Array<Session>, };
+export type SessionListReply = { revision: number, sessions: Array<Session>, };

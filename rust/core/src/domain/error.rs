@@ -84,6 +84,10 @@ pub enum DomainError {
     TicketBlockerArchived { reference: String },
     /// A ticket that already links to a note cannot be promoted again.
     AlreadyLinked { path: String },
+    /// `set` was asked to move the owner away from `human` on a ticket that
+    /// carries no `## Answer` block and is not done. Only `ticket answer`
+    /// closes the hold.
+    HumanHoldNeedsAnswer { reference: String },
     /// `start` was given an empty or whitespace-only brief.
     EmptySessionBrief,
     /// `--brief` named a regular file: the flag never read it, so the path would
@@ -124,6 +128,10 @@ pub enum DomainError {
     InvalidSprintMode(String),
     /// `sprint list` was given a status that is not `open` or `closed`.
     InvalidSprintStatus(String),
+    /// `session end` was given an outcome that is not one of the four.
+    InvalidSessionOutcome(String),
+    /// `session list` was given a status that is not `running` or `ended`.
+    InvalidSessionStatus(String),
     /// `ticket move` was given a position that is not a whole number.
     InvalidIndex(String),
     /// `--assignee self` / `--origin self` was used and `TANDEM_AGENT` names no
@@ -272,6 +280,11 @@ impl DomainError {
                 "This ticket already links to a note (\"{path}\"). Open that note, or remove \
                  the link before promoting again."
             ),
+            Self::HumanHoldNeedsAnswer { reference } => format!(
+                "{reference} is waiting on the human and carries no `## Answer` block. \
+                 Record the decision with `ticket answer`, which writes the block and closes \
+                 the hold in one write."
+            ),
             Self::EmptySessionBrief => "Session brief is empty. Provide a non-empty brief, what \
                  the session is for and what done looks like, and try again."
                 .to_string(),
@@ -343,6 +356,14 @@ impl DomainError {
             }
             Self::InvalidSprintStatus(bad) => {
                 format!("sprint status must be one of open, closed (got \"{bad}\").")
+            }
+            Self::InvalidSessionOutcome(bad) => {
+                format!(
+                    "outcome must be one of succeeded, failed, interrupted, unknown (got \"{bad}\")."
+                )
+            }
+            Self::InvalidSessionStatus(bad) => {
+                format!("session status must be one of running, ended (got \"{bad}\").")
             }
             Self::InvalidIndex(bad) => {
                 format!("index must be a whole number (got \"{bad}\").")
