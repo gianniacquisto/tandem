@@ -308,6 +308,7 @@ export function App() {
         {openTicket === null ? null : (
           <TicketSheet
             ticketId={openTicket}
+            expandedSession={route.ticket === openTicket ? route.session : null}
             lanes={snapshot.lanes}
             roster={snapshot.roster}
             revision={snapshot.revision}
