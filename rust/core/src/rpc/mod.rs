@@ -1073,7 +1073,8 @@ mod tests {
     }
 
     // A write from another store (the second terminal's door) arrives on the
-    // stream quickly: the 40 ms ceiling is the bound, and the case retries up
+    // stream quickly: the 40 ms ceiling is the bound, the write waits for the
+    // attach so it cannot land before the baseline, and the case retries up
     // to two seconds so scheduling jitter cannot flake it.
     #[test]
     fn a_write_from_another_store_reports_changed_quickly() {
@@ -1083,13 +1084,29 @@ mod tests {
         let store = Arc::new(store);
         let stop = Arc::new(AtomicBool::new(false));
         let recorder = Arc::new(Recorder::new());
+        let reads_before = store.watch_revision_reads();
         let handle = {
             let store = Arc::clone(&store);
             let stop = Arc::clone(&stop);
             let recorder = Arc::clone(&recorder);
             thread::spawn(move || watch(&*recorder, &store, &stop))
         };
-        thread::sleep(Duration::from_millis(120));
+        // The write must land after the watch's baseline: a write that lands
+        // before it leaves `last` already at the new revision and no event
+        // ever fires. The attach's first revision read proves the thread is
+        // up; one more tick settles the baseline stat, so a late start on a
+        // loaded runner cannot flake the case the way a fixed sleep can.
+        let attached = std::time::Instant::now() + Duration::from_secs(10);
+        while store.watch_revision_reads() == reads_before
+            && std::time::Instant::now() < attached
+        {
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            store.watch_revision_reads() > reads_before,
+            "the watch never attached"
+        );
+        thread::sleep(WATCH_INTERVAL * 2);
         let before = store.revision().expect("the revision reads");
         let started = std::time::Instant::now();
         store
