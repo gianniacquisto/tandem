@@ -58,11 +58,11 @@ export function resolveServerBinary(source: HarnessBinarySource): string {
   if (source.packaged) {
     const bundled = join(source.resourcesPath, 'harness', name)
     if (exists(bundled)) return bundled
-    return resolveHarnessBinary(source.env, exists)
+    return resolveHarnessBinary(source.env, exists, source.platform)
   }
   const staged = join(source.appPath, 'build', 'harness', name)
   if (exists(staged)) return staged
-  return resolveHarnessBinary(source.env, exists)
+  return resolveHarnessBinary(source.env, exists, source.platform)
 }
 
 /** The serve invocation: stdin is the lifetime handle, port 0 leaves the port to the handshake. */
