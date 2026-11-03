@@ -101,7 +101,7 @@ your change on `main` and the maintainer takes it from there.
 
 ## License
 
-Tandem is MIT licensed (copyright 2025 Gianni Acquisto); see
+Tandem is MIT licensed (copyright 2026 Gianni Acquisto); see
 [LICENSE](LICENSE). The third-party notices are in
 [NOTICE.txt](NOTICE.txt). There is no contributor license agreement and no
 Developer Certificate of Origin: your pull request under the MIT license is

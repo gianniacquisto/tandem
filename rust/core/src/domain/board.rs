@@ -524,6 +524,23 @@ impl Board {
         };
         self.mutate(|contents| {
             let index = contents.require_ticket(handle)?.1;
+            // The human hold: only `ticket answer` moves the owner off `human`
+            // while the ticket asks an unanswered question. The guard reads the
+            // stored ticket, so a same-call description adding `## Answer` does
+            // not exempt the write; a done ticket is exempt, because finishing
+            // the work settled the question.
+            if let Edit::Set(requested) = fields.assignee {
+                let stored = &contents.tickets[index];
+                if stored.assignee.as_deref() == Some(HUMAN)
+                    && normalize_assignee(requested) != Some(HUMAN.to_string())
+                    && !stored.done()
+                    && !DescriptionBody::answered(stored.description.as_deref())
+                {
+                    return Err(DomainError::HumanHoldNeedsAnswer {
+                        reference: display_name(stored),
+                    });
+                }
+            }
             let mut ticket = contents.tickets[index].clone();
             let mut changed = false;
             if let Some(new_title) = &new_title

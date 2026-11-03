@@ -7,8 +7,10 @@
 //!
 //! Three axes stay independent on purpose (the brief's `code` lens): a status
 //! transition is free-form and validates only the value, `archived` is a flag the
-//! human sets, and the lane is a grouping. Nothing here has a transition table, and
-//! the store never refuses a move the domain made.
+//! human sets, and the lane is a grouping. Nothing here has a transition table.
+//! The one refusal is the human hold: `set` will not move the owner away from
+//! `human` on a ticket with no `## Answer` block unless the ticket is done,
+//! because only `ticket answer` closes the hold.
 //!
 //! **Derived, never stored:** `done` (`status == Done`), `blocked` (an edge whose
 //! blocker is not done) and `blocked_reason` (the body's `## Blocked on` section).
@@ -29,7 +31,9 @@ use crate::store::timestamp;
 ///
 /// Six stages in workflow order. The transitions between them are free-form: the
 /// value is validated, never the move, so a ticket can go backwards as easily as
-/// forwards. `on-hold` is the parked slot (ADR 0017's 2026-10-29 amendment).
+/// forwards. A status move itself is never refused; `set` may still refuse the
+/// write for the assignee it carries (the human hold, see the module docs).
+/// `on-hold` is the parked slot (ADR 0017's 2026-10-29 amendment).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Status {
     /// Nobody has looked at it yet. The default for a new ticket.
