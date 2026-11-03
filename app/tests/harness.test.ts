@@ -121,20 +121,78 @@ describe('the harness environment', () => {
   it('names the binary: override, then install locations, then the PATH', () => {
     const present = new Set(['/opt/homebrew/bin/opencode', '/usr/local/bin/opencode'])
     const exists = (path: string): boolean => present.has(path)
-    expect(resolveHarnessBinary({ TANDEM_OPENCODE_BIN: '/opt/opencode' }, exists)).toBe(
+    // The platform is explicit, so the unix order holds on a Windows runner
+    // too, where the default would be win32.
+    expect(resolveHarnessBinary({ TANDEM_OPENCODE_BIN: '/opt/opencode' }, exists, 'darwin')).toBe(
       '/opt/opencode',
     )
     // The home candidate comes from `join`, like the resolver builds it, so
-    // the order holds on win32 too (its separators, not posix ones). Real
-    // Windows install locations arrive with TAN-273's platform seam.
+    // the order holds on win32 too (its separators, not posix ones).
     const homeCandidate = join('/Users/t', '.opencode', 'bin', 'opencode')
-    expect(resolveHarnessBinary({ HOME: '/Users/t' }, (path) => path === homeCandidate)).toBe(
-      homeCandidate,
+    expect(
+      resolveHarnessBinary({ HOME: '/Users/t' }, (path) => path === homeCandidate, 'darwin'),
+    ).toBe(homeCandidate)
+    expect(resolveHarnessBinary({ HOME: '/Users/t' }, exists, 'darwin')).toBe(
+      '/opt/homebrew/bin/opencode',
     )
-    expect(resolveHarnessBinary({ HOME: '/Users/t' }, exists)).toBe('/opt/homebrew/bin/opencode')
-    expect(resolveHarnessBinary({}, () => false)).toBe('opencode')
-    expect(resolveHarnessBinary({ TANDEM_OPENCODE_BIN: '  ' }, () => false)).toBe('opencode')
-    expect(resolveHarnessBinary({ HOME: '' }, () => false)).toBe('opencode')
+    expect(resolveHarnessBinary({}, () => false, 'darwin')).toBe('opencode')
+    expect(resolveHarnessBinary({ TANDEM_OPENCODE_BIN: '  ' }, () => false, 'darwin')).toBe(
+      'opencode',
+    )
+    expect(resolveHarnessBinary({ HOME: '' }, () => false, 'darwin')).toBe('opencode')
+  })
+
+  it('names the .exe on win32: override, then the Windows installs, then the PATH', () => {
+    const profile = join('C:', 'Users', 't')
+    const env = {
+      USERPROFILE: profile,
+      LOCALAPPDATA: join(profile, 'AppData', 'Local'),
+      APPDATA: join(profile, 'AppData', 'Roaming'),
+    }
+    // Each expectation comes from `join`, like the resolver builds it, so the
+    // order holds on every runner (its separators, not posix ones).
+    const homeBin = join(profile, '.opencode', 'bin', 'opencode.exe')
+    const programBin = join(
+      profile,
+      'AppData',
+      'Local',
+      'Programs',
+      'opencode',
+      'opencode.exe',
+    )
+    const npmBin = join(
+      profile,
+      'AppData',
+      'Roaming',
+      'npm',
+      'node_modules',
+      'opencode-ai',
+      'bin',
+      'opencode.exe',
+    )
+    const present = (paths: string[]) => {
+      const hits = new Set(paths)
+      return (path: string): boolean => hits.has(path)
+    }
+    expect(
+      resolveHarnessBinary(
+        { ...env, TANDEM_OPENCODE_BIN: 'D:\\tools\\opencode.exe' },
+        () => false,
+        'win32',
+      ),
+    ).toBe('D:\\tools\\opencode.exe')
+    expect(resolveHarnessBinary({ ...env, TANDEM_OPENCODE_BIN: '  ' }, present([homeBin]), 'win32')).toBe(
+      homeBin,
+    )
+    expect(resolveHarnessBinary(env, present([homeBin, programBin, npmBin]), 'win32')).toBe(
+      homeBin,
+    )
+    expect(resolveHarnessBinary(env, present([programBin, npmBin]), 'win32')).toBe(programBin)
+    expect(resolveHarnessBinary(env, present([npmBin]), 'win32')).toBe(npmBin)
+    expect(resolveHarnessBinary(env, () => false, 'win32')).toBe('opencode.exe')
+    expect(
+      resolveHarnessBinary({ USERPROFILE: '', LOCALAPPDATA: '', APPDATA: '' }, () => false, 'win32'),
+    ).toBe('opencode.exe')
   })
 
   it('resolves the Tandem home the way the shell does', () => {
