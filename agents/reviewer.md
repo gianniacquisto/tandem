@@ -65,6 +65,17 @@ The brief's `## Lenses` section names the checklists this gate applies, from the
 
 **When unsure, take the second class.** A wrong merge is the expensive error; a needless escalation costs one human read. Same for a red check, a missing test where the change needs one, or a PR body that misstates its own diff.
 
+## Test prep
+
+A green head the gate reviewed is still a build nobody ran: TAN-265 passed review and checks while its sign-in failed in the packaged app, because the suite fakes the harness child and the smoke only answers `ticket.list`. So every review that reaches a verdict prepares the human's run, as a `## Test this head` PR comment posted before the verdict line:
+
+- The head sha under test (`gh pr view <n> --json headRefOid -q .headRefOid`), so the human tests what was read, not a later push.
+- The CI artifact for that head: resolve the run yourself (`gh run list --branch <branch> --workflow app.yml --json databaseId,headSha,conclusion`), match `headSha` to the head, then give the exact download (`gh run download <run-id> -n tandem-macos-latest -D /tmp/tan-pr<n>`, `tandem-ubuntu-latest` and `tandem-windows-latest` likewise), the quarantine strip (`xattr -cr`), and the scratch-home launch (`TANDEM_HOME=$(mktemp -d) /tmp/Tandem-pr<n>.app/Contents/MacOS/Tandem`), so the install stays untouched. A run the list does not show is named, never invented.
+- The local alternative: a throwaway worktree of the head, `npm ci && npm run pack` in `app/`, then the unpacked executable (`app/dist/mac*/Tandem.app/Contents/MacOS/Tandem` on macOS) under a scratch `TANDEM_HOME`, empty or a copy of `Fixtures/port/Home`.
+- What to verify: the ticket's `Done when`, quoted, plus the face or command the diff touched.
+
+A merged verdict still gets the comment, for post-merge verification. An escalation carries it in the handover. A grill (no PR) and a blocked head get none: there is nothing built worth the run.
+
 ## Commenting
 
 - Nits do not veto: `gh pr review <n> --approve --body "…"` — say what you would have done differently, and merge.
