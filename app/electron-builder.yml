@@ -73,3 +73,14 @@ linux:
   category: Utility
   target:
     - target: AppImage
+  # The pinned harness binary (ADR 0038, PRT-1): `scripts/prepare-harness.mjs`
+  # fetches the pinned release asset, verifies its digest and stages it at
+  # `build/harness/opencode`; the AppImage carries it at
+  # `resources/harness/opencode`, where the launcher resolves it. Linux only,
+  # because the pin table's other entry is darwin-arm64 and the macOS bundle
+  # does not embed the harness yet.
+  extraResources:
+    - from: build/harness
+      to: harness
+      filter:
+        - opencode

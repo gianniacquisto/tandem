@@ -40,10 +40,18 @@ import urllib.error
 import urllib.request
 
 # The pin. `docs/adr/0038-the-harness-home.md` records why this version and what
-# a bump costs; CI verifies the same digest before it ships the binary.
+# a bump costs; CI verifies the same digest before it ships the binary. The
+# asset is the release asset the binary ships in: the digest pinned below is
+# the extracted binary's, not the archive's. `--print-pin` emits this table as
+# shell assignments, so CI reads the pin from here and nowhere else.
 PINNED_VERSION = "2.2.5"
+PINNED_ASSET = {
+    "darwin-arm64": "opencode-darwin-arm64.zip",
+    "linux-x64": "opencode-linux-x64.tar.gz",
+}
 PINNED_SHA256 = {
     "darwin-arm64": "abe4d88594bffb12b364375b8a6732d2d1f7a977195ed1a35c5c76f8e89c9e0e",
+    "linux-x64": "8d060e1d2fbb9bb44cf09ae6ed1f3f6a7cff070b5227e2f90970132b23a92050",
 }
 
 PASSWORD = "tandem-harness-check"
@@ -62,8 +70,11 @@ def platform_key():
 
 
 def find_harness(explicit):
+    # Realpath either way: `pass_once` serves the binary with `cwd` pointed at
+    # the scratch work dir, so a relative path would resolve against that and
+    # the spawn would fail with ENOENT after the pin checks passed.
     if explicit:
-        return explicit
+        return os.path.realpath(explicit)
     found = shutil.which("opencode")
     if not found:
         raise Check("no opencode on PATH; pass --harness <path>")
@@ -265,7 +276,22 @@ def main(argv=None):
         help="run without the isolation environment and require the check to trip",
     )
     parser.add_argument("--keep", action="store_true", help="keep the scratch tree")
+    parser.add_argument(
+        "--print-pin",
+        action="store_true",
+        help="print the pin for this platform as shell assignments and exit",
+    )
     options = parser.parse_args(argv)
+
+    if options.print_pin:
+        key = platform_key()
+        if key not in PINNED_SHA256:
+            print("FAIL no digest pinned for %s; the pin is per platform" % key, file=sys.stderr)
+            return 1
+        print("PINNED_VERSION=%s" % PINNED_VERSION)
+        print("PINNED_ASSET=%s" % PINNED_ASSET[key])
+        print("PINNED_SHA256=%s" % PINNED_SHA256[key])
+        return 0
 
     results = []
 
