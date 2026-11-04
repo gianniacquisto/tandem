@@ -67,6 +67,7 @@ import {
   CodeTagWidget,
   HrWidget,
   CeilingWarningWidget,
+  CalloutWidget,
   toggleTask,
 } from "./widgets.js";
 import { ligneTheme } from "./theme.js";
@@ -189,6 +190,8 @@ function makeWidget(d) {
       return new CodeTagWidget(d.info);
     case "hr":
       return new HrWidget();
+    case "callout":
+      return new CalloutWidget(d.callout);
     default:
       throw new RangeError("unknown plan widget kind: " + d.kind);
   }

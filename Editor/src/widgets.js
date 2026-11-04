@@ -74,6 +74,37 @@ export class WikilinkWidget extends WidgetType {
   }
 }
 
+// -- Callout label ------------------------------------------------------------------
+
+// Replaces the `[!NOTE]` marker of a GitHub-style callout blockquote with
+// its kind label (the blockquote's tint comes from the plan's
+// tandem-callout-* line classes). View-only: the raw marker stays in the
+// buffer and returns on the caret's line via the plan's reveal rule.
+const CALLOUT_LABELS = {
+  NOTE: "Note",
+  TIP: "Tip",
+  IMPORTANT: "Important",
+  WARNING: "Warning",
+  CAUTION: "Caution",
+};
+
+export class CalloutWidget extends WidgetType {
+  constructor(callout) {
+    super();
+    this.callout = callout; // "NOTE" | "TIP" | "IMPORTANT" | "WARNING" | "CAUTION"
+  }
+  eq(other) {
+    return other instanceof CalloutWidget && other.callout === this.callout;
+  }
+  toDOM() {
+    return el(
+      "span",
+      "tandem-callout-label tandem-callout-label-" + this.callout.toLowerCase(),
+      CALLOUT_LABELS[this.callout] ?? this.callout
+    );
+  }
+}
+
 // -- Task checkbox --------------------------------------------------------------
 
 // Replaces the TaskMarker ([ ] / [x]) with a 14 pt checkbox (prototype:

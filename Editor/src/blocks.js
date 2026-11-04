@@ -25,6 +25,7 @@
 
 import { scanWikilinks } from "./pure/scan.js";
 import { scanMath } from "./pure/math.js";
+import { scanHighlights } from "./pure/highlight.js";
 import { resolveWikilink } from "./pure/resolve.js";
 import { frontmatterRange } from "./pure/frontmatter.js";
 
@@ -173,6 +174,20 @@ export function planPreview({ text, tree, notes = [], notePath = "", reveal = nu
       addReplace(bf, bt);
       blocks.push({ at: bf, side: 0, widget: { kind: "displaymath", content: m.content } });
     }
+  }
+
+  // 2b. Highlights: ==mark== renders as an inline mark span (the delimiters
+  //    hide, the content spans .tandem-mark). Scanned with only the code
+  //    ranges masked: overlaps with wikilink and math ranges resolve in
+  //    the cleanup below (a span strictly inside a replaced range is
+  //    dropped, one merely crossing it survives, so a mark wraps a link
+  //    while a link target keeps its text as written).
+  const highlights = scanHighlights(text, codeRanges);
+  for (const h of highlights) {
+    if (fmRange && h.from < fmRange[1]) continue;
+    addReplace(h.from, h.from + 2); // opening ==
+    addReplace(h.to - 2, h.to); // closing ==
+    spans.push({ from: h.from + 2, to: h.to - 2, className: "tandem-mark" });
   }
 
   // 3. Structural decorations from the tree.
@@ -432,19 +447,43 @@ function setextHeading(node, ctx) {
 
 function blockquote(cur, ctx) {
   const node = cur.node;
-  const { lines, addLineClass } = ctx;
-  if (ctx.inQuote === 0) {
+  const { text, lines, addReplace, addLineClass } = ctx;
+  // A GitHub-style callout: the blockquote's first line opens with
+  // `[!NOTE]` (one of the five kinds, case-insensitive). Only the
+  // blockquote's own level is stripped, so an outer quote around a callout
+  // is not itself a callout.
+  const callout = calloutMarker(text, node, lines);
+  if (ctx.inQuote === 0 || callout) {
     const a = lines.indexAt(node.from);
     const b = lines.indexAt(node.to - 1);
     for (let i = a; i <= b; i++) {
       addLineClass(i, "tandem-quote");
       if (i === a) addLineClass(i, "tandem-quote-first");
       if (i === b) addLineClass(i, "tandem-quote-last");
+      if (callout) {
+        addLineClass(i, "tandem-callout");
+        addLineClass(i, "tandem-callout-" + callout.kind.toLowerCase());
+      }
     }
+  }
+  if (callout) {
+    // The marker hides behind its label widget (the reveal rule drops this
+    // replace on the caret's line, so the raw syntax stays editable).
+    addReplace(callout.from, callout.to, { kind: "callout", callout: callout.kind });
   }
   ctx.inQuote++;
   descend(cur, ctx);
   ctx.inQuote--;
+}
+
+// The callout marker on a blockquote's own first line, or null. Returns
+// the uppercased kind plus the absolute `[!KIND]` range.
+function calloutMarker(text, node, lines) {
+  const head = text.slice(node.from, lines.to(lines.indexAt(node.from)));
+  const m = /^[ \t]*>[ \t]?\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i.exec(head);
+  if (!m) return null;
+  const from = node.from + m[0].indexOf("[");
+  return { kind: m[1].toUpperCase(), from, to: from + m[1].length + 3 };
 }
 
 function quoteMark(node, ctx) {
