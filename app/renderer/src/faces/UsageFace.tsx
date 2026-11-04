@@ -51,7 +51,7 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
 
   if (report === null) {
     return (
-      <Face wide title="Usage" blurb="The reported spend, by day, model, agent and ticket.">
+      <Face wide label="Usage">
         <p className="face__fact">Waiting for the store.</p>
       </Face>
     )
@@ -72,7 +72,7 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
   }
 
   return (
-    <Face wide title="Usage" blurb="The reported spend, by day, model, agent and ticket.">
+    <Face wide label="Usage">
       <div className="usage">
         <div className="usage__header">
           <span className="usage__coverage">{coverage(report)}</span>
@@ -181,11 +181,21 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
                           </button>
                         </th>
                         <td className="usage__count">{row.records}</td>
-                        <td className="usage__count">{cells.input}</td>
-                        <td className="usage__count">{cells.output}</td>
-                        <td className="usage__count">{cells.cacheRead}</td>
-                        <td className="usage__count">{cells.cacheWrite}</td>
-                        <td className="usage__cost">{cells.cost}</td>
+                        <td className={`usage__count${cells.input === ABSENT ? ' usage__absent' : ''}`}>
+                          {cells.input}
+                        </td>
+                        <td className={`usage__count${cells.output === ABSENT ? ' usage__absent' : ''}`}>
+                          {cells.output}
+                        </td>
+                        <td className={`usage__count${cells.cacheRead === ABSENT ? ' usage__absent' : ''}`}>
+                          {cells.cacheRead}
+                        </td>
+                        <td className={`usage__count${cells.cacheWrite === ABSENT ? ' usage__absent' : ''}`}>
+                          {cells.cacheWrite}
+                        </td>
+                        <td className={`usage__cost${cells.cost === ABSENT ? ' usage__absent' : ''}`}>
+                          {cells.cost}
+                        </td>
                         <td className="usage__share">
                           {/* The bar is a meter over the report's own percentage: no
                               inline width, no percentage derived here. */}

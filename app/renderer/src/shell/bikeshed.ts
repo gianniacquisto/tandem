@@ -105,10 +105,24 @@ export function healthSummary(health: BikeshedHealth): string {
   return parts.length === 0 ? 'No broken links, no orphan notes.' : parts.join(', ')
 }
 
-/** A recovery named as what it is: a draft from an interrupted save. */
+/** The folder a recovery's temp was kept in, or null at the vault root. */
+export function recoveryLocation(recovery: RecoveryView): string | null {
+  const slash = recovery.file.lastIndexOf('/')
+  if (slash < 0) return null
+  const folder = recovery.file.slice(0, slash)
+  return folder === '' ? null : folder
+}
+
+/**
+ * A recovery named as what it is, a draft kept from an interrupted save. The
+ * temp's own name (`.note-*.tmp`) and its byte count stay internal: the row
+ * names where the draft was kept, never the tmp path, and never as an error.
+ */
 export function recoverableLabel(recovery: RecoveryView): string {
-  const bytes = `${recovery.bytes} bytes`
-  return `A draft from an interrupted save: ${recovery.file} (${bytes})`
+  const folder = recoveryLocation(recovery)
+  return folder === null
+    ? 'Unsaved draft kept from an interrupted save'
+    : `Unsaved draft kept from an interrupted save in ${folder}`
 }
 
 /** The Tickets face at the sheet a note links to (PRT-17 reads the query). */

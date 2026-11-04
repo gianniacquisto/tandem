@@ -101,17 +101,20 @@ fn a_filter_preserves_the_stored_order() {
 fn add_lane_appends_and_empty_and_duplicate_names_are_rejected() {
     let sandbox = Sandbox::new("lane-add");
     let board = sandbox.board();
-    board.add_lane("Work", None).unwrap();
-    board.add_lane("  Home  ", None).unwrap();
+    board.add_lane("Work", None, None).unwrap();
+    board.add_lane("  Home  ", None, None).unwrap();
     assert_eq!(board.lanes().unwrap(), ["Work", "Home"]);
     // Each verb returns the lane list after its write.
     assert_eq!(
-        board.add_lane("Play", None).unwrap(),
+        board.add_lane("Play", None, None).unwrap(),
         ["Work", "Home", "Play"]
     );
-    assert_eq!(board.add_lane("   ", None), Err(DomainError::EmptyLaneName));
     assert_eq!(
-        board.add_lane("Work", None),
+        board.add_lane("   ", None, None),
+        Err(DomainError::EmptyLaneName)
+    );
+    assert_eq!(
+        board.add_lane("Work", None, None),
         Err(DomainError::DuplicateLane("Work".to_string()))
     );
 }
@@ -120,7 +123,7 @@ fn add_lane_appends_and_empty_and_duplicate_names_are_rejected() {
 fn add_files_on_top_of_that_lane_and_an_unknown_lane_is_rejected() {
     let sandbox = Sandbox::new("lane-add-ticket");
     let board = sandbox.board();
-    board.add_lane("Work", None).unwrap();
+    board.add_lane("Work", None, None).unwrap();
     board
         .add(
             "w1",
@@ -174,7 +177,7 @@ fn add_files_on_top_of_that_lane_and_an_unknown_lane_is_rejected() {
 fn rename_lane_rewrites_the_lane_list_and_every_ticket_that_belongs_to_it() {
     let sandbox = Sandbox::new("lane-rename");
     let board = sandbox.board();
-    board.add_lane("Work", None).unwrap();
+    board.add_lane("Work", None, None).unwrap();
     board
         .add(
             "w1",
@@ -185,9 +188,12 @@ fn rename_lane_rewrites_the_lane_list_and_every_ticket_that_belongs_to_it() {
         )
         .unwrap();
     board.add("d1", AddTicket::default()).unwrap();
-    board.rename_lane("Work", "Job", None).unwrap();
+    board.rename_lane("Work", "Job", None, None).unwrap();
     // Renaming to itself is a no-op that still reports the list.
-    assert_eq!(board.rename_lane("Job", "Job", None).unwrap(), ["Job"]);
+    assert_eq!(
+        board.rename_lane("Job", "Job", None, None).unwrap(),
+        ["Job"]
+    );
 
     assert_eq!(board.lanes().unwrap(), ["Job"]);
     let tickets = support::all(&board);
@@ -208,16 +214,16 @@ fn rename_lane_rewrites_the_lane_list_and_every_ticket_that_belongs_to_it() {
     );
 
     assert_eq!(
-        board.rename_lane("Ghost", "X", None),
+        board.rename_lane("Ghost", "X", None, None),
         Err(DomainError::UnknownLane("Ghost".to_string()))
     );
     assert_eq!(
-        board.rename_lane("Job", " ", None),
+        board.rename_lane("Job", " ", None, None),
         Err(DomainError::EmptyLaneName)
     );
-    board.add_lane("Home", None).unwrap();
+    board.add_lane("Home", None, None).unwrap();
     assert_eq!(
-        board.rename_lane("Job", "Home", None),
+        board.rename_lane("Job", "Home", None, None),
         Err(DomainError::DuplicateLane("Home".to_string()))
     );
 }
@@ -226,9 +232,9 @@ fn rename_lane_rewrites_the_lane_list_and_every_ticket_that_belongs_to_it() {
 fn a_rename_to_itself_writes_nothing() {
     let sandbox = Sandbox::new("lane-rename-noop");
     let board = sandbox.board();
-    board.add_lane("Work", None).unwrap();
+    board.add_lane("Work", None, None).unwrap();
     let before = modified(&sandbox.database());
-    board.rename_lane("Work", "Work", None).unwrap();
+    board.rename_lane("Work", "Work", None, None).unwrap();
     assert_eq!(
         modified(&sandbox.database()),
         before,
@@ -240,7 +246,7 @@ fn a_rename_to_itself_writes_nothing() {
 fn delete_lane_moves_its_tickets_to_the_default_area_and_never_deletes_them() {
     let sandbox = Sandbox::new("lane-delete");
     let board = sandbox.board();
-    board.add_lane("Work", None).unwrap();
+    board.add_lane("Work", None, None).unwrap();
     board
         .add(
             "w1",
@@ -288,7 +294,7 @@ fn delete_lane_moves_its_tickets_to_the_default_area_and_never_deletes_them() {
 fn move_places_a_ticket_at_a_zero_based_index_within_another_lane() {
     let sandbox = Sandbox::new("lane-move-between");
     let board = sandbox.board();
-    board.add_lane("Work", None).unwrap();
+    board.add_lane("Work", None, None).unwrap();
     board.add("d1", AddTicket::default()).unwrap();
     board.add("d2", AddTicket::default()).unwrap();
     board
@@ -359,9 +365,9 @@ fn move_rejects_an_unknown_id_and_an_unknown_lane() {
 fn move_lane_reorders_the_lane_list_and_the_index_clamps_to_the_ends() {
     let sandbox = Sandbox::new("lane-order");
     let board = sandbox.board();
-    board.add_lane("A", None).unwrap();
-    board.add_lane("B", None).unwrap();
-    board.add_lane("C", None).unwrap();
+    board.add_lane("A", None, None).unwrap();
+    board.add_lane("B", None, None).unwrap();
+    board.add_lane("C", None, None).unwrap();
     assert_eq!(board.lanes().unwrap(), ["A", "B", "C"]);
 
     assert_eq!(board.move_lane("B", 2).unwrap(), ["A", "C", "B"]);
@@ -386,8 +392,8 @@ fn move_lane_rejects_an_unknown_name() {
 fn moving_a_lane_carries_its_tickets_and_the_default_area_stays_first() {
     let sandbox = Sandbox::new("lane-order-tickets");
     let board = sandbox.board();
-    board.add_lane("A", None).unwrap();
-    board.add_lane("B", None).unwrap();
+    board.add_lane("A", None, None).unwrap();
+    board.add_lane("B", None, None).unwrap();
     board.add("d1", AddTicket::default()).unwrap();
     board
         .add(
@@ -427,7 +433,7 @@ fn moving_a_lane_carries_its_tickets_and_the_default_area_stays_first() {
 fn a_ticket_filed_in_a_lane_keeps_its_status_through_a_lane_reorder() {
     let sandbox = Sandbox::new("lane-status");
     let board = sandbox.board();
-    board.add_lane("A", None).unwrap();
+    board.add_lane("A", None, None).unwrap();
     board
         .add(
             "a1",
@@ -448,7 +454,7 @@ fn a_ticket_filed_in_a_lane_keeps_its_status_through_a_lane_reorder() {
             },
         )
         .unwrap();
-    board.add_lane("B", None).unwrap();
+    board.add_lane("B", None, None).unwrap();
     board.move_lane("A", 1).unwrap();
     assert_eq!(
         support::all(&board)

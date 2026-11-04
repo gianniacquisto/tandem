@@ -275,8 +275,8 @@ describe('the lane surface', () => {
 
   it('asks before it creates: a blank name makes no ask, a named one carries its key', () => {
     expect(laneCreateParams('   ', '')).toBeNull()
-    expect(laneCreateParams(' Platform ', '')).toEqual({ name: 'Platform', abbr: null })
-    expect(laneCreateParams('Platform', 'plat')).toEqual({ name: 'Platform', abbr: 'PLAT' })
+    expect(laneCreateParams(' Platform ', '')).toEqual({ name: 'Platform', abbr: null, project: null })
+    expect(laneCreateParams('Platform', 'plat')).toEqual({ name: 'Platform', abbr: 'PLAT', project: null })
   })
 
   it('renames only when the name or the key moved', () => {
@@ -286,11 +286,13 @@ describe('the lane surface', () => {
       from: 'Port',
       to: 'Port',
       abbr: 'PRT',
+      project: null,
     })
     expect(laneRenameParams('Port', ' Platform ', '')).toEqual({
       from: 'Port',
       to: 'Platform',
       abbr: null,
+      project: null,
     })
   })
 })
@@ -340,6 +342,77 @@ describe('the sheet\'s shortcut hint', () => {
       .filter((name) => name !== 'shell/keys.ts')
       .filter((name) => readFileSync(join(renderer, name), 'utf8').includes('⌘'))
     expect(stray).toEqual([])
+  })
+})
+
+describe('the sheet copy (TAND-13)', () => {
+  it('names the sections Description, Comments and Add a comment, without the restated copy', () => {
+    const sheet = source('faces/TicketSheet.tsx')
+    expect(sheet).toContain('>Description</h2>')
+    expect(sheet).not.toContain('Description: markdown, saved with the ticket')
+    expect(sheet).toContain('>Comments</h2>')
+    expect(sheet).not.toContain("Comments: the ticket's discussion log")
+    expect(sheet).toContain('Add a comment')
+    expect(sheet).not.toContain('Add a comment: appended to the log, signed as you')
+  })
+
+  it('reads append-only in one glance: no Edit source, a View source plus an append-only note', () => {
+    const sheet = source('faces/TicketSheet.tsx')
+    expect(sheet).not.toContain('Edit source')
+    expect(sheet).toContain('View source')
+    expect(sheet).toContain('Append-only')
+    expect(sheet).toContain('sheet__note')
+    expect(sheet).toContain('Append')
+  })
+
+  it('keeps one Save path for the fields', () => {
+    const sheet = source('faces/TicketSheet.tsx')
+    expect(sheet.match(/sheet__save/g)?.length).toBe(1)
+  })
+})
+
+describe('the sheet sticky title (TAND-13)', () => {
+  it('holds the title and Save in a sticky bar at the top of the scroll', () => {
+    const sheet = source('faces/TicketSheet.tsx')
+    expect(sheet).toContain('sheet__sticky')
+    const stickyAt = sheet.indexOf('sheet__sticky')
+    const titleAt = sheet.indexOf('sheet__title')
+    const saveAt = sheet.indexOf('sheet__save')
+    const bodyAt = sheet.indexOf('sheet__body')
+    expect(stickyAt).toBeGreaterThanOrEqual(0)
+    expect(titleAt).toBeGreaterThan(stickyAt)
+    expect(saveAt).toBeGreaterThan(stickyAt)
+    // The sticky bar sits inside the scrolling body, so it can stick.
+    expect(bodyAt).toBeLessThan(stickyAt)
+
+    const css = readFileSync(join(renderer, 'app.css'), 'utf8')
+    expect(css).toContain('.sheet__sticky')
+    expect(css).toMatch(/\.sheet__sticky[^}]*position:\s*sticky/)
+  })
+})
+
+describe('the sheet status colour (TAND-13)', () => {
+  it('carries the list state colour on the status control', () => {
+    const sheet = source('faces/TicketSheet.tsx')
+    expect(sheet).toContain('sheet__status-dot')
+    expect(sheet).toContain('data-status={status}')
+
+    const css = readFileSync(join(renderer, 'app.css'), 'utf8')
+    for (const [status, token] of [
+      ['on-hold', '--ember-deep'],
+      ['ready', '--accent-deep'],
+      ['in-progress', '--accent'],
+      ['in-review', '--moss'],
+      ['done', '--ink-dim'],
+    ] as const) {
+      expect(css).toContain(`.sheet__status-dot[data-status="${status}"]`)
+      const listRule = new RegExp(`\\.ticket-row__status\\[data-status="${status}"\\][^}]*${token}`)
+      expect(css, `list maps ${status} to ${token}`).toMatch(listRule)
+      const sheetRule = new RegExp(
+        `\\.sheet__status-dot\\[data-status="${status}"\\][^}]*${token}`,
+      )
+      expect(css, `sheet reuses ${status} as ${token}`).toMatch(sheetRule)
+    }
   })
 })
 

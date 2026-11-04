@@ -83,7 +83,7 @@ fn a_row_dropped_on_itself_is_a_no_op() {
 fn dropping_a_default_ticket_onto_a_lane_row_files_it_into_that_lane() {
     let sandbox = Sandbox::new("order-into");
     let board = sandbox.board();
-    board.add_lane("Work", None).unwrap();
+    board.add_lane("Work", None, None).unwrap();
     board.add("d1", AddTicket::default()).unwrap();
     board
         .add(
@@ -125,7 +125,7 @@ fn dropping_a_default_ticket_onto_a_lane_row_files_it_into_that_lane() {
 fn dropping_a_lane_ticket_onto_a_default_row_returns_it_to_the_default_area() {
     let sandbox = Sandbox::new("order-out");
     let board = sandbox.board();
-    board.add_lane("Work", None).unwrap();
+    board.add_lane("Work", None, None).unwrap();
     board.add("d1", AddTicket::default()).unwrap();
     board.add("d2", AddTicket::default()).unwrap();
     board

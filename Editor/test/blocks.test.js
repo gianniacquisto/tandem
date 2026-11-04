@@ -369,3 +369,118 @@ test("mermaid fence inside a blockquote and a list item still plans its widget",
   const listed = plan("- item\n\n  ```mermaid\n  graph TD\n  ```");
   assert.equal(blockOf(listed, "mermaid")?.widget.source, "graph TD");
 });
+
+// -- highlight marks -----------------------------------------------------------
+//
+// ==highlight== renders as an inline mark (the delimiters hide, the content
+// spans .tandem-mark); the raw syntax stays on the caret's line via reveal.
+
+test("highlight: == markers hidden, inner span classed", () => {
+  const p = plan("a ==hi== b");
+  assert.ok(emptyAt(p, 2, 4) && emptyAt(p, 6, 8));
+  assert.ok(
+    p.spans.some((s) => s.from === 4 && s.to === 6 && s.className === "tandem-mark")
+  );
+});
+
+test("highlight: unmatched, spaced edges, and === runs stay literal", () => {
+  for (const text of [
+    "a ==hi b",
+    "a == hi== b",
+    "a ==hi == b",
+    "a ===x=== b",
+    "a ==== b",
+  ]) {
+    const p = plan(text);
+    assert.equal(
+      p.spans.filter((s) => s.className === "tandem-mark").length,
+      0,
+      text
+    );
+    assert.equal(p.replaces.length, 0, text);
+  }
+});
+
+test("highlight: nothing inside code (fenced, indented, inline)", () => {
+  const p = plan("```\n==x==\n```\n\n    ==y==\n\n`==z==`");
+  assert.equal(p.spans.filter((s) => s.className === "tandem-mark").length, 0);
+});
+
+test("highlight: a wikilink target keeps its text (no mark inside)", () => {
+  const p = plan("[[a ==b== c]]", { notes: ["a ==b== c.md"] });
+  assert.equal(p.spans.filter((s) => s.className === "tandem-mark").length, 0);
+  assert.equal(p.replaces.filter((r) => r.widget?.kind === "wikilink").length, 1);
+});
+
+test("highlight: a wikilink inside a mark still links (nested)", () => {
+  const p = plan("==[[x]]==", { notes: ["x.md"] });
+  assert.deepEqual(widgetAt(p, 2)?.kind, "wikilink");
+  assert.ok(
+    p.spans.some((s) => s.from === 2 && s.to === 7 && s.className === "tandem-mark")
+  );
+  assert.ok(emptyAt(p, 0, 2) && emptyAt(p, 7, 9));
+});
+
+test("highlight: math inside a mark still renders (nested)", () => {
+  const p = plan("==$x$==");
+  assert.equal(p.replaces.find((r) => r.widget?.kind === "math")?.widget.content, "x");
+  assert.ok(
+    p.spans.some((s) => s.from === 2 && s.to === 5 && s.className === "tandem-mark")
+  );
+});
+
+test("highlight: a revealed line shows its == source", () => {
+  const p = plan("a ==hi== b", { reveal: { from: 2, to: 2 } });
+  assert.equal(emptyAt(p, 2, 4), false); // the opener stays source
+  assert.equal(emptyAt(p, 6, 8), false); // and the closer
+});
+
+// -- GitHub-style callouts -----------------------------------------------------
+//
+// A blockquote whose first line is [!NOTE] (one of the five kinds) renders
+// as a tinted panel: callout line classes over the quote panel, and the
+// marker hides behind a label widget. The raw syntax stays on the caret's
+// line via reveal.
+
+test("callout: [!NOTE] blockquote gets callout classes and a label widget", () => {
+  const p = plan("> [!NOTE]\n> Use this");
+  assert.match(lineClass(p, 0), /tandem-callout-note/);
+  assert.match(lineClass(p, 10), /tandem-callout-note/);
+  assert.match(lineClass(p, 0), /tandem-quote/); // still a quote panel
+  assert.deepEqual(widgetAt(p, 2), { kind: "callout", callout: "NOTE" });
+});
+
+test("callout: all five kinds tint, title text stays", () => {
+  for (const kind of ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]) {
+    const p = plan(`> [!${kind}] Title`);
+    assert.match(lineClass(p, 0), new RegExp(`tandem-callout-${kind.toLowerCase()}`), kind);
+    assert.deepEqual(widgetAt(p, 2), { kind: "callout", callout: kind }, kind);
+  }
+});
+
+test("callout: the marker is case-insensitive", () => {
+  const p = plan("> [!warning] Careful");
+  assert.match(lineClass(p, 0), /tandem-callout-warning/);
+  assert.deepEqual(widgetAt(p, 2), { kind: "callout", callout: "WARNING" });
+});
+
+test("callout: an unknown kind stays a plain quote", () => {
+  const p = plan("> [!FOO]\n> body");
+  assert.equal(p.replaces.filter((r) => r.widget?.kind === "callout").length, 0);
+  assert.ok(!(lineClass(p, 0) ?? "").includes("tandem-callout"));
+  assert.match(lineClass(p, 0), /tandem-quote/);
+});
+
+test("callout: the marker must open the blockquote", () => {
+  const p = plan("> intro\n> [!NOTE]");
+  assert.equal(p.replaces.filter((r) => r.widget?.kind === "callout").length, 0);
+  assert.ok(!(lineClass(p, 0) ?? "").includes("tandem-callout"));
+});
+
+test("callout: a revealed marker line shows its source", () => {
+  const text = "> [!NOTE]\n> body";
+  const p = plan(text, { reveal: { from: 2, to: 2 } });
+  assert.equal(widgetAt(p, 2), undefined); // the marker stays source
+  assert.match(lineClass(p, 0), /tandem-callout-note/); // the tint stays
+  assert.match(lineClass(p, 10), /tandem-callout-note/); // off the caret: rendered
+});

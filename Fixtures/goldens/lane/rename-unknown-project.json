@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "lane",
+    "rename",
+    "--from",
+    "Cycle",
+    "--to",
+    "Loop",
+    "--project",
+    "Nope"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Unknown project \"Nope\". The known projects are: Cycle, Alpha."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

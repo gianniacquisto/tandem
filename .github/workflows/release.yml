@@ -1,12 +1,13 @@
 name: Release
 
-# The cutover's release: a tag v* push (or a manual dispatch) on a GitHub-hosted
-# macOS runner packages the Electron app, verifies the artifact and publishes the
+# The cutover's release: a tag v* push (or a manual dispatch) packages the
+# Electron app per platform (`build-macos` on a GitHub-hosted macOS runner, the new
+# `build-linux` on an Ubuntu runner), verifies each artifact and publishes the
 # GitHub release; pull-request runs do the same build-and-verify work and upload
-# the artifact, never publishing. The contract is this file and
+# the artifacts, never publishing. The contract is this file and
 # `docs/releasing.md`; ADR 0003 owns the distribution model it serves (one
-# prebuilt cask, its artifact built by CI on each tag) and ADR 0036 owns the tap
-# bump.
+# prebuilt cask, its artifact built by CI on each tag; AppImage-on-releases for
+# Linux, PRT-1) and ADR 0036 owns the tap bump.
 #
 # The gates that used to live here moved with the Swift tree: the Rust suite is
 # `rust.yml`, the shell's typecheck, tests, package and smoke gates are
@@ -17,12 +18,12 @@ name: Release
 # resolves it, the zip is intact, and the checksum the tap bump reads is the
 # checksum of those bytes.
 #
-# The work is split in two: `build` produces and verifies the artifact, and
-# `release` publishes it. The publisher keeps the name `release` for one
-# reason: `main` requires a status check by that name, and a required check that
-# never reports blocks every merge. The name stays, the branch protection is
-# untouched, and the merge waits for the build because the publisher only runs
-# when it is green.
+# The work is split in three: `build-macos` and `build-linux` each produce and verify
+# their platform's artifact, and `release` publishes them. The publisher keeps
+# the name `release` for one reason: `main` requires a status check by that
+# name, and a required check that never reports blocks every merge. The name
+# stays, the branch protection is untouched, and the merge waits for the builds
+# because the publisher only runs when they are green.
 
 on:
   push:
@@ -36,7 +37,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-macos:
     # The artifact. macOS runs the Electron package and arm64 is the port's one
     # macOS target; the core is built by the same pinned toolchain `rust.yml`
     # tests because `prepare-binary.mjs` runs the cargo proxy from `rust/`.
@@ -149,9 +150,102 @@ jobs:
             app/dist/install.sh
             app/dist/SHA256SUMS
 
+  build-linux:
+    # The Linux artifact (PRT-1): the AppImage `app.yml` builds as a workflow
+    # artifact, promoted here to a release asset. Same shape as `build-macos`: the
+    # core is built by the same pinned toolchain `rust.yml` tests because
+    # `prepare-binary.mjs` runs the cargo proxy from `rust/`. Ubuntu because
+    # that is the AppImage's build platform; no signing identity exists, the
+    # Linux artifact stays unsigned (PRT-32's decided-against).
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Warm the Rust toolchain
+        working-directory: rust
+        run: cargo --version
+
+      - name: Install
+        working-directory: app
+        run: npm ci
+
+      - name: Resolve the version
+        run: |
+          # The same rule as `build-macos`: tag runs take the tag's version, PR /
+          # dispatch runs take a fixed dev version, and both jobs must agree
+          # on which artifact to hand over.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "version=0.0.0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Package the app
+        working-directory: app
+        run: |
+          # Same as `build-macos`: electron-builder names the artifact from the app's
+          # version, so the tag's version is stamped before packaging.
+          npm version "$version" --no-git-tag-version --allow-same-version
+          npm run dist
+
+      - name: "Verify: the artifact carries the core"
+        working-directory: app
+        run: npm run check:artifact
+
+      - name: "Verify: the AppImage is the named artifact and carries the core"
+        run: |
+          # The published name is the contract (PRT-1's done-when): the
+          # artifactName in `app/electron-builder.yml` for linux-x64.
+          appimage="app/dist/Tandem-$version-linux-x86_64.AppImage"
+          test -f "$appimage"
+          test -x "$appimage"
+          # FUSE is not available on the runner, so verify the payload by
+          # extraction instead of execution: the core and the agent face sit
+          # where the packaged shell resolves them.
+          mkdir "$RUNNER_TEMP/appimage"
+          (cd "$RUNNER_TEMP/appimage" && "$GITHUB_WORKSPACE/$appimage" --appimage-extract > /dev/null)
+          root="$RUNNER_TEMP/appimage/squashfs-root"
+          test -x "$root/resources/tandem"
+          test -f "$root/resources/agent/AGENTS.md"
+          test "$(cat "$root/resources/agent/VERSION")" = "$version"
+          # The pinned harness (PRT-1): staged by `harness:stage`, carried at
+          # resources/harness/opencode, verified against the pin like the
+          # `harness` job in app.yml verifies the download.
+          eval "$(python3 Scripts/check-harness-home.py --print-pin)"
+          test -x "$root/resources/harness/opencode"
+          test "$("$root/resources/harness/opencode" --version)" = "opencode v$PINNED_VERSION"
+          test "$(sha256sum "$root/resources/harness/opencode" | cut -d' ' -f1)" = "$PINNED_SHA256"
+
+      - name: Compute the checksum
+        run: |
+          cd app/dist
+          shasum -a 256 "Tandem-$version-linux-x86_64.AppImage" > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload the artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # A second artifact name, so the macOS `build-macos` and this job never
+          # overwrite one another; `release` downloads both.
+          name: Tandem-${{ env.version }}-linux
+          path: |
+            app/dist/Tandem-${{ env.version }}-linux-x86_64.AppImage
+            app/dist/SHA256SUMS
+
   release:
     # The publisher, and the name the branch protection requires. It runs after
-    # the build, so a release is published only from a run whose artifact was
+    # the builds, so a release is published only from a run whose artifacts were
     # verified.
     #
     # `!cancelled()` (GitHub's own pattern for "run me whatever the dependencies
@@ -160,7 +254,7 @@ jobs:
     # passing status), so the required check would read as green on a red build.
     # This job runs instead, and the step below turns a red build into a red
     # `release`, the check the protection watches.
-    needs: [build]
+    needs: [build-macos, build-linux]
     if: ${{ !cancelled() }}
     # macOS because the tap step runs brew (`--verify`), and the runner has it.
     runs-on: macos-latest
@@ -168,12 +262,17 @@ jobs:
     permissions:
       contents: write # needed by the publish step (gh release); no other job has it
     steps:
-      - name: "Verify: the build is green"
+      - name: "Verify: the builds are green"
         env:
-          BUILD_RESULT: ${{ needs.build.result }}
+          BUILD_MACOS_RESULT: ${{ needs['build-macos'].result }}
+          BUILD_LINUX_RESULT: ${{ needs['build-linux'].result }}
         run: |
-          if [[ "$BUILD_RESULT" != "success" ]]; then
-            echo "::error::the release aggregator needs the build green (build: $BUILD_RESULT)"
+          if [[ "$BUILD_MACOS_RESULT" != "success" ]]; then
+            echo "::error::the release aggregator needs the build green (build-macos: $BUILD_MACOS_RESULT)"
+            exit 1
+          fi
+          if [[ "$BUILD_LINUX_RESULT" != "success" ]]; then
+            echo "::error::the release aggregator needs the build green (build-linux: $BUILD_LINUX_RESULT)"
             exit 1
           fi
 
@@ -187,25 +286,48 @@ jobs:
 
       - name: Resolve the version
         run: |
-          # The same rule as the build job: the artifact is named after the
-          # version, and the two jobs must agree on which artifact to hand over.
+          # The same rule as the build jobs: the artifacts are named after the
+          # version, and all three jobs must agree on which artifacts to hand
+          # over.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           else
             echo "version=0.0.0" >> "$GITHUB_ENV"
           fi
 
-      - name: Download the artifact
+      - name: Download the artifacts
         uses: actions/download-artifact@v4
         with:
           name: Tandem-${{ env.version }}
-          path: dist
+          path: dist-mac
 
-      - name: "Verify: the downloaded zip matches SHA256SUMS"
+      - name: Download the Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Tandem-${{ env.version }}-linux
+          path: dist-linux
+
+      - name: "Verify: the downloaded artifacts match their SHA256SUMS"
         run: |
-          # The handoff between the two jobs is the only new thing in the
-          # pipeline, so it is checked: the checksum the build job wrote must be
-          # the checksum of the bytes the aggregator is about to publish.
+          # The handoff between the build jobs and this one is checked per
+          # platform: each checksum a build job wrote must be the checksum of
+          # the bytes the aggregator is about to publish.
+          cd dist-mac
+          shasum -a 256 -c SHA256SUMS
+          cd ../dist-linux
+          shasum -a 256 -c SHA256SUMS
+
+      - name: Assemble the release directory
+        run: |
+          # One directory of everything the release publishes, with one merged
+          # SHA256SUMS covering every published file: the zip, the dmg,
+          # install.sh (staged by the macOS build) and the AppImage. The tap
+          # bump reads the zip's line out of that file, so the zip's entry must
+          # survive the merge (Scripts/bump-tap.sh).
+          mkdir dist
+          cp dist-mac/Tandem-$version.zip dist-mac/Tandem-$version.dmg dist-mac/install.sh dist/
+          cp dist-linux/Tandem-$version-linux-x86_64.AppImage dist/
+          cat dist-mac/SHA256SUMS dist-linux/SHA256SUMS > dist/SHA256SUMS
           cd dist
           shasum -a 256 -c SHA256SUMS
 
@@ -230,7 +352,8 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "Tandem $version" \
             --notes "$notes" \
-            "dist/Tandem-$version.zip" "dist/Tandem-$version.dmg" dist/install.sh dist/SHA256SUMS
+            "dist/Tandem-$version.zip" "dist/Tandem-$version.dmg" \
+            "dist/Tandem-$version-linux-x86_64.AppImage" dist/install.sh dist/SHA256SUMS
 
       - name: Bump the tap cask (tag runs only)
         # The second half of the release, in the same run (ADR 0036): the tap's

@@ -28,7 +28,8 @@ test('the bikeshed face, over the seeded vault', async ({ app, window }) => {
 
   await openTab(window, 'bikeshed')
 
-  await expect(window.locator('.face__title')).toHaveText('Bikeshed')
+  await expect(window.locator('.bikeshed-face')).toBeVisible()
+  await expect(window.locator('.bikeshed-face .face__title')).toHaveCount(0)
   await expect(window.locator('.tree__vault-name')).toHaveText('Bikeshed')
   await expect(window.locator('.tree__name')).toHaveCount(6)
 
@@ -48,10 +49,23 @@ test('the bikeshed face, over the seeded vault', async ({ app, window }) => {
 
   await expect(window.locator('.health__count')).toHaveText('1 orphan')
 
+  // The side rail collapses into the titlebar toggle: one click hides the
+  // links and the editor keeps the full height, one more brings them back.
+  const toggle = window.locator('.editor__rail-toggle')
+  await expect(toggle).toHaveText('Hide links')
+  await toggle.click()
+  await expect(window.locator('#note-rail')).toHaveCount(0)
+  await expect(toggle).toContainText('Links')
+  await toggle.click()
+  await expect(window.locator('#note-rail')).toBeVisible()
+  await expect(toggle).toHaveText('Hide links')
+
   await expect(window.locator('.rail__recovery')).toContainText(
-    '.note-0000-0000-0000-000000000001.tmp',
+    'Unsaved draft kept from an interrupted save',
   )
   await expect(window.locator('.rail__recovery')).toContainText('draft')
+  await expect(window.locator('.rail__recovery')).not.toContainText('.note-')
+  await expect(window.locator('.rail__recovery')).not.toContainText('.tmp')
 
   await expect(window.locator('.banner')).toHaveCount(0)
 
@@ -159,10 +173,10 @@ test('an external write on focus is a conflict, and the tab switch keeps the dra
 
   // Unmount the face and come back: the dirty buffer is a draft, not a loss.
   await window.locator('.tab', { hasText: 'Tickets' }).click()
-  await expect(window.locator('.face__title')).toHaveText('Tickets')
+  await expect(window.locator('.tabs .tab[aria-selected="true"]')).toHaveText('Tickets')
   await window.waitForTimeout(500)
   await window.locator('.tab', { hasText: 'Bikeshed' }).click()
-  await expect(window.locator('.face__title')).toHaveText('Bikeshed')
+  await expect(window.locator('.bikeshed-face')).toBeVisible()
 
   await expect(editor.locator('.cm-content')).toContainText('words no save has seen')
   await expect(window.locator('.banner--notice')).toContainText('draft')

@@ -9,7 +9,7 @@ import {
   setNoteIndexEffect,
   setNotePathEffect,
 } from "../src/main.js";
-import { WikilinkWidget, TableWidget, DisplayMathWidget, FrontmatterWidget } from "../src/widgets.js";
+import { WikilinkWidget, TableWidget, DisplayMathWidget, FrontmatterWidget, CalloutWidget } from "../src/widgets.js";
 
 // The live-preview plan field contract: a StateField over a plain EditorState
 // that recomputes the blocks.js plan from syntaxTree(state) + the bikeshed
@@ -190,4 +190,25 @@ test("a caret on a wikilink line shows the raw [[…]] instead of the widget", (
 
   st = st.update({ selection: { anchor: 14 } }).state; // the next line
   assert.ok(widgetReplace(decos(st), 4) instanceof WikilinkWidget);
+});
+
+test("a callout and a highlight render through the decoration set off the caret's line", () => {
+  const st = rendered("> [!NOTE]\n> Body\n\na ==hi== b\n");
+  const ds = decos(st);
+  // The marker hides behind its label widget; the line carries the tint.
+  assert.ok(widgetReplace(ds, 2) instanceof CalloutWidget);
+  assert.match(lineDecoAt(ds, 0).spec.class, /tandem-callout-note/);
+  // The == delimiters hide, the content carries the mark span.
+  assert.ok(ds.some((d) => d.spec.class === "tandem-mark"));
+  assert.ok(emptyReplace(ds, 20, 22) && emptyReplace(ds, 24, 26));
+});
+
+test("a caret on the callout marker line shows the raw [!NOTE] instead of the widget", () => {
+  let st = createEditorState({ doc: "> [!NOTE]\n> Body" });
+  st = st.update({ selection: { anchor: 4 } }).state; // inside [!NOTE]
+  assert.equal(widgetReplace(decos(st), 2), undefined);
+  assert.match(lineDecoAt(decos(st), 0).spec.class, /tandem-callout-note/);
+
+  st = st.update({ selection: { anchor: st.doc.length } }).state; // off the line
+  assert.ok(widgetReplace(decos(st), 2) instanceof CalloutWidget);
 });

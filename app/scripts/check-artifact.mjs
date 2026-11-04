@@ -32,6 +32,17 @@ for (const file of ['AGENTS.md', 'VERSION', join('skills', 'tandem', 'SKILL.md')
   }
 }
 
+if (process.platform === 'linux') {
+  // PRT-1: the AppImage carries the pinned harness at resources/harness/opencode,
+  // staged by scripts/prepare-harness.mjs. A packaging change that drops it
+  // must fail here, not at first spawn.
+  const harness = join(app.resources, 'harness', 'opencode')
+  if (!existsSync(harness)) {
+    console.error(`the packaged app carries no harness binary at ${harness}`)
+    process.exit(1)
+  }
+}
+
 if (process.platform === 'darwin') {
   const link = join(app.root, 'Contents', 'MacOS', 'tandem-cli')
   if (!existsSync(link) || !lstatSync(link).isSymbolicLink()) {

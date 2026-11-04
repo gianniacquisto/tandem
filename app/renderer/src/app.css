@@ -74,13 +74,6 @@ body {
   font-weight: 600;
 }
 
-.shell__revision {
-  margin-left: auto;
-  color: var(--ink-dim);
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-}
-
 .shell__body {
   flex: 1;
   overflow: auto;
@@ -185,7 +178,13 @@ body {
 .usage__bar {
   width: min(100%, 44px);
   border-radius: 3px 3px 0 0;
-  background: var(--accent);
+  background: var(--accent-deep);
+}
+
+@media (prefers-color-scheme: dark) {
+  .usage__bar {
+    background: var(--accent);
+  }
 }
 
 .usage__bar-label {
@@ -323,6 +322,14 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* A missing value draws one style in every numeric column: the quiet text
+ * and weight the counts already use, so a missing cost never reads bolder. */
+.usage__table .usage__count.usage__absent,
+.usage__table .usage__cost.usage__absent {
+  color: var(--ink-dim);
+  font-weight: 400;
+}
+
 .usage__share {
   width: 84px;
 }
@@ -348,7 +355,13 @@ body {
 
 .usage__meter::-webkit-meter-optimum-value {
   border-radius: 3px;
-  background: var(--accent);
+  background: var(--accent-deep);
+}
+
+@media (prefers-color-scheme: dark) {
+  .usage__meter::-webkit-meter-optimum-value {
+    background: var(--accent);
+  }
 }
 
 .usage__roll > td {
@@ -413,6 +426,15 @@ body {
   font-size: 10.5px;
   font-weight: 500;
   cursor: pointer;
+}
+
+/* Ticket pills keep one style in every state: hover and focus never
+ * introduce a second background, border or text colour. */
+.usage__ticket:hover,
+.usage__ticket:focus-visible {
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--accent);
 }
 
 .usage__empty {
@@ -676,7 +698,14 @@ body {
 }
 
 /* Settings: the machine's paths, the theme, and the agent face's setup. One
- * section per question, the setup section's rows drawn from `doctor`'s. */
+ * section per question, the setup section's rows drawn from `doctor`'s. The
+ * face reads as a centred column, the same width as the Tickets list. */
+
+.settings {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+}
 
 .settings__section {
   margin: 0 0 var(--space-gutter);
@@ -752,6 +781,20 @@ body {
 .settings__detail {
   flex: 1 1 100%;
   color: var(--ink-dim);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.settings__subheading {
+  margin: 12px 0 2px;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.settings__fix {
+  flex: 1 1 100%;
+  color: var(--ink);
   font-size: 12.5px;
   overflow-wrap: anywhere;
 }
@@ -839,9 +882,9 @@ body {
   color: var(--ink-dim);
 }
 
-/* The Tickets face: the quick-add, the scope and filter row, the search, and
- * the two layouts over one set of rows. Both layouts take the window's width:
- * a lane column is a lane, and the list reads full width with it. */
+/* The Tickets face: the quick-add, one toolbar over the list, and the two
+ * layouts over one set of rows. The board takes the window's width, a lane
+ * column is a lane, while the list reads as a centred column. */
 
 .shell__notice {
   display: flex;
@@ -872,9 +915,14 @@ body {
   max-width: 540px;
 }
 
-.tickets--board,
-.tickets--list {
+.tickets--board {
   max-width: none;
+}
+
+.tickets--list {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
 }
 
 .quick-add {
@@ -882,18 +930,22 @@ body {
   align-items: center;
   gap: 8px;
   height: var(--space-control);
-  padding: 0 11px;
+  padding: 0 12px;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-control);
   background: var(--parchment);
+  transition:
+    background-color var(--motion-toggle) ease-in-out,
+    border-color var(--motion-toggle) ease-in-out;
 }
 
 .quick-add:focus-within {
-  border-color: var(--ember);
+  border-color: var(--accent);
+  background: var(--paper);
 }
 
 .quick-add__plus {
-  color: var(--ink-dim);
+  color: var(--accent);
   font-size: 12px;
   font-weight: 600;
 }
@@ -926,8 +978,10 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-lane);
-  margin-top: var(--space-lane);
+  gap: 8px var(--space-lane);
+  margin-top: 10px;
+  padding-bottom: 12px;
+  border-bottom: var(--hairline) solid var(--sand);
 }
 
 .segmented {
@@ -974,19 +1028,23 @@ body {
 .tickets__filters {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 
 .filter {
   height: var(--space-control);
-  padding: 0 8px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--parchment);
-  color: var(--ink);
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
   font: inherit;
-  font-size: 12px;
+  font-size: 12.5px;
   cursor: pointer;
+}
+
+.filter:hover {
+  color: var(--ink);
 }
 
 /* The project focus: the draw's own lane picker and its show-all escape. The
@@ -1027,19 +1085,26 @@ body {
 
 .search {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   height: var(--space-control);
-  margin-top: var(--space-lane);
-  margin-bottom: var(--space-lane);
-  padding: 0 11px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--parchment);
+  width: 34px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  transition: width var(--motion-toggle) ease-in-out;
+}
+
+/* The search is the field a keyboard user reaches with the modifier and F, and
+ * not one a ticket list needs standing open: an icon until it is in use. */
+.search:focus-within,
+.search:has(.search__input:not(:placeholder-shown)) {
+  width: 190px;
 }
 
 .search:focus-within {
-  border-color: var(--ember);
+  box-shadow: inset 0 -1px 0 var(--accent);
 }
 
 .search__icon {
@@ -1199,12 +1264,46 @@ body {
 
 .ticket-row__tag,
 .ticket-row__status {
-  padding: 1px 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 6px;
   border: var(--hairline) solid var(--sand);
   border-radius: 999px;
   color: var(--ink-dim);
-  font-size: 9.5px;
-  line-height: 1.4;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* The status is the one axis the board exists to show, so it carries a colour
+ * before its label is read: the palette's own hues, not a new one. */
+.ticket-row__status::before {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chip, var(--ink-dim));
+  content: "";
+}
+
+.ticket-row__status[data-status="on-hold"] {
+  --chip: var(--ember-deep);
+}
+
+.ticket-row__status[data-status="ready"] {
+  --chip: var(--accent-deep);
+}
+
+.ticket-row__status[data-status="in-progress"] {
+  --chip: var(--accent);
+}
+
+.ticket-row__status[data-status="in-review"] {
+  --chip: var(--moss);
+}
+
+.ticket-row__status[data-status="done"] {
+  --chip: var(--ink-dim);
 }
 
 .ticket-row__tag--blocked {
@@ -1215,13 +1314,13 @@ body {
 .ticket-row__ref {
   color: var(--ink-dim);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9.5px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
 .ticket-row__assignee {
   color: var(--ink-dim);
-  font-size: 10.5px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 
@@ -1231,8 +1330,9 @@ body {
 
 .ticket-row__lane {
   margin-left: auto;
+  padding-left: 8px;
   color: var(--ink-dim);
-  font-size: 10.5px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 
@@ -1296,6 +1396,22 @@ body {
 .board__cell[data-targeted] {
   background: var(--parchment);
   outline: var(--hairline) solid var(--accent);
+}
+
+.board__cell[data-empty] {
+  border: var(--hairline) dashed var(--line);
+}
+
+.board__cell[data-empty][data-targeted] {
+  border-style: solid;
+}
+
+.board__drop-hint {
+  margin: 0;
+  padding: 8px 4px;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+  text-align: center;
 }
 
 .board__count {
@@ -1382,7 +1498,7 @@ body {
 
 .bikeshed {
   display: flex;
-  height: calc(100vh - 196px);
+  height: calc(100vh - 144px);
   min-height: 380px;
   overflow: hidden;
   border: var(--hairline) solid var(--sand);
@@ -1402,7 +1518,8 @@ body {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  flex-direction: column;
+  min-height: 0;
+  flex-direction: row;
 }
 
 .tree__vault {
@@ -1559,32 +1676,68 @@ body {
 .editor {
   display: flex;
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   flex-direction: column;
 }
 
 .editor__titlebar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
-  height: 42px;
-  padding: 0 14px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 10px 0 14px;
+  overflow: hidden;
   border-bottom: var(--hairline) solid var(--sand);
+  white-space: nowrap;
 }
 
 .editor__folder {
+  flex: none;
+  overflow: hidden;
   color: var(--ink-dim);
   font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .editor__title {
+  flex: 1 1 auto;
+  overflow: hidden;
+  min-width: 0;
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .editor__saving {
-  margin-left: auto;
+  flex: none;
   color: var(--ink-dim);
   font-size: 11.5px;
+}
+
+.editor__rail-toggle {
+  flex: none;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1;
+  padding: 4px 8px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.editor__rail-toggle:hover {
+  color: var(--ink);
+}
+
+.editor__rail-toggle[aria-expanded="true"] {
+  background: var(--parchment);
+  color: var(--ink);
 }
 
 .editor__frame {
@@ -1617,17 +1770,17 @@ body {
 
 .rail {
   display: flex;
-  flex: 0 0 auto;
-  gap: var(--space-gutter);
-  max-height: 168px;
+  flex: 0 0 232px;
+  flex-direction: column;
+  gap: 12px;
   overflow: auto;
   padding: 10px 14px;
-  border-top: var(--hairline) solid var(--sand);
+  border-left: var(--hairline) solid var(--sand);
 }
 
 .rail__section {
   min-width: 0;
-  flex: 1 1 0;
+  flex: none;
 }
 
 .rail__header {
@@ -1837,6 +1990,68 @@ body {
   gap: var(--space-lane);
   overflow: auto;
   padding: var(--space-gutter);
+}
+
+/* The title and its Save stay reachable on a long ticket: the bar sticks to
+ * the top of the scrolling body, so no scroll to the bottom is needed. */
+.sheet__sticky {
+  position: sticky;
+  top: calc(-1 * var(--space-gutter));
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lane);
+  margin: calc(-1 * var(--space-gutter)) calc(-1 * var(--space-gutter)) 0;
+  padding: var(--space-gutter) var(--space-gutter) 12px;
+  border-bottom: var(--hairline) solid var(--sand);
+  background: var(--paper);
+}
+
+/* The append-only mark: one glance says the stored text is never overwritten. */
+.sheet__note {
+  margin: 4px 0 0;
+  color: var(--ink-dim);
+  font-size: 10.5px;
+}
+
+/* The status dot reuses the list's state colour, so the status reads the same
+ * in the sheet and on the row. */
+.sheet__status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sheet__status-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chip, var(--ink-dim));
+}
+
+.sheet__status-dot[data-status="backlog"] {
+  --chip: var(--ink-dim);
+}
+
+.sheet__status-dot[data-status="on-hold"] {
+  --chip: var(--ember-deep);
+}
+
+.sheet__status-dot[data-status="ready"] {
+  --chip: var(--accent-deep);
+}
+
+.sheet__status-dot[data-status="in-progress"] {
+  --chip: var(--accent);
+}
+
+.sheet__status-dot[data-status="in-review"] {
+  --chip: var(--moss);
+}
+
+.sheet__status-dot[data-status="done"] {
+  --chip: var(--ink-dim);
 }
 
 .sheet__reading,

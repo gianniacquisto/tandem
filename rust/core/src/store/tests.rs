@@ -1078,6 +1078,171 @@ mod schema {
     }
 
     #[test]
+    fn a_v5_file_upgrades_to_v6_with_projects_backfilled() {
+        let sandbox = Sandbox::new("upgrade-v6");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..5], &Actor::Human).expect("v5 applies");
+        for (name, key, last_number, position) in [("Tandem", "TAN", 2, 0), ("Port", "PRT", 1, 1)] {
+            connection
+                .execute(
+                    "INSERT INTO lanes (name, key, last_number, position, author)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![name, key, last_number, position, "human"],
+                )
+                .expect("the v5 lane lands");
+        }
+        for (id, title, lane, number, position) in [
+            (
+                "00000000-0000-0000-0000-000000000001",
+                "first",
+                Some("Tandem"),
+                Some(1),
+                0,
+            ),
+            (
+                "00000000-0000-0000-0000-000000000002",
+                "second",
+                Some("Tandem"),
+                Some(2),
+                1,
+            ),
+            (
+                "00000000-0000-0000-0000-000000000003",
+                "ported",
+                Some("Port"),
+                Some(1),
+                2,
+            ),
+            (
+                "00000000-0000-0000-0000-000000000004",
+                "capture",
+                None,
+                None,
+                3,
+            ),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO tickets
+                        (id, title, description, status, archived, lane, number, origin,
+                         assignee, link, position, created_at, completed_at, author)
+                     VALUES (?1, ?2, NULL, 'backlog', 0, ?3, ?4, 'human', NULL, NULL, ?5,
+                             '2026-10-30T00:00:00Z', NULL, 'human')",
+                    rusqlite::params![id, title, lane, number, position],
+                )
+                .expect("the v5 ticket lands");
+        }
+        drop(connection);
+
+        setting(&sandbox.store(), &Actor::Human, "k", "v");
+
+        let connection = sandbox.connection();
+        assert_eq!(
+            version(&connection).unwrap(),
+            Some(CURRENT_VERSION),
+            "v6 is the current version"
+        );
+        assert_eq!(CURRENT_VERSION, 6, "the build writes schema v6");
+        let mut projects: Vec<(String, i64)> = connection
+            .prepare("SELECT name, position FROM projects ORDER BY position, rowid")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+        projects.sort_by_key(|left| left.1);
+        assert_eq!(
+            projects,
+            vec![("Tandem".to_string(), 0), ("Port".to_string(), 1),],
+            "one project per lane, order follows lane order"
+        );
+        let lanes: Vec<(String, String, i64, i64)> = connection
+            .prepare("SELECT name, key, last_number, position FROM lanes ORDER BY position, rowid")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+        assert_eq!(
+            lanes,
+            vec![
+                ("Tandem".to_string(), "TAN".to_string(), 2, 0),
+                ("Port".to_string(), "PRT".to_string(), 1, 1),
+            ],
+            "lane names, keys, numbers and positions are unchanged"
+        );
+        let parents: Vec<(String, String)> = connection
+            .prepare("SELECT name, project FROM lanes ORDER BY position, rowid")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+        assert_eq!(
+            parents,
+            vec![
+                ("Tandem".to_string(), "Tandem".to_string()),
+                ("Port".to_string(), "Port".to_string()),
+            ],
+            "each lane's parent is the project named for it"
+        );
+        let tickets: Vec<(String, Option<String>, Option<i64>, i64)> = connection
+            .prepare("SELECT id, lane, number, position FROM tickets ORDER BY position, rowid")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+        assert_eq!(
+            tickets,
+            vec![
+                (
+                    "00000000-0000-0000-0000-000000000001".to_string(),
+                    Some("Tandem".to_string()),
+                    Some(1),
+                    0,
+                ),
+                (
+                    "00000000-0000-0000-0000-000000000002".to_string(),
+                    Some("Tandem".to_string()),
+                    Some(2),
+                    1,
+                ),
+                (
+                    "00000000-0000-0000-0000-000000000003".to_string(),
+                    Some("Port".to_string()),
+                    Some(1),
+                    2,
+                ),
+                (
+                    "00000000-0000-0000-0000-000000000004".to_string(),
+                    None,
+                    None,
+                    3,
+                ),
+            ],
+            "refs, numbers, positions and the default-area ticket are untouched"
+        );
+    }
+
+    #[test]
     fn an_unreadable_database_fails_the_write() {
         let sandbox = Sandbox::new("not-a-database");
         fs::create_dir_all(sandbox.home_path()).unwrap();
@@ -1389,6 +1554,7 @@ mod actor {
                     key: "PRT",
                     last_number: 4,
                     position: 0,
+                    project: "Port",
                 })?;
                 write.insert_ticket(NewTicket {
                     id: "00000000-0000-0000-0000-000000000004",

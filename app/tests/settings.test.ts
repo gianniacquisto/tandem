@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { checkChanges } from '../renderer/src/shell/setup'
+import { fixForCheck, groupChecks } from '../renderer/src/shell/settingsGroups'
 import {
   addRosterName,
   cleanRoster,
@@ -77,10 +78,10 @@ describe('the Settings surface', () => {
       'setup.install',
       'setup.status',
     ])
-    // Add, Save roster, one Remove per row (one site in source),
-    // Install/Repair, and the sign-in's four: Console sign in, key sign in,
-    // cancel, sign out.
-    expect([...face.matchAll(/<button\b/g)]).toHaveLength(8)
+    // Add, Save roster, one Remove per row (one site in source), three path
+    // Copy buttons (Home, Bikeshed, one host site in source), Install/Repair,
+    // and the sign-in's four: Console sign in, key sign in, cancel, sign out.
+    expect([...face.matchAll(/<button\b/g)]).toHaveLength(11)
   })
 
   it('shows a repair as what changed, not as a verdict', () => {
@@ -130,5 +131,79 @@ describe('the Settings surface', () => {
     expect(removeRosterName(['alpha'], 0)).toEqual([])
     expect(removeRosterName(['alpha'], 7)).toEqual(['alpha'])
     expect(removeRosterName(['alpha'], -1)).toEqual(['alpha'])
+  })
+
+  it('groups the doctor checks instead of one flat list', () => {
+    const checks = [
+      'home',
+      'store',
+      'bikeshed',
+      'comments',
+      'sessions',
+      'settings',
+      'todos-json',
+      'lock',
+      'app',
+      'skills',
+      'agent-face',
+      'harness-auth',
+      'mcp',
+    ].map((name) => ({ name, ok: true, detail: `${name} detail` }))
+    const groups = groupChecks(checks)
+    expect(groups.map((group) => group.title)).toEqual([
+      'Store',
+      'Bikeshed',
+      'Agent face',
+      'Install state',
+    ])
+    const byTitle = new Map(groups.map((group) => [group.title, group.checks.map((check) => check.name)]))
+    expect(byTitle.get('Store')).toEqual(['home', 'store', 'comments', 'sessions', 'settings', 'todos-json', 'lock'])
+    expect(byTitle.get('Bikeshed')).toEqual(['bikeshed'])
+    expect(byTitle.get('Agent face')).toEqual(['skills', 'agent-face'])
+    expect(byTitle.get('Install state')).toEqual(['app', 'harness-auth', 'mcp'])
+    // Every row keeps its name, state and detail inside its group.
+    for (const group of groups) {
+      for (const check of group.checks) {
+        expect(check.detail).toBe(`${check.name} detail`)
+      }
+    }
+  })
+
+  it('names what Install fixes on every failing check', () => {
+    const failing = [
+      { name: 'store', ok: false, detail: 'present but unreadable' },
+      { name: 'bikeshed', ok: false, detail: 'a file, not a folder' },
+      { name: 'lock', ok: false, detail: 'held by another process' },
+      { name: 'agent-face', ok: false, detail: '1 warning' },
+      { name: 'app', ok: false, detail: 'quarantined' },
+    ]
+    for (const check of failing) {
+      const fix = fixForCheck(check)
+      expect(fix, `${check.name} names Install`).toMatch(/Install/)
+      expect((fix as string).length, `${check.name} fix is one line`).toBeGreaterThan(0)
+    }
+    expect(fixForCheck({ name: 'agent-face', ok: false, detail: '1 warning' })).toMatch(/rewrites|repairs|fixes/)
+    expect(fixForCheck({ name: 'store', ok: true, detail: 'all good' })).toBeNull()
+  })
+
+  it('keeps Theme out of Paths and copies any path in one click', () => {
+    const face = source('faces/SettingsFace.tsx')
+    const pathsStart = face.indexOf('<h2 className="settings__heading">Paths</h2>')
+    expect(pathsStart).toBeGreaterThan(-1)
+    const nextHeading = face.indexOf('<h2 className="settings__heading">', pathsStart + 1)
+    const pathsSection = face.slice(pathsStart, nextHeading === -1 ? undefined : nextHeading)
+    expect(pathsSection).not.toContain('Theme')
+    expect(face).toContain('Preferences')
+    expect(face).toContain('System: the app follows the OS appearance')
+    expect(face).toMatch(/Copy .*path|navigator\.clipboard/)
+  })
+
+  it('says what Install does in one line with no inline code and keeps the promise', () => {
+    const face = source('faces/SettingsFace.tsx')
+    const setupStart = face.indexOf('<h2 className="settings__heading">Setup</h2>')
+    expect(setupStart).toBeGreaterThan(-1)
+    const setupSection = face.slice(setupStart)
+    expect(setupSection).not.toMatch(/`tandem-cli/)
+    expect(setupSection).toMatch(/Nothing is written until you press it/)
   })
 })

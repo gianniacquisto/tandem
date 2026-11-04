@@ -232,11 +232,11 @@ export function laneChoices(
 export function laneCreateParams(
   name: string,
   key: string,
-): { name: string; abbr: string | null } | null {
+): { name: string; abbr: string | null; project: string | null } | null {
   const trimmed = name.trim()
   if (trimmed === '') return null
   const abbr = key.trim().toUpperCase()
-  return { name: trimmed, abbr: abbr === '' ? null : abbr }
+  return { name: trimmed, abbr: abbr === '' ? null : abbr, project: null }
 }
 
 /**
@@ -248,12 +248,12 @@ export function laneRenameParams(
   from: string,
   to: string,
   key: string,
-): { from: string; to: string; abbr: string | null } | null {
+): { from: string; to: string; abbr: string | null; project: string | null } | null {
   const trimmed = to.trim()
   if (trimmed === '') return null
   const abbr = key.trim().toUpperCase()
   if (trimmed === from && abbr === '') return null
-  return { from, to: trimmed, abbr: abbr === '' ? null : abbr }
+  return { from, to: trimmed, abbr: abbr === '' ? null : abbr, project: null }
 }
 
 /** The human's comment, as `ticket.comment.add` takes it, or null when empty. */

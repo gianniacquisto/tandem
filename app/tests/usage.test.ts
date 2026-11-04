@@ -152,12 +152,13 @@ describe('the usage face over one report', () => {
     expect(recordNoun(1)).toBe('1 record')
     expect(recordNoun(8)).toBe('8 records')
     expect(ticketArithmetic(drawn)).toBe(
-      "Ticket rows total $3.25 \u00b7 $0.75 of that is overlap: a shared record's cost per extra ticket \u00b7 1 record carried none, $1.50",
+      'Ticket rows add to $3.25, $0.75 more than the $2.50 spent: a record on two tickets is counted in both rows. 1 record carried no ticket ($1.50).',
     )
   })
 
   it('says a ticketless record that reported nothing without a cost', () => {
     const drawn = report({
+      cost: 0,
       ticket: [
         row({ id: NO_TICKET, label: 'no ticket', records: 2, reported: 0, cost: 0, barPercent: 0 }),
       ],
@@ -165,12 +166,41 @@ describe('the usage face over one report', () => {
       ticketTotal: 0,
     })
     expect(ticketArithmetic(drawn)).toBe(
-      'Ticket rows total $0.00 \u00b7 2 records carried none',
+      'Ticket rows add to $0.00, matching the $0.00 spent: each record is counted once. 2 records carried no ticket and reported nothing.',
     )
   })
 
   it('states no ticket arithmetic when the report has no ticket rows', () => {
     expect(ticketArithmetic(report({ ticket: [], overlap: 0, ticketTotal: 0 }))).toBeNull()
+  })
+
+  it('says shared rows double count without a ticketless row', () => {
+    const drawn = report({
+      ticket: [
+        row({ id: TICKET_ONE, label: 'FIX-1: the board', records: 2, reported: 2, cost: 1, barPercent: 66 }),
+        row({ id: TICKET_TWO, label: 'FIX-2: the records', records: 2, reported: 1, cost: 0.75, barPercent: 50 }),
+      ],
+      overlap: 0.75,
+      ticketTotal: 3.25,
+    })
+    expect(ticketArithmetic(drawn)).toBe(
+      'Ticket rows add to $3.25, $0.75 more than the $2.50 spent: a record on two tickets is counted in both rows.',
+    )
+  })
+
+  it('says a ticketless spend with no overlap in plain words', () => {
+    const drawn = report({
+      cost: 2.5,
+      ticket: [
+        row({ id: TICKET_ONE, label: 'FIX-1: the board', records: 1, reported: 1, cost: 1, barPercent: 66 }),
+        row({ id: NO_TICKET, label: 'no ticket', records: 1, reported: 1, cost: 1.5, barPercent: 100 }),
+      ],
+      overlap: 0,
+      ticketTotal: 2.5,
+    })
+    expect(ticketArithmetic(drawn)).toBe(
+      'Ticket rows add to $2.50, matching the $2.50 spent: each record is counted once. 1 record carried no ticket ($1.50).',
+    )
   })
 
   it('draws a home whose records predate usage as zeros with a coverage of zero', () => {
@@ -306,6 +336,26 @@ describe('the usage face over one report', () => {
       cost: ABSENT,
     })
     expect(rowCells(entry, 'total').cost).toBe(ABSENT)
+  })
+
+  it('draws a missing piece with the same absent mark as a missing cost', () => {
+    const entry = row({
+      records: 1,
+      reported: 1,
+      cost: 1.5,
+      tokens: { input: 3000, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
+      averageTokens: { input: 3000, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
+      averageCost: 1.5,
+    })
+    expect(rowCells(entry, 'total')).toEqual({
+      input: '3,000',
+      output: ABSENT,
+      cacheRead: ABSENT,
+      cacheWrite: ABSENT,
+      cost: '$1.50',
+    })
+    expect(rowCells(entry, 'average').output).toBe(ABSENT)
+    expect(tokens(null)).toBe(ABSENT)
   })
 
   it('names the toggle for records, never tasks', () => {

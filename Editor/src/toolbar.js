@@ -104,7 +104,7 @@ function button(doc, className, title) {
  * Returns { element, setFontSize(px) } so main.js can re-point the readout
  * when the Swift side sends the stored size on `loaded`.
  */
-export function mountToolbar(editorRoot, { onFormat, onFontSize } = {}, initialFontSize = 13.5) {
+export function mountToolbar(editorRoot, { onFormat, onFontSize } = {}, initialFontSize = 16) {
   const doc = editorRoot.ownerDocument;
   const bar = doc.createElement("div");
   bar.id = "tandem-toolbar";

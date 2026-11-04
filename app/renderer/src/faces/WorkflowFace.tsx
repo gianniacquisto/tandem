@@ -219,7 +219,7 @@ export function WorkflowFace({ tickets, lanes, activeProject, onOpenTicket }: Wo
     if (name === '') return
     const written = await window.tandem.call({
       method: 'lane.add',
-      params: { name, abbr: null },
+      params: { name, abbr: null, project: null },
     })
     if ('error' in written) {
       setFailure(written.error.message)
@@ -240,7 +240,7 @@ export function WorkflowFace({ tickets, lanes, activeProject, onOpenTicket }: Wo
     if (lane === '' || to === '') return
     const written = await window.tandem.call({
       method: 'lane.rename',
-      params: { from: lane, to, abbr: null },
+      params: { from: lane, to, abbr: null, project: null },
     })
     if ('error' in written) {
       setFailure(written.error.message)
@@ -279,8 +279,7 @@ export function WorkflowFace({ tickets, lanes, activeProject, onOpenTicket }: Wo
   return (
     <Face
       wide
-      title="Workflow"
-      blurb="The sprint loop as a DAG: the passes, the handoffs, and the open sprint's batch on the graph."
+      label="Workflow"
     >
       <div className="workflow">
         <section className="workflow__section" aria-label="Lane">

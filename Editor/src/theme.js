@@ -25,12 +25,12 @@ const syntax = HighlightStyle.define([
   { tag: [t.invalid], color: "var(--ember-deep)" },
 ]);
 
-// The prose column: wide enough to use a large window, still capped and
-// centred with its horizontal padding (prototype: h padding 28, v padding
-// 24 at the scroller). The cap is the editor's alone — the Swift host gives
-// the pane all the width the window has.
+// The prose column: a comfortable reading measure, centred with its
+// horizontal padding (prototype: h padding 28, v padding 24 at the
+// scroller). The cap is the editor's alone — the Swift host gives the
+// pane all the width the window has.
 export const proseColumn = {
-  maxWidth: "1100px",
+  maxWidth: "720px",
   margin: "0 auto",
   padding: "0 28px",
   caretColor: "var(--ink)",
@@ -47,7 +47,7 @@ export const ligneTheme = [
         backgroundColor: "var(--paper)",
         color: "var(--ink)",
         // The note font size — set on the editor root by the toolbar's
-        // font-size control (default 13.5px in style.css) and persisted
+        // font-size control (default 16px in style.css) and persisted
         // across launches via the bridge. Not a literal here so the whole
         // pane scales as one.
         fontSize: "var(--tandem-editor-font-size)",
@@ -55,13 +55,13 @@ export const ligneTheme = [
       },
       ".cm-scroller": {
         fontFamily: '-apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif',
-        lineHeight: "1.35",
+        lineHeight: "1.6",
         padding: "24px 0",
       },
       ".cm-content": proseColumn,
       ".cm-line": {
         padding: "0 2px",
-        minHeight: "1.35em", // stable line height: classes, never token visibility
+        minHeight: "1.6em", // stable line height: classes, never token visibility
       },
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--ink)" },
       "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection":
@@ -113,14 +113,37 @@ export const ligneTheme = [
       },
       ".tandem-quote-first": { borderRadius: "9px 9px 0 0", padding: "10px 14px 0" },
       ".tandem-quote-last": { borderRadius: "0 0 9px 9px", padding: "0 14px 10px" },
-      // Headings (H1 20 bold, H2 16 semibold, H3+ 14 semibold). No extra
-      // padding: line height comes from the class's font size alone, so a
-      // marker appearing/disappearing shifts height by the class, never by
-      // hidden tokens (spec invariant 2).
-      ".tandem-h1": { fontSize: "20px", fontWeight: "700" },
-      ".tandem-h2": { fontSize: "16px", fontWeight: "600" },
+      // Callouts (GitHub-style [!NOTE] blockquotes): the quote panel shape
+      // tinted per kind. These sit after .tandem-quote so the tint wins the
+      // tie; style.css carries the same values for the static bundle.
+      ".tandem-callout-note": {
+        backgroundColor: "color-mix(in srgb, var(--accent) 16%, var(--parchment))",
+        borderColor: "var(--accent)",
+      },
+      ".tandem-callout-tip": {
+        backgroundColor: "color-mix(in srgb, var(--moss-deep) 16%, var(--parchment))",
+        borderColor: "var(--moss-deep)",
+      },
+      ".tandem-callout-important": {
+        backgroundColor: "color-mix(in srgb, var(--accent-deep) 20%, var(--parchment))",
+        borderColor: "var(--accent-deep)",
+      },
+      ".tandem-callout-warning": {
+        backgroundColor: "color-mix(in srgb, var(--ember) 16%, var(--parchment))",
+        borderColor: "var(--ember)",
+      },
+      ".tandem-callout-caution": {
+        backgroundColor: "color-mix(in srgb, var(--ember-deep) 16%, var(--parchment))",
+        borderColor: "var(--ember-deep)",
+      },
+      // Headings (H1 24 bold, H2 20 semibold, H3+ 17 semibold) with
+      // breathing room above. The top margin is constant, so a marker
+      // appearing/disappearing shifts height by the class, never by hidden
+      // tokens (spec invariant 2).
+      ".tandem-h1": { fontSize: "24px", fontWeight: "700", margin: "12px 0 4px" },
+      ".tandem-h2": { fontSize: "20px", fontWeight: "600", margin: "10px 0 4px" },
       ".tandem-h3, .tandem-h4, .tandem-h5, .tandem-h6": {
-        fontSize: "14px",
+        fontSize: "17px",
         fontWeight: "600",
       },
       // Inline code (12 pt monospaced, sand @ .45 background).
@@ -131,6 +154,19 @@ export const ligneTheme = [
         borderRadius: "3px",
         padding: "0 3px",
       },
+      // Highlight marks (==text==): an ember wash over the ink text.
+      ".tandem-mark": {
+        backgroundColor: "color-mix(in srgb, var(--ember) 38%, transparent)",
+        borderRadius: "2px",
+        padding: "0 1px",
+      },
+      // Callout labels (the [!KIND] marker's widget): semibold, kind colour.
+      ".tandem-callout-label": { fontWeight: "600" },
+      ".tandem-callout-label-note": { color: "var(--accent-deep)" },
+      ".tandem-callout-label-tip": { color: "var(--moss-deep)" },
+      ".tandem-callout-label-important": { color: "var(--ink)" },
+      ".tandem-callout-label-warning": { color: "var(--ember-deep)" },
+      ".tandem-callout-label-caution": { color: "var(--ember-deep)" },
       // Links (Ligne restraint: colour carries the affordance — no underline).
       ".tandem-link": { color: "var(--accent)", cursor: "pointer" },
       ".tandem-wikilink": { color: "var(--accent)", cursor: "pointer" },

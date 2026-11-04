@@ -8,13 +8,15 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli lane rename — a lane's name, and its key.",
+    "tandem-cli lane rename \u2014 a lane's name, its key and its parent.",
     "",
     "Usage:",
-    "  tandem-cli lane rename --from <name> --to <name> [--abbr <key>]",
+    "  tandem-cli lane rename --from <name> --to <name> [--abbr <key>] [--project <name>]",
     "",
     "The key survives a rename; `--abbr` moves it, and a lane with a numbered ticket",
-    "refuses — the refs a human already wrote would move with it."
+    "refuses \u2014 the refs a human already wrote would move with it. The project",
+    "survives too; `--project` re-parents the lane, naming a known project, and",
+    "never touches keys, numbers or refs."
   ],
   "stdoutKind": "text"
 }

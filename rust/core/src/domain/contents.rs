@@ -19,13 +19,14 @@ use crate::store::board_rows::{BoardRows, EdgeRow, LaneRow, TicketRow};
 use crate::store::timestamp;
 
 use super::error::DomainError;
-use super::lane::{Lane, LaneKey, TicketRef};
+use super::lane::{Lane, LaneKey, Project, TicketRef};
 use super::ticket::{Status, Ticket, TicketBlock};
 
 /// The store's contents: the ordered lanes and the tickets, in stored order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Contents {
     pub lanes: Vec<Lane>,
+    pub projects: Vec<Project>,
     pub tickets: Vec<Ticket>,
     /// Every dependency edge: (dependent, blocker), in the order it was set.
     pub edges: Vec<(Uuid, Uuid)>,
@@ -43,6 +44,14 @@ impl Contents {
                 name: lane.name.clone(),
                 key: lane.key.clone(),
                 last_number: lane.last_number,
+                project: lane.project.clone().unwrap_or_else(|| lane.name.clone()),
+            })
+            .collect();
+        let projects: Vec<Project> = rows
+            .projects
+            .iter()
+            .map(|project| Project {
+                name: project.name.clone(),
             })
             .collect();
         let tickets: Vec<Ticket> = rows
@@ -70,11 +79,26 @@ impl Contents {
         }
         let mut contents = Self {
             lanes,
+            projects,
             tickets,
             edges,
         };
         contents.normalize();
         contents.prepare();
+        // Empty projects stay listed: `projects` started as the rows' stored
+        // order, and `declare_projects` only appends, so a project no lane
+        // names deletes explicitly, never by losing its last lane in passing.
+        // A project row the lanes no longer name but the table still carries
+        // keeps its place, in row order.
+        for row in &rows.projects {
+            if !contents
+                .projects
+                .iter()
+                .any(|project| project.name == row.name)
+            {
+                contents.projects.push(Project::new(row.name.clone()));
+            }
+        }
         Ok(contents)
     }
 
@@ -89,6 +113,16 @@ impl Contents {
                     name: lane.name.clone(),
                     key: lane.key.clone(),
                     last_number: lane.last_number,
+                    position: position as i64,
+                    project: Some(lane.project.clone()),
+                })
+                .collect(),
+            projects: self
+                .projects
+                .iter()
+                .enumerate()
+                .map(|(position, project)| crate::store::board_rows::ProjectRow {
+                    name: project.name.clone(),
                     position: position as i64,
                 })
                 .collect(),
@@ -135,6 +169,35 @@ impl Contents {
         self.ordered_keys().into_iter().flatten().collect()
     }
 
+    /// Every project in render order: the stored order, plus any parent a lane
+    /// names but the table does not yet carry (a hand edit), in lane order.
+    pub fn known_projects(&self) -> Vec<String> {
+        let mut known: Vec<String> = self.projects.iter().map(|p| p.name.clone()).collect();
+        for lane in &self.lanes {
+            if !known.iter().any(|name| name == &lane.project) {
+                known.push(lane.project.clone());
+            }
+        }
+        known
+    }
+
+    /// Every project with its lanes, in render order: projects in stored
+    /// order, their lanes beneath in lane order.
+    pub fn projects_with_lanes(&self) -> Vec<super::lane::ProjectWithLanes> {
+        self.known_projects()
+            .into_iter()
+            .map(|name| {
+                let lanes = self
+                    .lanes
+                    .iter()
+                    .filter(|lane| lane.project == name)
+                    .map(|lane| lane.name.clone())
+                    .collect();
+                super::lane::ProjectWithLanes { name, lanes }
+            })
+            .collect()
+    }
+
     /// The index at which `key`'s block begins: the cumulative length of every
     /// preceding group. For a key that is neither declared nor present, the end of
     /// the list.
@@ -175,9 +238,12 @@ impl Contents {
     /// Make the ref scheme true for contents that predate it, idempotently: every
     /// ticket's lane is declared, every lane has a key, and a ticket in a lane
     /// without a number gets the lane's next one in `created_at` order (ties by
-    /// id).
+    /// id). Every lane has exactly one parent project: a hand-added lane
+    /// declares the project named for it the same way it already declares the
+    /// lane itself.
     pub fn prepare(&mut self) {
         self.assign_keys();
+        self.declare_projects();
         self.number_unnumbered();
         self.refresh_refs();
         self.refresh_blocked();
@@ -197,6 +263,26 @@ impl Contents {
                 let key = LaneKey::generate(&lane.name, &taken);
                 taken.push(key.clone());
                 lane.key = key;
+            }
+        }
+    }
+
+    /// A lane without a parent declares the project named for it, in lane order,
+    /// so a hand-edited store loses no grouping. An empty parent reads as
+    /// absent, never as a project named "".
+    fn declare_projects(&mut self) {
+        for lane in &mut self.lanes {
+            if lane.project.trim().is_empty() {
+                lane.project = lane.name.clone();
+            }
+        }
+        for lane in &self.lanes.clone() {
+            if !self
+                .projects
+                .iter()
+                .any(|project| project.name == lane.project)
+            {
+                self.projects.push(Project::new(lane.project.clone()));
             }
         }
     }
