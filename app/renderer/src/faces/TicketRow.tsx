@@ -90,7 +90,9 @@ export function TicketRow({
             <span className="ticket-row__tag ticket-row__tag--blocked">{block}</span>
           )}
           {ticket.status === 'backlog' ? null : (
-            <span className="ticket-row__status">{statusLabel(ticket.status)}</span>
+            <span className="ticket-row__status" data-status={ticket.status}>
+              {statusLabel(ticket.status)}
+            </span>
           )}
 
           <span className="ticket-row__ref">{ticket.ref}</span>

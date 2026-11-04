@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 
 import { proseColumn } from "../src/theme.js";
 
-// The prose column (TAN-211): wide enough to use a large window, still
-// capped, centred, and padded so the text never touches the pane edge.
-test("the prose column is capped at 1100px, centred and padded", () => {
+// The prose column (TAN-211, TAND-8): a comfortable reading measure,
+// centred, and padded so the text never touches the pane edge.
+test("the prose column is a centred reading measure with soft wrap", () => {
   const content = proseColumn;
-  assert.equal(content.maxWidth, "1100px");
+  assert.equal(content.maxWidth, "720px");
   assert.equal(content.margin, "0 auto");
   assert.equal(content.padding, "0 28px");
+  assert.equal(content.overflowWrap, "anywhere");
 });

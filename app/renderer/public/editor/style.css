@@ -80,7 +80,7 @@ body {
   /* The note font size the toolbar's control drives (theme.js' "&" rule
      reads it). A literal here is the default; the page's setFontSize sets
      it on this element. The toolbar's own chrome does NOT use it. */
-  --tandem-editor-font-size: 13.5px;
+  --tandem-editor-font-size: 16px;
 }
 
 /* 2b. The formatting toolbar (Editor/src/toolbar.js) ----------------------
@@ -176,23 +176,25 @@ body {
 
 /* 3. Live-preview line classes (blocks.js) -------------------------------- */
 
-/* Headings (H1 20 bold, H2 16 semibold, H3+ 14 semibold). No extra
-   padding: the height change is the class's font size alone, so a marker
-   appearing or disappearing shifts height by the class, never by hidden
-   tokens (spec invariant 2). */
+/* Headings (H1 24 bold, H2 20 semibold, H3+ 17 semibold) with breathing
+   room above. The top margin is constant, so a marker appearing or
+   disappearing shifts height by the class, never by hidden tokens
+   (spec invariant 2). */
 .tandem-h1 {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 700;
+  margin: 12px 0 4px;
 }
 .tandem-h2 {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 600;
+  margin: 10px 0 4px;
 }
 .tandem-h3,
 .tandem-h4,
 .tandem-h5,
 .tandem-h6 {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
 }
 
@@ -262,6 +264,30 @@ body {
   padding: 0 14px 10px;
 }
 
+/* Callouts (GitHub-style [!NOTE] blockquotes): the quote panel shape
+   tinted per kind. No font-size or padding change, so a marker appearing
+   or disappearing never shifts line height (spec invariant 2). */
+.tandem-callout-note {
+  background-color: color-mix(in srgb, var(--accent) 16%, var(--parchment));
+  border-color: var(--accent);
+}
+.tandem-callout-tip {
+  background-color: color-mix(in srgb, var(--moss-deep) 16%, var(--parchment));
+  border-color: var(--moss-deep);
+}
+.tandem-callout-important {
+  background-color: color-mix(in srgb, var(--accent-deep) 20%, var(--parchment));
+  border-color: var(--accent-deep);
+}
+.tandem-callout-warning {
+  background-color: color-mix(in srgb, var(--ember) 16%, var(--parchment));
+  border-color: var(--ember);
+}
+.tandem-callout-caution {
+  background-color: color-mix(in srgb, var(--ember-deep) 16%, var(--parchment));
+  border-color: var(--ember-deep);
+}
+
 /* 4. Inline spans (blocks.js marks) --------------------------------------- */
 
 .tandem-strong {
@@ -279,6 +305,12 @@ body {
   background-color: color-mix(in srgb, var(--sand) 45%, transparent);
   border-radius: 3px;
   padding: 0 3px;
+}
+/* Highlight marks (==text==): an ember wash over the ink text. */
+.tandem-mark {
+  background-color: color-mix(in srgb, var(--ember) 38%, transparent);
+  border-radius: 2px;
+  padding: 0 1px;
 }
 /* Markdown links, autolinks, bare URLs. Ligne restraint: the colour
    carries the affordance — no underline. */
@@ -301,6 +333,26 @@ body {
   color: var(--ember-deep);
   text-decoration: none;
   cursor: pointer;
+}
+
+/* Callout label (the [!KIND] marker's widget): semibold, kind colour. */
+.tandem-callout-label {
+  font-weight: 600;
+}
+.tandem-callout-label-note {
+  color: var(--accent-deep);
+}
+.tandem-callout-label-tip {
+  color: var(--moss-deep);
+}
+.tandem-callout-label-important {
+  color: var(--ink);
+}
+.tandem-callout-label-warning {
+  color: var(--ember-deep);
+}
+.tandem-callout-label-caution {
+  color: var(--ember-deep);
 }
 
 /* Task checkbox: LigneCheckbox geometry at size 14 — 5 corners, one ink

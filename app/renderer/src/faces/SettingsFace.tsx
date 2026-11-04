@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { HarnessStatusReply } from '../../../src/shared/bridge'
 import { checkChanges, type CheckChange } from '../shell/setup'
+import { fixForCheck, groupChecks } from '../shell/settingsGroups'
 import { consoleStored, harnessPhase, harnessRows } from '../shell/harnessAuth'
 import { addRosterName, removeRosterName } from '../shell/roster'
 import type { DoctorReply } from '../wire/DoctorReply'
@@ -41,6 +42,21 @@ function isHarnessStatus(reply: object): reply is HarnessStatusReply {
   return 'integrations' in reply && 'pending' in reply && 'failure' in reply
 }
 
+/** Copy one path in one click: the clipboard API, with a selection fallback. */
+async function copyPath(value: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(value)
+    return
+  } catch {
+    const area = document.createElement('textarea')
+    area.value = value
+    document.body.appendChild(area)
+    area.select()
+    document.execCommand('copy')
+    area.remove()
+  }
+}
+
 /**
  * The one Settings surface (TAN-216, `docs/port.md`): the machine's paths, the
  * app's one theme rule, the store's roster, and the agent face's setup.
@@ -57,7 +73,12 @@ function isHarnessStatus(reply: object): reply is HarnessStatusReply {
  * and owns the poll, so the renderer touches no harness path. The face
  * computes no path and no state; it draws the reports' own.
  */
-export function SettingsFace() {
+export type SettingsFaceProps = {
+  /** The listing's revision, drawn beside the doctor checks instead of the header. */
+  revision: number | null
+}
+
+export function SettingsFace({ revision }: SettingsFaceProps) {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [draft, setDraft] = useState<string[]>([])
   const [candidate, setCandidate] = useState('')
@@ -284,6 +305,7 @@ export function SettingsFace() {
 
   const state = settings?.setup.report.state
   const trouble = state?.warnings.some((warning) => warning.severity !== 'info') ?? false
+  const grouped = groupChecks(settings?.doctor.checks ?? [])
   const phase = harness === null ? null : harnessPhase(harness)
   const rows = harness === null ? [] : harnessRows(harness)
   const consoleAccount = harness === null ? null : consoleStored(harness.integrations)
@@ -299,25 +321,62 @@ export function SettingsFace() {
             ? 'The last sign-in did not complete.'
             : 'Not signed in: the embedded agent cannot call a model yet.'
 
+  const storeRevision = revision === null ? 'store rev unknown' : `store rev ${revision}`
+
   return (
-    <Face title="Settings" blurb="The machine, the agent host and the app's own preferences.">
+    <Face wide label="Settings">
+      <div className="settings">
       <section className="settings__section">
         <h2 className="settings__heading">Paths</h2>
         <dl className="settings__facts">
           <div className="settings__fact">
             <dt className="settings__term">Home</dt>
             <dd className="settings__value">{settings?.setup.home ?? 'Reading…'}</dd>
+            <button
+              type="button"
+              className="settings__action"
+              aria-label="Copy Home path"
+              onClick={() => {
+                if (settings?.setup.home !== undefined) void copyPath(settings.setup.home)
+              }}
+            >
+              Copy
+            </button>
           </div>
           <div className="settings__fact">
             <dt className="settings__term">Bikeshed</dt>
             <dd className="settings__value">{settings?.setup.bikeshed ?? 'Reading…'}</dd>
+            <button
+              type="button"
+              className="settings__action"
+              aria-label="Copy Bikeshed path"
+              onClick={() => {
+                if (settings?.setup.bikeshed !== undefined) void copyPath(settings.setup.bikeshed)
+              }}
+            >
+              Copy
+            </button>
           </div>
           {settings?.setup.hosts.map((host) => (
             <div className="settings__fact" key={host.host}>
               <dt className="settings__term">{host.host}</dt>
               <dd className="settings__value">{host.path}</dd>
+              <button
+                type="button"
+                className="settings__action"
+                aria-label={`Copy ${host.host} path`}
+                onClick={() => void copyPath(host.path)}
+              >
+                Copy
+              </button>
             </div>
           ))}
+        </dl>
+      </section>
+
+      <section className="settings__section">
+        <h2 className="settings__heading">Preferences</h2>
+        <dl className="settings__facts">
           <div className="settings__fact">
             <dt className="settings__term">Theme</dt>
             <dd className="settings__value">System: the app follows the OS appearance</dd>
@@ -380,26 +439,34 @@ export function SettingsFace() {
         <p className="settings__versions">
           {state === undefined
             ? 'Reading the agent face…'
-            : `Installed ${state.installedVersion ?? 'nothing'}; bundled ${state.bundledVersion ?? 'nothing'}`}
+            : `Installed ${state.installedVersion ?? 'nothing'}; bundled ${state.bundledVersion ?? 'nothing'}; ${storeRevision}`}
         </p>
-        <ul className="settings__checks">
-          {settings?.doctor.checks.map((check) => (
-            <li className="settings__check" key={check.name}>
-              <span className="settings__check-name">{check.name}</span>
-              <span className="settings__state" data-state={check.ok ? 'ok' : 'trouble'}>
-                {check.ok ? 'ok' : 'needs a fix'}
-              </span>
-              <span className="settings__detail">{check.detail}</span>
-            </li>
-          ))}
-        </ul>
+        {grouped.map((group) => (
+          <div key={group.title}>
+            <h3 className="settings__subheading">{group.title}</h3>
+            <ul className="settings__checks">
+              {group.checks.map((check) => {
+                const fix = fixForCheck(check)
+                return (
+                  <li className="settings__check" key={check.name}>
+                    <span className="settings__check-name">{check.name}</span>
+                    <span className="settings__state" data-state={check.ok ? 'ok' : 'trouble'}>
+                      {check.ok ? 'ok' : 'needs a fix'}
+                    </span>
+                    <span className="settings__detail">{check.detail}</span>
+                    {fix === null ? null : <span className="settings__fix">{fix}</span>}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        ))}
         <button type="button" className="settings__action" onClick={() => void repairFace()}>
           {trouble ? 'Repair' : 'Install'}
         </button>
         <p className="settings__hint">
-          Runs `tandem-cli setup install`: the bundled skills, the four agent prompts and
-          AGENTS.md go into Tandem's home, and the host links point at that copy. Nothing is
-          written to a host until you press it.
+          Install writes the bundled skills, agent prompts and host links into Tandem's home.
+          Nothing is written until you press it.
         </p>
         {repair === null ? null : (
           <div className="settings__result" aria-live="polite">
@@ -504,6 +571,7 @@ export function SettingsFace() {
           </p>
         )}
       </section>
+      </div>
     </Face>
   )
 }

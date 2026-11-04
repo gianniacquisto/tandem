@@ -16,7 +16,8 @@ const variable = (name: string) => `--${name.replace(/[A-Z]/g, (c) => `-${c.toLo
 /**
  * The palette the Swift theme carried, frozen here at the cutover: the Swift
  * file is gone, so the hex values are the source of truth and this table is the
- * only place a drift can be caught.
+ * only place a drift can be caught. TAND-11 darkened the day `inkDim` so quiet
+ * text meets AA on paper and parchment; the night value already passed.
  */
 const DAY = new Map<string, string>([
   ['paper', '#F1E9D7'],
@@ -25,7 +26,7 @@ const DAY = new Map<string, string>([
   ['shadow', '#C6B897'],
   ['line', '#C6B99E'],
   ['ink', '#211D18'],
-  ['inkDim', '#877D6B'],
+  ['inkDim', '#655D4E'],
   ['accent', '#6E7D6E'],
   ['accentDeep', '#55604F'],
   ['ember', '#A9745C'],

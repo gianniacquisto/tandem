@@ -18,7 +18,9 @@ export type BoardCellProps = {
 /**
  * One cell of the board: a lane's tickets at one status, in the store's order.
  * The whole cell is a drop target, so a status with no cards still takes the
- * next drop; a drop on a card is the card's own, and it stops here.
+ * next drop; an empty cell names that with a one-line hint and a dashed zone,
+ * highlighted while a drag is over it. A drop on a card is the card's own, and
+ * it stops here.
  */
 export function BoardCell({
   lane,
@@ -31,6 +33,7 @@ export function BoardCell({
   onDropCell,
 }: BoardCellProps) {
   const [targeted, setTargeted] = useState(false)
+  const empty = cell.tickets.length === 0
 
   function drop(event: DragEvent<HTMLElement>): void {
     event.preventDefault()
@@ -45,6 +48,7 @@ export function BoardCell({
       aria-label={`${lane.title}, ${cell.label}`}
       data-lane={lane.key ?? ''}
       data-status={cell.status}
+      data-empty={empty || undefined}
       data-targeted={targeted || undefined}
       onDragOver={(event) => {
         event.preventDefault()
@@ -68,6 +72,7 @@ export function BoardCell({
           />
         ))}
       </ul>
+      {empty ? <p className="board__drop-hint">Drop tickets here</p> : null}
     </section>
   )
 }

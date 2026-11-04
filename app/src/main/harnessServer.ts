@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 import { ensureHarnessHome, harnessEnv, resolveHarnessBinary, type HarnessChild } from './harness'
 
@@ -123,6 +123,27 @@ export function stampPath(tandemHome: string): string {
   return join(tandemHome, 'harness', 'version')
 }
 
+/**
+ * Where the CLI's rendezvous read looks for the embedded harness
+ * (`rust/cli/src/main.rs::rendezvous_path`, TAN-276): the `event-stream`
+ * record's `state/opencode/service.json` under the Tandem home. The file is
+ * service-written, mode 0600, holding the handshake url and the loopback
+ * credential as `{"url":..., "password":...}`; extra keys are ignored by the
+ * reader. `serve --stdio` writes nothing, so the app writes it from the
+ * handshake at start (TAN-296).
+ */
+export function rendezvousPath(tandemHome: string): string {
+  return join(tandemHome, 'harness', 'state', 'opencode', 'service.json')
+}
+
+/** Write the rendezvous file the CLI reads: the url plus the credential, mode 0600. */
+function writeRendezvous(tandemHome: string, url: string, password: string): void {
+  const path = rendezvousPath(tandemHome)
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, JSON.stringify({ url, password }))
+  chmodSync(path, 0o600)
+}
+
 function readStamp(tandemHome: string): string | null {
   try {
     const text = readFileSync(stampPath(tandemHome), 'utf8').trim()
@@ -159,8 +180,10 @@ const HANDSHAKE_TIMEOUT_MS = 30_000
 
 /**
  * One serve run: the version stamp is checked before anything is spawned, the
- * database is backed up when the stamp moves, and the handshake is read from
- * the first stdout line.
+ * database is backed up when the stamp moves, the handshake is read from
+ * the first stdout line, and the rendezvous file is written from the
+ * handshake plus the spawned credential so the CLI's no-flags
+ * `session end --usage-from-harness` finds the loopback server (TAN-296).
  */
 export class HarnessServer {
   private readonly deps: HarnessServerDeps
@@ -285,6 +308,12 @@ export class HarnessServer {
           const url = parseHandshake(line)
           if (url === null) {
             fail(`the harness printed no handshake: ${line.slice(0, 120)}`)
+            return
+          }
+          try {
+            writeRendezvous(this.deps.tandemHome, url, password)
+          } catch {
+            fail('the harness rendezvous file could not be written')
             return
           }
           settled = true

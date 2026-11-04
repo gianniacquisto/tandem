@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{Connection, params};
 
 use super::rows::{
-    NewComment, NewDependency, NewLane, NewSession, NewSetting, NewSprint, NewTicket,
+    NewComment, NewDependency, NewLane, NewProject, NewSession, NewSetting, NewSprint, NewTicket,
 };
 use super::{Actor, Result};
 
@@ -45,15 +45,24 @@ impl Write<'_> {
     pub fn insert_lane(&self, lane: NewLane<'_>) -> Result<()> {
         self.before_mutation()?;
         self.execute(
-            "INSERT INTO lanes (name, key, last_number, position, author)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO lanes (name, key, last_number, position, project, author)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 lane.name,
                 lane.key,
                 lane.last_number,
                 lane.position,
+                lane.project,
                 self.actor.as_str()
             ],
+        )
+    }
+
+    pub fn insert_project(&self, project: NewProject<'_>) -> Result<()> {
+        self.before_mutation()?;
+        self.execute(
+            "INSERT INTO projects (name, position, author) VALUES (?1, ?2, ?3)",
+            params![project.name, project.position, self.actor.as_str()],
         )
     }
 

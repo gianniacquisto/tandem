@@ -63,8 +63,8 @@ pub use diagnostics::{BackupHealth, CommentsHealth, CommentsState, Health, comme
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
 pub use records::local_day;
 pub use rows::{
-    NewComment, NewDependency, NewLane, NewSession, NewSetting, NewSprint, NewTicket, SessionRow,
-    SprintRow,
+    NewComment, NewDependency, NewLane, NewProject, NewSession, NewSetting, NewSprint, NewTicket,
+    SessionRow, SprintRow,
 };
 pub use schema::CURRENT_VERSION;
 pub use write::Write;

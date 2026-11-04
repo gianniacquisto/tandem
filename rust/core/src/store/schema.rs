@@ -25,7 +25,7 @@ use super::{Actor, Result, StoreError, timestamp, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 5;
+pub const CURRENT_VERSION: i64 = 6;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -61,6 +61,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: HARNESS_VERSION,
         name: "the session's harness pointer",
         apply: version_five,
+    },
+    Migration {
+        version: PROJECTS_VERSION,
+        name: "the projects and the lane's parent",
+        apply: version_six,
     },
 ];
 
@@ -214,6 +219,32 @@ ALTER TABLE sessions ADD COLUMN harness_session_id TEXT;
 ALTER TABLE sessions ADD COLUMN harness_transport TEXT;
 ";
 
+/// The version that couples projects and lanes (TAN-295).
+pub(crate) const PROJECTS_VERSION: i64 = 6;
+
+/// Version 6: a `projects` table, and a parent on every lane.
+///
+/// `projects` holds `name` (primary key), `position` (render order, add
+/// appends, no move verb) and `author`. `lanes` gains `project`: every lane's
+/// exactly-one parent. The backfill makes one project per existing lane
+/// (project name equals lane name, order follows lane order) and sets each
+/// lane's parent; default-area tickets (no lane) are untouched.
+///
+/// The backfill copies the lane's author onto its project, so a migration
+/// writes no author of its own: the project inherits the write that declared
+/// its lane.
+const VERSION_SIX: &str = "
+CREATE TABLE IF NOT EXISTS projects (
+    name     TEXT PRIMARY KEY,
+    position INTEGER NOT NULL,
+    author   TEXT NOT NULL
+);
+ALTER TABLE lanes ADD COLUMN project TEXT;
+INSERT INTO projects (name, position, author)
+    SELECT name, position, author FROM lanes ORDER BY position, rowid;
+UPDATE lanes SET project = name WHERE project IS NULL;
+";
+
 fn version_one(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_ONE)
 }
@@ -232,6 +263,10 @@ fn version_four(connection: &Connection) -> rusqlite::Result<()> {
 
 fn version_five(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_FIVE)
+}
+
+fn version_six(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(VERSION_SIX)
 }
 
 /// The store's revision: the stored counter, or 0 when this file predates the
@@ -439,7 +474,7 @@ pub(crate) fn has_column(connection: &Connection, table: &str, column: &str) -> 
         .map_err(|error| translate(error, connection))
 }
 
-fn has_table(connection: &Connection, name: &str) -> Result<bool> {
+pub(crate) fn has_table(connection: &Connection, name: &str) -> Result<bool> {
     connection
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",

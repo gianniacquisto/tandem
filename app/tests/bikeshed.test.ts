@@ -155,15 +155,30 @@ describe('the health panel summary', () => {
 })
 
 describe('a recovery', () => {
-  it('names the temp as a draft, never as an error', () => {
+  it('names the draft in human words, never the tmp path or byte count', () => {
     const label = recoverableLabel({
       file: '.note-0000-0000-0000-000000000001.tmp',
       bytes: 42,
       modifiedAt: '2026-10-30T12:00:00Z',
     })
-    expect(label).toContain('draft')
-    expect(label).toContain('.note-0000-0000-0000-000000000001.tmp')
+    expect(label.toLowerCase()).toContain('draft')
+    expect(label.toLowerCase()).toContain('interrupted save')
+    expect(label).not.toContain('.note-')
+    expect(label).not.toContain('.tmp')
+    expect(label).not.toContain('42')
+    expect(label.toLowerCase()).not.toContain('bytes')
     expect(label.toLowerCase()).not.toContain('error')
+  })
+
+  it('names the folder a nested temp was kept in, not the tmp file', () => {
+    const label = recoverableLabel({
+      file: 'daily/.note-0000-0000-0000-000000000001.tmp',
+      bytes: 42,
+      modifiedAt: '2026-10-30T12:00:00Z',
+    })
+    expect(label).toContain('daily')
+    expect(label).not.toContain('.note-')
+    expect(label).not.toContain('.tmp')
   })
 })
 

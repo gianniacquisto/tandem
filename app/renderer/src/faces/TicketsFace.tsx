@@ -10,6 +10,7 @@ import {
   boardStatuses,
   dropCalls,
   dropIndex,
+  emptyBoardCopy,
   filterTickets,
   firstSelection,
   laneColumns,
@@ -357,7 +358,7 @@ export function TicketsFace({
   const empty = emptyState(snapshot, filters, visible.length === 0, activeProject, onReload)
 
   return (
-    <Face wide title="Tickets" blurb="The board, its lanes and the ticket list, one face.">
+    <Face wide label="Tickets">
       <div className={view === 'board' ? 'tickets tickets--board' : 'tickets tickets--list'}>
         <FocusControl
           lanes={snapshot.lanes}
@@ -490,6 +491,34 @@ export function TicketsFace({
             </select>
           </div>
 
+          <div className="search">
+            <svg className="search__icon" viewBox="0 0 12 12" aria-hidden="true">
+              <circle cx="5" cy="5" r="3.4" />
+              <path d="M7.6 7.6 11 11" />
+            </svg>
+            <input
+              ref={search}
+              className="search__input"
+              type="search"
+              value={filters.text}
+              placeholder="Search tickets…"
+              aria-label="Search tickets"
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, text: event.target.value }))
+              }
+            />
+            {filters.text === '' ? null : (
+              <button
+                type="button"
+                className="search__clear"
+                aria-label="Clear the search"
+                onClick={() => setFilters((current) => ({ ...current, text: '' }))}
+              >
+                ×
+              </button>
+            )}
+          </div>
+
           <div className="segmented segmented--views" role="tablist" aria-label="Ticket layouts">
             <a
               className="segmented__item"
@@ -510,34 +539,6 @@ export function TicketsFace({
           </div>
         </div>
 
-        <div className="search">
-          <svg className="search__icon" viewBox="0 0 12 12" aria-hidden="true">
-            <circle cx="5" cy="5" r="3.4" />
-            <path d="M7.6 7.6 11 11" />
-          </svg>
-          <input
-            ref={search}
-            className="search__input"
-            type="search"
-            value={filters.text}
-            placeholder="Search tickets…"
-            aria-label="Search tickets"
-            onChange={(event) =>
-              setFilters((current) => ({ ...current, text: event.target.value }))
-            }
-          />
-          {filters.text === '' ? null : (
-            <button
-              type="button"
-              className="search__clear"
-              aria-label="Clear the search"
-              onClick={() => setFilters((current) => ({ ...current, text: '' }))}
-            >
-              ×
-            </button>
-          )}
-        </div>
-
         {empty ?? (
           view === 'list' ? (
             <TicketList
@@ -551,6 +552,7 @@ export function TicketsFace({
           ) : (
             <BoardLayout
               rows={rows}
+              projects={snapshot.projects}
               selected={current}
               onSelect={setSelected}
               onToggle={toggle}
@@ -573,52 +575,29 @@ function emptyState(
   activeProject: string | null,
   onReload: () => void,
 ): ReactNode {
-  if (snapshot.status === 'connecting' && snapshot.tickets.length === 0) {
-    return <EmptyState title="Reading the board" subtitle="The store is answering over rpc." />
-  }
+  const copy = emptyBoardCopy({
+    status: snapshot.status,
+    ticketCount: snapshot.tickets.length,
+    error: snapshot.error,
+    filters,
+    nothingVisible,
+    activeProject,
+    laneNames: snapshot.lanes,
+  })
+  if (copy === null) return null
+  // The failed read is the one state with an action: the helper owns the
+  // words, the face only adds the retry.
   if (snapshot.status === 'failed' && snapshot.tickets.length === 0) {
     return (
-      <EmptyState
-        title="The board could not be read"
-        subtitle={snapshot.error ?? 'The store refused the read.'}
-      >
+      <EmptyState title={copy.title} subtitle={copy.subtitle}>
         <button type="button" className="empty__action" onClick={onReload}>
           Try again
         </button>
       </EmptyState>
     )
   }
-  if (snapshot.tickets.length === 0) {
-    return (
-      <EmptyState
-        hero
-        title="Nothing on the board"
-        subtitle="Add a ticket above, or from the CLI."
-      />
-    )
+  if (copy.hero === true) {
+    return <EmptyState hero title={copy.title} subtitle={copy.subtitle} />
   }
-  if (!nothingVisible) return null
-  if (filters.text.trim() !== '') {
-    return <EmptyState title="No matches" subtitle="No ticket title matches your search." />
-  }
-  if (filters.status !== null || filters.assignee !== null || filters.lane !== null) {
-    return (
-      <EmptyState title="No tickets match these filters" subtitle="Clear a filter to see more." />
-    )
-  }
-  if (activeProject !== null && snapshot.lanes.includes(activeProject)) {
-    return (
-      <EmptyState
-        title={`No tickets in ${activeProject}`}
-        subtitle="Add one above, or show every lane."
-      />
-    )
-  }
-  if (filters.scope === 'open') {
-    return <EmptyState hero title="All clear" subtitle="Nothing open. Add something above." />
-  }
-  if (filters.scope === 'done') {
-    return <EmptyState title="Nothing done yet" subtitle="Completed tickets rest here." />
-  }
-  return <EmptyState title="The list is empty" subtitle="Add your first ticket above." />
+  return <EmptyState title={copy.title} subtitle={copy.subtitle} />
 }

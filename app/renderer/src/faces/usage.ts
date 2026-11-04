@@ -126,26 +126,26 @@ export function coverage(report: UsageReportView): string {
 }
 
 /**
- * The ticket table's arithmetic in one line: what its rows total, the overlap
- * that total carries, and the spend no ticket can claim. Every figure is a report
+ * The ticket table's arithmetic in plain words: what its rows add to, how that
+ * compares to the spend above it, and the spend no ticket can claim. A shared
+ * record is counted in each ticket row it carries, so the rows add to more
+ * than the spend whenever overlap is positive. Every figure is a report
  * field, and no ticket rows means no line.
  */
 export function ticketArithmetic(report: UsageReportView): string | null {
   if (report.ticket.length === 0) return null
 
-  const parts = [`Ticket rows total ${money(report.ticketTotal)}`]
-  if (report.overlap > 0) {
-    parts.push(`${money(report.overlap)} of that is overlap: a shared record's cost per extra ticket`)
-  }
+  const head =
+    report.overlap > 0
+      ? `Ticket rows add to ${money(report.ticketTotal)}, ${money(report.overlap)} more than the ${money(report.cost)} spent: a record on two tickets is counted in both rows.`
+      : `Ticket rows add to ${money(report.ticketTotal)}, matching the ${money(report.cost)} spent: each record is counted once.`
+
   const loose = report.ticket.find((row) => row.id === NO_TICKET)
-  if (loose !== undefined) {
-    parts.push(
-      loose.reported === 0
-        ? `${recordNoun(loose.records)} carried none`
-        : `${recordNoun(loose.records)} carried none, ${money(loose.cost)}`,
-    )
+  if (loose === undefined) return head
+  if (loose.reported === 0) {
+    return `${head} ${recordNoun(loose.records)} carried no ticket and reported nothing.`
   }
-  return parts.join(' \u00b7 ')
+  return `${head} ${recordNoun(loose.records)} carried no ticket (${money(loose.cost)}).`
 }
 
 /** A dollar figure with two decimals, the shape the usage comment carries. */

@@ -143,7 +143,7 @@ fn archived_tickets_are_the_callers_decision_not_the_boards() {
 fn a_drop_sets_the_lane_and_the_status_in_one_write() {
     let sandbox = Sandbox::new("board-place");
     let board = sandbox.board();
-    board.add_lane("Board", None).unwrap();
+    board.add_lane("Board", None, None).unwrap();
     let ticket = board.add("carry it", AddTicket::default()).unwrap();
 
     let placed = board
@@ -202,7 +202,7 @@ fn a_drop_into_in_review_persists_and_draws_in_the_in_review_column() {
 fn a_drop_appends_to_its_lane_by_default_and_takes_an_index_when_given_one() {
     let sandbox = Sandbox::new("board-index");
     let board = sandbox.board();
-    board.add_lane("Board", None).unwrap();
+    board.add_lane("Board", None, None).unwrap();
     board
         .add(
             "one",
@@ -343,7 +343,7 @@ fn an_unknown_lane_or_id_is_rejected_and_the_store_is_left_alone() {
 fn two_writers_over_one_home_keep_every_row_and_issue_every_ref_once() {
     let sandbox = Sandbox::new("board-writers");
     let board = sandbox.board();
-    board.add_lane("Tandem", Some("TAN")).unwrap();
+    board.add_lane("Tandem", Some("TAN"), None).unwrap();
     let store = sandbox.store();
 
     std::thread::scope(|scope| {
@@ -444,7 +444,7 @@ fn a_write_that_fails_for_another_reason_is_not_retried() {
 fn a_concurrent_edit_is_not_reverted_by_another_writers_snapshot() {
     let sandbox = Sandbox::new("board-revert");
     let board = sandbox.board();
-    board.add_lane("Tandem", Some("TAN")).unwrap();
+    board.add_lane("Tandem", Some("TAN"), None).unwrap();
     let edited = board
         .add(
             "original",

@@ -67,6 +67,7 @@ import {
   CodeTagWidget,
   HrWidget,
   CeilingWarningWidget,
+  CalloutWidget,
   toggleTask,
 } from "./widgets.js";
 import { ligneTheme } from "./theme.js";
@@ -189,6 +190,8 @@ function makeWidget(d) {
       return new CodeTagWidget(d.info);
     case "hr":
       return new HrWidget();
+    case "callout":
+      return new CalloutWidget(d.callout);
     default:
       throw new RangeError("unknown plan widget kind: " + d.kind);
   }
@@ -688,21 +691,21 @@ export function specFor(kind, state) {
 //
 // The CSS custom property `--tandem-editor-font-size` on the editor root
 // scales the whole pane (theme.js' "&" rule reads it). The value is a
-// number of px, stepped by 1 and clamped; the 13.5 default snaps to an
-// integer on the first step. Style.css carries the 13.5px default.
+// number of px, stepped by 1 and clamped; the 16 default is the reading
+// size. Style.css carries the 16px default.
 
-export const DEFAULT_EDITOR_FONT_SIZE = 13.5;
+export const DEFAULT_EDITOR_FONT_SIZE = 16;
 export const MIN_EDITOR_FONT_SIZE = 11;
 export const MAX_EDITOR_FONT_SIZE = 20;
 
-/** Clamp a candidate size into the sane range (13.5 for non-numbers). */
+/** Clamp a candidate size into the sane range (16 for non-numbers). */
 export function clampFontSize(px) {
   const n = Number(px);
   if (!Number.isFinite(n)) return DEFAULT_EDITOR_FONT_SIZE;
   return Math.max(MIN_EDITOR_FONT_SIZE, Math.min(MAX_EDITOR_FONT_SIZE, n));
 }
 
-/** The next size for a +1 / −1 step (the 13.5 default snaps onto integers). */
+/** The next size for a +1 / −1 step. */
 export function stepFontSize(px, direction) {
   const n = Number.isFinite(Number(px)) ? Number(px) : DEFAULT_EDITOR_FONT_SIZE;
   const stepped = direction > 0 ? Math.floor(n) + 1 : Math.ceil(n) - 1;

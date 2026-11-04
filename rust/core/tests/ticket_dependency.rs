@@ -16,7 +16,7 @@ use tandem_core::domain::{AddTicket, Board, DescriptionBody, DomainError, Filter
 fn store(titles: &[&str]) -> (Sandbox, Board, HashMap<String, Ticket>) {
     let sandbox = Sandbox::new("deps");
     let board = sandbox.board();
-    board.add_lane("Tandem", None).unwrap();
+    board.add_lane("Tandem", None, None).unwrap();
     let mut made = HashMap::new();
     // Added in the order given, so `titles[0]` carries `TAN-1`: the number follows
     // the write, not the row's place on the board.
@@ -439,7 +439,7 @@ fn deleting_a_ticket_removes_its_edges_on_both_ends() {
 #[test]
 fn a_ticket_moved_to_another_lane_keeps_its_edge_and_the_ref_follows_the_lane_key() {
     let (_sandbox, board, made) = store(&["waits", "finishes"]);
-    board.add_lane("Fleet", None).unwrap();
+    board.add_lane("Fleet", None, None).unwrap();
     board
         .block(&reference(&made, "waits"), &reference(&made, "finishes"))
         .unwrap();
@@ -496,7 +496,7 @@ fn a_body_that_mentions_the_heading_inline_is_not_a_reason() {
 fn the_tickets_blocked_reason_is_the_bodys_section_read_not_copied() {
     let sandbox = Sandbox::new("deps-reason");
     let board = sandbox.board();
-    board.add_lane("Tandem", None).unwrap();
+    board.add_lane("Tandem", None, None).unwrap();
     board
         .add(
             "waits",

@@ -8,12 +8,20 @@
 //!
 //! Timestamps are ISO-8601 UTC text (`super::timestamp`), whole seconds.
 
-/// A cycle lane: its name, its key (the ref prefix), its issued-number counter
-/// and its render position.
+/// A cycle lane: its name, its key (the ref prefix), its issued-number counter,
+/// its render position and its parent project.
 pub struct NewLane<'a> {
     pub name: &'a str,
     pub key: &'a str,
     pub last_number: i64,
+    pub position: i64,
+    pub project: &'a str,
+}
+
+/// One project: its name and its render position. Add appends, there is no
+/// move verb, and a rename keeps its position.
+pub struct NewProject<'a> {
+    pub name: &'a str,
     pub position: i64,
 }
 
