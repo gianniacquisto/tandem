@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { editorCall, editorDocument, parseEditorMessage, type EditorMessage } from '../shell/editor'
+import {
+  editorCall,
+  editorDocument,
+  loadEditorFontSize,
+  parseEditorMessage,
+  saveEditorFontSize,
+  type EditorMessage,
+} from '../shell/editor'
 
 /** The frame's document, beside the built page in both dev and packaged runs. */
 function frameUrl(): string {
@@ -56,7 +63,19 @@ export function BikeshedEditor({
       if (event.source !== frame.current?.contentWindow) return
       const message = parseEditorMessage(event.data)
       if (message === null) return
-      if (message.type === 'loaded') setReady(true)
+      if (message.type === 'loaded') {
+        // The persisted size goes to the page with the index: the bundle
+        // holds no persistence of its own, so a relaunch would otherwise
+        // reset the toolbar's A-/A+ control to 16px.
+        frame.current?.contentWindow?.postMessage(
+          editorCall('setFontSize', [loadEditorFontSize()]),
+          '*',
+        )
+        setReady(true)
+      }
+      // The toolbar posts every step; the renderer keeps it, so the next
+      // load restores it. The bundle never echoes its own setFontSize.
+      if (message.type === 'font-size') saveEditorFontSize(message.value)
       listener.current(message)
     }
     window.addEventListener('message', receive)

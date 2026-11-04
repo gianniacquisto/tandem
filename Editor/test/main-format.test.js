@@ -109,6 +109,26 @@ test("toggling twice is a no-op", () => {
   assert.equal(docText(st), "a\nb");
 });
 
+test("a numbered item with a higher number toggles off (any N., not only 1.)", () => {
+  // TAN-305 repro: the toolbar's numbered-list action toggles the literal
+  // "1. " prefix, so "2. two" became "1. 2. two" instead of plain "two".
+  const st = run("2. two", { anchor: 0, head: 6 }, (s) => toggleLinePrefixSpec(s, "1. "));
+  assert.equal(docText(st), "two");
+});
+
+test("a checked task item toggles off (both [x] and [X] count as set)", () => {
+  // TAN-305 repro: the toolbar's task-list action toggles the literal
+  // "- [ ] " prefix, so "- [x] done" became "- [ ] - [x] done".
+  const lower = run("- [x] done", { anchor: 0, head: 9 }, (s) =>
+    toggleLinePrefixSpec(s, "- [ ] ")
+  );
+  assert.equal(docText(lower), "done");
+  const upper = run("- [X] done", { anchor: 0, head: 9 }, (s) =>
+    toggleLinePrefixSpec(s, "- [ ] ")
+  );
+  assert.equal(docText(upper), "done");
+});
+
 test("a selection ending at a line boundary does not touch the next line", () => {
   // "a\nb" with the selection covering only "a\n" (anchor 0, head 2).
   const st = run("a\nb", { anchor: 0, head: 2 }, (s) => toggleLinePrefixSpec(s, "- "));

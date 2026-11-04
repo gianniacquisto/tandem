@@ -542,17 +542,36 @@ const leadingSpaces = (text) => /^\s*/.exec(text)[0].length;
  * line already carries it (ignoring leading indentation) the prefix is
  * removed from each; otherwise it is added to the lines that lack it,
  * leaving indentation intact.
+ *
+ * Two toolbar prefixes match a family, not a literal: the numbered list
+ * ("1. ") matches any ordered marker (`2. `, `3) `, …) and the task list
+ * ("- [ ] ") matches any task marker (`- [ ] `, `- [x] `, `- [X] `), so a
+ * second press untasks/unlists instead of nesting a duplicate prefix.
  */
 export function toggleLinePrefixSpec(state, prefix) {
   const lines = touchedLines(state);
-  const has = (line) => line.text.startsWith(prefix, leadingSpaces(line.text));
+  const match = (text) => {
+    const indented = leadingSpaces(text);
+    const rest = text.slice(indented);
+    if (prefix === "1. ") {
+      const m = /^(\d+[.)] )/.exec(rest);
+      return m ? { at: indented, len: m[1].length } : null;
+    }
+    if (prefix === "- [ ] ") {
+      const m = /^(- \[[ xX]\] )/.exec(rest);
+      return m ? { at: indented, len: m[1].length } : null;
+    }
+    return rest.startsWith(prefix) ? { at: indented, len: prefix.length } : null;
+  };
+  const has = (line) => match(line.text) !== null;
   const removing = lines.every(has);
   const changes = [];
   for (const line of lines) {
+    const m = match(line.text);
     const at = line.from + leadingSpaces(line.text);
     if (removing) {
-      changes.push({ from: at, to: at + prefix.length, insert: "" });
-    } else if (!has(line)) {
+      changes.push({ from: at, to: at + m.len, insert: "" });
+    } else if (!m) {
       changes.push({ from: at, insert: prefix });
     }
   }
