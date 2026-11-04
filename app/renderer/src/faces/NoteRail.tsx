@@ -134,7 +134,7 @@ export function NoteRail({
   onOpenTicket,
 }: NoteRailProps) {
   return (
-    <section className="rail" aria-label="Note links">
+    <section className="rail" id="note-rail" aria-label="Note links">
       <BacklinksSection backlinks={backlinks} onOpenNote={onOpenNote} />
       <LinkedTicketsSection linked={linked} onOpenTicket={onOpenTicket} />
       <RecoveriesSection recoveries={recoveries} />

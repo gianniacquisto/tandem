@@ -18,6 +18,11 @@ export type BikeshedEditorProps = {
   noteIndex: string[]
   saving: boolean
   onMessage: (message: EditorMessage) => void
+  /** The side rail's state: the titlebar toggle flips it without moving focus. */
+  railOpen: boolean
+  /** Backlinks plus linked tickets, the count the collapsed toggle names. */
+  railCount: number
+  onToggleRail: () => void
 }
 
 /**
@@ -37,6 +42,9 @@ export function BikeshedEditor({
   noteIndex,
   saving,
   onMessage,
+  railOpen,
+  railCount,
+  onToggleRail,
 }: BikeshedEditorProps) {
   const frame = useRef<HTMLIFrameElement | null>(null)
   const listener = useRef(onMessage)
@@ -78,6 +86,15 @@ export function BikeshedEditor({
         <span className="editor__folder">{folder === '' ? 'Bikeshed' : folder}</span>
         <span className="editor__title">{title === '' ? 'No note selected' : title}</span>
         {saving ? <span className="editor__saving">saving{'\u2026'}</span> : null}
+        <button
+          type="button"
+          className="editor__rail-toggle"
+          aria-expanded={railOpen}
+          aria-controls="note-rail"
+          onClick={onToggleRail}
+        >
+          {railOpen ? 'Hide links' : railCount > 0 ? `Links (${railCount})` : 'Links'}
+        </button>
       </header>
       {path === '' ? (
         <div className="editor__empty">
