@@ -96,7 +96,7 @@ export const test = base.extend<{ app: ElectronApplication; window: Page }>({
 export async function openTab(page: Page, tab: string): Promise<void> {
   const [document] = page.url().split('#')
   await page.goto(`${document}#/${tab}`)
-  await page.waitForSelector('.face__title')
+  await page.waitForSelector('.face')
 }
 
 /**
