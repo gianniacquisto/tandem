@@ -168,6 +168,36 @@ fn the_builder_hands_off_only_on_green_checks() {
     );
 }
 
+/// Capacity-cancelled macOS jobs read as fail in `gh pr checks` and needed
+/// hand reruns across passes (TAN-297). The handoff verifies a red check's
+/// conclusion through the jobs API before reading it as a code failure, and
+/// reruns cancelled or failed infra jobs, cancelling the stuck run first when
+/// `rerun --failed` refuses a running run.
+#[test]
+fn the_builder_verifies_red_checks_through_the_jobs_api() {
+    let builder = file("agents/builder.md");
+    assert!(
+        builder.contains("cancelled") && builder.contains("as fail"),
+        "the handoff names that `gh pr checks` prints a cancelled job as fail"
+    );
+    assert!(
+        builder.contains("jobs API") || builder.contains("jobs api"),
+        "a red check's conclusion is verified through the jobs API before it reads as failure"
+    );
+    assert!(
+        builder.contains("conclusion"),
+        "the verification reads the job's conclusion, not the checks display"
+    );
+    assert!(
+        builder.contains("gh run rerun --failed"),
+        "cancelled or failed infra jobs are rerun from the pre-flight"
+    );
+    assert!(
+        builder.contains("gh run cancel"),
+        "a stuck running run is cancelled first when rerun refuses it"
+    );
+}
+
 /// The gate's pre-flight reads the checks before the diff, and a head it
 /// cannot merge costs it one line, not a whole pass.
 #[test]
