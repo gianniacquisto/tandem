@@ -246,7 +246,9 @@ impl DomainError {
                 format!("A cycle lane named \"{name}\" already exists.")
             }
             Self::UnknownLane(name) => {
-                format!("Unknown cycle lane \"{name}\". Create it first.")
+                format!(
+                    "Unknown cycle lane \"{name}\". Create it with `lane add --name \"{name}\"`, or list lanes with `lane list`."
+                )
             }
             Self::UnknownProject { name, lanes } if lanes.is_empty() => {
                 format!("Unknown project \"{name}\". No lanes are declared yet; create one first.")

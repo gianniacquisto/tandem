@@ -1017,3 +1017,37 @@ fn project_messages_round_trip_like_the_lane_ones() {
         "the refusal names its lanes: {refused}"
     );
 }
+
+#[test]
+fn lane_move_reorders_the_declared_lanes_over_the_wire() {
+    let sandbox = Sandbox::new("rpc-lane-move");
+    let store = sandbox.store();
+    handle(&store, &frame(1, "lane.add", json!({"name": "A"})));
+    handle(&store, &frame(2, "lane.add", json!({"name": "B"})));
+    handle(&store, &frame(3, "lane.add", json!({"name": "C"})));
+
+    let moved = handle(
+        &store,
+        &frame(4, "lane.move", json!({"name": "C", "index": 0})),
+    );
+    assert_eq!(
+        moved["result"]["lanes"],
+        json!(["C", "A", "B"]),
+        "C moves to the front; the receipt answers the list after the write"
+    );
+
+    let refused = handle(
+        &store,
+        &frame(5, "lane.move", json!({"name": "Nope", "index": 0})),
+    );
+    assert_eq!(refused["error"]["code"], "domain");
+    let message = refused["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        message.contains("\"Nope\""),
+        "the refusal names the lane: {refused}"
+    );
+    assert!(
+        message.contains("lane add") && message.contains("lane list"),
+        "the refusal names the fix: {refused}"
+    );
+}

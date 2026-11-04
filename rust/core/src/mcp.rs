@@ -29,13 +29,13 @@ use crate::rpc::{Stream, handle_in};
 use crate::setup::Environment;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
-    CommentAddParams, EmptyParams, LaneAddParams, LaneDeleteParams, LaneRenameParams, Method,
-    NoteCaptureParams, ProjectAddParams, ProjectDeleteParams, ProjectRenameParams,
-    SessionEndParams, SessionLinkParams, SessionListParams, SessionShowParams, SessionStartParams,
-    SprintCloseParams, SprintListParams, SprintOpenParams, SprintRunParams, SprintShowParams,
-    SprintTicketParams, TicketAddFromNoteParams, TicketAddParams, TicketAnswerParams,
-    TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams, TicketMoveParams,
-    TicketSetParams, TicketUnblockParams,
+    CommentAddParams, EmptyParams, LaneAddParams, LaneDeleteParams, LaneMoveParams,
+    LaneRenameParams, Method, NoteCaptureParams, ProjectAddParams, ProjectDeleteParams,
+    ProjectRenameParams, SessionEndParams, SessionLinkParams, SessionListParams, SessionShowParams,
+    SessionStartParams, SprintCloseParams, SprintListParams, SprintOpenParams, SprintRunParams,
+    SprintShowParams, SprintTicketParams, TicketAddFromNoteParams, TicketAddParams,
+    TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
+    TicketMoveParams, TicketSetParams, TicketUnblockParams,
 };
 
 /// The server name the `initialize` answer carries.
@@ -466,6 +466,13 @@ pub fn tools() -> Vec<Tool> {
             description: "Delete a lane; members fall back to the default area, never deleted.",
             input_schema: LaneDeleteParams::schema(),
             method: Method::LaneDelete(LaneDeleteParams::default()),
+        },
+        Tool {
+            name: "lane_move",
+            method_tag: "lane.move",
+            description: "Reorder the declared lanes; the index is 0-based and clamps.",
+            input_schema: LaneMoveParams::schema(),
+            method: Method::LaneMove(LaneMoveParams::default()),
         },
         Tool {
             name: "project_list",

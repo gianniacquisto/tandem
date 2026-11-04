@@ -765,6 +765,20 @@ fn execute(
                 moved: deletion.moved,
             }))
         }
+        Method::LaneMove(params) => {
+            let at = match params.index {
+                Some(index) if index >= 0 => index as usize,
+                Some(_) => 0,
+                None => usize::MAX,
+            };
+            let lanes = board
+                .move_lane(params.name.as_deref().unwrap_or(""), at)
+                .map_err(domain)?;
+            Ok(Reply::LaneList(LaneListReply {
+                revision: store.last_revision(),
+                lanes,
+            }))
+        }
         Method::ProjectList(_) => {
             let (projects, revision) = board.projects_snapshot().map_err(domain)?;
             Ok(Reply::ProjectList(ProjectListReply {
