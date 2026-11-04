@@ -732,3 +732,39 @@ fn dispatch_builds_no_shell_string() {
         "the executor cites its two ADRs: the seam (0037) and the ownership (0038)"
     );
 }
+
+/// A cross-fork PR branch has no `origin` ref (TAN-298): PR #324 lives on
+/// `adrien-jamelot/tandem`, so `git fetch origin <branch>` answers
+/// `could not find remote ref` and the behind-count first runs against a
+/// stale ref. The build skill and the gate derive the fetch remote from the
+/// PR's `headRepositoryOwner` when the branch is cross-repository, and count
+/// behind against the fork ref.
+#[test]
+fn the_build_and_gate_fetch_the_fork_remote_first() {
+    let build = file("skills/tandem-build/SKILL.md");
+    assert!(
+        build.contains("headRepositoryOwner"),
+        "the build skill derives the fetch remote from `headRepositoryOwner`"
+    );
+    assert!(
+        build.contains("isCrossRepository"),
+        "the build skill names the cross-repository branch"
+    );
+    assert!(
+        build.contains("fork"),
+        "the build skill names the fork remote it fetches first"
+    );
+    let reviewer = file("agents/reviewer.md");
+    assert!(
+        reviewer.contains("headRepositoryOwner"),
+        "the gate derives the fetch remote from `headRepositoryOwner`"
+    );
+    assert!(
+        reviewer.contains("isCrossRepository"),
+        "the gate names the cross-repository branch"
+    );
+    assert!(
+        reviewer.contains("fork"),
+        "the gate names the fork remote it fetches first"
+    );
+}
