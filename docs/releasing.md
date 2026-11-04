@@ -2,7 +2,7 @@
 
 Two repos: the main repo holds the source; [`gianniacquisto/homebrew-tap`](https://github.com/gianniacquisto/homebrew-tap) holds the [Homebrew cask](https://github.com/gianniacquisto/homebrew-tap/blob/main/Casks/tandem.rb) that installs the prebuilt app. brew only reads taps from its fixed tap directory, so on any developer machine the working copy is wherever brew keeps the clone: `brew tap gianniacquisto/tap` creates it at `$(brew --prefix)/Library/Taps/gianniacquisto/homebrew-tap`. That directory is an ordinary git clone of the tap repo: branch, commit, and push from there (`brew update` keeps it current).
 
-The sprint close cuts this tag for the batch it landed: the release step in [`skills/tandem-sprint/SKILL.md`](../skills/tandem-sprint/SKILL.md) §7 runs the acts below, so the sprint that lands the work is the pass that ships it.
+A release cuts only on the human's explicit per-sprint words naming the version: the sprint close cuts no release by default and never prompts for one. The manual acts below live in [`skills/tandem-sprint/SKILL.md`](../skills/tandem-sprint/SKILL.md) §6 as the same steps, run by hand when the human asks.
 
 To cut a release:
 

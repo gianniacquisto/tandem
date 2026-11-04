@@ -223,99 +223,94 @@ fn the_gate_names_a_red_head_before_reading_the_diff() {
     );
 }
 
-/// The gate's second entry point, before a build exists: one comment with the
-/// five fixed questions, then the park that gives the human the window. The set
-/// is fixed so two grills on one brief ask the same questions.
+/// The reviewer's grill is removed (SKI-3): the gate acts only with a PR.
+/// The human grill in refine is the only pre-build gate, so the prompt has
+/// no `## Grill` section, names no grill park, posts no grill comment, and
+/// parks nothing on the human.
 #[test]
-fn the_gate_grills_a_brief_before_a_builder_spends_a_pass() {
+fn the_gate_acts_only_with_a_pr() {
     let reviewer = file("agents/reviewer.md");
-    let grill = section(&reviewer, "## Grill");
     assert!(
-        !grill.trim().is_empty(),
-        "the prompt has a `## Grill` section"
-    );
-    for question in [
-        "What the brief decides for the builder",
-        "What it leaves to the builder's judgement",
-        "Which files or surfaces it must touch",
-        "Whether it fits one agent session",
-        "The door class and blast radius",
-    ] {
-        assert!(
-            grill.contains(question),
-            "the grill question set dropped: {question}"
-        );
-    }
-    assert!(
-        grill.contains("ticket comment add") && grill.contains("--author reviewer"),
-        "the grill lands as one comment authored `reviewer`"
+        !reviewer.contains("## Grill"),
+        "the prompt has no `## Grill` section: the reviewer acts only with a PR"
     );
     assert!(
-        grill.contains("--status on-hold --assignee human"),
-        "the grill parks the ticket on the human"
+        !reviewer.contains("two entry points"),
+        "the gate has one entry point, the PR"
     );
     assert!(
-        grill.contains("--status ready --assignee \"\""),
-        "the human's write resumes the build"
+        reviewer.contains("acts only with a PR"),
+        "the prompt names its single entry point"
     );
     assert!(
-        grill.contains("ticket answer --id <id> --status ready --assignee \"\" --body -"),
-        "the grill's park is a question, so its resume is `ticket answer`, not `ticket set`"
+        reviewer.contains("agents/refiner.md"),
+        "the prompt names the refine human grill as the only pre-build gate"
     );
     assert!(
-        !grill.contains("ticket set --id <id> --status ready"),
-        "a `ticket set` clears the owner without recording the answer"
+        !reviewer.contains("posts the `## Grill` comment"),
+        "no grill comment lands on a ticket"
     );
     assert!(
-        !grill.contains("does not apply"),
-        "the grill's park is a question, so `ticket answer` applies to it"
+        !reviewer.contains("--status on-hold --assignee human"),
+        "the gate parks nothing on the human"
     );
     assert!(
-        grill.contains("no diff"),
-        "the grill reads no diff, because there is none"
+        !reviewer.contains("a grill takes step 0 and step 2"),
+        "no read step is shared with a grill"
     );
 }
 
-/// The two entries into the grill: the build's per-ticket pass and the sprint's
-/// in-run refine. A ticket built on a brief the gate never read is the hole.
+/// The build's per-ticket grill is removed with the reviewer's (SKI-3), and
+/// triage reports backlog rows as needing a standalone refine pass instead of
+/// drawing them. A brief the gate never grilled is no longer the hole: the
+/// human grill in refine is the gate before the build.
 #[test]
-fn the_build_and_sprint_skills_carry_the_grill() {
+fn the_build_names_no_grill_and_triage_reports_backlog() {
     let build = file("skills/tandem-build/SKILL.md");
     assert!(
-        build.contains("`## Grill`"),
-        "the build skill checks for the grill comment"
+        !build.contains("`## Grill`"),
+        "the build skill checks for no grill comment"
     );
     assert!(
-        build.contains("two dispatches"),
-        "the grill and the build are two dispatches"
+        !build.contains("two dispatches"),
+        "the grill and the build are no longer two dispatches"
     );
     assert!(
-        build.contains("Never both at once"),
-        "the build skill forbids dispatching both together"
+        !build.contains("Never both at once"),
+        "no grill parks the ticket the build would claim"
     );
     let sprint = file("skills/tandem-sprint/SKILL.md");
     assert!(
-        sprint.contains("carries the grill before it is drawn"),
-        "a ticket shaped in-run is grilled before it is drawn"
+        !sprint.contains("carries the grill before it is drawn"),
+        "no shaped ticket is grilled before it is drawn"
     );
     assert!(
-        sprint.contains("the grill's park"),
-        "triage names the grill's hold beside the refine-time hold"
+        !sprint.contains("the grill's park"),
+        "triage names no grill hold"
+    );
+    assert!(
+        sprint.contains("needs a standalone refine pass"),
+        "triage reports backlog as needing a standalone refine pass"
     );
 }
 
-/// The close sweep clears an owner only where a question is open. The grill's
-/// park is one, so the sweep names it instead of clearing the human's window.
+/// The close sweep still clears an owner only where a question is open. The
+/// park it names is refine's hold now (`agents/refiner.md`), closed with the
+/// question contract's one write.
 #[test]
-fn the_close_sweep_names_the_grill_hold() {
-    let close = section(&file("skills/tandem-sprint/SKILL.md"), "## 7. Close");
+fn the_close_sweep_names_the_refine_hold() {
+    let close = section(&file("skills/tandem-sprint/SKILL.md"), "## 6. Close");
     assert!(
-        close.contains("the grill's park"),
-        "the close sweep names the grill's hold"
+        !close.contains("grill"),
+        "the close sweep names no grill"
+    );
+    assert!(
+        close.contains("refine"),
+        "the close sweep names refine's hold"
     );
     assert!(
         close.contains("`ticket answer`"),
-        "the grill's hold closes with the question contract's one write"
+        "refine's hold closes with the question contract's one write"
     );
 }
 
@@ -630,7 +625,10 @@ fn a_review_dispatches_on_its_own_pr_not_on_the_batch() {
     );
     assert!(build.contains("Neither reads another ticket"));
     let sprint = file("skills/tandem-sprint/SKILL.md");
-    assert!(sprint.contains("a slow refine holds its own ticket only"));
+    assert!(
+        !sprint.contains("a slow refine holds its own ticket only"),
+        "no refine handoff lives in the sprint: refine is standalone"
+    );
 }
 
 #[test]
@@ -699,10 +697,17 @@ fn the_retro_files_into_the_projects_lane() {
         );
     }
     let sprint = file("skills/tandem-sprint/SKILL.md");
-    let s6 = section(&sprint, "## 6. Retro");
     assert!(
-        s6.contains("lane are the retro skill's"),
-        "section 6 delegates the lane rule to the retro skill"
+        !sprint.contains("## 6. Retro"),
+        "the sprint owns no retro section"
+    );
+    assert!(
+        sprint.contains("standalone manual pass"),
+        "the sprint names retro as a standalone manual pass"
+    );
+    assert!(
+        sprint.contains("neither runs, dispatches, nor prompts"),
+        "the sprint neither runs, dispatches, nor prompts a retro"
     );
 }
 
@@ -799,27 +804,157 @@ fn the_build_and_gate_fetch_the_fork_remote_first() {
     );
 }
 
-/// TAN-301: the grill fires only on a refiner-shaped in-run brief. A
-/// human-origin finished brief, Scope and Done when with no open question,
-/// skips the grill and builds directly; Sprints 1 and 2 are the precedent.
+/// SKI-3: there is no grill to skip. No finished brief skips the human round:
+/// a human-origin brief goes through refine like any other ticket, with at
+/// least a short confirmation round, and only refine moves a ticket to ready.
 #[test]
-fn a_finished_human_brief_skips_the_grill() {
+fn a_finished_brief_gets_a_short_human_round_in_refine() {
     let build = file("skills/tandem-build/SKILL.md");
     assert!(
-        build.contains("skips the grill"),
-        "the build skill names the human-origin finished brief's skip"
+        !build.contains("skips the grill"),
+        "the build skill names no finished-brief skip"
     );
     assert!(
-        build.contains("Sprints 1 and 2"),
-        "the build skill names the Sprint 1 and 2 precedent"
+        !build.contains("Sprints 1 and 2"),
+        "the build skill names no Sprint 1 and 2 precedent"
     );
     let sprint = file("skills/tandem-sprint/SKILL.md");
     assert!(
-        sprint.contains("skips the grill"),
-        "the sprint refine rule names the human-origin finished brief's skip"
+        !sprint.contains("skips the grill"),
+        "the sprint names no finished-brief skip"
     );
     assert!(
-        sprint.contains("Sprints 1 and 2"),
-        "the sprint refine rule names the Sprint 1 and 2 precedent"
+        !sprint.contains("Sprints 1 and 2"),
+        "the sprint names no Sprint 1 and 2 precedent"
+    );
+    let refiner = file("agents/refiner.md");
+    assert!(
+        refiner.contains("short confirmation round"),
+        "even a trivial or fully specified ticket gets at least a short round"
+    );
+    let refine = file("skills/tandem-refine/SKILL.md");
+    assert!(
+        refine.contains("Only refine moves a ticket to `ready`"),
+        "only refine moves a ticket to ready"
+    );
+}
+
+/// SKI-3: the sprint draws ready only, in stored order, capped at five.
+/// Backlog is never drawn, shaped, promoted, or dispatched here: shaping is
+/// the standalone refine pass's work, and triage reports each backlog row as
+/// needing one.
+#[test]
+fn the_sprint_draws_ready_only() {
+    let sprint = file("skills/tandem-sprint/SKILL.md");
+    assert!(
+        sprint.contains("draws `ready` only"),
+        "triage draws ready only"
+    );
+    assert!(
+        !sprint.contains("ready,backlog"),
+        "backlog never fills the remaining slots"
+    );
+    assert!(
+        sprint.contains("shapes, promotes, and dispatches nothing"),
+        "the sprint shapes, promotes, and dispatches nothing"
+    );
+    assert!(
+        !sprint.contains("The refine rule"),
+        "no refine rule shapes picked backlog in-run"
+    );
+    assert!(
+        !sprint.contains("The promotion rule"),
+        "no promotion rule feeds ready from the lane"
+    );
+}
+
+/// SKI-3: every refiner pass runs at least one interactive human grilling
+/// round per ticket before any brief is written. A dispatched refiner relays
+/// its frontier through the dispatching session and waits; the only opt-out
+/// is the human's live per-case delegation, quoted in the brief; with no
+/// human reachable the refiner writes no brief and parks the ticket.
+#[test]
+fn the_refiner_grills_the_human_per_ticket() {
+    let refiner = file("agents/refiner.md");
+    assert!(
+        refiner.contains("before any brief is written"),
+        "the human round comes before any brief"
+    );
+    assert!(
+        refiner.contains("numbered questions"),
+        "the round is the grilling skill's round format"
+    );
+    assert!(
+        refiner.contains("relay") && refiner.contains("wait"),
+        "a dispatched refiner relays its frontier and waits"
+    );
+    assert!(
+        refiner.contains("quote"),
+        "the only opt-out is quoted under Decided against"
+    );
+    assert!(
+        refiner.contains("writes no brief"),
+        "with no human reachable the refiner writes no brief"
+    );
+    assert!(
+        refiner.contains("--assignee human"),
+        "with no human reachable the ticket parks on the human"
+    );
+    let refine = file("skills/tandem-refine/SKILL.md");
+    assert!(
+        refine.contains("relay") && refine.contains("wait"),
+        "the refine skill names the relay-and-wait rule"
+    );
+}
+
+/// SKI-3: retro runs only on manual invocation against a named session
+/// transcript. Nothing auto-dispatches or prompts it: the sprint owns no
+/// retro section and neither runs, dispatches, nor prompts one.
+#[test]
+fn retro_is_manual_only() {
+    let retro = file("skills/retro/SKILL.md");
+    assert!(
+        !retro.contains("Runs at every sprint close"),
+        "no run happens at sprint close"
+    );
+    assert!(
+        !retro.contains("the sprint dispatches it"),
+        "the sprint dispatches no retro"
+    );
+    assert!(
+        retro.contains("manual"),
+        "retro is a manual pass"
+    );
+    assert!(
+        retro.contains("named session"),
+        "retro runs on a named session transcript"
+    );
+}
+
+/// SKI-3: the close cuts no release by default. A release cuts only on the
+/// human's explicit per-sprint words naming the version, and the sprint never
+/// prompts for one; when asked, the manual steps are today's.
+#[test]
+fn the_close_cuts_no_release_by_default() {
+    let close = section(&file("skills/tandem-sprint/SKILL.md"), "## 6. Close");
+    assert!(
+        !close.contains("Cut the release here"),
+        "the close cuts no release on its own"
+    );
+    assert!(
+        close.contains("cuts no release by default"),
+        "the close names its default"
+    );
+    assert!(
+        close.contains("explicit"),
+        "a release needs the human's explicit words"
+    );
+    assert!(
+        close.contains("never prompts"),
+        "the sprint never prompts for a release"
+    );
+    assert!(
+        close.contains("Scripts/release-notes.sh"),
+        "the manual release still files notes the same way"
     );
 }
