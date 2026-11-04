@@ -21,7 +21,8 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
   expect(await computed(window, '.usage__coverage', 'color')).toBe(token('ink-dim'))
 
   // The chart draws one bar per day row, above the picker, each named with its
-  // day and dollar figure. The bars reuse the meter's fill token.
+  // day and dollar figure. The bars share the meter fill: deep accent in the
+  // day scheme for contrast on paper, accent in the night scheme.
   const dayRowCount = await window.locator('.usage__row').count()
   const chart = window.locator('.usage__chart')
   await expect(chart).toBeVisible()
@@ -39,7 +40,7 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
   if (chartBox !== null && pickerBox !== null) {
     expect(chartBox.y + chartBox.height).toBeLessThanOrEqual(pickerBox.y)
   }
-  expect(await computed(window, '.usage__bar', 'background-color')).toBe(token('accent'))
+  expect(await computed(window, '.usage__bar', 'background-color')).toBe(token('accent-deep'))
   expect(await computed(window, '.usage__bar-label', 'color')).toBe(token('ink-dim'))
 
   const picker = window.locator('.usage__segment')

@@ -185,7 +185,13 @@ body {
 .usage__bar {
   width: min(100%, 44px);
   border-radius: 3px 3px 0 0;
-  background: var(--accent);
+  background: var(--accent-deep);
+}
+
+@media (prefers-color-scheme: dark) {
+  .usage__bar {
+    background: var(--accent);
+  }
 }
 
 .usage__bar-label {
@@ -323,6 +329,14 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* A missing value draws one style in every numeric column: the quiet text
+ * and weight the counts already use, so a missing cost never reads bolder. */
+.usage__table .usage__count.usage__absent,
+.usage__table .usage__cost.usage__absent {
+  color: var(--ink-dim);
+  font-weight: 400;
+}
+
 .usage__share {
   width: 84px;
 }
@@ -348,7 +362,13 @@ body {
 
 .usage__meter::-webkit-meter-optimum-value {
   border-radius: 3px;
-  background: var(--accent);
+  background: var(--accent-deep);
+}
+
+@media (prefers-color-scheme: dark) {
+  .usage__meter::-webkit-meter-optimum-value {
+    background: var(--accent);
+  }
 }
 
 .usage__roll > td {
@@ -413,6 +433,15 @@ body {
   font-size: 10.5px;
   font-weight: 500;
   cursor: pointer;
+}
+
+/* Ticket pills keep one style in every state: hover and focus never
+ * introduce a second background, border or text colour. */
+.usage__ticket:hover,
+.usage__ticket:focus-visible {
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--accent);
 }
 
 .usage__empty {

@@ -181,11 +181,21 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
                           </button>
                         </th>
                         <td className="usage__count">{row.records}</td>
-                        <td className="usage__count">{cells.input}</td>
-                        <td className="usage__count">{cells.output}</td>
-                        <td className="usage__count">{cells.cacheRead}</td>
-                        <td className="usage__count">{cells.cacheWrite}</td>
-                        <td className="usage__cost">{cells.cost}</td>
+                        <td className={`usage__count${cells.input === ABSENT ? ' usage__absent' : ''}`}>
+                          {cells.input}
+                        </td>
+                        <td className={`usage__count${cells.output === ABSENT ? ' usage__absent' : ''}`}>
+                          {cells.output}
+                        </td>
+                        <td className={`usage__count${cells.cacheRead === ABSENT ? ' usage__absent' : ''}`}>
+                          {cells.cacheRead}
+                        </td>
+                        <td className={`usage__count${cells.cacheWrite === ABSENT ? ' usage__absent' : ''}`}>
+                          {cells.cacheWrite}
+                        </td>
+                        <td className={`usage__cost${cells.cost === ABSENT ? ' usage__absent' : ''}`}>
+                          {cells.cost}
+                        </td>
                         <td className="usage__share">
                           {/* The bar is a meter over the report's own percentage: no
                               inline width, no percentage derived here. */}
