@@ -113,6 +113,29 @@ export const ligneTheme = [
       },
       ".tandem-quote-first": { borderRadius: "9px 9px 0 0", padding: "10px 14px 0" },
       ".tandem-quote-last": { borderRadius: "0 0 9px 9px", padding: "0 14px 10px" },
+      // Callouts (GitHub-style [!NOTE] blockquotes): the quote panel shape
+      // tinted per kind. These sit after .tandem-quote so the tint wins the
+      // tie; style.css carries the same values for the static bundle.
+      ".tandem-callout-note": {
+        backgroundColor: "color-mix(in srgb, var(--accent) 16%, var(--parchment))",
+        borderColor: "var(--accent)",
+      },
+      ".tandem-callout-tip": {
+        backgroundColor: "color-mix(in srgb, var(--moss-deep) 16%, var(--parchment))",
+        borderColor: "var(--moss-deep)",
+      },
+      ".tandem-callout-important": {
+        backgroundColor: "color-mix(in srgb, var(--accent-deep) 20%, var(--parchment))",
+        borderColor: "var(--accent-deep)",
+      },
+      ".tandem-callout-warning": {
+        backgroundColor: "color-mix(in srgb, var(--ember) 16%, var(--parchment))",
+        borderColor: "var(--ember)",
+      },
+      ".tandem-callout-caution": {
+        backgroundColor: "color-mix(in srgb, var(--ember-deep) 16%, var(--parchment))",
+        borderColor: "var(--ember-deep)",
+      },
       // Headings (H1 24 bold, H2 20 semibold, H3+ 17 semibold) with
       // breathing room above. The top margin is constant, so a marker
       // appearing/disappearing shifts height by the class, never by hidden
@@ -131,6 +154,19 @@ export const ligneTheme = [
         borderRadius: "3px",
         padding: "0 3px",
       },
+      // Highlight marks (==text==): an ember wash over the ink text.
+      ".tandem-mark": {
+        backgroundColor: "color-mix(in srgb, var(--ember) 38%, transparent)",
+        borderRadius: "2px",
+        padding: "0 1px",
+      },
+      // Callout labels (the [!KIND] marker's widget): semibold, kind colour.
+      ".tandem-callout-label": { fontWeight: "600" },
+      ".tandem-callout-label-note": { color: "var(--accent-deep)" },
+      ".tandem-callout-label-tip": { color: "var(--moss-deep)" },
+      ".tandem-callout-label-important": { color: "var(--ink)" },
+      ".tandem-callout-label-warning": { color: "var(--ember-deep)" },
+      ".tandem-callout-label-caution": { color: "var(--ember-deep)" },
       // Links (Ligne restraint: colour carries the affordance — no underline).
       ".tandem-link": { color: "var(--accent)", cursor: "pointer" },
       ".tandem-wikilink": { color: "var(--accent)", cursor: "pointer" },
