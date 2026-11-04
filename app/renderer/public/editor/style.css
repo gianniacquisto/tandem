@@ -80,7 +80,7 @@ body {
   /* The note font size the toolbar's control drives (theme.js' "&" rule
      reads it). A literal here is the default; the page's setFontSize sets
      it on this element. The toolbar's own chrome does NOT use it. */
-  --tandem-editor-font-size: 13.5px;
+  --tandem-editor-font-size: 16px;
 }
 
 /* 2b. The formatting toolbar (Editor/src/toolbar.js) ----------------------
@@ -176,23 +176,25 @@ body {
 
 /* 3. Live-preview line classes (blocks.js) -------------------------------- */
 
-/* Headings (H1 20 bold, H2 16 semibold, H3+ 14 semibold). No extra
-   padding: the height change is the class's font size alone, so a marker
-   appearing or disappearing shifts height by the class, never by hidden
-   tokens (spec invariant 2). */
+/* Headings (H1 24 bold, H2 20 semibold, H3+ 17 semibold) with breathing
+   room above. The top margin is constant, so a marker appearing or
+   disappearing shifts height by the class, never by hidden tokens
+   (spec invariant 2). */
 .tandem-h1 {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 700;
+  margin: 12px 0 4px;
 }
 .tandem-h2 {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 600;
+  margin: 10px 0 4px;
 }
 .tandem-h3,
 .tandem-h4,
 .tandem-h5,
 .tandem-h6 {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
 }
 

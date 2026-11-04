@@ -204,9 +204,13 @@ test("specFor rejects an unknown kind", () => {
 
 // -- Font-size helpers ----------------------------------------------------------------
 
-test("the default snaps onto integers on the first step", () => {
-  assert.equal(stepFontSize(DEFAULT_EDITOR_FONT_SIZE, 1), 14);
-  assert.equal(stepFontSize(DEFAULT_EDITOR_FONT_SIZE, -1), 13);
+test("the default is the 16px reading size", () => {
+  assert.equal(DEFAULT_EDITOR_FONT_SIZE, 16);
+});
+
+test("the step moves by one from the default", () => {
+  assert.equal(stepFontSize(DEFAULT_EDITOR_FONT_SIZE, 1), 17);
+  assert.equal(stepFontSize(DEFAULT_EDITOR_FONT_SIZE, -1), 15);
   assert.equal(stepFontSize(14, 1), 15);
   assert.equal(stepFontSize(14, -1), 13);
 });
