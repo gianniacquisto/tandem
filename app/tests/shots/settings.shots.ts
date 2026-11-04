@@ -9,8 +9,9 @@ import { computed, token } from '../../shots/tokens'
 
 /**
  * The Settings face a human reads: the machine's paths (the seeded home and
- * the seeded user home's three hosts), the one theme rule, the setup
- * report's thirteen checks with their state, and the harness sign-in section.
+ * the seeded user home's three hosts) with one-click Copy, the Preferences
+ * theme rule, the setup report's thirteen checks in four groups with their
+ * state, and the harness sign-in section.
  *
  * The paths are the seed's own, at the one fixed scratch root, so the picture
  * is the same in any checkout. What the rule pins is that they are the seed's
@@ -29,29 +30,42 @@ test('the settings face, over the seeded homes', async ({ app, window }) => {
   ).toContainText(/store rev \d+/)
   await expect(window.locator('.settings__heading')).toHaveText([
     'Paths',
+    'Preferences',
     'Roster',
     'Setup',
     'Harness sign-in',
   ])
 
-  const facts = window.locator('.settings__fact')
+  const paths = window.locator('.settings__section', {
+    has: window.locator('.settings__heading', { hasText: 'Paths' }),
+  })
+  const preferences = window.locator('.settings__section', {
+    has: window.locator('.settings__heading', { hasText: 'Preferences' }),
+  })
+  const facts = paths.locator('.settings__fact')
   await expect(facts.first()).toContainText('Home')
   await expect(facts.first().locator('.settings__value')).toHaveText(/\/tmp\/tandem-shots\/Home$/)
   await expect(facts.nth(1).locator('.settings__value')).toHaveText(/\/tmp\/tandem-shots\/Home\/bikeshed$/)
 
-  await expect(window.locator('.settings__term')).toHaveText([
+  await expect(paths.locator('.settings__term')).toHaveText([
     'Home',
     'Bikeshed',
     'opencode',
     'claude',
     'agents',
-    'Theme',
   ])
   await expect(facts.nth(2).locator('.settings__value')).toHaveText(
     /\/tmp\/tandem-shots\/user\/\.config\/opencode$/,
   )
   await expect(facts.nth(3).locator('.settings__value')).toHaveText(/\/tmp\/tandem-shots\/user\/\.claude$/)
   await expect(facts.nth(4).locator('.settings__value')).toHaveText(/\/tmp\/tandem-shots\/user\/\.agents$/)
+
+  // Theme lives in Preferences, not Paths, and every path copies in one click.
+  await expect(preferences.locator('.settings__term')).toHaveText(['Theme'])
+  await expect(preferences.locator('.settings__value')).toHaveText(
+    'System: the app follows the OS appearance',
+  )
+  await expect(paths.getByRole('button', { name: /Copy .* path/ })).toHaveCount(5)
 
   // The facts panel is a token card: its corner is --radius-card.
   expect(await computed(window, '.settings__facts', 'border-radius')).toBe(token('radius-card'))
@@ -62,6 +76,13 @@ test('the settings face, over the seeded homes', async ({ app, window }) => {
     has: window.locator('.settings__heading', { hasText: 'Setup' }),
   })
   await expect(setup.locator('.settings__check')).toHaveCount(13)
+  await expect(setup.locator('.settings__subheading')).toHaveText([
+    'Store',
+    'Bikeshed',
+    'Agent face',
+    'Install state',
+  ])
+  await expect(setup.locator('.settings__hint')).toContainText('Nothing is written until you press it')
   await expect(setup.locator('.settings__action')).toHaveText(/^(Install|Repair)$/)
 
   await capture(app, window, scene('settings'))
