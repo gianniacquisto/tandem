@@ -11,16 +11,20 @@ import {
   answered,
   appendDescription,
   appendPlan,
+  blocksOf,
   sheetOf,
   canSave,
   commentAuthor,
   commentParams,
   commentTime,
+  commentsOf,
   holdOpen,
   laneChoices,
   laneCreateParams,
   laneRenameParams,
   sheetChanges,
+  sheetComments,
+  sheetTicket,
   shortcutHint,
   ticketHandle,
 } from '../renderer/src/shell/sheet'
@@ -446,5 +450,88 @@ describe('the sheet\'s methods', () => {
       'ticket.show',
     ])
     for (const tag of calls) expect(known, `TicketSheet calls ${tag}`).toContain(tag)
+  })
+})
+
+describe('the sheet reads under payload drift (TAN-312)', () => {
+  it('reads no ticket out of a reply that is not an object', () => {
+    expect(sheetOf(null as never)).toBeNull()
+    expect(sheetOf(undefined as never)).toBeNull()
+    expect(sheetOf('ticket' as never)).toBeNull()
+    expect(sheetOf({} as never)).toBeNull()
+    expect(sheetOf({ ticket: null, revision: 1 } as never)).toBeNull()
+    expect(sheetOf({ ticket: { id: 't' }, revision: null } as never)).toBeNull()
+  })
+
+  it('reads no comments or blocks out of a reply that is not an object', () => {
+    expect(commentsOf(null as never)).toBeNull()
+    expect(commentsOf(undefined as never)).toBeNull()
+    expect(blocksOf(null as never)).toBeNull()
+    expect(blocksOf(undefined as never)).toBeNull()
+    expect(commentsOf({} as never)).toBeNull()
+    expect(blocksOf({} as never)).toBeNull()
+  })
+
+  it('reads no comments or blocks out of a reply whose value is not an array', () => {
+    expect(commentsOf({ comments: null } as never)).toBeNull()
+    expect(blocksOf({ blocks: 'x' } as never)).toBeNull()
+  })
+
+  it('reads the comments and blocks the store holds, as before', () => {
+    expect(commentsOf({ comments: [{ at: 'a', author: 'b', body: 'c' }] } as never)).toEqual([
+      { at: 'a', author: 'b', body: 'c' },
+    ])
+    expect(blocksOf({ blocks: [] } as never)).toEqual([])
+  })
+
+  it('treats a missing description like an absent one, instead of throwing', () => {
+    expect(answered(undefined)).toBe(false)
+    expect(answerBlock(undefined)).toBeNull()
+  })
+
+  it('names an unnamed comment author, even when the name is missing', () => {
+    expect(commentAuthor(null as never)).toBe('anonymous')
+    expect(commentAuthor(undefined as never)).toBe('anonymous')
+  })
+
+  it('writes no stamp for a missing comment time, instead of throwing', () => {
+    expect(commentTime(null as never)).toBe('')
+    expect(commentTime(undefined as never)).toBe('')
+  })
+
+  it('handles a ticket with no ref and no number, even when both are missing', () => {
+    expect(ticketHandle({ ref: undefined, number: undefined } as never)).toBe('#?')
+  })
+
+  it('lists the default area when the lane listing is missing, instead of throwing', () => {
+    expect(laneChoices(null, undefined as never)).toEqual([
+      { value: null, label: 'Uncategorized', selected: true, renamable: false },
+    ])
+  })
+
+  it('draws a ticket whose edges and description drifted, instead of throwing', () => {
+    const drifting = ticket({
+      blockedBy: null as never,
+      blocks: [{ id: 'edge', ref: 'E-1', title: 'Edge', status: 'ready' }, null] as never,
+      description: 42 as never,
+    })
+    const drawn = sheetTicket(drifting)
+    expect(drawn.blockedBy).toEqual([])
+    expect(drawn.blocks).toEqual([{ id: 'edge', ref: 'E-1', title: 'Edge', status: 'ready' }])
+    expect(drawn.description).toBeNull()
+    expect(drawn.title).toBe(drifting.title)
+  })
+
+  it('draws log rows whose fields drifted, instead of throwing', () => {
+    expect(
+      sheetComments([
+        { at: null, author: null, body: null },
+        null,
+        { at: '2026-11-04T15:39:55Z', author: 'sprint', body: 'Steady.' },
+      ] as never),
+    ).toEqual([
+      { at: '', author: '', body: '' },
+      { at: '2026-11-04T15:39:55Z', author: 'sprint', body: 'Steady.' },
+    ])
   })
 })

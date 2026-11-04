@@ -8,6 +8,7 @@ import {
   outputPreview,
   resolveInitialExpanded,
   sessionHref,
+  sessionsOf,
   sheetSessionHref,
   unavailableNotice,
   usageLine,
@@ -116,5 +117,21 @@ describe('the sessions section', () => {
     expect(usageLine(session({ model: 'deepseek-v4', cost: null, tokens: null }))).toBe(
       'deepseek-v4',
     )
+  })
+
+  it('reads no sessions out of a reply that is not an object (TAN-312)', () => {
+    expect(sessionsOf(null as never)).toBeNull()
+    expect(sessionsOf(undefined as never)).toBeNull()
+    expect(sessionsOf({} as never)).toBeNull()
+    expect(sessionsOf({ sessions: null } as never)).toBeNull()
+    expect(sessionsOf({ sessions: [{ id: 's1' }] } as never)).toEqual([{ id: 's1' }])
+  })
+
+  it('draws the record header when the usage fields are missing (TAN-312)', () => {
+    expect(
+      usageLine(session({ model: undefined, cost: 'free', tokens: undefined } as never)),
+    ).toBeNull()
+    expect(usageLine(session({ model: '', cost: NaN, tokens: null }))).toBeNull()
+    expect(usageLine(session({ cost: 1.5, model: null, tokens: null }))).toBe('$1.50')
   })
 })

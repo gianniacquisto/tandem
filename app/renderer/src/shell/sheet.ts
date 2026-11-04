@@ -1,4 +1,6 @@
 import type { Method } from '../../../src/shared/bridge'
+import type { CommentView } from '../wire/CommentView'
+import type { MarkdownBlockView } from '../wire/MarkdownBlockView'
 import type { Reply } from '../wire/Reply'
 import type { TicketDetail } from '../wire/TicketDetail'
 
@@ -53,8 +55,62 @@ export type SheetRead = { ticket: TicketDetail; revision: number }
 
 /** The ticket and its revision out of a `ticket.show` reply, or null. */
 export function sheetOf(reply: Reply): SheetRead | null {
+  // A reply that is not an object names no ticket: the sheet reads it as a
+  // refusal, never as a throw (TAN-312).
+  if (reply === null || reply === undefined || typeof reply !== 'object') return null
   if (!('ticket' in reply) || !('revision' in reply)) return null
+  if (reply.ticket === null || typeof reply.ticket !== 'object') return null
+  if (typeof reply.revision !== 'number') return null
   return { ticket: reply.ticket, revision: reply.revision }
+}
+
+/** The log rows out of a `ticket.comment.list` reply, or null when it names none. */
+export function commentsOf(reply: Reply): CommentView[] | null {
+  if (reply === null || reply === undefined || typeof reply !== 'object') return null
+  if (!('comments' in reply)) return null
+  return Array.isArray(reply.comments) ? reply.comments : null
+}
+
+/** The blocks out of a `markdown.blocks` reply, or null when it names none. */
+export function blocksOf(reply: Reply): MarkdownBlockView[] | null {
+  if (reply === null || reply === undefined || typeof reply !== 'object') return null
+  if (!('blocks' in reply)) return null
+  return Array.isArray(reply.blocks) ? reply.blocks : null
+}
+
+function soundEdge(edge: TicketDetail['blockedBy'][number]): boolean {
+  return edge !== null && typeof edge === 'object' && typeof edge.id === 'string'
+}
+
+/**
+ * The ticket the sheet draws: edges that are not arrays draw as none, edges
+ * without an id draw as absent, and a description that is not text draws as
+ * untold. The store promises the shapes, but one drifting row must still open
+ * instead of blanking the app (TAN-312).
+ */
+export function sheetTicket(ticket: TicketDetail): TicketDetail {
+  return {
+    ...ticket,
+    blockedBy: Array.isArray(ticket.blockedBy) ? ticket.blockedBy.filter(soundEdge) : [],
+    blocks: Array.isArray(ticket.blocks) ? ticket.blocks.filter(soundEdge) : [],
+    description: typeof ticket.description === 'string' ? ticket.description : null,
+  }
+}
+
+/**
+ * The log rows the sheet draws: rows that are not objects fall out, and fields
+ * that are not text draw as empty (the author reads `anonymous`, the stamp
+ * reads blank, the body reads nothing). One drifting comment must not take the
+ * sheet down with it (TAN-312).
+ */
+export function sheetComments(comments: CommentView[]): CommentView[] {
+  return comments
+    .filter((comment) => comment !== null && typeof comment === 'object')
+    .map((comment) => ({
+      at: typeof comment.at === 'string' ? comment.at : '',
+      author: typeof comment.author === 'string' ? comment.author : '',
+      body: typeof comment.body === 'string' ? comment.body : '',
+    }))
 }
 
 /**
@@ -80,8 +136,8 @@ export function appendDescription(
  * an empty one still closes the hold, and a body that mentions the block inline
  * is still asking its question.
  */
-export function answered(description: string | null): boolean {
-  if (description === null) return false
+export function answered(description: string | null | undefined): boolean {
+  if (description === null || description === undefined) return false
   return answerHeading(description.split('\n')) >= 0
 }
 
@@ -96,8 +152,8 @@ function answerHeading(lines: string[]): number {
  * it apart from the brief. `null` when there is no heading or its body is
  * empty: nothing to draw, though `answered` still counts the heading alone.
  */
-export function answerBlock(description: string | null): string | null {
-  if (description === null) return null
+export function answerBlock(description: string | null | undefined): string | null {
+  if (description === null || description === undefined) return null
   const lines = description.split('\n')
   const heading = answerHeading(lines)
   if (heading < 0) return null
@@ -188,8 +244,9 @@ export function canSave(draft: Pick<SheetDraft, 'title'>): boolean {
 
 /** The handle a human writes in chat: the ref, or the number when it has none. */
 export function ticketHandle(ticket: Pick<TicketDetail, 'ref' | 'number'>): string {
-  if (ticket.ref !== null) return ticket.ref
-  return ticket.number === null ? '#?' : `#${ticket.number}`
+  if (ticket.ref !== null && ticket.ref !== undefined) return ticket.ref
+  if (ticket.number !== null && ticket.number !== undefined) return `#${ticket.number}`
+  return '#?'
 }
 
 export type LaneChoice = {
@@ -210,17 +267,18 @@ export type LaneChoice = {
  * lane the ticket is in. `null` is the default area, which is a real lane.
  */
 export function laneChoices(
-  current: string | null,
-  lanes: readonly string[],
+  current: string | null | undefined,
+  lanes: readonly string[] | null | undefined,
 ): LaneChoice[] {
-  const names: Array<string | null> = [null]
-  for (const name of lanes) if (!names.includes(name)) names.push(name)
-  if (current !== null && !names.includes(current)) names.push(current)
-  return names.map((value) => ({
+  const known: Array<string | null> = [null]
+  for (const name of lanes ?? []) if (!known.includes(name)) known.push(name)
+  const at = current ?? null
+  if (at !== null && !known.includes(at)) known.push(at)
+  return known.map((value) => ({
     value,
     label: value ?? UNCATEGORIZED,
-    selected: value === current,
-    renamable: value !== null && lanes.includes(value),
+    selected: value === at,
+    renamable: value !== null && (lanes ?? []).includes(value),
   }))
 }
 
@@ -267,8 +325,8 @@ export function commentParams(
 }
 
 /** An unnamed author is the empty string, and the sheet says so. */
-export function commentAuthor(author: string): string {
-  return author.trim() === '' ? 'anonymous' : author
+export function commentAuthor(author: string | null | undefined): string {
+  return typeof author === 'string' && author.trim() !== '' ? author : 'anonymous'
 }
 
 /**
@@ -276,6 +334,6 @@ export function commentAuthor(author: string): string {
  * minute. The store's stamps are UTC, and a sheet that shows no zone would make
  * a reader guess, so it shows the stored spelling and nothing invented.
  */
-export function commentTime(at: string): string {
-  return at.replace('T', ' ').slice(0, 16)
+export function commentTime(at: string | null | undefined): string {
+  return typeof at === 'string' ? at.replace('T', ' ').slice(0, 16) : ''
 }

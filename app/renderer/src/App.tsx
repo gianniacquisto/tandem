@@ -3,6 +3,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import type { Method } from '../../src/shared/bridge'
 import { BikeshedFace } from './faces/BikeshedFace'
 import { SettingsFace } from './faces/SettingsFace'
+import { SheetBoundary } from './faces/SheetBoundary'
 import { TicketSheet } from './faces/TicketSheet'
 import { TicketsFace } from './faces/TicketsFace'
 import { UsageFace } from './faces/UsageFace'
@@ -315,16 +316,18 @@ export function App() {
           onPickProject: pickProject,
         })}
         {openTicket === null ? null : (
-          <TicketSheet
-            ticketId={openTicket}
-            expandedSession={route.ticket === openTicket ? route.session : null}
-            lanes={snapshot.lanes}
-            roster={snapshot.roster}
-            revision={snapshot.revision}
-            onWrite={sheetWrite}
-            onDismiss={closeSheet}
-            onOpenTicket={setOpenTicket}
-          />
+          <SheetBoundary key={openTicket} onDismiss={closeSheet}>
+            <TicketSheet
+              ticketId={openTicket}
+              expandedSession={route.ticket === openTicket ? route.session : null}
+              lanes={snapshot.lanes}
+              roster={snapshot.roster}
+              revision={snapshot.revision}
+              onWrite={sheetWrite}
+              onDismiss={closeSheet}
+              onOpenTicket={setOpenTicket}
+            />
+          </SheetBoundary>
         )}
       </main>
     </div>

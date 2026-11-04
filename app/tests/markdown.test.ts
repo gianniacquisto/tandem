@@ -68,3 +68,72 @@ describe('the markdown drawing', () => {
     expect(token(colour)).toBe(token('ember-deep'))
   })
 })
+
+describe('the markdown drawing under payload drift (TAN-312)', () => {
+  /** A block the wire never emitted: a future core kind, or a hand-made reply. */
+  function unknownKind(): MarkdownBlockView[] {
+    return [{ kind: 'alert', text: 'heads up' } as unknown as MarkdownBlockView]
+  }
+
+  it('draws an unknown block kind as a fallback, never nothing (and never a throw)', () => {
+    // A component that returns undefined unmounts the whole root on the
+    // client: the sheet must draw something instead.
+    expect(draw(unknownKind())).toContain('cannot draw')
+  })
+
+  it('draws the fallback inline, inside the list item that carried it', () => {
+    const nested = [
+      {
+        kind: 'list',
+        ordered: false,
+        start: 1,
+        items: [[{ kind: 'alert', text: 'heads up' }]],
+      },
+    ] as unknown as MarkdownBlockView[]
+    const out = draw(nested)
+    expect(out).toContain('<li')
+    expect(out).toContain('cannot draw')
+  })
+
+  it('draws no blocks for a missing blocks value, instead of throwing', () => {
+    expect(draw(null as unknown as MarkdownBlockView[])).toBe('')
+    expect(draw(undefined as unknown as MarkdownBlockView[])).toBe('')
+  })
+
+  it('draws a paragraph with no runs as an empty paragraph, instead of throwing', () => {
+    expect(draw([{ kind: 'paragraph', runs: null } as unknown as MarkdownBlockView])).toBe(
+      '<div class="markdown"><p class="markdown__paragraph"></p></div>',
+    )
+    expect(draw([{ kind: 'paragraph', runs: undefined } as unknown as MarkdownBlockView])).toBe(
+      '<div class="markdown"><p class="markdown__paragraph"></p></div>',
+    )
+  })
+
+  it('draws a run with missing styles, text or link, instead of throwing', () => {
+    const run = { text: null, styles: null, link: undefined } as unknown as MarkdownInlineView
+    expect(draw(paragraph(run))).toBe(
+      '<div class="markdown"><p class="markdown__paragraph"></p></div>',
+    )
+  })
+
+  it('draws a link that is not a string as plain text, instead of throwing', () => {
+    const run = { text: 'label', styles: [], link: 42 } as unknown as MarkdownInlineView
+    expect(draw(paragraph(run))).toBe(
+      '<div class="markdown"><p class="markdown__paragraph">label</p></div>',
+    )
+  })
+
+  it('draws a list, quote, table, code or task with missing children, instead of throwing', () => {
+    const missing = [
+      { kind: 'list', ordered: false, start: 1, items: null },
+      { kind: 'list', ordered: false, start: 1, items: [[null]] },
+      { kind: 'quote', blocks: null },
+      { kind: 'table', header: null, rows: null },
+      { kind: 'code', language: 42, text: null },
+      { kind: 'task', checked: true, blocks: null },
+      { kind: 'heading', level: 'two', runs: null },
+    ] as unknown as MarkdownBlockView[]
+    expect(() => draw(missing)).not.toThrow()
+    expect(draw(missing)).toContain('markdown')
+  })
+})
