@@ -688,6 +688,38 @@ fn the_mcp_row_names_the_server_its_version_and_its_tool_count() {
 }
 
 #[test]
+fn the_mcp_row_reports_the_bundled_release_version() {
+    let mut bundled = facts();
+    bundled.agent_face = Some(State {
+        bundled_version: Some("1.6.0".to_string()),
+        installed_version: Some("1.6.0".to_string()),
+        hosts: Vec::new(),
+        warnings: Vec::new(),
+    });
+    let bundled_report = report(&bundled);
+    let row = check(&bundled_report, "mcp");
+    assert!(
+        row.detail.contains("1.6.0"),
+        "the bundled VERSION marker is the release version: {}",
+        row.detail
+    );
+    assert_eq!(
+        row.detail, "tandem-mcp 1.6.0: 33 tools over 33 covered wire methods",
+        "the tool count still stands against the covered method count"
+    );
+
+    let fallback = report(&facts());
+    assert_eq!(
+        check(&fallback, "mcp").detail,
+        format!(
+            "tandem-mcp {}: 33 tools over 33 covered wire methods",
+            env!("CARGO_PKG_VERSION")
+        ),
+        "no marker is the crate version"
+    );
+}
+
+#[test]
 fn the_home_check_names_which_branch_of_the_rule_this_process_takes() {
     let mut flag = facts();
     flag.home_source = HomeSource::Flag;
