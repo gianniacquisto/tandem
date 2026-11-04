@@ -142,11 +142,13 @@ describe('the shell', () => {
     expect(css).toMatch(/min-width:\s*var\(--window-floor\)/)
   })
 
-  it('lets the tickets list span the wide face with the board', () => {
-    // The board's wide treatment is a modifier that lifts the column cap; the
-    // list carries the same modifier, and no rule caps `.list` on its own.
+  it('holds the tickets list in a centred column while the board keeps the window', () => {
+    // The board keeps the wide treatment that lifts the column cap; the list
+    // reads as a centred 780px column, and no rule caps `.list` on its own.
     const css = readFileSync(join(renderer, 'src', 'app.css'), 'utf8')
-    expect(css).toMatch(/\.tickets--list/)
+    expect(css).toMatch(/\.tickets--list[^}]*780px/)
+    expect(css).toMatch(/\.tickets--list[^}]*margin:\s*0\s+auto/)
+    expect(css).toMatch(/\.tickets--board[^}]*max-width:\s*none/)
     expect(css).not.toMatch(/\.list\s*\{[^}]*max-width/)
   })
 

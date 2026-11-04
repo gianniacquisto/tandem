@@ -279,8 +279,7 @@ export function WorkflowFace({ tickets, lanes, activeProject, onOpenTicket }: Wo
   return (
     <Face
       wide
-      title="Workflow"
-      blurb="The sprint loop as a DAG: the passes, the handoffs, and the open sprint's batch on the graph."
+      label="Workflow"
     >
       <div className="workflow">
         <section className="workflow__section" aria-label="Lane">

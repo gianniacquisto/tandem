@@ -73,7 +73,12 @@ async function copyPath(value: string): Promise<void> {
  * and owns the poll, so the renderer touches no harness path. The face
  * computes no path and no state; it draws the reports' own.
  */
-export function SettingsFace() {
+export type SettingsFaceProps = {
+  /** The listing's revision, drawn beside the doctor checks instead of the header. */
+  revision: number | null
+}
+
+export function SettingsFace({ revision }: SettingsFaceProps) {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [draft, setDraft] = useState<string[]>([])
   const [candidate, setCandidate] = useState('')
@@ -316,8 +321,11 @@ export function SettingsFace() {
             ? 'The last sign-in did not complete.'
             : 'Not signed in: the embedded agent cannot call a model yet.'
 
+  const storeRevision = revision === null ? 'store rev unknown' : `store rev ${revision}`
+
   return (
-    <Face title="Settings" blurb="The machine, the agent host and the app's own preferences.">
+    <Face wide label="Settings">
+      <div className="settings">
       <section className="settings__section">
         <h2 className="settings__heading">Paths</h2>
         <dl className="settings__facts">
@@ -431,7 +439,7 @@ export function SettingsFace() {
         <p className="settings__versions">
           {state === undefined
             ? 'Reading the agent face…'
-            : `Installed ${state.installedVersion ?? 'nothing'}; bundled ${state.bundledVersion ?? 'nothing'}`}
+            : `Installed ${state.installedVersion ?? 'nothing'}; bundled ${state.bundledVersion ?? 'nothing'}; ${storeRevision}`}
         </p>
         {grouped.map((group) => (
           <div key={group.title}>
@@ -563,6 +571,7 @@ export function SettingsFace() {
           </p>
         )}
       </section>
+      </div>
     </Face>
   )
 }

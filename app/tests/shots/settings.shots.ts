@@ -20,7 +20,14 @@ import { computed, token } from '../../shots/tokens'
 test('the settings face, over the seeded homes', async ({ app, window }) => {
   await openTab(window, 'settings')
 
-  await expect(window.locator('.face__title')).toHaveText('Settings')
+  await expect(window.locator('.face__title')).toHaveCount(0)
+  // The store revision the core answered reads beside the doctor checks,
+  // never in the header.
+  await expect(
+    window.locator('.settings__section', {
+      has: window.locator('.settings__heading', { hasText: 'Setup' }),
+    }).locator('.settings__versions'),
+  ).toContainText(/store rev \d+/)
   await expect(window.locator('.settings__heading')).toHaveText([
     'Paths',
     'Preferences',

@@ -66,7 +66,7 @@ test('the tickets face shows one board two ways: the list and the board over one
 }) => {
   await openTab(window, 'tickets')
 
-  await expect(window.locator('.face__title')).toHaveText('Tickets')
+  await expect(window.locator('.face__title')).toHaveCount(0)
   await expect(window.locator('.quick-add__input')).toHaveAttribute(
     'placeholder',
     'Add a ticket…',
@@ -149,14 +149,15 @@ test('the tickets face shows one board two ways: the list and the board over one
   await expect(window.locator('.list')).toBeVisible()
   await expect(window.locator('.list__lane-title').first()).toBeVisible()
 
-  // The list uses the wide face like the board does: at the board capture's
-  // width the list spans the face instead of holding a 540px column, and
-  // every store ticket still draws as a row.
+  // The list reads as a centred column at the board capture's width: wider
+  // than the old 540px face, narrower than the window, and every store
+  // ticket still draws as a row.
   await app.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()[0]?.setContentSize(1330, 560)
   })
   const listBox = await window.locator('.list').boundingBox()
   expect(listBox?.width ?? 0).toBeGreaterThan(540)
+  expect(listBox?.width ?? 0).toBeLessThanOrEqual(820)
   // The picture is the Open scope, so the wide list must draw every Open
   // ticket: the count the face's own tab names, each one a store ticket.
   const openLabel = (await window.getByRole('tab', { name: /^Open/ }).innerText()).trim()
@@ -246,7 +247,7 @@ test('the keyboard set reaches the fields and moves a ticket, and a second write
   await expect(window.locator('.search__input')).toHaveValue('')
 
   // Leave the field: the arrows belong to the face again.
-  await window.locator('.face__title').click()
+  await window.locator('h2.board__title').first().click()
   await window.keyboard.press('ArrowDown')
   const selected = window.locator('.ticket-row[aria-current="true"]')
   await expect(selected).toHaveCount(1)

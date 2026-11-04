@@ -173,7 +173,7 @@ test('an external write on focus is a conflict, and the tab switch keeps the dra
 
   // Unmount the face and come back: the dirty buffer is a draft, not a loss.
   await window.locator('.tab', { hasText: 'Tickets' }).click()
-  await expect(window.locator('.face__title')).toHaveText('Tickets')
+  await expect(window.locator('.tabs .tab[aria-selected="true"]')).toHaveText('Tickets')
   await window.waitForTimeout(500)
   await window.locator('.tab', { hasText: 'Bikeshed' }).click()
   await expect(window.locator('.bikeshed-face')).toBeVisible()
