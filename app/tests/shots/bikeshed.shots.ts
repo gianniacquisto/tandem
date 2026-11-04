@@ -49,9 +49,11 @@ test('the bikeshed face, over the seeded vault', async ({ app, window }) => {
   await expect(window.locator('.health__count')).toHaveText('1 orphan')
 
   await expect(window.locator('.rail__recovery')).toContainText(
-    '.note-0000-0000-0000-000000000001.tmp',
+    'Unsaved draft kept from an interrupted save',
   )
   await expect(window.locator('.rail__recovery')).toContainText('draft')
+  await expect(window.locator('.rail__recovery')).not.toContainText('.note-')
+  await expect(window.locator('.rail__recovery')).not.toContainText('.tmp')
 
   await expect(window.locator('.banner')).toHaveCount(0)
 
