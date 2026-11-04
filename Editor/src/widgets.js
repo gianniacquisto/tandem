@@ -51,6 +51,7 @@ export class WikilinkWidget extends WidgetType {
     return (
       other instanceof WikilinkWidget &&
       other.target === this.target &&
+      other.display === this.display &&
       other.broken === this.broken
     );
   }
@@ -163,18 +164,19 @@ export class CheckboxWidget extends WidgetType {
   }
 }
 
-// Flips the state char inside the TaskMarker ("[ ]" <-> "[x]").
-// markerFrom is the marker's opening "[", so the char is markerFrom + 1.
-// The current state is read from the buffer (source of truth), not from
-// the widget. Called by the view-level click handler (main.js); exported
-// so the toggle transaction + payload are testable headlessly.
+// Flips the state char inside the TaskMarker ("[ ]" <-> "[x]", "[X]" counts
+// as checked like the plan does). markerFrom is the marker's opening "[",
+// so the char is markerFrom + 1. The current state is read from the buffer
+// (source of truth), not from the widget. Called by the view-level click
+// handler (main.js); exported so the toggle transaction + payload are
+// testable headlessly.
 export function toggleTask(view, markerFrom) {
   const state = view.state;
   const line = state.doc.lineAt(markerFrom);
   const pos = markerFrom + 1;
   if (pos < line.from || pos + 1 > line.to) return;
   const current = state.doc.sliceString(pos, pos + 1);
-  if (current !== " " && current !== "x") return;
+  if (current !== " " && current !== "x" && current !== "X") return;
   const next = current === " " ? "x" : " ";
   view.dispatch({
     changes: { from: pos, to: pos + 1, insert: next },

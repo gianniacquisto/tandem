@@ -81,3 +81,53 @@ export function editorCall(name: string, args: unknown[] = []): EditorCall {
 export function editorDocument(path: string, text: string): EditorCall {
   return editorCall('setDocument', [text, path])
 }
+
+/**
+ * The persisted note font size (the toolbar's A-/A+ control).
+ *
+ * The bundle owns the stepping and the CSS property (`Editor/src/main.js`:
+ * 16px default, 11-20px range, persisted by the host); the renderer owns
+ * the persistence, so a relaunch restores the size and the frame is told
+ * it on `loaded`. The key mirrors the bikeshed rail/hidden keys in
+ * `BikeshedFace`.
+ */
+export const EDITOR_FONT_SIZE_KEY = 'tandem.bikeshed.font-size'
+export const EDITOR_FONT_SIZE_DEFAULT = 16
+export const EDITOR_FONT_SIZE_MIN = 11
+export const EDITOR_FONT_SIZE_MAX = 20
+
+type FontStorage = {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+}
+
+function fontStorage(storage?: FontStorage | null): FontStorage | null {
+  if (storage !== undefined) return storage
+  const candidate =
+    typeof globalThis.localStorage !== 'undefined' ? globalThis.localStorage : null
+  if (candidate === null) return null
+  if (typeof candidate.getItem !== 'function' || typeof candidate.setItem !== 'function')
+    return null
+  return candidate as FontStorage
+}
+
+/** Clamp a candidate size into the sane range (16 for non-numbers). */
+export function clampEditorFontSize(px: unknown): number {
+  const n = typeof px === 'string' && px.trim() !== '' ? Number(px) : (px as number)
+  if (typeof n !== 'number' || !Number.isFinite(n)) return EDITOR_FONT_SIZE_DEFAULT
+  return Math.max(EDITOR_FONT_SIZE_MIN, Math.min(EDITOR_FONT_SIZE_MAX, n))
+}
+
+/** The stored size, or the 16px default when nothing (or nonsense) is stored. */
+export function loadEditorFontSize(storage?: FontStorage | null): number {
+  const store = fontStorage(storage)
+  if (store === null) return EDITOR_FONT_SIZE_DEFAULT
+  return clampEditorFontSize(store.getItem(EDITOR_FONT_SIZE_KEY))
+}
+
+/** Persist a toolbar-posted size, clamped so a stray post cannot stick. */
+export function saveEditorFontSize(value: number, storage?: FontStorage | null): void {
+  const store = fontStorage(storage)
+  if (store === null) return
+  store.setItem(EDITOR_FONT_SIZE_KEY, String(clampEditorFontSize(value)))
+}
