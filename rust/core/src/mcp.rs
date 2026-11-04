@@ -131,7 +131,12 @@ pub fn handle_mcp(
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
     let id = id_of(&value);
     match method {
-        "initialize" => Some(initialize_frame(id, request.get("params"))),
+        "initialize" => Some(initialize_frame(
+            id,
+            request.get("params"),
+            store,
+            environment,
+        )),
         "notifications/initialized" => {
             let id = id?;
             Some(result_frame(Some(id), json!({})))
@@ -174,7 +179,12 @@ pub fn handle_mcp(
 /// The `initialize` answer: the negotiated protocol version, no more than the
 /// door speaks and no less than the client named when the door speaks it, with
 /// the tools capability and the server's own name and version.
-fn initialize_frame(id: Option<Value>, params: Option<&Value>) -> String {
+fn initialize_frame(
+    id: Option<Value>,
+    params: Option<&Value>,
+    store: &Store,
+    environment: &crate::setup::Environment,
+) -> String {
     let asked = params
         .and_then(|params| params.get("protocolVersion"))
         .and_then(Value::as_str)
@@ -189,9 +199,33 @@ fn initialize_frame(id: Option<Value>, params: Option<&Value>) -> String {
         json!({
             "protocolVersion": negotiated,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": SERVER_NAME, "version": env!("CARGO_PKG_VERSION")},
+            "serverInfo": {"name": SERVER_NAME, "version": server_version(store, environment)},
         }),
     )
+}
+
+/// The release version the `initialize` answer carries: the stamped build
+/// version when the release stamped one, else the agent face `VERSION` marker
+/// beside the binary (or the installed copy), else the crate version. The
+/// workspace sits at 0.1.0 and never moves with releases, so the binary's own
+/// version is the last resort, never the answer on an installed app.
+pub fn server_version(store: &Store, environment: &crate::setup::Environment) -> String {
+    if let Some(stamped) = option_env!("TANDEM_VERSION")
+        .map(str::trim)
+        .filter(|version| !version.is_empty())
+    {
+        return stamped.to_string();
+    }
+    if let Some(bundle) = crate::setup::bundled_face(environment)
+        && let Some(version) = crate::setup::version_text(&bundle)
+    {
+        return version;
+    }
+    let face = crate::setup::Context::new(store.home().directory(), environment).face();
+    if let Some(version) = crate::setup::version_text(&face) {
+        return version;
+    }
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 /// One `tools/call`: the named tool becomes the `(id, method, params)` frame

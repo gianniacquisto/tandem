@@ -170,7 +170,7 @@ pub fn report(facts: &Facts) -> DoctorReport {
     });
     checks.push(agent_face_check(facts));
     checks.push(harness_auth_check(&facts.harness_auth));
-    checks.push(mcp_check());
+    checks.push(mcp_check(&facts.agent_face));
 
     let ok = checks.iter().all(|check| check.ok);
     DoctorReport { ok, checks }
@@ -556,10 +556,12 @@ fn harness_auth_check(auth: &HarnessAuth) -> DoctorCheck {
 
 /// The `mcp` row (TAN-274): the door's presence, asserted statically against
 /// the registry rather than by spawning the server: the tool count over the
-/// covered wire-method count, at the binary's own version. Green on a current
-/// install; a drift fails the registry test before it can ship, so this row
-/// names the numbers rather than probing a process.
-fn mcp_check() -> DoctorCheck {
+/// covered wire-method count, at the release version. The version is the same
+/// one the `initialize` answer carries: the stamped build version, else the
+/// bundled `VERSION` marker, else the installed copy, else the crate version.
+/// Green on a current install; a drift fails the registry test before it can
+/// ship, so this row names the numbers rather than probing a process.
+fn mcp_check(agent_face: &Option<State>) -> DoctorCheck {
     let tools = crate::mcp::tools();
     let named = tools
         .iter()
@@ -569,12 +571,26 @@ fn mcp_check() -> DoctorCheck {
                 .any(|(tag, _)| *tag == tool.method_tag)
         })
         .count();
+    let version = option_env!("TANDEM_VERSION")
+        .map(str::trim)
+        .filter(|version| !version.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            agent_face
+                .as_ref()
+                .and_then(|state| state.bundled_version.clone())
+        })
+        .or_else(|| {
+            agent_face
+                .as_ref()
+                .and_then(|state| state.installed_version.clone())
+        })
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
     DoctorCheck {
         name: "mcp".to_string(),
         ok: named == tools.len(),
         detail: format!(
-            "tandem-mcp {}: {} tools over {} covered wire methods",
-            env!("CARGO_PKG_VERSION"),
+            "tandem-mcp {version}: {} tools over {} covered wire methods",
             tools.len(),
             named,
         ),

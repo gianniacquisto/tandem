@@ -22,6 +22,15 @@ fn environment() -> tandem_core::setup::Environment {
     tandem_core::setup::Environment::new()
 }
 
+fn environment_with_bundle(bundle: &std::path::Path) -> tandem_core::setup::Environment {
+    let mut environment = tandem_core::setup::Environment::new();
+    environment.insert(
+        "TANDEM_AGENT_BUNDLE".to_string(),
+        bundle.to_string_lossy().into_owned(),
+    );
+    environment
+}
+
 fn call(store: &tandem_core::store::Store, frame: &str) -> Option<Value> {
     let answer = mcp::handle_mcp(frame, store, &Actor::Human, &environment())?;
     Some(
@@ -100,6 +109,48 @@ fn initialize_negotiates_the_protocol_version() {
     assert!(
         asked["result"]["capabilities"]["tools"].is_object(),
         "the door serves tools"
+    );
+}
+
+#[test]
+fn initialize_reports_the_bundled_release_version_with_crate_fallback() {
+    let sandbox = Sandbox::new("mcp-release-version");
+    let store = sandbox.store();
+
+    let bundle = sandbox.root().join("bundle");
+    std::fs::create_dir_all(&bundle).expect("the bundle is creatable");
+    std::fs::write(bundle.join("VERSION"), "1.6.0\n").expect("VERSION is writable");
+    let bundled_env = environment_with_bundle(&bundle);
+    let answered = mcp::handle_mcp(
+        &request(
+            serde_json::json!(1),
+            "initialize",
+            serde_json::json!({"protocolVersion": "2025-11-25"}),
+        ),
+        &store,
+        &Actor::Human,
+        &bundled_env,
+    )
+    .expect("initialize answers");
+    let answered: Value = serde_json::from_str(&answered).expect("the answer is JSON");
+    assert_eq!(
+        answered["result"]["serverInfo"]["version"], "1.6.0",
+        "the bundled VERSION marker is the release version"
+    );
+
+    let fallback = call(
+        &store,
+        &request(
+            json!(2),
+            "initialize",
+            json!({"protocolVersion": "2025-11-25"}),
+        ),
+    )
+    .expect("initialize answers");
+    assert_eq!(
+        fallback["result"]["serverInfo"]["version"],
+        env!("CARGO_PKG_VERSION"),
+        "no marker is the crate version"
     );
 }
 
