@@ -490,6 +490,34 @@ export function TicketsFace({
             </select>
           </div>
 
+          <div className="search">
+            <svg className="search__icon" viewBox="0 0 12 12" aria-hidden="true">
+              <circle cx="5" cy="5" r="3.4" />
+              <path d="M7.6 7.6 11 11" />
+            </svg>
+            <input
+              ref={search}
+              className="search__input"
+              type="search"
+              value={filters.text}
+              placeholder="Search tickets…"
+              aria-label="Search tickets"
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, text: event.target.value }))
+              }
+            />
+            {filters.text === '' ? null : (
+              <button
+                type="button"
+                className="search__clear"
+                aria-label="Clear the search"
+                onClick={() => setFilters((current) => ({ ...current, text: '' }))}
+              >
+                ×
+              </button>
+            )}
+          </div>
+
           <div className="segmented segmented--views" role="tablist" aria-label="Ticket layouts">
             <a
               className="segmented__item"
@@ -508,34 +536,6 @@ export function TicketsFace({
               Board
             </a>
           </div>
-        </div>
-
-        <div className="search">
-          <svg className="search__icon" viewBox="0 0 12 12" aria-hidden="true">
-            <circle cx="5" cy="5" r="3.4" />
-            <path d="M7.6 7.6 11 11" />
-          </svg>
-          <input
-            ref={search}
-            className="search__input"
-            type="search"
-            value={filters.text}
-            placeholder="Search tickets…"
-            aria-label="Search tickets"
-            onChange={(event) =>
-              setFilters((current) => ({ ...current, text: event.target.value }))
-            }
-          />
-          {filters.text === '' ? null : (
-            <button
-              type="button"
-              className="search__clear"
-              aria-label="Clear the search"
-              onClick={() => setFilters((current) => ({ ...current, text: '' }))}
-            >
-              ×
-            </button>
-          )}
         </div>
 
         {empty ?? (
