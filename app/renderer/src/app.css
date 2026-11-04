@@ -839,8 +839,8 @@ body {
   color: var(--ink-dim);
 }
 
-/* The Tickets face: the quick-add, the scope and filter row, the search, and
- * the two layouts over one set of rows. Both layouts take the window's width:
+/* The Tickets face: the quick-add, one toolbar over the list, and the two
+ * layouts over one set of rows. Both layouts take the window's width:
  * a lane column is a lane, and the list reads full width with it. */
 
 .shell__notice {
@@ -882,18 +882,22 @@ body {
   align-items: center;
   gap: 8px;
   height: var(--space-control);
-  padding: 0 11px;
+  padding: 0 12px;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-control);
   background: var(--parchment);
+  transition:
+    background-color var(--motion-toggle) ease-in-out,
+    border-color var(--motion-toggle) ease-in-out;
 }
 
 .quick-add:focus-within {
-  border-color: var(--ember);
+  border-color: var(--accent);
+  background: var(--paper);
 }
 
 .quick-add__plus {
-  color: var(--ink-dim);
+  color: var(--accent);
   font-size: 12px;
   font-weight: 600;
 }
@@ -926,8 +930,10 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-lane);
-  margin-top: var(--space-lane);
+  gap: 8px var(--space-lane);
+  margin-top: 10px;
+  padding-bottom: 12px;
+  border-bottom: var(--hairline) solid var(--sand);
 }
 
 .segmented {
@@ -974,19 +980,23 @@ body {
 .tickets__filters {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 
 .filter {
   height: var(--space-control);
-  padding: 0 8px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--parchment);
-  color: var(--ink);
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
   font: inherit;
-  font-size: 12px;
+  font-size: 12.5px;
   cursor: pointer;
+}
+
+.filter:hover {
+  color: var(--ink);
 }
 
 /* The project focus: the draw's own lane picker and its show-all escape. The
@@ -1027,19 +1037,26 @@ body {
 
 .search {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   height: var(--space-control);
-  margin-top: var(--space-lane);
-  margin-bottom: var(--space-lane);
-  padding: 0 11px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--parchment);
+  width: 34px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  transition: width var(--motion-toggle) ease-in-out;
+}
+
+/* The search is the field a keyboard user reaches with the modifier and F, and
+ * not one a ticket list needs standing open: an icon until it is in use. */
+.search:focus-within,
+.search:has(.search__input:not(:placeholder-shown)) {
+  width: 190px;
 }
 
 .search:focus-within {
-  border-color: var(--ember);
+  box-shadow: inset 0 -1px 0 var(--accent);
 }
 
 .search__icon {
@@ -1199,12 +1216,46 @@ body {
 
 .ticket-row__tag,
 .ticket-row__status {
-  padding: 1px 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 6px;
   border: var(--hairline) solid var(--sand);
   border-radius: 999px;
   color: var(--ink-dim);
-  font-size: 9.5px;
-  line-height: 1.4;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* The status is the one axis the board exists to show, so it carries a colour
+ * before its label is read: the palette's own hues, not a new one. */
+.ticket-row__status::before {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chip, var(--ink-dim));
+  content: "";
+}
+
+.ticket-row__status[data-status="on-hold"] {
+  --chip: var(--ember-deep);
+}
+
+.ticket-row__status[data-status="ready"] {
+  --chip: var(--accent-deep);
+}
+
+.ticket-row__status[data-status="in-progress"] {
+  --chip: var(--accent);
+}
+
+.ticket-row__status[data-status="in-review"] {
+  --chip: var(--moss);
+}
+
+.ticket-row__status[data-status="done"] {
+  --chip: var(--ink-dim);
 }
 
 .ticket-row__tag--blocked {
@@ -1215,13 +1266,13 @@ body {
 .ticket-row__ref {
   color: var(--ink-dim);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9.5px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
 .ticket-row__assignee {
   color: var(--ink-dim);
-  font-size: 10.5px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 
@@ -1231,8 +1282,9 @@ body {
 
 .ticket-row__lane {
   margin-left: auto;
+  padding-left: 8px;
   color: var(--ink-dim);
-  font-size: 10.5px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 
