@@ -63,6 +63,32 @@ export function takeTheirs(buffer: NoteBuffer, theirs: Theirs): NoteBuffer {
   return { path: buffer.path, text: theirs.text, baseline: theirs.hash, dirty: false }
 }
 
+/**
+ * Whether a save's conflict still names the open buffer: the save read the disk
+ * against the baseline it carried, so a buffer that has since adopted that disk
+ * (Take theirs moved the baseline) must not re-raise the same conflict when the
+ * stale save lands after the choice.
+ */
+export function conflictStillApplies(
+  current: NoteBuffer | null,
+  saved: NoteBuffer,
+): boolean {
+  return (
+    current !== null && current.path === saved.path && current.baseline === saved.baseline
+  )
+}
+
+/**
+ * The editor's dirty message as data: new typing dirties the buffer, an echo of
+ * the text it already holds changes nothing. A same-text post (the frame
+ * re-announcing the document it was just handed) must not re-dirty a clean
+ * buffer after Take theirs, or the next autosave re-reads the adopted disk.
+ */
+export function applyDirty(buffer: NoteBuffer | null, text: string): NoteBuffer | null {
+  if (buffer === null || buffer.text === text) return buffer
+  return { ...buffer, text, dirty: true }
+}
+
 /** A note read reply, or null for any other reply. */
 export function noteContentOf(reply: unknown): NoteContentView | null {
   if (!isRecord(reply)) return null

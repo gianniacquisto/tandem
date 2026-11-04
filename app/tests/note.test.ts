@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import type { Call } from '../src/shared/bridge'
 import {
+  applyDirty,
   arrival,
+  conflictStillApplies,
   keepMine,
   openBuffer,
   saveNote,
@@ -145,5 +147,47 @@ describe('a draft whose save did not land', () => {
   it('does not keep a clean buffer', () => {
     stashDraft({ ...buffer, path: 'clean.md', dirty: false })
     expect(takeDraft()).toBeNull()
+  })
+})
+
+describe('a stale save completing after Take theirs', () => {
+  const saved: NoteBuffer = { path: 'Index.md', text: 'mine', baseline: 'aaaa', dirty: true }
+  const theirs = { text: 'their words', hash: 'cccc' }
+
+  it('ignores the conflict once the buffer adopted the on-disk body', () => {
+    const adopted = takeTheirs(saved, theirs)
+
+    expect(conflictStillApplies(adopted, saved)).toBe(false)
+  })
+
+  it('keeps the conflict while the buffer still holds the old baseline', () => {
+    const typing = { ...saved, text: 'mine plus more typing' }
+
+    expect(conflictStillApplies(typing, saved)).toBe(true)
+  })
+
+  it('ignores the conflict after the note was replaced', () => {
+    const other: NoteBuffer = { path: 'Other.md', text: 'mine', baseline: 'aaaa', dirty: true }
+
+    expect(conflictStillApplies(other, saved)).toBe(false)
+    expect(conflictStillApplies(null, saved)).toBe(false)
+  })
+})
+
+describe('an editor message that changes nothing', () => {
+  it('leaves a clean buffer clean when the text is identical', () => {
+    const clean: NoteBuffer = { ...buffer, dirty: false }
+
+    expect(applyDirty(clean, clean.text)).toBe(clean)
+  })
+
+  it('keeps the baseline when new typing dirties the buffer', () => {
+    const clean: NoteBuffer = { ...buffer, dirty: false, baseline: 'aaaa', text: 'old' }
+
+    expect(applyDirty(clean, 'old plus typing')).toEqual({
+      ...clean,
+      text: 'old plus typing',
+      dirty: true,
+    })
   })
 })
