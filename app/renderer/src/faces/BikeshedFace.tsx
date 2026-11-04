@@ -14,7 +14,9 @@ import {
   resolveWikilink,
 } from '../shell/bikeshed'
 import {
+  applyDirty,
   arrival,
+  conflictStillApplies,
   keepMine,
   noteContentOf,
   openBuffer,
@@ -215,6 +217,10 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       return
     }
     if (outcome.type === 'conflict') {
+      // A save started before Take theirs lands after the choice with the same
+      // disk body: the open buffer already adopted it, so the stale outcome
+      // must not re-raise the banner the choice just cleared.
+      if (!conflictStillApplies(openRef.current, buffer)) return
       setConflict(outcome.theirs)
       return
     }
@@ -263,12 +269,16 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
    * on-disk body (ADR 0004).
    */
   async function adoptExternal(): Promise<void> {
-    const current = openRef.current
-    if (current === null) return
-    const answer = await window.tandem.call({ method: 'note.read', params: { path: current.path } })
+    const before = openRef.current
+    if (before === null) return
+    const answer = await window.tandem.call({ method: 'note.read', params: { path: before.path } })
     if ('error' in answer) return
     const disk = noteContentOf(answer.reply)
     if (disk === null) return
+    // The read crossed Take theirs (or a note switch): the fresh buffer already
+    // names the disk, so the stale capture must not re-raise the cleared banner.
+    const current = openRef.current
+    if (current === null || current.path !== before.path) return
     const next = arrival(current, { text: disk.text, hash: disk.hash })
     if (next.type === 'conflict') {
       setConflict(next.theirs)
@@ -378,7 +388,10 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
   function onEditorMessage(next: { type: string; text?: string; target?: string }): void {
     if (next.type === 'dirty' && typeof next.text === 'string') {
       const text = next.text
-      setOpen((current) => (current === null ? current : { ...current, text, dirty: true }))
+      // A same-text echo (the frame re-announcing the document it was handed)
+      // is not an edit: re-dirtying here would autosave the adopted disk and
+      // re-raise the conflict Take theirs just cleared.
+      setOpen((current) => applyDirty(current, text))
       return
     }
     if (next.type === 'link-opened' && typeof next.target === 'string') {
