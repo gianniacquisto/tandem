@@ -28,6 +28,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A superseded push cancels this workflow's in-progress run of the same ref:
+# the group is per workflow and ref, so the latest push always runs to the end.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
