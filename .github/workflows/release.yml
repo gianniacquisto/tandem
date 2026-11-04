@@ -131,8 +131,10 @@ jobs:
         run: |
           # Stages the scripted install beside the artifact (TAN-253):
           # install.sh stamped with the tag's version, and SHA256SUMS with one
-          # line each for the zip and the script. The bump script reads exactly
-          # the zip's line, so the second line changes nothing for the cask.
+          # line each for the zip, the dmg and the script, so the handoff
+          # check covers every asset the release attaches. The bump script
+          # reads exactly the zip's line, so the extra lines change nothing
+          # for the cask.
           Scripts/stage-release-assets.sh "$version" app/dist
           cat app/dist/SHA256SUMS
 

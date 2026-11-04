@@ -219,7 +219,7 @@ case "$out8" in
 esac
 if [ -e "$t5/apps/Tandem.app" ]; then no "missing digest writes nothing"; else ok "missing digest writes nothing"; fi
 
-# --- the stager stamps the script and sums the zip plus the script ---
+# --- the stager stamps the script and sums the zip, the dmg and the script ---
 
 t6=$(mktemp -d)
 mkdir -p "$t6/dist"
@@ -235,11 +235,12 @@ case "$(cat "$t6/dist/install.sh" 2>/dev/null)" in
   *'DEFAULT_VERSION="1.2.3"'*) ok "stager stamps the tag version" ;;
   *) no "stager stamps the tag version" ;;
 esac
-if [ -f "$t6/dist/SHA256SUMS" ] && [ "$(wc -l < "$t6/dist/SHA256SUMS" | tr -d ' ')" = "2" ] \
-  && grep -q "Tandem-1.2.3.zip" "$t6/dist/SHA256SUMS" && grep -q "install.sh" "$t6/dist/SHA256SUMS"; then
-  ok "SHA256SUMS covers the zip and the script"
+if [ -f "$t6/dist/SHA256SUMS" ] && [ "$(wc -l < "$t6/dist/SHA256SUMS" | tr -d ' ')" = "3" ] \
+  && grep -q "Tandem-1.2.3.zip" "$t6/dist/SHA256SUMS" && grep -q "Tandem-1.2.3.dmg" "$t6/dist/SHA256SUMS" \
+  && grep -q "install.sh" "$t6/dist/SHA256SUMS"; then
+  ok "SHA256SUMS covers the zip, the dmg and the script"
 else
-  no "SHA256SUMS covers the zip and the script"
+  no "SHA256SUMS covers the zip, the dmg and the script"
 fi
 if (cd "$t6/dist" && shasum -a 256 -c SHA256SUMS >/dev/null 2>&1); then
   ok "staged checksums verify"
@@ -247,10 +248,23 @@ else
   no "staged checksums verify"
 fi
 if [ -f "$t6/dist/Tandem-1.2.3.dmg" ] && [ "$(cat "$t6/dist/Tandem-1.2.3.dmg")" = "dmg-bytes" ]; then
-  ok "stager leaves the dmg alone"
+  ok "stager sums the dmg without modifying it"
 else
-  no "stager leaves the dmg alone"
+  no "stager sums the dmg without modifying it"
 fi
+
+# --- a dist dir with no dmg is refused ---
+
+t7=$(mktemp -d)
+mkdir -p "$t7/dist"
+printf 'zip-bytes' > "$t7/dist/Tandem-1.2.3.zip"
+out10=$(sh "$stager" 1.2.3 "$t7/dist" >"$t7/out10.txt" 2>&1; echo "exit=$?"; cat "$t7/out10.txt")
+case "$out10" in
+  *"exit=0"*) no "missing dmg refuses" ;;
+  *"no dmg"*) ok "missing dmg refuses" ;;
+  *) no "missing dmg refuses: $out10" ;;
+esac
+if [ -f "$t7/dist/SHA256SUMS" ]; then no "missing dmg writes no manifest"; else ok "missing dmg writes no manifest"; fi
 
 # --- the default download base matches the real release URL shape ---
 
@@ -263,7 +277,7 @@ fi
 
 if sh "$installer" --help >/dev/null 2>&1; then ok "--help exits zero"; else no "--help exits zero"; fi
 
-rm -rf "$t" "$t2" "$t3" "$t4" "$t5" "$t6" "$emptybin"
+rm -rf "$t" "$t2" "$t3" "$t4" "$t5" "$t6" "$t7" "$emptybin"
 
 echo
 echo "$pass passed, $fail failed"

@@ -12,10 +12,10 @@
 #   --reinstall   replace an existing /Applications/Tandem.app, cask or not
 #   --uninstall   remove the app the script installed; defers to the cask
 #
-# The installer takes the zip, never the DMG: only the zip has a line in
-# SHA256SUMS, and the DMG stays unverifiable until the workflow sums it. The
-# zip's digest line is checked before anything is written, and a mismatch or
-# a missing line refuses. The bundle is copied to /Applications, the
+# The installer takes the zip, never the DMG: it checks exactly the zip's
+# line in SHA256SUMS before anything is written, and a mismatch or a missing
+# line refuses. (The dmg carries its own manifest line, but no install path
+# takes it.) The bundle is copied to /Applications, the
 # quarantine flag is stripped (every download is quarantined until then), and
 # the tandem-cli link state is reported, never changed: the cask owns its own
 # link and this script does not touch it. Host links and ~/.tandem stay on
