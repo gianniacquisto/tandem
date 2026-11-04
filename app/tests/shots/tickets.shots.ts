@@ -247,7 +247,7 @@ test('the keyboard set reaches the fields and moves a ticket, and a second write
   await expect(window.locator('.search__input')).toHaveValue('')
 
   // Leave the field: the arrows belong to the face again.
-  await window.locator('.list__lane-title').first().click()
+  await window.locator('h2.board__title').first().click()
   await window.keyboard.press('ArrowDown')
   const selected = window.locator('.ticket-row[aria-current="true"]')
   await expect(selected).toHaveCount(1)

@@ -15,5 +15,9 @@ test('the window runs at the fixed clock, over the store the rpc child read', as
   await expect(window.locator('.shell__revision')).toHaveCount(0)
 
   await openTab(window, 'settings')
-  await expect(window.locator('.settings__versions')).toContainText(/store rev \d+/)
+  await expect(
+    window.locator('.settings__section', {
+      has: window.locator('.settings__heading', { hasText: 'Setup' }),
+    }).locator('.settings__versions'),
+  ).toContainText(/store rev \d+/)
 })
