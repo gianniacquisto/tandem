@@ -165,6 +165,7 @@ tandem-cli lane list
 tandem-cli lane add --name <name> [--abbr <key>] [--project <name>]
 tandem-cli lane rename --from <name> --to <name> [--abbr <key>] [--project <name>]
 tandem-cli lane delete --name <name>
+tandem-cli lane move --name <name> [--index <number>]
 tandem-cli project list
 tandem-cli project add --name <name>
 tandem-cli project rename --from <name> --to <name>

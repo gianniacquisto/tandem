@@ -84,3 +84,20 @@ fn every_lane_write_answers_the_list_after_its_write() {
     assert_eq!(board.move_lane("Board", 0).unwrap(), ["Board"]);
     assert!(board.delete_lane("Board").unwrap().lanes.is_empty());
 }
+
+#[test]
+fn unknown_lane_names_the_lane_and_the_fix() {
+    let sandbox = Sandbox::new("lane-verb-unknown");
+    let board = sandbox.board();
+    board.add_lane("Tandem", None, None).unwrap();
+    let refused = board.move_lane("Nope", 0).unwrap_err();
+    let message = refused.message();
+    assert!(
+        message.contains("\"Nope\""),
+        "the refusal names the lane: {message}"
+    );
+    assert!(
+        message.contains("lane add") && message.contains("lane list"),
+        "the refusal names the fix: {message}"
+    );
+}

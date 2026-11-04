@@ -206,6 +206,7 @@ describe('the Workflow surface', () => {
       'lane.add',
       'lane.delete',
       'lane.list',
+      'lane.move',
       'lane.rename',
       'sprint.list',
       'sprint.open',

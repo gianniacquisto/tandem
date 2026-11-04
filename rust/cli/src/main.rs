@@ -150,6 +150,7 @@ enum LaneCommand {
     Add(LaneAddArgs),
     Rename(LaneRenameArgs),
     Delete(LaneDeleteArgs),
+    Move(LaneMoveArgs),
 }
 
 #[derive(Subcommand)]
@@ -351,6 +352,14 @@ struct LaneRenameArgs {
 struct LaneDeleteArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     name: Option<String>,
+}
+
+#[derive(Args)]
+struct LaneMoveArgs {
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    name: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    index: Option<String>,
 }
 
 #[derive(Args)]
@@ -738,6 +747,7 @@ impl LaneCommand {
             Self::Add(_) => "lane add",
             Self::Rename(_) => "lane rename",
             Self::Delete(_) => "lane delete",
+            Self::Move(_) => "lane move",
         }
     }
 }
@@ -1106,6 +1116,21 @@ fn lane(home: &Home, command: Option<&LaneCommand>) -> Result<(), Failure> {
                 .delete_lane(args.name.as_deref().unwrap_or(""))
                 .map_err(Failure::domain)?;
             print(&LaneDeletionView::new(&deletion, None))
+        }
+        LaneCommand::Move(args) => {
+            let at = match args.index.as_deref() {
+                None => usize::MAX,
+                Some(raw) => match raw.parse::<i64>() {
+                    Ok(index) => index.max(0) as usize,
+                    Err(_) => {
+                        return Err(Failure::domain(DomainError::InvalidIndex(raw.to_string())));
+                    }
+                },
+            };
+            let lanes = board
+                .move_lane(args.name.as_deref().unwrap_or(""), at)
+                .map_err(Failure::domain)?;
+            print(&LaneList { lanes, note: None })
         }
     }
 }

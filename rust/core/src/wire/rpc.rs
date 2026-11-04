@@ -110,6 +110,7 @@ methods! {
     LaneAdd: "lane.add", LaneAddParams, "lane add";
     LaneRename: "lane.rename", LaneRenameParams, "lane rename";
     LaneDelete: "lane.delete", LaneDeleteParams, "lane delete";
+    LaneMove: "lane.move", LaneMoveParams, "lane move";
     ProjectList: "project.list", EmptyParams, "project list";
     ProjectAdd: "project.add", ProjectAddParams, "project add";
     ProjectRename: "project.rename", ProjectRenameParams, "project rename";
@@ -396,6 +397,15 @@ pub struct LaneRenameParams {
 #[serde(rename_all = "camelCase", default)]
 pub struct LaneDeleteParams {
     pub name: Option<String>,
+}
+
+/// `lane.move`: reorder the declared lanes. The index is 0-based in the lane
+/// list and is clamped, so an absent index appends.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LaneMoveParams {
+    pub name: Option<String>,
+    pub index: Option<i64>,
 }
 
 /// `project.add`: the name, and nothing else. Add appends, there is no move.
@@ -827,6 +837,16 @@ impl LaneDeleteParams {
     /// area, never deleted.
     pub fn schema() -> serde_json::Value {
         object_schema(&[("name", string("the lane name"))])
+    }
+}
+
+impl LaneMoveParams {
+    /// The tool input for `lane.move`: reorder the declared lanes.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[
+            ("name", string("the lane name")),
+            ("index", integer("0-based in the lane list; omit to append")),
+        ])
     }
 }
 

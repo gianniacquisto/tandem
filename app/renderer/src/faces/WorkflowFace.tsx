@@ -272,6 +272,28 @@ export function WorkflowFace({ tickets, lanes, activeProject, onOpenTicket }: Wo
     setFailure(null)
   }
 
+  async function moveLane(delta: number): Promise<void> {
+    if (lane === '') return
+    const from = known.indexOf(lane)
+    if (from === -1) return
+    const to = Math.min(known.length - 1, Math.max(0, from + delta))
+    if (to === from) return
+    const written = await window.tandem.call({
+      method: 'lane.move',
+      params: { name: lane, index: to },
+    })
+    if ('error' in written) {
+      setFailure(written.error.message)
+      return
+    }
+    if (!isLaneListReply(written.reply)) {
+      setFailure('The lane was not writable.')
+      return
+    }
+    setKnown(written.reply.lanes)
+    setFailure(null)
+  }
+
   const placed = sprint === null ? [] : positionBatch(sprint.batch, tickets)
   const counts = countsByPass(placed)
   const summary = placedSummary(sprint, counts)
@@ -346,11 +368,29 @@ export function WorkflowFace({ tickets, lanes, activeProject, onOpenTicket }: Wo
               <button type="button" className="workflow__action" onClick={() => void deleteLane()}>
                 Delete {lane}
               </button>
+              <button
+                type="button"
+                className="workflow__action"
+                onClick={() => void moveLane(-1)}
+                disabled={known.indexOf(lane) <= 0}
+                aria-label={`Move ${lane} earlier`}
+              >
+                Move up
+              </button>
+              <button
+                type="button"
+                className="workflow__action"
+                onClick={() => void moveLane(1)}
+                disabled={known.indexOf(lane) < 0 || known.indexOf(lane) >= known.length - 1}
+                aria-label={`Move ${lane} later`}
+              >
+                Move down
+              </button>
             </div>
           )}
           <p className="workflow__hint">
-            Runs `tandem-cli lane add`, `lane rename` and `lane delete`: a delete moves the
-            lane&apos;s tickets to the default area, never away.
+            Runs `tandem-cli lane add`, `lane rename`, `lane move` and `lane delete`: a delete
+            moves the lane&apos;s tickets to the default area, never away.
           </p>
         </section>
 

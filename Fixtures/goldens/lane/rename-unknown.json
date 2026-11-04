@@ -9,7 +9,7 @@
   ],
   "exit": 1,
   "stderr": [
-    "Unknown cycle lane \"Cycle\". Create it first."
+    "Unknown cycle lane \"Cycle\". Create it with `lane add --name \"Cycle\"`, or list lanes with `lane list`."
   ],
   "stdin": "",
   "stdout": [],

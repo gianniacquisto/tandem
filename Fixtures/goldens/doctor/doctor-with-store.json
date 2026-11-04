@@ -13,17 +13,17 @@
         "ok": true
       },
       {
-        "detail": "<tandem-home>/tandem.db \u2014 <schema>; 1 open, 0 done; backup <age> old",
+        "detail": "<tandem-home>/tandem.db — <schema>; 1 open, 0 done; backup <age> old",
         "name": "store",
         "ok": true
       },
       {
-        "detail": "<tandem-home>/bikeshed \u2014 3 note(s)",
+        "detail": "<tandem-home>/bikeshed — 3 note(s)",
         "name": "bikeshed",
         "ok": true
       },
       {
-        "detail": "<tandem-home>/tandem.db \u2014 none yet; the first comment writes a row",
+        "detail": "<tandem-home>/tandem.db — none yet; the first comment writes a row",
         "name": "comments",
         "ok": true
       },
@@ -68,7 +68,7 @@
         "ok": true
       },
       {
-        "detail": "tandem-mcp 0.0.0-golden: 33 tools over 33 covered wire methods",
+        "detail": "tandem-mcp 0.0.0-golden: 34 tools over 34 covered wire methods",
         "name": "mcp",
         "ok": true
       }
