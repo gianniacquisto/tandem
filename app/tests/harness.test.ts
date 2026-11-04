@@ -1,6 +1,7 @@
-import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
@@ -318,6 +319,17 @@ describe('the auth list read', () => {
     expect(parseServeHandshake(SERVE_HANDSHAKE)).toBe('http://127.0.0.1:4096')
     expect(() => parseServeHandshake('not json')).toThrow()
     expect(() => parseServeHandshake('{"port":4096}')).toThrow()
+  })
+
+  it('wires the shell’s spawns with stdin piped: serve --stdio never opens its loopback listener otherwise', () => {
+    // Measured on the pinned binary v2.2.5: with stdin ignored, `serve --stdio
+    // --port 0` prints the handshake but refuses every connection, and the
+    // key sign-in's fetch fails. stdin is the child's lifetime handle.
+    const shell = readFileSync(
+      join(fileURLToPath(new URL('..', import.meta.url)), 'src', 'main', 'index.ts'),
+      'utf8',
+    )
+    expect(shell).not.toContain("stdio: ['ignore'")
   })
 
   it('finds the device URL and the code in the login output', () => {

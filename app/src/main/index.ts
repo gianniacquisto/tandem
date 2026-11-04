@@ -74,7 +74,10 @@ function harnessController(): HarnessController {
         const child = spawn(binary, args, {
           env: options.env,
           cwd: options.cwd,
-          stdio: ['ignore', 'pipe', 'pipe'],
+          // stdin is the serve child's lifetime handle: with it ignored,
+          // `serve --stdio` prints the handshake but never opens the
+          // loopback listener, and the key sign-in's fetch is refused.
+          stdio: ['pipe', 'pipe', 'pipe'],
           windowsHide: true,
         })
         return {
