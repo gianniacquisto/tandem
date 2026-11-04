@@ -79,13 +79,8 @@ function face(
         />
       )
     case 'settings':
-      return <SettingsFace />
+      return <SettingsFace revision={snapshot.revision} />
   }
-}
-
-function revisionLabel(snapshot: SnapshotState): string {
-  if (snapshot.revision !== null) return `rev ${snapshot.revision}`
-  return snapshot.status === 'failed' ? 'no store' : 'connecting'
 }
 
 /**
@@ -295,9 +290,6 @@ export function App() {
             </a>
           ))}
         </nav>
-        <span className="shell__revision" aria-live="polite">
-          {revisionLabel(snapshot)}
-        </span>
       </header>
 
       <main className="shell__body">

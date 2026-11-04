@@ -357,7 +357,7 @@ export function TicketsFace({
   const empty = emptyState(snapshot, filters, visible.length === 0, activeProject, onReload)
 
   return (
-    <Face wide title="Tickets" blurb="The board, its lanes and the ticket list, one face.">
+    <Face wide label="Tickets">
       <div className={view === 'board' ? 'tickets tickets--board' : 'tickets tickets--list'}>
         <FocusControl
           lanes={snapshot.lanes}

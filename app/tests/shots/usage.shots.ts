@@ -13,7 +13,7 @@ import { computed, token } from '../../shots/tokens'
 test('the usage face, with a ticket row rolled down', async ({ app, window }) => {
   await openTab(window, 'usage')
 
-  await expect(window.locator('.face__title')).toHaveText('Usage')
+  await expect(window.locator('.face__title')).toHaveCount(0)
   await expect(window.locator('.usage__coverage')).toHaveText(/^reported by \d+ of \d+ records$/)
   await expect(window.locator('.usage__spend')).toHaveText(/^\$\d+\.\d{2}$/)
 

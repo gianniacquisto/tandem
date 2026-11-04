@@ -51,7 +51,7 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
 
   if (report === null) {
     return (
-      <Face wide title="Usage" blurb="The reported spend, by day, model, agent and ticket.">
+      <Face wide label="Usage">
         <p className="face__fact">Waiting for the store.</p>
       </Face>
     )
@@ -72,7 +72,7 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
   }
 
   return (
-    <Face wide title="Usage" blurb="The reported spend, by day, model, agent and ticket.">
+    <Face wide label="Usage">
       <div className="usage">
         <div className="usage__header">
           <span className="usage__coverage">{coverage(report)}</span>

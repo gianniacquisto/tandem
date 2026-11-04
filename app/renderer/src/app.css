@@ -74,13 +74,6 @@ body {
   font-weight: 600;
 }
 
-.shell__revision {
-  margin-left: auto;
-  color: var(--ink-dim);
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-}
-
 .shell__body {
   flex: 1;
   overflow: auto;
@@ -676,7 +669,14 @@ body {
 }
 
 /* Settings: the machine's paths, the theme, and the agent face's setup. One
- * section per question, the setup section's rows drawn from `doctor`'s. */
+ * section per question, the setup section's rows drawn from `doctor`'s. The
+ * face reads as a centred column, the same width as the Tickets list. */
+
+.settings {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+}
 
 .settings__section {
   margin: 0 0 var(--space-gutter);
@@ -840,8 +840,8 @@ body {
 }
 
 /* The Tickets face: the quick-add, one toolbar over the list, and the two
- * layouts over one set of rows. Both layouts take the window's width:
- * a lane column is a lane, and the list reads full width with it. */
+ * layouts over one set of rows. The board takes the window's width, a lane
+ * column is a lane, while the list reads as a centred column. */
 
 .shell__notice {
   display: flex;
@@ -872,9 +872,14 @@ body {
   max-width: 540px;
 }
 
-.tickets--board,
-.tickets--list {
+.tickets--board {
   max-width: none;
+}
+
+.tickets--list {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
 }
 
 .quick-add {

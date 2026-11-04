@@ -75,7 +75,7 @@ test('the workflow face draws the open sprint on the pass DAG', async ({ app, wi
 
   await openTab(window, 'workflow')
 
-  await expect(window.locator('.face__title')).toHaveText('Workflow')
+  await expect(window.locator('.face__title')).toHaveCount(0)
   // The Lane section carries the first heading, so the sprint's reads scoped
   // to its own section.
   const sprintHeading = window.locator('section[aria-label="Open sprint"] .workflow__heading')
