@@ -72,12 +72,23 @@ touches status or assignee.
   faces.
 - `TAN-28` (assignee identity and personas): `Tandem` to `skills`. Personas and
   memory placement.
+- `TAN-315` (tickets too complicated, description plus comments core):
+  `Tandem` to `ui` (`UI-6`). Sheet reorder and creation-flow faces; no model
+  change, authorship rule rides along.
+- `TAN-314` (refinement and retro live outside the sprint): `Tandem` to
+  `skills` (`SKI-3`). Sprint-loop process docs.
+- `TAN-313` (usage page rolling windows): `Tandem` to `core` (`COR-6`). Usage
+  derivation windowing; the Usage face reads the one narrowed report.
+- `TAN-311` (bikeshed preview and editing mode): `Tandem` to `ui` (`UI-5`).
+  Bikeshed face.
+- `TAN-310` (daily notes): `Tandem` to `ui` (`UI-4`). Bikeshed face, beside
+  `UI-1`.
 
-Not moved in this pass (left for their owners, no collision):
+Staying in `Tandem` (triage inbox, no collision):
 
-- `TAN-297`, `TAN-298`, `TAN-299`, `TAN-300`, `TAN-301`, `TAN-305` and this
-  ticket `TAN-306`: in-progress in `Tandem`. They stay until they land, then
-  file to their epic lane next.
+- `TAN-308`, `TAN-309`: retro findings. Retro is untouched, findings stay
+  where the retro filed them.
+- This ticket `TAN-306`: in-progress. It stays until it lands.
 
 ## Journey
 
