@@ -414,56 +414,66 @@ export function TicketSheet({
           error === null ? <p className="sheet__reading">Reading the ticket…</p> : null
         ) : (
           <div className="sheet__body">
-            <input
-              className="sheet__title"
-              value={title}
-              aria-label="Title"
-              onChange={(event) => setTitle(event.target.value)}
-            />
+            <div className="sheet__sticky">
+              <input
+                className="sheet__title"
+                value={title}
+                aria-label="Title"
+                onChange={(event) => setTitle(event.target.value)}
+              />
 
-            <div className="sheet__facts">
-              <label className="sheet__fact">
-                <span className="sheet__fact-label">Status</span>
-                <select
-                  className="sheet__select"
-                  aria-label="Status"
-                  value={status}
-                  onChange={(event) => setStatus(event.target.value)}
+              <div className="sheet__facts">
+                <label className="sheet__fact">
+                  <span className="sheet__fact-label">Status</span>
+                  <span className="sheet__status-row">
+                    <span
+                      className="sheet__status-dot"
+                      data-status={status}
+                      aria-hidden="true"
+                    />
+                    <select
+                      className="sheet__select"
+                      data-status={status}
+                      aria-label="Status"
+                      value={status}
+                      onChange={(event) => setStatus(event.target.value)}
+                    >
+                      {STATUSES.map((entry) => (
+                        <option key={entry.value} value={entry.value}>
+                          {entry.label}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
+                </label>
+
+                <label className="sheet__fact">
+                  <span className="sheet__fact-label">Assignee</span>
+                  <select
+                    className="sheet__select"
+                    aria-label="Assignee"
+                    value={assignee ?? ''}
+                    onChange={(event) =>
+                      setAssignee(event.target.value === '' ? null : event.target.value)
+                    }
+                  >
+                    {choices.map((choice) => (
+                      <option key={choice.value ?? ''} value={choice.value ?? ''}>
+                        {choice.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <button
+                  type="button"
+                  className="sheet__save"
+                  disabled={!canSave({ title })}
+                  onClick={() => void save()}
                 >
-                  {STATUSES.map((entry) => (
-                    <option key={entry.value} value={entry.value}>
-                      {entry.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="sheet__fact">
-                <span className="sheet__fact-label">Assignee</span>
-                <select
-                  className="sheet__select"
-                  aria-label="Assignee"
-                  value={assignee ?? ''}
-                  onChange={(event) =>
-                    setAssignee(event.target.value === '' ? null : event.target.value)
-                  }
-                >
-                  {choices.map((choice) => (
-                    <option key={choice.value ?? ''} value={choice.value ?? ''}>
-                      {choice.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <button
-                type="button"
-                className="sheet__save"
-                disabled={!canSave({ title })}
-                onClick={() => void save()}
-              >
-                Save
-              </button>
+                  Save
+                </button>
+              </div>
             </div>
 
             <section className="sheet__passes" aria-label="Agent passes">
@@ -555,15 +565,16 @@ export function TicketSheet({
 
             <section className="sheet__description" aria-label="Description">
               <header className="sheet__section-header">
-                <h2 className="sheet__section-title">Description: markdown, saved with the ticket</h2>
+                <h2 className="sheet__section-title">Description</h2>
                 <button
                   type="button"
                   className="sheet__toggle"
                   onClick={() => setPreviewing((current) => !current)}
                 >
-                  {previewing ? 'Edit source' : 'Preview'}
+                  {previewing ? 'View source' : 'Preview'}
                 </button>
               </header>
+              <p className="sheet__note">Append-only: additions land under the stored text and never overwrite it.</p>
 
               {previewing ? (
                 <div className="sheet__preview">
@@ -578,7 +589,9 @@ export function TicketSheet({
                   )}
                 </div>
               ) : (
-                <pre className="sheet__source">{ticket.description ?? ''}</pre>
+                <pre className="sheet__source" aria-label="Stored description, read-only">
+                  {ticket.description ?? ''}
+                </pre>
               )}
 
               <label className="sheet__addition">
@@ -728,7 +741,7 @@ export function TicketSheet({
             </section>
 
             <section className="sheet__discussion" aria-label="Comments">
-              <h2 className="sheet__section-title">Comments: the ticket's discussion log</h2>
+              <h2 className="sheet__section-title">Comments</h2>
               {logError !== null ? (
                 <p className="sheet__refusal" role="alert">
                   The log could not be read. {logError}
@@ -752,7 +765,7 @@ export function TicketSheet({
               )}
 
               <label className="sheet__addition">
-                <span className="sheet__fact-label">Add a comment: appended to the log, signed as you</span>
+                <span className="sheet__fact-label">Add a comment</span>
                 <textarea
                   className="sheet__addition-field"
                   aria-label="Add a comment"
