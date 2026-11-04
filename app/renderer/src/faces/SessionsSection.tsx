@@ -4,6 +4,7 @@ import {
   isLongOutput,
   outputPreview,
   resolveInitialExpanded,
+  sessionsOf,
   sheetSessionHref,
   unavailableNotice,
   usageLine,
@@ -12,7 +13,6 @@ import { commentTime } from '../shell/sheet'
 import type { Session } from '../wire/Session'
 import type { TranscriptBlock } from '../wire/TranscriptBlock'
 import type { TranscriptEntry } from '../wire/TranscriptEntry'
-import type { Reply } from '../wire/Reply'
 import type { JsonValue } from '../wire/serde_json/JsonValue'
 
 export type SessionsSectionProps = {
@@ -32,23 +32,26 @@ type RowTranscript = {
   outputsOpen: string[]
 }
 
-function sessionsOf(reply: Reply): Session[] | null {
-  return 'sessions' in reply ? reply.sessions : null
-}
-
 function statusLabel(record: Session): string {
   if (record.status === 'running') return 'running'
   return `ended (${record.outcome ?? 'unknown'})`
 }
 
 function headerLabel(record: Session): string {
-  const agent = record.agent === null || record.agent.trim() === '' ? 'a pass' : record.agent
+  const agent =
+    typeof record.agent === 'string' && record.agent.trim() !== '' ? record.agent : 'a pass'
   return `${agent} · ${statusLabel(record)}`
 }
 
-function stampLabel(at: string | null): string | null {
-  if (at === null) return null
+function stampLabel(at: string | null | undefined): string | null {
+  if (typeof at !== 'string') return null
   return commentTime(at)
+}
+
+/** A transcript entry's blocks, or nothing when the entry names none. */
+function entryBlocks(entry: TranscriptEntry): TranscriptBlock[] {
+  if (entry === null || typeof entry !== 'object') return []
+  return Array.isArray(entry.blocks) ? entry.blocks : []
 }
 
 function formatInput(input: JsonValue): string {
@@ -82,21 +85,38 @@ function ToolOutput({ output, outputKey }: { output: string; outputKey: string }
 }
 
 function TranscriptBlockView({ block, outputKey }: { block: TranscriptBlock; outputKey: string }) {
+  if (block === null || typeof block !== 'object') return null
   if (block.type === 'text') {
-    return <p className="sheet__session-text">{block.text}</p>
+    return (
+      <p className="sheet__session-text">
+        {typeof block.text === 'string' ? block.text : ''}
+      </p>
+    )
   }
   if (block.type === 'reasoning') {
-    return <p className="sheet__session-thinking">{block.text}</p>
+    return (
+      <p className="sheet__session-thinking">
+        {typeof block.text === 'string' ? block.text : ''}
+      </p>
+    )
   }
+  const tool = block as { name?: unknown; status?: unknown; input?: unknown; output?: unknown }
   return (
     <div className="sheet__session-tool">
       <header className="sheet__session-tool-head">
-        <span className="sheet__session-tool-name">{block.name}</span>
-        <span className="sheet__session-tool-status">{block.status}</span>
+        <span className="sheet__session-tool-name">
+          {typeof tool.name === 'string' ? tool.name : ''}
+        </span>
+        <span className="sheet__session-tool-status">
+          {typeof tool.status === 'string' ? tool.status : ''}
+        </span>
       </header>
-      <pre className="sheet__session-io">{formatInput(block.input)}</pre>
-      {block.output === null ? null : (
-        <ToolOutput output={block.output} outputKey={outputKey} />
+      <pre className="sheet__session-io">{formatInput(tool.input as JsonValue)}</pre>
+      {tool.output === null || tool.output === undefined ? null : (
+        <ToolOutput
+          output={typeof tool.output === 'string' ? tool.output : ''}
+          outputKey={outputKey}
+        />
       )}
     </div>
   )
@@ -131,7 +151,9 @@ export function SessionsSection({ ticketId, revision, expandedSession }: Session
         setSessions(null)
         return
       }
-      const rows = sessionsOf(answer.reply) ?? []
+      const rows = (sessionsOf(answer.reply) ?? []).filter(
+        (record) => record !== null && typeof record === 'object' && typeof record.id === 'string',
+      )
       setReadError(null)
       setSessions(rows)
     }
@@ -172,16 +194,22 @@ export function SessionsSection({ ticketId, revision, expandedSession }: Session
       }))
       return
     }
-    if (!('entries' in answer.reply)) return
-    const page = answer.reply
+    const reply = answer.reply
+    if (reply === null || typeof reply !== 'object' || !('entries' in reply)) return
+    const page = reply as { entries?: unknown; nextCursor?: unknown; unavailable?: unknown }
+    const pageEntries = (
+      Array.isArray(page.entries) ? page.entries : []
+    ).filter((entry) => entry !== null && typeof entry === 'object') as TranscriptEntry[]
+    const nextCursor = typeof page.nextCursor === 'number' ? page.nextCursor : null
+    const unavailable = typeof page.unavailable === 'string' ? page.unavailable : null
     setTranscripts((current) => {
       const kept = cursor === null ? [] : (current[id]?.entries ?? [])
       return {
         ...current,
         [id]: {
-          entries: [...kept, ...page.entries],
-          nextCursor: page.nextCursor,
-          unavailable: page.unavailable === null ? null : unavailableNotice(page.unavailable),
+          entries: [...kept, ...pageEntries],
+          nextCursor,
+          unavailable: unavailable === null ? null : unavailableNotice(unavailable),
           loading: false,
           outputsOpen: current[id]?.outputsOpen ?? [],
         },
@@ -280,7 +308,7 @@ export function SessionsSection({ ticketId, revision, expandedSession }: Session
                     <span className="sheet__session-live">live</span>
                   ) : null}
                 </button>
-                {record.summary === null || record.summary.trim() === '' ? null : (
+                {typeof record.summary !== 'string' || record.summary.trim() === '' ? null : (
                   <p className="sheet__session-summary">{record.summary}</p>
                 )}
                 <p className="sheet__session-meta">
@@ -312,11 +340,11 @@ export function SessionsSection({ ticketId, revision, expandedSession }: Session
                                   <span className="sheet__session-model">{entry.model}</span>
                                 )}
                               </header>
-                              {entry.blocks.map((block, index) => (
+                              {entryBlocks(entry).map((block, index) => (
                                 <TranscriptBlockView
-                                  key={`${entry.id}-${index}`}
+                                  key={`${entry.id ?? index}-${index}`}
                                   block={block}
-                                  outputKey={`${entry.id}-${index}-output`}
+                                  outputKey={`${entry.id ?? index}-${index}-output`}
                                 />
                               ))}
                             </li>

@@ -35,6 +35,7 @@
     "electron": "^45.2.0",
     "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",
+    "happy-dom": "^21.0.4",
     "typescript": "^5.9.3",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"

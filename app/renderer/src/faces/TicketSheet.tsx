@@ -7,23 +7,25 @@ import {
   EMPTY_COMMENT_REFUSAL,
   answerBlock,
   appendPlan,
+  blocksOf,
   canSave,
   commentAuthor,
   commentParams,
   commentTime,
+  commentsOf,
   holdOpen,
   laneChoices,
   laneCreateParams,
   laneRenameParams,
   sheetChanges,
+  sheetComments,
   sheetOf,
-  shortcutHint,
+  sheetTicket,  shortcutHint,
   ticketHandle,
 } from '../shell/sheet'
 import type { Write } from '../shell/write'
 import type { CommentView } from '../wire/CommentView'
 import type { MarkdownBlockView } from '../wire/MarkdownBlockView'
-import type { Reply } from '../wire/Reply'
 import type { TicketDetail } from '../wire/TicketDetail'
 import { MarkdownDocument } from './MarkdownDocument'
 import { SessionsSection } from './SessionsSection'
@@ -45,14 +47,6 @@ export type TicketSheetProps = {
   onDismiss: () => void
   /** A dependency row re-targets the same sheet at another ticket. */
   onOpenTicket: (id: string) => void
-}
-
-function commentsOf(reply: Reply): CommentView[] | null {
-  return 'comments' in reply ? reply.comments : null
-}
-
-function blocksOf(reply: Reply): MarkdownBlockView[] | null {
-  return 'blocks' in reply ? reply.blocks : null
 }
 
 const CLAIM_CHANGED = 'The claim landed, but the comment did not.'
@@ -137,9 +131,9 @@ export function TicketSheet({
         setError('The ticket could not be read.')
         return
       }
-      const found = read.ticket
+      const found = sheetTicket(read.ticket)
       const logFailure = 'error' in log ? log.error.message : null
-      const logRows = 'error' in log ? [] : (commentsOf(log.reply) ?? [])
+      const logRows = 'error' in log ? [] : sheetComments(commentsOf(log.reply) ?? [])
       const decision = answerBlock(found.description)
       const [body, answerBody, ...logBodies] = await Promise.all([
         window.tandem.call({

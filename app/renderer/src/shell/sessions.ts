@@ -1,3 +1,4 @@
+import type { Reply } from '../wire/Reply'
 import type { Session } from '../wire/Session'
 
 /**
@@ -81,12 +82,21 @@ export function outputPreview(text: string): string {
  */
 export function usageLine(record: Session): string | null {
   const parts: string[] = []
-  if (record.model !== null && record.model.trim() !== '') parts.push(record.model)
-  if (record.cost !== null) parts.push(`$${record.cost.toFixed(2)}`)
+  if (typeof record.model === 'string' && record.model.trim() !== '') parts.push(record.model)
+  if (typeof record.cost === 'number' && Number.isFinite(record.cost)) {
+    parts.push(`$${record.cost.toFixed(2)}`)
+  }
   const input = record.tokens?.input ?? null
   const output = record.tokens?.output ?? null
-  if (input !== null || output !== null) {
-    parts.push(`${input ?? 0} in / ${output ?? 0} out`)
+  if (typeof input === 'number' || typeof output === 'number') {
+    parts.push(`${typeof input === 'number' ? input : 0} in / ${typeof output === 'number' ? output : 0} out`)
   }
   return parts.length > 0 ? parts.join(' · ') : null
+}
+
+/** The linked rows out of a `session.list` reply, or null when it names none. */
+export function sessionsOf(reply: Reply): Session[] | null {
+  if (reply === null || reply === undefined || typeof reply !== 'object') return null
+  if (!('sessions' in reply)) return null
+  return Array.isArray(reply.sessions) ? reply.sessions : null
 }
