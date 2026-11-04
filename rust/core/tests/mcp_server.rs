@@ -51,6 +51,180 @@ fn tool_call(id: i64, name: &str, arguments: Value) -> String {
     )
 }
 
+fn tool_call_meta(id: i64, name: &str, arguments: Value, harness_session: &str) -> String {
+    request(
+        json!(id),
+        "tools/call",
+        json!({
+            "name": name,
+            "arguments": arguments,
+            "_meta": {"ai.opencode/sessionID": harness_session},
+        }),
+    )
+}
+
+#[test]
+fn session_verbs_resolve_the_harness_session_from_the_call_meta() {
+    let sandbox = Sandbox::new("mcp-harness-meta");
+    let store = sandbox.store();
+
+    let added: Value = serde_json::from_str(&tool_text(
+        &call(
+            &store,
+            &tool_call(1, "ticket_add", json!({"title": "Carried"})),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    let ticket = added["ticket"]["id"].as_str().expect("an id").to_string();
+
+    let started: Value = serde_json::from_str(&tool_text(
+        &call(
+            &store,
+            &tool_call(
+                2,
+                "session_start",
+                json!({"project": "tandem", "agent": "builder", "brief": "A pass.", "harnessSession": "ses_meta_link"}),
+            ),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    let record = started["session"]["id"]
+        .as_str()
+        .expect("an id")
+        .to_string();
+    assert_eq!(
+        started["session"]["harnessSessionId"], "ses_meta_link",
+        "the record carries the harness pointer: {started}"
+    );
+
+    let linked: Value = serde_json::from_str(&tool_text(
+        &call(
+            &store,
+            &tool_call_meta(
+                3,
+                "session_link",
+                json!({"ticket": ticket}),
+                "ses_meta_link",
+            ),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(
+        linked["session"]["id"], record,
+        "no session param still links the caller's record: {linked}"
+    );
+
+    let shown: Value = serde_json::from_str(&tool_text(
+        &call(
+            &store,
+            &tool_call_meta(4, "session_show", json!({}), "ses_meta_link"),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(
+        shown["session"]["id"], record,
+        "no session param still shows the caller's record: {shown}"
+    );
+}
+
+#[test]
+fn sprint_open_records_the_harness_session_from_the_call_meta() {
+    let sandbox = Sandbox::new("mcp-sprint-meta");
+    let store = sandbox.store();
+
+    let started: Value = serde_json::from_str(&tool_text(
+        &call(
+            &store,
+            &tool_call(
+                1,
+                "session_start",
+                json!({"project": "tandem", "agent": "builder", "brief": "A pass.", "harnessSession": "ses_meta_sprint"}),
+            ),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    let record = started["session"]["id"]
+        .as_str()
+        .expect("an id")
+        .to_string();
+
+    let opened: Value = serde_json::from_str(&tool_text(
+        &call(
+            &store,
+            &tool_call_meta(
+                2,
+                "sprint_open",
+                json!({"lane": "Tandem", "mode": "serial"}),
+                "ses_meta_sprint",
+            ),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(
+        opened["sprint"]["session"], record,
+        "no session param still records the opener's record, not the pointer and not null: {opened}"
+    );
+
+    let refused = call(
+        &store,
+        &tool_call(
+            3,
+            "sprint_open",
+            json!({"lane": "Tandem", "session": "no-such-record"}),
+        ),
+    )
+    .expect("the call answers");
+    assert_eq!(
+        refused["result"]["isError"], true,
+        "an unknown session is refused, not recorded: {refused}"
+    );
+}
+
+#[test]
+fn the_call_meta_beats_a_stale_process_environment() {
+    let sandbox = Sandbox::new("mcp-meta-precedence");
+    let store = sandbox.store();
+
+    for (id, harness) in [(4, "ses_stale_env"), (5, "ses_fresh_call")] {
+        let _ = tool_text(
+            &call(
+                &store,
+                &tool_call(
+                    id,
+                    "session_start",
+                    json!({"project": "tandem", "brief": "A pass.", "harnessSession": harness}),
+                ),
+            )
+            .expect("the call answers"),
+        );
+    }
+
+    let mut stale = tandem_core::setup::Environment::new();
+    stale.insert(
+        "OPENCODE_SESSION_ID".to_string(),
+        "ses_stale_env".to_string(),
+    );
+    let answer = mcp::handle_mcp(
+        &tool_call_meta(6, "session_show", json!({}), "ses_fresh_call"),
+        &store,
+        &Actor::Human,
+        &stale,
+    )
+    .expect("the call answers");
+    let answer: Value = serde_json::from_str(&answer).expect("the answer is JSON");
+    let shown: Value = serde_json::from_str(&tool_text(&answer)).expect("the tool result is JSON");
+    assert_eq!(
+        shown["session"]["harnessSessionId"], "ses_fresh_call",
+        "the caller's pointer beats the server's spawn environment: {shown}"
+    );
+}
+
 fn tool_text(answer: &Value) -> String {
     assert!(
         answer["error"].is_null(),

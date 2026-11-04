@@ -22,7 +22,7 @@ To serve it, the host spawns the bundled binary at session start:
 }
 ```
 
-The server inherits the host's environment: the Tandem home resolves the way `rpc` does (`TANDEM_HOME`, else the default), and the actor is the pass's own (`TANDEM_AGENT`, with `self` expansion where the verb has it). No other configuration is needed.
+The server inherits the host's environment: the Tandem home resolves the way `rpc` does (`TANDEM_HOME`, else the default), and the actor is the pass's own (`TANDEM_AGENT`, with `self` expansion where the verb has it). The calling session needs no flag: the host sends it on every call (`_meta`, `ai.opencode/sessionID`), so `session link`, `session show` and `sprint open` resolve the caller the way the CLI resolves `$OPENCODE_SESSION_ID`. No other configuration is needed.
 
 | tool | the CLI verb it runs |
 | --- | --- |

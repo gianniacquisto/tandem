@@ -875,14 +875,22 @@ fn execute(
                 Some(raw) => SprintMode::parse(raw)
                     .ok_or_else(|| domain(DomainError::InvalidSprintMode(raw.to_string())))?,
             };
-            let opened = Sprints::new(store)
-                .open(
-                    actor,
-                    named(&params.lane),
-                    mode,
+            // The opener resolves as the verb resolves it: the caller's value
+            // (an unknown one is the verb's refusal), else the harness session
+            // at open time, which the record stores as its own id. An absent
+            // session the environment cannot resolve stays absent, so the
+            // app's null-session open keeps recording null.
+            let sessions = Sessions::new(store);
+            let session = match params.session.as_deref() {
+                Some(_) => Some(resolve_session(
+                    &sessions,
                     params.session.as_deref(),
-                    None,
-                )
+                    environment,
+                )?),
+                None => resolve_session(&sessions, None, environment).ok(),
+            };
+            let opened = Sprints::new(store)
+                .open(actor, named(&params.lane), mode, session.as_deref(), None)
                 .map_err(domain)?;
             Ok(Reply::Sprint(SprintReply {
                 revision: store.last_revision(),

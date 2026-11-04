@@ -232,6 +232,14 @@ pub fn server_version(store: &Store, environment: &crate::setup::Environment) ->
 /// the `rpc` door answers, and the answer becomes the tool result. A domain
 /// refusal is a result with `isError`, in the domain's words; only a call the
 /// door cannot route is a JSON-RPC error.
+///
+/// The call carries its harness session beside `arguments`: the host sends
+/// `_meta: {"ai.opencode/sessionID": ...}` on every call its session makes,
+/// and the call runs with that pointer as its `$OPENCODE_SESSION_ID`, so the
+/// session verbs resolve the caller the way the CLI does. A long-lived server
+/// inherits only its spawn environment, which names no session; the call's
+/// pointer wins over that environment when both name one, because the caller
+/// is fresher than the spawn.
 fn call_frame(
     id: Option<Value>,
     params: Option<&Value>,
@@ -258,6 +266,18 @@ fn call_frame(
         );
     }
     let frame = json!({"id": 1, "method": tool.method_tag, "params": arguments}).to_string();
+    let overridden;
+    let environment = match call_harness_session(params) {
+        Some(id) => {
+            overridden = {
+                let mut owned = environment.clone();
+                owned.insert("OPENCODE_SESSION_ID".to_string(), id);
+                owned
+            };
+            &overridden
+        }
+        None => environment,
+    };
     let answer: Value = serde_json::from_str(&handle_in(&frame, store, actor, environment))
         .unwrap_or_else(|_| json!({"id": 1, "error": {"code": "parse", "message": "the answer is not readable"}}));
     if let Some(error) = answer.get("error") {
@@ -275,6 +295,20 @@ fn call_frame(
         id,
         json!({"content": [{"type": "text", "text": result.to_string()}]}),
     )
+}
+
+/// The harness session the caller runs in, as the host reports it: opencode
+/// sends `_meta: {"ai.opencode/sessionID": ...}` on every `tools/call` its
+/// session makes. An absent, non-string or blank pointer is no pointer, so the
+/// call runs on the server's own environment exactly as before.
+fn call_harness_session(params: Option<&Value>) -> Option<String> {
+    params
+        .and_then(|params| params.get("_meta"))
+        .and_then(|meta| meta.get("ai.opencode/sessionID"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
 }
 
 /// A success frame.
