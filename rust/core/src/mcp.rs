@@ -343,7 +343,7 @@ impl Tool {
     }
 }
 
-/// The 33 tools: one per covered wire method. The schema beside each entry is
+/// The 34 tools: one per covered wire method. The schema beside each entry is
 /// the params struct's own derivation, so the list cannot drift from the wire
 /// without the registry test failing.
 pub fn tools() -> Vec<Tool> {

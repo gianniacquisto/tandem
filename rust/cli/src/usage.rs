@@ -1244,7 +1244,7 @@ pub const MCP: &str = concat!(
     "\n",
     "One JSON-RPC 2.0 frame per line: `initialize` negotiates the protocol",
     "\n",
-    "version, `tools/list` names the 33 tools, and `tools/call` runs one",
+    "version, `tools/list` names the 34 tools, and `tools/call` runs one",
     "\n",
     "through the same dispatch the `rpc` door answers. The host spawns this",
     "\n",

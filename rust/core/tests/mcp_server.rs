@@ -4,7 +4,7 @@
 //! These are the claims the pipe test cannot isolate:
 //!
 //! - `initialize` negotiates the protocol version instead of assuming it;
-//! - `tools/list` names the 33 tools with object-rooted schemas;
+//! - `tools/list` names the 34 tools with object-rooted schemas;
 //! - `tools/call` drives the whole ticket loop through the `rpc` door, and a
 //!   domain refusal is a result with `isError`, not a JSON-RPC error;
 //! - `session.end` reads the harness by default and stamps without usage when
@@ -176,7 +176,7 @@ fn a_notification_is_answered_with_silence() {
 }
 
 #[test]
-fn tools_list_names_the_33_tools_with_object_schemas() {
+fn tools_list_names_the_34_tools_with_object_schemas() {
     let sandbox = Sandbox::new("mcp-tools-list");
     let store = sandbox.store();
 
@@ -184,7 +184,7 @@ fn tools_list_names_the_33_tools_with_object_schemas() {
     let tools = listed["result"]["tools"]
         .as_array()
         .expect("tools is an array");
-    assert_eq!(tools.len(), 33);
+    assert_eq!(tools.len(), 34);
     for tool in tools {
         assert!(
             !tool["name"].as_str().unwrap_or("").is_empty(),
