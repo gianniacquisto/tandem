@@ -1350,6 +1350,22 @@ body {
   outline: var(--hairline) solid var(--accent);
 }
 
+.board__cell[data-empty] {
+  border: var(--hairline) dashed var(--line);
+}
+
+.board__cell[data-empty][data-targeted] {
+  border-style: solid;
+}
+
+.board__drop-hint {
+  margin: 0;
+  padding: 8px 4px;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+  text-align: center;
+}
+
 .board__count {
   color: var(--ink-dim);
   font-size: 11px;

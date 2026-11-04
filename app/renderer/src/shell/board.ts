@@ -238,6 +238,67 @@ export function filterTickets(
   })
 }
 
+/** One empty message the Tickets face draws, without the widget around it. */
+export type EmptyCopy = {
+  title: string
+  subtitle: string
+  /** The first-run states get the room a quiet one does not. */
+  hero?: boolean
+}
+
+/**
+ * The one message the Tickets face draws when there is nothing to draw, or a
+ * read that failed. Pure so the board test proves every state answers: the
+ * face only wraps the copy in its widget (the failed read adds its retry).
+ */
+export function emptyBoardCopy(args: {
+  status: 'connecting' | 'ready' | 'failed'
+  ticketCount: number
+  error: string | null
+  filters: Filters
+  nothingVisible: boolean
+  activeProject: string | null
+  laneNames: readonly string[]
+}): EmptyCopy | null {
+  const { status, ticketCount, error, filters, nothingVisible, activeProject, laneNames } = args
+  if (status === 'connecting' && ticketCount === 0) {
+    return { title: 'Reading the board', subtitle: 'The store is answering over rpc.' }
+  }
+  if (status === 'failed' && ticketCount === 0) {
+    return { title: 'The board could not be read', subtitle: error ?? 'The store refused the read.' }
+  }
+  if (ticketCount === 0) {
+    return {
+      title: 'Nothing on the board',
+      subtitle: 'Add a ticket above, or from the CLI.',
+      hero: true,
+    }
+  }
+  if (!nothingVisible) return null
+  if (filters.text.trim() !== '') {
+    return { title: 'No matches', subtitle: 'No ticket title matches your search.' }
+  }
+  if (filters.status !== null || filters.assignee !== null || filters.lane !== null) {
+    return {
+      title: 'No tickets match these filters',
+      subtitle: 'Clear a filter to see more.',
+    }
+  }
+  if (activeProject !== null && laneNames.includes(activeProject)) {
+    return {
+      title: `No tickets in ${activeProject}`,
+      subtitle: 'Add one above, or show every lane.',
+    }
+  }
+  if (filters.scope === 'open') {
+    return { title: 'All clear', subtitle: 'Nothing open. Add something above.', hero: true }
+  }
+  if (filters.scope === 'done') {
+    return { title: 'Nothing done yet', subtitle: 'Completed tickets rest here.' }
+  }
+  return { title: 'The list is empty', subtitle: 'Add your first ticket above.' }
+}
+
 /**
  * Every lane key in render order: the default area, the declared lanes, then any
  * name only a ticket carries, so a hand edit cannot hide a ticket.

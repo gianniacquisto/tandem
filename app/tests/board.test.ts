@@ -13,6 +13,7 @@ import {
   boardStatuses,
   dropCalls,
   dropIndex,
+  emptyBoardCopy,
   filterTickets,
   firstSelection,
   laneColumns,
@@ -438,5 +439,104 @@ describe('the project focus', () => {
   it('falls back to every lane when the focus names no lane key, so a stale focus hides nothing', () => {
     expect(visibleLaneKeys(keys, 'Retro')).toEqual(keys)
     expect(visibleLaneKeys(keys, '')).toEqual(keys)
+  })
+})
+
+describe('the empty board', () => {
+  it('shows a drop target with a hint in every empty cell, highlighted on drag', () => {
+    const cell = source('faces/BoardCell.tsx')
+    expect(cell).toContain('board__drop-hint')
+    expect(cell).toContain('Drop tickets here')
+    expect(cell).toContain('data-empty')
+    // The drag highlight survives the hint: the cell still marks its target.
+    expect(cell).toContain('data-targeted')
+    const css = readFileSync(join(renderer, 'app.css'), 'utf8')
+    expect(css).toContain('board__drop-hint')
+    expect(css).toContain('board__cell[data-empty]')
+  })
+
+  it('keeps the empty copy and reaches every state', () => {
+    // TAND-12 keeps the words: the helper owns them and the face draws them.
+    const helper = source('shell/board.ts')
+    for (const words of ['All clear', 'No matches', 'No tickets match these filters']) {
+      expect(helper, `keeps "${words}"`).toContain(words)
+    }
+    // The face draws its copy through the one helper, so the helper is the
+    // seam the reachability below proves.
+    const face = source('faces/TicketsFace.tsx')
+    expect(face).toContain('emptyBoardCopy(')
+
+    const base = {
+      error: null as string | null,
+      filters: filters({}),
+      nothingVisible: true,
+      activeProject: null as string | null,
+      laneNames: ['Port'] as readonly string[],
+    }
+    expect(
+      emptyBoardCopy({ ...base, status: 'connecting', ticketCount: 0 }),
+    ).toEqual({
+      title: 'Reading the board',
+      subtitle: 'The store is answering over rpc.',
+    })
+    expect(
+      emptyBoardCopy({ ...base, status: 'failed', ticketCount: 0, error: 'refused' }),
+    ).toMatchObject({ title: 'The board could not be read' })
+    expect(emptyBoardCopy({ ...base, status: 'ready', ticketCount: 0 })).toMatchObject({
+      title: 'Nothing on the board',
+    })
+    // A board with a visible ticket draws no empty state.
+    expect(
+      emptyBoardCopy({ ...base, status: 'ready', ticketCount: 2, nothingVisible: false }),
+    ).toBeNull()
+    // No tickets match the search.
+    expect(
+      emptyBoardCopy({
+        ...base,
+        status: 'ready',
+        ticketCount: 2,
+        filters: filters({ text: 'zzz no such ticket' }),
+      }),
+    ).toMatchObject({ title: 'No matches' })
+    // A status, assignee or lane filter hides every ticket.
+    expect(
+      emptyBoardCopy({
+        ...base,
+        status: 'ready',
+        ticketCount: 2,
+        filters: filters({ status: 'done' }),
+      }),
+    ).toMatchObject({ title: 'No tickets match these filters' })
+    // The focused lane is empty while the store is not.
+    expect(
+      emptyBoardCopy({ ...base, status: 'ready', ticketCount: 2, activeProject: 'Port' }),
+    ).toMatchObject({ title: 'No tickets in Port' })
+    // Nothing open: the work is done.
+    expect(
+      emptyBoardCopy({
+        ...base,
+        status: 'ready',
+        ticketCount: 2,
+        filters: filters({ scope: 'open' }),
+      }),
+    ).toMatchObject({ title: 'All clear' })
+    // Nothing completed yet.
+    expect(
+      emptyBoardCopy({
+        ...base,
+        status: 'ready',
+        ticketCount: 2,
+        filters: filters({ scope: 'done' }),
+      }),
+    ).toMatchObject({ title: 'Nothing done yet' })
+    // The all scope with nothing in view still answers, so no state is bare.
+    expect(
+      emptyBoardCopy({
+        ...base,
+        status: 'ready',
+        ticketCount: 2,
+        filters: filters({ scope: 'all' }),
+      }),
+    ).toMatchObject({ title: 'The list is empty' })
   })
 })
