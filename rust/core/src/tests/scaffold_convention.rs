@@ -768,3 +768,28 @@ fn the_build_and_gate_fetch_the_fork_remote_first() {
         "the gate names the fork remote it fetches first"
     );
 }
+
+/// TAN-301: the grill fires only on a refiner-shaped in-run brief. A
+/// human-origin finished brief, Scope and Done when with no open question,
+/// skips the grill and builds directly; Sprints 1 and 2 are the precedent.
+#[test]
+fn a_finished_human_brief_skips_the_grill() {
+    let build = file("skills/tandem-build/SKILL.md");
+    assert!(
+        build.contains("skips the grill"),
+        "the build skill names the human-origin finished brief's skip"
+    );
+    assert!(
+        build.contains("Sprints 1 and 2"),
+        "the build skill names the Sprint 1 and 2 precedent"
+    );
+    let sprint = file("skills/tandem-sprint/SKILL.md");
+    assert!(
+        sprint.contains("skips the grill"),
+        "the sprint refine rule names the human-origin finished brief's skip"
+    );
+    assert!(
+        sprint.contains("Sprints 1 and 2"),
+        "the sprint refine rule names the Sprint 1 and 2 precedent"
+    );
+}
