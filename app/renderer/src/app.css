@@ -1944,6 +1944,68 @@ body {
   padding: var(--space-gutter);
 }
 
+/* The title and its Save stay reachable on a long ticket: the bar sticks to
+ * the top of the scrolling body, so no scroll to the bottom is needed. */
+.sheet__sticky {
+  position: sticky;
+  top: calc(-1 * var(--space-gutter));
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lane);
+  margin: calc(-1 * var(--space-gutter)) calc(-1 * var(--space-gutter)) 0;
+  padding: var(--space-gutter) var(--space-gutter) 12px;
+  border-bottom: var(--hairline) solid var(--sand);
+  background: var(--paper);
+}
+
+/* The append-only mark: one glance says the stored text is never overwritten. */
+.sheet__note {
+  margin: 4px 0 0;
+  color: var(--ink-dim);
+  font-size: 10.5px;
+}
+
+/* The status dot reuses the list's state colour, so the status reads the same
+ * in the sheet and on the row. */
+.sheet__status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sheet__status-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chip, var(--ink-dim));
+}
+
+.sheet__status-dot[data-status="backlog"] {
+  --chip: var(--ink-dim);
+}
+
+.sheet__status-dot[data-status="on-hold"] {
+  --chip: var(--ember-deep);
+}
+
+.sheet__status-dot[data-status="ready"] {
+  --chip: var(--accent-deep);
+}
+
+.sheet__status-dot[data-status="in-progress"] {
+  --chip: var(--accent);
+}
+
+.sheet__status-dot[data-status="in-review"] {
+  --chip: var(--moss);
+}
+
+.sheet__status-dot[data-status="done"] {
+  --chip: var(--ink-dim);
+}
+
 .sheet__reading,
 .sheet__empty {
   margin: 0;
