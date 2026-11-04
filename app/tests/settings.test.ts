@@ -80,8 +80,8 @@ describe('the Settings surface', () => {
     ])
     // Add, Save roster, one Remove per row (one site in source), three path
     // Copy buttons (Home, Bikeshed, one host site in source), Install/Repair,
-    // and the sign-in's three: sign in, cancel, sign out.
-    expect([...face.matchAll(/<button\b/g)]).toHaveLength(10)
+    // and the sign-in's four: Console sign in, key sign in, cancel, sign out.
+    expect([...face.matchAll(/<button\b/g)]).toHaveLength(11)
   })
 
   it('shows a repair as what changed, not as a verdict', () => {

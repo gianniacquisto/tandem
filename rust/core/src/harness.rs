@@ -19,9 +19,6 @@ use rusqlite::OpenFlags;
 
 use crate::store::Home;
 
-/// The integration the sign-in wires first: the OpenCode Console account.
-pub const CONSOLE_INTEGRATION: &str = "opencode";
-
 /// `<TandemHome>/harness/`: the harness home, one directory the app copies and
 /// restores whole (ADR 0038).
 pub fn root(home: &Home) -> PathBuf {
@@ -38,18 +35,20 @@ pub fn data_database(home: &Home) -> PathBuf {
     root(home).join("data").join("opencode").join("opencode.db")
 }
 
-/// Whether the harness home holds a Console sign-in.
+/// Whether the harness home holds a sign-in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HarnessAuth {
-    /// The Console credential is stored. `account` is its label (`Personal`),
-    /// `integrations` every stored integration id in name order, so a later
-    /// provider is a second row, not a redesign.
+    /// Any stored credential counts: the human signs in with whichever provider
+    /// they pay for, not only the OpenCode Console. `account` is the first
+    /// stored label in integration order, `integrations` every stored
+    /// integration id in name order, so a later provider is a second row, not
+    /// a redesign.
     Stored {
         account: String,
         integrations: Vec<String>,
     },
-    /// No harness database, an empty credential table, or credentials for other
-    /// providers only. The harness waits for a sign-in; nothing is wrong.
+    /// No harness database, or an empty credential table. The harness waits
+    /// for a sign-in; nothing is wrong.
     NotStored,
     /// A database is present but unreadable. Informational, like the row: the
     /// harness migrates its own store, so this names what was seen.
@@ -70,10 +69,7 @@ pub fn read(home: &Home) -> HarnessAuth {
                 .iter()
                 .map(|(integration, _)| integration.clone())
                 .collect::<Vec<_>>();
-            match rows
-                .iter()
-                .find(|(integration, _)| integration == CONSOLE_INTEGRATION)
-            {
+            match rows.first() {
                 Some((_, label)) => HarnessAuth::Stored {
                     account: label.clone(),
                     integrations,

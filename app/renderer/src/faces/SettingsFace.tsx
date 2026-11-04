@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { HarnessStatusReply } from '../../../src/shared/bridge'
 import { checkChanges, type CheckChange } from '../shell/setup'
 import { fixForCheck, groupChecks } from '../shell/settingsGroups'
-import { consoleStored, harnessPhase, harnessRows } from '../shell/harnessAuth'
+import { harnessPhase, harnessRows, storedIntegration } from '../shell/harnessAuth'
 import { addRosterName, removeRosterName } from '../shell/roster'
 import type { DoctorReply } from '../wire/DoctorReply'
 import type { DoctorReport } from '../wire/DoctorReport'
@@ -68,8 +68,8 @@ async function copyPath(value: string): Promise<void> {
  * `settings set` under a Save: the draft edits in place, the write replaces
  * the stored list whole, and the list redraws from the write's receipt, never
  * from the draft it sent. The harness section signs the embedded harness into
- * the OpenCode Console account (TAN-265): `harness.*` is answered by the main
- * process, which spawns `opencode auth login` with the harness environment
+ * any provider (TAN-265, PRT-4): `harness.*` is answered by the main
+ * process, which spawns the harness binary with the harness environment
  * and owns the poll, so the renderer touches no harness path. The face
  * computes no path and no state; it draws the reports' own.
  */
@@ -87,6 +87,8 @@ export function SettingsFace({ revision }: SettingsFaceProps) {
   const [harness, setHarness] = useState<HarnessStatusReply | null>(null)
   const [harnessBusy, setHarnessBusy] = useState(false)
   const [harnessFailure, setHarnessFailure] = useState<string | null>(null)
+  const [provider, setProvider] = useState('')
+  const [apiKey, setApiKey] = useState('')
   const phaseRef = useRef<string | null>(null)
 
   // The harness read: `harness.status` is answered by the main process from
@@ -117,14 +119,17 @@ export function SettingsFace({ revision }: SettingsFaceProps) {
     phaseRef.current = phase
   }
 
-  // The sign-in: `harness.login` starts the Console device flow in the main
+  // The Console sign-in: `harness.login` starts the device flow in the main
   // process and opens the provider URL in the system browser. The call answers
   // with the URL and the code, and the face polls `harness.status` until the
   // account shows stored.
   async function signIn(): Promise<void> {
     setHarnessBusy(true)
     try {
-      const answer = await window.tandem.call({ method: 'harness.login', params: {} })
+      const answer = await window.tandem.call({
+        method: 'harness.login',
+        params: { integration: 'opencode' },
+      })
       if ('error' in answer) {
         setHarnessFailure(answer.error.message)
         return
@@ -133,6 +138,38 @@ export function SettingsFace({ revision }: SettingsFaceProps) {
         setHarnessFailure('The sign-in did not answer a URL.')
         return
       }
+      setHarnessFailure(null)
+      await readHarness()
+    } finally {
+      setHarnessBusy(false)
+    }
+  }
+
+  // The key sign-in for any other provider: `harness.login` with the
+  // integration id and the masked key, answered over the served loopback API
+  // by the main side. The reply is a receipt, not a URL, and the key is
+  // cleared from the face once it lands in the harness home.
+  async function signInWithKey(): Promise<void> {
+    const integration = provider.trim()
+    if (integration === '' || apiKey === '') {
+      setHarnessFailure('Name the provider and paste its API key to sign in with a key.')
+      return
+    }
+    setHarnessBusy(true)
+    try {
+      const answer = await window.tandem.call({
+        method: 'harness.login',
+        params: { integration, key: apiKey },
+      })
+      if ('error' in answer) {
+        setHarnessFailure(answer.error.message)
+        return
+      }
+      if (!('stored' in answer.reply)) {
+        setHarnessFailure('The key sign-in did not answer a receipt.')
+        return
+      }
+      setApiKey('')
       setHarnessFailure(null)
       await readHarness()
     } finally {
@@ -157,13 +194,14 @@ export function SettingsFace({ revision }: SettingsFaceProps) {
   }
 
   // The scoped logout: `harness.logout` removes only the harness-home
-  // credential, and the doctor re-read shows the unsigned row again.
+  // credential of the stored integration, and the doctor re-read shows the
+  // unsigned row again.
   async function signOut(): Promise<void> {
     setHarnessBusy(true)
     try {
       const answer = await window.tandem.call({
         method: 'harness.logout',
-        params: { integration: 'opencode' },
+        params: { integration: storedAccount?.id ?? 'opencode' },
       })
       if ('error' in answer) {
         setHarnessFailure(answer.error.message)
@@ -308,13 +346,13 @@ export function SettingsFace({ revision }: SettingsFaceProps) {
   const grouped = groupChecks(settings?.doctor.checks ?? [])
   const phase = harness === null ? null : harnessPhase(harness)
   const rows = harness === null ? [] : harnessRows(harness)
-  const consoleAccount = harness === null ? null : consoleStored(harness.integrations)
+  const storedAccount = harness === null ? null : storedIntegration(harness.integrations)
   const harnessError = harness?.failure ?? harnessFailure
   const harnessBlurb =
     phase === null
       ? 'Reading the harness sign-in…'
       : phase === 'stored'
-        ? `Signed in${consoleAccount === null ? '' : ` as ${consoleAccount.connections.map((account) => account.label).join(', ')}`}: the embedded agent can call a model.`
+        ? `Signed in${storedAccount === null ? '' : ` as ${storedAccount.connections.map((account) => account.label).join(', ')}`}: the embedded agent can call a model.`
         : phase === 'pending'
           ? 'Waiting in the browser: approve the device request to sign in.'
           : phase === 'failure'
@@ -551,19 +589,50 @@ export function SettingsFace({ revision }: SettingsFaceProps) {
             Sign out
           </button>
         ) : (
-          <button
-            type="button"
-            className="settings__action"
-            disabled={harnessBusy}
-            onClick={() => void signIn()}
-          >
-            {phase === 'failure' ? 'Try again' : 'Sign in with OpenCode Console'}
-          </button>
+          <>
+            <button
+              type="button"
+              className="settings__action"
+              disabled={harnessBusy}
+              onClick={() => void signIn()}
+            >
+              {phase === 'failure' ? 'Try again' : 'Sign in with OpenCode Console'}
+            </button>
+            <form
+              className="settings__add"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void signInWithKey()
+              }}
+            >
+              <input
+                className="settings__name"
+                type="text"
+                value={provider}
+                placeholder="Provider id, e.g. mistral"
+                aria-label="The provider to sign in, e.g. mistral"
+                onChange={(event) => setProvider(event.target.value)}
+              />
+              <input
+                className="settings__name"
+                type="password"
+                value={apiKey}
+                placeholder="API key"
+                aria-label="The provider's API key"
+                onChange={(event) => setApiKey(event.target.value)}
+              />
+              <button type="submit" className="settings__action" disabled={harnessBusy}>
+                Sign in with API key
+              </button>
+            </form>
+          </>
         )}
         <p className="settings__hint">
-          Signs the embedded harness into the OpenCode Console account through the browser flow.
-          The credential lands only in the harness home, never in your own store, and the sign-in
-          spends no model call.
+          Signs the embedded harness into any provider through its own sign-in: the OpenCode
+          Console through the browser flow, or a key-based provider with its API key. The
+          credential lands only in the harness home, never in your own store, and the sign-in
+          spends no model call. A stored key is stored, not verified: the provider checks it on
+          the first model call.
         </p>
         {harnessError === null ? null : (
           <p className="settings__error" role="alert">

@@ -14,9 +14,9 @@ export type HarnessRow = {
   stored: boolean
 }
 
-/** The Console row with a stored account, if the harness home holds one. */
-export function consoleStored(integrations: HarnessIntegration[]): HarnessIntegration | null {
-  return integrations.find((row) => row.id === 'opencode' && row.connections.length > 0) ?? null
+/** The first integration row with a stored account: any provider counts. */
+export function storedIntegration(integrations: HarnessIntegration[]): HarnessIntegration | null {
+  return integrations.find((row) => row.connections.length > 0) ?? null
 }
 
 /**
@@ -26,7 +26,7 @@ export function consoleStored(integrations: HarnessIntegration[]): HarnessIntegr
  * still draws the sign-in.
  */
 export function harnessPhase(status: HarnessStatusReply): HarnessPhase {
-  if (consoleStored(status.integrations) !== null) return 'stored'
+  if (storedIntegration(status.integrations) !== null) return 'stored'
   if (status.failure !== null) return 'failure'
   if (status.pending !== null) return 'pending'
   return 'signed-out'

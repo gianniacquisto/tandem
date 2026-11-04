@@ -4,7 +4,13 @@ import { spawn } from 'node:child_process'
 import { app, BrowserWindow, ipcMain, session, shell as electronShell } from 'electron'
 
 import { resolveBinary } from './binary'
-import { answerHarness, HarnessController, isHarnessCall, tandemHomeDir } from './harness'
+import {
+  answerHarness,
+  HarnessController,
+  isHarnessCall,
+  tandemHomeDir,
+  type HarnessRequest,
+} from './harness'
 import { HarnessServer, resolveServerBinary, type HarnessServerChild } from './harnessServer'
 import { RpcClient } from './rpcClient'
 import { contentSecurityPolicy } from '../shared/security'
@@ -68,7 +74,10 @@ function harnessController(): HarnessController {
         const child = spawn(binary, args, {
           env: options.env,
           cwd: options.cwd,
-          stdio: ['ignore', 'pipe', 'pipe'],
+          // stdin is the serve child's lifetime handle: with it ignored,
+          // `serve --stdio` prints the handshake but never opens the
+          // loopback listener, and the key sign-in's fetch is refused.
+          stdio: ['pipe', 'pipe', 'pipe'],
           windowsHide: true,
         })
         return {
@@ -90,6 +99,16 @@ function harnessController(): HarnessController {
       openUrl: (url) => {
         void electronShell.openExternal(url)
       },
+      // The loopback API seam (ADR 0038): the main process holds the url and
+      // the password, so the harness credential never enters the renderer.
+      request: (async (url: string, init: Parameters<HarnessRequest>[1]) => {
+        const response = await fetch(url, {
+          method: init.method,
+          headers: init.headers,
+          body: init.body,
+        })
+        return { status: response.status, body: await response.text() }
+      }) as HarnessRequest,
       tandemHome: tandemHome(),
       env: { ...process.env, TANDEM_OPENCODE_BIN: harnessBinary() },
       baseEnv: process.env,

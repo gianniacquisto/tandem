@@ -57,6 +57,17 @@ export type HarnessPending = {
 }
 
 /**
+ * What a `harness.login` names: the integration to sign in, and the key for a
+ * key-based provider. Absent both, it starts the OpenCode Console device flow;
+ * a present `key` signs the named integration in over the served loopback API,
+ * no browser and no spawned `auth login`.
+ */
+export type HarnessLoginParams = {
+  integration?: string
+  key?: string
+}
+
+/**
  * The harness sign-in calls (TAN-265). Answered by the main process, never by
  * the core: the renderer reaches the harness home only through this door, and
  * no CLI verb spells these acts. The one exception to the UI-only-write rule,
@@ -65,7 +76,7 @@ export type HarnessPending = {
  */
 export type HarnessCall =
   | { method: 'harness.status'; params: Record<string, never> }
-  | { method: 'harness.login'; params: Record<string, never> }
+  | { method: 'harness.login'; params: HarnessLoginParams }
   | { method: 'harness.cancel'; params: Record<string, never> }
   | { method: 'harness.logout'; params: { integration?: string } }
 
@@ -77,6 +88,7 @@ export type HarnessReply =
       failure: string | null
     }
   | { url: string; code: string | null }
+  | { stored: string }
   | { cancelled: boolean }
   | { integration: string }
 
@@ -87,10 +99,15 @@ export type HarnessStatusReply = {
   failure: string | null
 }
 
-/** A started login, narrowed from the union the same way. */
+/** A started device-flow login, narrowed from the union the same way. */
 export type HarnessLoginReply = {
   url: string
   code: string | null
+}
+
+/** A key sign-in's receipt, narrowed from the union the same way. */
+export type HarnessKeyReply = {
+  stored: string
 }
 
 /** Whether `call` is a harness call the main process answers itself. */

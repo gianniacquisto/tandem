@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -5,6 +6,8 @@ import {
   isHarnessCall,
   type HarnessCall,
   type HarnessIntegration,
+  type HarnessKeyReply,
+  type HarnessLoginParams,
   type HarnessLoginReply,
   type HarnessStatusReply,
 } from '../shared/bridge'
@@ -165,9 +168,39 @@ export function statusArgs(): string[] {
   return ['auth', 'list', '--format', 'json', '--standalone']
 }
 
-/** The Console device flow, non-interactive: it prints a URL and waits. */
-export function loginArgs(): string[] {
-  return ['auth', 'login', 'opencode', '--method', 'device', '--standalone']
+/**
+ * The device flow, non-interactive: it prints a URL and waits. The target is
+ * any integration id; the Console is the default the face offers.
+ */
+export function loginArgs(target = 'opencode'): string[] {
+  return ['auth', 'login', target, '--method', 'device', '--standalone']
+}
+
+/**
+ * The served loopback API (ADR 0038): `--stdio` binds stdin as the lifetime
+ * handle, `--port 0` takes an ephemeral port, and the first stdout line is
+ * the handshake naming the url.
+ */
+export function serveArgs(): string[] {
+  return ['serve', '--stdio', '--port', '0']
+}
+
+/** The ephemeral url from the handshake line, `{"url":"http://127.0.0.1:<port>"}`. */
+export function parseServeHandshake(line: string): string {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(line)
+  } catch {
+    throw new Error('the harness server printed a handshake that is not JSON')
+  }
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    typeof (parsed as { url?: unknown }).url !== 'string'
+  ) {
+    throw new Error('the harness server printed a handshake without a url')
+  }
+  return (parsed as { url: string }).url
 }
 
 /** Log out of one stored account, in the harness home only. */
@@ -229,9 +262,19 @@ export function parseLoginCode(output: string): string | null {
   return match?.[1] ?? null
 }
 
+/**
+ * The seam the loopback API is called through, so the suite can drive a fake
+ * server: one request in, the status and body out. The shell wires `fetch`.
+ */
+export type HarnessRequest = (
+  url: string,
+  init: { method: string; headers: Record<string, string>; body?: string },
+) => Promise<{ status: number; body: string }>
+
 export type HarnessControllerDeps = {
   spawn: HarnessSpawn
   openUrl: (url: string) => void
+  request: HarnessRequest
   tandemHome: string
   env: Record<string, string | undefined>
   baseEnv?: NodeJS.ProcessEnv
@@ -245,8 +288,10 @@ export type HarnessControllerDeps = {
  */
 export class HarnessController {
   private readonly deps: HarnessControllerDeps
+  /** The loopback API credential (ADR 0038), generated once per controller. */
+  private readonly password = randomBytes(24).toString('hex')
   private loginChild: HarnessChild | null = null
-  private loginAttempt: Promise<HarnessLoginReply> | null = null
+  private loginAttempt: Promise<HarnessLoginReply | HarnessKeyReply> | null = null
   private pending: { url: string; code: string | null } | null = null
   private failure: string | null = null
 
@@ -259,7 +304,11 @@ export class HarnessController {
     for (const [key, value] of Object.entries(this.deps.baseEnv ?? {})) {
       if (value !== undefined) base[key] = value
     }
-    return { ...base, ...harnessEnv(this.deps.tandemHome) }
+    return {
+      ...base,
+      ...harnessEnv(this.deps.tandemHome),
+      OPENCODE_SERVER_PASSWORD: this.password,
+    }
   }
 
   private ensureHome(): void {
@@ -301,18 +350,34 @@ export class HarnessController {
   }
 
   /**
-   * Start the Console device flow: the browser opens at the printed URL, the
-   * call answers with that URL and the code, and the child keeps waiting until
-   * the human approves or the attempt is cancelled.
+   * Start a sign-in. With a `key`, the named integration is signed in over the
+   * served loopback API (no browser, no spawned `auth login --answer`, which
+   * the pinned binary refuses non-interactively) and the call answers a
+   * receipt, not a URL. Without one, the target's device flow starts: the
+   * browser opens at the printed URL, the call answers with that URL and the
+   * code, and the child keeps waiting until the human approves or the attempt
+   * is cancelled.
    */
-  login(): Promise<HarnessLoginReply> {
+  login(params: HarnessLoginParams = {}): Promise<HarnessLoginReply | HarnessKeyReply> {
     if (this.loginAttempt !== null) return this.loginAttempt
+    if (params.key !== undefined && params.key !== '') {
+      return this.loginWithKey(params.integration ?? '', params.key)
+    }
+    return this.loginWithDevice(params.integration ?? 'opencode')
+  }
+
+  /**
+   * The device flow against any integration target: the browser opens at the
+   * printed URL, the call answers with that URL and the code, and the child
+   * keeps waiting until the human approves or the attempt is cancelled.
+   */
+  private loginWithDevice(target: string): Promise<HarnessLoginReply> {
     this.failure = null
-    this.loginAttempt = new Promise<HarnessLoginReply>((resolve, reject) => {
+    const attempt = new Promise<HarnessLoginReply>((resolve, reject) => {
       let child: HarnessChild
       try {
         this.ensureHome()
-        child = this.deps.spawn(resolveHarnessBinary(this.deps.env), loginArgs(), {
+        child = this.deps.spawn(resolveHarnessBinary(this.deps.env), loginArgs(target), {
           env: this.spawnEnv(),
           cwd: join(this.deps.tandemHome, 'harness'),
         })
@@ -380,7 +445,130 @@ export class HarnessController {
         })
       })
     })
-    return this.loginAttempt
+    this.loginAttempt = attempt
+    return attempt
+  }
+
+  /**
+   * The key sign-in (measured on the pinned binary v2.2.5): spawn
+   * `serve --stdio --port 0` under the harness environment, read the url
+   * from the handshake, warm the integration catalog with one
+   * `GET /api/integration` (a fresh server answers connect/key 404 until it
+   * has run), then `POST /api/integration/:id/connect/key` with the key in
+   * the body. The secret rides the loopback HTTP body, never a child argv,
+   * and lands only in the harness home's credential table. A 204 answers
+   * the receipt; anything else fails naming the status, never the key.
+   */
+  private loginWithKey(integration: string, key: string): Promise<HarnessKeyReply> {
+    this.failure = null
+    const attempt = new Promise<HarnessKeyReply>((resolve, reject) => {
+      if (integration.trim() === '') {
+        this.loginAttempt = null
+        reject(new Error('the key sign-in names no integration'))
+        return
+      }
+      let child: HarnessChild
+      try {
+        this.ensureHome()
+        child = this.deps.spawn(resolveHarnessBinary(this.deps.env), serveArgs(), {
+          env: this.spawnEnv(),
+          cwd: join(this.deps.tandemHome, 'harness'),
+        })
+      } catch (error) {
+        this.loginAttempt = null
+        reject(error instanceof Error ? error : new Error('the harness binary did not start'))
+        return
+      }
+      this.loginChild = child
+      let stdout = ''
+      let stderr = ''
+      let settled = false
+      const timer = setTimeout(() => {
+        if (settled) return
+        settled = true
+        child.kill()
+        this.loginChild = null
+        this.loginAttempt = null
+        reject(new Error('the harness server printed no url before the wait ran out'))
+      }, 60_000)
+      const finish = (conclude: () => void) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        conclude()
+      }
+      child.onStdout((chunk) => {
+        stdout += chunk
+        const newline = stdout.indexOf('\n')
+        if (newline < 0) return
+        let url: string
+        try {
+          url = parseServeHandshake(stdout.slice(0, newline))
+        } catch {
+          return
+        }
+        finish(() => {
+          void this.connectKey(url, integration, key).then(
+            (receipt) => {
+              this.loginChild = null
+              this.loginAttempt = null
+              child.kill()
+              resolve(receipt)
+            },
+            (error: unknown) => {
+              this.loginChild = null
+              this.loginAttempt = null
+              this.failure =
+                error instanceof Error ? error.message : 'the key sign-in did not complete'
+              child.kill()
+              reject(error instanceof Error ? error : new Error('the key sign-in failed'))
+            },
+          )
+        })
+      })
+      child.onStderr((chunk) => {
+        stderr += chunk
+      })
+      child.onExit((code) => {
+        this.loginChild = null
+        finish(() => {
+          this.loginAttempt = null
+          reject(new Error(tail(stderr) || `the harness server exited with code ${code}`))
+        })
+      })
+    })
+    this.loginAttempt = attempt
+    return attempt
+  }
+
+  /**
+   * Warm the catalog, then store the key: `GET /api/integration` first (a
+   * fresh server 404s connect/key until it has run), then the connect POST.
+   * Basic auth carries the server password per ADR 0038.
+   */
+  private async connectKey(
+    url: string,
+    integration: string,
+    key: string,
+  ): Promise<HarnessKeyReply> {
+    const headers = {
+      Authorization: `Basic ${Buffer.from(`opencode:${this.password}`).toString('base64')}`,
+    }
+    await this.deps.request(`${url}/api/integration`, { method: 'GET', headers })
+    const response = await this.deps.request(
+      `${url}/api/integration/${encodeURIComponent(integration)}/connect/key`,
+      {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      },
+    )
+    if (response.status !== 204) {
+      throw new Error(
+        `the harness answered ${response.status} for the key sign-in: ${tail(response.body)}`,
+      )
+    }
+    return { stored: integration }
   }
 
   /** The integrations the harness home holds, with the pending attempt. */
@@ -430,12 +618,14 @@ export class HarnessController {
 export async function answerHarness(
   call: HarnessCall,
   controller: HarnessController,
-): Promise<HarnessStatusReply | HarnessLoginReply | { cancelled: boolean } | { integration: string }> {
+): Promise<
+  HarnessStatusReply | HarnessLoginReply | HarnessKeyReply | { cancelled: boolean } | { integration: string }
+> {
   switch (call.method) {
     case 'harness.status':
       return controller.status()
     case 'harness.login':
-      return controller.login()
+      return controller.login(call.params)
     case 'harness.cancel':
       return controller.cancel()
     case 'harness.logout':

@@ -85,6 +85,18 @@ test('the settings face, over the seeded homes', async ({ app, window }) => {
   await expect(setup.locator('.settings__hint')).toContainText('Nothing is written until you press it')
   await expect(setup.locator('.settings__action')).toHaveText(/^(Install|Repair)$/)
 
+  // The harness sign-in section offers any provider, not only the Console:
+  // the device-flow button, a provider field and a masked key field beside it.
+  const signIn = window.locator('.settings__section', {
+    has: window.locator('.settings__heading', { hasText: 'Harness sign-in' }),
+  })
+  await expect(
+    signIn.getByRole('button', { name: 'Sign in with OpenCode Console' }),
+  ).toBeVisible()
+  await expect(signIn.getByRole('button', { name: 'Sign in with API key' })).toBeVisible()
+  await expect(signIn.locator('input[type="text"]')).toHaveCount(1)
+  await expect(signIn.locator('input[type="password"]')).toHaveCount(1)
+
   await capture(app, window, scene('settings'))
 })
 
