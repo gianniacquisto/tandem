@@ -300,10 +300,7 @@ fn the_build_names_no_grill_and_triage_reports_backlog() {
 #[test]
 fn the_close_sweep_names_the_refine_hold() {
     let close = section(&file("skills/tandem-sprint/SKILL.md"), "## 6. Close");
-    assert!(
-        !close.contains("grill"),
-        "the close sweep names no grill"
-    );
+    assert!(!close.contains("grill"), "the close sweep names no grill");
     assert!(
         close.contains("refine"),
         "the close sweep names refine's hold"
@@ -921,10 +918,7 @@ fn retro_is_manual_only() {
         !retro.contains("the sprint dispatches it"),
         "the sprint dispatches no retro"
     );
-    assert!(
-        retro.contains("manual"),
-        "retro is a manual pass"
-    );
+    assert!(retro.contains("manual"), "retro is a manual pass");
     assert!(
         retro.contains("named session"),
         "retro runs on a named session transcript"
