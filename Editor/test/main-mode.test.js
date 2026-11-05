@@ -10,8 +10,9 @@ import {
   setModeSpec,
   isPreviewMode,
   toolbarVisibleForMode,
+  livePreviewState,
 } from "../src/main.js";
-import { toggleTask } from "../src/widgets.js";
+import { toggleTask, WikilinkWidget } from "../src/widgets.js";
 
 // Preview is the same document read-only: the plan/widgets stay live,
 // typing is blocked, and the toolbar hides. No second renderer.
@@ -114,4 +115,31 @@ test("a preview state reports readOnly so input handlers ignore typing", () => {
 test("the toolbar is hidden in preview and shown in edit", () => {
   assert.equal(toolbarVisibleForMode("preview"), false);
   assert.equal(toolbarVisibleForMode("edit"), true);
+});
+
+// -- preview never reveals the selection ---------------------------------------
+
+function decos(state) {
+  const out = [];
+  const cur = state.field(livePreviewState).iter();
+  while (cur.value) {
+    out.push({ from: cur.from, to: cur.to, spec: cur.value.spec });
+    cur.next();
+  }
+  return out;
+}
+
+const widgetAt = (ds, from) => ds.find((d) => d.from === from && d.spec.widget)?.spec.widget;
+
+test("preview keeps widgets on the selection's lines; edit shows their source", () => {
+  const doc = "see [[Note]]\ntail";
+  // Edit: a caret inside the wikilink shows its raw source, no widget.
+  let edit = createEditorState({ doc, mode: "edit" });
+  edit = edit.update({ selection: { anchor: 6 } }).state;
+  assert.equal(widgetAt(decos(edit), 4), undefined);
+
+  // Preview: the same selection still renders the widget for copy-safe reading.
+  let preview = createEditorState({ doc, mode: "preview" });
+  preview = preview.update({ selection: { anchor: 6 } }).state;
+  assert.ok(widgetAt(decos(preview), 4) instanceof WikilinkWidget);
 });

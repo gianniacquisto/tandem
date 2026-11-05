@@ -200,16 +200,18 @@ function makeWidget(d) {
 // The plan → DecorationSet mapping: replaces (marker hides, with or
 // without a widget), marks (spans; links carry their href as
 // data-href for the click interception), line classes, and block widgets.
-// The selection reveals its own lines: the plan hands the caret's lines
-// back as source.
+// The selection reveals its own lines in Edit: the plan hands the caret's
+// lines back as source. In Preview (readOnly) nothing is revealed, so a
+// selection for copy never drops a widget back to source.
 function previewDecorations(state) {
+  const preview = state.readOnly === true;
   const text = state.doc.toString();
   const plan = planPreview({
     text,
     tree: syntaxTree(state),
     notes: state.field(noteIndexState),
     notePath: state.field(notePathState),
-    reveal: state.selection.main,
+    reveal: preview ? null : state.selection.main,
   });
 
   const ranges = [];
@@ -833,10 +835,15 @@ export function stepFontSize(px, direction) {
 export function editorViewExtensions() {
   return [
     EditorView.domEventHandlers({
-      mousedown(event) {
+      mousedown(event, view) {
+        // Preview has its own DOM listener (editable false drops view events):
+        // staying out here keeps one toggle, not two.
+        if (view !== undefined && isPreviewMode(view.state)) return false;
         return checkboxToggleFrom(event.target) !== null;
       },
       click(event, view) {
+        // Preview clicks go through the mountEditor DOM listener below.
+        if (view !== undefined && isPreviewMode(view.state)) return false;
         const markerFrom = checkboxToggleFrom(event.target);
         if (markerFrom !== null) {
           toggleTask(view, markerFrom);
@@ -946,6 +953,25 @@ export function mountEditor(parent, { doc, notes, notePath } = {}) {
     applyModeToToolbar(toolbar, mode);
     return mode;
   }
+
+  // Preview clicks: the view's domEventHandlers do not fire when the content
+  // is not editable, so Preview listens at the DOM for the same decisions.
+  // Edit keeps the view-level handlers (which also suppress the caret); this
+  // listener only runs in Preview, so an Edit click never double-posts.
+  view.dom.addEventListener('click', (event) => {
+    if (!isPreviewMode(view.state)) return;
+    const markerFrom = checkboxToggleFrom(event.target);
+    if (markerFrom !== null) {
+      toggleTask(view, markerFrom);
+      event.preventDefault();
+      return;
+    }
+    const href = linkOpenTargetFrom(event.target);
+    if (href !== null) {
+      postLinkOpened(href);
+      event.preventDefault();
+    }
+  });
 
   // Swift → JS page globals (bridge contract).
   if (typeof window !== "undefined") {

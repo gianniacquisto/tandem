@@ -275,35 +275,30 @@ test('a wikilink click in preview navigates and stays in preview', async ({ wind
  * path and survives a reopen: no new rpc, the buffer is the truth.
  */
 test('a checkbox toggles in preview and survives reload', async ({ window }) => {
+  writeFileSync(join(seedPath(), 'bikeshed', 'checkbox-preview.md'), '# Check\n\n- [ ] preview toggle\n')
   await openTab(window, 'bikeshed')
   await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
-  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
-
-  const edit = window.locator('.editor__mode-button', { hasText: 'Edit' })
-  await edit.click()
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('#tandem-toolbar')).toBeVisible()
-  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'true')
-  await editor.locator('.cm-content').click()
-  await window.keyboard.type('\n- [ ] preview toggle')
-  await expect(window.locator('.editor__saving')).toBeVisible({ timeout: 8000 })
-  await window.waitForTimeout(1800)
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
+  await window.locator('.tree__label[title="checkbox-preview.md"]').click()
 
   const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
-  await preview.click()
+  await expect(preview).toHaveAttribute('aria-pressed', 'true')
+  const editor = window.frameLocator('.editor__frame')
   await expect(editor.locator('#tandem-toolbar')).toBeHidden()
   await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'false')
-  await editor.locator('.tandem-checkbox').last().click()
-  await window.waitForTimeout(1800)
-
-  const onDisk = readFileSync(
-    join(seedPath(), 'bikeshed', 'projects', 'fixture', 'fixture.md'),
-    'utf8',
-  )
-  expect(onDisk).toContain('- [x] preview toggle')
+  await expect(editor.locator('.tandem-checkbox')).toBeVisible()
+  const before = readFileSync(join(seedPath(), 'bikeshed', 'checkbox-preview.md'), 'utf8')
+  expect(before).toContain('- [ ] preview toggle')
+  await editor.locator('.tandem-checkbox').click()
+  await expect
+    .poll(
+      () => readFileSync(join(seedPath(), 'bikeshed', 'checkbox-preview.md'), 'utf8'),
+      { timeout: 8000 },
+    )
+    .toContain('- [x] preview toggle')
 
   await window.locator('.tree__label[title="Index.md"]').click()
-  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+  await window.locator('.tree__label[title="checkbox-preview.md"]').click()
   await expect(preview).toHaveAttribute('aria-pressed', 'true')
   await expect(editor.locator('.cm-content')).toContainText('preview toggle')
 })
@@ -329,11 +324,13 @@ test('mod+e and the control switch between preview and edit', async ({ window })
 
   await editor.locator('.cm-content').click()
   await window.keyboard.type(' typed in edit')
-  await expect(window.locator('.editor__saving')).toBeVisible({ timeout: 8000 })
-  await window.waitForTimeout(1800)
-  expect(
-    readFileSync(join(seedPath(), 'bikeshed', 'projects', 'fixture', 'fixture.md'), 'utf8'),
-  ).toContain('typed in edit')
+  await expect
+    .poll(
+      () =>
+        readFileSync(join(seedPath(), 'bikeshed', 'projects', 'fixture', 'fixture.md'), 'utf8'),
+      { timeout: 8000 },
+    )
+    .toContain('typed in edit')
 
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   await window.keyboard.press(`${mod}+e`)
