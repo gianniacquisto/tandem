@@ -63,7 +63,7 @@
         "ok": true
       },
       {
-        "detail": "not signed in; sign in from Settings",
+        "detail": "not signed in; the agent runs outside the app",
         "name": "harness-auth",
         "ok": true
       },
