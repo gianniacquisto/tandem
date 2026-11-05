@@ -51,7 +51,8 @@ export type TicketsFaceProps = {
   onDismiss: () => void
   /** The sheet's subject, whichever face opened it, so one row reads as current. */
   openTicket: string | null
-  onOpenTicket: (ticket: TicketSummary) => void
+  /** Open the sheet for the ticket: a row, a card, or a quick-add receipt. */
+  onOpenTicket: (ticket: { id: string }) => void
 }
 
 const SCOPES: ReadonlyArray<{ value: Scope; label: string }> = [
@@ -139,10 +140,25 @@ export function TicketsFace({
       },
       snapshot.revision,
     )
-    if (written.ok) {
-      setDraft('')
-      quickAdd.current?.focus()
+    if (!written.ok) return
+    setDraft('')
+    // A successful add opens its own sheet in the description composer: the
+    // receipt already carries the ticket, never a second list read. Esc or the
+    // close control returns via the existing dismiss.
+    const receipt = written.reply
+    if (
+      receipt !== null &&
+      typeof receipt === 'object' &&
+      'ticket' in receipt &&
+      receipt.ticket !== null &&
+      typeof receipt.ticket === 'object' &&
+      'id' in receipt.ticket &&
+      typeof receipt.ticket.id === 'string'
+    ) {
+      onOpenTicket({ id: receipt.ticket.id })
+      return
     }
+    quickAdd.current?.focus()
   }
 
   function toggle(ticket: TicketSummary): void {

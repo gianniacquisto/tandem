@@ -306,3 +306,55 @@ test('the sheet opens inside the palette ring, not the OS accent, in both scheme
   expect(await computed(window, '.sheet', 'outline-color')).toBe(token('accent', 'night'))
   await window.emulateMedia({ colorScheme: 'light' })
 })
+
+test('a quick-add lands its row and opens its sheet in the description composer, and Esc returns', async ({
+  window,
+}) => {
+  await openTab(window, 'tickets')
+  await expect(window.locator('.ticket-row').first()).toBeVisible()
+
+  const title = 'A quick-added ticket that opens its own sheet'
+  await window.locator('.quick-add__input').fill(title)
+  await window.locator('.quick-add__input').press('Enter')
+
+  // The row lands via the change event; the sheet opens from the add receipt.
+  const row = window.locator('.ticket-row', { hasText: title })
+  await expect(row.first()).toBeVisible({ timeout: 15_000 })
+  const sheet = window.locator('.sheet')
+  await expect(sheet).toBeVisible()
+
+  // Description draws before Comments before collapsed Details.
+  await expect(sheet.locator('.sheet__description')).toBeVisible()
+  await expect(sheet.locator('.sheet__discussion')).toBeVisible()
+  const order = await window.evaluate(() => {
+    const root = document.querySelector('.sheet')
+    const description = root?.querySelector('.sheet__description')
+    const comments = root?.querySelector('.sheet__discussion')
+    const details = root?.querySelector('.sheet__details')
+    if (description == null || comments == null || details == null) return null
+    const NodeCtor = window.Node
+    const descriptionBeforeComments = Boolean(
+      description.compareDocumentPosition(comments) & NodeCtor.DOCUMENT_POSITION_FOLLOWING,
+    )
+    const commentsBeforeDetails = Boolean(
+      comments.compareDocumentPosition(details) & NodeCtor.DOCUMENT_POSITION_FOLLOWING,
+    )
+    return { descriptionBeforeComments, commentsBeforeDetails }
+  })
+  expect(order).toEqual({ descriptionBeforeComments: true, commentsBeforeDetails: true })
+
+  // Details starts collapsed on every opening and persists nothing.
+  await expect(sheet.getByRole('button', { name: 'Details' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  )
+  await expect(sheet.locator('.sheet__details-body')).toHaveCount(0)
+
+  // The handoff lands in the description composer, ready for the first body.
+  await expect(sheet.getByLabel('Add to the description')).toBeFocused()
+
+  // Esc returns via the existing dismiss, back to the face that opened it.
+  await window.keyboard.press('Escape')
+  await expect(sheet).toHaveCount(0)
+  await expect(window.locator('.ticket-row').first()).toBeVisible()
+})

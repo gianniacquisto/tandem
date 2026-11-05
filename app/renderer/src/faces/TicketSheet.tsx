@@ -5,7 +5,6 @@ import { STATUSES, assigneeChoices } from '../shell/board'
 import { passButtons, type PassKind } from '../shell/pass'
 import {
   EMPTY_COMMENT_REFUSAL,
-  answerBlock,
   appendPlan,
   blocksOf,
   canSave,
@@ -13,7 +12,7 @@ import {
   commentParams,
   commentTime,
   commentsOf,
-  holdOpen,
+  detailsInitiallyOpen,
   laneChoices,
   laneCreateParams,
   laneRenameParams,
@@ -63,6 +62,10 @@ const CLAIM_CHANGED = 'The claim landed, but the comment did not.'
  * `lane.add`, `lane.rename`), the body is parsed by the core (`markdown.blocks`)
  * and appended to, never rewritten, and the log is read-only: the sheet's half
  * of it is the composer, which only appends.
+ *
+ * Order from top: title, Description, Comments, then one collapsed Details
+ * disclosure holding Status, Assignee, passes, Dependencies, Lanes and
+ * Sessions. Details starts closed on every opening and persists nothing.
  */
 export function TicketSheet({
   ticketId,
@@ -83,7 +86,6 @@ export function TicketSheet({
   const [comments, setComments] = useState<CommentView[]>([])
   const [commentBlocks, setCommentBlocks] = useState<MarkdownBlockView[][]>([])
   const [descriptionBlocks, setDescriptionBlocks] = useState<MarkdownBlockView[]>([])
-  const [answerBlocks, setAnswerBlocks] = useState<MarkdownBlockView[]>([])
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   // The reads that failed, told apart from an empty log or an absent body: a
@@ -99,6 +101,9 @@ export function TicketSheet({
   const [descriptionError, setDescriptionError] = useState<string | null>(null)
   const [commentDraft, setCommentDraft] = useState('')
   const [commentError, setCommentError] = useState<string | null>(null)
+  // Details starts closed on every opening and remembers nothing: plain
+  // per-open state, no persistence.
+  const [detailsOpen, setDetailsOpen] = useState(detailsInitiallyOpen)
 
   const [creating, setCreating] = useState(false)
   const [laneName, setLaneName] = useState('')
@@ -110,6 +115,7 @@ export function TicketSheet({
 
   const draftFor = useRef<string | null>(null)
   const dialog = useRef<HTMLDivElement>(null)
+  const additionField = useRef<HTMLTextAreaElement>(null)
 
   // The ticket and its log, re-read when the sheet opens, on every store
   // change, and after a refusal: a refusal means the body this sheet holds may
@@ -134,13 +140,11 @@ export function TicketSheet({
       const found = sheetTicket(read.ticket)
       const logFailure = 'error' in log ? log.error.message : null
       const logRows = 'error' in log ? [] : sheetComments(commentsOf(log.reply) ?? [])
-      const decision = answerBlock(found.description)
-      const [body, answerBody, ...logBodies] = await Promise.all([
+      const [body, ...logBodies] = await Promise.all([
         window.tandem.call({
           method: 'markdown.blocks',
           params: { text: found.description },
         }),
-        window.tandem.call({ method: 'markdown.blocks', params: { text: decision } }),
         ...logRows.map((comment) =>
           window.tandem.call({ method: 'markdown.blocks', params: { text: comment.body } }),
         ),
@@ -156,14 +160,10 @@ export function TicketSheet({
       // One failed markdown read is a failure to say out loud, never an empty
       // body: the text is stored, it just could not be drawn.
       let markdownFailure = 'error' in body ? body.error.message : null
-      if (markdownFailure === null && 'error' in answerBody) {
-        markdownFailure = answerBody.error.message
-      }
       for (const reply of logBodies) {
         if (markdownFailure === null && 'error' in reply) markdownFailure = reply.error.message
       }
       setDescriptionBlocks(bodyBlocks)
-      setAnswerBlocks('error' in answerBody ? [] : (blocksOf(answerBody.reply) ?? []))
       setCommentBlocks(
         logBodies.map((reply) => ('error' in reply ? [] : (blocksOf(reply.reply) ?? []))),
       )
@@ -174,7 +174,6 @@ export function TicketSheet({
       // re-read must not overwrite what the human is typing.
       if (draftFor.current !== found.id) {
         draftFor.current = found.id
-        dialog.current?.focus()
         setTitle(found.title)
         setStatus(found.status)
         setAssignee(found.assignee)
@@ -184,6 +183,16 @@ export function TicketSheet({
         setCommentDraft('')
         setCommentError(null)
         setNotice(null)
+        setDetailsOpen(detailsInitiallyOpen())
+        // A ticket with no description opens in its composer: the empty state
+        // is the prompt plus focus, not a dead line. The field mounts with the
+        // ticket, so the focus waits a tick for the render.
+        const empty = (found.description ?? '').trim() === ''
+        if (empty) {
+          setTimeout(() => additionField.current?.focus(), 0)
+        } else {
+          dialog.current?.focus()
+        }
       }
     }
     void load()
@@ -251,8 +260,8 @@ export function TicketSheet({
   async function append(): Promise<void> {
     if (ticket === null || sheetRevision === null) return
     // The body comes from the ticket read, so the write pins to that read: a
-    // `ticket answer` that landed between the read and this append answers a
-    // conflict, and the sheet reads again, instead of erasing the answer.
+    // concurrent write between the read and this append is a conflict, and the
+    // sheet reads again, instead of overwriting it.
     const plan = appendPlan({ ticket, revision: sheetRevision }, addition)
     if (!plan.ok) {
       setDescriptionError(plan.message)
@@ -355,7 +364,6 @@ export function TicketSheet({
   const handle = ticket === null ? 'Ticket' : ticketHandle(ticket)
   const choices = assigneeChoices(roster, assignee)
   const lanesShown = laneChoices(ticket?.lane ?? null, lanes)
-  const answer = ticket === null ? null : answerBlock(ticket.description)
 
   return (
     <div
@@ -416,146 +424,15 @@ export function TicketSheet({
                 onChange={(event) => setTitle(event.target.value)}
               />
 
-              <div className="sheet__facts">
-                <label className="sheet__fact">
-                  <span className="sheet__fact-label">Status</span>
-                  <span className="sheet__status-row">
-                    <span
-                      className="sheet__status-dot"
-                      data-status={status}
-                      aria-hidden="true"
-                    />
-                    <select
-                      className="sheet__select"
-                      data-status={status}
-                      aria-label="Status"
-                      value={status}
-                      onChange={(event) => setStatus(event.target.value)}
-                    >
-                      {STATUSES.map((entry) => (
-                        <option key={entry.value} value={entry.value}>
-                          {entry.label}
-                        </option>
-                      ))}
-                    </select>
-                  </span>
-                </label>
-
-                <label className="sheet__fact">
-                  <span className="sheet__fact-label">Assignee</span>
-                  <select
-                    className="sheet__select"
-                    aria-label="Assignee"
-                    value={assignee ?? ''}
-                    onChange={(event) =>
-                      setAssignee(event.target.value === '' ? null : event.target.value)
-                    }
-                  >
-                    {choices.map((choice) => (
-                      <option key={choice.value ?? ''} value={choice.value ?? ''}>
-                        {choice.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <button
-                  type="button"
-                  className="sheet__save"
-                  disabled={!canSave({ title })}
-                  onClick={() => void save()}
-                >
-                  Save
-                </button>
-              </div>
+              <button
+                type="button"
+                className="sheet__save"
+                disabled={!canSave({ title })}
+                onClick={() => void save()}
+              >
+                Save
+              </button>
             </div>
-
-            <section className="sheet__passes" aria-label="Agent passes">
-              <h2 className="sheet__section-title">
-                Agent passes: a request the next dispatch picks up, never a run
-              </h2>
-              <ul className="sheet__pass-rows">
-                {passButtons(
-                  {
-                    id: ticket.id,
-                    status: ticket.status,
-                    blocked: ticket.blocked,
-                    assignee: ticket.assignee,
-                  },
-                  comments.map((comment) => comment.body),
-                ).map((button) => (
-                  <li key={button.kind} className="sheet__pass-row">
-                    <button
-                      type="button"
-                      className="sheet__button"
-                      disabled={!button.enabled}
-                      onClick={() => void requestPass(button.kind)}
-                    >
-                      {button.label}
-                    </button>
-                    {button.reason === null ? null : (
-                      <span className="sheet__pass-reason">{button.reason}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            {holdOpen(ticket) ? (
-              <p className="sheet__hold" role="status">
-                Waiting on the human: this ticket is on hold and no answer block is written yet.
-              </p>
-            ) : null}
-
-            <section className="sheet__dependencies" aria-label="Dependencies">
-              {ticket.blockedBy.length === 0 && ticket.blocks.length === 0 ? null : (
-                <>
-                  {ticket.blockedBy.length === 0 ? null : (
-                    <>
-                      <h2 className="sheet__section-title">Blocked by</h2>
-                      <ul className="sheet__edges">
-                        {ticket.blockedBy.map((block) => (
-                          <li key={block.id}>
-                            <button
-                              type="button"
-                              className="sheet__edge"
-                              onClick={() => onOpenTicket(block.id)}
-                            >
-                              <span className="sheet__edge-ref">{block.ref ?? 'no ref'}</span>
-                              <span className="sheet__edge-title">{block.title}</span>
-                              <span className="sheet__edge-status">{STATUSES.find((entry) => entry.value === block.status)?.label ?? block.status}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                  {ticket.blockedReason === null ? null : (
-                    <p className="sheet__blocked-reason">{ticket.blockedReason}</p>
-                  )}
-                  {ticket.blocks.length === 0 ? null : (
-                    <>
-                      <h2 className="sheet__section-title">Blocks</h2>
-                      <ul className="sheet__edges">
-                        {ticket.blocks.map((block) => (
-                          <li key={block.id}>
-                            <button
-                              type="button"
-                              className="sheet__edge"
-                              onClick={() => onOpenTicket(block.id)}
-                            >
-                              <span className="sheet__edge-ref">{block.ref ?? 'no ref'}</span>
-                              <span className="sheet__edge-title">{block.title}</span>
-                              <span className="sheet__edge-status">{STATUSES.find((entry) => entry.value === block.status)?.label ?? block.status}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </>
-              )}
-            </section>
 
             <section className="sheet__description" aria-label="Description">
               <header className="sheet__section-header">
@@ -591,6 +468,7 @@ export function TicketSheet({
               <label className="sheet__addition">
                 <span className="sheet__fact-label">Add to the description</span>
                 <textarea
+                  ref={additionField}
                   className="sheet__addition-field"
                   aria-label="Add to the description"
                   rows={4}
@@ -609,129 +487,6 @@ export function TicketSheet({
                   Append
                 </button>
               </div>
-            </section>
-
-            {answer === null ? null : (
-              <section className="sheet__answer" aria-label="Answer">
-                <h2 className="sheet__section-title">Answer</h2>
-                <MarkdownDocument blocks={answerBlocks} />
-              </section>
-            )}
-
-            <section className="sheet__lanes" aria-label="Lanes">
-              <header className="sheet__section-header">
-                <h2 className="sheet__section-title">Lanes</h2>
-                {creating ? null : (
-                  <button
-                    type="button"
-                    className="sheet__toggle"
-                    onClick={() => setCreating(true)}
-                  >
-                    New cycle lane
-                  </button>
-                )}
-              </header>
-              <ul className="sheet__lane-rows">
-                {lanesShown.map((lane) => (
-                  <li key={lane.value ?? 'default'} className="sheet__lane-row" data-lane={lane.value ?? ''}>
-                    <button
-                      type="button"
-                      className="sheet__lane"
-                      aria-pressed={lane.selected}
-                      onClick={() => void moveToLane(lane.value)}
-                    >
-                      <span className="sheet__lane-marker" aria-hidden="true" />
-                      <span className="sheet__lane-name">{lane.label}</span>
-                      {lane.selected ? (
-                        <span className="sheet__lane-current">this ticket</span>
-                      ) : null}
-                    </button>
-                    {lane.value === null ? null : renaming === lane.value || !lane.renamable ? null : (
-                      <button
-                        type="button"
-                        className="sheet__lane-rename"
-                        onClick={() => {
-                          if (lane.value === null) return
-                          setRenaming(lane.value)
-                          setRenameTo(lane.value)
-                          setRenameKey('')
-                        }}
-                      >
-                        Rename
-                      </button>
-                    )}
-                    {renaming === null || renaming !== lane.value ? null : (
-                      <form
-                        className="sheet__lane-form"
-                        onSubmit={(event) => {
-                          event.preventDefault()
-                          void renameLane()
-                        }}
-                      >
-                        <input
-                          className="sheet__field"
-                          aria-label="Lane name"
-                          value={renameTo}
-                          onChange={(event) => setRenameTo(event.target.value)}
-                        />
-                        <input
-                          className="sheet__field"
-                          aria-label="Lane key"
-                          placeholder="Key"
-                          value={renameKey}
-                          onChange={(event) => setRenameKey(event.target.value)}
-                        />
-                        <button type="submit" className="sheet__button">
-                          Rename
-                        </button>
-                      </form>
-                    )}
-                  </li>
-                ))}
-              </ul>
-
-              {creating ? (
-                asking === null ? (
-                  <form
-                    className="sheet__lane-form"
-                    onSubmit={(event) => {
-                      event.preventDefault()
-                      askLane()
-                    }}
-                  >
-                    <input
-                      className="sheet__field"
-                      aria-label="New lane name"
-                      placeholder="Cycle lane name"
-                      value={laneName}
-                      onChange={(event) => setLaneName(event.target.value)}
-                    />
-                    <input
-                      className="sheet__field"
-                      aria-label="New lane key"
-                      placeholder="Key"
-                      value={laneKey}
-                      onChange={(event) => setLaneKey(event.target.value)}
-                    />
-                    <button type="submit" className="sheet__button" disabled={laneName.trim() === ''}>
-                      Ask
-                    </button>
-                  </form>
-                ) : (
-                  <div className="sheet__ask" role="status">
-                    <span>
-                      Create the cycle lane “{asking.name}”
-                      {asking.abbr === null ? ' with a key the core issues' : ` keyed ${asking.abbr}`}?
-                    </span>
-                    <button type="button" className="sheet__button" onClick={() => void createLane()}>
-                      Create lane
-                    </button>
-                    <button type="button" className="sheet__toggle" onClick={() => setAsking(null)}>
-                      Cancel
-                    </button>
-                  </div>
-                )
-              ) : null}
             </section>
 
             <section className="sheet__discussion" aria-label="Comments">
@@ -781,11 +536,266 @@ export function TicketSheet({
               </div>
             </section>
 
-            <SessionsSection
-              ticketId={ticket.id}
-              revision={revision}
-              expandedSession={expandedSession}
-            />
+            <section className="sheet__details" aria-label="Details">
+              <button
+                type="button"
+                className="sheet__details-toggle"
+                aria-expanded={detailsOpen}
+                onClick={() => setDetailsOpen((current) => !current)}
+              >
+                Details
+              </button>
+              {detailsOpen ? (
+                <div className="sheet__details-body">
+                  <div className="sheet__facts">
+                    <label className="sheet__fact">
+                      <span className="sheet__fact-label">Status</span>
+                      <span className="sheet__status-row">
+                        <span
+                          className="sheet__status-dot"
+                          data-status={status}
+                          aria-hidden="true"
+                        />
+                        <select
+                          className="sheet__select"
+                          data-status={status}
+                          aria-label="Status"
+                          value={status}
+                          onChange={(event) => setStatus(event.target.value)}
+                        >
+                          {STATUSES.map((entry) => (
+                            <option key={entry.value} value={entry.value}>
+                              {entry.label}
+                            </option>
+                          ))}
+                        </select>
+                      </span>
+                    </label>
+
+                    <label className="sheet__fact">
+                      <span className="sheet__fact-label">Assignee</span>
+                      <select
+                        className="sheet__select"
+                        aria-label="Assignee"
+                        value={assignee ?? ''}
+                        onChange={(event) =>
+                          setAssignee(event.target.value === '' ? null : event.target.value)
+                        }
+                      >
+                        {choices.map((choice) => (
+                          <option key={choice.value ?? ''} value={choice.value ?? ''}>
+                            {choice.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <section className="sheet__passes" aria-label="Agent passes">
+                    <h2 className="sheet__section-title">
+                      Agent passes: a request the next dispatch picks up, never a run
+                    </h2>
+                    <ul className="sheet__pass-rows">
+                      {passButtons(
+                        {
+                          id: ticket.id,
+                          status: ticket.status,
+                          blocked: ticket.blocked,
+                          assignee: ticket.assignee,
+                        },
+                        comments.map((comment) => comment.body),
+                      ).map((button) => (
+                        <li key={button.kind} className="sheet__pass-row">
+                          <button
+                            type="button"
+                            className="sheet__button"
+                            disabled={!button.enabled}
+                            onClick={() => void requestPass(button.kind)}
+                          >
+                            {button.label}
+                          </button>
+                          {button.reason === null ? null : (
+                            <span className="sheet__pass-reason">{button.reason}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  <section className="sheet__dependencies" aria-label="Dependencies">
+                    {ticket.blockedBy.length === 0 && ticket.blocks.length === 0 ? null : (
+                      <>
+                        {ticket.blockedBy.length === 0 ? null : (
+                          <>
+                            <h2 className="sheet__section-title">Blocked by</h2>
+                            <ul className="sheet__edges">
+                              {ticket.blockedBy.map((block) => (
+                                <li key={block.id}>
+                                  <button
+                                    type="button"
+                                    className="sheet__edge"
+                                    onClick={() => onOpenTicket(block.id)}
+                                  >
+                                    <span className="sheet__edge-ref">{block.ref ?? 'no ref'}</span>
+                                    <span className="sheet__edge-title">{block.title}</span>
+                                    <span className="sheet__edge-status">{STATUSES.find((entry) => entry.value === block.status)?.label ?? block.status}</span>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                        {ticket.blockedReason === null ? null : (
+                          <p className="sheet__blocked-reason">{ticket.blockedReason}</p>
+                        )}
+                        {ticket.blocks.length === 0 ? null : (
+                          <>
+                            <h2 className="sheet__section-title">Blocks</h2>
+                            <ul className="sheet__edges">
+                              {ticket.blocks.map((block) => (
+                                <li key={block.id}>
+                                  <button
+                                    type="button"
+                                    className="sheet__edge"
+                                    onClick={() => onOpenTicket(block.id)}
+                                  >
+                                    <span className="sheet__edge-ref">{block.ref ?? 'no ref'}</span>
+                                    <span className="sheet__edge-title">{block.title}</span>
+                                    <span className="sheet__edge-status">{STATUSES.find((entry) => entry.value === block.status)?.label ?? block.status}</span>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </section>
+
+                  <section className="sheet__lanes" aria-label="Lanes">
+                    <header className="sheet__section-header">
+                      <h2 className="sheet__section-title">Lanes</h2>
+                      {creating ? null : (
+                        <button
+                          type="button"
+                          className="sheet__toggle"
+                          onClick={() => setCreating(true)}
+                        >
+                          New cycle lane
+                        </button>
+                      )}
+                    </header>
+                    <ul className="sheet__lane-rows">
+                      {lanesShown.map((lane) => (
+                        <li key={lane.value ?? 'default'} className="sheet__lane-row" data-lane={lane.value ?? ''}>
+                          <button
+                            type="button"
+                            className="sheet__lane"
+                            aria-pressed={lane.selected}
+                            onClick={() => void moveToLane(lane.value)}
+                          >
+                            <span className="sheet__lane-marker" aria-hidden="true" />
+                            <span className="sheet__lane-name">{lane.label}</span>
+                            {lane.selected ? (
+                              <span className="sheet__lane-current">this ticket</span>
+                            ) : null}
+                          </button>
+                          {lane.value === null ? null : renaming === lane.value || !lane.renamable ? null : (
+                            <button
+                              type="button"
+                              className="sheet__lane-rename"
+                              onClick={() => {
+                                if (lane.value === null) return
+                                setRenaming(lane.value)
+                                setRenameTo(lane.value)
+                                setRenameKey('')
+                              }}
+                            >
+                              Rename
+                            </button>
+                          )}
+                          {renaming === null || renaming !== lane.value ? null : (
+                            <form
+                              className="sheet__lane-form"
+                              onSubmit={(event) => {
+                                event.preventDefault()
+                                void renameLane()
+                              }}
+                            >
+                              <input
+                                className="sheet__field"
+                                aria-label="Lane name"
+                                value={renameTo}
+                                onChange={(event) => setRenameTo(event.target.value)}
+                              />
+                              <input
+                                className="sheet__field"
+                                aria-label="Lane key"
+                                placeholder="Key"
+                                value={renameKey}
+                                onChange={(event) => setRenameKey(event.target.value)}
+                              />
+                              <button type="submit" className="sheet__button">
+                                Rename
+                              </button>
+                            </form>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+
+                    {creating ? (
+                      asking === null ? (
+                        <form
+                          className="sheet__lane-form"
+                          onSubmit={(event) => {
+                            event.preventDefault()
+                            askLane()
+                          }}
+                        >
+                          <input
+                            className="sheet__field"
+                            aria-label="New lane name"
+                            placeholder="Cycle lane name"
+                            value={laneName}
+                            onChange={(event) => setLaneName(event.target.value)}
+                          />
+                          <input
+                            className="sheet__field"
+                            aria-label="New lane key"
+                            placeholder="Key"
+                            value={laneKey}
+                            onChange={(event) => setLaneKey(event.target.value)}
+                          />
+                          <button type="submit" className="sheet__button" disabled={laneName.trim() === ''}>
+                            Ask
+                          </button>
+                        </form>
+                      ) : (
+                        <div className="sheet__ask" role="status">
+                          <span>
+                            Create the cycle lane “{asking.name}”
+                            {asking.abbr === null ? ' with a key the core issues' : ` keyed ${asking.abbr}`}?
+                          </span>
+                          <button type="button" className="sheet__button" onClick={() => void createLane()}>
+                            Create lane
+                          </button>
+                          <button type="button" className="sheet__toggle" onClick={() => setAsking(null)}>
+                            Cancel
+                          </button>
+                        </div>
+                      )
+                    ) : null}
+                  </section>
+
+                  <SessionsSection
+                    ticketId={ticket.id}
+                    revision={revision}
+                    expandedSession={expandedSession}
+                  />
+                </div>
+              ) : null}
+            </section>
 
             <footer className="sheet__footer">
               <span className="sheet__hint">{shortcutHint()}</span>

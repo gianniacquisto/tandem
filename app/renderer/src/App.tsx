@@ -39,7 +39,7 @@ function face(
     onWrite: (call: Method, expected: number | null) => Promise<WriteOutcome>
     onDismiss: () => void
     openTicket: string | null
-    onOpenTicket: (ticket: TicketSummary) => void
+    onOpenTicket: (ticket: { id: string }) => void
     onPickProject: (lane: string | null) => void
   },
 ) {
@@ -226,7 +226,7 @@ export function App() {
       try {
         const answer = await window.tandem.call(call)
         if ('error' in answer) return refuse(answer.error.message)
-        return { ok: true }
+        return { ok: true, reply: answer.reply }
       } catch {
         return refuse('The write could not reach the store.')
       }
@@ -265,7 +265,7 @@ export function App() {
     },
     [faceWrite, reload],
   )
-  const open = useCallback((ticket: TicketSummary) => setOpenTicket(ticket.id), [])
+  const open = useCallback((ticket: { id: string }) => setOpenTicket(ticket.id), [])
   const closeSheet = useCallback(() => {
     setOpenTicket(null)
     // A sheet opened from a kept link owns the hash's query; closing drops that

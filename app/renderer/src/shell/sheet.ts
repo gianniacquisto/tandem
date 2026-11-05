@@ -130,52 +130,13 @@ export function appendDescription(
 }
 
 /**
- * Whether the description carries an answer block: a line whose trimmed start
- * is `## Answer`, case-insensitively. **Line-anchored and heading-only**, the
- * core's own rule (`DescriptionBody::answered`): the heading is the answer, so
- * an empty one still closes the hold, and a body that mentions the block inline
- * is still asking its question.
+ * Whether the sheet's Details disclosure starts open: it does not. The section
+ * holds Status, Assignee, passes, Dependencies, Lanes and Sessions behind one
+ * collapsed disclosure, and the disclosure remembers nothing across openings:
+ * every opening draws it closed, with no persistence.
  */
-export function answered(description: string | null | undefined): boolean {
-  if (description === null || description === undefined) return false
-  return answerHeading(description.split('\n')) >= 0
-}
-
-/** The line the answer heading sits on, or -1: the one scan both reads share. */
-function answerHeading(lines: string[]): number {
-  return lines.findIndex((line) => line.trim().toLowerCase().startsWith('## answer'))
-}
-
-/**
- * The text under a line whose trimmed start is `## Answer`, up to the next
- * heading, trimmed. The block is how an answer is recorded, so the sheet draws
- * it apart from the brief. `null` when there is no heading or its body is
- * empty: nothing to draw, though `answered` still counts the heading alone.
- */
-export function answerBlock(description: string | null | undefined): string | null {
-  if (description === null || description === undefined) return null
-  const lines = description.split('\n')
-  const heading = answerHeading(lines)
-  if (heading < 0) return null
-  const body: string[] = []
-  for (const line of lines.slice(heading + 1)) {
-    if (line.trim().startsWith('## ')) break
-    body.push(line)
-  }
-  const text = body.join('\n').trim()
-  return text === '' ? null : text
-}
-
-/**
- * Whether the ticket still asks its question: on hold, with no answer block
- * written. An answered ticket that still wears `on-hold` is the next pass's
- * debt, not a question the sheet should present as open, so the mark follows
- * the store's `answered` and not a stricter reading of the body.
- */
-export function holdOpen(
-  ticket: Pick<TicketDetail, 'status' | 'description'>,
-): boolean {
-  return ticket.status === 'on-hold' && !answered(ticket.description)
+export function detailsInitiallyOpen(): boolean {
+  return false
 }
 
 export type SheetDraft = {
@@ -187,7 +148,7 @@ export type SheetDraft = {
 /**
  * The description append as one guarded write: the whole body, and the revision
  * the body was read at. The sheet's body is not the listing's, so the pin is the
- * read's own and never the listing's: a `ticket answer` that landed between the
+ * read's own and never the listing's: a concurrent write that landed between the
  * two would otherwise be overwritten by the older body.
  */
 export type AppendPlan =

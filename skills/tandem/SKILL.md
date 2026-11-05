@@ -127,7 +127,7 @@ Title required, trimmed, empty rejected; duplicates allowed. A title alone lands
 
 ### `ticket set --id <id> [--title …] [--status …] [--assignee …] [--description …] [--append-description …]`
 
-Change the fields you name in **one write**; everything unnamed is left alone. `--description -` reads the body from stdin, which is how multi-line markdown lands intact, and it **replaces** the stored body. `--append-description -` appends instead: the new text after a blank line in the same write, or the bare text when the body is empty, so a delta never needs the whole body re-sent. `--assignee ""` clears the owner, `--description ""` clears the body, `--assignee human` hands the ticket to the human. Moving to `done` stamps `completedAt`; moving out clears it. An empty `--title` is rejected, and an empty or whitespace-only `--description -` or `--append-description` body is rejected too: exit `1`, `Description body is empty…`, the description left as it was. An empty pipe is a failed write, not a clear, and naming `--description` with `--append-description` is refused the same way.
+Change the fields you name in **one write**; everything unnamed is left alone. `--description -` reads the body from stdin, which is how multi-line markdown lands intact, and it **replaces** the stored body. `--append-description -` appends instead: the new text after a blank line in the same write, or the bare text when the body is empty, so a delta never needs the whole body re-sent. `--assignee ""` clears the owner, `--description ""` clears the body, `--assignee human` hands the ticket to the human. Moving to `done` stamps `completedAt`; moving out clears it. An empty `--title` is rejected, and an empty or whitespace-only `--description -` or `--append-description` body is rejected too: exit `1`, `Description body is empty…`, the description left as it was. An empty pipe is a failed write, not a clear, and naming `--description` with `--append-description` is refused the same way. Authorship: brief prose is written only by the refiner and humans; agents discuss in comments and never author brief content; there is no agent description write at all.
 
 ### `ticket move --id <id> [--lane <name>] [--index <number>]`
 
@@ -158,6 +158,8 @@ Archive every done ticket in one call: nothing is deleted, they leave the defaul
 ### `ticket comment add --id <id> [--author <name>] --body <string|->` / `ticket comment list --id <id>`
 
 Append to / list the ticket's **discussion log** — where agents talk after refinement, since the description stays refinement-only. The log is the store's `comments` table, not a ticket field, so it survives any edit of the ticket; an append is one transaction that checks the ticket exists and writes the comment together, so there is no sidecar lock to hold. `--body -` reads from stdin; an empty body is rejected. **`--author` signs the line with the name you write — `self` is not expanded for it** (only `--assignee` and `--origin` expand `self`); write the role out (`skills/tandem-team/SKILL.md`), and never omit it: an unnamed author is a gap in the record. Append-only — no edit, no delete; a correction is a new comment. `comment list` returns comments in append order; an unknown id is the domain failure `comment add` raises, and an empty list means the ticket exists and carries no comments.
+
+Authorship: brief prose is written only by the refiner and humans; agents discuss in comments and never author brief content; there is no agent description write at all.
 
 ## Lanes
 

@@ -15,3 +15,5 @@ You are the builder for exactly one ticket. The dispatcher gives you the ticket 
 7. **Record** — end your session record with a summary (`tandem-cli session end --usage-from-harness --outcome <…> --summary -`, the brief of what landed): the session record's summary is the work record (ADR 0027). File a capture only for a real cost of re-derivation (`AGENTS.md`). Then move your session out of the worktree and remove it (`git worktree remove`).
 
 One ticket per session. A finding that belongs to another ticket becomes a `backlog` ticket, not a drive-by edit. The ticket description is appended to, never overwritten.
+
+Authorship: brief prose is written only by the refiner and humans; agents discuss in comments and never author brief content; there is no agent description write at all.

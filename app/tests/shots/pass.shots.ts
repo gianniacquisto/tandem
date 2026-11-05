@@ -44,6 +44,18 @@ test('the sheet asks for passes as requests, with each disabled reason in place'
   const sheet = window.locator('.sheet')
   await expect(sheet).toBeVisible()
 
+  // Passes live in collapsed Details: the sheet draws Description before
+  // Details, so the requests wait behind the disclosure until asked for.
+  await expect(sheet.getByRole('button', { name: 'Details' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  )
+  await sheet.getByRole('button', { name: 'Details' }).click()
+  await expect(sheet.getByRole('button', { name: 'Details' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  )
+
   await expect(sheet.getByRole('button', { name: 'Request refine' })).toBeEnabled()
   await expect(sheet.getByRole('button', { name: 'Request build' })).toBeDisabled()
   await expect(sheet.getByRole('button', { name: 'Request review' })).toBeDisabled()

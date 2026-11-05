@@ -1,12 +1,14 @@
-import type { Method } from '../../../src/shared/bridge'
+import type { Method, Reply } from '../../../src/shared/bridge'
 import type { SnapshotState } from './snapshot'
 
 /**
  * One write's answer. `ok` is whether the store took it; a refusal carries the
  * core's own words, so the face that made the write can answer the action where
  * it was taken instead of raising the shell's banner over somebody else's face.
+ * A taken write carries its receipt, so an add can open its own ticket without
+ * a second list read.
  */
-export type WriteOutcome = { ok: true } | { ok: false; message: string }
+export type WriteOutcome = { ok: true; reply?: Reply | null } | { ok: false; message: string }
 
 /**
  * The shell's one write door: guarded by the listing's revision.
