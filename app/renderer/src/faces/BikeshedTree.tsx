@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from 'react'
+import { useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 
 import type { BikeshedHealth } from '../wire/BikeshedHealth'
 import type { NoteNodeView } from '../wire/NoteNodeView'
@@ -8,6 +8,7 @@ import {
   healthSummary,
   isHiddenPath,
 } from '../shell/bikeshed'
+import { defaultCreateFolder, resolveFolderPath, resolveNotePath } from '../shell/note'
 
 export type BikeshedTreeProps = {
   nodes: NoteNodeView[]
@@ -19,6 +20,8 @@ export type BikeshedTreeProps = {
   onReveal: (hidden: boolean) => void
   onOpen: (path: string) => void
   onMove: (source: string, into: string) => void
+  onCreateNote: (path: string) => void
+  onCreateFolder: (path: string) => void
   onDaily: () => void
 }
 
@@ -46,11 +49,17 @@ export function BikeshedTree({
   onReveal,
   onOpen,
   onMove,
+  onCreateNote,
+  onCreateFolder,
   onDaily,
 }: BikeshedTreeProps) {
   const rows = flattenTree(nodes, expanded)
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver] = useState<string | null>(null)
+  const [creating, setCreating] = useState<'note' | 'folder' | null>(null)
+  const [draft, setDraft] = useState('')
+  const folder = defaultCreateFolder(openPath)
+  const where = folder === '' ? 'Bikeshed' : folder
 
   function drop(into: string): void {
     if (dragging === null) return
@@ -74,6 +83,94 @@ export function BikeshedTree({
     }
   }
 
+  function start(kind: 'note' | 'folder'): void {
+    setCreating(kind)
+    setDraft('')
+  }
+
+  function cancel(): void {
+    setCreating(null)
+    setDraft('')
+  }
+
+  function submit(event: FormEvent): void {
+    event.preventDefault()
+    if (creating === null) return
+    const trimmed = draft.trim()
+    if (trimmed === '') return
+    const path =
+      creating === 'note' ? resolveNotePath(folder, trimmed) : resolveFolderPath(folder, trimmed)
+    if (creating === 'note') onCreateNote(path)
+    else onCreateFolder(path)
+    setCreating(null)
+    setDraft('')
+  }
+
+  function actions(): ReactNode {
+    return (
+      <div className="tree__actions">
+        <button type="button" className="tree__action" onClick={onDaily}>
+          Today&apos;s note
+        </button>
+        <button
+          type="button"
+          className="tree__new tree__new--note"
+          onClick={() => start('note')}
+        >
+          New note
+        </button>
+        <button
+          type="button"
+          className="tree__new tree__new--folder"
+          onClick={() => start('folder')}
+        >
+          New folder
+        </button>
+      </div>
+    )
+  }
+
+  function prompt(): ReactNode {
+    if (creating === null) return null
+    const label = creating === 'note' ? 'New note' : 'New folder'
+    return (
+      <form
+        className="tree__prompt"
+        role="dialog"
+        aria-label={label}
+        onSubmit={submit}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') cancel()
+        }}
+      >
+        <label className="tree__prompt-label" htmlFor="tree-prompt-name">
+          {label} in {where}
+        </label>
+        <input
+          id="tree-prompt-name"
+          className="tree__prompt-input"
+          autoFocus
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder={creating === 'note' ? 'note name' : 'folder name'}
+          aria-label="Name"
+        />
+        <div className="tree__prompt-row">
+          <button
+            type="submit"
+            className="tree__new tree__prompt-create"
+            disabled={draft.trim() === ''}
+          >
+            Create
+          </button>
+          <button type="button" className="tree__new" onClick={cancel}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    )
+  }
+
   return (
     <aside className="bikeshed__tree" aria-label="Bikeshed notes">
       <div
@@ -91,16 +188,12 @@ export function BikeshedTree({
           Show hidden
         </label>
       </div>
-      <div className="tree__actions">
-        <button type="button" className="tree__action" onClick={onDaily}>
-          Today&apos;s note
-        </button>
-      </div>
+      {actions()}
+      {prompt()}
 
       {nodes.length === 0 ? (
         <p className="tree__empty">
-          The bikeshed is empty. Notes are plain markdown files an agent or the
-          editor can create.
+          The bikeshed is empty. Create a note or a folder to get started.
         </p>
       ) : (
         <ul className="tree" role="tree">

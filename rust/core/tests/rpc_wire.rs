@@ -1021,6 +1021,71 @@ fn a_note_write_without_text_is_refused_rather_than_emptied() {
 }
 
 #[test]
+fn note_create_and_create_folder_write_through_the_domain() {
+    let sandbox = Sandbox::new("rpc-note-create");
+    let store = sandbox.store();
+    let vault = sandbox.root().join("home").join("bikeshed");
+
+    let created = handle(
+        &store,
+        &frame(1, "note.create", json!({"path": "notes/new.md"})),
+    );
+    assert_eq!(created["result"]["path"], "notes/new.md");
+    assert_eq!(
+        std::fs::read_to_string(vault.join("notes").join("new.md")).expect("the note is on disk"),
+        "",
+        "a created note starts empty"
+    );
+
+    let taken = handle(
+        &store,
+        &frame(2, "note.create", json!({"path": "notes/new.md"})),
+    );
+    assert_eq!(taken["error"]["code"], "domain");
+    assert!(
+        taken["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("already exists"),
+        "a taken name is refused, never clobbered: {taken}"
+    );
+
+    let invalid = handle(
+        &store,
+        &frame(3, "note.create", json!({"path": "notes/bad"})),
+    );
+    assert_eq!(invalid["error"]["code"], "domain");
+
+    let escape = handle(
+        &store,
+        &frame(4, "note.create", json!({"path": "../escape.md"})),
+    );
+    assert_eq!(escape["error"]["code"], "domain");
+
+    let folder = handle(
+        &store,
+        &frame(5, "note.createFolder", json!({"path": "projects/new"})),
+    );
+    assert_eq!(folder["result"]["path"], "projects/new");
+    assert!(
+        vault.join("projects").join("new").is_dir(),
+        "a created folder is on disk"
+    );
+
+    let folder_taken = handle(
+        &store,
+        &frame(6, "note.createFolder", json!({"path": "projects/new"})),
+    );
+    assert_eq!(folder_taken["error"]["code"], "domain");
+
+    let folder_invalid = handle(
+        &store,
+        &frame(7, "note.createFolder", json!({"path": "../escape"})),
+    );
+    assert_eq!(folder_invalid["error"]["code"], "domain");
+}
+
+#[test]
 fn project_messages_round_trip_like_the_lane_ones() {
     let sandbox = Sandbox::new("rpc-project");
     let store = sandbox.store();

@@ -11,8 +11,9 @@
 //!
 //! Methods that stay wire-only are named here, not forgotten: `setup.install`
 //! (host mutation stays a human CLI act), the curated note writes
-//! (`note.write`, `note.move`, `note.daily`, and the CLI's `note rename`,
-//! which has no wire row and stays out), and the app's reads
+//! (`note.write`, `note.move`, `note.create`, `note.createFolder`,
+//! `note.daily`, and the CLI's `note rename`, which has no wire row and
+//! stays out), and the app's reads
 //! (`usage.report`, `markdown.blocks`, `note.tree`,
 //! `note.read`, `note.backlinks`, `note.recoveries`, `setup.status`,
 //! `session.transcript`). The vault's link-graph read (`note.health`), the
@@ -74,10 +75,12 @@ const COVERED: [&str; 37] = [
 /// it, and the MCP door lists sessions but does not page transcripts in v1.
 /// `note.daily` stays wire-only for the face's Today's note: the day file is
 /// human-owned, and the consolidation pass reads it but never writes one.
-const EXCLUDED: [&str; 12] = [
+const EXCLUDED: [&str; 14] = [
     "setup.install",
     "note.write",
     "note.move",
+    "note.create",
+    "note.createFolder",
     "note.daily",
     "usage.report",
     "markdown.blocks",

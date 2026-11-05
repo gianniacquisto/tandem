@@ -959,6 +959,26 @@ fn execute(
                 moved: NoteMoveView::new(&outcome),
             }))
         }
+        Method::NoteCreate(params) => {
+            let created = open_bikeshed(store)
+                .create(named(&params.path))
+                .map_err(domain)?
+                .value;
+            Ok(Reply::NotePath(NotePathView {
+                path: created,
+                note: None,
+            }))
+        }
+        Method::NoteCreateFolder(params) => {
+            let created = open_bikeshed(store)
+                .create_folder(named(&params.path))
+                .map_err(domain)?
+                .value;
+            Ok(Reply::NotePath(NotePathView {
+                path: created,
+                note: None,
+            }))
+        }
         Method::NoteDaily(_) => {
             let result = open_bikeshed(store)
                 .open_daily_note(crate::bikeshed::Day::today())
