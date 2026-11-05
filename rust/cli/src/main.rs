@@ -22,7 +22,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
-use tandem_core::bikeshed::{Bikeshed, CaptureKind};
+use tandem_core::bikeshed::{Bikeshed, CaptureKind, Day};
 use tandem_core::diagnostics;
 use tandem_core::domain::harness;
 use tandem_core::domain::session::{
@@ -169,6 +169,7 @@ enum NoteCommand {
     Links,
     Write(NoteWriteArgs),
     Move(NoteMoveArgs),
+    Daily,
 }
 
 #[derive(Subcommand)]
@@ -772,6 +773,7 @@ impl NoteCommand {
             Self::Links => "note links",
             Self::Write(_) => "note write",
             Self::Move(_) => "note move",
+            Self::Daily => "note daily",
         }
     }
 }
@@ -1289,6 +1291,15 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
                 )
                 .map_err(Failure::domain)?;
             print(&NoteMoveView::new(&outcome.value))
+        }
+        NoteCommand::Daily => {
+            home.ensure()
+                .map_err(|error| home_failure(home.directory(), error))?;
+            let result = vault.open_daily_note(Day::today()).map_err(Failure::domain)?;
+            print(&NotePathView {
+                path: result.value,
+                note: result.note,
+            })
         }
     }
 }
