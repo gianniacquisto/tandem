@@ -235,6 +235,7 @@ test('the editor send files a ticket linked to the note', async ({ window }) => 
  */
 test('a note with content opens in preview with the toolbar hidden', async ({ window }) => {
   await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
   const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
@@ -253,6 +254,7 @@ test('a note with content opens in preview with the toolbar hidden', async ({ wi
  */
 test('a wikilink click in preview navigates and stays in preview', async ({ window }) => {
   await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
   await window.locator('.tree__label[title="Index.md"]').click()
 
   const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
@@ -274,6 +276,7 @@ test('a wikilink click in preview navigates and stays in preview', async ({ wind
  */
 test('a checkbox toggles in preview and survives reload', async ({ window }) => {
   await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
   const edit = window.locator('.editor__mode-button', { hasText: 'Edit' })
@@ -311,6 +314,7 @@ test('a checkbox toggles in preview and survives reload', async ({ window }) => 
  */
 test('mod+e and the control switch between preview and edit', async ({ window }) => {
   await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
   const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
@@ -344,6 +348,7 @@ test('mod+e and the control switch between preview and edit', async ({ window })
 test('an empty note opens in edit focused', async ({ window }) => {
   writeFileSync(join(seedPath(), 'bikeshed', 'empty-preview.md'), '')
   await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
   await window.evaluate("window.dispatchEvent(new Event('focus'))")
   await window.locator('.tree__label[title="empty-preview.md"]').click()
 
