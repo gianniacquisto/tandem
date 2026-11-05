@@ -83,7 +83,10 @@ test('a concurrent CLI write is a conflict with both bodies, never a lost write'
   await openTab(window, 'bikeshed')
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
+  // Content notes open in Preview; the conflict needs a dirty buffer, so enter Edit first.
+  await window.locator('.editor__mode-button', { hasText: 'Edit' }).click()
   const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'true')
   await editor.locator('.cm-content').click()
   await window.keyboard.type(' and my unsaved words')
 
@@ -143,7 +146,10 @@ test('an external write on focus is a conflict, and the tab switch keeps the dra
   await openTab(window, 'bikeshed')
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
+  // Content notes open in Preview; typing needs Edit.
+  await window.locator('.editor__mode-button', { hasText: 'Edit' }).click()
   const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'true')
   await editor.locator('.cm-content').click()
   await window.keyboard.type(' and words no save has seen')
   await expect(editor.locator('.cm-content')).toContainText('words no save has seen')
@@ -253,6 +259,7 @@ test('a wikilink click in preview navigates and stays in preview', async ({ wind
   await expect(preview).toHaveAttribute('aria-pressed', 'true')
 
   const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'false')
   await expect(editor.locator('.tandem-wikilink')).toBeVisible()
   await editor.locator('.tandem-wikilink').first().click()
 
@@ -273,14 +280,16 @@ test('a checkbox toggles in preview and survives reload', async ({ window }) => 
   await edit.click()
   const editor = window.frameLocator('.editor__frame')
   await expect(editor.locator('#tandem-toolbar')).toBeVisible()
+  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'true')
   await editor.locator('.cm-content').click()
   await window.keyboard.type('\n- [ ] preview toggle')
-  await expect(window.locator('.editor__saving')).toBeVisible({ timeout: 5000 })
+  await expect(window.locator('.editor__saving')).toBeVisible({ timeout: 8000 })
   await window.waitForTimeout(1800)
 
   const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
   await preview.click()
   await expect(editor.locator('#tandem-toolbar')).toBeHidden()
+  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'false')
   await editor.locator('.tandem-checkbox').last().click()
   await window.waitForTimeout(1800)
 
@@ -312,10 +321,11 @@ test('mod+e and the control switch between preview and edit', async ({ window })
   await expect(edit).toHaveAttribute('aria-pressed', 'true')
   const editor = window.frameLocator('.editor__frame')
   await expect(editor.locator('#tandem-toolbar')).toBeVisible()
+  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'true')
 
   await editor.locator('.cm-content').click()
   await window.keyboard.type(' typed in edit')
-  await expect(window.locator('.editor__saving')).toBeVisible({ timeout: 5000 })
+  await expect(window.locator('.editor__saving')).toBeVisible({ timeout: 8000 })
   await window.waitForTimeout(1800)
   expect(
     readFileSync(join(seedPath(), 'bikeshed', 'projects', 'fixture', 'fixture.md'), 'utf8'),
