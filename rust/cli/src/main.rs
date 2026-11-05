@@ -18,11 +18,11 @@ use std::env;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
-use tandem_core::bikeshed::{Bikeshed, CaptureKind};
+use tandem_core::bikeshed::{Bikeshed, CaptureKind, Day};
 use tandem_core::diagnostics;
 use tandem_core::domain::harness;
 use tandem_core::domain::session::{
@@ -130,7 +130,6 @@ enum TicketCommand {
     Block(BlockArgs),
     Unblock(UnblockArgs),
     Complete(IdArgs),
-    Answer(AnswerArgs),
     Archive(ArchiveArgs),
     Comment {
         #[command(subcommand)]
@@ -169,6 +168,9 @@ enum NoteCommand {
     Links,
     Write(NoteWriteArgs),
     Move(NoteMoveArgs),
+    Create(NoteCreateArgs),
+    CreateFolder(NoteCreateFolderArgs),
+    Daily,
 }
 
 #[derive(Subcommand)]
@@ -299,18 +301,6 @@ struct IdArgs {
 }
 
 #[derive(Args)]
-struct AnswerArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    id: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    status: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    assignee: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    body: Option<String>,
-}
-
-#[derive(Args)]
 struct ArchiveArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     id: Option<String>,
@@ -405,6 +395,18 @@ struct NoteMoveArgs {
     path: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     into: Option<String>,
+}
+
+#[derive(Args)]
+struct NoteCreateArgs {
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    path: Option<String>,
+}
+
+#[derive(Args)]
+struct NoteCreateFolderArgs {
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    path: Option<String>,
 }
 
 #[derive(Args)]
@@ -733,7 +735,6 @@ impl TicketCommand {
             Self::Block(_) => "ticket block",
             Self::Unblock(_) => "ticket unblock",
             Self::Complete(_) => "ticket complete",
-            Self::Answer(_) => "ticket answer",
             Self::Archive(_) => "ticket archive",
             Self::Comment { .. } => "ticket comment",
         }
@@ -772,6 +773,9 @@ impl NoteCommand {
             Self::Links => "note links",
             Self::Write(_) => "note write",
             Self::Move(_) => "note move",
+            Self::Create(_) => "note create",
+            Self::CreateFolder(_) => "note create-folder",
+            Self::Daily => "note daily",
         }
     }
 }
@@ -1011,24 +1015,6 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
         TicketCommand::Complete(args) => {
             let ticket = board
                 .complete(args.id.as_deref().unwrap_or(""))
-                .map_err(Failure::domain)?;
-            print(&TicketDetail::new(&ticket))
-        }
-        TicketCommand::Answer(args) => {
-            let body = match args.body.as_deref() {
-                Some("-") => read_standard_input()?,
-                Some(body) => body.to_string(),
-                None => String::new(),
-            };
-            let assignee = resolve_assignee(args.assignee.as_deref())?;
-            let ticket = board
-                .answer(
-                    args.id.as_deref().unwrap_or(""),
-                    Status::parse(args.status.as_deref().unwrap_or("")).map_err(Failure::domain)?,
-                    assignee.as_deref(),
-                    &body,
-                    unix_now(),
-                )
                 .map_err(Failure::domain)?;
             print(&TicketDetail::new(&ticket))
         }
@@ -1290,6 +1276,39 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
                 .map_err(Failure::domain)?;
             print(&NoteMoveView::new(&outcome.value))
         }
+        NoteCommand::Create(args) => {
+            home.ensure()
+                .map_err(|error| home_failure(home.directory(), error))?;
+            let result = vault
+                .create(args.path.as_deref().unwrap_or(""))
+                .map_err(Failure::domain)?;
+            print(&NotePathView {
+                path: result.value,
+                note: result.note,
+            })
+        }
+        NoteCommand::CreateFolder(args) => {
+            home.ensure()
+                .map_err(|error| home_failure(home.directory(), error))?;
+            let result = vault
+                .create_folder(args.path.as_deref().unwrap_or(""))
+                .map_err(Failure::domain)?;
+            print(&NotePathView {
+                path: result.value,
+                note: result.note,
+            })
+        }
+        NoteCommand::Daily => {
+            home.ensure()
+                .map_err(|error| home_failure(home.directory(), error))?;
+            let result = vault
+                .open_daily_note(Day::today())
+                .map_err(Failure::domain)?;
+            print(&NotePathView {
+                path: result.value,
+                note: result.note,
+            })
+        }
     }
 }
 
@@ -1530,13 +1549,6 @@ fn sprint(home: &Home, command: Option<&SprintCommand>) -> Result<(), Failure> {
 }
 
 // MARK: - Plumbing
-
-fn unix_now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_secs() as i64)
-        .unwrap_or(0)
-}
 
 fn print<T: serde::Serialize>(value: &T) -> Result<(), Failure> {
     let line = serde_json::to_string(value).map_err(|error| Failure::message(error.to_string()))?;

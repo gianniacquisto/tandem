@@ -110,6 +110,42 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Where a creation lands: the open note's folder, else the vault root.
+ *
+ * The tree has no selection, so beside-the-open-note needs no new state and
+ * matches where the human already is. The root is the empty folder, the same
+ * spelling the move's `--into` uses.
+ */
+export function defaultCreateFolder(openPath: string | null): string {
+  if (openPath === null || openPath === '') return ''
+  const slash = openPath.lastIndexOf('/')
+  return slash === -1 ? '' : openPath.slice(0, slash)
+}
+
+/**
+ * A prompted note name under its folder, with `.md` added once.
+ *
+ * Trimming is the face's only normalization: hygiene stays the core's
+ * (`BikeshedPath`, one truth), and a refusal surfaces in the banner.
+ */
+export function resolveNotePath(folder: string, name: string): string {
+  const trimmed = name.trim()
+  const withExt = trimmed.toLowerCase().endsWith('.md') ? trimmed : `${trimmed}.md`
+  return folder === '' ? withExt : `${folder}/${withExt}`
+}
+
+/**
+ * A prompted folder name under its folder, with edge slashes trimmed.
+ *
+ * Trimming is the face's only normalization, as with notes: the core refuses
+ * what cannot be a path.
+ */
+export function resolveFolderPath(folder: string, name: string): string {
+  const trimmed = name.trim().replace(/^\/+|\/+$/g, '')
+  return folder === '' ? trimmed : `${folder}/${trimmed}`
+}
+
+/**
  * Save the buffer: read the disk, compare the hash, write only if it agrees.
  *
  * The read-and-write is not atomic, exactly as the Swift saved it: the window

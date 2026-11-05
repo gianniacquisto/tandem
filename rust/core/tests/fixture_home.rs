@@ -10,8 +10,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use tandem_core::domain::{
-    AddTicket, Board, CommentRead, CompletionUndo, DescriptionBody, DomainError, Edit, Filter,
-    SetFields, Status, TicketBoard,
+    AddTicket, Board, CommentRead, CompletionUndo, DomainError, Edit, Filter, SetFields, Status,
+    TicketBoard,
 };
 use tandem_core::store::{Actor, Home, Store};
 
@@ -144,7 +144,8 @@ fn the_board_lives_a_whole_life_against_the_fixture_home() {
         other => panic!("expected the log, got {other:?}"),
     }
 
-    // Answered: the block lands, the pair moves, and the inbox stops asking.
+    // Held by the human: the inbox lists the assignee alone, and a comment
+    // plus `set` closes it.
     board
         .set(
             "PRT-1",
@@ -161,16 +162,26 @@ fn the_board_lives_a_whole_life_against_the_fixture_home() {
             .len(),
         1
     );
-    let answered = board
-        .answer("PRT-1", Status::Ready, None, "A: port it.", 1_762_000_000)
+    board
+        .append_comment("PRT-1", "human", "A: port it.")
         .unwrap();
-    assert_eq!(answered.assignee, None);
-    assert!(DescriptionBody::answered(answered.description.as_deref()));
+    let closed = board
+        .set(
+            "PRT-1",
+            SetFields {
+                status: Edit::Set(Status::Ready),
+                assignee: Edit::Set(None),
+                ..SetFields::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(closed.assignee, None);
+    assert_eq!(closed.status, Status::Ready);
     assert!(
         tandem_core::domain::TicketQuery::inbox()
             .apply(&board.list(&Filter::All.query()).unwrap())
             .is_empty(),
-        "the hold is closed in the same write"
+        "the hold is closed via comment plus set"
     );
 
     // Archived, and still on the board behind the archive.

@@ -911,46 +911,6 @@
     },
     {
       "group": "ticket",
-      "case": "answer",
-      "setup": [
-        {
-          "argv": [
-            "lane",
-            "add",
-            "--name",
-            "Cycle",
-            "--abbr",
-            "CYC"
-          ]
-        },
-        {
-          "argv": [
-            "ticket",
-            "add",
-            "--title",
-            "Fixture ticket",
-            "--lane",
-            "Cycle",
-            "--assignee",
-            "human"
-          ]
-        }
-      ],
-      "argv": [
-        "ticket",
-        "answer",
-        "--id",
-        "CYC-1",
-        "--status",
-        "ready",
-        "--assignee",
-        "self",
-        "--body",
-        "The answer stands."
-      ]
-    },
-    {
-      "group": "ticket",
       "case": "archive",
       "setup": [
         {
@@ -1223,15 +1183,6 @@
       "argv": [
         "ticket",
         "complete",
-        "--help"
-      ]
-    },
-    {
-      "group": "ticket",
-      "case": "answer-help",
-      "argv": [
-        "ticket",
-        "answer",
         "--help"
       ]
     },

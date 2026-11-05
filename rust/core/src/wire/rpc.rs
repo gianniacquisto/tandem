@@ -103,7 +103,6 @@ methods! {
     TicketBlock: "ticket.block", TicketBlockParams, "ticket block";
     TicketUnblock: "ticket.unblock", TicketUnblockParams, "ticket unblock";
     TicketComplete: "ticket.complete", TicketIdParams, "ticket complete";
-    TicketAnswer: "ticket.answer", TicketAnswerParams, "ticket answer";
     TicketArchive: "ticket.archive", TicketArchiveParams, "ticket archive";
     TicketCommentList: "ticket.comment.list", TicketIdParams, "ticket comment list";
     TicketCommentAdd: "ticket.comment.add", CommentAddParams, "ticket comment add";
@@ -147,6 +146,9 @@ methods! {
     NoteRecoveries: "note.recoveries", EmptyParams, "";
     NoteWrite: "note.write", NoteWriteParams, "note write";
     NoteMove: "note.move", NoteMoveParams, "note move";
+    NoteCreate: "note.create", NotePathParams, "note create";
+    NoteCreateFolder: "note.createFolder", NotePathParams, "note create-folder";
+    NoteDaily: "note.daily", EmptyParams, "note daily";
     SetupStatus: "setup.status", EmptyParams, "setup status";
     SetupInstall: "setup.install", SetupInstallParams, "setup install";
     DoctorReport: "doctor.report", EmptyParams, "doctor";
@@ -352,16 +354,6 @@ pub struct TicketBlockParams {
 pub struct TicketUnblockParams {
     pub id: Option<String>,
     pub on: Option<String>,
-}
-
-/// `ticket.answer`: the answer, its status and its next owner.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct TicketAnswerParams {
-    pub id: Option<String>,
-    pub status: Option<String>,
-    pub assignee: Option<String>,
-    pub body: Option<String>,
 }
 
 /// `ticket.archive`: one ticket, or the done ones when `id` is absent.
@@ -762,22 +754,6 @@ impl TicketUnblockParams {
                 "on",
                 string("the edge to remove; omit to remove every edge the ticket has"),
             ),
-        ])
-    }
-}
-
-impl TicketAnswerParams {
-    /// The tool input for `ticket.answer`: the answer, its status and its next
-    /// owner in one write.
-    pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("id", string("the ticket's UUID or its ref")),
-            ("status", string("the status the answer opens; required")),
-            (
-                "assignee",
-                string("the next owner, self for this agent; omit to clear it"),
-            ),
-            ("body", string("the answer body; an empty body is refused")),
         ])
     }
 }

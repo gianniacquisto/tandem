@@ -24,25 +24,10 @@ impl DescriptionBody {
         }
     }
 
-    /// Whether the description carries an answer block: a line whose trimmed start
-    /// is `## Answer`, case-insensitively.
-    ///
-    /// **Line-anchored on purpose.** The block is how the sprint and the interview
-    /// record a decision, so the test is the heading, not the words: a ticket that
-    /// mentions the block inline is still asking its question.
-    pub fn answered(description: Option<&str>) -> bool {
-        let Some(description) = description else {
-            return false;
-        };
-        description
-            .lines()
-            .any(|line| line.trim().to_lowercase().starts_with("## answer"))
-    }
-
     /// Why a ticket waits: the text under a line whose trimmed start is
     /// `## Blocked on`, up to the next `## ` heading, trimmed, `None` when the body
     /// carries no such line or the section is empty (TAN-232). Line-anchored, for
-    /// `answered`'s reason.
+    /// `blocked_reason`'s reason.
     pub fn blocked_reason(description: Option<&str>) -> Option<String> {
         let description = description?;
         let lines: Vec<&str> = description.lines().collect();

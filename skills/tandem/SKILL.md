@@ -9,7 +9,7 @@ The Tandem MCP tools are the agent interface on this Mac, served by the binary t
 
 ## MCP tools
 
-The Tandem MCP tools are this host's agent path on this Mac: `tandem-cli mcp` serves the agent face as an MCP server over stdio (the binary the app bundles, `/Applications/Tandem.app/Contents/MacOS/tandem-cli`, stable across upgrades), so an agent reads and writes the same list and notes a human uses in the app. The tools below are its 38 verbs, one per CLI verb, typed end to end. A tool call runs the CLI verb's own domain call, so the two doors cannot disagree. Agents use these tools only: when they are missing, fail loudly and ask for `tandem-cli setup install` instead of falling back to the shell. The CLI stays documented below as the human's and the scripts' door; where the two spellings differ, the tool's description says how.
+The Tandem MCP tools are this host's agent path on this Mac: `tandem-cli mcp` serves the agent face as an MCP server over stdio (the binary the app bundles, `/Applications/Tandem.app/Contents/MacOS/tandem-cli`, stable across upgrades), so an agent reads and writes the same list and notes a human uses in the app. The tools below are its 37 verbs, one per CLI verb, typed end to end. A tool call runs the CLI verb's own domain call, so the two doors cannot disagree. Agents use these tools only: when they are missing, fail loudly and ask for `tandem-cli setup install` instead of falling back to the shell. The CLI stays documented below as the human's and the scripts' door; where the two spellings differ, the tool's description says how.
 
 `setup install` wires the server, so no manual MCP config is needed:
 
@@ -35,7 +35,6 @@ The server inherits the host's environment: the Tandem home resolves the way `rp
 | `ticket_block` | `ticket block` |
 | `ticket_unblock` | `ticket unblock` |
 | `ticket_complete` | `ticket complete` |
-| `ticket_answer` | `ticket answer` |
 | `ticket_archive` | `ticket archive` |
 | `ticket_comment_add` | `ticket comment add` |
 | `ticket_comment_list` | `ticket comment list` |
@@ -62,8 +61,8 @@ The server inherits the host's environment: the Tandem home resolves the way `rp
 
 Four things the tools spell differently from the flags:
 
-- **Bodies ride JSON strings.** Every stdin body on the CLI (`--description -`, `--body -`, `--brief -`, `--summary -`, capture bodies, sprint notes) is a JSON string on the tool. An empty one is refused the same way an empty pipe is.
-- **`session_end` reads the harness by default.** The tool stamps the harness usage without being asked; a harness with no row for the record stamps without usage and says so in the answer's note, never failing. Pass `usageFromHarness: false` with explicit usage flags to stamp by hand.
+- **Bodies ride JSON strings.** Every stdin body on the CLI (`--description -`, `--brief -`, `--summary -`, capture bodies, sprint notes) is a JSON string on the tool. An empty one is refused the same way an empty pipe is.
+- **`session_end` reads the harness by default.** The tool stamps the harness usage without being asked; a harness with no row for the record stamps without usage and says so in the result's note, never failing. Pass `usageFromHarness: false` with explicit usage flags to stamp by hand.
 - **A stamped `session_end` posts the usage comment** on every ticket the session carried, signed by the record's agent, exactly as the CLI does.
 - **A domain refusal is a tool result with `isError`**, in the CLI's words (an unknown id carries the open list the same way stderr does). Only a call the door cannot route is a protocol error.
 
@@ -75,7 +74,7 @@ Four things the tools spell differently from the flags:
 
 ## Tickets
 
-Ten verbs under `ticket`: `list`, `show`, `add`, `set`, `move`, `block`, `unblock`, `complete`, `answer` and `archive`, plus `comment` with sub-verbs of its own. Every object they return has the same shape:
+Nine verbs under `ticket`: `list`, `show`, `add`, `set`, `move`, `block`, `unblock`, `complete` and `archive`, plus `comment` with sub-verbs of its own. Every object they return has the same shape:
 
 | field | meaning |
 | --- | --- |
@@ -150,10 +149,6 @@ A wait that is not a ticket (a person, a release, a credential) stays prose in `
 ### `ticket complete --id <id>`
 
 The short path to `--status done`: idempotent, and an unknown id's error carries the current open list. No `reopen` verb — `ticket set --id … --status backlog` is the reopen.
-
-### `ticket answer --id <id> --status <next> [--assignee <name|self>] --body <string|->`
-
-Record the human's answer and close the hold in **one write**: a `## Answer — <date>` block appended to the description, the status the answer opens, and the next assignee. `--assignee` omitted (or `""`) clears the owner — the question is settled; `self` names this agent. `--body -` reads the body from stdin, and an empty body is refused, leaving the ticket alone. The inbox stops listing a ticket as soon as the block is in its body, whether or not the pair moved — so an answered ticket still wearing `human` on the agents' read is debt: answer it again with the pair you want.
 
 ### `ticket archive`
 

@@ -1,9 +1,10 @@
-//! The stdin description body and the two sections the board reads out of a
-//! description, ported from `DescriptionBodyTests.swift`.
+//! The stdin description body and the section the board reads out of a
+//! description.
 //!
 //! The store's rule is unchanged: an empty description is a legitimate value, and
 //! `--description ""` clears it deliberately. The refusal belongs to the stdin path
-//! alone.
+//! alone. There is no answer marker: a hold closes via a comment plus `set`, and
+//! the inbox is the assignee alone.
 
 mod support;
 
@@ -46,39 +47,6 @@ fn the_refusal_is_a_domain_failure_with_actionable_text() {
     let text = DomainError::EmptyDescriptionBody.message();
     assert!(text.contains("empty"));
     assert!(text.contains("--description"));
-}
-
-#[test]
-fn a_line_that_starts_an_answer_heading_is_an_answer_any_case_any_dated_spelling() {
-    for description in [
-        "## Answer\nB: the chosen option",
-        "## answer \u{2014} 2026-10-26\nA",
-        "## ANSWER\nsettled",
-        "## Answer (2026-10-21)\nA, approved by merging PR #59",
-        "## Why\n\nwhy this is asked\n\n## Answer \u{2014} 2026-10-23\nA",
-        "  ## Answer \u{2014} 2026-10-26\nindented, still a heading",
-        "the brief\r\n\r\n## Answer \u{2014} 2026-10-26\r\nA",
-    ] {
-        assert!(
-            DescriptionBody::answered(Some(description)),
-            "not answered: {description}"
-        );
-    }
-}
-
-#[test]
-fn a_ticket_with_no_answer_block_is_not_answered() {
-    assert!(!DescriptionBody::answered(None));
-    assert!(!DescriptionBody::answered(Some("")));
-    assert!(!DescriptionBody::answered(Some("## Why\n\nno answer yet")));
-    assert!(
-        !DescriptionBody::answered(Some("text ## Answer, not a heading")),
-        "the heading is line-anchored"
-    );
-    assert!(
-        !DescriptionBody::answered(Some("The `## Answer` is recorded on `F1CEFA57`")),
-        "a mention inline is not an answer"
-    );
 }
 
 #[test]

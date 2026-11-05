@@ -31,6 +31,9 @@ test('the bikeshed face, over the seeded vault', async ({ app, window }) => {
   await expect(window.locator('.bikeshed-face')).toBeVisible()
   await expect(window.locator('.bikeshed-face .face__title')).toHaveCount(0)
   await expect(window.locator('.tree__vault-name')).toHaveText('Bikeshed')
+  await expect(window.locator('.tree__action', { hasText: "Today's note" })).toBeVisible()
+  await expect(window.locator('.tree__new--note')).toHaveText('New note')
+  await expect(window.locator('.tree__new--folder')).toHaveText('New folder')
   await expect(window.locator('.tree__name')).toHaveCount(6)
 
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
@@ -112,6 +115,87 @@ test('a concurrent CLI write is a conflict with both bodies, never a lost write'
   await expect(editor.locator('.cm-content')).toContainText(
     'the CLI wrote this while the editor was dirty',
   )
+})
+
+/**
+ * The creation the face was missing: the tree's New note control asks for a
+ * name, the core's `note.create` writes it, and the face opens it ready to
+ * type. The default location is the vault root when nothing is open.
+ */
+test('a new note through the tree control opens in the editor ready to type', async ({
+  window,
+}) => {
+  await openTab(window, 'bikeshed')
+
+  await window.locator('.tree__new--note').click()
+  const dialog = window.getByRole('dialog', { name: 'New note' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('Name').fill('from-ui')
+  await dialog.getByRole('button', { name: 'Create' }).click()
+
+  await expect(window.locator('.tree__label[title="from-ui.md"]')).toBeVisible()
+  await expect(window.locator('.editor__title')).toHaveText('from-ui')
+  await expect(window.locator('.editor__folder')).toHaveText('Bikeshed')
+  await expect(window.locator('.banner')).toHaveCount(0)
+
+  const editor = window.frameLocator('.editor__frame')
+  await editor.locator('.cm-content').click()
+  await window.keyboard.type('hello from UI-1')
+  await expect(editor.locator('.cm-content')).toContainText('hello from UI-1')
+  expect(existsSync(join(seedPath(), 'bikeshed', 'from-ui.md'))).toBe(true)
+})
+
+/**
+ * The folder half of the same affordance: the tree's New folder control asks
+ * for a name, the core's `note.createFolder` writes it, and the tree draws it
+ * expanded.
+ */
+test('a new folder through the tree control appears expanded', async ({ window }) => {
+  await openTab(window, 'bikeshed')
+
+  await window.locator('.tree__new--folder').click()
+  const dialog = window.getByRole('dialog', { name: 'New folder' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('Name').fill('new-folder')
+  await dialog.getByRole('button', { name: 'Create' }).click()
+
+  const row = window.locator('.tree__row[data-kind="folder"]').filter({ hasText: 'new-folder' })
+  await expect(row).toBeVisible()
+  await expect(row).toHaveAttribute('aria-expanded', 'true')
+  await expect(window.locator('.banner')).toHaveCount(0)
+  expect(existsSync(join(seedPath(), 'bikeshed', 'new-folder'))).toBe(true)
+})
+
+/**
+ * Today's note: one click opens-or-creates `daily/<today>.md` and opens it
+ * ready to type; a second click the same day returns the same file with staged
+ * content intact.
+ */
+test("today's note opens-or-creates and keeps staged content", async ({ window }) => {
+  await openTab(window, 'bikeshed')
+
+  const action = window.locator('.tree__action', { hasText: "Today's note" })
+  await expect(action).toBeVisible()
+  await action.click()
+
+  const now = new Date()
+  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const title = `daily/${day}.md`
+
+  await expect(window.locator(`.tree__label[title="${title}"]`)).toBeVisible()
+  await expect(window.locator('.editor__title')).toHaveText(day)
+  await expect(window.locator('.editor__folder')).toHaveText('daily')
+
+  const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('.cm-content')).toBeVisible()
+  await editor.locator('.cm-content').click()
+  await window.keyboard.type(' words for today')
+  await expect(editor.locator('.cm-content')).toContainText('words for today')
+
+  await action.click()
+  await expect(window.locator(`.tree__label[title="${title}"]`)).toBeVisible()
+  await expect(editor.locator('.cm-content')).toContainText('words for today')
+  await expect(window.locator('.banner')).toHaveCount(0)
 })
 
 /**

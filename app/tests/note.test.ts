@@ -5,8 +5,11 @@ import {
   applyDirty,
   arrival,
   conflictStillApplies,
+  defaultCreateFolder,
   keepMine,
   openBuffer,
+  resolveFolderPath,
+  resolveNotePath,
   saveNote,
   stashDraft,
   takeDraft,
@@ -189,5 +192,26 @@ describe('an editor message that changes nothing', () => {
       text: 'old plus typing',
       dirty: true,
     })
+  })
+})
+
+describe('the creation default location', () => {
+  it('is the open note folder, else the vault root', () => {
+    expect(defaultCreateFolder('projects/fixture/fixture.md')).toBe('projects/fixture')
+    expect(defaultCreateFolder('Index.md')).toBe('')
+    expect(defaultCreateFolder(null)).toBe('')
+  })
+
+  it('joins a prompted note name under the default folder, adding .md once', () => {
+    expect(resolveNotePath('', 'hello')).toBe('hello.md')
+    expect(resolveNotePath('', 'hello.md')).toBe('hello.md')
+    expect(resolveNotePath('projects/fixture', 'note')).toBe('projects/fixture/note.md')
+    expect(resolveNotePath('projects/fixture', '  spaced  ')).toBe('projects/fixture/spaced.md')
+  })
+
+  it('joins a prompted folder name under the default folder', () => {
+    expect(resolveFolderPath('', 'daily')).toBe('daily')
+    expect(resolveFolderPath('projects', 'sub')).toBe('projects/sub')
+    expect(resolveFolderPath('projects', '  sub  ')).toBe('projects/sub')
   })
 })

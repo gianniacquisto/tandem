@@ -549,19 +549,6 @@ fn execute(
             let ticket = board.complete(named(&params.id)).map_err(domain)?;
             Ok(ticket_receipt(&ticket, store))
         }
-        Method::TicketAnswer(params) => {
-            let assignee = resolve_assignee(params.assignee.as_deref(), actor).map_err(domain)?;
-            let ticket = board
-                .answer(
-                    named(&params.id),
-                    Status::parse(params.status.as_deref().unwrap_or("")).map_err(domain)?,
-                    assignee.as_deref(),
-                    params.body.as_deref().unwrap_or(""),
-                    crate::store::timestamp::unix_now(),
-                )
-                .map_err(domain)?;
-            Ok(ticket_receipt(&ticket, store))
-        }
         Method::TicketArchive(params) => match params.id.as_deref() {
             Some(id) => {
                 let ticket = board.archive(id).map_err(domain)?;
@@ -970,6 +957,35 @@ fn execute(
                 .value;
             Ok(Reply::NoteMove(NoteMoveReply {
                 moved: NoteMoveView::new(&outcome),
+            }))
+        }
+        Method::NoteCreate(params) => {
+            let created = open_bikeshed(store)
+                .create(named(&params.path))
+                .map_err(domain)?
+                .value;
+            Ok(Reply::NotePath(NotePathView {
+                path: created,
+                note: None,
+            }))
+        }
+        Method::NoteCreateFolder(params) => {
+            let created = open_bikeshed(store)
+                .create_folder(named(&params.path))
+                .map_err(domain)?
+                .value;
+            Ok(Reply::NotePath(NotePathView {
+                path: created,
+                note: None,
+            }))
+        }
+        Method::NoteDaily(_) => {
+            let result = open_bikeshed(store)
+                .open_daily_note(crate::bikeshed::Day::today())
+                .map_err(domain)?;
+            Ok(Reply::NotePath(NotePathView {
+                path: result.value,
+                note: result.note,
             }))
         }
         Method::NoteHealth(_) => Ok(Reply::NoteHealth(NoteHealthReply {
