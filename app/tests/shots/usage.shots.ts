@@ -91,7 +91,7 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
   await expect(inCell).toHaveText('3,000')
 
   await window.locator('.usage__segment', { hasText: 'Ticket' }).click()
-  await expect(window.locator('.usage__table thead th').first()).toHaveText('TICKET')
+  await expect(window.locator('.usage__table thead th').first()).toHaveText('TICKET ↑')
 
   const rows = window.locator('.usage__row')
   await expect(rows.first()).toBeVisible()
