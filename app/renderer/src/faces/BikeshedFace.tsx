@@ -14,6 +14,12 @@ import {
   resolveWikilink,
 } from '../shell/bikeshed'
 import {
+  defaultBikeshedMode,
+  loadBikeshedMode,
+  saveBikeshedMode,
+  type BikeshedMode,
+} from '../shell/editor'
+import {
   applyDirty,
   arrival,
   conflictStillApplies,
@@ -97,6 +103,7 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
   const [railOpen, setRailOpen] = useState(
     () => window.localStorage.getItem(RAIL_KEY) !== 'false',
   )
+  const [mode, setMode] = useState<BikeshedMode>(() => loadBikeshedMode())
   const [nodes, setNodes] = useState<NoteNodeView[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState<NoteBuffer | null>(null)
@@ -114,6 +121,8 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
   const seeded = useRef(false)
   const openRef = useRef<NoteBuffer | null>(null)
   openRef.current = open
+  const modeRef = useRef(mode)
+  modeRef.current = mode
   const savingRef = useRef(false)
 
   const noteIndex = useMemo(() => notePaths(nodes), [nodes])
@@ -246,6 +255,7 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     const draft = takeDraft()
     if (draft === null) return
     setOpen(draft)
+    setMode(defaultBikeshedMode(loadBikeshedMode(), draft.text))
     setToken((current) => current + 1)
     setExpanded((current) => new Set([...current, ...ancestorsOf(draft.path)]))
     setNotice('A draft from your last visit was kept. Saving again.')
@@ -328,6 +338,10 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       return
     }
     setOpen(openBuffer({ path: note.path, text: note.text, hash: note.hash }))
+    // Empty always wins over stored Preview, so UI-1/UI-4 creations open
+    // ready to type; otherwise the last explicit choice wins. Opening never
+    // persists: only the control (or Mod+E) writes the stored choice.
+    setMode(defaultBikeshedMode(loadBikeshedMode(), note.text))
     setConflict(null)
     setExpanded((current) => new Set([...current, ...ancestorsOf(path)]))
     setToken((current) => current + 1)
@@ -451,6 +465,11 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       if (path !== null) void openNote(path)
       return
     }
+    if (next.type === 'toggle-mode') {
+      if (openRef.current === null) return
+      toggleMode()
+      return
+    }
     if (next.type === 'send-to-todos' && typeof next.text === 'string') {
       void fileTicket(next.text)
     }
@@ -468,6 +487,34 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       return next
     })
   }
+
+  function setModeChoice(next: BikeshedMode): void {
+    setMode(next)
+    saveBikeshedMode(next)
+  }
+
+  function toggleMode(): void {
+    if (openRef.current === null) return
+    const next: BikeshedMode = modeRef.current === 'preview' ? 'edit' : 'preview'
+    setModeChoice(next)
+  }
+
+  // Mod+E flips the mode whenever a note is open. The bundle owns the same
+  // shortcut inside the frame (it posts toggle-mode); this owns it outside.
+  useEffect(() => {
+    function handle(event: KeyboardEvent): void {
+      const mod = event.metaKey || event.ctrlKey
+      if (!mod || event.altKey || event.shiftKey) return
+      if (event.key.toLowerCase() !== 'e') return
+      if (openRef.current === null) return
+      event.preventDefault()
+      const next: BikeshedMode = modeRef.current === 'preview' ? 'edit' : 'preview'
+      setMode(next)
+      saveBikeshedMode(next)
+    }
+    window.addEventListener('keydown', handle)
+    return () => window.removeEventListener('keydown', handle)
+  }, [])
 
   return (
     <section className="face face--wide bikeshed-face" aria-label="Bikeshed">
@@ -558,6 +605,8 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
             railOpen={railOpen}
             railCount={backlinks.length + linked.length}
             onToggleRail={toggleRail}
+            mode={mode}
+            onToggleMode={setModeChoice}
             onMessage={onEditorMessage}
           />
           {railOpen ? (
