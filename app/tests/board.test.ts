@@ -442,6 +442,82 @@ describe('the project focus', () => {
   })
 })
 
+describe('the epic lane journey', () => {
+  const epicDeclared = ['Tandem', 'ui', 'core'] as const
+  const epicBoard: TicketSummary[] = [
+    ticket({ id: 'e1', title: 'Triage inbox', lane: 'Tandem', status: 'backlog' }),
+    ticket({ id: 'e2', title: 'Epic ui work', lane: 'ui', status: 'ready' }),
+    ticket({ id: 'e3', title: 'Epic core work', lane: 'core', status: 'in-progress' }),
+    ticket({ id: 'e4', title: 'Unfiled', lane: null, status: 'backlog' }),
+  ]
+
+  it('focuses an epic lane alone and shows all on the escape or a stale name', () => {
+    const keys = laneKeys([...epicDeclared], epicBoard)
+    expect(keys).toEqual([null, 'Tandem', 'ui', 'core'])
+    expect(keys[0]).toBeNull()
+    expect(visibleLaneKeys(keys, 'ui')).toEqual(['ui'])
+    expect(visibleLaneKeys(keys, null)).toEqual(keys)
+    expect(visibleLaneKeys(keys, 'docs')).toEqual(keys)
+    expect(visibleLaneKeys(keys, '')).toEqual(keys)
+  })
+
+  it('narrows the list to the epic lane without reordering', () => {
+    const ordered: TicketSummary[] = [
+      ticket({ id: 'u1', title: 'First ui', lane: 'ui', status: 'ready' }),
+      ticket({ id: 'c1', title: 'Core work', lane: 'core', status: 'ready' }),
+      ticket({ id: 'u2', title: 'Second ui', lane: 'ui', status: 'in-progress' }),
+      ticket({ id: 't1', title: 'Triage', lane: 'Tandem', status: 'backlog' }),
+    ]
+    const narrowed = filterTickets(ordered, filters({ scope: 'all', lane: 'ui' }))
+    expect(narrowed.map((row) => row.id)).toEqual(['u1', 'u2'])
+  })
+
+  it('keeps an empty focused epic lane as a drop target with its hint', () => {
+    const withoutUi = epicBoard.filter((row) => row.lane !== 'ui')
+    const rows = laneRows([...epicDeclared], withoutUi)
+    expect(rows.map((row) => row.key)).toEqual([null, 'Tandem', 'ui', 'core'])
+    const uiRow = rows.find((row) => row.key === 'ui')
+    expect(uiRow).toBeDefined()
+    expect(uiRow?.cells).toHaveLength(6)
+    expect(uiRow?.cells.every((cell) => cell.tickets.length === 0)).toBe(true)
+    const cell = source('faces/BoardCell.tsx')
+    expect(cell).toContain('board__drop-hint')
+    expect(cell).toContain('Drop tickets here')
+    expect(cell).toContain('data-empty')
+    expect(cell).toContain('data-targeted')
+    expect(
+      emptyBoardCopy({
+        status: 'ready',
+        ticketCount: 2,
+        error: null,
+        filters: filters({}),
+        nothingVisible: true,
+        activeProject: 'ui',
+        laneNames: [...epicDeclared],
+      }),
+    ).toMatchObject({ title: 'No tickets in ui' })
+  })
+
+  it('drops a ticket into an epic lane cell in planner order', () => {
+    const calls = dropCalls(epicBoard, 'e1', { lane: 'ui', status: 'done', index: 1 })
+    expect(calls.map((call) => call.method)).toEqual(['ticket.move', 'ticket.set'])
+    expect(calls[0]).toEqual({
+      method: 'ticket.move',
+      params: { id: 'e1', lane: 'ui', index: 1 },
+    })
+    expect(calls[1]).toEqual({
+      method: 'ticket.set',
+      params: { id: 'e1', title: null, status: 'done', assignee: null, description: null },
+    })
+    expect(appendIndex(epicBoard, 'ui')).toBe(1)
+    expect(dropIndex(epicBoard, 'e1', 'e2', true)).toBe(1)
+    const face = source('faces/TicketsFace.tsx')
+    expect(face).toContain('dropCalls(')
+    expect(face).toContain('LANE_CHANGED')
+    expect(face).toContain('snapshot.revision')
+  })
+})
+
 describe('the empty board', () => {
   it('shows a drop target with a hint in every empty cell, highlighted on drag', () => {
     const cell = source('faces/BoardCell.tsx')

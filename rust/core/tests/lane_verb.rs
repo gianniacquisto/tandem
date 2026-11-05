@@ -100,4 +100,35 @@ fn unknown_lane_names_the_lane_and_the_fix() {
         message.contains("lane add") && message.contains("lane list"),
         "the refusal names the fix: {message}"
     );
+
+    // The epic lanes use the same refusal: an unknown epic name names the
+    // lane and the fix at the domain seam.
+    let epic = Sandbox::new("lane-verb-unknown-epic");
+    let epic_board = epic.board();
+    epic_board.add_lane("Tandem", None, None).unwrap();
+    epic_board.add_lane("ui", None, None).unwrap();
+    epic_board.add_lane("core", None, None).unwrap();
+    let refused = epic_board.move_lane("docs", 0).unwrap_err();
+    let message = refused.message();
+    assert!(
+        message.contains("\"docs\""),
+        "the refusal names the epic lane: {message}"
+    );
+    assert!(
+        message.contains("lane add") && message.contains("lane list"),
+        "the refusal names the fix: {message}"
+    );
+    let ticket = epic_board.add("epic work", AddTicket::default()).unwrap();
+    let refused = epic_board
+        .move_ticket(&ticket.id.to_string(), Some("docs"), usize::MAX)
+        .unwrap_err();
+    let message = refused.message();
+    assert!(
+        message.contains("\"docs\""),
+        "filing into an unknown epic lane names the lane: {message}"
+    );
+    assert!(
+        message.contains("lane add") && message.contains("lane list"),
+        "filing names the fix: {message}"
+    );
 }

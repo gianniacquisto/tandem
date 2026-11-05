@@ -263,6 +263,23 @@ describe('the lane surface', () => {
       project: null,
     })
   })
+
+  it('sheet lane picker offers the declared epic lanes', () => {
+    expect(laneChoices('ui', ['Tandem', 'ui', 'core'])).toEqual([
+      { value: null, label: 'Uncategorized', selected: false, renamable: false },
+      { value: 'Tandem', label: 'Tandem', selected: false, renamable: true },
+      { value: 'ui', label: 'ui', selected: true, renamable: true },
+      { value: 'core', label: 'core', selected: false, renamable: true },
+    ])
+    expect(laneChoices(null, ['Tandem', 'ui', 'core'])[0]).toMatchObject({
+      value: null,
+      selected: true,
+    })
+    const sheet = source('faces/TicketSheet.tsx')
+    expect(sheet).toContain('laneChoices(')
+    expect(sheet).toContain('moveToLane')
+    expect(sheet).toContain("method: 'ticket.move'")
+  })
 })
 
 describe('the sheet comments', () => {
