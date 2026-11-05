@@ -20,6 +20,10 @@
       {
         "action": "ok",
         "path": "<home>/.config/opencode/opencode.json"
+      },
+      {
+        "action": "ok",
+        "path": "<home>/.config/opencode/opencode.json"
       }
     ],
     "state": {

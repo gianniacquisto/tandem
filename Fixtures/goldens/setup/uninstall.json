@@ -23,6 +23,10 @@
       },
       {
         "action": "removed",
+        "path": "<home>/.config/opencode/opencode.json"
+      },
+      {
+        "action": "removed",
         "path": "<tandem-home>/agent"
       }
     ],
