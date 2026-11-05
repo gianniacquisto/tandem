@@ -1669,6 +1669,28 @@ body {
   cursor: pointer;
 }
 
+.tree__actions {
+  display: flex;
+  gap: 6px;
+  padding: 2px 10px 8px;
+}
+
+.tree__action {
+  height: 28px;
+  padding: 0 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.tree__action:hover {
+  background: var(--sand);
+}
+
 .tree {
   margin: 0;
   padding: 0 0 8px;
