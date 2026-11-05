@@ -184,3 +184,26 @@ fn two_sprints_on_one_pointer_each_reach_their_own_record() {
     assert_eq!(via_beta["id"].as_str().unwrap(), second_id);
     assert_eq!(via_beta["status"], "running");
 }
+
+#[test]
+fn sprint_show_on_an_epic_lane_with_no_record_names_the_lane() {
+    let sandbox = Sandbox::new("epic-show-missing");
+    sandbox.json(&["lane", "add", "--name", "Tandem"]);
+    sandbox.json(&["lane", "add", "--name", "ui"]);
+    sandbox.json(&["lane", "add", "--name", "core"]);
+    let output = sandbox.run_with(&["sprint", "show", "--lane", "ui", "--number", "1"], None);
+    assert_ne!(
+        output.status.code(),
+        Some(0),
+        "no record in the epic lane refuses"
+    );
+    let message = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(
+        message.contains("\"ui\""),
+        "the refusal names the epic lane: {message}"
+    );
+    assert!(
+        message.contains("No sprint is recorded") || message.contains("holds"),
+        "the refusal names what the lane holds: {message}"
+    );
+}
