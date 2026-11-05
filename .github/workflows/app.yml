@@ -1,13 +1,12 @@
 name: App
 
 # The shell's gates on the three platforms the port targets, plus one
-# packaging run per platform, plus the pinned harness check and the screenshot
-# suite on Linux. The packaging step builds the Rust core into the artifact,
+# packaging run per platform, plus the screenshot suite on Linux. The packaging step builds the Rust core into the artifact,
 # and two gates check it: the binary sits where the packaged shell resolves it,
 # and (on macOS and Linux) the packaged app answers `ticket.list` against a
 # fixture home. The checks this publishes are what a branch rule may name:
 # `app (macos-latest)`, `app (ubuntu-latest)`, `app (windows-latest)`,
-# `harness (ubuntu-latest)` and `shots (ubuntu-latest)`.
+# `shots (ubuntu-latest)`.
 #
 # `push` is path-filtered, where a skipped run costs nothing; `pull_request` is
 # not, because a required check a path-filtered workflow never creates reads
@@ -23,7 +22,6 @@ on:
     branches: [main]
     paths:
       - "app/**"
-      - "Scripts/check-harness-home.py"
       - ".github/workflows/app.yml"
   pull_request:
   workflow_dispatch:
@@ -140,41 +138,6 @@ jobs:
             app/dist/*.AppImage
             app/dist/*.exe
           if-no-files-found: error
-
-  # The pinned embedded harness (ADR 0038, PRT-1): fetch the linux-x64 release
-  # asset, verify the binary's digest against the pin table, and run the
-  # harness-home check against it, including its `--control` red half. Linux
-  # only, because the darwin pin's binary cannot run on this runner; the macOS
-  # pin is verified where the darwin binary runs. The version and the asset
-  # name come from the pin table in `Scripts/check-harness-home.py`, the one
-  # source of truth, so a bump changes one file.
-  harness:
-    name: harness (ubuntu-latest)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Check out the source
-        uses: actions/checkout@v4
-
-      - name: Fetch, verify and run the pinned harness
-        # The workflow's default working-directory is `app`, but the pin lives
-        # in the repo-root `Scripts/`, so this step runs at the workspace root
-        # like the retired-paths gate above.
-        working-directory: ${{ github.workspace }}
-        run: |
-          # The pin is read from the check script itself, the one source of
-          # truth: version, release asset and digest for this platform.
-          eval "$(python3 Scripts/check-harness-home.py --print-pin)"
-          curl -sfL -o "$PINNED_ASSET" \
-            "https://github.com/anomalyco/opencode/releases/download/v$PINNED_VERSION/$PINNED_ASSET"
-          tar xzf "$PINNED_ASSET"
-          chmod +x opencode
-          # `verify_pin` inside the check compares the binary's sha256 against
-          # the pinned digest, so any drift from the pinned asset is a red job
-          # here.
-          test "$(sha256sum opencode | cut -d' ' -f1)" = "$PINNED_SHA256"
-          python3 Scripts/check-harness-home.py --harness ./opencode
-          python3 Scripts/check-harness-home.py --harness ./opencode --control
 
   # The one screenshot rig, and the same job: a browser instead of an lldb
   # injection. Linux only, because a display there is one command (`xvfb-run`).

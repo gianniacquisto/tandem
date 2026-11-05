@@ -1,3 +1,5 @@
+> **Superseded 2026-11-05 by [ADR 0040](0040-no-embedded-agent-loop.md).** SHE-3 removes the Workflow face and the embedded opencode harness from the app (SHE-1 decided, SHE-3 built); the app ships no agent loop and orchestration runs outside it behind the CLI and MCP.
+
 # The harness keeps a home of Tandem's, and the environment is the seam
 
 The app runs its own agent loop by spawning a bundled `opencode` binary, so the store the harness writes must sit in Tandem's home and never in the one the human's own editor uses. The binary makes that harder than `app.name` suggests: every global path is `join(root, "opencode")` with `root` fixed at build time (`const app = "opencode"` in upstream `packages/util/src/global.ts`), so `app.name` is cosmetic for paths, and a naive spawn writes `~/.local/share/opencode/{auth.json,snapshot,tool-output,worktree}`, `~/.config/opencode` and `~/.cache/opencode`.

@@ -11,13 +11,13 @@ open rows where they belong, and the journey a cold pass runs end to end.
 All seven live under the `Tandem` project. `Tandem` itself stays as the triage
 inbox until the open batch closes (see Retire below).
 
-- `ui`: renderer faces (Tickets, Workflow, Sheet, Board) and their tests. Not
+- `ui`: renderer faces (Tickets, Sheet, Board) and their tests. Not
   shell chrome, CLI text, or domain rules.
 - `core`: Rust domain, store, schema, sprints, sessions and usage derivation.
   Not CLI grammar or wire text.
 - `cli`: `tandem-cli` verbs, usage texts and goldens. Not domain rules.
 - `mcp`: MCP server, tools and registry. Not general rpc or app reads.
-- `shell`: Electron shell, rpc stream, harness wiring and packaging. Not
+- `shell`: Electron shell, rpc stream and packaging. Not
   renderer faces.
 - `skills`: agent prompts, skills, sprint loop docs and the team roster. Not
   product code.
@@ -121,16 +121,12 @@ CLI (cold pass, fresh home first):
 
 App:
 
-- Workflow face: lane picker, Add lane, Rename, Move up, Move down, Delete;
-  sprint opener with mode picker; DAG and batch chips; run log.
 - Ticket sheet: lane picker moves the ticket (`ticket.move`); lane create and
   rename from the sheet (`lane.add`, `lane.rename`).
-- Batch draw, run entries and close stay CLI and MCP acts (`sprint ticket`,
+- Lane writes, batch draw, run entries and close stay CLI and MCP acts
+  (`lane add`, `lane rename`, `lane move`, `lane delete`, `sprint ticket`,
   `sprint run`, `sprint close`): the sprint session stays the run log only
-  writer, so the app opens the record and reads the batch and runs back.
-- The Workflow surface test pins the wire set so no UI-only write appears:
-  `lane.list`, `lane.add`, `lane.rename`, `lane.move`, `lane.delete`,
-  `sprint.list`, `sprint.show`, `sprint.open`.
+  writer, and the app reads the batch and runs back.
 
 Errors name the lane and the fix:
 

@@ -10,8 +10,8 @@ import { computed, token } from '../../shots/tokens'
 /**
  * The Settings face a human reads: the machine's paths (the seeded home and
  * the seeded user home's three hosts) with one-click Copy, the Preferences
- * theme rule, the setup report's thirteen checks in four groups with their
- * state, and the harness sign-in section.
+ * theme rule, and the setup report's thirteen checks in four groups with their
+ * state.
  *
  * The paths are the seed's own, at the one fixed scratch root, so the picture
  * is the same in any checkout. What the rule pins is that they are the seed's
@@ -33,7 +33,6 @@ test('the settings face, over the seeded homes', async ({ app, window }) => {
     'Preferences',
     'Roster',
     'Setup',
-    'Harness sign-in',
   ])
 
   const paths = window.locator('.settings__section', {

@@ -124,13 +124,13 @@ function TranscriptBlockView({ block, outputKey }: { block: TranscriptBlock; out
 
 /**
  * The ticket sheet's Sessions section: every session record linked to the
- * ticket, newest first, with the harness transcript behind each row.
+ * ticket, newest first, with the agent transcript behind each row.
  *
  * The section always renders: linked rows, or the empty state when none are.
  * Rows start collapsed, except the deep-linked one; a transcript loads on
  * expand only, paging with load-more. A running row shows a live marker and
  * re-reads on every store change; an ended row freezes at what it last read. A
- * row the harness no longer holds says so on the row, and the section still
+ * row the agent store no longer holds says so on the row, and the section still
  * renders: one row's failure never takes the section down.
  */
 export function SessionsSection({ ticketId, revision, expandedSession }: SessionsSectionProps) {
@@ -243,7 +243,7 @@ export function SessionsSection({ ticketId, revision, expandedSession }: Session
   }, [sessions, expandedSession])
 
   // A running row is live: every store change re-reads its transcript from the
-  // start, so the thinking arrives as the harness records it. An ended row
+  // start, so the thinking arrives as the agent records it. An ended row
   // freezes at what its expansion read.
   useEffect(() => {
     if (sessions === null) return

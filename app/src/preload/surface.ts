@@ -4,10 +4,6 @@ import {
   type Bridge,
   type BridgeCall,
   type Call,
-  type HarnessCall,
-  type HarnessCallAnswer,
-  type Method,
-  type MethodCall,
 } from '../shared/bridge'
 
 /**
@@ -30,8 +26,6 @@ export type IpcSurface = {
  * that needs more opens a ticket on the protocol; it does not widen this object.
  */
 export function createBridge(ipc: IpcSurface): Bridge {
-  async function call(call: Method): Promise<MethodCall>
-  async function call(call: HarnessCall): Promise<HarnessCallAnswer>
   async function call(call: Call): Promise<BridgeCall> {
     return ipc.invoke(CALL_CHANNEL, call)
   }

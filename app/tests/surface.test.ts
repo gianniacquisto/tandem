@@ -56,8 +56,8 @@ describe('the preload surface', () => {
   })
 
   // TAN-254 put the sprint loop on the wire (`sprint.list`, `sprint.show`,
-  // `sprint.open`); the Workflow face calls all three through `window.tandem`,
-  // so the surface pins each tag and its params crossing the one channel.
+  // `sprint.open`); the CLI and MCP drive the loop, so the surface pins each
+  // tag and its params crossing the one channel.
   it('carries the sprint loop over the one channel: list, show and open', async () => {
     const invokes: Array<{ channel: string; payload: unknown }> = []
     const ipc: IpcSurface = {

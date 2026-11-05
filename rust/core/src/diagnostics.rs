@@ -104,8 +104,8 @@ pub struct Facts {
     /// test that injects no state, which reads as no warnings.
     pub agent_face: Option<State>,
     /// The harness sign-in state (TAN-265), from [`harness::read`]. The row is
-    /// informational: the harness starts unauthenticated, so an unsigned home
-    /// is the state the sign-in changes, not a failure.
+    /// informational: the harness home may hold a credential from an external
+    /// run, so an unsigned home is the outside-the-app state, not a failure.
     pub harness_auth: HarnessAuth,
 }
 
@@ -526,8 +526,8 @@ fn agent_face_check(facts: &Facts) -> DoctorCheck {
 
 /// The `harness-auth` row (TAN-265): stored or not, from the same credential
 /// table `auth list` reads. Informational in both states, like `skills`: an
-/// unsigned harness is the state the Settings sign-in changes, and a stored
-/// one names the account and every integration beside it.
+/// unsigned home runs the agent outside the app, and a stored one names the
+/// account and every integration beside it.
 fn harness_auth_check(auth: &HarnessAuth) -> DoctorCheck {
     match auth {
         HarnessAuth::Stored {
@@ -544,7 +544,7 @@ fn harness_auth_check(auth: &HarnessAuth) -> DoctorCheck {
         HarnessAuth::NotStored => DoctorCheck {
             name: "harness-auth".to_string(),
             ok: true,
-            detail: "not signed in; sign in from Settings".to_string(),
+            detail: "not signed in; the agent runs outside the app".to_string(),
         },
         HarnessAuth::Unreadable { detail } => DoctorCheck {
             name: "harness-auth".to_string(),

@@ -632,9 +632,9 @@ fn the_harness_auth_row_reports_the_sign_in_state_without_failing() {
     let row = check(&unsigned, "harness-auth");
     assert!(
         row.ok,
-        "an unsigned harness waits for a sign-in; nothing failed"
+        "an unsigned harness runs outside the app; nothing failed"
     );
-    assert_eq!(row.detail, "not signed in; sign in from Settings");
+    assert_eq!(row.detail, "not signed in; the agent runs outside the app");
 
     let mut stored = facts();
     stored.harness_auth = HarnessAuth::Stored {

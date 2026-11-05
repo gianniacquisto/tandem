@@ -36,14 +36,13 @@ describe('the shell chrome (TAND-16)', () => {
     expect(settings).toContain('doctor.checks')
   })
 
-  it('repeats no tab name as a face heading', () => {
+  it('repeats no tab as a face heading', () => {
     expect(face).not.toContain('<h1')
     expect(face).not.toContain('face__title')
     for (const name of [
       'TicketsFace.tsx',
       'UsageFace.tsx',
       'SettingsFace.tsx',
-      'WorkflowFace.tsx',
       'BikeshedFace.tsx',
     ]) {
       const source = faceSource(name)

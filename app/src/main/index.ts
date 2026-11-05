@@ -1,19 +1,15 @@
 import { join } from 'node:path'
-import { spawn } from 'node:child_process'
 
-import { app, BrowserWindow, ipcMain, session, shell as electronShell } from 'electron'
+import { app, BrowserWindow, ipcMain, session } from 'electron'
 
 import { resolveBinary } from './binary'
-import { answerHarness, HarnessController, isHarnessCall, tandemHomeDir } from './harness'
-import { HarnessServer, resolveServerBinary, type HarnessServerChild } from './harnessServer'
 import { RpcClient } from './rpcClient'
 import { contentSecurityPolicy } from '../shared/security'
 import { CALL_CHANNEL, CHANGED_CHANNEL, type BridgeCall, type Call } from '../shared/bridge'
 import { windowOptions } from './window'
 
 /**
- * The shell's process: one window, one rpc child, one harness server child,
- * and the policy around them.
+ * The shell's process: one window, one rpc child, and the policy around them.
  *
  * The child is spawned here and dies with the pipe, so the app and the core
  * cannot drift apart. Development reads the fixture home under `Fixtures/`
@@ -24,130 +20,12 @@ const devServerUrl: string | undefined = process.env['ELECTRON_RENDERER_URL']
 
 let client: RpcClient | null = null
 let shell: BrowserWindow | null = null
-let harness: HarnessController | null = null
-let harnessServer: HarnessServer | null = null
 
 function homeEnvironment(): Record<string, string> {
   const named = process.env['TANDEM_HOME']
   if (named !== undefined && named.trim() !== '') return { TANDEM_HOME: named }
   if (app.isPackaged) return {}
   return { TANDEM_HOME: join(app.getAppPath(), '..', 'Fixtures', 'port', 'Home') }
-}
-
-/** The Tandem home, by the shell's own rule, resolved here rather than in the renderer. */
-function tandemHome(): string {
-  return tandemHomeDir({
-    env: process.env,
-    packaged: app.isPackaged,
-    appPath: app.getAppPath(),
-    homeDir: app.getPath('home'),
-  })
-}
-
-/** The harness binary every main-process spawn uses: bundled, staged, or PATH. */
-function harnessBinary(): string {
-  return resolveServerBinary({
-    env: process.env,
-    packaged: app.isPackaged,
-    platform: process.platform,
-    appPath: app.getAppPath(),
-    resourcesPath: process.resourcesPath,
-  })
-}
-
-/**
- * The harness sign-in's controller, created once: every `harness.*` call runs
- * through it, so at most one device flow is ever pending. It spawns the same
- * binary the server launcher resolves, so sign-in and the agent loop share
- * one pinned harness.
- */
-function harnessController(): HarnessController {
-  if (harness === null) {
-    harness = new HarnessController({
-      spawn: (binary, args, options) => {
-        const child = spawn(binary, args, {
-          env: options.env,
-          cwd: options.cwd,
-          stdio: ['ignore', 'pipe', 'pipe'],
-          windowsHide: true,
-        })
-        return {
-          onStdout: (listener) => {
-            child.stdout?.on('data', (chunk: Buffer) => listener(chunk.toString()))
-          },
-          onStderr: (listener) => {
-            child.stderr?.on('data', (chunk: Buffer) => listener(chunk.toString()))
-          },
-          onExit: (listener) => {
-            child.on('exit', (code) => listener(code))
-            child.on('error', () => listener(null))
-          },
-          kill: () => {
-            child.kill()
-          },
-        }
-      },
-      openUrl: (url) => {
-        void electronShell.openExternal(url)
-      },
-      tandemHome: tandemHome(),
-      env: { ...process.env, TANDEM_OPENCODE_BIN: harnessBinary() },
-      baseEnv: process.env,
-    })
-  }
-  return harness
-}
-
-/**
- * The harness server (ADR 0038, PRT-1): the app's own agent loop, spawned once
- * per run as `opencode serve --stdio --port 0` with the sealed environment,
- * dying with its stdin like the rpc child. A launch failure is logged, not
- * fatal: the window still opens and the sign-in surface still works.
- */
-function startHarnessServer(): void {
-  const server = new HarnessServer({
-    spawn: (binary, args, options) => {
-      const child = spawn(binary, args, {
-        env: options.env,
-        cwd: options.cwd,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: true,
-      })
-      const serverChild: HarnessServerChild = {
-        onStdout: (listener) => {
-          child.stdout?.on('data', (chunk: Buffer) => listener(chunk.toString()))
-        },
-        onStderr: (listener) => {
-          child.stderr?.on('data', (chunk: Buffer) => listener(chunk.toString()))
-        },
-        onExit: (listener) => {
-          child.on('exit', (code) => listener(code))
-          child.on('error', () => listener(null))
-        },
-        kill: () => {
-          child.kill()
-        },
-        endStdin: () => {
-          child.stdin.end()
-        },
-      }
-      return serverChild
-    },
-    tandemHome: tandemHome(),
-    binary: harnessBinary(),
-    baseEnv: process.env,
-  })
-  harnessServer = server
-  void server.start().then(
-    (handle) => {
-      console.log(`The harness is serving at ${handle.url}.`)
-    },
-    (error: unknown) => {
-      console.error(
-        `The harness server did not start: ${error instanceof Error ? error.message : String(error)}`,
-      )
-    },
-  )
 }
 
 function connect(): RpcClient {
@@ -171,19 +49,6 @@ function connect(): RpcClient {
 }
 
 function replyTo(call: Call): Promise<BridgeCall> {
-  // The harness sign-in is answered here, never by the core: the renderer
-  // reaches the harness home only through this door (TAN-265).
-  if (isHarnessCall(call)) {
-    return answerHarness(call, harnessController()).then(
-      (reply) => ({ reply }),
-      (error: unknown) => ({
-        error: {
-          code: 'harness',
-          message: error instanceof Error ? error.message : 'The sign-in failed.',
-        },
-      }),
-    )
-  }
   if (client === null) {
     return Promise.resolve({ error: { code: 'transport', message: 'The rpc child is not running.' } })
   }
@@ -287,7 +152,6 @@ app.whenReady().then(() => {
   }
 
   client = connect()
-  startHarnessServer()
   client.onChanged((revision) => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(CHANGED_CHANNEL, revision)
@@ -306,8 +170,6 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => app.quit())
 
 app.on('before-quit', () => {
-  harnessServer?.close()
-  harnessServer = null
   client?.close()
   client = null
 })

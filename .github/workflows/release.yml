@@ -219,13 +219,6 @@ jobs:
           test -x "$root/resources/tandem"
           test -f "$root/resources/agent/AGENTS.md"
           test "$(cat "$root/resources/agent/VERSION")" = "$version"
-          # The pinned harness (PRT-1): staged by `harness:stage`, carried at
-          # resources/harness/opencode, verified against the pin like the
-          # `harness` job in app.yml verifies the download.
-          eval "$(python3 Scripts/check-harness-home.py --print-pin)"
-          test -x "$root/resources/harness/opencode"
-          test "$("$root/resources/harness/opencode" --version)" = "opencode v$PINNED_VERSION"
-          test "$(sha256sum "$root/resources/harness/opencode" | cut -d' ' -f1)" = "$PINNED_SHA256"
 
       - name: Compute the checksum
         run: |

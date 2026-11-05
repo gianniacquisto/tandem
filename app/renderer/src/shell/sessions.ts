@@ -77,7 +77,7 @@ export function outputPreview(text: string): string {
 
 /**
  * The record header's usage half: the model, the cost, and the token counts the
- * record stamped, or null when the harness reported nothing at all (the usage
+ * record stamped, or null when the agent pass reported nothing at all (the usage
  * read's own rule: absent is absent, never a zero dressed up as a count).
  */
 export function usageLine(record: Session): string | null {
