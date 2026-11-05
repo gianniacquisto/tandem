@@ -25,8 +25,8 @@ export type BoardLayoutProps = {
  *
  * Lanes group under project headers: projects in list order, their lanes
  * beneath in lane order, the default area first and ungrouped, empty projects
- * not drawn. Headers reuse the lane-head style with no new tokens; lane heads
- * are unchanged.
+ * not drawn. Headers are a quiet group label, smaller than the lane title with
+ * no full-bleed band; lane heads are unchanged.
  *
  * A drop on a card reorders inside its cell; a drop on the cell itself files
  * the ticket there. The cell's own state change goes through `ticket.set` and
@@ -130,10 +130,10 @@ function GroupRows({
   return (
     <>
       {group.project === null ? null : (
-        <div className="board__lane" data-project={group.project}>
-          <h2 className="board__title" style={{ gridColumn: '1 / -1' }}>
+        <div className="board__project" data-project={group.project}>
+          <h2 className="board__project-title">
             <span>{group.project}</span>
-            <span className="board__count">{count}</span>
+            <span className="board__project-count">{count}</span>
           </h2>
         </div>
       )}

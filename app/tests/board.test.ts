@@ -540,3 +540,87 @@ describe('the empty board', () => {
     ).toMatchObject({ title: 'The list is empty' })
   })
 })
+
+describe('the project header (UI-9)', () => {
+  it('draws the project header with its own quiet treatment, distinct from the lane row', () => {
+    const layout = source('faces/BoardLayout.tsx')
+    // The project header keeps data-project and uses its own quiet group class.
+    expect(layout).toContain('board__project')
+    expect(layout).toContain('data-project')
+    // The header no longer reuses the lane title with a full-width span.
+    expect(layout).not.toContain("gridColumn: '1 / -1'")
+    expect(layout).not.toMatch(/<h2 className="board__title" style/)
+    // Lane rows keep .board__title, including the column head.
+    expect(layout).toContain('board__title--head')
+    expect(layout).toMatch(/<h2 className="board__title">/)
+  })
+
+  it('defines the quiet project treatment without a full-bleed paper band', () => {
+    const css = readFileSync(join(appRoot, 'renderer', 'src', 'app.css'), 'utf8')
+    const tokens = readFileSync(join(appRoot, 'renderer', 'src', 'tokens.css'), 'utf8')
+    const rule = (selector: string): string => {
+      const match = css.match(new RegExp(`${selector}\\s*\\{([\\s\\S]*?)\\}`))
+      return match?.[1] ?? ''
+    }
+    const titleRule = rule('\\.board__title')
+    const projectRule = rule('\\.board__project-title')
+    const countRule = rule('\\.board__project-count')
+    expect(projectRule, 'project header has its own rule').not.toBe('')
+    // Smaller type than the lane title (12.5px).
+    expect(titleRule).toContain('12.5px')
+    const laneSize = Number(titleRule.match(/font-size:\s*([\d.]+)px/)?.[1] ?? '0')
+    const projectSize = Number(projectRule.match(/font-size:\s*([\d.]+)px/)?.[1] ?? '0')
+    expect(projectSize).toBeGreaterThan(0)
+    expect(projectSize).toBeLessThan(laneSize)
+    // Transparent with no paper band and no lane-title padding.
+    expect(projectRule).toContain('transparent')
+    expect(projectRule).not.toContain('var(--paper)')
+    expect(projectRule).not.toContain('8px 4px')
+    // Dim count treatment.
+    expect(countRule).toContain('var(--ink-dim)')
+    // Token-only values: no colour literals in the new rules.
+    for (const body of [projectRule, countRule]) {
+      expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
+      expect(body).not.toMatch(/\brgba?\(/)
+      expect(body).not.toMatch(/\bhsla?\(/)
+    }
+    // Every token the new rules name comes from tokens.css.
+    for (const body of [projectRule, countRule]) {
+      for (const match of body.matchAll(/var\((--[\w-]+)\)/g)) {
+        expect(tokens, `${match[1]} is a token`).toContain(match[1])
+      }
+    }
+  })
+
+  it('keeps grouping invariants for the same-name pair', () => {
+    const same: TicketSummary[] = [
+      ticket({ id: 't1', lane: 'Tandem', status: 'ready' }),
+      ticket({ id: 'u1', lane: null, status: 'backlog' }),
+    ]
+    const declared = ['Tandem', 'ui', 'core']
+    // The default area stays first and ungrouped, declared lanes in render order.
+    expect(laneKeys(declared, same)).toEqual([null, 'Tandem', 'ui', 'core'])
+    const rows = laneRows(declared, same)
+    expect(rows.map((row) => row.title)).toEqual(['Uncategorized', 'Tandem', 'ui', 'core'])
+    expect(rows[0]?.key).toBeNull()
+    const countOf = (key: string | null): number => {
+      const row = rows.find((candidate) => candidate.key === key)
+      return row?.cells.reduce((sum, cell) => sum + cell.tickets.length, 0) ?? 0
+    }
+    // Each lane count stays per lane while the header total is the sum over its lanes.
+    expect(countOf('Tandem')).toBe(1)
+    expect(countOf('ui')).toBe(0)
+    expect(countOf('core')).toBe(0)
+    expect(countOf('Tandem') + countOf('ui') + countOf('core')).toBe(1)
+    // Lanes no project names stay ungrouped after the grouped rows.
+    const dangling: TicketSummary[] = [
+      ...same,
+      ticket({ id: 'h1', lane: 'Hand edit', status: 'ready' }),
+    ]
+    expect(laneKeys(declared, dangling)).toEqual([null, 'Tandem', 'ui', 'core', 'Hand edit'])
+    // Empty projects stay undrawn: lanes with no rows match nothing to group.
+    const onlyTandem = laneRows(['Tandem'], same)
+    expect(onlyTandem.map((row) => row.key)).toEqual([null, 'Tandem'])
+    expect(onlyTandem.some((row) => row.key === 'ui')).toBe(false)
+  })
+})
