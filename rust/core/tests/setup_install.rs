@@ -800,6 +800,63 @@ fn the_config_merge_is_idempotent_and_preserves_the_human_config() {
 }
 
 #[test]
+fn install_wires_the_tandem_mcp_server_with_no_manual_config() {
+    let f = fixture(&["alpha"], &["builder"], "1.0");
+
+    install(&f, &[Host::Opencode], false).expect("the install runs");
+    let merged = fs::read_to_string(f.opencode_config()).expect("the config is written");
+    let value: serde_json::Value =
+        serde_json::from_str(&merged).expect("the written config parses as JSON");
+    assert_eq!(
+        value["mcp"]["tandem"]["type"], "local",
+        "the tandem server is a local spawn: {merged}"
+    );
+    assert_eq!(
+        value["mcp"]["tandem"]["command"],
+        serde_json::json!([
+            "/Applications/Tandem.app/Contents/MacOS/tandem-cli",
+            "mcp"
+        ]),
+        "the server is the bundled binary: {merged}"
+    );
+
+    install(&f, &[Host::Opencode], false).expect("the second install");
+    assert_eq!(
+        fs::read_to_string(f.opencode_config()).unwrap(),
+        merged,
+        "a second install writes no second server"
+    );
+}
+
+#[test]
+fn the_mcp_server_joins_the_human_servers_and_leaves_on_uninstall() {
+    let f = fixture(&["alpha"], &["builder"], "1.0");
+    fs::create_dir_all(f.opencode_config().parent().unwrap()).unwrap();
+    let original = "{\n  \"mcp\": {\n    \"other\": {\"type\": \"local\", \"command\": [\"other\", \"serve\"]}\n  }\n}\n";
+    fs::write(f.opencode_config(), original).unwrap();
+
+    install(&f, &[Host::Opencode], false).expect("the install runs");
+    let merged = fs::read_to_string(f.opencode_config()).unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(&merged).expect("the merged config parses");
+    assert!(
+        value["mcp"]["other"].is_object(),
+        "the human's server survives: {merged}"
+    );
+    assert!(
+        value["mcp"]["tandem"].is_object(),
+        "the tandem server joins it: {merged}"
+    );
+
+    setup::uninstall(&f.tandem_home, &f.environment, None).expect("the uninstall runs");
+    assert_eq!(
+        fs::read_to_string(f.opencode_config()).unwrap(),
+        original,
+        "removal restores the human config byte-exact"
+    );
+}
+
+#[test]
 fn an_unparseable_config_is_a_skip_and_the_skills_are_still_linked() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
     fs::create_dir_all(f.opencode_config().parent().unwrap()).unwrap();
@@ -843,21 +900,33 @@ fn a_jsonc_config_is_read_and_removal_is_byte_exact() {
 }
 
 #[test]
-fn an_existing_entry_is_ok_and_the_file_is_not_rewritten() {
+fn an_existing_instructions_entry_stays_while_the_mcp_server_joins() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
     let entry = setup::text(&f.face().join("AGENTS.md"));
     fs::create_dir_all(f.opencode_config().parent().unwrap()).unwrap();
     let original = format!("{{\n  \"instructions\": [\"{entry}\"]\n}}\n");
     fs::write(f.opencode_config(), &original).unwrap();
 
-    let report = install(&f, &[Host::Opencode], false).expect("the install runs");
+    install(&f, &[Host::Opencode], false).expect("the install runs");
+    let merged = fs::read_to_string(f.opencode_config()).unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(&merged).expect("the merged config parses");
     assert_eq!(
-        action(&report, &setup::text(&f.opencode_config()))
-            .unwrap()
-            .action,
-        "ok"
+        value["instructions"],
+        serde_json::json!([entry]),
+        "the instructions entry is not duplicated: {merged}"
     );
-    assert_eq!(fs::read_to_string(f.opencode_config()).unwrap(), original);
+    assert!(
+        value["mcp"]["tandem"].is_object(),
+        "the mcp server joins the existing entry: {merged}"
+    );
+
+    install(&f, &[Host::Opencode], false).expect("the second install");
+    assert_eq!(
+        fs::read_to_string(f.opencode_config()).unwrap(),
+        merged,
+        "a second install rewrites nothing"
+    );
 }
 
 // MARK: - The CLAUDE.md block

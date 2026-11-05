@@ -3,7 +3,7 @@
 //! The brief's contract, three assertions plus the exclusion pin:
 //!
 //! - every covered [`Method`](tandem_core::wire::rpc::Method) has a tool;
-//! - every tool names a covered method, and the count is exactly 34;
+//! - every tool names a covered method, and the count is exactly 38;
 //! - every tool's schema derives from its params struct: the schema's
 //!   property set is the struct's serialized field set, and `required` is
 //!   empty, because every wire param is optional at parse (an absent field is
@@ -12,20 +12,23 @@
 //! Methods that stay wire-only are named here, not forgotten: `setup.install`
 //! (host mutation stays a human CLI act), the curated note writes
 //! (`note.write`, `note.move`, and the CLI's `note rename`, which has no wire
-//! row and stays out), the vault's link-graph read (`note.health`) and the
-//! settings focus (both stay CLI reads in v1), and the app's reads
-//! (`usage.report`, `settings.get`, `markdown.blocks`, `note.tree`,
+//! row and stays out), and the app's reads
+//! (`usage.report`, `markdown.blocks`, `note.tree`,
 //! `note.read`, `note.backlinks`, `note.recoveries`, `setup.status`,
-//! `doctor.report`, `session.transcript`).
+//! `session.transcript`). The vault's link-graph read (`note.health`), the
+//! settings focus (`settings.get`, `settings.set`) and the setup report
+//! (`doctor.report`) ride the MCP door with the ticket, lane, project,
+//! session, sprint and capture verbs.
 
 use serde_json::Value;
 use tandem_core::wire::rpc::METHODS;
 
 /// The wire methods the MCP door covers: the 18 ticket, comment and lane
 /// verbs on the wire today, the 4 project verbs, the 5 session verbs, the 6
-/// sprint verbs (three of which already rode the wire for the app) and the
-/// capture verb.
-const COVERED: [&str; 34] = [
+/// sprint verbs (three of which already rode the wire for the app), the
+/// capture verb, the setup report, the settings focus pair and the vault's
+/// link-graph read.
+const COVERED: [&str; 38] = [
     "ticket.list",
     "ticket.show",
     "ticket.add",
@@ -60,27 +63,27 @@ const COVERED: [&str; 34] = [
     "sprint.list",
     "sprint.show",
     "note.capture",
+    "doctor.report",
+    "settings.get",
+    "settings.set",
+    "note.health",
 ];
 
 /// The wire methods with no tool. Every row of [`METHODS`] is either here or
 /// in [`COVERED`]; a new wire method fails this file until it picks a side.
 /// `session.transcript` stays wire-only for the sheet (TAN-264): the app reads
 /// it, and the MCP door lists sessions but does not page transcripts in v1.
-const EXCLUDED: [&str; 15] = [
+const EXCLUDED: [&str; 11] = [
     "setup.install",
     "note.write",
     "note.move",
-    "note.health",
-    "settings.set",
     "usage.report",
-    "settings.get",
     "markdown.blocks",
     "note.tree",
     "note.read",
     "note.backlinks",
     "note.recoveries",
     "setup.status",
-    "doctor.report",
     "session.transcript",
 ];
 

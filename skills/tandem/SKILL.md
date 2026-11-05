@@ -5,13 +5,13 @@ description: "Read and write the shared Tandem ticket list, manage its cycle lan
 
 # Tandem
 
-`tandem-cli` is Tandem's agent-facing interface on this Mac — the binary the app bundles (`/Applications/Tandem.app/Contents/MacOS/tandem-cli`, stable across upgrades), so an agent reads and writes the same list and notes a human uses in the app. `tandem-cli --help` prints the syntax and exits `0`.
+The Tandem MCP tools are the agent interface on this Mac, served by the binary the app bundles (`/Applications/Tandem.app/Contents/MacOS/tandem-cli`, stable across upgrades), so an agent reads and writes the same list and notes a human uses in the app. `tandem-cli --help` prints the CLI syntax and exits `0`; the CLI is the human's and the scripts' door.
 
 ## MCP tools
 
-This host speaks to Tandem through tools, not the shell: `tandem-cli mcp` serves the agent face as an MCP server over stdio, and the tools below are its 29 verbs, one per CLI verb, typed end to end. A tool call runs the CLI verb's own domain call, so the two doors cannot disagree. The CLI stays documented below as the fallback and the human's door; where the two spellings differ, the tool's description says how.
+The Tandem MCP tools are this host's agent path on this Mac: `tandem-cli mcp` serves the agent face as an MCP server over stdio (the binary the app bundles, `/Applications/Tandem.app/Contents/MacOS/tandem-cli`, stable across upgrades), so an agent reads and writes the same list and notes a human uses in the app. The tools below are its 38 verbs, one per CLI verb, typed end to end. A tool call runs the CLI verb's own domain call, so the two doors cannot disagree. Agents use these tools only: when they are missing, fail loudly and ask for `tandem-cli setup install` instead of falling back to the shell. The CLI stays documented below as the human's and the scripts' door; where the two spellings differ, the tool's description says how.
 
-To serve it, the host spawns the bundled binary at session start:
+`setup install` wires the server, so no manual MCP config is needed:
 
 ```json
 "mcp": {
@@ -22,7 +22,7 @@ To serve it, the host spawns the bundled binary at session start:
 }
 ```
 
-The server inherits the host's environment: the Tandem home resolves the way `rpc` does (`TANDEM_HOME`, else the default), and the actor is the pass's own (`TANDEM_AGENT`, with `self` expansion where the verb has it). The calling session needs no flag: the host sends it on every call (`_meta`, `ai.opencode/sessionID`), so `session link`, `session show` and `sprint open` resolve the caller the way the CLI resolves `$OPENCODE_SESSION_ID`. No other configuration is needed.
+The server inherits the host's environment: the Tandem home resolves the way `rpc` does (`TANDEM_HOME`, else the default), and the actor is the pass's own (`TANDEM_AGENT`, with `self` expansion where the verb has it). The calling session needs no flag: the host sends it on every call (`_meta`, `ai.opencode/sessionID`), so `session link`, `session show` and `sprint open` resolve the caller the way the CLI resolves `$OPENCODE_SESSION_ID`. No other configuration is needed. `initialize` and `session_start` carry a small health block (home resolved, store ok, version, tool count); a full `doctor` never runs per call.
 
 | tool | the CLI verb it runs |
 | --- | --- |
@@ -55,6 +55,10 @@ The server inherits the host's environment: the Tandem home resolves the way `rp
 | `sprint_list` | `sprint list` |
 | `sprint_show` | `sprint show` |
 | `note_capture` | `note capture` |
+| `doctor_report` | `doctor` |
+| `settings_get` | `settings get` |
+| `settings_set` | `settings set` |
+| `note_health` | `note links` |
 
 Four things the tools spell differently from the flags:
 
@@ -63,7 +67,7 @@ Four things the tools spell differently from the flags:
 - **A stamped `session_end` posts the usage comment** on every ticket the session carried, signed by the record's agent, exactly as the CLI does.
 - **A domain refusal is a tool result with `isError`**, in the CLI's words (an unknown id carries the open list the same way stderr does). Only a call the door cannot route is a protocol error.
 
-`setup install`, the curated note writes and rename, the vault's link-graph read and the app's reads stay off the tools: host mutation is a human CLI act, agents edit curated notes as files, and the app's faces draw what agents do not.
+`setup install` stays off the tools: host mutation is a human CLI act. The curated note writes and rename stay off too: agents edit curated notes as files. The app's reads and `session_transcript` stay off: the app's faces draw what agents do not. Everything else an agent needs rides the tools above: the setup report, the settings focus and the vault's link-graph read beside the ticket, lane, project, session, sprint and capture verbs.
 
 ## The store
 
@@ -245,7 +249,7 @@ The link graph — `broken` (wikilinks that resolve to nothing: `note`, `link` a
 
 ## Setup
 
-The agent face (the skills, the agent prompts and `AGENTS.md`) ships in the app (ADR 0034). `tandem-cli setup install` writes it to `<TandemHome>/agent/` and links every skill and prompt into a host: `opencode` is the default, `claude` and `agents` are written only when `--host` names them. OpenCode gets one `instructions` entry in its `opencode.json`; Claude Code gets a marked block in `~/.claude/CLAUDE.md`. A real file at a host path is never overwritten; a link pointing elsewhere, a checkout included, is left alone unless `--force`. Every path and edit is recorded in `<TandemHome>/agent-install.json`, and `tandem-cli setup uninstall` removes exactly what that manifest records and nothing else. `tandem-cli setup status` reports the bundled and installed versions, each host's state and the warnings, from the same state `doctor`'s `agent-face` row reads. All three print one JSON report; `install` and `uninstall` exit `1` only when a warning is an error, and `status` always exits `0`.
+The agent face (the skills, the agent prompts and `AGENTS.md`) ships in the app (ADR 0034). `tandem-cli setup install` writes it to `<TandemHome>/agent/` and links every skill and prompt into a host: `opencode` is the default, `claude` and `agents` are written only when `--host` names them. OpenCode gets one `instructions` entry in its `opencode.json` plus the `mcp.tandem` server entry, so a fresh session lists working tools with no manual config; Claude Code gets a marked block in `~/.claude/CLAUDE.md` (its servers are added with `claude mcp add`). A real file at a host path is never overwritten; a link pointing elsewhere, a checkout included, is left alone unless `--force`, and a present `mcp.tandem` entry is left as the human's own. Every path and edit is recorded in `<TandemHome>/agent-install.json`, and `tandem-cli setup uninstall` removes exactly what that manifest records and nothing else. `tandem-cli setup status` reports the bundled and installed versions, each host's state and the warnings, from the same state `doctor`'s `agent-face` row reads. All three print one JSON report; `install` and `uninstall` exit `1` only when a warning is an error, and `status` always exits `0`.
 
 ## Setup check
 

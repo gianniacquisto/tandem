@@ -1081,6 +1081,23 @@ impl NoteCaptureParams {
     }
 }
 
+impl SettingsSetParams {
+    /// The tool input for `settings.set`: each axis applies only when its key
+    /// is present, so one write spells one axis.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[
+            (
+                "roster",
+                string("the whole roster replacement; omit to leave the stored list alone"),
+            ),
+            (
+                "project",
+                string("the lane to focus on, or \"\" to clear back to every lane; omit to leave the focus alone"),
+            ),
+        ])
+    }
+}
+
 /// `setup.install`: the CLI's `--host` and `--force`, unchanged.
 ///
 /// `host` is one name or a comma-separated list, and absent means the CLI's

@@ -24,6 +24,16 @@ pub struct InstructionEdit {
     pub entry: String,
 }
 
+/// The bundled binary the MCP server entry spawns: the in-bundle path the
+/// skill names, stable across upgrades (ADR 0003).
+pub const MCP_BINARY: &str = "/Applications/Tandem.app/Contents/MacOS/tandem-cli";
+
+/// The `tandem` server value inside the `mcp` object: a local spawn of the
+/// bundled binary.
+fn mcp_tandem_entry() -> String {
+    format!("\"tandem\": {{\"type\": \"local\", \"command\": [\"{MCP_BINARY}\", \"mcp\"]}}")
+}
+
 /// The one instruction route a host takes, or none (`agents`).
 pub fn instruction_edit(host: Host, context: &Context) -> Option<InstructionEdit> {
     let agents_md = text(&context.face().join("AGENTS.md"));
@@ -44,8 +54,24 @@ pub fn instruction_edit(host: Host, context: &Context) -> Option<InstructionEdit
     }
 }
 
+/// The MCP server route: OpenCode's `mcp.tandem` entry in `opencode.json`,
+/// so a fresh session lists working Tandem tools with no manual config.
+/// Claude and `agents` take no JSON route here: Claude's servers are added
+/// with `claude mcp add`, and `agents` has no instruction file.
+pub fn mcp_edit(context: &Context) -> Option<InstructionEdit> {
+    Some(InstructionEdit {
+        host: Host::Opencode,
+        file: context.opencode_config(),
+        kind: "mcp-entry",
+        entry: mcp_tandem_entry(),
+    })
+}
+
 /// Apply one host's instruction edit, recording the exact text in the manifest.
 pub fn apply(edit: &InstructionEdit, manifest: &mut Manifest) -> Result<PathAction> {
+    if edit.kind == "mcp-entry" {
+        return apply_mcp_entry(&edit.file, manifest);
+    }
     let path = &edit.file;
     let existing = fs::read_to_string(path).ok();
     let path_text = text(path);
@@ -134,9 +160,90 @@ pub fn apply(edit: &InstructionEdit, manifest: &mut Manifest) -> Result<PathActi
     }
 }
 
+/// Ensure OpenCode's `mcp.tandem` server entry, recording the exact inserted
+/// text so removal is byte-exact. A present entry is `ok` whatever it points
+/// at: a human customization is theirs, and setup never overwrites it.
+fn apply_mcp_entry(file: &Path, manifest: &mut Manifest) -> Result<PathAction> {
+    let path_text = text(file);
+    let existing = fs::read_to_string(file).ok();
+    let Some(existing) = existing.as_deref() else {
+        let inserted = format!("{{\n  \"mcp\": {{{}}}\n}}\n", mcp_tandem_entry());
+        if let Some(parent) = file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(file, inserted.as_bytes())?;
+        record_edit(
+            manifest,
+            Edit::new(path_text.clone(), "mcp-entry", inserted, "opencode"),
+        );
+        return Ok(PathAction::new(path_text, "linked"));
+    };
+    let Some(object) = tolerant_json_object(existing) else {
+        return Ok(PathAction::with_reason(
+            path_text,
+            "skip",
+            "opencode.json is not JSON or JSONC; edit it by hand",
+        ));
+    };
+    if object
+        .get("mcp")
+        .and_then(|mcp| mcp.get("tandem"))
+        .is_some()
+    {
+        return Ok(PathAction::new(path_text, "ok"));
+    }
+    let Some((file_text, snippet)) = insert_mcp_server(existing) else {
+        return Ok(PathAction::with_reason(
+            path_text,
+            "skip",
+            "the mcp key is unreadable; edit it by hand",
+        ));
+    };
+    if let Some(parent) = file.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(file, file_text.as_bytes())?;
+    record_edit(
+        manifest,
+        Edit::new(path_text.clone(), "mcp-entry", snippet, "opencode"),
+    );
+    Ok(PathAction::new(path_text, "linked"))
+}
+
+/// The file's new text and the recorded snippet for an `mcp.tandem` insert:
+/// the whole `mcp` key when none is there, else the `tandem` entry at the
+/// start of the existing `mcp` object. `None` when the shape is not an object
+/// the text can carry.
+fn insert_mcp_server(existing: &str) -> Option<(String, String)> {
+    let entry = mcp_tandem_entry();
+    if !existing.contains("\"mcp\"") {
+        let Some(open) = existing.find('{') else {
+            return None;
+        };
+        let snippet = format!("\"mcp\": {{{entry}}},\n");
+        let mut file_text = existing.to_string();
+        file_text.insert_str(open + 1, &snippet);
+        return Some((file_text, snippet));
+    }
+    let key = existing.find("\"mcp\"")?;
+    let open = existing[key..].find('{').map(|offset| key + offset)?;
+    let after: Vec<char> = existing[open + 1..].chars().collect();
+    let mut index = 0;
+    while index < after.len() && after[index].is_whitespace() {
+        index += 1;
+    }
+    let snippet = if after.get(index) == Some(&'}') {
+        entry
+    } else {
+        format!("{entry}, ")
+    };
+    let mut file_text = existing.to_string();
+    file_text.insert_str(open + 1, &snippet);
+    Some((file_text, snippet))
+}
+
 /// The exact text inserted, and the file's new text.
-fn insert_instruction(entry: &str, existing: Option<&str>) -> Result<(String, String)> {
-    let Some(existing) = existing else {
+fn insert_instruction(entry: &str, existing: Option<&str>) -> Result<(String, String)> {    let Some(existing) = existing else {
         let inserted = format!("{{\n  \"instructions\": [\"{entry}\"]\n}}\n");
         return Ok((inserted.clone(), inserted));
     };
@@ -324,6 +431,8 @@ pub fn carries(path: &Path, kind: &str, entry: &str) -> bool {
     let text = fs::read_to_string(path).unwrap_or_default();
     if kind == "instructions-entry" {
         text.contains(entry)
+    } else if kind == "mcp-entry" {
+        text.contains("\"tandem\"")
     } else {
         text.contains(CLAUDE_BLOCK_BEGIN)
     }

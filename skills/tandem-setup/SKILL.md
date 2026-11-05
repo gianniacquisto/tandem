@@ -16,7 +16,7 @@ tandem-cli setup status
 tandem-cli setup install
 ```
 
-A bare `setup install` writes OpenCode: `~/.config/opencode/skills/<name>` for every skill, `~/.config/opencode/agents/<name>.md` for every prompt, and one `instructions` entry in `~/.config/opencode/opencode.json` naming `<TandemHome>/agent/AGENTS.md`. `--host claude` or `--host agents` names another host, and a host is written only when it is named.
+A bare `setup install` writes OpenCode: `~/.config/opencode/skills/<name>` for every skill, `~/.config/opencode/agents/<name>.md` for every prompt, one `instructions` entry in `~/.config/opencode/opencode.json` naming `<TandemHome>/agent/AGENTS.md`, and the `mcp.tandem` server entry in the same file, so a fresh session lists working tools with no manual config. `--host claude` or `--host agents` names another host, and a host is written only when it is named. (Claude's servers are added with `claude mcp add tandem -- /Applications/Tandem.app/Contents/MacOS/tandem-cli mcp --scope user`.)
 
 Report the JSON the run prints: each host's `state` (`installed`, `checkout`, `real-file` or `absent`), the `installedVersion` beside `bundledVersion`, and every warning with its `hint`. That report is the answer.
 
@@ -49,6 +49,6 @@ tandem-cli doctor         # the skills row reads "opencode configured", the agen
 
 ## Done when
 
-- The host lists every agent prompt and every skill the artifact ships, and `tandem-cli doctor` reads "opencode configured".
+- The host lists every agent prompt and every skill the artifact ships, `tandem-cli doctor` reads "opencode configured", and a fresh session lists the Tandem MCP tools with no manual config.
 - Nothing in the host config points at a path that does not exist, and no file was overwritten.
 - The report says what was linked, what was skipped and why, and what is left for the human: a skip is a done setup; silence is not.
