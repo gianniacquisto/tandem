@@ -15,6 +15,7 @@ export type EditorMessage =
   | { type: 'checkbox-toggled'; line: number; checked: boolean }
   | { type: 'send-to-todos'; text: string }
   | { type: 'font-size'; value: number }
+  | { type: 'toggle-mode' }
 
 /** One call of a page global, the frame's replacement for `callAsyncJavaScript`. */
 export type EditorCall = {
@@ -67,6 +68,8 @@ export function parseEditorMessage(raw: unknown): EditorMessage | null {
       return typeof value['value'] === 'number'
         ? { type: 'font-size', value: value['value'] }
         : null
+    case 'toggle-mode':
+      return { type: 'toggle-mode' }
     default:
       return null
   }
@@ -130,4 +133,52 @@ export function saveEditorFontSize(value: number, storage?: FontStorage | null):
   const store = fontStorage(storage)
   if (store === null) return
   store.setItem(EDITOR_FONT_SIZE_KEY, String(clampEditorFontSize(value)))
+}
+
+/**
+ * The preview/edit mode (the titlebar segmented control).
+ *
+ * The bundle owns the readOnly/editable switch (`Editor/src/main.js`:
+ * `setMode`); the renderer owns the persistence and the default rule, so a
+ * relaunch restores the last choice and the frame is told it on `loaded`.
+ * The key sits beside the rail/hidden/font-size keys in `BikeshedFace`.
+ */
+export type BikeshedMode = 'preview' | 'edit'
+
+export const BIKESHED_MODE_KEY = 'tandem.bikeshed.mode'
+export const BIKESHED_MODE_DEFAULT: BikeshedMode = 'preview'
+
+function isMode(value: unknown): value is BikeshedMode {
+  return value === 'preview' || value === 'edit'
+}
+
+/** The stored choice, or the preview default when nothing (or nonsense) is stored. */
+export function loadBikeshedMode(storage?: FontStorage | null): BikeshedMode {
+  const store = fontStorage(storage)
+  if (store === null) return BIKESHED_MODE_DEFAULT
+  const raw = store.getItem(BIKESHED_MODE_KEY)
+  return isMode(raw) ? raw : BIKESHED_MODE_DEFAULT
+}
+
+/** Persist the titlebar control's choice, ignoring nonsense so it cannot stick. */
+export function saveBikeshedMode(mode: BikeshedMode, storage?: FontStorage | null): void {
+  const store = fontStorage(storage)
+  if (store === null) return
+  if (!isMode(mode)) return
+  store.setItem(BIKESHED_MODE_KEY, mode)
+}
+
+/**
+ * The mode a newly opened note starts in: an empty note (every UI-1/UI-4
+ * creation) always opens in Edit ready to type, regardless of the stored
+ * choice; otherwise the stored choice wins.
+ */
+export function defaultBikeshedMode(stored: unknown, text: string): BikeshedMode {
+  if (text.trim() === '') return 'edit'
+  return stored === 'edit' ? 'edit' : 'preview'
+}
+
+/** `setMode(mode)`: the preview/edit switch the committed bundle reads. */
+export function editorMode(mode: BikeshedMode): EditorCall {
+  return editorCall('setMode', [mode])
 }

@@ -3,9 +3,11 @@ import { useEffect, useRef, useState } from 'react'
 import {
   editorCall,
   editorDocument,
+  editorMode,
   loadEditorFontSize,
   parseEditorMessage,
   saveEditorFontSize,
+  type BikeshedMode,
   type EditorMessage,
 } from '../shell/editor'
 
@@ -30,6 +32,9 @@ export type BikeshedEditorProps = {
   /** Backlinks plus linked tickets, the count the collapsed toggle names. */
   railCount: number
   onToggleRail: () => void
+  /** Preview is the same document read-only; Edit is writable. */
+  mode: BikeshedMode
+  onToggleMode: (mode: BikeshedMode) => void
 }
 
 /**
@@ -52,11 +57,20 @@ export function BikeshedEditor({
   railOpen,
   railCount,
   onToggleRail,
+  mode,
+  onToggleMode,
 }: BikeshedEditorProps) {
   const frame = useRef<HTMLIFrameElement | null>(null)
   const listener = useRef(onMessage)
   listener.current = onMessage
   const [ready, setReady] = useState(false)
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  const previewButton = useRef<HTMLButtonElement | null>(null)
+
+  function post(call: { type: string; name: string; args: unknown[] }): void {
+    frame.current?.contentWindow?.postMessage(call, '*')
+  }
 
   useEffect(() => {
     function receive(event: MessageEvent): void {
@@ -87,10 +101,28 @@ export function BikeshedEditor({
     frame.current?.contentWindow?.postMessage(editorCall('setNoteIndex', [noteIndex]), '*')
   }, [noteIndex, ready])
 
+  // Preview is the same document read-only: entering Edit focuses the
+  // editor, entering Preview leaves focus on the toggle.
+  useEffect(() => {
+    if (!ready || path === '') return
+    post(editorMode(mode))
+    if (mode === 'edit') {
+      post(editorCall('focusEditor'))
+    } else {
+      previewButton.current?.focus()
+    }
+    // `mode` is the view revision: the document stays, only readOnly flips.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, ready, path])
+
   useEffect(() => {
     if (!ready || path === '') return
     frame.current?.contentWindow?.postMessage(editorDocument(path, text), '*')
-    frame.current?.contentWindow?.postMessage(editorCall('focusEditor'), '*')
+    // A new document opens ready to type only in Edit; Preview keeps the
+    // focus it already has (the toggle, or the tree that opened the note).
+    if (modeRef.current === 'edit') {
+      frame.current?.contentWindow?.postMessage(editorCall('focusEditor'), '*')
+    }
     // `token` is the document revision: a new token replaces the document; a
     // changed `text` is the human's own typing and must not reset the caret.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,6 +137,27 @@ export function BikeshedEditor({
         <span className="editor__folder">{folder === '' ? 'Bikeshed' : folder}</span>
         <span className="editor__title">{title === '' ? 'No note selected' : title}</span>
         {saving ? <span className="editor__saving">saving{'\u2026'}</span> : null}
+        {path === '' ? null : (
+          <div className="editor__mode" role="group" aria-label="Preview or edit">
+            <button
+              type="button"
+              ref={previewButton}
+              className="editor__mode-button"
+              aria-pressed={mode === 'preview'}
+              onClick={() => onToggleMode('preview')}
+            >
+              Preview
+            </button>
+            <button
+              type="button"
+              className="editor__mode-button"
+              aria-pressed={mode === 'edit'}
+              onClick={() => onToggleMode('edit')}
+            >
+              Edit
+            </button>
+          </div>
+        )}
         <button
           type="button"
           className="editor__rail-toggle"

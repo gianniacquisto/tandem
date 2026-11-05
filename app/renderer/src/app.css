@@ -1862,6 +1862,40 @@ body {
   color: var(--ink);
 }
 
+.editor__mode {
+  display: flex;
+  flex: none;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+
+.editor__mode-button {
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1;
+  padding: 4px 8px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.editor__mode-button + .editor__mode-button {
+  border-left: var(--hairline) solid var(--line);
+}
+
+.editor__mode-button:hover {
+  color: var(--ink);
+}
+
+.editor__mode-button[aria-pressed="true"] {
+  background: var(--parchment);
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .editor__frame {
   flex: 1 1 auto;
   width: 100%;

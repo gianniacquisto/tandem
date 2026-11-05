@@ -36,7 +36,7 @@
 // visibility. The JS has no file or network access — everything crosses
 // the bridge.
 
-import { Facet, StateEffect, StateField, EditorState } from "@codemirror/state";
+import { Compartment, Facet, StateEffect, StateField, EditorState } from "@codemirror/state";
 import { Decoration, EditorView, keymap } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 import { basicSetup } from "codemirror";
@@ -72,7 +72,7 @@ import {
 } from "./widgets.js";
 import { ligneTheme } from "./theme.js";
 import { currentTheme, renderDiagram } from "./mermaid.js";
-import { postDirty, postLinkOpened, postLoaded, postFontSize, postSendToTodos } from "./bridge.js";
+import { postDirty, postLinkOpened, postLoaded, postFontSize, postToggleMode, postSendToTodos } from "./bridge.js";
 import { mountToolbar } from "./toolbar.js";
 
 // -- Fenced code: the curated highlighting set ------------------------------------
@@ -272,6 +272,54 @@ export const livePreviewState = StateField.define({
   provide: (f) => [EditorView.decorations.from(f)],
 });
 
+// -- Preview/edit mode (read-only preview, same document) ---------------------------
+//
+// Preview is the same document read-only: the plan/widgets stay live, so
+// wikilink clicks still navigate and checkbox clicks still dispatch their
+// toggle transaction (persisted through the existing dirty/autosave path).
+// Typing is blocked by readOnly (the view's input handlers consult it) and
+// the caret leaves with editable (contenteditable off, selection and copy
+// still work). Plain-text clicks do nothing because the click handlers
+// return false and an uneditable view places no caret.
+//
+// The mode lives in a Compartment so setMode reconfigures the two facets
+// without touching the document. isPreviewMode reads readOnly, the one
+// facet this mode owns.
+
+export const modeCompartment = new Compartment();
+
+export function previewModeExtensions() {
+  return [EditorState.readOnly.of(true), EditorView.editable.of(false)];
+}
+
+export function editModeExtensions() {
+  return [EditorState.readOnly.of(false), EditorView.editable.of(true)];
+}
+
+/** Whether the state is in Preview (readOnly owns this facet here). */
+export function isPreviewMode(state) {
+  return state.readOnly === true;
+}
+
+/** setMode("preview" | "edit"): reconfigure readOnly/editable, doc untouched. */
+export function setModeSpec(mode) {
+  const preview = mode === "preview";
+  return {
+    effects: modeCompartment.reconfigure(preview ? previewModeExtensions() : editModeExtensions()),
+  };
+}
+
+/** The toolbar is editing chrome: hidden and inert in Preview. */
+export function toolbarVisibleForMode(mode) {
+  return mode !== "preview";
+}
+
+function applyModeToToolbar(toolbar, mode) {
+  if (!toolbar || !toolbar.element) return;
+  toolbar.element.style.display = toolbarVisibleForMode(mode) ? "" : "none";
+  toolbar.element.setAttribute("aria-hidden", toolbarVisibleForMode(mode) ? "false" : "true");
+}
+
 // -- The extension set + headless state factory --------------------------------------
 
 export function editorExtensions() {
@@ -283,6 +331,7 @@ export function editorExtensions() {
     // Soft-wrap long lines: the pane never scrolls sideways.
     EditorView.lineWrapping,
     sendToTodosKeymap,
+    toggleModeKeymap,
     ...ligneTheme,
     basicSetup,
   ];
@@ -305,11 +354,14 @@ export function createEditorState({
   notes = [],
   notePath = "",
   viewExtensions = [],
+  mode = "edit",
 } = {}) {
+  const preview = mode === "preview";
   return EditorState.create({
     doc,
     extensions: [
       ...editorExtensions(),
+      modeCompartment.of(preview ? previewModeExtensions() : editModeExtensions()),
       ...(notes.length ? [noteIndexFacet.of(notes)] : []),
       ...(notePath ? [notePathFacet.of(notePath)] : []),
       ...viewExtensions,
@@ -431,6 +483,20 @@ const sendToTodosKeymap = keymap.of([
     key: "Mod-Shift-t",
     run: (view) => {
       postSendToTodos(todoCandidateText(view.state));
+      return true;
+    },
+  },
+]);
+
+// Preview/edit toggle: Mod+E asks the renderer to flip the mode. The
+// renderer owns the persistence and the titlebar, so the bundle only asks;
+// the answer comes back as setMode. Free: no clash with quick-add,
+// search, or Mod-Shift-t.
+const toggleModeKeymap = keymap.of([
+  {
+    key: "Mod-e",
+    run: () => {
+      postToggleMode();
       return true;
     },
   },
@@ -856,7 +922,12 @@ export function mountEditor(parent, { doc, notes, notePath } = {}) {
   const toolbar = mountToolbar(
     parent,
     {
-      onFormat: (kind) => view.dispatch(specFor(kind, view.state)),
+      onFormat: (kind) => {
+        // The toolbar is hidden and inert in Preview: a stray activation
+        // (keyboard, test) must not edit a readOnly document.
+        if (isPreviewMode(view.state)) return;
+        view.dispatch(specFor(kind, view.state));
+      },
       onFontSize: (action) => {
         const next =
           action === "reset"
@@ -868,6 +939,14 @@ export function mountEditor(parent, { doc, notes, notePath } = {}) {
     DEFAULT_EDITOR_FONT_SIZE
   );
 
+  let mode = "edit";
+  function applyMode(next) {
+    mode = next === "preview" ? "preview" : "edit";
+    view.dispatch(setModeSpec(mode));
+    applyModeToToolbar(toolbar, mode);
+    return mode;
+  }
+
   // Swift → JS page globals (bridge contract).
   if (typeof window !== "undefined") {
     window.setDocument = (markdownText, notePath2) =>
@@ -878,6 +957,9 @@ export function mountEditor(parent, { doc, notes, notePath } = {}) {
     // The persisted font size arrives on `loaded`; Swift → JS only sets the
     // property (the page does not echo it back across the bridge).
     window.setFontSize = (px) => applyFontSize(px);
+    // Preview/edit: the same document read-only (Preview) or writable (Edit).
+    // The toolbar hides with the mode; the font size applies in both.
+    window.setMode = (next) => applyMode(next);
     // The caret: Swift pulls focus into the note when one opens, so
     // "New note → type" works without a click into the pane first (the
     // content element holds the DOM focus that keystrokes need).

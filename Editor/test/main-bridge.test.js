@@ -9,7 +9,7 @@ import {
   linkOpenTargetFrom,
   checkboxToggleFrom,
 } from "../src/main.js";
-import { postLoaded, postDirty, postLinkOpened, postCheckboxToggled } from "../src/bridge.js";
+import { postLoaded, postDirty, postLinkOpened, postCheckboxToggled, postToggleMode } from "../src/bridge.js";
 import {
   toggleTask,
   WikilinkWidget,
@@ -63,6 +63,12 @@ test("checkbox-toggled carries the 1-based line and the new state", () => {
   stubBridge();
   postCheckboxToggled(3, true);
   assert.deepEqual(posted, [{ type: "checkbox-toggled", line: 3, checked: true }]);
+});
+
+test("toggle-mode carries the Mod+E request", () => {
+  stubBridge();
+  postToggleMode();
+  assert.deepEqual(posted, [{ type: "toggle-mode" }]);
 });
 
 // -- dirty decision: what the update listener emits ----------------------------------

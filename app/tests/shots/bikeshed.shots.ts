@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { expect } from '@playwright/test'
@@ -221,4 +221,125 @@ test('the editor send files a ticket linked to the note', async ({ window }) => 
         ticket.link === 'projects/fixture/fixture.md',
     ),
   ).toBe(true)
+})
+
+/**
+ * Preview is the default for a note with content: the titlebar control
+ * reads Preview, the bundle is read-only, and the formatting toolbar hides.
+ */
+test('a note with content opens in preview with the toolbar hidden', async ({ window }) => {
+  await openTab(window, 'bikeshed')
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+
+  const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
+  const edit = window.locator('.editor__mode-button', { hasText: 'Edit' })
+  await expect(preview).toHaveAttribute('aria-pressed', 'true')
+  await expect(edit).toHaveAttribute('aria-pressed', 'false')
+
+  const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('.cm-content')).toContainText('The project overview')
+  await expect(editor.locator('#tandem-toolbar')).toBeHidden()
+})
+
+/**
+ * In Preview, a wikilink click navigates and stays in Preview: no caret,
+ * no dirty, the buffer is the truth.
+ */
+test('a wikilink click in preview navigates and stays in preview', async ({ window }) => {
+  await openTab(window, 'bikeshed')
+  await window.locator('.tree__label[title="Index.md"]').click()
+
+  const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
+  await expect(preview).toHaveAttribute('aria-pressed', 'true')
+
+  const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('.tandem-wikilink')).toBeVisible()
+  await editor.locator('.tandem-wikilink').first().click()
+
+  await expect(window.locator('.editor__title')).toHaveText('fixture')
+  await expect(preview).toHaveAttribute('aria-pressed', 'true')
+  await expect(window.locator('.editor__saving')).toHaveCount(0)
+})
+
+/**
+ * In Preview, a checkbox click toggles through the existing dirty/autosave
+ * path and survives a reopen: no new rpc, the buffer is the truth.
+ */
+test('a checkbox toggles in preview and survives reload', async ({ window }) => {
+  await openTab(window, 'bikeshed')
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+
+  const edit = window.locator('.editor__mode-button', { hasText: 'Edit' })
+  await edit.click()
+  const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('#tandem-toolbar')).toBeVisible()
+  await editor.locator('.cm-content').click()
+  await window.keyboard.type('\n- [ ] preview toggle')
+  await expect(window.locator('.editor__saving')).toBeVisible({ timeout: 5000 })
+  await window.waitForTimeout(1800)
+
+  const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
+  await preview.click()
+  await expect(editor.locator('#tandem-toolbar')).toBeHidden()
+  await editor.locator('.tandem-checkbox').last().click()
+  await window.waitForTimeout(1800)
+
+  const onDisk = readFileSync(
+    join(seedPath(), 'bikeshed', 'projects', 'fixture', 'fixture.md'),
+    'utf8',
+  )
+  expect(onDisk).toContain('- [x] preview toggle')
+
+  await window.locator('.tree__label[title="Index.md"]').click()
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+  await expect(preview).toHaveAttribute('aria-pressed', 'true')
+  await expect(editor.locator('.cm-content')).toContainText('preview toggle')
+})
+
+/**
+ * Mod+E and the control flip both ways: Edit dirties and autosaves, Preview
+ * hides the toolbar and keeps the buffer.
+ */
+test('mod+e and the control switch between preview and edit', async ({ window }) => {
+  await openTab(window, 'bikeshed')
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+
+  const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
+  const edit = window.locator('.editor__mode-button', { hasText: 'Edit' })
+  await expect(preview).toHaveAttribute('aria-pressed', 'true')
+
+  await edit.click()
+  await expect(edit).toHaveAttribute('aria-pressed', 'true')
+  const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('#tandem-toolbar')).toBeVisible()
+
+  await editor.locator('.cm-content').click()
+  await window.keyboard.type(' typed in edit')
+  await expect(window.locator('.editor__saving')).toBeVisible({ timeout: 5000 })
+  await window.waitForTimeout(1800)
+  expect(
+    readFileSync(join(seedPath(), 'bikeshed', 'projects', 'fixture', 'fixture.md'), 'utf8'),
+  ).toContain('typed in edit')
+
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+  await window.keyboard.press(`${mod}+e`)
+  await expect(preview).toHaveAttribute('aria-pressed', 'true')
+  await expect(editor.locator('#tandem-toolbar')).toBeHidden()
+})
+
+/**
+ * An empty note opens in Edit ready to type, regardless of the stored
+ * Preview choice: the buffer-is-truth rule keeps UI-1/UI-4 creations typing.
+ */
+test('an empty note opens in edit focused', async ({ window }) => {
+  writeFileSync(join(seedPath(), 'bikeshed', 'empty-preview.md'), '')
+  await openTab(window, 'bikeshed')
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
+  await window.locator('.tree__label[title="empty-preview.md"]').click()
+
+  const edit = window.locator('.editor__mode-button', { hasText: 'Edit' })
+  await expect(edit).toHaveAttribute('aria-pressed', 'true')
+  const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('#tandem-toolbar')).toBeVisible()
+  await expect(editor.locator('.cm-content')).toBeFocused()
 })
