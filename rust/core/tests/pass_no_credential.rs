@@ -75,7 +75,11 @@ fn no_credential_crosses_into_the_core() {
         "the executor module is retired: passes run outside the app (SHE-3, ADR 0040)"
     );
     let main = file("app/src/main/index.ts");
-    for needle in ["Authorization", "OPENCODE_SERVER_PASSWORD", "TANDEM_HARNESS_PASSWORD"] {
+    for needle in [
+        "Authorization",
+        "OPENCODE_SERVER_PASSWORD",
+        "TANDEM_HARNESS_PASSWORD",
+    ] {
         assert!(
             !main.contains(needle),
             "main names `{needle}`: the app holds no pass credential (SHE-3)"
