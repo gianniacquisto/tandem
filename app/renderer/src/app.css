@@ -2271,13 +2271,32 @@ body {
   background: var(--sand);
 }
 
-.sheet__hold {
-  margin: 0;
-  padding: 8px 12px;
-  border: var(--hairline) solid var(--ember);
+.sheet__details {
+  border: var(--hairline) solid var(--sand);
   border-radius: var(--radius-control);
-  color: var(--ember-deep);
-  font-size: 12px;
+  padding: 8px 12px;
+}
+
+.sheet__details-toggle {
+  border: none;
+  background: none;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sheet__details-toggle:hover {
+  color: var(--ink);
+}
+
+.sheet__details-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lane);
+  margin-top: 8px;
 }
 
 .sheet__section-title {
@@ -2434,12 +2453,6 @@ body {
 .sheet__button:disabled {
   color: var(--ink-dim);
   cursor: default;
-}
-
-.sheet__answer {
-  padding: 8px 12px;
-  border: var(--hairline) solid var(--sand);
-  border-radius: var(--radius-control);
 }
 
 .sheet__lane-rows {

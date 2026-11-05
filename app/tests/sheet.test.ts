@@ -7,8 +7,6 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   EMPTY_COMMENT_REFUSAL,
   EMPTY_DESCRIPTION_REFUSAL,
-  answerBlock,
-  answered,
   appendDescription,
   appendPlan,
   blocksOf,
@@ -18,7 +16,7 @@ import {
   commentParams,
   commentTime,
   commentsOf,
-  holdOpen,
+  detailsInitiallyOpen,
   laneChoices,
   laneCreateParams,
   laneRenameParams,
@@ -136,49 +134,15 @@ describe('the sheet description', () => {
     expect(board).toContain('format!("{existing}\\n\\n{section}")')
   })
 
-  it('reads the answer heading by the core\'s own marker', () => {
-    const description = readFileSync(
-      join(appRoot, '..', 'rust', 'core', 'src', 'domain', 'description.rs'),
-      'utf8',
-    ).replace(/\r\n/g, '\n')
-    // The marker is the store's; when it moves, this fails and the sheet moves
-    // with it rather than keeping a second spelling.
-    expect(description).toContain('.starts_with("## answer")')
-    expect(answered('  ## ANSWER  ')).toBe(true)
-    expect(answered('### answer')).toBe(false)
-  })
-
-  it('counts the heading alone as an answer, the way the store does', () => {
-    expect(answered('## Answer')).toBe(true)
-    expect(answered('## Answer\n\n')).toBe(true)
-    expect(answered('## Why\n\nThe question.')).toBe(false)
-    expect(answered('Mentions ## Answer inline, but is not a block.')).toBe(false)
-    expect(answered(null)).toBe(false)
-  })
-
-  it('finds an answer block by its line-anchored heading, and the body under it', () => {
-    const answered = '## Why\n\nBecause.\n\n## Answer — 2026-10-30\n\nDo the thing.\n\nMore.\n\n## Done when\n\n- It works.'
-    expect(answerBlock(answered)).toBe('Do the thing.\n\nMore.')
-    expect(answerBlock('## Why\n\nBecause.')).toBeNull()
-    expect(answerBlock('Mentions ## Answer inline, but is not a block.')).toBeNull()
-    expect(answerBlock(null)).toBeNull()
-    expect(answerBlock('## answer\n\nLower case still counts.')).toBe('Lower case still counts.')
-  })
-
-  it('calls a hold open until its answer block is written', () => {
-    expect(holdOpen(ticket({ status: 'on-hold' }))).toBe(true)
-    expect(holdOpen(ticket({ status: 'on-hold', description: '## Answer\n\nYes.' }))).toBe(false)
-    // The core counts the heading alone as answered (`DescriptionBody::answered`),
-    // so the sheet must not draw a hold over a ticket the store calls answered.
-    expect(holdOpen(ticket({ status: 'on-hold', description: '## Answer' }))).toBe(false)
-    expect(holdOpen(ticket({ status: 'ready' }))).toBe(false)
+  it('starts its Details closed on every opening and persists nothing', () => {
+    expect(detailsInitiallyOpen()).toBe(false)
   })
 })
 
 describe('the sheet write', () => {
   it('pins an append to the revision its body was read at, not the listing\'s', () => {
-    // The listing's revision can differ from the ticket read's: a `ticket
-    // answer` between the two would be overwritten by the older body if the
+    // The listing's revision can differ from the ticket read's: a concurrent
+    // write between the two would be overwritten by the older body if the
     // write were pinned to the listing.
     const read = { revision: 12, ticket: ticket({ id: 't1', description: 'Stored.' }) }
     expect(appendPlan(read, 'Added.')).toEqual({
@@ -482,11 +446,6 @@ describe('the sheet reads under payload drift (TAN-312)', () => {
       { at: 'a', author: 'b', body: 'c' },
     ])
     expect(blocksOf({ blocks: [] } as never)).toEqual([])
-  })
-
-  it('treats a missing description like an absent one, instead of throwing', () => {
-    expect(answered(undefined)).toBe(false)
-    expect(answerBlock(undefined)).toBeNull()
   })
 
   it('names an unnamed comment author, even when the name is missing', () => {
