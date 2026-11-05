@@ -112,6 +112,38 @@ test('a concurrent CLI write is a conflict with both bodies, never a lost write'
 })
 
 /**
+ * Today's note: one click opens-or-creates `daily/<today>.md` and opens it
+ * ready to type; a second click the same day returns the same file with staged
+ * content intact.
+ */
+test("today's note opens-or-creates and keeps staged content", async ({ window }) => {
+  await openTab(window, 'bikeshed')
+
+  const action = window.locator('.tree__action', { hasText: "Today's note" })
+  await expect(action).toBeVisible()
+  await action.click()
+
+  const now = new Date()
+  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const title = `daily/${day}.md`
+
+  await expect(window.locator(`.tree__label[title="${title}"]`)).toBeVisible()
+  await expect(window.locator('.editor__title')).toHaveText(day)
+  await expect(window.locator('.editor__folder')).toHaveText('daily')
+
+  const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('.cm-content')).toBeVisible()
+  await editor.locator('.cm-content').click()
+  await window.keyboard.type(' words for today')
+  await expect(editor.locator('.cm-content')).toContainText('words for today')
+
+  await action.click()
+  await expect(window.locator(`.tree__label[title="${title}"]`)).toBeVisible()
+  await expect(editor.locator('.cm-content')).toContainText('words for today')
+  await expect(window.locator('.banner')).toHaveCount(0)
+})
+
+/**
  * The drag that re-parents: a note row dropped on a folder row asks the core for
  * the same move `note move` performs, and the tree redraws from the result. The
  * gesture is the GUI's, so only a real drag proves the wiring; the rule itself

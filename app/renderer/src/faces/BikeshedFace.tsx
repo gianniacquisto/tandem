@@ -343,6 +343,23 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     await loadNote(path)
   }
 
+  async function openDaily(): Promise<void> {
+    if (conflict !== null) return
+    if (open !== null && open.dirty) await save(open)
+    const answer = await window.tandem.call({ method: 'note.daily', params: {} })
+    if ('error' in answer) {
+      setError(answer.error.message)
+      return
+    }
+    const path = 'path' in answer.reply ? answer.reply.path : null
+    if (typeof path !== 'string' || path === '') {
+      setError("Today's note could not be opened.")
+      return
+    }
+    await refreshVault()
+    await loadNote(path)
+  }
+
   async function move(source: string, into: string): Promise<void> {
     if (conflict !== null) return
     // The move carries the bytes that are on disk: flush the buffer first, so a
@@ -494,6 +511,7 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
           onReveal={reveal}
           onOpen={(path) => void openNote(path)}
           onMove={(source, into) => void move(source, into)}
+          onDaily={() => void openDaily()}
         />
         <div className="bikeshed__main">
           <BikeshedEditor

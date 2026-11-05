@@ -19,6 +19,7 @@ export type BikeshedTreeProps = {
   onReveal: (hidden: boolean) => void
   onOpen: (path: string) => void
   onMove: (source: string, into: string) => void
+  onDaily: () => void
 }
 
 function name(path: string): string {
@@ -45,6 +46,7 @@ export function BikeshedTree({
   onReveal,
   onOpen,
   onMove,
+  onDaily,
 }: BikeshedTreeProps) {
   const rows = flattenTree(nodes, expanded)
   const [dragging, setDragging] = useState<string | null>(null)
@@ -88,6 +90,11 @@ export function BikeshedTree({
           />
           Show hidden
         </label>
+      </div>
+      <div className="tree__actions">
+        <button type="button" className="tree__action" onClick={onDaily}>
+          Today&apos;s note
+        </button>
       </div>
 
       {nodes.length === 0 ? (

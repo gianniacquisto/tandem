@@ -959,6 +959,15 @@ fn execute(
                 moved: NoteMoveView::new(&outcome),
             }))
         }
+        Method::NoteDaily(_) => {
+            let result = open_bikeshed(store)
+                .open_daily_note(crate::bikeshed::Day::today())
+                .map_err(domain)?;
+            Ok(Reply::NotePath(NotePathView {
+                path: result.value,
+                note: result.note,
+            }))
+        }
         Method::NoteHealth(_) => Ok(Reply::NoteHealth(NoteHealthReply {
             health: open_bikeshed(store).health().map_err(domain)?.value,
         })),

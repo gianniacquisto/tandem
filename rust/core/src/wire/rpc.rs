@@ -146,6 +146,7 @@ methods! {
     NoteRecoveries: "note.recoveries", EmptyParams, "";
     NoteWrite: "note.write", NoteWriteParams, "note write";
     NoteMove: "note.move", NoteMoveParams, "note move";
+    NoteDaily: "note.daily", EmptyParams, "note daily";
     SetupStatus: "setup.status", EmptyParams, "setup status";
     SetupInstall: "setup.install", SetupInstallParams, "setup install";
     DoctorReport: "doctor.report", EmptyParams, "doctor";
