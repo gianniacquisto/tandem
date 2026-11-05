@@ -46,6 +46,8 @@ export type TicketSheetProps = {
   onDismiss: () => void
   /** A dependency row re-targets the same sheet at another ticket. */
   onOpenTicket: (id: string) => void
+  /** Where the sheet lands its focus: the description composer for a quick-add handoff, else the dialog. */
+  initialFocus?: 'description' | null
 }
 
 const CLAIM_CHANGED = 'The claim landed, but the comment did not.'
@@ -76,6 +78,7 @@ export function TicketSheet({
   onWrite,
   onDismiss,
   onOpenTicket,
+  initialFocus = null,
 }: TicketSheetProps) {
   const [ticket, setTicket] = useState<TicketDetail | null>(null)
   // The revision the ticket above was read at: the body's pin, not the
@@ -115,7 +118,6 @@ export function TicketSheet({
 
   const draftFor = useRef<string | null>(null)
   const dialog = useRef<HTMLDivElement>(null)
-  const additionField = useRef<HTMLTextAreaElement>(null)
 
   // The ticket and its log, re-read when the sheet opens, on every store
   // change, and after a refusal: a refusal means the body this sheet holds may
@@ -184,13 +186,11 @@ export function TicketSheet({
         setCommentError(null)
         setNotice(null)
         setDetailsOpen(detailsInitiallyOpen())
-        // A ticket with no description opens in its composer: the empty state
-        // is the prompt plus focus, not a dead line. The field mounts with the
-        // ticket, so the focus waits a tick for the render.
-        const empty = (found.description ?? '').trim() === ''
-        if (empty) {
-          setTimeout(() => additionField.current?.focus(), 0)
-        } else {
+        // Any opening without a handoff lands on the dialog, so the palette
+        // ring stays deterministic. A handoff lands in the composer through
+        // the field's own autofocus on mount, never a timed focus that races
+        // the ticket read.
+        if (initialFocus !== 'description') {
           dialog.current?.focus()
         }
       }
@@ -468,12 +468,12 @@ export function TicketSheet({
               <label className="sheet__addition">
                 <span className="sheet__fact-label">Add to the description</span>
                 <textarea
-                  ref={additionField}
                   className="sheet__addition-field"
                   aria-label="Add to the description"
                   rows={4}
                   value={addition}
                   placeholder="Appended under the stored body, never over it."
+                  autoFocus={initialFocus === 'description'}
                   onChange={(event) => setAddition(event.target.value)}
                 />
               </label>

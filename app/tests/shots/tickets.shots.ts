@@ -332,13 +332,10 @@ test('a quick-add lands its row and opens its sheet in the description composer,
     const comments = root?.querySelector('.sheet__discussion')
     const details = root?.querySelector('.sheet__details')
     if (description == null || comments == null || details == null) return null
-    const NodeCtor = window.Node
-    const descriptionBeforeComments = Boolean(
-      description.compareDocumentPosition(comments) & NodeCtor.DOCUMENT_POSITION_FOLLOWING,
-    )
-    const commentsBeforeDetails = Boolean(
-      comments.compareDocumentPosition(details) & NodeCtor.DOCUMENT_POSITION_FOLLOWING,
-    )
+    // 4 is DOCUMENT_POSITION_FOLLOWING: the node project carries no DOM lib,
+    // so the constant is literal rather than window.Node.
+    const descriptionBeforeComments = Boolean(description.compareDocumentPosition(comments) & 4)
+    const commentsBeforeDetails = Boolean(comments.compareDocumentPosition(details) & 4)
     return { descriptionBeforeComments, commentsBeforeDetails }
   })
   expect(order).toEqual({ descriptionBeforeComments: true, commentsBeforeDetails: true })

@@ -51,8 +51,8 @@ export type TicketsFaceProps = {
   onDismiss: () => void
   /** The sheet's subject, whichever face opened it, so one row reads as current. */
   openTicket: string | null
-  /** Open the sheet for the ticket: a row, a card, or a quick-add receipt. */
-  onOpenTicket: (ticket: { id: string }) => void
+  /** Open the sheet for the ticket: a row, a card, or a quick-add receipt with its composer focus. */
+  onOpenTicket: (ticket: { id: string }, focus?: 'description' | null) => void
 }
 
 const SCOPES: ReadonlyArray<{ value: Scope; label: string }> = [
@@ -148,6 +148,7 @@ export function TicketsFace({
     const receipt = written.reply
     if (
       receipt !== null &&
+      receipt !== undefined &&
       typeof receipt === 'object' &&
       'ticket' in receipt &&
       receipt.ticket !== null &&
@@ -155,7 +156,7 @@ export function TicketsFace({
       'id' in receipt.ticket &&
       typeof receipt.ticket.id === 'string'
     ) {
-      onOpenTicket({ id: receipt.ticket.id })
+      onOpenTicket({ id: receipt.ticket.id }, 'description')
       return
     }
     quickAdd.current?.focus()

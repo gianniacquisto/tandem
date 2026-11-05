@@ -39,7 +39,7 @@ function face(
     onWrite: (call: Method, expected: number | null) => Promise<WriteOutcome>
     onDismiss: () => void
     openTicket: string | null
-    onOpenTicket: (ticket: { id: string }) => void
+    onOpenTicket: (ticket: { id: string }, focus?: 'description' | null) => void
     onPickProject: (lane: string | null) => void
   },
 ) {
@@ -99,6 +99,10 @@ export function App() {
   const [openTicket, setOpenTicket] = useState<string | null>(
     () => parseRoute(window.location.hash).ticket,
   )
+  // Where a programmatic open lands its focus: the description composer for a
+  // quick-add handoff, else the dialog. Cleared with the sheet, so a kept link
+  // never inherits the handoff.
+  const [sheetFocus, setSheetFocus] = useState<'description' | null>(null)
   const [snapshot, dispatch] = useReducer(snapshotReducer, initialSnapshot)
   const state = useRef(snapshot)
   state.current = snapshot
@@ -265,9 +269,16 @@ export function App() {
     },
     [faceWrite, reload],
   )
-  const open = useCallback((ticket: { id: string }) => setOpenTicket(ticket.id), [])
+  const open = useCallback(
+    (ticket: { id: string }, focus?: 'description' | null) => {
+      setOpenTicket(ticket.id)
+      setSheetFocus(focus ?? null)
+    },
+    [],
+  )
   const closeSheet = useCallback(() => {
     setOpenTicket(null)
+    setSheetFocus(null)
     // A sheet opened from a kept link owns the hash's query; closing drops that
     // query and keeps the layout that carried it, so Esc from the board is the
     // board and not the list.
@@ -326,6 +337,7 @@ export function App() {
               onWrite={sheetWrite}
               onDismiss={closeSheet}
               onOpenTicket={setOpenTicket}
+              initialFocus={sheetFocus}
             />
           </SheetBoundary>
         )}
