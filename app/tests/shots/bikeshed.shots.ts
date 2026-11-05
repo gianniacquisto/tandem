@@ -31,6 +31,7 @@ test('the bikeshed face, over the seeded vault', async ({ app, window }) => {
   await expect(window.locator('.bikeshed-face')).toBeVisible()
   await expect(window.locator('.bikeshed-face .face__title')).toHaveCount(0)
   await expect(window.locator('.tree__vault-name')).toHaveText('Bikeshed')
+  await expect(window.locator('.tree__action', { hasText: "Today's note" })).toBeVisible()
   await expect(window.locator('.tree__new--note')).toHaveText('New note')
   await expect(window.locator('.tree__new--folder')).toHaveText('New folder')
   await expect(window.locator('.tree__name')).toHaveCount(6)
@@ -160,6 +161,38 @@ test('a new folder through the tree control appears expanded', async ({ window }
   await expect(row).toHaveAttribute('aria-expanded', 'true')
   await expect(window.locator('.banner')).toHaveCount(0)
   expect(existsSync(join(seedPath(), 'bikeshed', 'new-folder'))).toBe(true)
+})
+
+/**
+ * Today's note: one click opens-or-creates `daily/<today>.md` and opens it
+ * ready to type; a second click the same day returns the same file with staged
+ * content intact.
+ */
+test("today's note opens-or-creates and keeps staged content", async ({ window }) => {
+  await openTab(window, 'bikeshed')
+
+  const action = window.locator('.tree__action', { hasText: "Today's note" })
+  await expect(action).toBeVisible()
+  await action.click()
+
+  const now = new Date()
+  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const title = `daily/${day}.md`
+
+  await expect(window.locator(`.tree__label[title="${title}"]`)).toBeVisible()
+  await expect(window.locator('.editor__title')).toHaveText(day)
+  await expect(window.locator('.editor__folder')).toHaveText('daily')
+
+  const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('.cm-content')).toBeVisible()
+  await editor.locator('.cm-content').click()
+  await window.keyboard.type(' words for today')
+  await expect(editor.locator('.cm-content')).toContainText('words for today')
+
+  await action.click()
+  await expect(window.locator(`.tree__label[title="${title}"]`)).toBeVisible()
+  await expect(editor.locator('.cm-content')).toContainText('words for today')
+  await expect(window.locator('.banner')).toHaveCount(0)
 })
 
 /**

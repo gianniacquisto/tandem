@@ -22,6 +22,7 @@ export type BikeshedTreeProps = {
   onMove: (source: string, into: string) => void
   onCreateNote: (path: string) => void
   onCreateFolder: (path: string) => void
+  onDaily: () => void
 }
 
 function name(path: string): string {
@@ -50,6 +51,7 @@ export function BikeshedTree({
   onMove,
   onCreateNote,
   onCreateFolder,
+  onDaily,
 }: BikeshedTreeProps) {
   const rows = flattenTree(nodes, expanded)
   const [dragging, setDragging] = useState<string | null>(null)
@@ -107,6 +109,9 @@ export function BikeshedTree({
   function actions(): ReactNode {
     return (
       <div className="tree__actions">
+        <button type="button" className="tree__action" onClick={onDaily}>
+          Today&apos;s note
+        </button>
         <button
           type="button"
           className="tree__new tree__new--note"
@@ -183,7 +188,6 @@ export function BikeshedTree({
           Show hidden
         </label>
       </div>
-
       {actions()}
       {prompt()}
 

@@ -77,7 +77,7 @@ function message(error: unknown): string {
  * The face owns the reads: the vault is not the store, so a change event only
  * tells it to look again, and a window focus does the same for a note an agent
  * wrote while it was away. Every write is a message the CLI also answers
- * (`note write`, `note move`, `note create`, `note create-folder`), and a save
+ * (`note write`, `note move`, `note create`, `note create-folder`, `note daily`), and a save
  * compares the hash it read with the hash on disk before it writes: a
  * concurrent write is a conflict with both bodies, never a lost one.
  */
@@ -343,6 +343,23 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     await loadNote(path)
   }
 
+  async function openDaily(): Promise<void> {
+    if (conflict !== null) return
+    if (open !== null && open.dirty) await save(open)
+    const answer = await window.tandem.call({ method: 'note.daily', params: {} })
+    if ('error' in answer) {
+      setError(answer.error.message)
+      return
+    }
+    const path = 'path' in answer.reply ? answer.reply.path : null
+    if (typeof path !== 'string' || path === '') {
+      setError("Today's note could not be opened.")
+      return
+    }
+    await refreshVault()
+    await loadNote(path)
+  }
+
   async function move(source: string, into: string): Promise<void> {
     if (conflict !== null) return
     // The move carries the bytes that are on disk: flush the buffer first, so a
@@ -529,6 +546,7 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
           onMove={(source, into) => void move(source, into)}
           onCreateNote={(path) => void createNote(path)}
           onCreateFolder={(path) => void createFolder(path)}
+          onDaily={() => void openDaily()}
         />
         <div className="bikeshed__main">
           <BikeshedEditor
