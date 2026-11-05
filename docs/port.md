@@ -15,13 +15,13 @@ tandem (one binary: Rust)
         v
 Tandem.app (Electron shell)
   - React renderer -> CodeMirror 6 bundle (moved verbatim)
-  - main process, which also spawns the harness:
-        | spawn, loopback API, env -> ~/.tandem/harness
+  - main process, which spawns the core only:
+        | spawn + pipes, `TANDEM_HOME`
         v
-opencode v2.2.5 (bundled Mach-O; dies with the shell; Tandem's home, never the human's)
+`tandem rpc` (the same binary the CLI runs)
 ```
 
-The app holds no domain logic. The binary the agents call and the core the app trusts are the same executable, so they cannot drift.
+The app holds no domain logic. The binary the agents call and the core the app trusts are the same executable, so they cannot drift. The app ships no agent loop: passes run outside the app, through `tandem-cli` and the MCP server.
 
 ## Stack
 
@@ -36,18 +36,12 @@ The app holds no domain logic. The binary the agents call and the core the app t
 | renderer | React + TypeScript | agent throughput and ecosystem depth; `app/CONVENTIONS.md` pins the idioms |
 | message types | `ts-rs` | generated from the Rust structs, so a shape cannot drift without a compile error on both sides |
 | UI screenshots | Playwright against the real app | a spec in CI, replacing the lldb shot script; answers `TAN-210`, unblocks `TAN-217` |
-| harness | `opencode` v2.2.5, pinned by digest, spawned as a child | no host install, no terminal in onboarding ([ADR 0038](adr/0038-the-harness-home.md)) |
-| harness read | `ureq`, blocking, default features off | plain HTTP over loopback needs no TLS and no async runtime (TAN-276) |
 
 No ORM and no async runtime: the store is one writer on one file.
 
-## The harness
+## No embedded agent loop
 
-The app runs its own agent loop instead of asking the human to install a host and run `tandem-cli setup install`: it spawns the bundled `opencode` binary as a child process, `opencode serve --stdio --port 0`, and every global path that binary would take from the human's home is redirected to `<TandemHome>/harness/` through the environment it inherits. `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME` and `TMPDIR` root the data, the config, the state, the cache and Bun's extracted dylibs; `OPENCODE_DB` puts the store at `harness/opencode.db`, a neighbour of `tandem.db`; `OPENCODE_CONFIG_DIR` fixes the config directory; `OPENCODE_SERVER_PASSWORD` is the credential on the loopback API. The renderer never speaks to the harness: the main process holds the url and the password and exposes the Tandem messages, so the agent's API never enters the browser context.
-
-The bundled binary is one self-contained Mach-O, Developer ID signed, shipped verbatim in `Contents/Resources/harness/` and never re-signed, pinned by exact version and digest and never upgraded at runtime. The harness migrates its own database, so the app stamps `harness/version`, copies `opencode.db` before the first launch of a new version, and refuses a store newer than the binary it carries.
-
-Two corrections to the earlier assumption, measured: `--stdio` is a lifetime flag, not a transport (the v2 API is served on loopback, and the flag makes stdin its lifetime; hence `--port 0` and a password the app holds), and the SDK's `database.path` and `config.directory` are `OPENCODE_DB` and `OPENCODE_CONFIG_DIR` on the binary. `Scripts/check-harness-home.py` is the proof and runs on any machine that has the pinned binary; [ADR 0038](adr/0038-the-harness-home.md) records the measurement, the harness home layout and the upgrade rules.
+The app ships no agent loop and no bundled harness. Passes run outside the app, through `tandem-cli` and the MCP server; the app is a board and notes surface over `tandem rpc`. The embedded `opencode` child, its `~/.tandem/harness` home and the Settings sign-in are retired: [ADR 0038](adr/0038-the-harness-home.md) is superseded by [ADR 0040](adr/0040-no-embedded-agent-loop.md). An orphaned `~/.tandem/harness` directory left by an earlier install stays on disk; remove it by hand.
 
 
 ## Store
@@ -74,7 +68,7 @@ Pruned before a line is ported (about 2,000 of the app's 8,934 Swift lines):
 | Sprints tab (`SprintsFace.swift`) | read-only over `sprint list`; data stays |
 | Board as its own tab (`BoardView.swift`) | becomes a list/board toggle in the Tickets face |
 | Setup wizard as a window (`SetupWizard.swift`) | folded into one Settings surface with a repair action (`TAN-216`) |
-| Inbox tab | the human queue moves to the harness; the `human` assignee stays, with no Answer verb |
+| Inbox tab | the human queue stays outside the app; the `human` assignee stays, with no Answer verb |
 | Quick-open palette (`QuickOpenPalette.swift`) | never used |
 
 Kept and ported: the Tickets face (list plus board layout, scopes, search, quick-add, lanes), the Bikeshed face (tree, editor, backlinks, health), Usage (`TAN-208`, then `TAN-234`), Settings with the setup section, the ticket sheet.

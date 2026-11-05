@@ -15,11 +15,10 @@
     "test": "vitest run",
     "binary": "cargo build -p tandem --manifest-path ../rust/Cargo.toml",
     "binary:release": "node scripts/prepare-binary.mjs",
-    "harness:stage": "node scripts/prepare-harness.mjs",
     "check:artifact": "node scripts/check-artifact.mjs",
     "smoke": "node scripts/smoke-packaged.mjs",
-    "pack": "npm run build && npm run binary:release && npm run harness:stage && electron-builder --dir",
-    "dist": "npm run build && npm run binary:release && npm run harness:stage && electron-builder --publish never",
+    "pack": "npm run build && npm run binary:release && electron-builder --dir",
+    "dist": "npm run build && npm run binary:release && electron-builder --publish never",
     "shots": "npm run build && playwright test"
   },
   "dependencies": {

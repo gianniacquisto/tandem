@@ -3,7 +3,6 @@ export const TABS = [
   { id: 'tickets', label: 'Tickets' },
   { id: 'bikeshed', label: 'Bikeshed' },
   { id: 'usage', label: 'Usage' },
-  { id: 'workflow', label: 'Workflow' },
   { id: 'settings', label: 'Settings' },
 ] as const
 

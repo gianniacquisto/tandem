@@ -740,61 +740,37 @@ fn the_retro_files_into_the_projects_lane() {
     );
 }
 
-/// Sprint runner part 2 (TAN-281): the dispatch builds no shell string.
+/// Sprint runner part 2 retired (SHE-3, ADR 0040): the app holds no
+/// pass-execution effect.
 ///
-/// The pass-execution effect speaks HTTP to the harness loopback API with Basic
-/// auth (ADR 0038) over the transport seam (ADR 0037). A shell-out to
-/// `opencode` would bypass the version pin, the harness-home isolation and the
-/// fixed result shape, and it re-lays the surface TAN-274 removes: the shell
-/// stays out of the path, so the executor module holds no child-process import
-/// and no command-string call.
+/// TAN-281 put the pass-execution effect in `app/src/main/passExecutor.ts`,
+/// speaking HTTP to the harness loopback API with Basic auth (ADR 0038) so no
+/// shell-out bypassed the pin, the harness-home isolation or the fixed result
+/// shape. SHE-3 removes the Workflow face and the embedded harness from the
+/// app: the executor module is retired with them, and passes run outside the
+/// app through the CLI and MCP. The shell stays out of the path by absence:
+/// no executor module, and no pass endpoint string in main.
 #[test]
 fn dispatch_builds_no_shell_string() {
-    let executor = file("app/src/main/passExecutor.ts");
     assert!(
-        !executor.trim().is_empty(),
-        "the executor module is missing: main owns the pass-execution effect (ADR 0038)"
+        !root().join("app/src/main/passExecutor.ts").exists(),
+        "the executor module is retired: passes run outside the app (SHE-3, ADR 0040)"
     );
+    let main = file("app/src/main/index.ts");
     for marker in [
-        "child_process",
-        "node:child_process",
-        "spawn(",
-        "spawnSync(",
-        "execFile",
-        "execSync(",
-        "exec(",
-        "shell: true",
-        "windowsHide",
-        "/bin/sh",
-        "cmd.exe",
+        "api/sprint/pass",
+        "passExecutor",
+        "sprint/pass",
         "opencode serve",
         "opencode auth",
-        "auth list",
-        "--standalone",
         "--stdio",
         "--port 0",
     ] {
         assert!(
-            !executor.contains(marker),
-            "the executor builds a shell string around `{marker}`: dispatch speaks HTTP, never a shell (TAN-274)"
+            !main.contains(marker),
+            "main names `{marker}`: the app ships no agent loop (SHE-3, ADR 0040)"
         );
     }
-    assert!(
-        executor.contains("fetch"),
-        "the executor speaks HTTP: the transport is a seam (ADR 0037)"
-    );
-    assert!(
-        executor.contains("/api/sprint/pass"),
-        "the executor posts the structured brief to the harness pass endpoint"
-    );
-    assert!(
-        executor.contains("Authorization"),
-        "the executor sends the Basic credential main owns (ADR 0038)"
-    );
-    assert!(
-        executor.contains("ADR 0037") && executor.contains("ADR 0038"),
-        "the executor cites its two ADRs: the seam (0037) and the ownership (0038)"
-    );
 }
 
 /// A cross-fork PR branch has no `origin` ref (TAN-298): PR #324 lives on

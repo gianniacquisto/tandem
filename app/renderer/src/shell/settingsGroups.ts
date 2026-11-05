@@ -61,7 +61,7 @@ export function fixForCheck(check: DoctorCheck): string | null {
     case 'app':
       return 'Install leaves the app alone: it never installs Tandem itself, the detail names the quarantine fix.'
     case 'harness-auth':
-      return 'Install leaves sign-in alone: sign in below instead.'
+      return 'Install leaves sign-in alone: run the agent outside the app instead.'
     case 'mcp':
       return 'Install leaves this alone: rebuilding the app restores the tool count.'
     default:

@@ -8,7 +8,6 @@ import { TicketSheet } from './faces/TicketSheet'
 import { TicketsFace } from './faces/TicketsFace'
 import { UsageFace } from './faces/UsageFace'
 import { DEFAULT_WINDOW, type UsageWindow } from './faces/usage'
-import { WorkflowFace } from './faces/WorkflowFace'
 import { closeHref, parseRoute, tabHref, type Route } from './shell/route'
 import { initialSnapshot, snapshotReducer, type SnapshotState } from './shell/snapshot'
 import { refusalBanner, writeBlocked, type WriteCaller, type WriteOutcome } from './shell/write'
@@ -77,15 +76,6 @@ function face(
           report={snapshot.usage}
           window={actions.usageWindow}
           onWindowChange={actions.onUsageWindow}
-        />
-      )
-    case 'workflow':
-      return (
-        <WorkflowFace
-          tickets={snapshot.tickets}
-          lanes={snapshot.lanes}
-          activeProject={snapshot.activeProject}
-          onOpenTicket={actions.onOpenTicket}
         />
       )
     case 'settings':
