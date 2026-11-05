@@ -915,7 +915,11 @@ fn the_daily_note_opens_today_and_keeps_staged_content() {
 
     handle(
         &store,
-        &frame(2, "note.write", json!({"path": path, "text": "# Today\n\nwords"})),
+        &frame(
+            2,
+            "note.write",
+            json!({"path": path, "text": "# Today\n\nwords"}),
+        ),
     );
     let again = handle(&store, &frame(3, "note.daily", json!({})));
     assert_eq!(

@@ -1295,7 +1295,9 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
         NoteCommand::Daily => {
             home.ensure()
                 .map_err(|error| home_failure(home.directory(), error))?;
-            let result = vault.open_daily_note(Day::today()).map_err(Failure::domain)?;
+            let result = vault
+                .open_daily_note(Day::today())
+                .map_err(Failure::domain)?;
             print(&NotePathView {
                 path: result.value,
                 note: result.note,
