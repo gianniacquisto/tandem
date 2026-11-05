@@ -169,6 +169,8 @@ enum NoteCommand {
     Links,
     Write(NoteWriteArgs),
     Move(NoteMoveArgs),
+    Create(NoteCreateArgs),
+    CreateFolder(NoteCreateFolderArgs),
 }
 
 #[derive(Subcommand)]
@@ -405,6 +407,18 @@ struct NoteMoveArgs {
     path: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     into: Option<String>,
+}
+
+#[derive(Args)]
+struct NoteCreateArgs {
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    path: Option<String>,
+}
+
+#[derive(Args)]
+struct NoteCreateFolderArgs {
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    path: Option<String>,
 }
 
 #[derive(Args)]
@@ -772,6 +786,8 @@ impl NoteCommand {
             Self::Links => "note links",
             Self::Write(_) => "note write",
             Self::Move(_) => "note move",
+            Self::Create(_) => "note create",
+            Self::CreateFolder(_) => "note create-folder",
         }
     }
 }
@@ -1289,6 +1305,28 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
                 )
                 .map_err(Failure::domain)?;
             print(&NoteMoveView::new(&outcome.value))
+        }
+        NoteCommand::Create(args) => {
+            home.ensure()
+                .map_err(|error| home_failure(home.directory(), error))?;
+            let result = vault
+                .create(args.path.as_deref().unwrap_or(""))
+                .map_err(Failure::domain)?;
+            print(&NotePathView {
+                path: result.value,
+                note: result.note,
+            })
+        }
+        NoteCommand::CreateFolder(args) => {
+            home.ensure()
+                .map_err(|error| home_failure(home.directory(), error))?;
+            let result = vault
+                .create_folder(args.path.as_deref().unwrap_or(""))
+                .map_err(Failure::domain)?;
+            print(&NotePathView {
+                path: result.value,
+                note: result.note,
+            })
         }
     }
 }

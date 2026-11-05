@@ -11,8 +11,8 @@
 //!
 //! Methods that stay wire-only are named here, not forgotten: `setup.install`
 //! (host mutation stays a human CLI act), the curated note writes
-//! (`note.write`, `note.move`, and the CLI's `note rename`, which has no wire
-//! row and stays out), and the app's reads
+//! (`note.write`, `note.move`, `note.create`, `note.createFolder`, and the
+//! CLI's `note rename`, which has no wire row and stays out), and the app's reads
 //! (`usage.report`, `markdown.blocks`, `note.tree`,
 //! `note.read`, `note.backlinks`, `note.recoveries`, `setup.status`,
 //! `session.transcript`). The vault's link-graph read (`note.health`), the
@@ -73,10 +73,12 @@ const COVERED: [&str; 38] = [
 /// in [`COVERED`]; a new wire method fails this file until it picks a side.
 /// `session.transcript` stays wire-only for the sheet (TAN-264): the app reads
 /// it, and the MCP door lists sessions but does not page transcripts in v1.
-const EXCLUDED: [&str; 11] = [
+const EXCLUDED: [&str; 13] = [
     "setup.install",
     "note.write",
     "note.move",
+    "note.create",
+    "note.createFolder",
     "usage.report",
     "markdown.blocks",
     "note.tree",

@@ -972,6 +972,26 @@ fn execute(
                 moved: NoteMoveView::new(&outcome),
             }))
         }
+        Method::NoteCreate(params) => {
+            let created = open_bikeshed(store)
+                .create(named(&params.path))
+                .map_err(domain)?
+                .value;
+            Ok(Reply::NotePath(NotePathView {
+                path: created,
+                note: None,
+            }))
+        }
+        Method::NoteCreateFolder(params) => {
+            let created = open_bikeshed(store)
+                .create_folder(named(&params.path))
+                .map_err(domain)?
+                .value;
+            Ok(Reply::NotePath(NotePathView {
+                path: created,
+                note: None,
+            }))
+        }
         Method::NoteHealth(_) => Ok(Reply::NoteHealth(NoteHealthReply {
             health: open_bikeshed(store).health().map_err(domain)?.value,
         })),
