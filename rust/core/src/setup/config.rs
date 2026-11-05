@@ -217,9 +217,7 @@ fn apply_mcp_entry(file: &Path, manifest: &mut Manifest) -> Result<PathAction> {
 fn insert_mcp_server(existing: &str) -> Option<(String, String)> {
     let entry = mcp_tandem_entry();
     if !existing.contains("\"mcp\"") {
-        let Some(open) = existing.find('{') else {
-            return None;
-        };
+        let open = existing.find('{')?;
         let snippet = format!("\"mcp\": {{{entry}}},\n");
         let mut file_text = existing.to_string();
         file_text.insert_str(open + 1, &snippet);
