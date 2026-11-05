@@ -813,10 +813,7 @@ fn install_wires_the_tandem_mcp_server_with_no_manual_config() {
     );
     assert_eq!(
         value["mcp"]["tandem"]["command"],
-        serde_json::json!([
-            "/Applications/Tandem.app/Contents/MacOS/tandem-cli",
-            "mcp"
-        ]),
+        serde_json::json!(["/Applications/Tandem.app/Contents/MacOS/tandem-cli", "mcp"]),
         "the server is the bundled binary: {merged}"
     );
 
@@ -837,8 +834,7 @@ fn the_mcp_server_joins_the_human_servers_and_leaves_on_uninstall() {
 
     install(&f, &[Host::Opencode], false).expect("the install runs");
     let merged = fs::read_to_string(f.opencode_config()).unwrap();
-    let value: serde_json::Value =
-        serde_json::from_str(&merged).expect("the merged config parses");
+    let value: serde_json::Value = serde_json::from_str(&merged).expect("the merged config parses");
     assert!(
         value["mcp"]["other"].is_object(),
         "the human's server survives: {merged}"
@@ -909,8 +905,7 @@ fn an_existing_instructions_entry_stays_while_the_mcp_server_joins() {
 
     install(&f, &[Host::Opencode], false).expect("the install runs");
     let merged = fs::read_to_string(f.opencode_config()).unwrap();
-    let value: serde_json::Value =
-        serde_json::from_str(&merged).expect("the merged config parses");
+    let value: serde_json::Value = serde_json::from_str(&merged).expect("the merged config parses");
     assert_eq!(
         value["instructions"],
         serde_json::json!([entry]),

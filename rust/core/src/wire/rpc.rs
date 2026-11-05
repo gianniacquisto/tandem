@@ -1092,7 +1092,9 @@ impl SettingsSetParams {
             ),
             (
                 "project",
-                string("the lane to focus on, or \"\" to clear back to every lane; omit to leave the focus alone"),
+                string(
+                    "the lane to focus on, or \"\" to clear back to every lane; omit to leave the focus alone",
+                ),
             ),
         ])
     }

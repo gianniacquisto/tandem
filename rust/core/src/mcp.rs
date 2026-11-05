@@ -33,9 +33,9 @@ use crate::wire::rpc::{
     LaneRenameParams, Method, NoteCaptureParams, ProjectAddParams, ProjectDeleteParams,
     ProjectRenameParams, SessionEndParams, SessionLinkParams, SessionListParams, SessionShowParams,
     SessionStartParams, SettingsSetParams, SprintCloseParams, SprintListParams, SprintOpenParams,
-    SprintRunParams, SprintShowParams, SprintTicketParams, TicketAddFromNoteParams, TicketAddParams,
-    TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
-    TicketMoveParams, TicketSetParams, TicketUnblockParams,
+    SprintRunParams, SprintShowParams, SprintTicketParams, TicketAddFromNoteParams,
+    TicketAddParams, TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
+    TicketListParams, TicketMoveParams, TicketSetParams, TicketUnblockParams,
 };
 
 /// The server name the `initialize` answer carries.
@@ -321,10 +321,7 @@ fn call_frame(
     if tool.method_tag == "session.start"
         && let Some(object) = result.as_object_mut()
     {
-        object.insert(
-            "health".to_string(),
-            health_block(store, environment),
-        );
+        object.insert("health".to_string(), health_block(store, environment));
     }
     result_frame(
         id,

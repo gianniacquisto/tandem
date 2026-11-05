@@ -243,7 +243,8 @@ fn insert_mcp_server(existing: &str) -> Option<(String, String)> {
 }
 
 /// The exact text inserted, and the file's new text.
-fn insert_instruction(entry: &str, existing: Option<&str>) -> Result<(String, String)> {    let Some(existing) = existing else {
+fn insert_instruction(entry: &str, existing: Option<&str>) -> Result<(String, String)> {
+    let Some(existing) = existing else {
         let inserted = format!("{{\n  \"instructions\": [\"{entry}\"]\n}}\n");
         return Ok((inserted.clone(), inserted));
     };
