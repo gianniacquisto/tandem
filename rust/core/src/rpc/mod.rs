@@ -549,19 +549,6 @@ fn execute(
             let ticket = board.complete(named(&params.id)).map_err(domain)?;
             Ok(ticket_receipt(&ticket, store))
         }
-        Method::TicketAnswer(params) => {
-            let assignee = resolve_assignee(params.assignee.as_deref(), actor).map_err(domain)?;
-            let ticket = board
-                .answer(
-                    named(&params.id),
-                    Status::parse(params.status.as_deref().unwrap_or("")).map_err(domain)?,
-                    assignee.as_deref(),
-                    params.body.as_deref().unwrap_or(""),
-                    crate::store::timestamp::unix_now(),
-                )
-                .map_err(domain)?;
-            Ok(ticket_receipt(&ticket, store))
-        }
         Method::TicketArchive(params) => match params.id.as_deref() {
             Some(id) => {
                 let ticket = board.archive(id).map_err(domain)?;

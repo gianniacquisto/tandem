@@ -32,7 +32,7 @@ Tickets keep their own conventions: a ticket's description is written once, and 
 
 The actor that finishes a ticket's work sets the next status and, where there is a next, the next assignee — instead of leaving the next move to a later pass. The names are the roster's: `skills/tandem-team/SKILL.md`. The builder hands to `in-review`; the reviewer completes on merge or escalates to `human`; the sprint session dispatches and records.
 
-**Status and assignee move together, and `human` is an assignee only while a question is open.** `ticket answer` is the one write that records the answer and closes the hold: the answering actor names the status the answer opens and the next owner, and the ticket leaves the inbox in the same call. A question answered without that write is not answered — the inbox stops asking as soon as the `## Answer` block is in the body, and the ticket's `human` tag and column are then debt the next pass owes an `answer`.
+**Status and assignee move together, and `human` is an assignee only while a question is open.** The actor that closes a hold records the decision in a comment and moves the pair with `ticket set`: the status the decision earns and the next owner move in the same call, and the ticket leaves the inbox with them. The inbox is the assignee alone, with no Answer-block check.
 
 ## Git
 

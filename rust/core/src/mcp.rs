@@ -34,8 +34,8 @@ use crate::wire::rpc::{
     ProjectRenameParams, SessionEndParams, SessionLinkParams, SessionListParams, SessionShowParams,
     SessionStartParams, SettingsSetParams, SprintCloseParams, SprintListParams, SprintOpenParams,
     SprintRunParams, SprintShowParams, SprintTicketParams, TicketAddFromNoteParams,
-    TicketAddParams, TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
-    TicketListParams, TicketMoveParams, TicketSetParams, TicketUnblockParams,
+    TicketAddParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
+    TicketMoveParams, TicketSetParams, TicketUnblockParams,
 };
 
 /// The server name the `initialize` answer carries.
@@ -409,7 +409,7 @@ impl Tool {
     }
 }
 
-/// The 38 tools: one per covered wire method. The schema beside each entry is
+/// The 37 tools: one per covered wire method. The schema beside each entry is
 /// the params struct's own derivation, so the list cannot drift from the wire
 /// without the registry test failing.
 pub fn tools() -> Vec<Tool> {
@@ -476,13 +476,6 @@ pub fn tools() -> Vec<Tool> {
             description: "The short path to done: idempotent, no reopen verb.",
             input_schema: TicketIdParams::schema(),
             method: Method::TicketComplete(TicketIdParams::default()),
-        },
-        Tool {
-            name: "ticket_answer",
-            method_tag: "ticket.answer",
-            description: "Record the human's answer and close the hold in one write.",
-            input_schema: TicketAnswerParams::schema(),
-            method: Method::TicketAnswer(TicketAnswerParams::default()),
         },
         Tool {
             name: "ticket_archive",

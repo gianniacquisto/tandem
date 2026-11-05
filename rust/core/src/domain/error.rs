@@ -96,10 +96,6 @@ pub enum DomainError {
     TicketBlockerArchived { reference: String },
     /// A ticket that already links to a note cannot be promoted again.
     AlreadyLinked { path: String },
-    /// `set` was asked to move the owner away from `human` on a ticket that
-    /// carries no `## Answer` block and is not done. Only `ticket answer`
-    /// closes the hold.
-    HumanHoldNeedsAnswer { reference: String },
     /// `start` was given an empty or whitespace-only brief.
     EmptySessionBrief,
     /// `--brief` named a regular file: the flag never read it, so the path would
@@ -312,11 +308,6 @@ impl DomainError {
             Self::AlreadyLinked { path } => format!(
                 "This ticket already links to a note (\"{path}\"). Open that note, or remove \
                  the link before promoting again."
-            ),
-            Self::HumanHoldNeedsAnswer { reference } => format!(
-                "{reference} is waiting on the human and carries no `## Answer` block. \
-                 Record the decision with `ticket answer`, which writes the block and closes \
-                 the hold in one write."
             ),
             Self::EmptySessionBrief => "Session brief is empty. Provide a non-empty brief, what \
                  the session is for and what done looks like, and try again."
