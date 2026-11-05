@@ -141,6 +141,33 @@ fn ticket_appends_once_and_refuses_an_id_the_board_does_not_carry() {
         },
         "the handle is checked before the board is asked"
     );
+
+    // The epic lane draws from the same board: the batch keeps stored order
+    // and an off-board id is refused without touching the record.
+    sprints
+        .open(&actor, "ui", SprintMode::Parallel, None, Some(&at(10)))
+        .unwrap();
+    sprints.ticket(&actor, "ui", 1, TICKET_TWO).unwrap();
+    sprints.ticket(&actor, "ui", 1, TICKET_ONE).unwrap();
+    let epic = sprints.ticket(&actor, "ui", 1, TICKET_TWO).unwrap();
+    assert_eq!(
+        epic.value.batch,
+        vec![TICKET_TWO.to_string(), TICKET_ONE.to_string()],
+        "the epic batch keeps the order the additions were made in"
+    );
+    assert_eq!(
+        sprints.ticket(&actor, "ui", 1, TICKET_THREE).unwrap_err(),
+        DomainError::UnknownTicketId(TICKET_THREE.to_string())
+    );
+    assert_eq!(
+        sprints.ticket(&actor, "ui", 9, TICKET_ONE).unwrap_err(),
+        DomainError::UnknownSprint {
+            lane: "ui".to_string(),
+            number: 9,
+            known: vec![1],
+        },
+        "the epic handle is checked before the board is asked"
+    );
 }
 
 #[test]
@@ -353,6 +380,112 @@ fn the_lane_only_handles_answer_the_open_record_and_the_close_target() {
     assert_eq!(
         sprints.close_in(" ").unwrap_err(),
         DomainError::EmptyLaneName
+    );
+}
+
+#[test]
+fn epic_batch_appends_once_and_off_board_ids_are_refused() {
+    let sandbox = Sandbox::new("sprint-epic-batch");
+    sandbox.ticket(TICKET_ONE);
+    sandbox.ticket(TICKET_TWO);
+    let store = sandbox.store();
+    let sprints = Sprints::new(&store);
+    let actor = sandbox.actor();
+    // Sprint open names the epic lane and derives the number within it.
+    let opened = sprints
+        .open(&actor, "ui", SprintMode::Parallel, None, Some(&at(0)))
+        .unwrap();
+    assert_eq!(opened.value.lane, "ui");
+    assert_eq!(opened.value.number, 1);
+
+    sprints.ticket(&actor, "ui", 1, TICKET_TWO).unwrap();
+    sprints.ticket(&actor, "ui", 1, TICKET_ONE).unwrap();
+    let repeated = sprints.ticket(&actor, "ui", 1, TICKET_TWO).unwrap();
+    assert_eq!(
+        repeated.value.batch,
+        vec![TICKET_TWO.to_string(), TICKET_ONE.to_string()],
+        "draw order plus stored order in the epic lane"
+    );
+
+    assert_eq!(
+        sprints.ticket(&actor, "ui", 1, TICKET_THREE).unwrap_err(),
+        DomainError::UnknownTicketId(TICKET_THREE.to_string())
+    );
+}
+
+#[test]
+fn epic_sprint_errors_name_the_lane_and_what_it_holds() {
+    let sandbox = Sandbox::new("sprint-epic-errors");
+    sandbox.ticket(TICKET_ONE);
+    let store = sandbox.store();
+    let sprints = Sprints::new(&store);
+    let actor = sandbox.actor();
+    sprints
+        .open(&actor, "ui", SprintMode::Parallel, None, Some(&at(0)))
+        .unwrap();
+    sprints.close(&actor, "ui", 1, None, Some(&at(10))).unwrap();
+    sprints
+        .open(&actor, "ui", SprintMode::Parallel, None, Some(&at(20)))
+        .unwrap();
+    sprints
+        .open(&actor, "core", SprintMode::Serial, None, Some(&at(30)))
+        .unwrap();
+
+    // Unknown sprint names the lane and the numbers the lane holds.
+    assert_eq!(
+        sprints.show("ui", 9).unwrap_err(),
+        DomainError::UnknownSprint {
+            lane: "ui".to_string(),
+            number: 9,
+            known: vec![1, 2],
+        }
+    );
+    let message = sprints.show("ui", 9).unwrap_err().message();
+    assert!(
+        message.contains("\"ui\""),
+        "the refusal names the epic lane: {message}"
+    );
+    assert!(
+        message.contains('1') && message.contains('2'),
+        "the refusal names the numbers held: {message}"
+    );
+
+    // A lane with no record names the lane plus the open-first step.
+    let missing = sprints.open_in("docs").unwrap_err().message();
+    assert!(
+        missing.contains("\"docs\""),
+        "the refusal names the epic lane: {missing}"
+    );
+    assert!(
+        missing.contains("sprint open"),
+        "the refusal names the open-first step: {missing}"
+    );
+    assert_eq!(
+        sprints.open_in("docs").unwrap_err(),
+        DomainError::NoOpenSprint("docs".to_string())
+    );
+
+    // The lane-only handles answer the open record and the close target
+    // without changing record identity.
+    assert_eq!(sprints.open_in("ui").unwrap().number, 2);
+    assert_eq!(
+        sprints.close_in("ui").unwrap().number,
+        2,
+        "the open record is the close target"
+    );
+
+    // An off-board id names the id plus the board check.
+    let refused = sprints
+        .ticket(&actor, "ui", 2, TICKET_THREE)
+        .unwrap_err()
+        .message();
+    assert!(
+        refused.contains(TICKET_THREE),
+        "the refusal names the id: {refused}"
+    );
+    assert!(
+        refused.contains("board"),
+        "the refusal names the board check: {refused}"
     );
 }
 
