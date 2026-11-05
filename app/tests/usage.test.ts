@@ -18,6 +18,21 @@ import {
   MODE_CONTROL_LABEL,
   tokenLine,
   tokens,
+  WINDOWS,
+  DEFAULT_WINDOW,
+  windowLabel,
+  GRAPH_SERIES,
+  DEFAULT_GRAPH_SERIES,
+  seriesLabel,
+  seriesValue,
+  totalTokens,
+  graphScales,
+  graphBars,
+  SORT_COLUMNS,
+  defaultSort,
+  initialDirection,
+  sortRows,
+  toggleSort,
 } from '../renderer/src/faces/usage'
 import type { UsageReportView } from '../renderer/src/wire/UsageReportView'
 import type { UsageRowView } from '../renderer/src/wire/UsageRowView'
@@ -362,5 +377,178 @@ describe('the usage face over one report', () => {
     const copy = [...MODES.map(modeLabel), MODE_CONTROL_LABEL].join(' ')
     expect(copy).toContain('record')
     expect(copy).not.toMatch(/task/i)
+  })
+
+  it('offers four windows defaulting to the last seven days', () => {
+    expect(WINDOWS).toEqual(['last-7-days', 'last-30-days', 'this-month', 'all-time'])
+    expect(DEFAULT_WINDOW).toBe('last-7-days')
+    expect(WINDOWS.map(windowLabel)).toEqual(['Last 7 days', 'Last 30 days', 'This month', 'All time'])
+  })
+
+  it('names the window in the header coverage', () => {
+    const drawn = report()
+    expect(coverage(drawn)).toBe('reported by 3 of 4 records')
+    expect(coverage(drawn, 'last-7-days')).toBe('reported by 3 of 4 records in the last 7 days')
+    expect(coverage(drawn, 'last-30-days')).toBe('reported by 3 of 4 records in the last 30 days')
+    expect(coverage(drawn, 'this-month')).toBe('reported by 3 of 4 records in this month')
+    expect(coverage(drawn, 'all-time')).toBe('reported by 3 of 4 records')
+  })
+
+  it('defaults the graph to total tokens with seven picker series beside it', () => {
+    expect(DEFAULT_GRAPH_SERIES).toEqual(['totalTokens'])
+    expect(GRAPH_SERIES).toEqual([
+      'totalTokens',
+      'input',
+      'output',
+      'cacheRead',
+      'cacheWrite',
+      'reasoning',
+      'records',
+      'cost',
+    ])
+    expect(GRAPH_SERIES.map(seriesLabel)).toEqual([
+      'Total tokens',
+      'Input',
+      'Output',
+      'Cache read',
+      'Cache write',
+      'Reasoning',
+      'Records',
+      'Cost',
+    ])
+  })
+
+  it('reads each picker series from the day row, absent never zero', () => {
+    const entry = row({
+      cost: 1.5,
+      tokens: { input: 3000, output: null, reasoning: 100, cacheRead: 200, cacheWrite: null },
+    })
+    expect(totalTokens(entry)).toBe(3300)
+    expect(seriesValue(entry, 'totalTokens')).toBe(3300)
+    expect(seriesValue(entry, 'input')).toBe(3000)
+    expect(seriesValue(entry, 'output')).toBeNull()
+    expect(seriesValue(entry, 'cacheRead')).toBe(200)
+    expect(seriesValue(entry, 'cacheWrite')).toBeNull()
+    expect(seriesValue(entry, 'reasoning')).toBe(100)
+    expect(seriesValue(entry, 'records')).toBe(1)
+    expect(seriesValue(entry, 'cost')).toBe(1.5)
+  })
+
+  it('reads total tokens as absent when the day reported no pieces', () => {
+    const entry = row({
+      reported: 0,
+      tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
+    })
+    expect(totalTokens(entry)).toBeNull()
+    expect(seriesValue(entry, 'totalTokens')).toBeNull()
+  })
+
+  it('shares one token scale and draws cost on its own', () => {
+    const days = [
+      row({ id: '2026-10-31', label: '2026-10-31', cost: 2, tokens: { input: 6000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } }),
+      row({ id: '2026-10-30', label: '2026-10-30', cost: 1, tokens: { input: 3000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } }),
+    ]
+    const scales = graphScales(days, ['input', 'cost'])
+    expect(scales.tokenMax).toBe(6000)
+    expect(scales.costMax).toBe(2)
+    const bars = graphBars(days, ['input', 'cost'])
+    expect(bars.map((bar) => bar.row.id)).toEqual(['2026-10-30', '2026-10-31'])
+    expect(bars[0]?.heights.input).toBe(50)
+    expect(bars[1]?.heights.input).toBe(100)
+    expect(bars[0]?.heights.cost).toBe(50)
+    expect(bars[1]?.heights.cost).toBe(100)
+  })
+
+  it('keeps zero and absent days in their slots', () => {
+    const days = [
+      row({ id: '2026-10-31', label: '2026-10-31', cost: 2, tokens: { input: 2000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } }),
+      row({ id: '2026-10-30', label: '2026-10-30', reported: 0, cost: 0, tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null } }),
+      row({ id: '2026-10-29', label: '2026-10-29', cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } }),
+    ]
+    const bars = graphBars(days, ['input'])
+    expect(bars.map((bar) => bar.row.id)).toEqual(['2026-10-29', '2026-10-30', '2026-10-31'])
+    expect(bars[1]?.values.input).toBeNull()
+    expect(bars[1]?.heights.input).toBe(0)
+    expect(bars[0]?.values.input).toBe(0)
+    expect(bars[0]?.heights.input).toBe(0)
+    expect(bars[2]?.heights.input).toBe(100)
+  })
+
+  it('sorts non-day tables by label A-Z with day exempt', () => {
+    expect(SORT_COLUMNS).toEqual(['label', 'records', 'input', 'output', 'cacheRead', 'cacheWrite', 'cost'])
+    expect(defaultSort('day')).toBeNull()
+    expect(defaultSort('model')).toEqual({ column: 'label', direction: 'asc' })
+    expect(defaultSort('agent')).toEqual({ column: 'label', direction: 'asc' })
+    expect(defaultSort('ticket')).toEqual({ column: 'label', direction: 'asc' })
+    const rows = [
+      row({ id: 'b', label: 'builder', cost: 1 }),
+      row({ id: 'a', label: 'agent', cost: 2 }),
+    ]
+    expect(sortRows(rows, 'label', 'asc', 'total').map((entry) => entry.label)).toEqual([
+      'agent',
+      'builder',
+    ])
+  })
+
+  it('sorts numerics descending first with label tiebreak in both modes', () => {
+    expect(initialDirection('label')).toBe('asc')
+    expect(initialDirection('cost')).toBe('desc')
+    expect(initialDirection('input')).toBe('desc')
+    const rows = [
+      row({
+        id: 'b',
+        label: 'builder',
+        records: 2,
+        reported: 2,
+        cost: 2,
+        tokens: { input: 2000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+        averageTokens: { input: 1000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+        averageCost: 1,
+      }),
+      row({
+        id: 'a',
+        label: 'agent',
+        records: 1,
+        reported: 1,
+        cost: 2,
+        tokens: { input: 1000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+        averageTokens: { input: 1000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+        averageCost: 2,
+      }),
+    ]
+    expect(sortRows(rows, 'cost', 'desc', 'total').map((entry) => entry.label)).toEqual([
+      'agent',
+      'builder',
+    ])
+    expect(sortRows(rows, 'input', 'desc', 'total').map((entry) => entry.label)).toEqual([
+      'builder',
+      'agent',
+    ])
+    expect(sortRows(rows, 'input', 'desc', 'average').map((entry) => entry.label)).toEqual([
+      'agent',
+      'builder',
+    ])
+    expect(sortRows(rows, 'cost', 'desc', 'average').map((entry) => entry.label)).toEqual([
+      'agent',
+      'builder',
+    ])
+    expect(toggleSort({ column: 'cost', direction: 'desc' }, 'cost')).toEqual({
+      column: 'cost',
+      direction: 'asc',
+    })
+    expect(toggleSort({ column: 'cost', direction: 'desc' }, 'label')).toEqual({
+      column: 'label',
+      direction: 'asc',
+    })
+  })
+
+  it('keeps bars cost-scaled under any sort', () => {
+    const rows = [
+      row({ id: 'b', label: 'builder', cost: 1, barPercent: 50 }),
+      row({ id: 'a', label: 'agent', cost: 2, barPercent: 100 }),
+    ]
+    const sorted = sortRows(rows, 'label', 'asc', 'total')
+    expect(sorted.map((entry) => entry.label)).toEqual(['agent', 'builder'])
+    expect(sorted.map((entry) => entry.barPercent)).toEqual([100, 50])
   })
 })
