@@ -103,4 +103,25 @@ fn lane_move_names_an_unknown_lane_and_the_fix() {
         message.contains("lane add") && message.contains("lane list"),
         "the refusal names the fix: {message}"
     );
+
+    // The epic lanes use the same refusal at the CLI seam.
+    let epic = Sandbox::new("unknown-epic");
+    epic.json(&["lane", "add", "--name", "Tandem"]);
+    epic.json(&["lane", "add", "--name", "ui"]);
+    epic.json(&["lane", "add", "--name", "core"]);
+    let output = epic.run(&["lane", "move", "--name", "docs", "--index", "0"]);
+    assert_ne!(
+        output.status.code(),
+        Some(0),
+        "an unknown epic lane refuses"
+    );
+    let message = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(
+        message.contains("\"docs\""),
+        "the refusal names the epic lane: {message}"
+    );
+    assert!(
+        message.contains("lane add") && message.contains("lane list"),
+        "the refusal names the fix: {message}"
+    );
 }
