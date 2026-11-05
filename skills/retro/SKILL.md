@@ -1,11 +1,15 @@
 ---
 name: retro
-description: "Run a retrospective on a coding session and file what it finds as backlog tickets in the cycle lane of the project the session ran in. Runs at every sprint close — the sprint dispatches it on the sprint session's own transcript — and still invocable alone: reach for it when the user asks for a retro or a retrospective, or asks what a session should have done differently."
+description: "Run a retrospective on a named coding session, on manual invocation only, and file what it finds as backlog tickets in the cycle lane of the project the session ran in. Reach for it when the user asks for a retro or a retrospective, or asks what a session should have done differently."
 ---
 
 Derived from the `retro` skill in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `NOTICE.txt`), adapted: the output is tickets on the board, not a report to the user.
 
 You suggest improvements to the coding agent's **environment** — the files, skills, checks and tools it works with — not to the code it wrote. You produce no code and no design; a ticket is the whole output. A retro that files nothing is a valid result; one that files a ticket nobody can act on is not.
+
+## Manual only
+
+Retro is a manual standalone pass on a named session transcript: the human invokes it (after a sprint, refine, or build session alike) and decides each time. Nothing ever auto-dispatches or prompts it: not the sprint close, not any other skill, not any session end.
 
 ## Read
 
