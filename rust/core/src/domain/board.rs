@@ -13,7 +13,6 @@
 //!
 //! Every id-taking operation resolves its handle through [`Contents::require_ticket`],
 //! the store's one rule: a UUID, or the ref (`TAN-42`, case-insensitive on the key).
-//! A second copy of that rule would be a second answer.
 
 use std::collections::{HashMap, HashSet};
 
@@ -163,7 +162,7 @@ impl Board {
 
     /// `comments(id)`: the ticket's comments in append order, or an empty list.
     /// The ticket must exist; an unknown handle is the same failure `append`
-    /// raises, with an empty list the answer only for a ticket that has none.
+    /// raises, with an empty list the result only for a ticket that has none.
     pub fn comments(&self, handle: &str) -> Result<Vec<Comment>, DomainError> {
         let contents = self.load()?;
         let (id, _) = contents.require_ticket(handle)?;
@@ -693,23 +692,6 @@ impl Board {
         };
         self.mutate(|contents| {
             let index = contents.require_ticket(handle)?.1;
-            // The human hold: only `ticket answer` moves the owner off `human`
-            // while the ticket asks an unanswered question. The guard reads the
-            // stored ticket, so a same-call description adding `## Answer` does
-            // not exempt the write; a done ticket is exempt, because finishing
-            // the work settled the question.
-            if let Edit::Set(requested) = fields.assignee {
-                let stored = &contents.tickets[index];
-                if stored.assignee.as_deref() == Some(HUMAN)
-                    && normalize_assignee(requested) != Some(HUMAN.to_string())
-                    && !stored.done()
-                    && !DescriptionBody::answered(stored.description.as_deref())
-                {
-                    return Err(DomainError::HumanHoldNeedsAnswer {
-                        reference: display_name(stored),
-                    });
-                }
-            }
             let mut ticket = contents.tickets[index].clone();
             let mut changed = false;
             if let Some(new_title) = &new_title
@@ -761,35 +743,6 @@ impl Board {
                 ..SetFields::default()
             },
         )
-    }
-
-    /// `answer(id, status, assignee, body)`: the human's answer recorded and the
-    /// hold closed, a `## Answer` block appended to the description, the status the
-    /// answer opens and the next assignee, all in **one** write.
-    ///
-    /// The write cannot half-land: recording the answer in a second call is what let
-    /// answered tickets sit in the inbox wearing `human`. `assignee` is the next
-    /// owner; `None` clears it, because the question is settled.
-    pub fn answer(
-        &self,
-        handle: &str,
-        status: Status,
-        assignee: Option<&str>,
-        body: &str,
-        now: i64,
-    ) -> Result<Ticket, DomainError> {
-        let body = DescriptionBody::required(body)?;
-        let who = normalize_assignee(assignee);
-        let block = answer_block(&body, now);
-        self.mutate(|contents| {
-            let index = contents.require_ticket(handle)?.1;
-            let mut ticket = contents.tickets[index].clone();
-            ticket.description = Some(appending(&block, ticket.description.as_deref()));
-            ticket.set_status(status, now);
-            ticket.assignee = who.clone();
-            contents.tickets[index] = ticket.clone();
-            Ok((ticket, true))
-        })
     }
 
     /// The promotion's link write: point a ticket at the note that was just
@@ -1221,14 +1174,6 @@ fn walk(
         }
     }
     None
-}
-
-/// The answer block: `## Answer` and the day the answer was recorded (UTC), a
-/// blank line, then the body. The heading is what `DescriptionBody::answered` reads
-/// back, so the written form and the read agree by construction.
-fn answer_block(body: &str, at: i64) -> String {
-    let day = timestamp::encode(at);
-    format!("## Answer \u{2014} {}\n\n{}", &day[..10], body)
 }
 
 /// A section appended to a description, separated by one blank line: a description

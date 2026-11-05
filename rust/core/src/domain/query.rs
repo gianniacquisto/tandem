@@ -5,7 +5,6 @@
 //! human and another to an agent. It is a pure predicate: it never reorders (the
 //! stored order is the order) and it never writes.
 
-use super::description::DescriptionBody;
 use super::error::DomainError;
 use super::text::TextMatch;
 use super::ticket::{Status, Ticket};
@@ -47,9 +46,6 @@ pub struct TicketQuery {
     pub assignee: AssigneeAxis,
     pub lane: LaneAxis,
     pub archived: Archived,
-    /// Whether tickets carrying an answer block are left out of view. Only the
-    /// inbox sets it.
-    pub exclude_answered: bool,
     /// Only the tickets waiting on an open blocker (TAN-232).
     pub blocked_only: bool,
 }
@@ -66,20 +62,15 @@ impl Default for TicketQuery {
             assignee: AssigneeAxis::Any,
             lane: LaneAxis::Any,
             archived: Archived::Excluded,
-            exclude_answered: false,
             blocked_only: false,
         }
     }
 }
 
 impl TicketQuery {
-    /// The human's inbox: every open, non-archived ticket assigned to the person,
-    /// minus the ones that already carry an answer.
+    /// The human's inbox: every open, non-archived ticket assigned to the person.
     ///
-    /// **Answered tickets are not waiting.** The queue asks questions; a ticket
-    /// whose `## Answer` block is written has been answered whether or not the
-    /// answering actor remembered to move it. The agents' read keeps showing it, so
-    /// the bookkeeping debt stays visible where the actors who must settle it look.
+    /// The queue is the assignee alone.
     pub fn inbox() -> Self {
         Self {
             statuses: Status::WORKFLOW
@@ -88,7 +79,6 @@ impl TicketQuery {
                 .collect(),
             assignee: AssigneeAxis::Named(HUMAN.to_string()),
             archived: Archived::Excluded,
-            exclude_answered: true,
             ..Self::default()
         }
     }
@@ -121,9 +111,6 @@ impl TicketQuery {
             return false;
         }
         if self.blocked_only && !ticket.blocked() {
-            return false;
-        }
-        if self.exclude_answered && DescriptionBody::answered(ticket.description.as_deref()) {
             return false;
         }
         match &self.assignee {

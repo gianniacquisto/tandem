@@ -74,7 +74,7 @@ Pruned before a line is ported (about 2,000 of the app's 8,934 Swift lines):
 | Sprints tab (`SprintsFace.swift`) | read-only over `sprint list`; data stays |
 | Board as its own tab (`BoardView.swift`) | becomes a list/board toggle in the Tickets face |
 | Setup wizard as a window (`SetupWizard.swift`) | folded into one Settings surface with a repair action (`TAN-216`) |
-| Inbox tab | the human queue moves to the harness; the `human` assignee and `ticket answer` stay |
+| Inbox tab | the human queue moves to the harness; the `human` assignee stays, with no Answer verb |
 | Quick-open palette (`QuickOpenPalette.swift`) | never used |
 
 Kept and ported: the Tickets face (list plus board layout, scopes, search, quick-add, lanes), the Bikeshed face (tree, editor, backlinks, health), Usage (`TAN-208`, then `TAN-234`), Settings with the setup section, the ticket sheet.

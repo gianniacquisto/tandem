@@ -24,9 +24,9 @@ use super::rpc::{
     SettingsReply, SettingsSetParams, SetupInstallParams, SetupReply, SprintCloseParams,
     SprintListParams, SprintListReply, SprintOpenParams, SprintReply, SprintRunParams,
     SprintShowParams, SprintTicketParams, TicketAddFromNoteParams, TicketAddParams,
-    TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
-    TicketListReply, TicketMoveParams, TicketReply, TicketSetParams, TicketUnblockParams,
-    UsageReportParams, UsageReportReply, WireError,
+    TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply,
+    TicketMoveParams, TicketReply, TicketSetParams, TicketUnblockParams, UsageReportParams,
+    UsageReportReply, WireError,
 };
 use super::views::{
     BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
@@ -94,10 +94,6 @@ pub fn files() -> Vec<(&'static str, String)> {
         render(
             "TicketUnblockParams.ts",
             TicketUnblockParams::export_to_string(&cfg),
-        ),
-        render(
-            "TicketAnswerParams.ts",
-            TicketAnswerParams::export_to_string(&cfg),
         ),
         render(
             "TicketArchiveParams.ts",
