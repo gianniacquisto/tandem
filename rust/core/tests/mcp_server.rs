@@ -4,7 +4,7 @@
 //! These are the claims the pipe test cannot isolate:
 //!
 //! - `initialize` negotiates the protocol version instead of assuming it;
-//! - `tools/list` names the 38 tools with object-rooted schemas;
+//! - `tools/list` names the 37 tools with object-rooted schemas;
 //! - `tools/call` drives the whole ticket loop through the `rpc` door, and a
 //!   domain refusal is a result with `isError`, not a JSON-RPC error;
 //! - `session.end` reads the harness by default and stamps without usage when
@@ -318,7 +318,7 @@ fn initialize_carries_a_small_health_block() {
         "the health block names the version: {health}"
     );
     assert_eq!(
-        health["tools"], 38,
+        health["tools"], 37,
         "the health block names the tool count: {health}"
     );
 }
@@ -345,7 +345,7 @@ fn session_start_carries_a_small_health_block() {
         "session_start carries a health block beside the session: {result}"
     );
     assert_eq!(
-        health["tools"], 38,
+        health["tools"], 37,
         "the health block names the tool count: {health}"
     );
 }
@@ -414,7 +414,7 @@ fn a_notification_is_answered_with_silence() {
 }
 
 #[test]
-fn tools_list_names_the_38_tools_with_object_schemas() {
+fn tools_list_names_the_37_tools_with_object_schemas() {
     let sandbox = Sandbox::new("mcp-tools-list");
     let store = sandbox.store();
 
@@ -422,7 +422,7 @@ fn tools_list_names_the_38_tools_with_object_schemas() {
     let tools = listed["result"]["tools"]
         .as_array()
         .expect("tools is an array");
-    assert_eq!(tools.len(), 38);
+    assert_eq!(tools.len(), 37);
     for tool in tools {
         assert!(
             !tool["name"].as_str().unwrap_or("").is_empty(),
@@ -440,7 +440,7 @@ fn tools_list_names_the_38_tools_with_object_schemas() {
 }
 
 #[test]
-fn tools_call_files_reads_answers_and_completes_a_ticket() {
+fn tools_call_files_reads_sets_and_completes_a_ticket() {
     let sandbox = Sandbox::new("mcp-ticket-loop");
     let store = sandbox.store();
 
@@ -461,19 +461,19 @@ fn tools_call_files_reads_answers_and_completes_a_ticket() {
     .expect("the tool result is JSON");
     assert_eq!(shown["ticket"]["title"], "First");
 
-    let answered: Value = serde_json::from_str(&tool_text(
+    let moved: Value = serde_json::from_str(&tool_text(
         &call(
             &store,
             &tool_call(
                 3,
-                "ticket_answer",
-                json!({"id": id, "status": "in-progress", "assignee": "", "body": "Go."}),
+                "ticket_set",
+                json!({"id": id, "status": "in-progress", "assignee": ""}),
             ),
         )
         .expect("the call answers"),
     ))
     .expect("the tool result is JSON");
-    assert_eq!(answered["ticket"]["status"], "in-progress");
+    assert_eq!(moved["ticket"]["status"], "in-progress");
 
     let done: Value = serde_json::from_str(&tool_text(
         &call(&store, &tool_call(4, "ticket_complete", json!({"id": id})))

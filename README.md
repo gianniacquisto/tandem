@@ -155,8 +155,6 @@ tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
 tandem-cli ticket block --id <id> --on <id>
 tandem-cli ticket unblock --id <id> [--on <id>]
 tandem-cli ticket complete --id <id>
-tandem-cli ticket answer --id <id> --status <value> [--assignee <name|self>]
-                         [--body <string|->]
 tandem-cli ticket archive [--id <id>]
 tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
 tandem-cli ticket comment list --id <id>

@@ -484,7 +484,7 @@ fn the_inbox_is_empty_when_nothing_is_assigned_not_an_error() {
 }
 
 #[test]
-fn an_answered_ticket_leaves_the_inbox_and_an_unanswered_one_stays() {
+fn the_inbox_is_the_assignee_alone_with_no_answer_block_check() {
     let tickets = vec![
         Ticket {
             status: Status::OnHold,
@@ -494,15 +494,13 @@ fn an_answered_ticket_leaves_the_inbox_and_an_unanswered_one_stays() {
         },
         Ticket {
             status: Status::OnHold,
-            description: Some(
-                "## Why\n\nwhich option?\n\n## Answer \u{2014} 2026-10-26\nA".to_string(),
-            ),
+            description: Some("## Why\n\nwhich option?\n\nDecided: A".to_string()),
             assignee: Some(HUMAN.to_string()),
-            ..ticket("decided")
+            ..ticket("decided in prose")
         },
         Ticket {
             status: Status::OnHold,
-            description: Some("The `## Answer` is recorded on `F1CEFA57`".to_string()),
+            description: Some("The decision is recorded on `F1CEFA57`".to_string()),
             assignee: Some(HUMAN.to_string()),
             ..ticket("inline mention")
         },
@@ -513,15 +511,15 @@ fn an_answered_ticket_leaves_the_inbox_and_an_unanswered_one_stays() {
             .into_iter()
             .map(|ticket| ticket.title)
             .collect::<Vec<_>>(),
-        ["still asking", "inline mention"]
+        ["still asking", "decided in prose", "inline mention"]
     );
 }
 
 #[test]
-fn only_the_inbox_hides_answered_tickets_the_agents_read_keeps_them_as_debt() {
+fn the_inbox_lists_every_human_ticket_and_the_agents_read_matches() {
     let answered = Ticket {
         status: Status::OnHold,
-        description: Some("## Answer \u{2014} 2026-10-26\nA".to_string()),
+        description: Some("Decided: A".to_string()),
         assignee: Some(HUMAN.to_string()),
         ..ticket("decided")
     };

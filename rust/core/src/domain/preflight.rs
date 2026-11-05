@@ -194,8 +194,8 @@ pub struct ReleasedClaim {
 /// A claim whose session has ended goes back to `ready` with its owner cleared,
 /// dated and signed in a comment naming the ended session, so the next triage
 /// reads status, not prose. A claim whose session still runs is left alone (a
-/// claim is not a stall); `human` is left alone whatever the session says (the
-/// grill's park closes with `ticket answer`, never a `set`); anything that is
+/// claim is not a stall); `human` is left alone whatever the session says (a
+/// parked question stays with the human until a comment plus `set` moves it); anything that is
 /// not `in-progress` is not a claim. One comment per ticket the sweep moves,
 /// none where nothing moved.
 pub fn release_dead_claims(board: &Board, sessions: &Sessions, author: &str) -> Vec<ReleasedClaim> {

@@ -675,7 +675,7 @@ fn the_mcp_row_names_the_server_its_version_and_its_tool_count() {
     assert_eq!(
         row.detail,
         format!(
-            "tandem-mcp {}: 38 tools over 38 covered wire methods",
+            "tandem-mcp {}: 37 tools over 37 covered wire methods",
             env!("CARGO_PKG_VERSION")
         ),
         "the tool count stands against the covered method count"
@@ -704,7 +704,7 @@ fn the_mcp_row_reports_the_bundled_release_version() {
         row.detail
     );
     assert_eq!(
-        row.detail, "tandem-mcp 1.6.0: 38 tools over 38 covered wire methods",
+        row.detail, "tandem-mcp 1.6.0: 37 tools over 37 covered wire methods",
         "the tool count still stands against the covered method count"
     );
 
@@ -712,7 +712,7 @@ fn the_mcp_row_reports_the_bundled_release_version() {
     assert_eq!(
         check(&fallback, "mcp").detail,
         format!(
-            "tandem-mcp {}: 38 tools over 38 covered wire methods",
+            "tandem-mcp {}: 37 tools over 37 covered wire methods",
             env!("CARGO_PKG_VERSION")
         ),
         "no marker is the crate version"

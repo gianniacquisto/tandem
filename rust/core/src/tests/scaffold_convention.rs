@@ -295,8 +295,8 @@ fn the_build_names_no_grill_and_triage_reports_backlog() {
 }
 
 /// The close sweep still clears an owner only where a question is open. The
-/// park it names is refine's hold now (`agents/refiner.md`), closed with the
-/// question contract's one write.
+/// park it names is refine's hold now (`agents/refiner.md`), closed via a
+/// comment plus `set`.
 #[test]
 fn the_close_sweep_names_the_refine_hold() {
     let close = section(&file("skills/tandem-sprint/SKILL.md"), "## 6. Close");
@@ -306,8 +306,12 @@ fn the_close_sweep_names_the_refine_hold() {
         "the close sweep names refine's hold"
     );
     assert!(
-        close.contains("`ticket answer`"),
-        "refine's hold closes with the question contract's one write"
+        !close.contains("`ticket answer`"),
+        "refine's hold no longer closes via the retired verb"
+    );
+    assert!(
+        close.contains("comment plus `ticket set`"),
+        "refine's hold closes via a comment plus `ticket set`"
     );
 }
 
@@ -629,15 +633,43 @@ fn a_review_dispatches_on_its_own_pr_not_on_the_batch() {
 }
 
 #[test]
-fn the_questions_exit_is_one_write() {
+fn the_questions_exit_is_a_comment_plus_a_set() {
     let agents = file("AGENTS.md");
     assert!(agents.contains("`human` is an assignee only while a question is open"));
-    assert!(agents.contains("`ticket answer` is the one write that records the answer"));
+    assert!(
+        !agents.contains("`ticket answer`"),
+        "AGENTS.md names no retired answer verb"
+    );
+    assert!(
+        !agents.contains("## Answer"),
+        "AGENTS.md carries no Answer-block debt rule"
+    );
+    assert!(
+        agents.contains("ticket set"),
+        "the pair moves via `ticket set`"
+    );
     let sprint = file("skills/tandem-sprint/SKILL.md");
-    assert!(sprint.contains("tandem-cli ticket answer"));
-    assert!(sprint.contains("that is the bookkeeping debt"));
+    assert!(
+        !sprint.contains("tandem-cli ticket answer"),
+        "the sprint names no answer verb"
+    );
+    assert!(
+        !sprint.contains("`ticket answer`"),
+        "the sprint names no retired verb"
+    );
+    assert!(
+        sprint.contains("comment plus `ticket set`") || sprint.contains("comment plus `set`"),
+        "the sprint closes holds via comment plus set"
+    );
     let interview = file("skills/tandem-interview/SKILL.md");
-    assert!(interview.contains("tandem-cli ticket answer"));
+    assert!(
+        !interview.contains("tandem-cli ticket answer"),
+        "the interview names no answer verb"
+    );
+    assert!(
+        interview.contains("comment"),
+        "the interview closes via a comment"
+    );
 }
 
 /// CONTRIBUTING.md is the contributor on-ramp: it exists at the root and names
