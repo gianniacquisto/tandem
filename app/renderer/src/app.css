@@ -1262,6 +1262,36 @@ body {
   padding: 0;
 }
 
+/* A project header is a quiet group label, not a lane: smaller than the lane
+ * title, dim, transparent with no full-bleed paper band, so the grouped lanes
+ * read as one group. It owns only the first track, never a 1 / -1 span. */
+.board__project {
+  display: contents;
+}
+
+.board__project-title {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  padding: 4px;
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.board__project-count {
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 .board__status {
   margin: 0;
   padding: 0 4px 4px;

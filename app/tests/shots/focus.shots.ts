@@ -66,7 +66,7 @@ test('the focused tickets face draws only the active lane plus the focus control
   const rows = window.locator('.board__lane[data-lane]')
   await expect(rows).toHaveCount(1)
   await expect(rows.first().locator('.board__title').first()).toContainText(focus as string)
-  const headers = window.locator('.board__lane[data-project]')
+  const headers = window.locator('.board__project[data-project]')
   await expect(headers).toHaveCount(1)
 
   // The list draws the same lane alone.
