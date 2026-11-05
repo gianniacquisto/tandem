@@ -1,11 +1,10 @@
-//! Sprint runner part 2 (TAN-281): the pass-execution credential never crosses
-//! into the core.
+//! Sprint runner part 2 retired (SHE-3, ADR 0040): the pass-execution
+//! credential never crosses into the core, and now lives outside the app.
 //!
-//! Main owns spawn, lifetime, url and password (ADR 0038); the core owns the
-//! transitions (TAN-275) and stays the only decider. The executor lives in
-//! `app/src/main/passExecutor.ts` and speaks HTTP with Basic auth, so a
-//! captured rpc frame is safe to log: no frame and no wire type carries the
-//! secret.
+//! The embedded executor (`app/src/main/passExecutor.ts`, ADR 0038) is retired
+//! with the harness: main owns no spawn, no url and no password, and the core
+//! owns the transitions (TAN-275) and stays the only decider. A captured rpc
+//! frame is safe to log: no frame and no wire type carries the secret.
 //!
 //! Scope: the usage read (`domain/harness.rs::read_api`, TAN-276) takes a
 //! password as a function argument on its own path; this test pins the wire,
@@ -69,14 +68,17 @@ fn no_credential_crosses_into_the_core() {
         );
     }
 
-    // The secret lives in main only: the executor sends it on every request.
-    let executor = file("app/src/main/passExecutor.ts");
+    // The secret lives outside the app now: the executor is retired with the
+    // embedded harness (SHE-3, ADR 0040), and main holds no pass credential.
     assert!(
-        executor.contains("Authorization"),
-        "the executor sends the Authorization header main owns (ADR 0038)"
+        !root().join("app/src/main/passExecutor.ts").exists(),
+        "the executor module is retired: passes run outside the app (SHE-3, ADR 0040)"
     );
-    assert!(
-        executor.to_lowercase().contains("password"),
-        "the executor holds the password main owns (ADR 0038)"
-    );
+    let main = file("app/src/main/index.ts");
+    for needle in ["Authorization", "OPENCODE_SERVER_PASSWORD", "TANDEM_HARNESS_PASSWORD"] {
+        assert!(
+            !main.contains(needle),
+            "main names `{needle}`: the app holds no pass credential (SHE-3)"
+        );
+    }
 }
