@@ -20,6 +20,10 @@
       {
         "action": "linked",
         "path": "<home>/.config/opencode/opencode.json"
+      },
+      {
+        "action": "linked",
+        "path": "<home>/.config/opencode/opencode.json"
       }
     ],
     "state": {

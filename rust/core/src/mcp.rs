@@ -32,10 +32,10 @@ use crate::wire::rpc::{
     CommentAddParams, EmptyParams, LaneAddParams, LaneDeleteParams, LaneMoveParams,
     LaneRenameParams, Method, NoteCaptureParams, ProjectAddParams, ProjectDeleteParams,
     ProjectRenameParams, SessionEndParams, SessionLinkParams, SessionListParams, SessionShowParams,
-    SessionStartParams, SprintCloseParams, SprintListParams, SprintOpenParams, SprintRunParams,
-    SprintShowParams, SprintTicketParams, TicketAddFromNoteParams, TicketAddParams,
-    TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
-    TicketMoveParams, TicketSetParams, TicketUnblockParams,
+    SessionStartParams, SettingsSetParams, SprintCloseParams, SprintListParams, SprintOpenParams,
+    SprintRunParams, SprintShowParams, SprintTicketParams, TicketAddFromNoteParams,
+    TicketAddParams, TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
+    TicketListParams, TicketMoveParams, TicketSetParams, TicketUnblockParams,
 };
 
 /// The server name the `initialize` answer carries.
@@ -179,6 +179,10 @@ pub fn handle_mcp(
 /// The `initialize` answer: the negotiated protocol version, no more than the
 /// door speaks and no less than the client named when the door speaks it, with
 /// the tools capability and the server's own name and version.
+///
+/// A small `health` block rides beside them (the resolved home and why, the
+/// store's ok, the version and the tool count), so a fresh session can see the
+/// default path is wired without running a full `doctor`.
 fn initialize_frame(
     id: Option<Value>,
     params: Option<&Value>,
@@ -200,6 +204,7 @@ fn initialize_frame(
             "protocolVersion": negotiated,
             "capabilities": {"tools": {}},
             "serverInfo": {"name": SERVER_NAME, "version": server_version(store, environment)},
+            "health": health_block(store, environment),
         }),
     )
 }
@@ -228,6 +233,25 @@ pub fn server_version(store: &Store, environment: &crate::setup::Environment) ->
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// A small health block for `initialize` and `session_start`: the resolved
+/// home and why, whether the store is ok, the release version and the tool
+/// count. It reads the store's lock-free health only, never the full `doctor`
+/// report, so every call stays cheap.
+fn health_block(store: &Store, environment: &crate::setup::Environment) -> Value {
+    let home = store.home();
+    let store_ok = matches!(
+        store.health(),
+        crate::store::Health::Absent | crate::store::Health::Counts { .. }
+    );
+    json!({
+        "home": crate::wire::slashed_path(home.directory()),
+        "homeSource": home.source().as_str(),
+        "storeOk": store_ok,
+        "version": server_version(store, environment),
+        "tools": tools().len(),
+    })
+}
+
 /// One `tools/call`: the named tool becomes the `(id, method, params)` frame
 /// the `rpc` door answers, and the answer becomes the tool result. A domain
 /// refusal is a result with `isError`, in the domain's words; only a call the
@@ -240,6 +264,9 @@ pub fn server_version(store: &Store, environment: &crate::setup::Environment) ->
 /// inherits only its spawn environment, which names no session; the call's
 /// pointer wins over that environment when both name one, because the caller
 /// is fresher than the spawn.
+///
+/// `session_start` carries the same small health block `initialize` does, so
+/// the pass that opened the record sees the wired path without a `doctor`.
 fn call_frame(
     id: Option<Value>,
     params: Option<&Value>,
@@ -290,7 +317,12 @@ fn call_frame(
             json!({"content": [{"type": "text", "text": message}], "isError": true}),
         );
     }
-    let result = answer.get("result").cloned().unwrap_or(Value::Null);
+    let mut result = answer.get("result").cloned().unwrap_or(Value::Null);
+    if tool.method_tag == "session.start"
+        && let Some(object) = result.as_object_mut()
+    {
+        object.insert("health".to_string(), health_block(store, environment));
+    }
     result_frame(
         id,
         json!({"content": [{"type": "text", "text": result.to_string()}]}),
@@ -377,7 +409,7 @@ impl Tool {
     }
 }
 
-/// The 34 tools: one per covered wire method. The schema beside each entry is
+/// The 38 tools: one per covered wire method. The schema beside each entry is
 /// the params struct's own derivation, so the list cannot drift from the wire
 /// without the registry test failing.
 pub fn tools() -> Vec<Tool> {
@@ -619,6 +651,34 @@ pub fn tools() -> Vec<Tool> {
             description: "File one capture: a decision, gotcha, fact or thread the next session would otherwise re-derive.",
             input_schema: NoteCaptureParams::schema(),
             method: Method::NoteCapture(NoteCaptureParams::default()),
+        },
+        Tool {
+            name: "doctor_report",
+            method_tag: "doctor.report",
+            description: "Report where this machine's Tandem state lives and whether it is healthy.",
+            input_schema: EmptyParams::schema(),
+            method: Method::DoctorReport(EmptyParams {}),
+        },
+        Tool {
+            name: "settings_get",
+            method_tag: "settings.get",
+            description: "Read the faces' settings: the roster the pickers offer and the active project focus.",
+            input_schema: EmptyParams::schema(),
+            method: Method::SettingsGet(EmptyParams {}),
+        },
+        Tool {
+            name: "settings_set",
+            method_tag: "settings.set",
+            description: "Focus the faces on a declared lane, or clear back to every lane; optionally replace the roster.",
+            input_schema: SettingsSetParams::schema(),
+            method: Method::SettingsSet(SettingsSetParams::default()),
+        },
+        Tool {
+            name: "note_health",
+            method_tag: "note.health",
+            description: "Check the vault's link graph: broken links, orphans and counts, the same report note links prints.",
+            input_schema: EmptyParams::schema(),
+            method: Method::NoteHealth(EmptyParams {}),
         },
     ]
 }

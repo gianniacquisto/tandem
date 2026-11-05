@@ -5,7 +5,7 @@
 //! newline-delimited JSON-RPC 2.0. The child is a separate process, so these
 //! are the claims a unit test over an in-memory stream cannot make:
 //!
-//! - the stdio handshake negotiates, lists the 34 tools, and drives the
+//! - the stdio handshake negotiates, lists the 38 tools, and drives the
 //!   ticket loop (file, read, answer, complete) with no shell call;
 //! - an unknown method, a batch and a malformed frame are answered as frames
 //!   and leave the child answering;
@@ -172,7 +172,7 @@ fn the_handshake_tools_and_ticket_loop_need_no_shell() {
     let listed = session.receive();
     assert_eq!(listed["id"], 2);
     let tools = listed["result"]["tools"].as_array().expect("tools");
-    assert_eq!(tools.len(), 34, "the door covers every covered wire method");
+    assert_eq!(tools.len(), 38, "the door covers every covered wire method");
 
     session.send(call(3, "ticket_add", json!({"title": "First"})));
     let added: Value =

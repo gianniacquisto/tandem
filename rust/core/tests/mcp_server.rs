@@ -4,7 +4,7 @@
 //! These are the claims the pipe test cannot isolate:
 //!
 //! - `initialize` negotiates the protocol version instead of assuming it;
-//! - `tools/list` names the 34 tools with object-rooted schemas;
+//! - `tools/list` names the 38 tools with object-rooted schemas;
 //! - `tools/call` drives the whole ticket loop through the `rpc` door, and a
 //!   domain refusal is a result with `isError`, not a JSON-RPC error;
 //! - `session.end` reads the harness by default and stamps without usage when
@@ -287,6 +287,70 @@ fn initialize_negotiates_the_protocol_version() {
 }
 
 #[test]
+fn initialize_carries_a_small_health_block() {
+    let sandbox = Sandbox::new("mcp-initialize-health");
+    let store = sandbox.store();
+
+    let asked = call(
+        &store,
+        &request(
+            json!(1),
+            "initialize",
+            json!({"protocolVersion": "2025-03-26"}),
+        ),
+    )
+    .expect("initialize answers");
+    let health = &asked["result"]["health"];
+    assert!(
+        health.is_object(),
+        "initialize carries a health block beside serverInfo: {asked}"
+    );
+    assert!(
+        !health["home"].as_str().unwrap_or("").is_empty(),
+        "the health block names the resolved home: {health}"
+    );
+    assert_eq!(
+        health["storeOk"], true,
+        "a fresh sandbox store is ok: {health}"
+    );
+    assert!(
+        !health["version"].as_str().unwrap_or("").is_empty(),
+        "the health block names the version: {health}"
+    );
+    assert_eq!(
+        health["tools"], 38,
+        "the health block names the tool count: {health}"
+    );
+}
+
+#[test]
+fn session_start_carries_a_small_health_block() {
+    let sandbox = Sandbox::new("mcp-session-start-health");
+    let store = sandbox.store();
+
+    let started = call(
+        &store,
+        &tool_call(
+            1,
+            "session_start",
+            json!({"project": "tandem", "agent": "builder", "brief": "A pass."}),
+        ),
+    )
+    .expect("session_start answers");
+    let result: Value =
+        serde_json::from_str(&tool_text(&started)).expect("the tool result is JSON");
+    let health = &result["health"];
+    assert!(
+        health.is_object(),
+        "session_start carries a health block beside the session: {result}"
+    );
+    assert_eq!(
+        health["tools"], 38,
+        "the health block names the tool count: {health}"
+    );
+}
+
+#[test]
 fn initialize_reports_the_bundled_release_version_with_crate_fallback() {
     let sandbox = Sandbox::new("mcp-release-version");
     let store = sandbox.store();
@@ -350,7 +414,7 @@ fn a_notification_is_answered_with_silence() {
 }
 
 #[test]
-fn tools_list_names_the_34_tools_with_object_schemas() {
+fn tools_list_names_the_38_tools_with_object_schemas() {
     let sandbox = Sandbox::new("mcp-tools-list");
     let store = sandbox.store();
 
@@ -358,7 +422,7 @@ fn tools_list_names_the_34_tools_with_object_schemas() {
     let tools = listed["result"]["tools"]
         .as_array()
         .expect("tools is an array");
-    assert_eq!(tools.len(), 34);
+    assert_eq!(tools.len(), 38);
     for tool in tools {
         assert!(
             !tool["name"].as_str().unwrap_or("").is_empty(),

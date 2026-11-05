@@ -8,7 +8,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::config::{apply, instruction_edit};
+use super::config::{apply, instruction_edit, mcp_edit};
 use super::face::{install_face, version_text};
 use super::manifest::{Link, Manifest, manifest, record_link, write_manifest};
 use super::paths::{absolute_target, remove_link, resolved, text};
@@ -81,6 +81,11 @@ pub fn install(
         if let Some(edit) = instruction_edit(*host, &context) {
             paths.push(apply(&edit, &mut record)?);
         }
+        if *host == Host::Opencode
+            && let Some(edit) = mcp_edit(&context)
+        {
+            paths.push(apply(&edit, &mut record)?);
+        }
     }
 
     write_manifest(&record, &context.manifest_url())?;
@@ -133,7 +138,11 @@ pub fn uninstall(home: &Path, environment: &Environment, hosts: Option<&[Host]>)
         }
         actions.push(remove_recorded_link(link, &context)?);
     }
-    for edit in &manifest.edits {
+    // Edits undo last-first: one file can carry stacked inserts (OpenCode's
+    // instructions entry and its `mcp.tandem` server), and the later insert
+    // sits inside the earlier one's text, so the earlier removal only finds
+    // its recorded text once the later one is gone.
+    for edit in manifest.edits.iter().rev() {
         if narrowed
             .as_ref()
             .is_some_and(|narrowed| !narrowed.contains(edit.host.as_str()))

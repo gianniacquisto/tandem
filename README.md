@@ -235,7 +235,7 @@ The app carries its own agent face: every skill, the four prompts (`builder`, `c
 
 ```sh
 tandem-cli setup status    # the bundled and installed versions, each host's state, the warnings
-tandem-cli setup install   # OpenCode: the skills, the four prompts and the AGENTS.md instruction
+tandem-cli setup install   # OpenCode: the skills, the four prompts, the AGENTS.md instruction, the tandem MCP server
 ```
 
 Install writes the face once to `<TandemHome>/agent/` and points the host's paths at that copy with symlinks, so an upgrade is one directory replace and no re-linking. `--host claude` or `--host agents` names another host, and only a named host is written. A real file where a link would go is never touched: the report names the path, and its hint says to move it.
