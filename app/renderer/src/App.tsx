@@ -7,6 +7,7 @@ import { SheetBoundary } from './faces/SheetBoundary'
 import { TicketSheet } from './faces/TicketSheet'
 import { TicketsFace } from './faces/TicketsFace'
 import { UsageFace } from './faces/UsageFace'
+import { DEFAULT_WINDOW, type UsageWindow } from './faces/usage'
 import { WorkflowFace } from './faces/WorkflowFace'
 import { closeHref, parseRoute, tabHref, type Route } from './shell/route'
 import { initialSnapshot, snapshotReducer, type SnapshotState } from './shell/snapshot'
@@ -41,6 +42,8 @@ function face(
     openTicket: string | null
     onOpenTicket: (ticket: { id: string }, focus?: 'description' | null) => void
     onPickProject: (lane: string | null) => void
+    usageWindow: UsageWindow
+    onUsageWindow: (window: UsageWindow) => void
   },
 ) {
   switch (route.tab) {
@@ -69,7 +72,13 @@ function face(
         />
       )
     case 'usage':
-      return <UsageFace report={snapshot.usage} />
+      return (
+        <UsageFace
+          report={snapshot.usage}
+          window={actions.usageWindow}
+          onWindowChange={actions.onUsageWindow}
+        />
+      )
     case 'workflow':
       return (
         <WorkflowFace
@@ -107,6 +116,10 @@ export function App() {
   const state = useRef(snapshot)
   state.current = snapshot
   const mounted = useRef(true)
+  // The Usage window: per visit, reset on reload like the face's dimension and
+  // mode. The shell owns it so one narrowed report feeds the face's header,
+  // tables and graph; the face only picks it.
+  const [usageWindow, setUsageWindow] = useState<UsageWindow>(DEFAULT_WINDOW)
 
   useEffect(() => {
     mounted.current = true
@@ -124,11 +137,13 @@ export function App() {
       // the store's (`settings.get`), so neither surface derives its names
       // from the rows. The board snapshot stays lane-keyed; the renderer joins
       // `project.list` for the mapping instead of growing the snapshot.
+      // The usage report carries the window: absent would read All time, but
+      // the face always names its pick, so header, tables and graph agree.
       const [board, lanes, projects, usage, settings] = await Promise.all([
         window.tandem.call({ method: 'ticket.list', params: WHOLE_BOARD }),
         window.tandem.call({ method: 'lane.list', params: {} }),
         window.tandem.call({ method: 'project.list', params: {} }),
-        window.tandem.call({ method: 'usage.report', params: {} }),
+        window.tandem.call({ method: 'usage.report', params: { window: usageWindow } }),
         window.tandem.call({ method: 'settings.get', params: {} }),
       ])
       if (!mounted.current) return
@@ -183,7 +198,7 @@ export function App() {
         dispatch({ type: 'failed', message: 'The store could not be read.' })
       }
     }
-  }, [])
+  }, [usageWindow])
 
   useEffect(() => {
     void load()
@@ -325,6 +340,8 @@ export function App() {
           openTicket,
           onOpenTicket: open,
           onPickProject: pickProject,
+          usageWindow,
+          onUsageWindow: setUsageWindow,
         })}
         {openTicket === null ? null : (
           <SheetBoundary key={openTicket} onDismiss={closeSheet}>

@@ -25,7 +25,7 @@
 
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::session::{Session, SessionTokens};
 
@@ -65,6 +65,100 @@ impl Calendar {
             },
         }
     }
+}
+
+/// The Usage page's rolling window (COR-6).
+///
+/// A pure value over literal `YYYY-MM-DD` day keys: no store read, no clock.
+/// The caller computes today in the reader's local calendar and passes it in,
+/// so the derivation stays clock-free and the tests name their own today.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ts_rs::TS)]
+pub enum UsageWindow {
+    /// Today plus the six prior local days, boundaries inclusive.
+    #[serde(rename = "last-7-days")]
+    Last7Days,
+    /// Today plus the twenty-nine prior local days, boundaries inclusive.
+    #[serde(rename = "last-30-days")]
+    Last30Days,
+    /// The same `YYYY-MM` local day prefix as today, through today inclusive.
+    #[serde(rename = "this-month")]
+    ThisMonth,
+    /// No filter: every record read, today's behavior for old callers.
+    #[default]
+    #[serde(rename = "all-time")]
+    AllTime,
+}
+
+impl UsageWindow {
+    /// The wire's spelling of this window.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Last7Days => "last-7-days",
+            Self::Last30Days => "last-30-days",
+            Self::ThisMonth => "this-month",
+            Self::AllTime => "all-time",
+        }
+    }
+
+    /// Every wire value, in picker order.
+    pub const WIRE_VALUES: [&'static str; 4] =
+        ["last-7-days", "last-30-days", "this-month", "all-time"];
+
+    /// The window `word` names, or `None` when it names none.
+    pub fn parse(word: &str) -> Option<Self> {
+        match word {
+            "last-7-days" => Some(Self::Last7Days),
+            "last-30-days" => Some(Self::Last30Days),
+            "this-month" => Some(Self::ThisMonth),
+            "all-time" => Some(Self::AllTime),
+            _ => None,
+        }
+    }
+
+    /// Whether the local day `day` belongs to this window when today is the
+    /// local day `today`. Boundaries are inclusive: Last N days is today plus
+    /// the N-1 prior local days, This month is the month prefix through today,
+    /// All time keeps everything. A day or today that is not a valid
+    /// `YYYY-MM-DD` key belongs to no windowed set, never to a silent match.
+    pub fn contains(&self, day: &str, today: &str) -> bool {
+        match self {
+            Self::AllTime => true,
+            Self::ThisMonth => {
+                let Some(prefix) = today.get(0..7) else {
+                    return false;
+                };
+                let Some(day_prefix) = day.get(0..7) else {
+                    return false;
+                };
+                if day_prefix != prefix {
+                    return false;
+                }
+                valid_day(day) && valid_day(today) && day <= today
+            }
+            Self::Last7Days => last_n_contains(day, today, 7),
+            Self::Last30Days => last_n_contains(day, today, 30),
+        }
+    }
+}
+
+/// The sessions of `sessions` whose calendar day belongs to `window` when today
+/// is the local day `today`, in the order they were read. The derivation runs
+/// unchanged over the narrowed set, so one narrowed report feeds the header,
+/// the tables and the graph.
+pub fn filter_sessions_by_window(
+    sessions: &[Session],
+    window: &UsageWindow,
+    today: &str,
+    calendar: &Calendar,
+) -> Vec<Session> {
+    if *window == UsageWindow::AllTime {
+        return sessions.to_vec();
+    }
+    sessions
+        .iter()
+        .filter(|session| window.contains(&calendar.day_key(&session.started_at), today))
+        .cloned()
+        .collect()
 }
 
 /// The board row the report labels a ticket row with: its id, the lane key and
@@ -409,4 +503,98 @@ fn cost_then_label(rows: &mut [UsageRow]) {
 /// were read in.
 fn newest_first(sessions: &mut [Session]) {
     sessions.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+}
+
+/// Whether `day` and `today` name a Last N window with `day` inside it: today
+/// plus the N-1 prior days, both ends inclusive. The comparison is
+/// lexicographic on zero-padded keys, so the cutoff arithmetic below is the
+/// only date math.
+fn last_n_contains(day: &str, today: &str, days: i64) -> bool {
+    if !valid_day(day) || !valid_day(today) {
+        return false;
+    }
+    if day > today {
+        return false;
+    }
+    let Some(cutoff) = shift_days(today, -(days - 1)) else {
+        return false;
+    };
+    day >= cutoff.as_str()
+}
+
+/// Whether `text` is a real `YYYY-MM-DD` calendar day, not just ten
+/// day-shaped characters: February 30th is shaped like a day and is not one.
+fn valid_day(text: &str) -> bool {
+    let Some((year, month, day)) = split_day(text) else {
+        return false;
+    };
+    days_from_civil(year, month, day)
+        .and_then(civil_from_days)
+        .is_some_and(|(back_year, back_month, back_day)| {
+            back_year == year && back_month == month && back_day == day
+        })
+}
+
+/// `today` moved by `delta` days, as a `YYYY-MM-DD` key, or `None` when today
+/// is not a valid day. Howard Hinnant's civil arithmetic, the store's own date
+/// math beside `timestamp`: a month or year edge is an ordinary subtraction.
+fn shift_days(today: &str, delta: i64) -> Option<String> {
+    let (year, month, day) = split_day(today)?;
+    let count = days_from_civil(year, month, day)? + delta;
+    let (year, month, day) = civil_from_days(count)?;
+    Some(format!("{year:04}-{month:02}-{day:02}"))
+}
+
+/// The `YYYY-MM-DD` key split into its three numbers, or `None` when the shape
+/// is wrong.
+fn split_day(text: &str) -> Option<(i64, u32, u32)> {
+    let bytes = text.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return None;
+    }
+    let year: i64 = text[0..4].parse().ok()?;
+    let month: u32 = text[5..7].parse().ok()?;
+    let day: u32 = text[8..10].parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    Some((year, month, day))
+}
+
+/// The day count `year-month-day` names since the epoch, or `None` for a month
+/// or day the calendar never holds. The inverse of [`civil_from_days`], the
+/// same arithmetic the store's `timestamp` keeps.
+fn days_from_civil(year: i64, month: u32, day: u32) -> Option<i64> {
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let year_of_era = year - era * 400;
+    let month_prime = if month > 2 { month - 3 } else { month + 9 } as i64;
+    let day_of_year = (153 * month_prime + 2) / 5 + day as i64 - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    Some(era * 146_097 + day_of_era - 719_468)
+}
+
+/// The civil date `days` since the epoch names, or `None` when out of range.
+fn civil_from_days(days: i64) -> Option<(i64, u32, u32)> {
+    let shifted = days.checked_add(719_468)?;
+    let era = shifted.div_euclid(146_097);
+    let of_era = shifted - era * 146_097;
+    let year_of_era = (of_era - of_era / 1_460 + of_era / 36_524 - of_era / 146_096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = (day_of_year - (153 * month_prime + 2) / 5 + 1) as u32;
+    let month = if month_prime < 10 {
+        month_prime + 3
+    } else {
+        month_prime - 9
+    } as u32;
+    let year = if month <= 2 { year + 1 } else { year };
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    Some((year, month, day))
 }

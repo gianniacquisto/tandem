@@ -26,7 +26,7 @@ use super::rpc::{
     SprintShowParams, SprintTicketParams, TicketAddFromNoteParams, TicketAddParams,
     TicketAnswerParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
     TicketListReply, TicketMoveParams, TicketReply, TicketSetParams, TicketUnblockParams,
-    UsageReportReply, WireError,
+    UsageReportParams, UsageReportReply, WireError,
 };
 use super::views::{
     BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
@@ -41,6 +41,7 @@ use crate::domain::session::{
     HarnessTransport, Session, SessionOutcome, SessionStatus, SessionTokens,
 };
 use crate::domain::sprint::{Sprint, SprintMode, SprintStatus};
+use crate::domain::usage::UsageWindow;
 use crate::setup;
 
 /// Every generated file, by name, in a stable order.
@@ -270,6 +271,11 @@ pub fn files() -> Vec<(&'static str, String)> {
             TicketBlockView::export_to_string(&cfg),
         ),
         render("CommentView.ts", CommentView::export_to_string(&cfg)),
+        render(
+            "UsageReportParams.ts",
+            UsageReportParams::export_to_string(&cfg),
+        ),
+        render("UsageWindow.ts", UsageWindow::export_to_string(&cfg)),
         render(
             "UsageReportReply.ts",
             UsageReportReply::export_to_string(&cfg),

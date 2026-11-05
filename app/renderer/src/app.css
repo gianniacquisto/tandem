@@ -154,7 +154,7 @@ body {
   display: flex;
   gap: 8px;
   padding-top: 4px;
-  margin-bottom: var(--space-lane);
+  margin-bottom: 4px;
 }
 
 .usage__bar-cell {
@@ -170,6 +170,7 @@ body {
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  gap: 2px;
   width: 100%;
   height: 96px;
   border-bottom: var(--hairline) solid var(--ink-dim);
@@ -177,14 +178,135 @@ body {
 
 .usage__bar {
   width: min(100%, 44px);
+  flex: none;
   border-radius: 3px 3px 0 0;
   background: var(--accent-deep);
 }
 
+.usage__bar-track--multi .usage__bar {
+  width: 12px;
+  max-width: 12px;
+}
+
+.usage__bar--totalTokens {
+  background: var(--accent-deep);
+}
+
+.usage__bar--input {
+  background: var(--accent);
+}
+
+.usage__bar--output {
+  background: var(--moss);
+}
+
+.usage__bar--cacheRead {
+  background: var(--moss-deep);
+}
+
+.usage__bar--cacheWrite {
+  background: var(--hill);
+}
+
+.usage__bar--reasoning {
+  background: var(--sky);
+}
+
+.usage__bar--records {
+  background: var(--ink-dim);
+}
+
+.usage__bar--cost {
+  background: var(--ember-deep);
+}
+
 @media (prefers-color-scheme: dark) {
-  .usage__bar {
+  .usage__bar,
+  .usage__bar--totalTokens {
     background: var(--accent);
   }
+}
+
+.usage__graph {
+  margin-bottom: var(--space-lane);
+}
+
+.usage__scales {
+  margin: 4px 0 8px;
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+.usage__series {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.usage__series-option {
+  padding: 3px 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.usage__series-option[aria-pressed="true"] {
+  background: var(--parchment);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.usage__window {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  width: 100%;
+  max-width: 480px;
+  height: var(--space-control);
+  overflow: hidden;
+  margin-bottom: var(--space-lane);
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+}
+
+.usage__window-segment {
+  flex: 1 1 0;
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.usage__window-segment[aria-selected="true"] {
+  background: var(--parchment);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.usage__sort {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.usage__sort:hover {
+  color: var(--ink);
 }
 
 .usage__bar-label {

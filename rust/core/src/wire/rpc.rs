@@ -31,6 +31,7 @@ use ts_rs::TS;
 use crate::bikeshed::health::BikeshedHealth;
 use crate::domain::harness::TranscriptEntry;
 use crate::domain::sprint::Sprint;
+use crate::domain::usage::UsageWindow;
 use crate::wire::views::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
     NotePathView, NoteWriteView, RecoveryView, TicketDetail, TicketSummary, UsageReportView,
@@ -153,7 +154,7 @@ methods! {
     // writes nothing, so no UI-only write hides behind it, and the report is the
     // derivation `usage_report` already froze (PRT-15). An empty verb is how the
     // table says so; `the_read_methods_without_a_cli_verb_are_named_here` names it.
-    UsageReport: "usage.report", EmptyParams, "";
+    UsageReport: "usage.report", UsageReportParams, "";
     // The settings the faces read, in one message: the sheet's assignee picker
     // and the board's filter both offer the store's roster, and the board
     // draws the active project beside it. Both are `settings` rows; the read
@@ -223,6 +224,14 @@ pub struct SessionTranscriptParams {
 /// client always sends the same three keys.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 pub struct EmptyParams {}
+
+/// `usage.report`: the window the Usage face draws. Absent is All time, so a
+/// frame that spells no window reads today's behavior: every record ever read.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct UsageReportParams {
+    pub window: Option<UsageWindow>,
+}
 
 /// `note.tree`: whether the hidden layer is drawn. The flag reaches the tree
 /// walk only; the linkable graph is always the curated layer.
