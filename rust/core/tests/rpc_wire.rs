@@ -973,7 +973,10 @@ fn note_create_and_create_folder_write_through_the_domain() {
     );
     assert_eq!(taken["error"]["code"], "domain");
     assert!(
-        taken["error"]["message"].as_str().unwrap_or("").contains("already exists"),
+        taken["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("already exists"),
         "a taken name is refused, never clobbered: {taken}"
     );
 
