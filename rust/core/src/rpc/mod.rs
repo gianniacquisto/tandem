@@ -42,7 +42,9 @@ use crate::domain::session::{
     Ending, HarnessSession, HarnessTransport, SessionOutcome, SessionStatus, Sessions, parse_skills,
 };
 use crate::domain::sprint::{SprintMode, SprintStatus, Sprints};
-use crate::domain::usage::{Calendar, UsageTicket, usage_report};
+use crate::domain::usage::{
+    Calendar, UsageTicket, UsageWindow, filter_sessions_by_window, usage_report,
+};
 use crate::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, Filter, Settings, Status, TicketQuery,
     resolve_assignee, resolve_origin,
@@ -594,11 +596,17 @@ fn execute(
                 comments: comments.iter().map(CommentView::new).collect(),
             }))
         }
-        Method::UsageReport(_) => {
+        Method::UsageReport(params) => {
             // The derivation is the one `usage_report` froze (TAN-208): the
             // dispatch only feeds it the records and the board's labels, the way
-            // the Swift window fed it the model it already held.
+            // the Swift window fed it the model it already held. The window
+            // narrows the sessions first, so one narrowed report feeds the
+            // header, the tables and the graph; absent is All time for old
+            // callers, and the derivation itself stays pure and clock-free.
+            let window = params.window.unwrap_or(UsageWindow::AllTime);
             let sessions = Sessions::new(store).list(None, None).map_err(domain)?;
+            let today = local_today();
+            let narrowed = filter_sessions_by_window(&sessions, &window, &today, &Calendar::Local);
             let tickets: Vec<UsageTicket> = Board::new(store.clone())
                 .list_filter(Filter::All)
                 .map_err(domain)?
@@ -610,7 +618,7 @@ fn execute(
                 })
                 .collect();
             // The reader's calendar: a day is the day the human lived through.
-            let report = usage_report(&sessions, &tickets, &Calendar::Local);
+            let report = usage_report(&narrowed, &tickets, &Calendar::Local);
             Ok(Reply::UsageReport(UsageReportReply {
                 report: UsageReportView::new(&report),
             }))
@@ -1213,6 +1221,15 @@ fn process_environment() -> Environment {
 /// so the domain's unknown-id refusal is the same answer on both doors.
 fn named(value: &Option<String>) -> &str {
     value.as_deref().unwrap_or("")
+}
+
+/// Today in the reader's local calendar, as a `YYYY-MM-DD` day key: the window
+/// the Usage face draws is the days the human lived through, resolved through
+/// the engine's own `localtime`. A calendar the engine cannot read falls back
+/// to the UTC date, so the report still answers rather than refusing the read.
+fn local_today() -> String {
+    let now = crate::store::timestamp::now();
+    crate::store::local_day(&now).unwrap_or_else(|_| now.get(0..10).unwrap_or(&now).to_string())
 }
 
 /// `session.transcript`: one record's harness transcript, or the reason it

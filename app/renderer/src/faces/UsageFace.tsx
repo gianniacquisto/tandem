@@ -6,29 +6,48 @@ import type { UsageSessionView } from '../wire/UsageSessionView'
 import { Face } from './Face'
 import {
   ABSENT,
+  DEFAULT_GRAPH_SERIES,
+  DEFAULT_WINDOW,
   DIMENSIONS,
+  GRAPH_SERIES,
   MODES,
   MODE_CONTROL_LABEL,
+  WINDOWS,
   coverage,
-  dayBars,
+  defaultSort,
   dimensionLabel,
   dimensionRows,
+  graphBars,
+  graphScales,
   modeLabel,
   money,
   recordNoun,
   rowCells,
   selectedRow,
+  seriesLabel,
+  sortRows,
   startedAt,
   ticketArithmetic,
   ticketLabel,
   tokenLine,
+  tokens,
+  toggleSort,
+  windowLabel,
   type UsageDimension,
   type UsageMode,
+  type UsageSeries,
+  type UsageSort,
+  type UsageSortColumn,
+  type UsageWindow,
 } from './usage'
 
 export type UsageFaceProps = {
   /** The one report the face draws (`usage.report`), or null before the first read. */
   report: UsageReportView | null
+  /** The rolling window the report was read through; the shell owns it. */
+  window?: UsageWindow
+  /** The window pick; the shell re-reads the report through it. */
+  onWindowChange?: (window: UsageWindow) => void
   /** Opens a ticket's sheet; a ticket entry is inert until the sheet exists (PRT-17). */
   onOpenTicket?: (id: string) => void
 }
@@ -39,15 +58,23 @@ export type UsageFaceProps = {
  * a row.
  *
  * Every number is a field of the one report it is handed, formatted (`usage.ts`);
- * the face sums nothing and scales nothing: the one height it draws comes from
- * the chart helper beside the formatters. A record that reported no cost
+ * the face sums nothing and scales nothing: the heights it draws come from the
+ * chart helpers beside the formatters. A record that reported no cost
  * draws the absent mark, never `$0.00`, which is why the header states its
- * coverage.
+ * coverage. The window narrows the report before it arrives, so header, tables
+ * and graph never disagree; sort reorders for display and never rescales.
  */
-export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
+export function UsageFace({ report, window, onWindowChange, onOpenTicket }: UsageFaceProps) {
   const [dimension, setDimension] = useState<UsageDimension>('day')
   const [mode, setMode] = useState<UsageMode>('total')
   const [selected, setSelected] = useState<string | null>(null)
+  const [series, setSeries] = useState<UsageSeries[]>([...DEFAULT_GRAPH_SERIES])
+  const [sorts, setSorts] = useState<Record<'model' | 'agent' | 'ticket', UsageSort>>(() => ({
+    model: defaultSort('model') ?? { column: 'label', direction: 'asc' },
+    agent: defaultSort('agent') ?? { column: 'label', direction: 'asc' },
+    ticket: defaultSort('ticket') ?? { column: 'label', direction: 'asc' },
+  }))
+  const activeWindow: UsageWindow = window ?? DEFAULT_WINDOW
 
   if (report === null) {
     return (
@@ -58,8 +85,14 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
   }
 
   const arithmetic = ticketArithmetic(report)
-  const bars = dayBars(report.day)
+  const columns = graphBars(report.day, series)
+  const scales = graphScales(report.day, series)
   const open = selectedRow(report, dimension, selected)
+  const sort = dimension === 'day' ? null : sorts[dimension]
+  const rows =
+    dimension === 'day' || sort === null
+      ? dimensionRows(report, dimension)
+      : sortRows(dimensionRows(report, dimension), sort.column, sort.direction, mode)
 
   function choose(next: UsageDimension) {
     // A row's id only means something inside its own table.
@@ -71,11 +104,22 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
     setSelected(row.id === selected ? null : row.id)
   }
 
+  function toggleSeries(name: UsageSeries) {
+    setSeries((current) =>
+      current.includes(name) ? current.filter((entry) => entry !== name) : [...current, name],
+    )
+  }
+
+  function pickSort(column: UsageSortColumn) {
+    if (dimension === 'day' || sort === null) return
+    setSorts((current) => ({ ...current, [dimension]: toggleSort(current[dimension], column) }))
+  }
+
   return (
     <Face wide label="Usage">
       <div className="usage">
         <div className="usage__header">
-          <span className="usage__coverage">{coverage(report)}</span>
+          <span className="usage__coverage">{coverage(report, activeWindow)}</span>
           <span className="usage__spend">{money(report.cost)}</span>
         </div>
         {arithmetic === null ? null : <p className="usage__arithmetic">{arithmetic}</p>}
@@ -89,30 +133,75 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
           </div>
         ) : (
           <>
-            {bars.length === 0 ? null : (
-              <div className="usage__chart" role="group" aria-label="Cost per day">
-                {bars.map(({ row, heightPercent }) => {
-                  // The bar names what the Day table names: the absent mark for
-                  // a day no record reported, never a zero dressed up.
-                  const name =
-                    row.reported === 0 ? `${row.label}: ${ABSENT}` : `${row.label}: ${money(row.cost)}`
-                  return (
+            <div className="usage__window" role="tablist" aria-label="Usage window">
+              {WINDOWS.map((candidate) => (
+                <button
+                  key={candidate}
+                  type="button"
+                  role="tab"
+                  className="usage__window-segment"
+                  aria-selected={candidate === activeWindow}
+                  onClick={() => onWindowChange?.(candidate)}
+                >
+                  {windowLabel(candidate)}
+                </button>
+              ))}
+            </div>
+            {columns.length === 0 ? null : (
+              <div className="usage__graph">
+                <div className="usage__chart" role="group" aria-label="Usage per day">
+                  {columns.map(({ row, values, heights }) => (
                     <div key={row.id} className="usage__bar-cell">
-                      <div className="usage__bar-track">
-                        <div
-                          className="usage__bar"
-                          role="img"
-                          aria-label={name}
-                          title={name}
-                          style={{ height: `${heightPercent}%` }}
-                        />
+                      <div
+                        className={`usage__bar-track${series.length > 1 ? ' usage__bar-track--multi' : ''}`}
+                      >
+                        {series.map((name) => {
+                          const value = values[name] ?? null
+                          // Absent stays absent: no bar, never a zero dressed up.
+                          // A reported zero keeps its bar at zero height.
+                          if (value === null) return null
+                          const height = heights[name] ?? 0
+                          const reading =
+                            name === 'cost'
+                              ? money(value)
+                              : name === 'records'
+                                ? tokens(value)
+                                : tokens(value)
+                          const name_ = `${row.label} ${seriesLabel(name)}: ${reading}`
+                          return (
+                            <div
+                              key={name}
+                              className={`usage__bar usage__bar--${name}`}
+                              role="img"
+                              aria-label={name_}
+                              title={name_}
+                              style={{ height: `${height}%` }}
+                            />
+                          )
+                        })}
                       </div>
                       <span className="usage__bar-label" aria-hidden="true">
                         {row.label}
                       </span>
                     </div>
-                  )
-                })}
+                  ))}
+                </div>
+                <p className="usage__scales">
+                  <GraphScales scales={scales} series={series} />
+                </p>
+                <div className="usage__series" role="group" aria-label="Graph series">
+                  {GRAPH_SERIES.map((candidate) => (
+                    <button
+                      key={candidate}
+                      type="button"
+                      className="usage__series-option"
+                      aria-pressed={series.includes(candidate)}
+                      onClick={() => toggleSeries(candidate)}
+                    >
+                      {seriesLabel(candidate)}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             <div className="usage__controls">
@@ -149,20 +238,32 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
             <table className="usage__table">
               <thead>
                 <tr>
-                  <th scope="col">{dimensionLabel(dimension).toUpperCase()}</th>
-                  <th scope="col">Records</th>
-                  <th scope="col">In</th>
-                  <th scope="col">Out</th>
-                  <th scope="col">Cache read</th>
-                  <th scope="col">Cache write</th>
-                  <th scope="col">Cost</th>
+                  <SortHeader
+                    dimension={dimension}
+                    sort={sort}
+                    column="label"
+                    label={dimensionLabel(dimension).toUpperCase()}
+                    onPick={pickSort}
+                  />
+                  <SortHeader dimension={dimension} sort={sort} column="records" label="Records" onPick={pickSort} />
+                  <SortHeader dimension={dimension} sort={sort} column="input" label="In" onPick={pickSort} />
+                  <SortHeader dimension={dimension} sort={sort} column="output" label="Out" onPick={pickSort} />
+                  <SortHeader dimension={dimension} sort={sort} column="cacheRead" label="Cache read" onPick={pickSort} />
+                  <SortHeader
+                    dimension={dimension}
+                    sort={sort}
+                    column="cacheWrite"
+                    label="Cache write"
+                    onPick={pickSort}
+                  />
+                  <SortHeader dimension={dimension} sort={sort} column="cost" label="Cost" onPick={pickSort} />
                   <th scope="col">
                     <span className="usage__sr-only">Share</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {dimensionRows(report, dimension).map((row) => {
+                {rows.map((row) => {
                   // Every numeric cell is the report's own in the active mode:
                   // totals, or per-reported-record averages.
                   const cells = rowCells(row, mode)
@@ -231,6 +332,60 @@ export function UsageFace({ report, onOpenTicket }: UsageFaceProps) {
         )}
       </div>
     </Face>
+  )
+}
+
+function GraphScales({
+  scales,
+  series,
+}: {
+  scales: { tokenMax: number; recordsMax: number; costMax: number }
+  series: UsageSeries[]
+}) {
+  const parts: string[] = []
+  if (series.some((name) => name !== 'records' && name !== 'cost')) {
+    parts.push(`Tokens per day, max ${tokens(scales.tokenMax)}`)
+  }
+  if (series.includes('records')) {
+    parts.push(`Records per day, max ${tokens(scales.recordsMax)}`)
+  }
+  if (series.includes('cost')) {
+    parts.push(`Cost per day, max ${money(scales.costMax)}`)
+  }
+  if (parts.length === 0) return <>Select a series to draw the graph.</>
+  return <>{parts.join(' · ')}</>
+}
+
+function SortHeader({
+  dimension,
+  sort,
+  column,
+  label,
+  onPick,
+}: {
+  dimension: UsageDimension
+  sort: UsageSort | null
+  column: UsageSortColumn
+  label: string
+  onPick: (column: UsageSortColumn) => void
+}) {
+  // Day stays newest first and is not sortable, since it feeds the chart.
+  if (dimension === 'day' || sort === null) {
+    return <th scope="col">{label}</th>
+  }
+  const active = sort.column === column
+  const arrow = active ? (sort.direction === 'asc' ? ' ↑' : ' ↓') : ''
+  return (
+    <th scope="col" aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button
+        type="button"
+        className="usage__sort"
+        aria-label={`Sort by ${label}${active ? `, ${sort.direction}ending` : ''}`}
+        onClick={() => onPick(column)}
+      >
+        {`${label}${arrow}`}
+      </button>
+    </th>
   )
 }
 

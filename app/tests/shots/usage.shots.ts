@@ -5,24 +5,34 @@ import { scene } from '../../shots/scenes'
 import { computed, token } from '../../shots/tokens'
 
 /**
- * The Usage face a human reads: the spend the records reported, the cost-per-day
- * bar chart above the picker, the arithmetic the ticket rows carry, and one
- * ticket row rolled down to the records behind it. Every figure is the report's
- * own over the fixture home.
+ * The Usage face a human reads: the windowed spend the records reported, the
+ * token-first day graph above the picker, the arithmetic the ticket rows carry,
+ * and one ticket row rolled down to the records behind it. Every figure is the
+ * report's own over the fixture home, read through All time so the frozen days
+ * stay in view whatever today is.
  */
 test('the usage face, with a ticket row rolled down', async ({ app, window }) => {
   await openTab(window, 'usage')
 
   await expect(window.locator('.face__title')).toHaveCount(0)
-  await expect(window.locator('.usage__coverage')).toHaveText(/^reported by \d+ of \d+ records$/)
   await expect(window.locator('.usage__spend')).toHaveText(/^\$\d+\.\d{2}$/)
 
   // The face reads the day palette: its quiet text is --ink-dim.
   expect(await computed(window, '.usage__coverage', 'color')).toBe(token('ink-dim'))
 
-  // The chart draws one bar per day row, above the picker, each named with its
-  // day and dollar figure. The bars share the meter fill: deep accent in the
-  // day scheme for contrast on paper, accent in the night scheme.
+  // The window picker opens on the last seven days; All time keeps the frozen
+  // home stable, so the spec reads through it from here on.
+  const win = window.locator('.usage__window-segment')
+  await expect(win).toHaveText(['Last 7 days', 'Last 30 days', 'This month', 'All time'])
+  await expect(window.locator('.usage__window [aria-selected="true"]')).toHaveText('Last 7 days')
+  await expect(window.locator('.usage__coverage')).toHaveText(/^reported by \d+ of \d+ records in the last 7 days$/)
+  await win.filter({ hasText: 'All time' }).click()
+  await expect(window.locator('.usage__window [aria-selected="true"]')).toHaveText('All time')
+  await expect(window.locator('.usage__coverage')).toHaveText(/^reported by \d+ of \d+ records$/)
+
+  // The graph defaults to total tokens per day, one bar per day row above the
+  // picker, each named with its day and token figure. The bars share the meter
+  // fill: deep accent in the day scheme for contrast on paper, accent at night.
   const dayRowCount = await window.locator('.usage__row').count()
   const chart = window.locator('.usage__chart')
   await expect(chart).toBeVisible()
@@ -32,8 +42,20 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
   const names = await Promise.all(found.map((bar) => bar.getAttribute('aria-label')))
   expect(names).toHaveLength(dayRowCount)
   for (const name of names) {
-    expect(name).toMatch(/^.+?: (?:\$[\d,]+\.\d{2}|\u2014)$/)
+    expect(name).toMatch(/^.+? Total tokens: (?:[\d,]+|\u2014)$/)
   }
+  await expect(window.locator('.usage__scales')).toContainText('Tokens per day, max')
+  const series = window.locator('.usage__series-option')
+  await expect(series).toHaveText([
+    'Total tokens',
+    'Input',
+    'Output',
+    'Cache read',
+    'Cache write',
+    'Reasoning',
+    'Records',
+    'Cost',
+  ])
   const chartBox = await chart.boundingBox()
   const pickerBox = await window.locator('.usage__picker').boundingBox()
   expect(chartBox === null || pickerBox === null).toBe(false)

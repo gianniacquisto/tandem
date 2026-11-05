@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use crate::domain::session::{Session, SessionOutcome, SessionStatus, SessionTokens, Sessions};
 use crate::domain::usage::{
-    Calendar, NO_TICKET_LABEL, UsageReport, UsageRow, UsageTicket, usage_report,
+    Calendar, NO_TICKET_LABEL, UsageReport, UsageRow, UsageTicket, UsageWindow, usage_report,
 };
 use crate::domain::{Board, Filter};
 use crate::store::{Actor, Home, Store};
@@ -647,4 +647,179 @@ fn the_frozen_home_rows_carry_their_per_reported_averages() {
     assert_eq!(unreported.reported, 0);
     assert_eq!(unreported.average_tokens.input, None);
     assert_eq!(unreported.average_cost, 0.0);
+}
+
+#[test]
+fn the_window_keeps_today_plus_its_prior_days_across_a_month_edge() {
+    // Today is the first of the month: Last 7 days reaches back into the prior
+    // month, and the boundaries are inclusive on both ends.
+    let today = "2026-11-01";
+    let window = UsageWindow::Last7Days;
+    assert!(window.contains("2026-11-01", today), "today is in");
+    assert!(window.contains("2026-10-26", today), "six days back is in");
+    assert!(
+        !window.contains("2026-10-25", today),
+        "seven days back is out"
+    );
+    assert!(!window.contains("2026-11-02", today), "tomorrow is out");
+}
+
+#[test]
+fn the_last_thirty_days_keep_twenty_nine_priors_inclusive() {
+    let today = "2026-11-04";
+    let window = UsageWindow::Last30Days;
+    assert!(window.contains("2026-11-04", today));
+    assert!(
+        window.contains("2026-10-06", today),
+        "twenty-nine back is in"
+    );
+    assert!(!window.contains("2026-10-05", today), "thirty back is out");
+    let thirty = UsageWindow::Last30Days;
+    assert!(thirty.contains("2026-10-06", today));
+}
+
+#[test]
+fn this_month_keeps_the_prefix_through_today() {
+    let today = "2026-11-04";
+    let window = UsageWindow::ThisMonth;
+    assert!(window.contains("2026-11-01", today));
+    assert!(window.contains("2026-11-04", today));
+    assert!(!window.contains("2026-10-31", today), "prior month is out");
+    assert!(
+        !window.contains("2026-11-05", today),
+        "later this month is out"
+    );
+    assert!(!window.contains("2026-12-01", today));
+}
+
+#[test]
+fn all_time_keeps_every_day_key() {
+    let window = UsageWindow::AllTime;
+    assert!(window.contains("2026-10-30", "2026-11-04"));
+    assert!(window.contains("2020-01-01", "2026-11-04"));
+}
+
+#[test]
+fn the_window_spellings_round_trip() {
+    for window in [
+        UsageWindow::Last7Days,
+        UsageWindow::Last30Days,
+        UsageWindow::ThisMonth,
+        UsageWindow::AllTime,
+    ] {
+        assert_eq!(UsageWindow::parse(window.as_str()), Some(window));
+    }
+    assert_eq!(UsageWindow::parse("last-7"), None);
+    assert_eq!(
+        UsageWindow::WIRE_VALUES,
+        ["last-7-days", "last-30-days", "this-month", "all-time"]
+    );
+}
+
+#[test]
+fn an_empty_windowed_set_is_a_zeroed_report() {
+    let sessions = vec![session(
+        "ses_a",
+        "2026-10-01T09:00:00Z",
+        Some("builder"),
+        Some("deepseek-v4"),
+        tokens(Some(100), None, None),
+        Some(1.0),
+        &[],
+    )];
+    let narrowed = crate::domain::usage::filter_sessions_by_window(
+        &sessions,
+        &UsageWindow::Last7Days,
+        "2026-11-04",
+        &Calendar::Utc,
+    );
+    assert!(narrowed.is_empty());
+    let report = usage_report(&narrowed, &[], &Calendar::Utc);
+    assert_eq!(report.records, 0);
+    assert_eq!(report.reported, 0);
+    assert_eq!(report.cost, 0.0);
+    assert!(report.day.is_empty());
+}
+
+#[test]
+fn a_windowed_rollup_equals_the_unwindowed_rollup_over_the_same_set() {
+    let sessions = vec![
+        session(
+            "ses_a",
+            "2026-11-03T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(600), Some(300), None, Some(120), Some(60)),
+            Some(1.0),
+            &[],
+        ),
+        session(
+            "ses_b",
+            "2026-10-01T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(400), Some(200), None, Some(80), Some(40)),
+            Some(2.0),
+            &[],
+        ),
+    ];
+    let narrowed = crate::domain::usage::filter_sessions_by_window(
+        &sessions,
+        &UsageWindow::Last7Days,
+        "2026-11-04",
+        &Calendar::Utc,
+    );
+    assert_eq!(narrowed.len(), 1);
+    let windowed = usage_report(&narrowed, &[], &Calendar::Utc);
+    let direct = usage_report(&narrowed, &[], &Calendar::Utc);
+    assert_eq!(windowed, direct);
+    assert_eq!(windowed.records, 1);
+    assert_eq!(windowed.reported, 1);
+    assert_eq!(windowed.cost, 1.0);
+}
+
+#[test]
+fn windowed_averages_keep_per_reported_record_semantics() {
+    let sessions = vec![
+        session(
+            "ses_a",
+            "2026-11-03T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(1000), Some(500), None, None, None),
+            Some(1.0),
+            &[],
+        ),
+        session(
+            "ses_b",
+            "2026-11-03T10:00:00Z",
+            Some("builder"),
+            None,
+            None,
+            None,
+            &[],
+        ),
+        session(
+            "ses_old",
+            "2026-10-01T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(9000), Some(9000), None, None, None),
+            Some(9.0),
+            &[],
+        ),
+    ];
+    let narrowed = crate::domain::usage::filter_sessions_by_window(
+        &sessions,
+        &UsageWindow::Last7Days,
+        "2026-11-04",
+        &Calendar::Utc,
+    );
+    assert_eq!(narrowed.len(), 2);
+    let report = usage_report(&narrowed, &[], &Calendar::Utc);
+    let row = &report.day[0];
+    assert_eq!((row.records, row.reported), (2, 1));
+    assert_eq!(row.average_tokens.input, Some(1000));
+    assert_eq!(row.average_tokens.output, Some(500));
+    assert_eq!(row.average_cost, 1.0);
 }
