@@ -60,6 +60,19 @@ jobs:
         working-directory: rust
         run: cargo --version
 
+      - name: Cache cargo registry and target
+        # CI-2: `npm run dist` builds the core through `prepare-binary.mjs`,
+        # so the registry (~/.cargo) and the target dir are cached. The key
+        # carries Cargo.lock, and the toolchain pin sits in the key and the
+        # restore prefix both, so a cache built by another toolchain never
+        # restores here (the cache poisoning surface CI-1 flagged).
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: ${{ runner.os }}-toolchain-${{ hashFiles('rust/rust-toolchain.toml') }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-toolchain-${{ hashFiles('rust/rust-toolchain.toml') }}-
+
       - name: Install
         working-directory: app
         run: npm ci

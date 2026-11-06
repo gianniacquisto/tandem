@@ -10,9 +10,9 @@ name: Rust
 # blocks the merge of a PR that touches no `rust/**` file. So `push` keeps its
 # filter, where a skipped run costs nothing, and `pull_request` does not filter.
 #
-# No third-party action: `rust-toolchain.toml` pins the version and the two
-# components, rustup ships on every hosted runner, and nothing here reads a
-# secret or prints an environment.
+# One third-party action, the cargo cache (CI-2); everything else is first-party:
+# `rust-toolchain.toml` pins the version and the two components, rustup ships on
+# every hosted runner, and nothing here reads a secret or prints an environment.
 
 on:
   push:
@@ -48,6 +48,20 @@ jobs:
         # installs the pinned version with `rustfmt` and `clippy`; naming it
         # here keeps the download visible and the gate steps free of setup.
         run: cargo --version
+
+      - name: Cache cargo registry and target
+        # CI-2: every gate below compiles, so the registry (~/.cargo) and the
+        # target dir are cached across runs. The key carries Cargo.lock, and
+        # the toolchain pin sits in the key and the restore prefix both, so a
+        # cache built by another toolchain never restores here (the cache
+        # poisoning surface CI-1 flagged). One step serves all three matrix
+        # legs: the key is per-OS and the lock is shared.
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: ${{ runner.os }}-toolchain-${{ hashFiles('rust/rust-toolchain.toml') }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-toolchain-${{ hashFiles('rust/rust-toolchain.toml') }}-
 
       - name: "Gate: cargo fmt --check"
         run: cargo fmt --all --check
