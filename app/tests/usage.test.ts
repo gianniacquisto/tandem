@@ -26,6 +26,7 @@ import {
   DEFAULT_CACHE_SERIES,
   DEFAULT_TOKEN_SERIES,
   TOKEN_PIECES,
+  seriesColour,
   seriesLabel,
   seriesValue,
   totalTokens,
@@ -515,6 +516,25 @@ describe('the usage face over one report', () => {
     expect(cache.columns[0]?.bars.map((bar) => bar.value)).toEqual([1_200_000, 300_000])
     expect(cache.columns[0]?.bars.map((bar) => bar.heightPercent)).toEqual([100, 25])
     expect(cache.columns[1]?.bars[0]?.heightPercent).toBe(66.66666666666666)
+
+    // The two grouped charts share one colour pair: the first piece of each
+    // group reads one colour and the second another, so Input and Cache read
+    // draw alike and Output and Cache write draw alike across the charts.
+    expect(tokens.columns[0]?.bars.map((bar) => seriesColour(bar.series))).toEqual([
+      seriesColour('input'),
+      seriesColour('output'),
+    ])
+    expect(cache.columns[0]?.bars.map((bar) => seriesColour(bar.series))).toEqual([
+      seriesColour('cacheRead'),
+      seriesColour('cacheWrite'),
+    ])
+    expect(seriesColour('input')).toBe(seriesColour('cacheRead'))
+    expect(seriesColour('output')).toBe(seriesColour('cacheWrite'))
+    expect(seriesColour('input')).not.toBe(seriesColour('output'))
+    // The single-series charts carry their own colour, distinct from each other.
+    expect(seriesColour('totalTokens')).not.toBe(seriesColour('cost'))
+    expect(seriesColour('totalTokens')).not.toBe(seriesColour('input'))
+    expect(seriesColour('cost')).not.toBe(seriesColour('output'))
   })
 
   it('draws one grouped bar per series with a value, none for an absent value, and a zero height for a reported zero', () => {

@@ -1,8 +1,42 @@
-import { expect } from '@playwright/test'
+import { expect, type Locator } from '@playwright/test'
 
 import { capture, openTab, test } from '../../shots/app'
 import { scene } from '../../shots/scenes'
 import { computed, token } from '../../shots/tokens'
+
+/** Each drawn bar's colour, by the series its aria label names. */
+async function barColours(chart: Locator): Promise<Record<string, string>> {
+  const bars = await chart.locator('[role="img"]').evaluateAll((elements) =>
+    elements.map((element) => {
+      const label = element.getAttribute('aria-label') ?? ''
+      return {
+        series: label.replace(/^\d{4}-\d{2}-\d{2} /, '').replace(/:.*$/, ''),
+        colour: getComputedStyle(element).backgroundColor,
+      }
+    }),
+  )
+  const colours: Record<string, string> = {}
+  for (const bar of bars) colours[bar.series] ??= bar.colour
+  for (const bar of bars) expect(bar.colour).toBe(colours[bar.series])
+  return colours
+}
+
+/** Each legend swatch's colour, by the series its text names. */
+async function swatchColours(chart: Locator): Promise<Record<string, string>> {
+  const swatches = await chart.locator('.usage__legend-item, .usage__series-option').evaluateAll(
+    (elements) =>
+      elements.map((element) => {
+        const swatch = element.querySelector('.usage__swatch')
+        return {
+          series: element.textContent?.trim() ?? '',
+          colour: swatch === null ? '' : getComputedStyle(swatch).backgroundColor,
+        }
+      }),
+  )
+  const colours: Record<string, string> = {}
+  for (const swatch of swatches) colours[swatch.series] = swatch.colour
+  return colours
+}
 
 /**
  * The Usage face a human reads: the windowed spend the records reported, the
@@ -93,6 +127,31 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
   await expect(totalChart.locator('.usage__legend-items')).toHaveText('Total tokens')
   await expect(costChart.locator('.usage__swatch')).toHaveCount(1)
   await expect(costChart.locator('.usage__legend-items')).toHaveText('Cost')
+
+  // The legend draws exactly the colour its bars do, and the two grouped charts
+  // share one pair: the first piece of each group reads one colour and the
+  // second another, the same assignment in both charts.
+  const tokenBars = await barColours(tokenChart)
+  const cacheBars = await barColours(cacheChart)
+  const totalBars = await barColours(totalChart)
+  const costBars = await barColours(costChart)
+  const tokenSwatches = await swatchColours(tokenChart)
+  const cacheSwatches = await swatchColours(cacheChart)
+  const totalSwatches = await swatchColours(totalChart)
+  const costSwatches = await swatchColours(costChart)
+  expect(tokenSwatches.Input).toBe(tokenBars.Input)
+  expect(tokenSwatches.Output).toBe(tokenBars.Output)
+  expect(cacheSwatches['Cache read']).toBe(cacheBars['Cache read'])
+  expect(cacheSwatches['Cache write']).toBe(cacheBars['Cache write'])
+  expect(totalSwatches['Total tokens']).toBe(totalBars['Total tokens'])
+  expect(costSwatches.Cost).toBe(costBars.Cost)
+  expect(tokenBars.Input).toBe(cacheBars['Cache read'])
+  expect(tokenBars.Output).toBe(cacheBars['Cache write'])
+  expect(tokenBars.Input).not.toBe(tokenBars.Output)
+  expect(tokenBars.Input).toBe(token('accent'))
+  expect(tokenBars.Output).toBe(token('ember'))
+  expect(totalBars['Total tokens']).toBe(token('accent-deep'))
+  expect(costBars.Cost).toBe(token('ember-deep'))
 
   // Every column owns one bar group: the grouped charts draw one to two bars
   // per group, the single-series charts exactly one. Nothing stacks.

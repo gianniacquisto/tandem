@@ -24,6 +24,7 @@ import {
   recordNoun,
   rowCells,
   selectedRow,
+  seriesColour,
   seriesLabel,
   sortRows,
   startedAt,
@@ -366,6 +367,7 @@ function SeriesPicker({
             {on ? (
               <span
                 className={`usage__swatch usage__swatch--${candidate}`}
+                style={{ background: `var(--usage-series-${seriesColour(candidate)})` }}
                 aria-hidden="true"
               />
             ) : null}
@@ -382,7 +384,11 @@ function SingleLegend({ series }: { series: UsageSeries }) {
   return (
     <div className="usage__legend-items">
       <span className="usage__legend-item">
-        <span className={`usage__swatch usage__swatch--${series}`} aria-hidden="true" />
+        <span
+          className={`usage__swatch usage__swatch--${series}`}
+          style={{ background: `var(--usage-series-${seriesColour(series)})` }}
+          aria-hidden="true"
+        />
         {seriesLabel(series)}
       </span>
     </div>
@@ -447,7 +453,10 @@ function Chart({
                           role="img"
                           aria-label={name}
                           title={name}
-                          style={{ height: `${bar.heightPercent}%` }}
+                          style={{
+                            height: `${bar.heightPercent}%`,
+                            background: `var(--usage-series-${seriesColour(bar.series)})`,
+                          }}
                         />
                       )
                     })}

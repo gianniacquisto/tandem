@@ -247,44 +247,30 @@ body {
   height: 100%;
 }
 
+/* The usage charts' series colours live here, one property per slot: the two
+ * grouped charts share a pair (the first piece reads primary, the second
+ * secondary), and the single-series charts keep a property of their own. Every
+ * value is a tokens.css token; the night block brightens only the two solid
+ * bars, and the pair's tokens already flip with the scheme. */
+.usage {
+  --usage-series-primary: var(--accent);
+  --usage-series-secondary: var(--ember);
+  --usage-series-total: var(--accent-deep);
+  --usage-series-cost: var(--ember-deep);
+}
+
 .usage__bar {
   flex: 1 1 0;
   min-width: 0;
   max-width: 14px;
   border-radius: 3px 3px 0 0;
-  background: var(--accent-deep);
-}
-
-/* The token pieces are translucent fills over their series token; the total
- * bar and the single-series charts stay solid. */
-.usage__bar--totalTokens {
-  background: var(--accent-deep);
-}
-
-.usage__bar--input {
-  background: color-mix(in srgb, var(--accent) 72%, transparent);
-}
-
-.usage__bar--output {
-  background: color-mix(in srgb, var(--moss) 72%, transparent);
-}
-
-.usage__bar--cacheRead {
-  background: color-mix(in srgb, var(--moss-deep) 72%, transparent);
-}
-
-.usage__bar--cacheWrite {
-  background: color-mix(in srgb, var(--hill) 72%, transparent);
-}
-
-.usage__bar--cost {
-  background: var(--ember-deep);
+  background: var(--usage-series-primary);
 }
 
 @media (prefers-color-scheme: dark) {
-  .usage__bar,
-  .usage__bar--totalTokens {
-    background: var(--accent);
+  .usage {
+    --usage-series-total: var(--accent);
+    --usage-series-cost: var(--ember);
   }
 }
 
@@ -316,31 +302,7 @@ body {
   height: 8px;
   flex: none;
   border-radius: 2px;
-  background: var(--accent-deep);
-}
-
-.usage__swatch--totalTokens {
-  background: var(--accent-deep);
-}
-
-.usage__swatch--input {
-  background: var(--accent);
-}
-
-.usage__swatch--output {
-  background: var(--moss);
-}
-
-.usage__swatch--cacheRead {
-  background: var(--moss-deep);
-}
-
-.usage__swatch--cacheWrite {
-  background: var(--hill);
-}
-
-.usage__swatch--cost {
-  background: var(--ember-deep);
+  background: var(--usage-series-primary);
 }
 
 .usage__series-option {

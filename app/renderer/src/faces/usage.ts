@@ -193,6 +193,29 @@ export function seriesLabel(series: UsageSeries): string {
 }
 
 /**
+ * The colour each charted series draws in: the suffix of the CSS custom
+ * property `app.css` names, read by the face as `var(--usage-series-<suffix>)`.
+ * The two grouped charts share one pair: the first piece of each group reads
+ * `primary` and the second `secondary`, so Input and Cache read draw one colour
+ * and Output and Cache write the other, in both charts. The single-series
+ * charts keep a property of their own.
+ */
+export type SeriesColour = 'primary' | 'secondary' | 'total' | 'cost'
+
+const SERIES_COLOURS: Record<UsageSeries, SeriesColour> = {
+  input: 'primary',
+  output: 'secondary',
+  cacheRead: 'primary',
+  cacheWrite: 'secondary',
+  totalTokens: 'total',
+  cost: 'cost',
+}
+
+export function seriesColour(series: UsageSeries): SeriesColour {
+  return SERIES_COLOURS[series]
+}
+
+/**
  * The four charts, split by scale: input and output share one order of
  * magnitude, cache read and write another, the token total sums both, and the
  * cost is its own unit. The records chart and the reasoning bar are gone.
