@@ -26,8 +26,8 @@ path outside `Fixtures/`. The app opens the scratch copy, never the committed
 home, so no run writes into the fixture.
 
 The port has two committed homes. `Fixtures/port/Home` is the contract home: the
-four session records and two board tickets the shell, Usage and Settings scenes
-read. `Fixtures/port/Board` is the 78-ticket board home, and the Tickets scenes
+five weeks of session records and the two board tickets the shell, Usage and
+Settings scenes read. `Fixtures/port/Board` is the 78-ticket board home, and the Tickets scenes
 are shot on it. CI runs both commands above in order; the Tickets pictures in
 this folder are the second.
 

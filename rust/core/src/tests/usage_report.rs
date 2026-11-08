@@ -5,9 +5,9 @@
 //! they sum are the committed fixture home's own: the report is read through the
 //! store adapter from `Fixtures/port/Home/tandem.db`, so the totals are frozen
 //! on an artifact a reader can open, not on a shape this suite builds for
-//! itself. The home holds two days, two models, two agents, one two-ticket
-//! record, one ticketless one and one written before the usage fields existed:
-//! four records in all.
+//! itself. The home holds five weeks of records over seventeen days, four
+//! models, four agents, three two-ticket records, ticketless ones and one
+//! written before the usage fields existed: twenty-four records in all.
 
 use std::path::{Path, PathBuf};
 
@@ -100,10 +100,11 @@ fn session(
     }
 }
 
-/// The frozen home's records, as the store adapter reads them: two days, two
-/// models, two agents, two tickets and one ticketless record, four in all. The
-/// last one carries no usage, so it counts as a record and adds to no sum, and
-/// its missing model and agent get rows of their own.
+/// The frozen home's records, as the store adapter reads them: five weeks over
+/// seventeen days, four models, four agents, the two board tickets and the
+/// ticketless records, twenty-four in all. One carries no usage, so it counts
+/// as a record and adds to no sum, and its missing model and agent get rows of
+/// their own.
 fn frozen() -> Vec<Session> {
     Sessions::new(&fixture_store())
         .list(None, None)
@@ -132,26 +133,33 @@ fn report() -> UsageReport {
 fn the_totals_are_frozen() {
     let report = report();
 
-    assert_eq!(report.records, 4, "every record read, running or ended");
+    assert_eq!(report.records, 24, "every record read, running or ended");
     assert_eq!(
-        report.reported, 3,
+        report.reported, 23,
         "the record without usage reports nothing"
     );
-    assert_eq!(report.cost, 2.5, "0.25 + 0.75 + 1.5");
-    assert_eq!(report.tokens.input, Some(6000), "1000 + 2000 + 3000");
+    assert!(
+        (report.cost - 51.25).abs() < 1e-9,
+        "the five weeks sum to 51.25: {}",
+        report.cost
+    );
+    assert_eq!(report.tokens.input, Some(102_300));
     assert_eq!(
         report.tokens.output,
-        Some(1500),
-        "500 + 1000, and a zero keeps its sum"
+        Some(29_020),
+        "a reported zero keeps its sum"
     );
-    assert_eq!(report.tokens.reasoning, Some(100), "100 + 0");
-    assert_eq!(report.tokens.cache_read, Some(200));
-    assert_eq!(report.tokens.cache_write, Some(50));
-    assert_eq!(
-        report.overlap, 0.75,
-        "(2 - 1) x 0.75 for the two-ticket record"
+    assert_eq!(report.tokens.reasoning, Some(7_410));
+    assert_eq!(report.tokens.cache_read, Some(12_880_200));
+    assert_eq!(report.tokens.cache_write, Some(989_050));
+    assert!(
+        (report.overlap - 6.5).abs() < 1e-9,
+        "three two-ticket records: 0.75 + 0.65 + 5.10"
     );
-    assert_eq!(report.ticket_total(), 3.25, "2.5 + 0.75");
+    assert!(
+        (report.ticket_total() - 57.75).abs() < 1e-9,
+        "51.25 + 6.5"
+    );
 }
 
 #[test]
@@ -165,7 +173,25 @@ fn the_day_rows_are_the_local_days_newest_first() {
         .collect();
     assert_eq!(
         days,
-        vec![("2026-10-31", 2, 1, 1.5), ("2026-10-30", 2, 2, 1.0),],
+        vec![
+            ("2026-10-31", 2, 1, 1.5),
+            ("2026-10-30", 2, 2, 1.0),
+            ("2026-10-29", 1, 1, 0.0),
+            ("2026-10-28", 1, 1, 6.9),
+            ("2026-10-27", 2, 2, 3.2),
+            ("2026-10-23", 1, 1, 0.0),
+            ("2026-10-21", 1, 1, 8.6),
+            ("2026-10-20", 2, 2, 3.0),
+            ("2026-10-16", 1, 1, 7.2),
+            ("2026-10-14", 2, 2, 0.85),
+            ("2026-10-12", 1, 1, 1.6),
+            ("2026-10-09", 1, 1, 5.1),
+            ("2026-10-07", 2, 2, 0.95),
+            ("2026-10-06", 1, 1, 1.9),
+            ("2026-10-02", 1, 1, 0.3),
+            ("2026-09-30", 1, 1, 6.4),
+            ("2026-09-29", 2, 2, 2.75),
+        ],
         "a day is the day the record started, newest first"
     );
     assert_eq!(report.day[0].label, "2026-10-31");
@@ -184,41 +210,65 @@ fn the_day_rows_are_the_local_days_newest_first() {
 fn the_model_and_agent_rows_are_verbatim_partitions() {
     let report = report();
 
-    let models: Vec<(&str, &str, usize, f64)> = report
+    let near = |actual: f64, expected: f64| (actual - expected).abs() < 1e-9;
+
+    let models: Vec<(&str, &str, usize)> = report
         .model
         .iter()
-        .map(|row| (row.id.as_str(), row.label.as_str(), row.records, row.cost))
+        .map(|row| (row.id.as_str(), row.label.as_str(), row.records))
         .collect();
     assert_eq!(
         models,
         vec![
-            ("gemma4:e4b-mlx", "gemma4:e4b-mlx", 1, 1.5),
-            ("deepseek-v4.1-flash", "deepseek-v4.1-flash", 2, 1.0),
-            ("", "unreported", 1, 0.0),
+            ("claude-sonnet-4", "claude-sonnet-4", 5),
+            ("glm-5.3-flash", "glm-5.3-flash", 5),
+            ("deepseek-v4.1-flash", "deepseek-v4.1-flash", 7),
+            ("gemma4:e4b-mlx", "gemma4:e4b-mlx", 6),
+            ("", "unreported", 1),
         ],
         "cost descending, and the missing model gets its own row"
     );
+    let model_costs = [34.2, 8.0, 7.25, 1.8, 0.0];
+    for (row, expected) in report.model.iter().zip(model_costs) {
+        assert!(
+            near(row.cost, expected),
+            "{} costs {} not {expected}",
+            row.label,
+            row.cost
+        );
+    }
 
-    let agents: Vec<(&str, &str, usize, f64)> = report
+    let agents: Vec<(&str, &str, usize)> = report
         .agent
         .iter()
-        .map(|row| (row.id.as_str(), row.label.as_str(), row.records, row.cost))
+        .map(|row| (row.id.as_str(), row.label.as_str(), row.records))
         .collect();
     assert_eq!(
         agents,
         vec![
-            ("builder", "builder", 2, 1.75),
-            ("reviewer", "reviewer", 1, 0.75),
-            ("", "unattributed", 1, 0.0),
+            ("refiner", "refiner", 5),
+            ("builder", "builder", 9),
+            ("reviewer", "reviewer", 6),
+            ("consolidator", "consolidator", 3),
+            ("", "unattributed", 1),
         ]
     );
+    let agent_costs = [34.2, 11.8, 4.95, 0.3, 0.0];
+    for (row, expected) in report.agent.iter().zip(agent_costs) {
+        assert!(
+            near(row.cost, expected),
+            "{} costs {} not {expected}",
+            row.label,
+            row.cost
+        );
+    }
 }
 
 #[test]
 fn the_ticket_rows_are_whole_per_ticket_and_the_ticketless_row_is_last() {
     let report = report();
 
-    let rows: Vec<(&str, &str, usize, usize, f64)> = report
+    let rows: Vec<(&str, &str, usize, usize)> = report
         .ticket
         .iter()
         .map(|row| {
@@ -227,19 +277,27 @@ fn the_ticket_rows_are_whole_per_ticket_and_the_ticketless_row_is_last() {
                 row.label.as_str(),
                 row.records,
                 row.reported,
-                row.cost,
             )
         })
         .collect();
     assert_eq!(
         rows,
         vec![
-            (TICKET_ONE, "FIX-1: the board", 2, 2, 1.0),
-            (TICKET_TWO, "FIX-2: the records", 2, 1, 0.75),
-            ("no-ticket", NO_TICKET_LABEL, 1, 1, 1.5),
+            (TICKET_ONE, "FIX-1: the board", 11, 11),
+            (TICKET_TWO, "FIX-2: the records", 10, 9),
+            ("no-ticket", NO_TICKET_LABEL, 6, 6),
         ],
         "a multi-ticket record lands whole in each row, and the ticketless row is last whatever it costs"
     );
+    let ticket_costs = [30.9, 10.35, 16.5];
+    for (row, expected) in report.ticket.iter().zip(ticket_costs) {
+        assert!(
+            (row.cost - expected).abs() < 1e-9,
+            "{} costs {} not {expected}",
+            row.label,
+            row.cost
+        );
+    }
     assert_eq!(report.ticket[2].label, "no ticket");
 }
 
@@ -273,38 +331,31 @@ fn the_partitions_cover_every_record_once_and_the_tickets_state_their_excess() {
 fn a_row_carries_its_bar_width_against_its_own_tables_largest() {
     let report = report();
 
-    let widths =
-        |rows: &[UsageRow]| -> Vec<f64> { rows.iter().map(|row| row.bar_percent).collect() };
-    let near = |actual: &[f64], expected: &[f64]| -> bool {
-        actual.len() == expected.len()
-            && actual
-                .iter()
-                .zip(expected)
-                .all(|(a, b)| (a - b).abs() < 1e-9)
-    };
+    let largest = |rows: &[UsageRow]| -> f64 { rows.iter().map(|row| row.cost).fold(0.0, f64::max) };
 
-    assert!(
-        near(&widths(&report.day), &[100.0, 100.0 * 1.0 / 1.5]),
-        "a day table scales to its own dearest day: {:?}",
-        widths(&report.day)
-    );
-    assert!(
-        near(&widths(&report.model), &[100.0, 100.0 * 1.0 / 1.5, 0.0]),
-        "a row that reported nothing has no bar: {:?}",
-        widths(&report.model)
-    );
-    assert!(
-        near(&widths(&report.agent), &[100.0, 100.0 * 0.75 / 1.75, 0.0]),
-        "the agent table's own largest sets the scale: {:?}",
-        widths(&report.agent)
-    );
-    assert!(
-        near(
-            &widths(&report.ticket),
-            &[100.0 * 1.0 / 1.5, 100.0 * 0.75 / 1.5, 100.0],
-        ),
-        "the ticketless row is a row of the table, so it sets the scale: {:?}",
-        widths(&report.ticket)
+    // The dearest day is 2026-10-21 at 8.60; each table carries its own scale.
+    assert!((largest(&report.day) - 8.6).abs() < 1e-9);
+    for rows in [&report.day, &report.model, &report.agent, &report.ticket] {
+        let top = largest(rows);
+        for row in rows {
+            let expected = if top > 0.0 {
+                row.cost / top * 100.0
+            } else {
+                0.0
+            };
+            assert!(
+                (row.bar_percent - expected).abs() < 1e-9,
+                "{} is {}% of {top}, not {}",
+                row.label,
+                row.cost,
+                row.bar_percent
+            );
+        }
+    }
+    assert_eq!(
+        report.model.last().map(|row| row.bar_percent),
+        Some(0.0),
+        "a row that reported nothing has no bar"
     );
 }
 
@@ -631,13 +682,15 @@ fn the_frozen_home_rows_carry_their_per_reported_averages() {
         .iter()
         .find(|row| row.id == TICKET_TWO)
         .expect("the fixture home holds its second ticket");
-    assert_eq!((ticket_two.records, ticket_two.reported), (2, 1));
-    assert_eq!(ticket_two.average_tokens.input, Some(2000));
-    assert_eq!(
-        ticket_two.average_tokens.cache_read, None,
-        "ses_b reported no cache piece, so the average stays absent"
+    assert_eq!((ticket_two.records, ticket_two.reported), (10, 9));
+    assert_eq!(ticket_two.average_tokens.input, Some(2933), "26400 / 9, rounded");
+    assert_eq!(ticket_two.average_tokens.output, Some(947));
+    assert_eq!(ticket_two.average_tokens.cache_read, Some(301_111));
+    assert_eq!(ticket_two.average_tokens.cache_write, Some(21_000));
+    assert!(
+        (ticket_two.average_cost - 1.15).abs() < 1e-9,
+        "10.35 / 9"
     );
-    assert_eq!(ticket_two.average_cost, 0.75);
 
     let unreported = report
         .model

@@ -20,10 +20,12 @@ import {
   WINDOWS,
   DEFAULT_WINDOW,
   windowLabel,
-  GRAPH_SERIES,
-  TOKEN_PIECES,
-  TOKEN_CHART_SERIES,
+  CACHE_PIECES,
+  CHART_KINDS,
+  CHART_TITLES,
+  DEFAULT_CACHE_SERIES,
   DEFAULT_TOKEN_SERIES,
+  TOKEN_PIECES,
   seriesLabel,
   seriesValue,
   totalTokens,
@@ -267,12 +269,34 @@ describe('the usage face over one report', () => {
   })
 
   it('draws zero heights when no day reported anything', () => {
+    const nothing = { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null }
     const days = [
-      row({ id: '2026-10-31', label: '2026-10-31', reported: 0, cost: 0, records: 0 }),
-      row({ id: '2026-10-30', label: '2026-10-30', reported: 0, cost: 0, records: 0 }),
+      row({
+        id: '2026-10-31',
+        label: '2026-10-31',
+        reported: 0,
+        cost: 0,
+        records: 0,
+        tokens: nothing,
+      }),
+      row({
+        id: '2026-10-30',
+        label: '2026-10-30',
+        reported: 0,
+        cost: 0,
+        records: 0,
+        tokens: nothing,
+      }),
     ]
-    for (const unit of ['records', 'cost'] as const) {
-      const chart = usageChart(days, unit)
+    for (const kind of ['tokens', 'cache'] as const) {
+      const chart = usageChart(days, kind)
+      expect(chart.max).toBe(0)
+      expect(chart.ticks).toEqual([])
+      // No reported piece draws no slice at all.
+      expect(chart.columns.map((column) => column.bars)).toEqual([[], []])
+    }
+    for (const kind of ['total', 'cost'] as const) {
+      const chart = usageChart(days, kind)
       expect(chart.max).toBe(0)
       expect(chart.ticks).toEqual([])
       expect(chart.columns.map((column) => column.bars[0]?.heightPercent)).toEqual([0, 0])
@@ -404,78 +428,90 @@ describe('the usage face over one report', () => {
     expect(coverage(drawn, 'all-time')).toBe('reported by 3 of 4 records')
   })
 
-  it('opens the tokens chart on its five pieces stacked with total tokens off', () => {
-    expect(GRAPH_SERIES).toEqual([
-      'totalTokens',
-      'input',
-      'output',
-      'cacheRead',
-      'cacheWrite',
-      'reasoning',
-      'records',
-      'cost',
-    ])
-    expect(TOKEN_PIECES).toEqual(['input', 'output', 'cacheRead', 'cacheWrite', 'reasoning'])
-    expect(TOKEN_CHART_SERIES).toEqual(['totalTokens', ...TOKEN_PIECES])
-    expect(DEFAULT_TOKEN_SERIES).toEqual([...TOKEN_PIECES])
-    expect(TOKEN_CHART_SERIES.map(seriesLabel)).toEqual([
+  it('draws four charts split by scale, with total tokens on its own', () => {
+    expect(CHART_KINDS).toEqual(['tokens', 'cache', 'total', 'cost'])
+    expect(CHART_KINDS.map((kind) => CHART_TITLES[kind])).toEqual([
+      'Tokens',
+      'Cache',
       'Total tokens',
-      'Input',
-      'Output',
-      'Cache read',
-      'Cache write',
-      'Reasoning',
+      'Cost',
     ])
+    expect(TOKEN_PIECES).toEqual(['input', 'output'])
+    expect(CACHE_PIECES).toEqual(['cacheRead', 'cacheWrite'])
+    expect(DEFAULT_TOKEN_SERIES).toEqual(['input', 'output'])
+    expect(DEFAULT_CACHE_SERIES).toEqual(['cacheRead', 'cacheWrite'])
+    expect(TOKEN_PIECES.map(seriesLabel)).toEqual(['Input', 'Output'])
+    expect(CACHE_PIECES.map(seriesLabel)).toEqual(['Cache read', 'Cache write'])
 
     const day = row({
       tokens: { input: 3000, output: 500, reasoning: 100, cacheRead: 200, cacheWrite: 50 },
     })
-    const stacked = usageChart([day], 'tokens')
-    expect(stacked.columns[0]?.bars.map((bar) => bar.series)).toEqual([...TOKEN_PIECES])
+    expect(usageChart([day], 'tokens').columns[0]?.bars.map((bar) => bar.series)).toEqual([
+      'input',
+      'output',
+    ])
+    expect(usageChart([day], 'cache').columns[0]?.bars.map((bar) => bar.series)).toEqual([
+      'cacheRead',
+      'cacheWrite',
+    ])
+    expect(usageChart([day], 'total').columns[0]?.bars.map((bar) => bar.series)).toEqual([
+      'totalTokens',
+    ])
+    expect(usageChart([day], 'total').columns[0]?.bars[0]?.value).toBe(3850)
+    expect(usageChart([day], 'cost').columns[0]?.bars.map((bar) => bar.series)).toEqual(['cost'])
 
-    const total = usageChart([day], 'tokens', { series: ['totalTokens'] })
-    expect(total.columns[0]?.bars.map((bar) => bar.series)).toEqual(['totalTokens'])
-    expect(total.columns[0]?.bars[0]?.value).toBe(3850)
-    expect(total.columns[0]?.bars[0]?.heightPercent).toBe(100)
+    // The records chart and the reasoning slice are gone from every chart.
+    const charted = CHART_KINDS.flatMap(
+      (kind) => usageChart([day], kind).columns[0]?.bars.map((bar) => bar.series) ?? [],
+    )
+    expect(charted).not.toContain('records')
+    expect(charted).not.toContain('reasoning')
   })
 
-  it('stacks the token pieces into one bar per day and a piece with no value draws no slice, never a zero slice', () => {
+  it('stacks input and output on one scale and cache read and write on another', () => {
     const days = [
       row({
         id: '2026-10-31',
         label: '2026-10-31',
-        tokens: { input: 3000, output: null, reasoning: 0, cacheRead: 200, cacheWrite: null },
+        tokens: {
+          input: 2000,
+          output: null,
+          reasoning: 0,
+          cacheRead: 800_000,
+          cacheWrite: null,
+        },
       }),
       row({
         id: '2026-10-30',
         label: '2026-10-30',
-        tokens: { input: 1000, output: 500, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+        tokens: {
+          input: 6000,
+          output: 3000,
+          reasoning: 0,
+          cacheRead: 1_200_000,
+          cacheWrite: 300_000,
+        },
       }),
     ]
-    const chart = usageChart(days, 'tokens')
-    expect(chart.columns.map((column) => column.label)).toEqual(['2026-10-30', '2026-10-31'])
 
-    const [older, newer] = chart.columns
-    expect(older?.bars.map((bar) => bar.series)).toEqual([
-      'input',
-      'output',
-      'cacheRead',
-      'cacheWrite',
-      'reasoning',
-    ])
-    // Absent stays absent: no output or cache write slice.
-    expect(newer?.bars.map((bar) => bar.series)).toEqual(['input', 'cacheRead', 'reasoning'])
-    expect(newer?.bars.find((bar) => bar.series === 'output')).toBeUndefined()
+    const tokens = usageChart(days, 'tokens')
+    expect(tokens.columns.map((column) => column.label)).toEqual(['2026-10-30', '2026-10-31'])
+    const [older, newer] = tokens.columns
+    expect(older?.bars.map((bar) => bar.series)).toEqual(['input', 'output'])
+    // Absent stays absent: no output slice on the newer day.
+    expect(newer?.bars.map((bar) => bar.series)).toEqual(['input'])
+    // The scale is the largest combined input + output, not one piece's max.
+    expect(tokens.max).toBe(9000)
+    expect(older?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(66.66666666666666)
+    expect(older?.bars.find((bar) => bar.series === 'output')?.heightPercent).toBe(33.33333333333333)
+    expect(newer?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(22.22222222222222)
 
-    // A reported zero keeps its zero-height slice.
-    const reasoning = older?.bars.find((bar) => bar.series === 'reasoning')
-    expect(reasoning?.value).toBe(0)
-    expect(reasoning?.heightPercent).toBe(0)
-
-    // Every slice is scaled to the stack's own maximum, the largest total.
-    expect(chart.max).toBe(3200)
-    expect(newer?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(93.75)
-    expect(older?.bars.find((bar) => bar.series === 'output')?.heightPercent).toBe(15.625)
+    const cache = usageChart(days, 'cache')
+    expect(cache.columns[0]?.bars.map((bar) => bar.series)).toEqual(['cacheRead', 'cacheWrite'])
+    expect(cache.columns[1]?.bars.map((bar) => bar.series)).toEqual(['cacheRead'])
+    expect(cache.max).toBe(1_500_000)
+    expect(cache.columns[0]?.bars.map((bar) => bar.value)).toEqual([1_200_000, 300_000])
+    expect(cache.columns[0]?.bars.map((bar) => bar.heightPercent)).toEqual([80, 20])
   })
 
   it('ticks each chart at half and max of its own scale', () => {
@@ -485,46 +521,43 @@ describe('the usage face over one report', () => {
         label: '2026-10-30',
         records: 4,
         cost: 2,
-        tokens: { input: 3000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
-      }),
-      row({
-        id: '2026-10-29',
-        label: '2026-10-29',
-        records: 2,
-        cost: 1,
-        tokens: { input: 1000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+        tokens: { input: 3000, output: 1000, reasoning: 500, cacheRead: 8000, cacheWrite: 2000 },
       }),
     ]
 
     const tokenChart = usageChart(days, 'tokens')
-    expect(tokenChart.max).toBe(3000)
-    expect(tokenChart.ticks.map((tick) => tick.label)).toEqual(['1,500', '3,000'])
+    expect(tokenChart.max).toBe(4000)
+    expect(tokenChart.ticks.map((tick) => tick.label)).toEqual(['2,000', '4,000'])
     expect(tokenChart.ticks.map((tick) => tick.heightPercent)).toEqual([50, 100])
 
-    const recordChart = usageChart(days, 'records')
-    expect(recordChart.max).toBe(4)
-    expect(recordChart.ticks.map((tick) => tick.label)).toEqual(['2', '4'])
+    const cacheChart = usageChart(days, 'cache')
+    expect(cacheChart.max).toBe(10_000)
+    expect(cacheChart.ticks.map((tick) => tick.label)).toEqual(['5,000', '10,000'])
+
+    const totalChart = usageChart(days, 'total')
+    expect(totalChart.max).toBe(14_500)
+    expect(totalChart.ticks.map((tick) => tick.label)).toEqual(['7,250', '14,500'])
 
     const costChart = usageChart(days, 'cost')
     expect(costChart.max).toBe(2)
     expect(costChart.ticks.map((tick) => tick.label)).toEqual(['$1.00', '$2.00'])
 
     // A chart whose days report nothing on its scale draws no tick.
-    const empty = usageChart(
-      [
-        row({
-          id: '2026-10-28',
-          label: '2026-10-28',
-          reported: 0,
-          cost: 0,
-          records: 0,
-          tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
-        }),
-      ],
-      'cost',
-    )
-    expect(empty.max).toBe(0)
-    expect(empty.ticks).toEqual([])
+    const emptyDays = [
+      row({
+        id: '2026-10-28',
+        label: '2026-10-28',
+        reported: 0,
+        cost: 0,
+        records: 0,
+        tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
+      }),
+    ]
+    for (const kind of ['tokens', 'cache', 'total', 'cost'] as const) {
+      const empty = usageChart(emptyDays, kind)
+      expect(empty.max).toBe(0)
+      expect(empty.ticks).toEqual([])
+    }
   })
 
   it('all-time days bucket into Monday-started weeks, labeled by the week first day', () => {
@@ -564,19 +597,18 @@ describe('the usage face over one report', () => {
     ])
   })
 
-  it('reads each picker series from the day row, absent never zero', () => {
+  it('reads each charted series from the day row, absent never zero', () => {
     const entry = row({
       cost: 1.5,
       tokens: { input: 3000, output: null, reasoning: 100, cacheRead: 200, cacheWrite: null },
     })
+    // Total tokens still sums every reported piece, reasoning included.
     expect(totalTokens(entry)).toBe(3300)
     expect(seriesValue(entry, 'totalTokens')).toBe(3300)
     expect(seriesValue(entry, 'input')).toBe(3000)
     expect(seriesValue(entry, 'output')).toBeNull()
     expect(seriesValue(entry, 'cacheRead')).toBe(200)
     expect(seriesValue(entry, 'cacheWrite')).toBeNull()
-    expect(seriesValue(entry, 'reasoning')).toBe(100)
-    expect(seriesValue(entry, 'records')).toBe(1)
     expect(seriesValue(entry, 'cost')).toBe(1.5)
   })
 
@@ -589,27 +621,55 @@ describe('the usage face over one report', () => {
     expect(seriesValue(entry, 'totalTokens')).toBeNull()
   })
 
-  it('draws each unit against its own scale', () => {
+  it('draws each chart against its own scale', () => {
     const days = [
-      row({ id: '2026-10-31', label: '2026-10-31', cost: 2, records: 10, tokens: { input: 6000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } }),
-      row({ id: '2026-10-30', label: '2026-10-30', cost: 1, records: 5, tokens: { input: 3000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } }),
+      row({
+        id: '2026-10-31',
+        label: '2026-10-31',
+        cost: 2,
+        tokens: { input: 6000, output: 0, reasoning: 0, cacheRead: 900_000, cacheWrite: 0 },
+      }),
+      row({
+        id: '2026-10-30',
+        label: '2026-10-30',
+        cost: 1,
+        tokens: { input: 3000, output: 0, reasoning: 0, cacheRead: 300_000, cacheWrite: 0 },
+      }),
     ]
     const tokenChart = usageChart(days, 'tokens')
     expect(tokenChart.max).toBe(6000)
     expect(tokenChart.columns.map((column) => column.bars[0]?.heightPercent)).toEqual([50, 100])
-    const recordChart = usageChart(days, 'records')
-    expect(recordChart.max).toBe(10)
-    expect(recordChart.columns.map((column) => column.bars[0]?.heightPercent)).toEqual([50, 100])
+    const cacheChart = usageChart(days, 'cache')
+    expect(cacheChart.max).toBe(900_000)
+    expect(cacheChart.columns[0]?.bars[0]?.heightPercent).toBeCloseTo(100 / 3)
+    expect(cacheChart.columns[1]?.bars[0]?.heightPercent).toBe(100)
+    const totalChart = usageChart(days, 'total')
+    expect(totalChart.max).toBe(906_000)
+    expect(totalChart.columns[0]?.bars[0]?.heightPercent).toBeCloseTo((303_000 / 906_000) * 100)
+    expect(totalChart.columns[1]?.bars[0]?.heightPercent).toBe(100)
     const costChart = usageChart(days, 'cost')
     expect(costChart.max).toBe(2)
     expect(costChart.columns.map((column) => column.bars[0]?.heightPercent)).toEqual([50, 100])
   })
 
-  it('keeps zero and absent token pieces in their slots', () => {
+  it('keeps zero and absent pieces in their slots', () => {
     const days = [
-      row({ id: '2026-10-31', label: '2026-10-31', tokens: { input: 2000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } }),
-      row({ id: '2026-10-30', label: '2026-10-30', reported: 0, tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null } }),
-      row({ id: '2026-10-29', label: '2026-10-29', tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } }),
+      row({
+        id: '2026-10-31',
+        label: '2026-10-31',
+        tokens: { input: 2000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      }),
+      row({
+        id: '2026-10-30',
+        label: '2026-10-30',
+        reported: 0,
+        tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
+      }),
+      row({
+        id: '2026-10-29',
+        label: '2026-10-29',
+        tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      }),
     ]
     const chart = usageChart(days, 'tokens')
     expect(chart.columns.map((column) => column.label)).toEqual([

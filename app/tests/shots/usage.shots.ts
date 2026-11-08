@@ -6,9 +6,9 @@ import { computed, token } from '../../shots/tokens'
 
 /**
  * The Usage face a human reads: the windowed spend the records reported, the
- * token-first day graph above the picker, the arithmetic the ticket rows carry,
+ * four per-scale charts above the picker, the arithmetic the ticket rows carry,
  * and one ticket row rolled down to the records behind it. Every figure is the
- * report's own over the fixture home, read through All time so the frozen days
+ * report's own over the fixture home, read through All time so the frozen weeks
  * stay in view whatever today is.
  */
 test('the usage face, with a ticket row rolled down', async ({ app, window }) => {
@@ -34,28 +34,32 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
   // default seven-day window still reads its own figures here.
   await expect(window.locator('.usage__row').first()).toBeVisible()
 
-  // Three charts, one per unit, all always visible in one row, each with its
-  // own quiet heading, its own scale and a swatched legend.
+  // Four charts, one per scale, all always visible, each with its own quiet
+  // heading, its own scale and a swatched legend.
   const charts = window.locator('.usage__chart')
-  await expect(charts).toHaveCount(3)
-  await expect(charts.locator('.usage__chart-title')).toHaveText(['Tokens', 'Records', 'Cost'])
-  // At the shell's 760 px floor the three fit one row without truncation.
+  await expect(charts).toHaveCount(4)
+  await expect(charts.locator('.usage__chart-title')).toHaveText([
+    'Tokens',
+    'Cache',
+    'Total tokens',
+    'Cost',
+  ])
   const chartBoxes = await charts.evaluateAll((sections) =>
     sections.map((section) => section.getBoundingClientRect().toJSON()),
   )
-  expect(chartBoxes).toHaveLength(3)
-  expect(chartBoxes.every((box) => box.width > 0)).toBe(true)
-  expect(new Set(chartBoxes.map((box) => Math.round(box.y))).size).toBe(1)
+  expect(chartBoxes).toHaveLength(4)
+  expect(chartBoxes.every((box) => box.width > 0 && box.height > 0)).toBe(true)
   const tokenChart = charts.nth(0)
-  const recordChart = charts.nth(1)
-  const costChart = charts.nth(2)
+  const cacheChart = charts.nth(1)
+  const totalChart = charts.nth(2)
+  const costChart = charts.nth(3)
 
   // All time buckets the day rows into Monday-started weeks: every column is
   // labeled with the week's first day, a Monday's ISO date, and the Day table
   // below still lists the report's day rows.
   const dayRowCount = await window.locator('.usage__row').count()
   expect(dayRowCount).toBeGreaterThan(0)
-  for (const chart of [tokenChart, recordChart, costChart]) {
+  for (const chart of [tokenChart, cacheChart, totalChart, costChart]) {
     await expect(chart).toBeVisible()
     // The axis ticks replace the retired prose scales line.
     await expect(chart.locator('.usage__tick')).toHaveCount(2)
@@ -68,40 +72,43 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
     }
   }
 
-  // The tokens chart opens stacked: five piece swatches, total tokens off.
-  const series = tokenChart.locator('.usage__series-option')
-  await expect(series).toHaveText([
-    'Total tokens',
-    'Input',
-    'Output',
-    'Cache read',
-    'Cache write',
-    'Reasoning',
-  ])
+  // Tokens opens on input and output stacked; Cache on cache read and write.
+  const tokenSeries = tokenChart.locator('.usage__series-option')
+  await expect(tokenSeries).toHaveText(['Input', 'Output'])
   await expect(tokenChart.locator('.usage__series-option[aria-pressed="true"]')).toHaveText([
     'Input',
     'Output',
+  ])
+  await expect(tokenChart.locator('.usage__swatch')).toHaveCount(2)
+  const cacheSeries = cacheChart.locator('.usage__series-option')
+  await expect(cacheSeries).toHaveText(['Cache read', 'Cache write'])
+  await expect(cacheChart.locator('.usage__series-option[aria-pressed="true"]')).toHaveText([
     'Cache read',
     'Cache write',
-    'Reasoning',
   ])
-  await expect(tokenChart.locator('.usage__swatch')).toHaveCount(5)
-  // Records and Cost are single-series charts: one plain swatch each.
-  await expect(recordChart.locator('.usage__swatch')).toHaveCount(1)
+  await expect(cacheChart.locator('.usage__swatch')).toHaveCount(2)
+  // Total tokens and Cost are single-series charts: one plain swatch each.
+  await expect(totalChart.locator('.usage__swatch')).toHaveCount(1)
+  await expect(totalChart.locator('.usage__legend-items')).toHaveText('Total tokens')
   await expect(costChart.locator('.usage__swatch')).toHaveCount(1)
+  await expect(costChart.locator('.usage__legend-items')).toHaveText('Cost')
 
-  // Each drawn slice names its column, its piece and its value.
+  // Each drawn slice names its column, its piece and its value. The records
+  // chart and the reasoning slice are gone.
   for (const name of await tokenChart.getByRole('img').evaluateAll((bars) =>
     bars.map((bar) => bar.getAttribute('aria-label')),
   )) {
-    expect(name).toMatch(
-      /^\d{4}-\d{2}-\d{2} (?:Input|Output|Cache read|Cache write|Reasoning): [\d,]+$/,
-    )
+    expect(name).toMatch(/^\d{4}-\d{2}-\d{2} (?:Input|Output): [\d,]+$/)
   }
-  for (const name of await recordChart.getByRole('img').evaluateAll((bars) =>
+  for (const name of await cacheChart.getByRole('img').evaluateAll((bars) =>
     bars.map((bar) => bar.getAttribute('aria-label')),
   )) {
-    expect(name).toMatch(/^\d{4}-\d{2}-\d{2} Records: [\d,]+$/)
+    expect(name).toMatch(/^\d{4}-\d{2}-\d{2} (?:Cache read|Cache write): [\d,]+$/)
+  }
+  for (const name of await totalChart.getByRole('img').evaluateAll((bars) =>
+    bars.map((bar) => bar.getAttribute('aria-label')),
+  )) {
+    expect(name).toMatch(/^\d{4}-\d{2}-\d{2} Total tokens: [\d,]+$/)
   }
   for (const name of await costChart.getByRole('img').evaluateAll((bars) =>
     bars.map((bar) => bar.getAttribute('aria-label')),
@@ -109,31 +116,29 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
     expect(name).toMatch(/^\d{4}-\d{2}-\d{2} Cost: \$\d+\.\d{2}$/)
   }
 
-  // Tick text is the scale statement in each unit: tokens and record counts
-  // grouped, dollars with two decimals.
-  for (const tick of await tokenChart.locator('.usage__tick').allTextContents()) {
-    expect(tick).toMatch(/^[\d,]+$/)
-  }
-  for (const tick of await recordChart.locator('.usage__tick').allTextContents()) {
-    expect(tick).toMatch(/^[\d,]+$/)
+  // Tick text is the scale statement: tokens grouped, dollars with two decimals.
+  for (const chart of [tokenChart, cacheChart, totalChart]) {
+    for (const tick of await chart.locator('.usage__tick').allTextContents()) {
+      expect(tick).toMatch(/^[\d,]+$/)
+    }
   }
   for (const tick of await costChart.locator('.usage__tick').allTextContents()) {
     expect(tick).toMatch(/^\$\d+\.\d{2}$/)
   }
 
-  // The legend round-trip: total tokens swaps the stack for one total bar and
-  // its swatch, then off restores the stack.
-  const totalOption = series.filter({ hasText: 'Total tokens' })
-  await totalOption.click()
-  await expect(totalOption).toHaveAttribute('aria-pressed', 'true')
-  await expect(tokenChart.locator('.usage__swatch')).toHaveCount(6)
+  // The legend round-trip: turning a piece off drops its slice and its swatch,
+  // and turning it back on restores both.
+  const inputOption = tokenSeries.filter({ hasText: 'Input' })
+  await inputOption.click()
+  await expect(inputOption).toHaveAttribute('aria-pressed', 'false')
+  await expect(tokenChart.locator('.usage__swatch')).toHaveCount(1)
   await expect(tokenChart.getByRole('img').first()).toHaveAttribute(
     'aria-label',
-    /^\d{4}-\d{2}-\d{2} Total tokens: [\d,]+$/,
+    /^\d{4}-\d{2}-\d{2} Output: [\d,]+$/,
   )
-  await totalOption.click()
-  await expect(totalOption).toHaveAttribute('aria-pressed', 'false')
-  await expect(tokenChart.locator('.usage__swatch')).toHaveCount(5)
+  await inputOption.click()
+  await expect(inputOption).toHaveAttribute('aria-pressed', 'true')
+  await expect(tokenChart.locator('.usage__swatch')).toHaveCount(2)
   await expect(tokenChart.getByRole('img').first()).toHaveAttribute(
     'aria-label',
     /^\d{4}-\d{2}-\d{2} Input: [\d,]+$/,
@@ -145,7 +150,6 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
   if (chartBox !== null && pickerBox !== null) {
     expect(chartBox.y + chartBox.height).toBeLessThanOrEqual(pickerBox.y)
   }
-  expect(await computed(window, '.usage__bar--records', 'background-color')).toBe(token('ink-dim'))
   expect(await computed(window, '.usage__bar-label', 'color')).toBe(token('ink-dim'))
   expect(await computed(window, '.usage__chart-title', 'color')).toBe(token('ink-dim'))
 

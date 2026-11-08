@@ -176,31 +176,8 @@ export function money(cost: number): string {
   return `$${cost.toFixed(2)}`
 }
 
-/** The graph's series: the day's token pieces, its record count and its cost. */
-export type UsageSeries =
-  | 'totalTokens'
-  | 'input'
-  | 'output'
-  | 'cacheRead'
-  | 'cacheWrite'
-  | 'reasoning'
-  | 'records'
-  | 'cost'
-
-/**
- * The graph's series order: the token pieces stack in this order, total tokens
- * leads the token picker, and the count and dollars each close their own chart.
- */
-export const GRAPH_SERIES: readonly UsageSeries[] = [
-  'totalTokens',
-  'input',
-  'output',
-  'cacheRead',
-  'cacheWrite',
-  'reasoning',
-  'records',
-  'cost',
-]
+/** A chartable series: a token piece, the token total, or the spend. */
+export type UsageSeries = 'totalTokens' | 'input' | 'output' | 'cacheRead' | 'cacheWrite' | 'cost'
 
 const SERIES_LABELS: Record<UsageSeries, string> = {
   totalTokens: 'Total tokens',
@@ -208,8 +185,6 @@ const SERIES_LABELS: Record<UsageSeries, string> = {
   output: 'Output',
   cacheRead: 'Cache read',
   cacheWrite: 'Cache write',
-  reasoning: 'Reasoning',
-  records: 'Records',
   cost: 'Cost',
 }
 
@@ -217,20 +192,31 @@ export function seriesLabel(series: UsageSeries): string {
   return SERIES_LABELS[series]
 }
 
-function isTokenPiece(series: UsageSeries): boolean {
-  return series !== 'totalTokens' && series !== 'records' && series !== 'cost'
+/**
+ * The four charts, split by scale: input and output share one order of
+ * magnitude, cache read and write another, the token total sums both, and the
+ * cost is its own unit. The records chart and the reasoning slice are gone.
+ */
+export type ChartKind = 'tokens' | 'cache' | 'total' | 'cost'
+
+export const CHART_KINDS: readonly ChartKind[] = ['tokens', 'cache', 'total', 'cost']
+
+export const CHART_TITLES: Record<ChartKind, string> = {
+  tokens: 'Tokens',
+  cache: 'Cache',
+  total: 'Total tokens',
+  cost: 'Cost',
 }
 
-/** The five token pieces in GRAPH_SERIES order: what the tokens chart stacks. */
-export const TOKEN_PIECES: readonly UsageSeries[] = GRAPH_SERIES.filter(isTokenPiece)
+/** The tokens chart stacks input and output, in this order. */
+export const TOKEN_PIECES: readonly UsageSeries[] = ['input', 'output']
 
-/** The tokens chart's six picker series: the five pieces plus the opt-in total. */
-export const TOKEN_CHART_SERIES: readonly UsageSeries[] = GRAPH_SERIES.filter(
-  (series) => series !== 'records' && series !== 'cost',
-)
+/** The cache chart stacks cache read and cache write, in this order. */
+export const CACHE_PIECES: readonly UsageSeries[] = ['cacheRead', 'cacheWrite']
 
-/** The tokens chart opens on the stack; totalTokens is an opt-in verification. */
+/** Each stacked chart opens on all its pieces; a picker can turn one off. */
 export const DEFAULT_TOKEN_SERIES: readonly UsageSeries[] = [...TOKEN_PIECES]
+export const DEFAULT_CACHE_SERIES: readonly UsageSeries[] = [...CACHE_PIECES]
 
 /**
  * The day's total tokens: the sum of the reported pieces. Absent when the day
@@ -261,17 +247,10 @@ export function seriesValue(row: UsageRowView, series: UsageSeries): number | nu
       return row.tokens.cacheRead
     case 'cacheWrite':
       return row.tokens.cacheWrite
-    case 'reasoning':
-      return row.tokens.reasoning
-    case 'records':
-      return row.records
     case 'cost':
       return row.cost
   }
 }
-
-/** The chart's unit: one chart each for tokens, a count and dollars. */
-export type ChartUnit = 'tokens' | 'records' | 'cost'
 
 /** One axis tick: the gridline at Half or Max of the chart's own scale. */
 export type ChartTick = {
@@ -300,9 +279,9 @@ export type ChartColumn = {
   bars: ChartBar[]
 }
 
-/** One chart: three always-visible charts, each with its own scale and ticks. */
+/** One chart: four always-visible charts, each with its own scale and ticks. */
 export type UsageChart = {
-  unit: ChartUnit
+  kind: ChartKind
   /** True when the columns are Monday-started weeks rather than days. */
   weekly: boolean
   max: number
@@ -311,7 +290,7 @@ export type UsageChart = {
 }
 
 export type UsageChartOptions = {
-  /** The token chart's drawn series; the single-series charts ignore it. */
+  /** A stacked chart's drawn pieces; the single-series charts ignore it. */
   series?: readonly UsageSeries[]
   /** Bucket the day rows into Monday-started weeks, All time only. */
   weekly?: boolean
@@ -366,16 +345,16 @@ function chartBuckets(days: UsageRowView[], weekly: boolean): ChartBucket[] {
  * The chart's ticks: Half and Max of its own maximum, formatted in its unit.
  * A zero maximum draws no tick rather than dividing by zero.
  */
-function chartTicks(max: number, unit: ChartUnit): ChartTick[] {
+function chartTicks(max: number, kind: ChartKind): ChartTick[] {
   if (max <= 0) return []
   return [
-    { value: max / 2, label: tickLabel(max / 2, unit), heightPercent: 50 },
-    { value: max, label: tickLabel(max, unit), heightPercent: 100 },
+    { value: max / 2, label: tickLabel(max / 2, kind), heightPercent: 50 },
+    { value: max, label: tickLabel(max, kind), heightPercent: 100 },
   ]
 }
 
-function tickLabel(value: number, unit: ChartUnit): string {
-  return unit === 'cost' ? money(value) : tokens(value)
+function tickLabel(value: number, kind: ChartKind): string {
+  return kind === 'cost' ? money(value) : tokens(value)
 }
 
 function percent(value: number, max: number): number {
@@ -393,63 +372,79 @@ function sumSeries(rows: UsageRowView[], series: UsageSeries): number | null {
   return total
 }
 
-/** The column's value on the chart's unit: the stack sums to the token total. */
-function bucketAmount(rows: UsageRowView[], unit: ChartUnit): number {
-  if (unit === 'tokens') return sumSeries(rows, 'totalTokens') ?? 0
-  if (unit === 'records') return rows.reduce((sum, row) => sum + row.records, 0)
-  return rows.reduce((sum, row) => sum + row.cost, 0)
+/**
+ * The column's value on the chart's own scale: the stacked chart's pieces
+ * combined, the token total, or the spend. The pieces are read from the chart's
+ * full set, never from the picker's state, so turning a slice off never
+ * rescales the axis.
+ */
+function scaleAmount(rows: UsageRowView[], kind: ChartKind): number {
+  switch (kind) {
+    case 'tokens':
+      return (sumSeries(rows, 'input') ?? 0) + (sumSeries(rows, 'output') ?? 0)
+    case 'cache':
+      return (sumSeries(rows, 'cacheRead') ?? 0) + (sumSeries(rows, 'cacheWrite') ?? 0)
+    case 'total':
+      return sumSeries(rows, 'totalTokens') ?? 0
+    case 'cost':
+      return rows.reduce((sum, row) => sum + row.cost, 0)
+  }
 }
 
 /**
- * The column's drawable slices. The tokens chart stacks the active pieces, or
- * draws one total bar when totalTokens is picked; records and cost are single
- * series. A piece no row reported draws no slice, never a zero slice.
+ * The column's drawable slices: a stacked chart's active pieces, or the one bar
+ * of the totals and cost charts. A piece no row reported draws no slice, never
+ * a zero slice.
  */
 function chartBars(
   rows: UsageRowView[],
-  unit: ChartUnit,
+  kind: ChartKind,
   series: readonly UsageSeries[],
 ): Array<{ series: UsageSeries; value: number }> {
-  if (unit === 'tokens') {
-    // GRAPH_SERIES order holds however the picker was toggled.
-    const names = series.includes('totalTokens')
-      ? ['totalTokens' as const]
-      : GRAPH_SERIES.filter((name) => isTokenPiece(name) && series.includes(name))
-    return names.flatMap((name) => {
+  if (kind === 'tokens' || kind === 'cache') {
+    // The chart's own piece order holds however the picker was toggled.
+    const pieces = kind === 'tokens' ? TOKEN_PIECES : CACHE_PIECES
+    return pieces.flatMap((name) => {
+      if (!series.includes(name)) return []
       const value = sumSeries(rows, name)
       return value === null ? [] : [{ series: name, value }]
     })
   }
-  const name: UsageSeries = unit === 'records' ? 'records' : 'cost'
-  return [{ series: name, value: bucketAmount(rows, unit) }]
+  const name: UsageSeries = kind === 'total' ? 'totalTokens' : 'cost'
+  return [{ series: name, value: scaleAmount(rows, kind) }]
 }
 
 /**
- * One chart over the day table: the three units draw where they are read, each
- * against its own maximum. The token scale is the largest total, so toggling a
- * piece never rescales the stack and the opt-in total bar shares it.
+ * One chart over the day table: the four charts draw where they are read, each
+ * against its own maximum, so the token pieces and the cache pieces live on
+ * scales an order of magnitude apart and neither borrows the other's.
  */
 export function usageChart(
   days: UsageRowView[],
-  unit: ChartUnit,
+  kind: ChartKind,
   options: UsageChartOptions = {},
 ): UsageChart {
   const weekly = options.weekly ?? false
-  const series = unit === 'tokens' ? (options.series ?? DEFAULT_TOKEN_SERIES) : []
+  const series =
+    kind === 'tokens'
+      ? (options.series ?? DEFAULT_TOKEN_SERIES)
+      : kind === 'cache'
+        ? (options.series ?? DEFAULT_CACHE_SERIES)
+        : []
   const buckets = chartBuckets(days, weekly)
-  const amounts = buckets.map((bucket) => bucketAmount(bucket.rows, unit))
+  const amounts = buckets.map((bucket) => scaleAmount(bucket.rows, kind))
   const max = amounts.reduce((top, amount) => Math.max(top, amount), 0)
-  const ticks = chartTicks(max, unit)
+  const ticks = chartTicks(max, kind)
   const columns = buckets.map((bucket, index) => ({
     label: bucket.label,
     rows: bucket.rows,
     amount: amounts[index] ?? 0,
-    bars: chartBars(bucket.rows, unit, series).map((bar) => ({
+    bars: chartBars(bucket.rows, kind, series).map((bar) => ({
       ...bar,
       heightPercent: percent(bar.value, max),
     })),
   }))
-  return { unit, weekly, max, ticks, columns }
+  return { kind, weekly, max, ticks, columns }
 }
 
 /** The sortable table columns, in header order: label plus every numeric the face draws. */

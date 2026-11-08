@@ -10,9 +10,10 @@ the real `~/.tandem`, which the shipped Swift app owns until cutover
 
 - `bikeshed/` is the vault: `Index.md`, `projects/<project>/<project>.md`, and
   one `daily/` note.
-- `tandem.db` is the store: four session records over two days, two models and
-  two agents, the two board tickets they carry, and one record written before
-  the usage fields existed. It is generated, never hand-edited:
+- `tandem.db` is the store: five weeks of session records over seventeen days,
+  four models and four agents, the two board tickets they carry, ticketless
+  records and one written before the usage fields existed. It is generated,
+  never hand-edited:
   `Scripts/make-fixture-home.sh` writes it from `Fixtures/port/tandem.seed.json`
   (every id and timestamp in the seed, no clock), and
   `rust/core/tests/fixture_db.rs` fails when the committed file is not what the

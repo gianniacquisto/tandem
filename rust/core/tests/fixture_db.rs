@@ -183,7 +183,11 @@ fn reading_the_fixture_home_leaves_it_untouched() {
     let sessions = Sessions::new(&store)
         .list(None, None)
         .expect("the fixture home's records read");
-    assert_eq!(sessions.len(), 4, "the frozen set is four records");
+    assert_eq!(
+        sessions.len(),
+        24,
+        "the frozen set is five weeks of records, twenty-four in all"
+    );
 
     for sidecar in [
         "tandem.db-wal",

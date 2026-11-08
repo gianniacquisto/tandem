@@ -146,18 +146,18 @@ body {
   font-size: 11.5px;
 }
 
-/* The graph: three small charts side by side, one per unit, each with its own
- * gridline ticks and a swatched legend. Bars reuse the series tokens; the
- * axis, headings and day labels read the face's quiet text token. */
+/* The graph: four small charts, one per scale (tokens, cache, total tokens and
+ * cost), each with its own gridline ticks and a swatched legend. Bars reuse the
+ * series tokens; the axis, headings and day labels read the face's quiet text
+ * token. */
 
 .usage__charts {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: var(--space-lane);
 }
 
 .usage__chart {
-  flex: 1 1 200px;
   min-width: 0;
 }
 
@@ -279,14 +279,6 @@ body {
   background: color-mix(in srgb, var(--hill) 72%, transparent);
 }
 
-.usage__bar--reasoning {
-  background: color-mix(in srgb, var(--sky) 72%, transparent);
-}
-
-.usage__bar--records {
-  background: var(--ink-dim);
-}
-
 .usage__bar--cost {
   background: var(--ember-deep);
 }
@@ -347,14 +339,6 @@ body {
 
 .usage__swatch--cacheWrite {
   background: var(--hill);
-}
-
-.usage__swatch--reasoning {
-  background: var(--sky);
-}
-
-.usage__swatch--records {
-  background: var(--ink-dim);
 }
 
 .usage__swatch--cost {
@@ -433,7 +417,7 @@ body {
   max-width: 100%;
   overflow: hidden;
   color: var(--ink-dim);
-  font-size: 10.5px;
+  font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -6,6 +6,9 @@ import type { UsageSessionView } from '../wire/UsageSessionView'
 import { Face } from './Face'
 import {
   ABSENT,
+  CACHE_PIECES,
+  CHART_TITLES,
+  DEFAULT_CACHE_SERIES,
   DEFAULT_TOKEN_SERIES,
   DEFAULT_WINDOW,
   DIMENSIONS,
@@ -29,7 +32,7 @@ import {
   tokenLine,
   tokens,
   toggleSort,
-  TOKEN_CHART_SERIES,
+  TOKEN_PIECES,
   usageChart,
   windowLabel,
   type UsageChart,
@@ -69,6 +72,7 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
   const [mode, setMode] = useState<UsageMode>('total')
   const [selected, setSelected] = useState<string | null>(null)
   const [tokenSeries, setTokenSeries] = useState<UsageSeries[]>([...DEFAULT_TOKEN_SERIES])
+  const [cacheSeries, setCacheSeries] = useState<UsageSeries[]>([...DEFAULT_CACHE_SERIES])
   const [sorts, setSorts] = useState<Record<'model' | 'agent' | 'ticket', UsageSort>>(() => ({
     model: defaultSort('model') ?? { column: 'label', direction: 'asc' },
     agent: defaultSort('agent') ?? { column: 'label', direction: 'asc' },
@@ -89,7 +93,8 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
   // other windows draw one column per day row.
   const weekly = activeWindow === 'all-time'
   const tokenChart = usageChart(report.day, 'tokens', { series: tokenSeries, weekly })
-  const recordChart = usageChart(report.day, 'records', { weekly })
+  const cacheChart = usageChart(report.day, 'cache', { series: cacheSeries, weekly })
+  const totalChart = usageChart(report.day, 'total', { weekly })
   const costChart = usageChart(report.day, 'cost', { weekly })
   const open = selectedRow(report, dimension, selected)
   const sort = dimension === 'day' ? null : sorts[dimension]
@@ -110,6 +115,12 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
 
   function toggleTokenSeries(name: UsageSeries) {
     setTokenSeries((current) =>
+      current.includes(name) ? current.filter((entry) => entry !== name) : [...current, name],
+    )
+  }
+
+  function toggleCacheSeries(name: UsageSeries) {
+    setCacheSeries((current) =>
       current.includes(name) ? current.filter((entry) => entry !== name) : [...current, name],
     )
   }
@@ -158,56 +169,38 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
               <div className="usage__graph">
                 <div className="usage__charts">
                   <Chart
-                    title="Tokens"
+                    title={CHART_TITLES.tokens}
                     chart={tokenChart}
                     legend={
-                      <div className="usage__legend-items" role="group" aria-label="Token series">
-                        {TOKEN_CHART_SERIES.map((candidate) => {
-                          const on = tokenSeries.includes(candidate)
-                          return (
-                            <button
-                              key={candidate}
-                              type="button"
-                              className="usage__series-option"
-                              aria-pressed={on}
-                              onClick={() => toggleTokenSeries(candidate)}
-                            >
-                              {on ? (
-                                <span
-                                  className={`usage__swatch usage__swatch--${candidate}`}
-                                  aria-hidden="true"
-                                />
-                              ) : null}
-                              {seriesLabel(candidate)}
-                            </button>
-                          )
-                        })}
-                      </div>
+                      <SeriesPicker
+                        label="Token series"
+                        pieces={TOKEN_PIECES}
+                        selected={tokenSeries}
+                        onToggle={toggleTokenSeries}
+                      />
                     }
                   />
                   <Chart
-                    title="Records"
-                    chart={recordChart}
+                    title={CHART_TITLES.cache}
+                    chart={cacheChart}
                     legend={
-                      <div className="usage__legend-items">
-                        <span className="usage__legend-item">
-                          <span className="usage__swatch usage__swatch--records" aria-hidden="true" />
-                          Records
-                        </span>
-                      </div>
+                      <SeriesPicker
+                        label="Cache series"
+                        pieces={CACHE_PIECES}
+                        selected={cacheSeries}
+                        onToggle={toggleCacheSeries}
+                      />
                     }
                   />
                   <Chart
-                    title="Cost"
+                    title={CHART_TITLES.total}
+                    chart={totalChart}
+                    legend={<SingleLegend series="totalTokens" />}
+                  />
+                  <Chart
+                    title={CHART_TITLES.cost}
                     chart={costChart}
-                    legend={
-                      <div className="usage__legend-items">
-                        <span className="usage__legend-item">
-                          <span className="usage__swatch usage__swatch--cost" aria-hidden="true" />
-                          Cost
-                        </span>
-                      </div>
-                    }
+                    legend={<SingleLegend series="cost" />}
                   />
                 </div>
               </div>
@@ -340,6 +333,59 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
         )}
       </div>
     </Face>
+  )
+}
+
+/**
+ * The stacked charts' legend and toggle in one: each piece is a button carrying
+ * its swatch, so turning a piece off drops its slice and its swatch together.
+ */
+function SeriesPicker({
+  label,
+  pieces,
+  selected,
+  onToggle,
+}: {
+  label: string
+  pieces: readonly UsageSeries[]
+  selected: readonly UsageSeries[]
+  onToggle: (series: UsageSeries) => void
+}) {
+  return (
+    <div className="usage__legend-items" role="group" aria-label={label}>
+      {pieces.map((candidate) => {
+        const on = selected.includes(candidate)
+        return (
+          <button
+            key={candidate}
+            type="button"
+            className="usage__series-option"
+            aria-pressed={on}
+            onClick={() => onToggle(candidate)}
+          >
+            {on ? (
+              <span
+                className={`usage__swatch usage__swatch--${candidate}`}
+                aria-hidden="true"
+              />
+            ) : null}
+            {seriesLabel(candidate)}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** The single-series charts' legend: one plain swatch, never a toggle. */
+function SingleLegend({ series }: { series: UsageSeries }) {
+  return (
+    <div className="usage__legend-items">
+      <span className="usage__legend-item">
+        <span className={`usage__swatch usage__swatch--${series}`} aria-hidden="true" />
+        {seriesLabel(series)}
+      </span>
+    </div>
   )
 }
 
