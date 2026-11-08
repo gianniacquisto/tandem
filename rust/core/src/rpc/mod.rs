@@ -45,6 +45,7 @@ use crate::domain::sprint::{SprintMode, SprintStatus, Sprints};
 use crate::domain::usage::{
     Calendar, UsageTicket, UsageWindow, filter_sessions_by_window, usage_report,
 };
+use crate::domain::workflow::{WorkflowDraft, Workflows};
 use crate::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, Filter, Settings, Status, TicketQuery,
     resolve_assignee, resolve_origin,
@@ -57,7 +58,7 @@ use crate::wire::rpc::{
     NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, ProjectEntry,
     ProjectListReply, Reply, Request, Response, SessionDetailReply, SessionListReply, SessionReply,
     SessionTranscriptReply, SettingsReply, SetupReply, SprintListReply, SprintReply,
-    TicketListReply, TicketReply, UsageReportReply, WireError,
+    TicketListReply, TicketReply, UsageReportReply, WireError, WorkflowListReply, WorkflowReply,
 };
 use crate::wire::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
@@ -430,6 +431,11 @@ fn execute(
                 params.blocked,
             )
             .map_err(domain)?;
+            if params.status.is_some() {
+                for status in &query.statuses {
+                    board.validate_status(status).map_err(domain)?;
+                }
+            }
             let (tickets, revision) = board.list_snapshot(&query).map_err(domain)?;
             Ok(Reply::TicketList(TicketListReply {
                 revision,
@@ -446,7 +452,7 @@ fn execute(
         Method::TicketAdd(params) => {
             let status = match params.status.as_deref() {
                 Some(raw) => Status::parse(raw).map_err(domain)?,
-                None => Status::Backlog,
+                None => board.landing_status().map_err(domain)?,
             };
             let assignee = resolve_assignee(params.assignee.as_deref(), actor).map_err(domain)?;
             let origin = resolve_origin(params.origin.as_deref(), actor).map_err(domain)?;
@@ -471,7 +477,7 @@ fn execute(
         Method::TicketAddFromNote(params) => {
             let status = match params.status.as_deref() {
                 Some(raw) => Status::parse(raw).map_err(domain)?,
-                None => Status::Backlog,
+                None => board.landing_status().map_err(domain)?,
             };
             let assignee = resolve_assignee(params.assignee.as_deref(), actor).map_err(domain)?;
             let origin = resolve_origin(params.origin.as_deref(), actor).map_err(domain)?;
@@ -833,6 +839,65 @@ fn execute(
                         lanes: entry.lanes,
                     })
                     .collect(),
+            }))
+        }
+        Method::WorkflowList(_) => {
+            let workflows = Workflows::new(store).list().map_err(domain)?;
+            let active = Workflows::new(store).active().map_err(domain)?.id;
+            Ok(Reply::WorkflowList(WorkflowListReply {
+                revision: store.last_revision(),
+                workflows,
+                active,
+            }))
+        }
+        Method::WorkflowShow(params) => {
+            let workflows = Workflows::new(store);
+            let workflow = match params
+                .id
+                .as_deref()
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+            {
+                Some(id) => workflows.get(id).map_err(domain)?,
+                None => workflows.active().map_err(domain)?,
+            };
+            Ok(Reply::Workflow(WorkflowReply {
+                revision: store.last_revision(),
+                workflow,
+            }))
+        }
+        Method::WorkflowSet(params) => {
+            let draft = WorkflowDraft {
+                name: params.name.clone().unwrap_or_default(),
+                scope: params.scope.clone().unwrap_or_else(|| "home".to_string()),
+                stages: params.stages.clone(),
+            };
+            let workflow = Workflows::new(store)
+                .set(actor, params.id.as_deref(), draft)
+                .map_err(domain)?;
+            Ok(Reply::Workflow(WorkflowReply {
+                revision: store.last_revision(),
+                workflow,
+            }))
+        }
+        Method::WorkflowUse(params) => {
+            let workflow = Workflows::new(store)
+                .use_workflow(actor, params.id.as_deref().unwrap_or(""))
+                .map_err(domain)?;
+            Ok(Reply::Workflow(WorkflowReply {
+                revision: store.last_revision(),
+                workflow,
+            }))
+        }
+        Method::WorkflowDelete(params) => {
+            let workflows = Workflows::new(store)
+                .delete(actor, params.id.as_deref().unwrap_or(""))
+                .map_err(domain)?;
+            let active = Workflows::new(store).active().map_err(domain)?.id;
+            Ok(Reply::WorkflowList(WorkflowListReply {
+                revision: store.last_revision(),
+                workflows,
+                active,
             }))
         }
         Method::SprintList(params) => {

@@ -2,11 +2,13 @@ import { useState, type DragEvent } from 'react'
 
 import type { LaneRow, StatusCell } from '../shell/board'
 import type { TicketSummary } from '../wire/TicketSummary'
+import type { WorkflowStage } from '../wire/WorkflowStage'
 import { TicketRow } from './TicketRow'
 
 export type BoardCellProps = {
   lane: LaneRow
   cell: StatusCell
+  stages?: readonly WorkflowStage[] | null
   selected: string | null
   onSelect: (id: string) => void
   onToggle: (ticket: TicketSummary) => void
@@ -25,6 +27,7 @@ export type BoardCellProps = {
 export function BoardCell({
   lane,
   cell,
+  stages,
   selected,
   onSelect,
   onToggle,
@@ -64,6 +67,7 @@ export function BoardCell({
             key={ticket.id}
             ticket={ticket}
             layout="board"
+            stages={stages}
             selected={ticket.id === selected}
             onSelect={() => onSelect(ticket.id)}
             onToggle={() => onToggle(ticket)}

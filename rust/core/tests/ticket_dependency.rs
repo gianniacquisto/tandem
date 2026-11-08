@@ -75,7 +75,7 @@ fn block_writes_one_edge_and_it_survives_a_re_read() {
         result
             .blocked_by
             .iter()
-            .map(|edge| edge.status)
+            .map(|edge| edge.status.clone())
             .collect::<Vec<_>>(),
         [tandem_core::domain::Status::Backlog]
     );
@@ -294,7 +294,7 @@ fn completing_the_blocker_lifts_the_block_with_no_write() {
         dependent
             .blocked_by
             .iter()
-            .map(|edge| edge.status)
+            .map(|edge| edge.status.clone())
             .collect::<Vec<_>>(),
         [tandem_core::domain::Status::Done],
         "the edge stays as history"

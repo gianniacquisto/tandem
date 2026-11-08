@@ -29,12 +29,13 @@ use tandem_core::domain::session::{
     HarnessSession, HarnessTransport, SessionOutcome, SessionTokens, Sessions, parse_skills,
 };
 use tandem_core::domain::sprint::{SprintMode, Sprints};
+use tandem_core::domain::workflow::{WorkflowDraft, Workflows};
 use tandem_core::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Settings, Status, TicketQuery,
 };
 use tandem_core::setup::{self, Environment};
 use tandem_core::store::{self, Actor, Home, Store};
-use tandem_core::wire::rpc::SettingsReply;
+use tandem_core::wire::rpc::{SettingsReply, WorkflowListReply, WorkflowReply, WorkflowSetParams};
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
     NoteMoveView, NotePathView, NoteWriteView, ProjectList, SessionDetailView, SessionList,
@@ -99,6 +100,11 @@ enum Command {
     Sprint {
         #[command(subcommand)]
         command: Option<SprintCommand>,
+    },
+    /// The workflow: the stage set the board reads (TAN-328).
+    Workflow {
+        #[command(subcommand)]
+        command: Option<WorkflowCommand>,
     },
     /// The agent face: install, uninstall and inspect it (ADR 0034).
     Setup {
@@ -190,6 +196,35 @@ enum SprintCommand {
     Close(SprintCloseArgs),
     List(SprintListArgs),
     Show(SprintShowArgs),
+}
+
+#[derive(Subcommand)]
+enum WorkflowCommand {
+    List,
+    Show(WorkflowShowArgs),
+    Set(WorkflowSetArgs),
+    Use(WorkflowIdArgs),
+    Delete(WorkflowIdArgs),
+}
+
+#[derive(Args)]
+struct WorkflowShowArgs {
+    /// The workflow's UUID or its name; omitted reads the active one.
+    #[arg(long)]
+    id: Option<String>,
+}
+
+#[derive(Args)]
+struct WorkflowSetArgs {
+    /// The workflow to update; omitted creates one.
+    #[arg(long)]
+    id: Option<String>,
+}
+
+#[derive(Args)]
+struct WorkflowIdArgs {
+    #[arg(long)]
+    id: Option<String>,
 }
 
 #[derive(Args)]
@@ -711,6 +746,10 @@ fn help_text(cli: &Cli) -> &'static str {
             None => return usage::group("sprint").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
         },
+        Some(Command::Workflow { command }) => match command {
+            None => return usage::group("workflow").unwrap_or(usage::ROOT),
+            Some(command) => command.help(),
+        },
         Some(Command::Setup { command }) => match command {
             None => return usage::group("setup").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
@@ -824,6 +863,18 @@ impl SprintCommand {
     }
 }
 
+impl WorkflowCommand {
+    fn help(&self) -> &'static str {
+        match self {
+            Self::List => "workflow list",
+            Self::Show(_) => "workflow show",
+            Self::Set(_) => "workflow set",
+            Self::Use(_) => "workflow use",
+            Self::Delete(_) => "workflow delete",
+        }
+    }
+}
+
 // MARK: - Dispatch
 
 fn run(cli: &Cli) -> Result<(), Failure> {
@@ -842,6 +893,7 @@ fn run(cli: &Cli) -> Result<(), Failure> {
         Command::Note { command } => note(&home, command.as_ref()),
         Command::Session { command } => session(&home, command.as_ref()),
         Command::Sprint { command } => sprint(&home, command.as_ref()),
+        Command::Workflow { command } => workflow(&home, command.as_ref()),
         Command::Setup { command } => setup_command(&home, command.as_ref()),
         Command::Settings { command } => settings_verb(&home, command.as_ref()),
     }
@@ -876,6 +928,11 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                 args.blocked,
             )
             .map_err(Failure::domain)?;
+            if args.status.is_some() {
+                for status in &query.statuses {
+                    board.validate_status(status).map_err(Failure::domain)?;
+                }
+            }
             let tickets = board.list(&query).map_err(Failure::domain)?;
             print(&TicketList {
                 tickets: tickets.iter().map(TicketSummary::new).collect(),
@@ -890,7 +947,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
         TicketCommand::Add(args) => {
             let status = match args.status.as_deref() {
                 Some(raw) => Status::parse(raw).map_err(Failure::domain)?,
-                None => Status::Backlog,
+                None => board.landing_status().map_err(Failure::domain)?,
             };
             let assignee = resolve_assignee(args.assignee.as_deref())?;
             let origin = resolve_origin(args.origin.as_deref())?;
@@ -916,7 +973,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
             };
             let status = match args.status.as_deref() {
                 Some(raw) => Status::parse(raw).map_err(Failure::domain)?,
-                None => Status::Backlog,
+                None => board.landing_status().map_err(Failure::domain)?,
             };
             let assignee = resolve_assignee(args.assignee.as_deref())?;
             let origin = resolve_origin(args.origin.as_deref())?;
@@ -1204,6 +1261,82 @@ fn settings_verb(home: &Home, command: Option<&SettingsCommand>) -> Result<(), F
             print(&SettingsReply {
                 roster,
                 active_project,
+            })
+        }
+    }
+}
+
+/// The workflow verbs: the stage set as data (TAN-328). `list` and `show` read;
+/// `set` writes a whole document from stdin, atomically; `use` activates one;
+/// `delete` removes a workflow no ticket or sprint is using.
+fn workflow(home: &Home, command: Option<&WorkflowCommand>) -> Result<(), Failure> {
+    let command = command.ok_or_else(Failure::usage)?;
+    let store = if matches!(command, WorkflowCommand::List | WorkflowCommand::Show(_)) {
+        Store::new(home.clone())
+    } else {
+        write_store(home)?
+    };
+    let workflows = Workflows::new(&store);
+    let actor = Actor::current();
+    let revision = || store.last_revision();
+
+    match command {
+        WorkflowCommand::List => {
+            let workflows = workflows.list().map_err(Failure::domain)?;
+            let active = Workflows::new(&store).active().map_err(Failure::domain)?.id;
+            print(&WorkflowListReply {
+                revision: revision(),
+                workflows,
+                active,
+            })
+        }
+        WorkflowCommand::Show(args) => {
+            let workflow = match args.id.as_deref() {
+                Some(id) => workflows.get(id).map_err(Failure::domain)?,
+                None => workflows.active().map_err(Failure::domain)?,
+            };
+            print(&WorkflowReply {
+                revision: revision(),
+                workflow,
+            })
+        }
+        WorkflowCommand::Set(args) => {
+            let text = read_standard_input()?;
+            let parsed: WorkflowSetParams = serde_json::from_str(&text).map_err(|error| {
+                Failure::message(format!("The workflow document is not JSON: {error}."))
+            })?;
+            let draft = WorkflowDraft {
+                name: parsed.name.unwrap_or_default(),
+                scope: parsed.scope.unwrap_or_else(|| "home".to_string()),
+                stages: parsed.stages,
+            };
+            let target = args.id.as_deref().or(parsed.id.as_deref());
+            let workflow = workflows
+                .set(&actor, target, draft)
+                .map_err(Failure::domain)?;
+            print(&WorkflowReply {
+                revision: revision(),
+                workflow,
+            })
+        }
+        WorkflowCommand::Use(args) => {
+            let workflow = workflows
+                .use_workflow(&actor, args.id.as_deref().unwrap_or(""))
+                .map_err(Failure::domain)?;
+            print(&WorkflowReply {
+                revision: revision(),
+                workflow,
+            })
+        }
+        WorkflowCommand::Delete(args) => {
+            let workflows = workflows
+                .delete(&actor, args.id.as_deref().unwrap_or(""))
+                .map_err(Failure::domain)?;
+            let active = Workflows::new(&store).active().map_err(Failure::domain)?.id;
+            print(&WorkflowListReply {
+                revision: revision(),
+                workflows,
+                active,
             })
         }
     }

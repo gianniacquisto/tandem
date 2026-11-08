@@ -2,11 +2,14 @@ import { useState, type DragEvent } from 'react'
 
 import { assigneeLabel, blockLabel, statusLabel, type View } from '../shell/board'
 import type { TicketSummary } from '../wire/TicketSummary'
+import type { WorkflowStage } from '../wire/WorkflowStage'
 
 export type TicketRowProps = {
   ticket: TicketSummary
   selected: boolean
   layout: View
+  /** The active workflow's stages, so a custom label draws. */
+  stages?: readonly WorkflowStage[] | null
   onSelect: () => void
   onToggle: () => void
   onOpen?: () => void
@@ -25,6 +28,7 @@ export function TicketRow({
   ticket,
   selected,
   layout,
+  stages,
   onSelect,
   onToggle,
   onOpen,
@@ -91,7 +95,7 @@ export function TicketRow({
           )}
           {ticket.status === 'backlog' ? null : (
             <span className="ticket-row__status" data-status={ticket.status}>
-              {statusLabel(ticket.status)}
+              {statusLabel(ticket.status, stages)}
             </span>
           )}
 

@@ -129,12 +129,13 @@ export function App() {
       // `project.list` for the mapping instead of growing the snapshot.
       // The usage report carries the window: absent would read All time, but
       // the face always names its pick, so header, tables and graph agree.
-      const [board, lanes, projects, usage, settings] = await Promise.all([
+      const [board, lanes, projects, usage, settings, workflow] = await Promise.all([
         window.tandem.call({ method: 'ticket.list', params: WHOLE_BOARD }),
         window.tandem.call({ method: 'lane.list', params: {} }),
         window.tandem.call({ method: 'project.list', params: {} }),
         window.tandem.call({ method: 'usage.report', params: { window: usageWindow } }),
         window.tandem.call({ method: 'settings.get', params: {} }),
+        window.tandem.call({ method: 'workflow.show', params: { id: null } }),
       ])
       if (!mounted.current) return
       if ('error' in board) {
@@ -175,6 +176,13 @@ export function App() {
           roster: settings.reply.roster,
           activeProject: settings.reply.activeProject ?? null,
         })
+      }
+      if ('error' in workflow) {
+        // A refused workflow read leaves the faces on the default six: the
+        // board still draws, and the next read replaces the stage set.
+        dispatch({ type: 'notice', message: workflow.error.message })
+      } else if ('workflow' in workflow.reply) {
+        dispatch({ type: 'workflow', workflow: workflow.reply.workflow })
       }
       if ('tickets' in board.reply && 'revision' in board.reply) {
         dispatch({
@@ -340,6 +348,7 @@ export function App() {
               expandedSession={route.ticket === openTicket ? route.session : null}
               lanes={snapshot.lanes}
               roster={snapshot.roster}
+              stages={snapshot.workflow?.stages ?? null}
               revision={snapshot.revision}
               onWrite={sheetWrite}
               onDismiss={closeSheet}

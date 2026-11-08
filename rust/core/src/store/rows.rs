@@ -154,3 +154,25 @@ pub struct NewSetting<'a> {
     pub key: &'a str,
     pub value: &'a str,
 }
+
+/// One workflow: its UUID, its name, its scope and its stamps.
+pub struct NewWorkflow<'a> {
+    pub id: &'a str,
+    pub name: &'a str,
+    pub scope: &'a str,
+    pub created_at: &'a str,
+    pub updated_at: &'a str,
+}
+
+/// One stage of a workflow: its position, key, label, role and optional
+/// binding. A stage's key is stable; the row is replaced whole when a document
+/// is written.
+pub struct NewWorkflowStage<'a> {
+    pub workflow_id: &'a str,
+    pub position: i64,
+    pub key: &'a str,
+    pub label: &'a str,
+    pub role: &'a str,
+    pub binding_role: Option<&'a str>,
+    pub binding_pass: Option<&'a str>,
+}

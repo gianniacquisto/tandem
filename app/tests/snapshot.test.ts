@@ -4,6 +4,7 @@ import { initialSnapshot, snapshotReducer, type SnapshotState } from '../rendere
 import { refusalBanner, writeBlocked } from '../renderer/src/shell/write'
 import type { TicketSummary } from '../renderer/src/wire/TicketSummary'
 import type { UsageReportView } from '../renderer/src/wire/UsageReportView'
+import type { Workflow } from '../renderer/src/wire/Workflow'
 
 const ticket: TicketSummary = {
   archived: false,
@@ -58,6 +59,7 @@ describe('the shell snapshot', () => {
       usage: null,
       roster: [],
       activeProject: null,
+      workflow: null,
       error: null,
       notice: null,
       stale: false,
@@ -129,6 +131,28 @@ describe('the shell snapshot', () => {
       activeProject: null,
     })
     expect(cleared.activeProject).toBeNull()
+  })
+
+  it('carries the active workflow whose stages the board draws', () => {
+    const workflow: Workflow = {
+      id: 'w1',
+      name: 'agile',
+      scope: 'home',
+      author: 'human',
+      createdAt: '2026-11-08T00:00:00Z',
+      updatedAt: '2026-11-08T00:00:00Z',
+      stages: [
+        { key: 'backlog', label: 'Backlog', role: 'intake', binding: null },
+        { key: 'selected', label: 'Selected', role: 'intake', binding: null },
+        { key: 'done', label: 'Done', role: 'finished', binding: null },
+      ],
+    }
+    const next = snapshotReducer(initialSnapshot, { type: 'workflow', workflow })
+    expect(next.workflow).toBe(workflow)
+
+    // A failed read keeps the stages the face already draws.
+    const failed = snapshotReducer(next, { type: 'failed', message: 'no store' })
+    expect(failed.workflow).toBe(workflow)
   })
 
   it('carries the one usage report the Usage face draws', () => {

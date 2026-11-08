@@ -26,11 +26,12 @@ use crate::store::timestamp;
 
 /// Where a ticket is in the workflow (`Status.swift`, ADR 0017).
 ///
-/// Six stages in workflow order. The transitions between them are free-form: the
-/// value is validated, never the move, so a ticket can go backwards as easily as
-/// forwards. A status move itself is never refused.
+/// The six default stages, and a stage a workflow declares that this build does
+/// not name (`Custom`). The transitions between them are free-form: the value is
+/// validated against the active workflow, never the move, so a ticket can go
+/// backwards as easily as forwards. A status move itself is never refused.
 /// `on-hold` is the parked slot (ADR 0017's 2026-10-29 amendment).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Status {
     /// Nobody has looked at it yet. The default for a new ticket.
     Backlog,
@@ -42,6 +43,9 @@ pub enum Status {
     /// The work is done and its PR is waiting for a reader.
     InReview,
     Done,
+    /// A stage a workflow declares that the default six do not name. Its key is
+    /// the stored word, so a custom stage round-trips without a second truth.
+    Custom(String),
 }
 
 impl Status {
@@ -66,7 +70,7 @@ impl Status {
     ];
 
     /// The word the store and the wire carry.
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Backlog => "backlog",
             Self::OnHold => "on-hold",
@@ -74,11 +78,13 @@ impl Status {
             Self::InProgress => "in-progress",
             Self::InReview => "in-review",
             Self::Done => "done",
+            Self::Custom(key) => key,
         }
     }
 
-    /// The phrase every face draws.
-    pub fn display_name(&self) -> &'static str {
+    /// The phrase every face draws: the default's phrase, or the key a custom
+    /// stage carries until the active workflow's label is read.
+    pub fn display_name(&self) -> &str {
         match self {
             Self::Backlog => "Backlog",
             Self::OnHold => "On hold",
@@ -86,30 +92,41 @@ impl Status {
             Self::InProgress => "In progress",
             Self::InReview => "In Review",
             Self::Done => "Done",
+            Self::Custom(key) => key,
         }
     }
 
-    /// The domain boundary: the value, or the failure that names what was given
-    /// and lists the values that would have worked. A stored word is a different
-    /// edge ([`Status::stored`]), because nobody can retry a stored word.
+    /// The domain boundary: the default six by name, every other non-empty key
+    /// as a custom stage. Membership in the active workflow is the board's
+    /// question (`Board`), because the workflow is what knows the stage set.
     pub fn parse(raw: &str) -> Result<Self, DomainError> {
-        Self::WORKFLOW
-            .into_iter()
-            .find(|status| status.as_str() == raw)
-            .ok_or_else(|| DomainError::InvalidStatus(raw.to_string()))
+        let raw = raw.trim();
+        if raw.is_empty() || raw == RETIRED_ON_HOLD {
+            return Err(DomainError::InvalidStatus(raw.to_string()));
+        }
+        Ok(match raw {
+            "backlog" => Self::Backlog,
+            "on-hold" => Self::OnHold,
+            "ready" => Self::Ready,
+            "in-progress" => Self::InProgress,
+            "in-review" => Self::InReview,
+            "done" => Self::Done,
+            other => Self::Custom(other.to_string()),
+        })
     }
 
     /// The lenient edge: `on-hold` for the retired spelling `refined`, `backlog`
-    /// for a word a later build invented.
+    /// for an empty stored word, and the key itself for a stage a workflow
+    /// declares. A custom key round-trips; an older build maps it to backlog as
+    /// the reader-first rule says.
     pub fn stored(raw: &str) -> Self {
-        if let Ok(status) = Self::parse(raw) {
-            return status;
-        }
         if raw == RETIRED_ON_HOLD {
-            Self::OnHold
-        } else {
-            Self::Backlog
+            return Self::OnHold;
         }
+        if raw.trim().is_empty() {
+            return Self::Backlog;
+        }
+        Self::parse(raw).unwrap_or(Self::Backlog)
     }
 
     /// Whether this stage is the finished one.

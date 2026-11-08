@@ -2,6 +2,7 @@ import type { ProjectListReply } from '../wire/ProjectListReply'
 import type { TicketListReply } from '../wire/TicketListReply'
 import type { TicketSummary } from '../wire/TicketSummary'
 import type { UsageReportView } from '../wire/UsageReportView'
+import type { Workflow } from '../wire/Workflow'
 
 /**
  * One project and its lanes, in render order: the mapping the board joins
@@ -34,6 +35,12 @@ export type SnapshotState = {
   roster: string[]
   /** The active project: the lane the faces draw, or null for every lane. */
   activeProject: string | null
+  /**
+   * The active workflow: the board's columns, the list's status filter and the
+   * sheet's status menu all read its stages. Null until the first read lands, and
+   * the faces fall back to the default six in that window.
+   */
+  workflow: Workflow | null
   error: string | null
   /** A conflict or refusal the human has not dismissed yet. */
   notice: string | null
@@ -45,6 +52,7 @@ export type SnapshotAction =
   | { type: 'loaded'; reply: TicketListReply; lanes: string[]; projects: SnapshotProject[] }
   | { type: 'usage'; report: UsageReportView }
   | { type: 'settings'; roster: string[]; activeProject: string | null }
+  | { type: 'workflow'; workflow: Workflow }
   | { type: 'failed'; message: string }
   | { type: 'stale' }
   | { type: 'notice'; message: string }
@@ -59,6 +67,7 @@ export const initialSnapshot: SnapshotState = {
   usage: null,
   roster: [],
   activeProject: null,
+  workflow: null,
   error: null,
   notice: null,
   stale: false,
@@ -82,6 +91,9 @@ export function snapshotReducer(state: SnapshotState, action: SnapshotAction): S
   }
   if (action.type === 'settings') {
     return { ...state, roster: action.roster, activeProject: action.activeProject }
+  }
+  if (action.type === 'workflow') {
+    return { ...state, workflow: action.workflow }
   }
   if (action.type === 'stale') {
     return { ...state, stale: true }

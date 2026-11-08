@@ -1,5 +1,6 @@
 import type { Method } from '../../../src/shared/bridge'
 import type { TicketSummary } from '../wire/TicketSummary'
+import type { WorkflowStage } from '../wire/WorkflowStage'
 
 /**
  * The Tickets face's geometry: which rows are in view, how the lanes lay them
@@ -68,8 +69,15 @@ export const INITIAL_FILTERS: Filters = {
   text: '',
 }
 
-/** The six statuses in workflow order, with the words every face draws. */
-export const STATUSES: ReadonlyArray<{ value: string; label: string }> = [
+/** One status choice: a stage's key under its editable label. */
+export type StatusChoice = { value: string; label: string }
+
+/**
+ * The six default stages in workflow order, with the words every face draws.
+ * This is the fallback the faces use before the active workflow's read lands, so
+ * a first frame draws the board's familiar columns and never an empty one.
+ */
+export const STATUSES: ReadonlyArray<StatusChoice> = [
   { value: 'backlog', label: 'Backlog' },
   { value: 'on-hold', label: 'On hold' },
   { value: 'ready', label: 'Ready' },
@@ -80,17 +88,33 @@ export const STATUSES: ReadonlyArray<{ value: string; label: string }> = [
 
 export const UNCATEGORIZED = 'Uncategorized'
 
-export function statusLabel(status: string): string {
-  return STATUSES.find((entry) => entry.value === status)?.label ?? status
+/**
+ * The stages a face draws, from the active workflow's ordered list. Null or
+ * absent is the default, which reproduces today's six exactly.
+ */
+export function stageChoices(
+  stages?: readonly WorkflowStage[] | null,
+): ReadonlyArray<StatusChoice> {
+  if (stages === undefined || stages === null || stages.length === 0) return STATUSES
+  return stages.map((stage) => ({ value: stage.key, label: stage.label }))
+}
+
+export function statusLabel(
+  status: string,
+  stages?: readonly WorkflowStage[] | null,
+): string {
+  return stageChoices(stages).find((entry) => entry.value === status)?.label ?? status
 }
 
 /**
- * The board's six columns: `STATUSES` in workflow order, so the board reads
- * left to right as the store declares it. Derived from the one declared list,
- * never a copy of it.
+ * The board's columns: the active workflow's stages in order, so the board
+ * reads left to right as the store declares it. A custom stage appears here
+ * without a code change; the default reproduces the six.
  */
-export function boardStatuses(): ReadonlyArray<{ value: string; label: string }> {
-  return STATUSES
+export function boardStatuses(
+  stages?: readonly WorkflowStage[] | null,
+): ReadonlyArray<StatusChoice> {
+  return stageChoices(stages)
 }
 
 /** The reserved assignee: the human, spelled the same in every face. */
@@ -352,11 +376,12 @@ export function laneColumns(
 export function laneRows(
   declared: readonly string[],
   tickets: readonly TicketSummary[],
+  stages?: readonly WorkflowStage[] | null,
 ): LaneRow[] {
   return laneColumns(declared, tickets).map((column) => ({
     key: column.key,
     title: column.title,
-    cells: boardStatuses().map((status) => ({
+    cells: boardStatuses(stages).map((status) => ({
       status: status.value,
       label: status.label,
       tickets: column.tickets.filter((ticket) => ticket.status === status.value),

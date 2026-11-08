@@ -26,7 +26,8 @@ use super::rpc::{
     SprintShowParams, SprintTicketParams, TicketAddFromNoteParams, TicketAddParams,
     TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply,
     TicketMoveParams, TicketReply, TicketSetParams, TicketUnblockParams, UsageReportParams,
-    UsageReportReply, WireError,
+    UsageReportReply, WireError, WorkflowIdParams, WorkflowListReply, WorkflowReply,
+    WorkflowSetParams, WorkflowShowParams,
 };
 use super::views::{
     BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
@@ -42,6 +43,7 @@ use crate::domain::session::{
 };
 use crate::domain::sprint::{Sprint, SprintMode, SprintStatus};
 use crate::domain::usage::UsageWindow;
+use crate::domain::workflow::{Pass, StageBinding, StageRole, Workflow, WorkflowStage};
 use crate::setup;
 
 /// Every generated file, by name, in a stable order.
@@ -130,6 +132,28 @@ pub fn files() -> Vec<(&'static str, String)> {
             "ProjectListReply.ts",
             ProjectListReply::export_to_string(&cfg),
         ),
+        render(
+            "WorkflowShowParams.ts",
+            WorkflowShowParams::export_to_string(&cfg),
+        ),
+        render(
+            "WorkflowIdParams.ts",
+            WorkflowIdParams::export_to_string(&cfg),
+        ),
+        render(
+            "WorkflowSetParams.ts",
+            WorkflowSetParams::export_to_string(&cfg),
+        ),
+        render("Workflow.ts", Workflow::export_to_string(&cfg)),
+        render("WorkflowStage.ts", WorkflowStage::export_to_string(&cfg)),
+        render("StageRole.ts", StageRole::export_to_string(&cfg)),
+        render("StageBinding.ts", StageBinding::export_to_string(&cfg)),
+        render("Pass.ts", Pass::export_to_string(&cfg)),
+        render(
+            "WorkflowListReply.ts",
+            WorkflowListReply::export_to_string(&cfg),
+        ),
+        render("WorkflowReply.ts", WorkflowReply::export_to_string(&cfg)),
         render(
             "TicketListReply.ts",
             TicketListReply::export_to_string(&cfg),

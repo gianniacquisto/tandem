@@ -14,6 +14,7 @@ use rusqlite::{Connection, params};
 
 use super::rows::{
     NewComment, NewDependency, NewLane, NewProject, NewSession, NewSetting, NewSprint, NewTicket,
+    NewWorkflow, NewWorkflowStage,
 };
 use super::{Actor, Result};
 
@@ -282,6 +283,79 @@ impl Write<'_> {
     pub fn delete_setting(&self, key: &str) -> Result<()> {
         self.before_mutation()?;
         self.execute("DELETE FROM settings WHERE key = ?1", params![key])
+    }
+
+    pub fn insert_workflow(&self, workflow: NewWorkflow<'_>) -> Result<()> {
+        self.before_mutation()?;
+        self.execute(
+            "INSERT INTO workflows (id, name, scope, created_at, updated_at, author)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                workflow.id,
+                workflow.name,
+                workflow.scope,
+                workflow.created_at,
+                workflow.updated_at,
+                self.actor.as_str()
+            ],
+        )
+    }
+
+    /// Update a workflow's editable half: its name and its stamp. The id, the
+    /// scope and the creation stamp never move.
+    pub fn update_workflow(&self, workflow: NewWorkflow<'_>) -> Result<()> {
+        self.before_mutation()?;
+        self.execute(
+            "UPDATE workflows SET name = ?2, updated_at = ?3, author = ?4 WHERE id = ?1",
+            params![
+                workflow.id,
+                workflow.name,
+                workflow.updated_at,
+                self.actor.as_str()
+            ],
+        )
+    }
+
+    /// Replace every stage of a workflow with the document's ordered list.
+    /// The write is one transaction, so a refused document leaves the old
+    /// stages in place; an unchanged document still rewrites, and the revision
+    /// moves.
+    pub fn replace_workflow_stages(
+        &self,
+        workflow_id: &str,
+        stages: &[NewWorkflowStage<'_>],
+    ) -> Result<()> {
+        self.before_mutation()?;
+        self.execute(
+            "DELETE FROM workflow_stages WHERE workflow_id = ?1",
+            params![workflow_id],
+        )?;
+        for stage in stages {
+            self.execute(
+                "INSERT INTO workflow_stages
+                    (workflow_id, position, key, label, role, binding_role, binding_pass)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    stage.workflow_id,
+                    stage.position,
+                    stage.key,
+                    stage.label,
+                    stage.role,
+                    stage.binding_role,
+                    stage.binding_pass
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_workflow(&self, id: &str) -> Result<()> {
+        self.before_mutation()?;
+        self.execute(
+            "DELETE FROM workflow_stages WHERE workflow_id = ?1",
+            params![id],
+        )?;
+        self.execute("DELETE FROM workflows WHERE id = ?1", params![id])
     }
 
     /// Whether the sprints table carries a (lane, number). The sprints domain is

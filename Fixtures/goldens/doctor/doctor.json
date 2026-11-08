@@ -68,7 +68,7 @@
         "ok": true
       },
       {
-        "detail": "tandem-mcp 0.0.0-golden: 37 tools over 37 covered wire methods",
+        "detail": "tandem-mcp 0.0.0-golden: 42 tools over 42 covered wire methods",
         "name": "mcp",
         "ok": true
       }

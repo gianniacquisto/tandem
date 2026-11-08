@@ -30,9 +30,10 @@ use super::lane::{Lane, LaneDeletion};
 use super::query::{Filter, HUMAN, TicketQuery};
 use super::ticket::{Status, Ticket};
 use super::undo::CompletionUndo;
+use super::workflow::Workflow;
 
 /// The fields a new ticket may be given, over the title it must have.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct AddTicket<'a> {
     pub lane: Option<&'a str>,
     pub status: Status,
@@ -56,7 +57,7 @@ impl Default for AddTicket<'_> {
 
 /// The fields `set` may change. Each is an [`Edit`], so "leave it alone" and
 /// "clear it" are different instructions.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct SetFields<'a> {
     pub title: Edit<&'a str>,
     pub status: Edit<Status>,
@@ -97,6 +98,30 @@ impl Board {
 
     pub fn actor(&self) -> &Actor {
         &self.actor
+    }
+
+    // MARK: - The workflow
+
+    /// The active workflow, or the seeded default when the `active_workflow`
+    /// row is missing or unreadable.
+    pub fn workflow(&self) -> Result<Workflow, DomainError> {
+        super::workflow::Workflows::new(&self.store).active()
+    }
+
+    /// The stage a new ticket lands in: the active workflow's first intake
+    /// stage. A caller that names no `--status` writes this.
+    pub fn landing_status(&self) -> Result<Status, DomainError> {
+        super::workflow::Workflows::new(&self.store).landing_status()
+    }
+
+    /// Refuse a status the active workflow does not declare, naming the valid
+    /// stage keys.
+    pub fn validate_status(&self, status: &Status) -> Result<(), DomainError> {
+        super::workflow::Workflows::new(&self.store).validate_status(status)
+    }
+
+    fn validate_named_status(&self, status: &Status) -> Result<(), DomainError> {
+        self.validate_status(status)
     }
 
     // MARK: - Reads
@@ -523,6 +548,7 @@ impl Board {
         let assignee = normalize_assignee(fields.assignee);
         let origin = normalize_origin(Some(fields.origin));
         let description = description::normalize(fields.description);
+        self.validate_named_status(&fields.status)?;
         self.mutate(|contents| {
             contents.validate_lane(fields.lane)?;
             let now = timestamp::unix_now();
@@ -561,6 +587,7 @@ impl Board {
         let assignee = normalize_assignee(fields.assignee);
         let origin = normalize_origin(Some(fields.origin));
         let description = description::normalize(Some(selection));
+        self.validate_named_status(&fields.status)?;
         self.mutate(|contents| {
             contents.validate_lane(fields.lane)?;
             let now = timestamp::unix_now();
@@ -609,6 +636,7 @@ impl Board {
         status: Status,
         at: usize,
     ) -> Result<Ticket, DomainError> {
+        self.validate_named_status(&status)?;
         self.mutate(|contents| {
             let from = contents.require_ticket(handle)?.1;
             contents.validate_lane(lane)?;
@@ -690,6 +718,9 @@ impl Board {
             Edit::Set(raw) => Some(DescriptionBody::required(raw)?),
             Edit::Unchanged => None,
         };
+        if let Edit::Set(status) = &fields.status {
+            self.validate_named_status(status)?;
+        }
         self.mutate(|contents| {
             let index = contents.require_ticket(handle)?.1;
             let mut ticket = contents.tickets[index].clone();

@@ -40,6 +40,7 @@ mod home;
 pub(crate) mod locked;
 pub(crate) mod records;
 mod rows;
+pub(crate) mod workflows;
 // Reachable from the records suite, which builds a v2 home to prove a read of
 // an older file never fails on a column a later migration adds.
 pub(crate) mod schema;
@@ -64,7 +65,7 @@ pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
 pub use records::local_day;
 pub use rows::{
     NewComment, NewDependency, NewLane, NewProject, NewSession, NewSetting, NewSprint, NewTicket,
-    SessionRow, SprintRow,
+    NewWorkflow, NewWorkflowStage, SessionRow, SprintRow,
 };
 pub use schema::CURRENT_VERSION;
 pub use write::Write;

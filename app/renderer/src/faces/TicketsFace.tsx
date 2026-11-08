@@ -4,7 +4,6 @@ import type { Method } from '../../../src/shared/bridge'
 import type { Write } from '../shell/write'
 import {
   INITIAL_FILTERS,
-  STATUSES,
   appendIndex,
   assigneeChoices,
   boardStatuses,
@@ -110,7 +109,9 @@ export function TicketsFace({
   const columns = laneColumns(snapshot.lanes, visible).filter((column) =>
     keys.includes(column.key),
   )
-  const rows = laneRows(snapshot.lanes, visible).filter((row) => keys.includes(row.key))
+  const stages = snapshot.workflow?.stages ?? null
+  const statuses = boardStatuses(stages)
+  const rows = laneRows(snapshot.lanes, visible, stages).filter((row) => keys.includes(row.key))
   const order = columns.flatMap((column) => column.tickets)
 
   // The one helper the sheet's picker draws: Unassigned, `human`, the store's
@@ -335,7 +336,7 @@ export function TicketsFace({
           if (ticket === undefined) return
           if (view === 'board') {
             // The status is the column, so the horizontal arrows step it.
-            const statuses = boardStatuses()
+            const statuses = boardStatuses(stages)
             const at = statuses.findIndex((status) => status.value === ticket.status)
             const next = statuses[at + intent.delta]
             if (at < 0 || next === undefined) return
@@ -447,7 +448,7 @@ export function TicketsFace({
               }
             >
               <option value="">Any status</option>
-              {STATUSES.map((status) => (
+              {statuses.map((status) => (
                 <option key={status.value} value={status.value}>
                   {status.label}
                 </option>
@@ -560,6 +561,7 @@ export function TicketsFace({
           view === 'list' ? (
             <TicketList
               columns={columns}
+              stages={stages}
               selected={current}
               onSelect={setSelected}
               onToggle={toggle}
@@ -569,6 +571,8 @@ export function TicketsFace({
           ) : (
             <BoardLayout
               rows={rows}
+              statuses={statuses}
+              stages={stages}
               projects={snapshot.projects}
               selected={current}
               onSelect={setSelected}

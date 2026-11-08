@@ -32,6 +32,7 @@ use crate::bikeshed::health::BikeshedHealth;
 use crate::domain::harness::TranscriptEntry;
 use crate::domain::sprint::Sprint;
 use crate::domain::usage::UsageWindow;
+use crate::domain::workflow::{Workflow, WorkflowStage};
 use crate::wire::views::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
     NotePathView, NoteWriteView, RecoveryView, TicketDetail, TicketSummary, UsageReportView,
@@ -115,6 +116,14 @@ methods! {
     ProjectAdd: "project.add", ProjectAddParams, "project add";
     ProjectRename: "project.rename", ProjectRenameParams, "project rename";
     ProjectDelete: "project.delete", ProjectDeleteParams, "project delete";
+    // The workflow model (TAN-328): the stage set as data. The verbs are the
+    // CLI's own, so the app and an agent configure a workflow through the same
+    // acts and the board reads one truth.
+    WorkflowList: "workflow.list", EmptyParams, "workflow list";
+    WorkflowShow: "workflow.show", WorkflowShowParams, "workflow show";
+    WorkflowSet: "workflow.set", WorkflowSetParams, "workflow set";
+    WorkflowUse: "workflow.use", WorkflowIdParams, "workflow use";
+    WorkflowDelete: "workflow.delete", WorkflowIdParams, "workflow delete";
     // The sprint record's reads and its one app-reachable write (TAN-254). The
     // verbs are the CLI's own (`sprint list/show/open`), so the app configures
     // the workflow through the same acts an agent runs. Below, `ticket`, `run`
@@ -429,6 +438,34 @@ pub struct ProjectRenameParams {
 #[serde(rename_all = "camelCase", default)]
 pub struct ProjectDeleteParams {
     pub name: Option<String>,
+}
+
+/// `workflow.show`: the workflow to read. Absent reads the active one.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkflowShowParams {
+    pub id: Option<String>,
+}
+
+/// `workflow.use` and `workflow.delete`: the workflow a handle names, its UUID
+/// or its name. Absent is refused by the domain, never guessed.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkflowIdParams {
+    pub id: Option<String>,
+}
+
+/// `workflow.set`: the whole document. An absent id creates a workflow; a
+/// present one updates the workflow it names. `name` and `stages` are required
+/// by the domain and refused when missing, so the empty frame cannot wipe a
+/// workflow.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkflowSetParams {
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub scope: Option<String>,
+    pub stages: Vec<WorkflowStage>,
 }
 
 /// `sprint.list`: the lane's records, each axis optional as the verb's flags
@@ -1085,6 +1122,57 @@ impl SettingsSetParams {
     }
 }
 
+impl WorkflowShowParams {
+    /// The tool input for `workflow.show`.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[(
+            "id",
+            string("the workflow's UUID or its name; omit for the active workflow"),
+        )])
+    }
+}
+
+impl WorkflowIdParams {
+    /// The tool input for `workflow.use` and `workflow.delete`.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[("id", string("the workflow's UUID or its name; required"))])
+    }
+}
+
+impl WorkflowSetParams {
+    /// The tool input for `workflow.set`: the whole document. The id names the
+    /// workflow to update; omit it to create one.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[
+            ("id", string("the workflow to update; omit to create one")),
+            ("name", string("the workflow's name; required")),
+            (
+                "scope",
+                string("home (the only scope today); omit for home"),
+            ),
+            (
+                "stages",
+                serde_json::json!({
+                    "type": "array",
+                    "description": "the ordered stage list; at least one intake, one parked and one finished",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "key": {"type": "string", "description": "the stable status key"},
+                            "label": {"type": "string", "description": "the word every face draws"},
+                            "role": {"type": "string", "description": "intake, parked, ready, active, review or finished"},
+                            "binding": {
+                                "type": "object",
+                                "description": "the roster role and pass a stage hands to"
+                            }
+                        }
+                    }
+                }),
+            ),
+        ])
+    }
+}
+
 /// `setup.install`: the CLI's `--host` and `--force`, unchanged.
 ///
 /// `host` is one name or a comma-separated list, and absent means the CLI's
@@ -1138,6 +1226,8 @@ pub enum Reply {
     LaneList(LaneListReply),
     LaneDeletion(LaneDeletionReply),
     ProjectList(ProjectListReply),
+    WorkflowList(WorkflowListReply),
+    Workflow(WorkflowReply),
     Archived(ArchivedReply),
     SprintList(SprintListReply),
     Sprint(SprintReply),
@@ -1362,6 +1452,24 @@ pub struct ProjectEntry {
 pub struct ProjectListReply {
     pub revision: i64,
     pub projects: Vec<ProjectEntry>,
+}
+
+/// `workflow.list`, and `workflow.delete`'s receipt: every workflow and the
+/// active workflow's id.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowListReply {
+    pub revision: i64,
+    pub workflows: Vec<Workflow>,
+    pub active: String,
+}
+
+/// `workflow.show`, `workflow.set` and `workflow.use`: one whole workflow.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowReply {
+    pub revision: i64,
+    pub workflow: Workflow,
 }
 
 /// `ticket.archive` without an id: how many tickets the sweep archived.

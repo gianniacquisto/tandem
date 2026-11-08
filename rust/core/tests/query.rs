@@ -308,22 +308,14 @@ fn parse_takes_comma_separated_statuses() {
 }
 
 #[test]
-fn parse_rejects_an_unknown_status_by_name_listing_the_live_values() {
-    let error = TicketQuery::parse(None, None, Some("ready,blocked"), None, None, false, false)
-        .unwrap_err();
-    match error {
-        DomainError::InvalidStatus(bad) => {
-            assert_eq!(bad, "blocked");
-            for value in Status::WIRE_VALUES {
-                assert!(
-                    DomainError::InvalidStatus(bad.clone())
-                        .message()
-                        .contains(value)
-                );
-            }
-        }
-        other => panic!("expected invalidStatus, got {other:?}"),
-    }
+fn parse_accepts_a_custom_stage_key_and_the_board_owns_the_stage_set() {
+    let query = TicketQuery::parse(None, None, Some("ready,blocked"), None, None, false, false)
+        .expect("the query does not own the workflow's stage set");
+    assert_eq!(
+        query.statuses,
+        vec![Status::Ready, Status::Custom("blocked".to_string())],
+        "a custom key is carried to the board, which refuses one the workflow lacks"
+    );
 }
 
 #[test]
@@ -557,7 +549,7 @@ fn waiting(title: &str, status: Status, blockers: &[(uuid::Uuid, Status)]) -> Ti
                 id: *id,
                 reference: None,
                 title: "blocker".to_string(),
-                status: *blocker_status,
+                status: blocker_status.clone(),
             })
             .collect(),
         ..ticket(title)

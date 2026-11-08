@@ -25,7 +25,7 @@ use super::{Actor, Result, StoreError, timestamp, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 6;
+pub const CURRENT_VERSION: i64 = 7;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -66,6 +66,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: PROJECTS_VERSION,
         name: "the projects and the lane's parent",
         apply: version_six,
+    },
+    Migration {
+        version: WORKFLOWS_VERSION,
+        name: "the workflows and their stages",
+        apply: version_seven,
     },
 ];
 
@@ -245,6 +250,60 @@ INSERT INTO projects (name, position, author)
 UPDATE lanes SET project = name WHERE project IS NULL;
 ";
 
+/// The version that adds the workflow model (TAN-328).
+pub(crate) const WORKFLOWS_VERSION: i64 = 7;
+
+/// The default workflow's id: fixed, so the seed is one row at every home and
+/// "the default" is a fact no user edit can rename away.
+pub(crate) const DEFAULT_WORKFLOW_ID: &str = "00000000-0000-4000-8000-000000000001";
+
+/// Version 7: the workflow entity, its ordered stages, and the nullable
+/// `projects.workflow` hook for the later per-project adoption.
+///
+/// The default `agile` workflow seeds here, on a fresh home and on the v6
+/// migration alike, because a fresh home walks every migration. Its stage keys
+/// are the six the board already draws, in UI-15's order: backlog, on-hold,
+/// ready, in-progress, in-review, done. Every stored ticket status is one of
+/// those keys, so no ticket moves.
+const VERSION_SEVEN: &str = "
+CREATE TABLE IF NOT EXISTS workflows (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    scope      TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    author     TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workflow_stages (
+    workflow_id  TEXT NOT NULL,
+    position     INTEGER NOT NULL,
+    key          TEXT NOT NULL,
+    label        TEXT NOT NULL,
+    role         TEXT NOT NULL,
+    binding_role TEXT,
+    binding_pass TEXT,
+    PRIMARY KEY (workflow_id, key)
+);
+ALTER TABLE projects ADD COLUMN workflow TEXT;
+INSERT INTO workflows (id, name, scope, created_at, updated_at, author)
+    VALUES (
+        '00000000-0000-4000-8000-000000000001',
+        'agile',
+        'home',
+        '2026-11-08T00:00:00Z',
+        '2026-11-08T00:00:00Z',
+        'human'
+    );
+INSERT INTO workflow_stages (workflow_id, position, key, label, role, binding_role, binding_pass)
+    VALUES
+        ('00000000-0000-4000-8000-000000000001', 0, 'backlog', 'Backlog', 'intake', 'refiner', 'refine'),
+        ('00000000-0000-4000-8000-000000000001', 1, 'on-hold', 'On hold', 'parked', NULL, NULL),
+        ('00000000-0000-4000-8000-000000000001', 2, 'ready', 'Ready', 'ready', 'builder', 'build'),
+        ('00000000-0000-4000-8000-000000000001', 3, 'in-progress', 'In progress', 'active', 'builder', 'build'),
+        ('00000000-0000-4000-8000-000000000001', 4, 'in-review', 'In Review', 'review', 'reviewer', 'review'),
+        ('00000000-0000-4000-8000-000000000001', 5, 'done', 'Done', 'finished', NULL, NULL);
+";
+
 fn version_one(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_ONE)
 }
@@ -267,6 +326,10 @@ fn version_five(connection: &Connection) -> rusqlite::Result<()> {
 
 fn version_six(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_SIX)
+}
+
+fn version_seven(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(VERSION_SEVEN)
 }
 
 /// The store's revision: the stored counter, or 0 when this file predates the
