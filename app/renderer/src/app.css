@@ -1264,12 +1264,14 @@ body {
 
 /* A project header is a quiet group label, not a lane: smaller than the lane
  * title, dim, transparent with no full-bleed paper band, so the grouped lanes
- * read as one group. It owns only the first track, never a 1 / -1 span. */
+ * read as one group. It spans the whole grid so it fills its own row and every
+ * lane row beneath starts in column 1. */
 .board__project {
   display: contents;
 }
 
 .board__project-title {
+  grid-column: 1 / -1;
   position: sticky;
   left: 0;
   z-index: 1;

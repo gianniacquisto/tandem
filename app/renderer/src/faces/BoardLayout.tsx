@@ -118,6 +118,11 @@ function groupRows(rows: LaneRow[], projects: BoardProject[]): RowGroup[] {
   return groups
 }
 
+/** A group whose only lane carries the project's own name: the header says it once. */
+function namesItsOwnLane(group: RowGroup, row: LaneRow): boolean {
+  return group.project !== null && group.rows.length === 1 && row.key === group.project
+}
+
 function GroupRows({
   group,
   stages,
@@ -153,12 +158,19 @@ function GroupRows({
           key={row.key ?? 'uncategorized'}
           data-lane={row.key ?? ''}
         >
-          <h2 className="board__title">
-            <span>{row.title}</span>
-            <span className="board__count">
-              {row.cells.reduce((count, cell) => count + cell.tickets.length, 0)}
-            </span>
-          </h2>
+          {namesItsOwnLane(group, row) ? (
+            // The project header already names this lane: keep the title track
+            // so the row keeps its seven items, but draw no duplicate label or
+            // count.
+            <h2 className="board__title" aria-hidden="true" />
+          ) : (
+            <h2 className="board__title">
+              <span>{row.title}</span>
+              <span className="board__count">
+                {row.cells.reduce((count, cell) => count + cell.tickets.length, 0)}
+              </span>
+            </h2>
+          )}
           {row.cells.map((cell) => (
             <BoardCell
               key={cell.status}

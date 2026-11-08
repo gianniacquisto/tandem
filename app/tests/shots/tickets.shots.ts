@@ -144,6 +144,19 @@ test('the tickets face shows one board two ways: the list and the board over one
     await expect(headers.nth(3)).toHaveAttribute('data-project', 'Fleet')
   }
 
+  // The project header owns its own grid row, so every lane row starts in
+  // column 1: the lane titles share one x instead of stepping a column per
+  // group (UI-14). A suppressed title still holds its title track, so it is a
+  // box to read like any other.
+  const titleBoxes = await Promise.all(
+    (await window.locator('.board__lane[data-lane] .board__title').all()).map((title) =>
+      title.boundingBox(),
+    ),
+  )
+  expect(titleBoxes.length).toBeGreaterThan(0)
+  const titleXs = titleBoxes.map((box) => (box === null ? null : Math.round(box.x)))
+  expect(new Set(titleXs).size).toBe(1)
+
   // The pictures are the Open board, the face's default.
   await window.getByRole('tab', { name: /^Open/ }).click()
   // The grid needs 1288 px for its lane title and six status columns, and the

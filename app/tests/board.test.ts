@@ -2,8 +2,11 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
+import { BoardLayout } from '../renderer/src/faces/BoardLayout'
 import {
   INITIAL_FILTERS,
   appendIndex,
@@ -673,12 +676,57 @@ describe('the project header (UI-9)', () => {
     // The project header keeps data-project and uses its own quiet group class.
     expect(layout).toContain('board__project')
     expect(layout).toContain('data-project')
-    // The header no longer reuses the lane title with a full-width span.
+    // The header spans the grid's full width from its own CSS rule, never an
+    // inline style: one truth per fact, and the h2 stays clean.
+    const css = readFileSync(join(appRoot, 'renderer', 'src', 'app.css'), 'utf8')
+    expect(css).toMatch(/\.board__project-title\s*\{[^}]*grid-column:\s*1 \/ -1/)
     expect(layout).not.toContain("gridColumn: '1 / -1'")
     expect(layout).not.toMatch(/<h2 className="board__title" style/)
     // Lane rows keep .board__title, including the column head.
     expect(layout).toContain('board__title--head')
     expect(layout).toMatch(/<h2 className="board__title">/)
+  })
+
+  it('suppresses a lane title the project header already names', () => {
+    const statuses = boardStatuses()
+    const draw = (project: string, lanes: string[]): string => {
+      const tickets = lanes.map((lane) => ticket({ id: lane, lane, status: 'ready' }))
+      return renderToStaticMarkup(
+        createElement(BoardLayout, {
+          rows: laneRows(lanes, tickets).filter((row) => row.key !== null),
+          statuses,
+          projects: [{ name: project, lanes }],
+          selected: null,
+          onSelect: () => {},
+          onToggle: () => {},
+          onDropOn: () => {},
+          onDropCell: () => {},
+        }),
+      )
+    }
+    const laneTitles = (html: string): string[] =>
+      html.match(/<h2 class="board__title"(?: aria-hidden="true")?>[\s\S]*?<\/h2>/g) ?? []
+
+    // One lane, named like its project: the title track stays (the row keeps
+    // its seven items) but the header is the only visible label and count.
+    const same = laneTitles(draw('Port', ['Port']))
+    expect(same).toHaveLength(1)
+    expect(same[0]).toContain('aria-hidden="true"')
+    expect(same[0]).not.toContain('<span>')
+
+    // A project with more than one lane keeps every lane title: the header
+    // names the group, not each lane.
+    const many = laneTitles(draw('Port', ['Port', 'ui']))
+    expect(many).toHaveLength(2)
+    expect(many[0]).toContain('<span>Port</span>')
+    expect(many[1]).toContain('<span>ui</span>')
+
+    // A single lane named unlike its project stays labelled: the header
+    // cannot stand in for a name it does not carry.
+    const other = laneTitles(draw('Port', ['ui']))
+    expect(other).toHaveLength(1)
+    expect(other[0]).toContain('<span>ui</span>')
+    expect(other[0]).not.toContain('aria-hidden="true"')
   })
 
   it('defines the quiet project treatment without a full-bleed paper band', () => {

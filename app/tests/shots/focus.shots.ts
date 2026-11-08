@@ -65,9 +65,15 @@ test('the focused tickets face draws only the active lane plus the focus control
   // ...and the board draws that lane row alone, under its project header.
   const rows = window.locator('.board__lane[data-lane]')
   await expect(rows).toHaveCount(1)
-  await expect(rows.first().locator('.board__title').first()).toContainText(focus as string)
   const headers = window.locator('.board__project[data-project]')
   await expect(headers).toHaveCount(1)
+  await expect(headers.first()).toContainText(focus as string)
+  // The header already names the lane, so the lane title is suppressed: the
+  // element holds the title track, aria-hidden and empty, and no duplicate
+  // count draws (UI-14).
+  const laneTitle = rows.first().locator('.board__title').first()
+  await expect(laneTitle).toHaveAttribute('aria-hidden', 'true')
+  await expect(laneTitle).toHaveText('')
 
   // The list draws the same lane alone.
   await window.getByRole('tab', { name: 'List' }).click()
