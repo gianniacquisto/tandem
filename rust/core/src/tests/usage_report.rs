@@ -156,10 +156,7 @@ fn the_totals_are_frozen() {
         (report.overlap - 6.5).abs() < 1e-9,
         "three two-ticket records: 0.75 + 0.65 + 5.10"
     );
-    assert!(
-        (report.ticket_total() - 57.75).abs() < 1e-9,
-        "51.25 + 6.5"
-    );
+    assert!((report.ticket_total() - 57.75).abs() < 1e-9, "51.25 + 6.5");
 }
 
 #[test]
@@ -331,7 +328,8 @@ fn the_partitions_cover_every_record_once_and_the_tickets_state_their_excess() {
 fn a_row_carries_its_bar_width_against_its_own_tables_largest() {
     let report = report();
 
-    let largest = |rows: &[UsageRow]| -> f64 { rows.iter().map(|row| row.cost).fold(0.0, f64::max) };
+    let largest =
+        |rows: &[UsageRow]| -> f64 { rows.iter().map(|row| row.cost).fold(0.0, f64::max) };
 
     // The dearest day is 2026-10-21 at 8.60; each table carries its own scale.
     assert!((largest(&report.day) - 8.6).abs() < 1e-9);
@@ -683,14 +681,15 @@ fn the_frozen_home_rows_carry_their_per_reported_averages() {
         .find(|row| row.id == TICKET_TWO)
         .expect("the fixture home holds its second ticket");
     assert_eq!((ticket_two.records, ticket_two.reported), (10, 9));
-    assert_eq!(ticket_two.average_tokens.input, Some(2933), "26400 / 9, rounded");
+    assert_eq!(
+        ticket_two.average_tokens.input,
+        Some(2933),
+        "26400 / 9, rounded"
+    );
     assert_eq!(ticket_two.average_tokens.output, Some(947));
     assert_eq!(ticket_two.average_tokens.cache_read, Some(301_111));
     assert_eq!(ticket_two.average_tokens.cache_write, Some(21_000));
-    assert!(
-        (ticket_two.average_cost - 1.15).abs() < 1e-9,
-        "10.35 / 9"
-    );
+    assert!((ticket_two.average_cost - 1.15).abs() < 1e-9, "10.35 / 9");
 
     let unreported = report
         .model
