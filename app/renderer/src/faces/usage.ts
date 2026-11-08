@@ -176,31 +176,6 @@ export function money(cost: number): string {
   return `$${cost.toFixed(2)}`
 }
 
-/** One column of the cost-per-day chart: its row and its height. */
-export type DayBar = {
-  row: UsageRowView
-  /**
-   * The bar's height as a percentage of the chart, scaled to the largest day
-   * cost in the table being drawn, the same rule the row meters use.
-   */
-  heightPercent: number
-}
-
-/**
- * The day rows as chart columns, oldest first: the report's day rows arrive
- * newest first, so the chart reverses them. A day that reported nothing keeps
- * its slot with zero height, and a table whose days all cost nothing draws
- * zero heights rather than dividing by zero.
- */
-export function dayBars(days: UsageRowView[]): DayBar[] {
-  const oldestFirst = [...days].reverse()
-  const largest = oldestFirst.reduce((top, row) => Math.max(top, row.cost), 0)
-  return oldestFirst.map((row) => ({
-    row,
-    heightPercent: largest > 0 ? (row.cost / largest) * 100 : 0,
-  }))
-}
-
 /** The graph's series: the day's token pieces, its record count and its cost. */
 export type UsageSeries =
   | 'totalTokens'
@@ -212,7 +187,10 @@ export type UsageSeries =
   | 'records'
   | 'cost'
 
-/** Every series the picker offers, token-first with cost last as the opt-in. */
+/**
+ * The graph's series order: the token pieces stack in this order, total tokens
+ * leads the token picker, and the count and dollars each close their own chart.
+ */
 export const GRAPH_SERIES: readonly UsageSeries[] = [
   'totalTokens',
   'input',
@@ -223,9 +201,6 @@ export const GRAPH_SERIES: readonly UsageSeries[] = [
   'records',
   'cost',
 ]
-
-/** The graph's opening series: total tokens per day, cost kept secondary. */
-export const DEFAULT_GRAPH_SERIES: readonly UsageSeries[] = ['totalTokens']
 
 const SERIES_LABELS: Record<UsageSeries, string> = {
   totalTokens: 'Total tokens',
@@ -241,6 +216,21 @@ const SERIES_LABELS: Record<UsageSeries, string> = {
 export function seriesLabel(series: UsageSeries): string {
   return SERIES_LABELS[series]
 }
+
+function isTokenPiece(series: UsageSeries): boolean {
+  return series !== 'totalTokens' && series !== 'records' && series !== 'cost'
+}
+
+/** The five token pieces in GRAPH_SERIES order: what the tokens chart stacks. */
+export const TOKEN_PIECES: readonly UsageSeries[] = GRAPH_SERIES.filter(isTokenPiece)
+
+/** The tokens chart's six picker series: the five pieces plus the opt-in total. */
+export const TOKEN_CHART_SERIES: readonly UsageSeries[] = GRAPH_SERIES.filter(
+  (series) => series !== 'records' && series !== 'cost',
+)
+
+/** The tokens chart opens on the stack; totalTokens is an opt-in verification. */
+export const DEFAULT_TOKEN_SERIES: readonly UsageSeries[] = [...TOKEN_PIECES]
 
 /**
  * The day's total tokens: the sum of the reported pieces. Absent when the day
@@ -280,81 +270,186 @@ export function seriesValue(row: UsageRowView, series: UsageSeries): number | nu
   }
 }
 
-/** The graph's three scales: token pieces share one, records and cost keep their own. */
-export type GraphScales = {
-  tokenMax: number
-  recordsMax: number
-  costMax: number
+/** The chart's unit: one chart each for tokens, a count and dollars. */
+export type ChartUnit = 'tokens' | 'records' | 'cost'
+
+/** One axis tick: the gridline at Half or Max of the chart's own scale. */
+export type ChartTick = {
+  value: number
+  /** The formatted value: tokens through `tokens()`, cost through `money()`. */
+  label: string
+  /** The gridline's height above the baseline, as a percentage of the track. */
+  heightPercent: number
 }
 
-const TOKEN_SERIES: readonly UsageSeries[] = [
-  'totalTokens',
-  'input',
-  'output',
-  'cacheRead',
-  'cacheWrite',
-  'reasoning',
-]
+/** One drawn slice: a reported value and its share of the chart's scale. */
+export type ChartBar = {
+  series: UsageSeries
+  value: number
+  heightPercent: number
+}
+
+/** One chart column: a day, or an All-time week of days. */
+export type ChartColumn = {
+  label: string
+  /** The day rows behind the column, oldest first. */
+  rows: UsageRowView[]
+  /** The column's value on the chart's unit: the stack sum for tokens. */
+  amount: number
+  /** The drawn slices in GRAPH_SERIES order; an absent value draws no slice. */
+  bars: ChartBar[]
+}
+
+/** One chart: three always-visible charts, each with its own scale and ticks. */
+export type UsageChart = {
+  unit: ChartUnit
+  /** True when the columns are Monday-started weeks rather than days. */
+  weekly: boolean
+  max: number
+  ticks: ChartTick[]
+  columns: ChartColumn[]
+}
+
+export type UsageChartOptions = {
+  /** The token chart's drawn series; the single-series charts ignore it. */
+  series?: readonly UsageSeries[]
+  /** Bucket the day rows into Monday-started weeks, All time only. */
+  weekly?: boolean
+}
+
+const DAY_MS = 86_400_000
 
 /**
- * The largest value per scale over the days in view: token series share the
- * token scale so one bar never hides another token bar, while records and
- * cost draw against their own labeled scales. Absent values never set a scale.
+ * The Monday of the week a `YYYY-MM-DD` label falls in, its ISO date. Plain
+ * calendar arithmetic pinned to UTC, so a local zone can never shift a day
+ * across a week boundary.
  */
-export function graphScales(
-  days: UsageRowView[],
-  series: readonly UsageSeries[],
-): GraphScales {
-  let tokenMax = 0
-  let recordsMax = 0
-  let costMax = 0
-  for (const row of days) {
-    for (const name of series) {
-      const value = seriesValue(row, name)
-      if (value === null) continue
-      if (name === 'cost') costMax = Math.max(costMax, value)
-      else if (name === 'records') recordsMax = Math.max(recordsMax, value)
-      else tokenMax = Math.max(tokenMax, value)
-    }
-  }
-  return { tokenMax, recordsMax, costMax }
+export function weekStart(label: string): string {
+  const [year = 0, month = 1, day = 1] = label.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  const sinceMonday = (date.getUTCDay() + 6) % 7
+  return formatIsoDate(new Date(date.getTime() - sinceMonday * DAY_MS))
 }
 
-/** One series' bar height against its scale: absent and empty scales draw zero. */
-export function seriesHeight(value: number | null, max: number): number {
-  if (value === null || max <= 0) return 0
-  return (value / max) * 100
+function formatIsoDate(date: Date): string {
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
-/** One day column of the combined graph: its row and per-series values and heights. */
-export type GraphColumn = {
-  row: UsageRowView
-  values: Partial<Record<UsageSeries, number | null>>
-  heights: Partial<Record<UsageSeries, number>>
+type ChartBucket = {
+  label: string
+  rows: UsageRowView[]
 }
 
 /**
- * The day rows as combined graph columns, oldest first to match the day table.
- * A day that reported nothing keeps its slot with no values; absent stays
- * absent, never zero, while its height is zero so the slot stays legible.
+ * The chart's columns: the day rows oldest first, or All time's weeks that
+ * start Monday and carry the week's first day as their label. Bucketing is
+ * chart-side only; the Day table keeps the report's day rows.
  */
-export function graphBars(
-  days: UsageRowView[],
-  series: readonly UsageSeries[],
-): GraphColumn[] {
+function chartBuckets(days: UsageRowView[], weekly: boolean): ChartBucket[] {
   const oldestFirst = [...days].reverse()
-  const scales = graphScales(oldestFirst, series)
-  return oldestFirst.map((row) => {
-    const values: Partial<Record<UsageSeries, number | null>> = {}
-    const heights: Partial<Record<UsageSeries, number>> = {}
-    for (const name of series) {
-      const value = seriesValue(row, name)
-      values[name] = value
-      const max = name === 'cost' ? scales.costMax : name === 'records' ? scales.recordsMax : scales.tokenMax
-      heights[name] = seriesHeight(value, max)
-    }
-    return { row, values, heights }
-  })
+  if (!weekly) return oldestFirst.map((row) => ({ label: row.label, rows: [row] }))
+
+  const groups = new Map<string, UsageRowView[]>()
+  for (const row of oldestFirst) {
+    const start = weekStart(row.label)
+    const bucket = groups.get(start)
+    if (bucket === undefined) groups.set(start, [row])
+    else bucket.push(row)
+  }
+  return [...groups.entries()].map(([label, rows]) => ({ label, rows }))
+}
+
+/**
+ * The chart's ticks: Half and Max of its own maximum, formatted in its unit.
+ * A zero maximum draws no tick rather than dividing by zero.
+ */
+function chartTicks(max: number, unit: ChartUnit): ChartTick[] {
+  if (max <= 0) return []
+  return [
+    { value: max / 2, label: tickLabel(max / 2, unit), heightPercent: 50 },
+    { value: max, label: tickLabel(max, unit), heightPercent: 100 },
+  ]
+}
+
+function tickLabel(value: number, unit: ChartUnit): string {
+  return unit === 'cost' ? money(value) : tokens(value)
+}
+
+function percent(value: number, max: number): number {
+  return max > 0 ? (value / max) * 100 : 0
+}
+
+/** A series summed over a column's rows; absent stays absent unless a piece reports. */
+function sumSeries(rows: UsageRowView[], series: UsageSeries): number | null {
+  let total: number | null = null
+  for (const row of rows) {
+    const value = seriesValue(row, series)
+    if (value === null) continue
+    total = (total ?? 0) + value
+  }
+  return total
+}
+
+/** The column's value on the chart's unit: the stack sums to the token total. */
+function bucketAmount(rows: UsageRowView[], unit: ChartUnit): number {
+  if (unit === 'tokens') return sumSeries(rows, 'totalTokens') ?? 0
+  if (unit === 'records') return rows.reduce((sum, row) => sum + row.records, 0)
+  return rows.reduce((sum, row) => sum + row.cost, 0)
+}
+
+/**
+ * The column's drawable slices. The tokens chart stacks the active pieces, or
+ * draws one total bar when totalTokens is picked; records and cost are single
+ * series. A piece no row reported draws no slice, never a zero slice.
+ */
+function chartBars(
+  rows: UsageRowView[],
+  unit: ChartUnit,
+  series: readonly UsageSeries[],
+): Array<{ series: UsageSeries; value: number }> {
+  if (unit === 'tokens') {
+    // GRAPH_SERIES order holds however the picker was toggled.
+    const names = series.includes('totalTokens')
+      ? ['totalTokens' as const]
+      : GRAPH_SERIES.filter((name) => isTokenPiece(name) && series.includes(name))
+    return names.flatMap((name) => {
+      const value = sumSeries(rows, name)
+      return value === null ? [] : [{ series: name, value }]
+    })
+  }
+  const name: UsageSeries = unit === 'records' ? 'records' : 'cost'
+  return [{ series: name, value: bucketAmount(rows, unit) }]
+}
+
+/**
+ * One chart over the day table: the three units draw where they are read, each
+ * against its own maximum. The token scale is the largest total, so toggling a
+ * piece never rescales the stack and the opt-in total bar shares it.
+ */
+export function usageChart(
+  days: UsageRowView[],
+  unit: ChartUnit,
+  options: UsageChartOptions = {},
+): UsageChart {
+  const weekly = options.weekly ?? false
+  const series = unit === 'tokens' ? (options.series ?? DEFAULT_TOKEN_SERIES) : []
+  const buckets = chartBuckets(days, weekly)
+  const amounts = buckets.map((bucket) => bucketAmount(bucket.rows, unit))
+  const max = amounts.reduce((top, amount) => Math.max(top, amount), 0)
+  const ticks = chartTicks(max, unit)
+  const columns = buckets.map((bucket, index) => ({
+    label: bucket.label,
+    rows: bucket.rows,
+    amount: amounts[index] ?? 0,
+    bars: chartBars(bucket.rows, unit, series).map((bar) => ({
+      ...bar,
+      heightPercent: percent(bar.value, max),
+    })),
+  }))
+  return { unit, weekly, max, ticks, columns }
 }
 
 /** The sortable table columns, in header order: label plus every numeric the face draws. */
