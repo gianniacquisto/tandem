@@ -20,8 +20,9 @@ export type BoardLayoutProps = {
 }
 
 /**
- * The board grid: lanes are rows and the six statuses are columns, `on-hold`
- * parked last, so the workflow reads left to right inside each lane.
+ * The board grid: lanes are rows and the six statuses are columns, reading
+ * left to right in the declared workflow order, so every lane runs Backlog to
+ * Done the same way the status menu and the filters do.
  *
  * Lanes group under project headers: projects in list order, their lanes
  * beneath in lane order, the default area first and ungrouped, empty projects

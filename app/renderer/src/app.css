@@ -1223,9 +1223,9 @@ body {
   white-space: nowrap;
 }
 
-/* The board: lanes are rows and the six statuses are columns, `on-hold` parked
- * last. The lane title holds the left edge while the statuses scroll; a column
- * never grows past a card's readable width (PRT-35). */
+/* The board: lanes are rows and the six statuses are columns, in the declared
+ * workflow order. The lane title holds the left edge while the statuses
+ * scroll; a column never grows past a card's readable width (PRT-35). */
 
 .board {
   display: grid;

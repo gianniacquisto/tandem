@@ -51,7 +51,7 @@ export const SCENES: readonly Scene[] = [
     id: 'tickets-board',
     file: 'tickets-board.png',
     description:
-      'the same face on the same 78-ticket board home in its board layout: the lanes as rows, each named with its count and holding one cell per status, the six status columns with On hold parked last, and the same rows set on cards in the cell of their lane and status',
+      'the same face on the same 78-ticket board home in its board layout: the lanes as rows, each named with its count and holding one cell per status, the six status columns in the declared workflow order from Backlog to Done, and the same rows set on cards in the cell of their lane and status',
   },
   {
     id: 'tickets-focus',
