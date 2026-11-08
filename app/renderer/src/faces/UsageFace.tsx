@@ -124,6 +124,23 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
         </div>
         {arithmetic === null ? null : <p className="usage__arithmetic">{arithmetic}</p>}
 
+        {/* The window picker stays even when the narrowed window holds nothing:
+            it is the only way back to a window that does. */}
+        <div className="usage__window" role="tablist" aria-label="Usage window">
+          {WINDOWS.map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              role="tab"
+              className="usage__window-segment"
+              aria-selected={candidate === activeWindow}
+              onClick={() => onWindowChange?.(candidate)}
+            >
+              {windowLabel(candidate)}
+            </button>
+          ))}
+        </div>
+
         {report.records === 0 ? (
           <div className="usage__empty">
             <p className="usage__empty-title">Nothing reported yet</p>
@@ -133,20 +150,6 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
           </div>
         ) : (
           <>
-            <div className="usage__window" role="tablist" aria-label="Usage window">
-              {WINDOWS.map((candidate) => (
-                <button
-                  key={candidate}
-                  type="button"
-                  role="tab"
-                  className="usage__window-segment"
-                  aria-selected={candidate === activeWindow}
-                  onClick={() => onWindowChange?.(candidate)}
-                >
-                  {windowLabel(candidate)}
-                </button>
-              ))}
-            </div>
             {columns.length === 0 ? null : (
               <div className="usage__graph">
                 <div className="usage__chart" role="group" aria-label="Usage per day">
