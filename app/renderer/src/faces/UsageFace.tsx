@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 
 import type { UsageReportView } from '../wire/UsageReportView'
 import type { UsageRowView } from '../wire/UsageRowView'
@@ -6,10 +6,12 @@ import type { UsageSessionView } from '../wire/UsageSessionView'
 import { Face } from './Face'
 import {
   ABSENT,
-  DEFAULT_GRAPH_SERIES,
+  CACHE_PIECES,
+  CHART_TITLES,
+  DEFAULT_CACHE_SERIES,
+  DEFAULT_TOKEN_SERIES,
   DEFAULT_WINDOW,
   DIMENSIONS,
-  GRAPH_SERIES,
   MODES,
   MODE_CONTROL_LABEL,
   WINDOWS,
@@ -17,13 +19,12 @@ import {
   defaultSort,
   dimensionLabel,
   dimensionRows,
-  graphBars,
-  graphScales,
   modeLabel,
   money,
   recordNoun,
   rowCells,
   selectedRow,
+  seriesColour,
   seriesLabel,
   sortRows,
   startedAt,
@@ -32,7 +33,10 @@ import {
   tokenLine,
   tokens,
   toggleSort,
+  TOKEN_PIECES,
+  usageChart,
   windowLabel,
+  type UsageChart,
   type UsageDimension,
   type UsageMode,
   type UsageSeries,
@@ -68,7 +72,8 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
   const [dimension, setDimension] = useState<UsageDimension>('day')
   const [mode, setMode] = useState<UsageMode>('total')
   const [selected, setSelected] = useState<string | null>(null)
-  const [series, setSeries] = useState<UsageSeries[]>([...DEFAULT_GRAPH_SERIES])
+  const [tokenSeries, setTokenSeries] = useState<UsageSeries[]>([...DEFAULT_TOKEN_SERIES])
+  const [cacheSeries, setCacheSeries] = useState<UsageSeries[]>([...DEFAULT_CACHE_SERIES])
   const [sorts, setSorts] = useState<Record<'model' | 'agent' | 'ticket', UsageSort>>(() => ({
     model: defaultSort('model') ?? { column: 'label', direction: 'asc' },
     agent: defaultSort('agent') ?? { column: 'label', direction: 'asc' },
@@ -85,8 +90,13 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
   }
 
   const arithmetic = ticketArithmetic(report)
-  const columns = graphBars(report.day, series)
-  const scales = graphScales(report.day, series)
+  // All time's hundreds of day columns bucket into Monday-started weeks; the
+  // other windows draw one column per day row.
+  const weekly = activeWindow === 'all-time'
+  const tokenChart = usageChart(report.day, 'tokens', { series: tokenSeries, weekly })
+  const cacheChart = usageChart(report.day, 'cache', { series: cacheSeries, weekly })
+  const totalChart = usageChart(report.day, 'total', { weekly })
+  const costChart = usageChart(report.day, 'cost', { weekly })
   const open = selectedRow(report, dimension, selected)
   const sort = dimension === 'day' ? null : sorts[dimension]
   const rows =
@@ -104,8 +114,14 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
     setSelected(row.id === selected ? null : row.id)
   }
 
-  function toggleSeries(name: UsageSeries) {
-    setSeries((current) =>
+  function toggleTokenSeries(name: UsageSeries) {
+    setTokenSeries((current) =>
+      current.includes(name) ? current.filter((entry) => entry !== name) : [...current, name],
+    )
+  }
+
+  function toggleCacheSeries(name: UsageSeries) {
+    setCacheSeries((current) =>
       current.includes(name) ? current.filter((entry) => entry !== name) : [...current, name],
     )
   }
@@ -150,60 +166,43 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
           </div>
         ) : (
           <>
-            {columns.length === 0 ? null : (
+            {report.day.length === 0 ? null : (
               <div className="usage__graph">
-                <div className="usage__chart" role="group" aria-label="Usage per day">
-                  {columns.map(({ row, values, heights }) => (
-                    <div key={row.id} className="usage__bar-cell">
-                      <div
-                        className={`usage__bar-track${series.length > 1 ? ' usage__bar-track--multi' : ''}`}
-                      >
-                        {series.map((name) => {
-                          const value = values[name] ?? null
-                          // Absent stays absent: no bar, never a zero dressed up.
-                          // A reported zero keeps its bar at zero height.
-                          if (value === null) return null
-                          const height = heights[name] ?? 0
-                          const reading =
-                            name === 'cost'
-                              ? money(value)
-                              : name === 'records'
-                                ? tokens(value)
-                                : tokens(value)
-                          const name_ = `${row.label} ${seriesLabel(name)}: ${reading}`
-                          return (
-                            <div
-                              key={name}
-                              className={`usage__bar usage__bar--${name}`}
-                              role="img"
-                              aria-label={name_}
-                              title={name_}
-                              style={{ height: `${height}%` }}
-                            />
-                          )
-                        })}
-                      </div>
-                      <span className="usage__bar-label" aria-hidden="true">
-                        {row.label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <p className="usage__scales">
-                  <GraphScales scales={scales} series={series} />
-                </p>
-                <div className="usage__series" role="group" aria-label="Graph series">
-                  {GRAPH_SERIES.map((candidate) => (
-                    <button
-                      key={candidate}
-                      type="button"
-                      className="usage__series-option"
-                      aria-pressed={series.includes(candidate)}
-                      onClick={() => toggleSeries(candidate)}
-                    >
-                      {seriesLabel(candidate)}
-                    </button>
-                  ))}
+                <div className="usage__charts">
+                  <Chart
+                    title={CHART_TITLES.tokens}
+                    chart={tokenChart}
+                    legend={
+                      <SeriesPicker
+                        label="Token series"
+                        pieces={TOKEN_PIECES}
+                        selected={tokenSeries}
+                        onToggle={toggleTokenSeries}
+                      />
+                    }
+                  />
+                  <Chart
+                    title={CHART_TITLES.cache}
+                    chart={cacheChart}
+                    legend={
+                      <SeriesPicker
+                        label="Cache series"
+                        pieces={CACHE_PIECES}
+                        selected={cacheSeries}
+                        onToggle={toggleCacheSeries}
+                      />
+                    }
+                  />
+                  <Chart
+                    title={CHART_TITLES.total}
+                    chart={totalChart}
+                    legend={<SingleLegend series="totalTokens" />}
+                  />
+                  <Chart
+                    title={CHART_TITLES.cost}
+                    chart={costChart}
+                    legend={<SingleLegend series="cost" />}
+                  />
                 </div>
               </div>
             )}
@@ -338,25 +337,142 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
   )
 }
 
-function GraphScales({
-  scales,
-  series,
+/**
+ * The grouped charts' legend and toggle in one: each piece is a button carrying
+ * its swatch, so turning a piece off drops its bar and its swatch together.
+ */
+function SeriesPicker({
+  label,
+  pieces,
+  selected,
+  onToggle,
 }: {
-  scales: { tokenMax: number; recordsMax: number; costMax: number }
-  series: UsageSeries[]
+  label: string
+  pieces: readonly UsageSeries[]
+  selected: readonly UsageSeries[]
+  onToggle: (series: UsageSeries) => void
 }) {
-  const parts: string[] = []
-  if (series.some((name) => name !== 'records' && name !== 'cost')) {
-    parts.push(`Tokens per day, max ${tokens(scales.tokenMax)}`)
-  }
-  if (series.includes('records')) {
-    parts.push(`Records per day, max ${tokens(scales.recordsMax)}`)
-  }
-  if (series.includes('cost')) {
-    parts.push(`Cost per day, max ${money(scales.costMax)}`)
-  }
-  if (parts.length === 0) return <>Select a series to draw the graph.</>
-  return <>{parts.join(' · ')}</>
+  return (
+    <div className="usage__legend-items" role="group" aria-label={label}>
+      {pieces.map((candidate) => {
+        const on = selected.includes(candidate)
+        return (
+          <button
+            key={candidate}
+            type="button"
+            className="usage__series-option"
+            aria-pressed={on}
+            onClick={() => onToggle(candidate)}
+          >
+            {on ? (
+              <span
+                className={`usage__swatch usage__swatch--${candidate}`}
+                style={{ background: `var(--usage-series-${seriesColour(candidate)})` }}
+                aria-hidden="true"
+              />
+            ) : null}
+            {seriesLabel(candidate)}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** The single-series charts' legend: one plain swatch, never a toggle. */
+function SingleLegend({ series }: { series: UsageSeries }) {
+  return (
+    <div className="usage__legend-items">
+      <span className="usage__legend-item">
+        <span
+          className={`usage__swatch usage__swatch--${series}`}
+          style={{ background: `var(--usage-series-${seriesColour(series)})` }}
+          aria-hidden="true"
+        />
+        {seriesLabel(series)}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * One small chart: its quiet heading, its gridlines at Half and Max with the
+ * formatted tick, its columns oldest first, and its legend below. A column's
+ * bars sit side by side in a group (one bar for the single-series charts), each
+ * bar's height already a share of the chart's own maximum.
+ */
+function Chart({
+  title,
+  chart,
+  legend,
+}: {
+  title: string
+  chart: UsageChart
+  legend: ReactNode
+}) {
+  return (
+    <section
+      className="usage__chart"
+      aria-label={`${title} per ${chart.weekly ? 'week' : 'day'}`}
+    >
+      <h3 className="usage__chart-title">{title}</h3>
+      <div className="usage__chart-plot">
+        <div className="usage__axis" aria-hidden="true">
+          {chart.ticks.map((tick) => (
+            <span
+              key={tick.value}
+              className="usage__tick"
+              style={{ bottom: `${tick.heightPercent}%` }}
+            >
+              {tick.label}
+            </span>
+          ))}
+        </div>
+        <div className="usage__plot">
+          <div className="usage__grid" aria-hidden="true">
+            {chart.ticks.map((tick) => (
+              <span
+                key={tick.value}
+                className="usage__gridline"
+                style={{ bottom: `${tick.heightPercent}%` }}
+              />
+            ))}
+          </div>
+          <div className="usage__columns">
+            {chart.columns.map((column) => (
+              <div key={column.label} className="usage__bar-cell">
+                <div className="usage__bar-track">
+                  <div className="usage__bar-group">
+                    {column.bars.map((bar) => {
+                      const reading = bar.series === 'cost' ? money(bar.value) : tokens(bar.value)
+                      const name = `${column.label} ${seriesLabel(bar.series)}: ${reading}`
+                      return (
+                        <div
+                          key={bar.series}
+                          className={`usage__bar usage__bar--${bar.series}`}
+                          role="img"
+                          aria-label={name}
+                          title={name}
+                          style={{
+                            height: `${bar.heightPercent}%`,
+                            background: `var(--usage-series-${seriesColour(bar.series)})`,
+                          }}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+                <span className="usage__bar-label" aria-hidden="true">
+                  {column.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="usage__legend">{legend}</div>
+    </section>
+  )
 }
 
 function SortHeader({

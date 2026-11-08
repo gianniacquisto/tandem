@@ -27,7 +27,7 @@ export const SCENES: readonly Scene[] = [
     id: 'usage',
     file: 'usage-face.png',
     description:
-      'the **Usage** face over the fixture home: the reported spend and its coverage, the cost-per-day bar chart above the pickers, the ticket rows and their arithmetic, the Day/Model/Agent/Ticket picker beside the Total/Average per-record toggle, and a ticket row rolled down to the records behind it, each naming its session, agent, model, local start, cost, tokens and the tickets it carried',
+      'the **Usage** face over the fixture home: five weeks of reported spend and its coverage, four charts each against its own scale and with a swatched legend that draws each bar\'s exact colour (Tokens grouping input and output as two bars per column, Cache grouping cache read and cache write, the two grouped charts sharing one colour pair, Total tokens on its own, and Cost), Half and Max gridline ticks naming each scale, All time read as Monday-started weekly columns, the ticket rows and their arithmetic, the Day/Model/Agent/Ticket picker beside the Total/Average per-record toggle, and a ticket row rolled down to the records behind it, each naming its session, agent, model, local start, cost, tokens and the tickets it carried',
   },
   {
     id: 'bikeshed',

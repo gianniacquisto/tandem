@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   ABSENT,
   coverage,
-  dayBars,
   dimensionLabel,
   dimensionRows,
   modeLabel,
@@ -21,13 +20,18 @@ import {
   WINDOWS,
   DEFAULT_WINDOW,
   windowLabel,
-  GRAPH_SERIES,
-  DEFAULT_GRAPH_SERIES,
+  CACHE_PIECES,
+  CHART_KINDS,
+  CHART_TITLES,
+  DEFAULT_CACHE_SERIES,
+  DEFAULT_TOKEN_SERIES,
+  TOKEN_PIECES,
+  seriesColour,
   seriesLabel,
   seriesValue,
   totalTokens,
-  graphScales,
-  graphBars,
+  usageChart,
+  weekStart,
   SORT_COLUMNS,
   defaultSort,
   initialDirection,
@@ -256,21 +260,48 @@ describe('the usage face over one report', () => {
 
   it('scales the day chart to the largest day cost', () => {
     const days = [
-      row({ id: '2026-10-31', label: '2026-10-31', cost: 1, barPercent: 50 }),
-      row({ id: '2026-10-30', label: '2026-10-30', cost: 2, barPercent: 100 }),
+      row({ id: '2026-10-31', label: '2026-10-31', cost: 1 }),
+      row({ id: '2026-10-30', label: '2026-10-30', cost: 2 }),
     ]
-    const bars = dayBars(days)
-    expect(bars.map((bar) => bar.row.id)).toEqual(['2026-10-30', '2026-10-31'])
-    expect(bars.map((bar) => bar.heightPercent)).toEqual([100, 50])
+    const chart = usageChart(days, 'cost')
+    expect(chart.columns.map((column) => column.label)).toEqual(['2026-10-30', '2026-10-31'])
+    expect(chart.columns.map((column) => column.bars[0]?.heightPercent)).toEqual([100, 50])
+    expect(chart.max).toBe(2)
   })
 
   it('draws zero heights when no day reported anything', () => {
+    const nothing = { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null }
     const days = [
-      row({ id: '2026-10-31', label: '2026-10-31', reported: 0, cost: 0, barPercent: 0 }),
-      row({ id: '2026-10-30', label: '2026-10-30', reported: 0, cost: 0, barPercent: 0 }),
+      row({
+        id: '2026-10-31',
+        label: '2026-10-31',
+        reported: 0,
+        cost: 0,
+        records: 0,
+        tokens: nothing,
+      }),
+      row({
+        id: '2026-10-30',
+        label: '2026-10-30',
+        reported: 0,
+        cost: 0,
+        records: 0,
+        tokens: nothing,
+      }),
     ]
-    const bars = dayBars(days)
-    expect(bars.map((bar) => bar.heightPercent)).toEqual([0, 0])
+    for (const kind of ['tokens', 'cache'] as const) {
+      const chart = usageChart(days, kind)
+      expect(chart.max).toBe(0)
+      expect(chart.ticks).toEqual([])
+      // No reported piece draws no slice at all.
+      expect(chart.columns.map((column) => column.bars)).toEqual([[], []])
+    }
+    for (const kind of ['total', 'cost'] as const) {
+      const chart = usageChart(days, kind)
+      expect(chart.max).toBe(0)
+      expect(chart.ticks).toEqual([])
+      expect(chart.columns.map((column) => column.bars[0]?.heightPercent)).toEqual([0, 0])
+    }
   })
 
   it('orders the day chart oldest first', () => {
@@ -279,7 +310,7 @@ describe('the usage face over one report', () => {
       row({ id: '2026-10-31', label: '2026-10-31', cost: 3 }),
       row({ id: '2026-10-30', label: '2026-10-30', cost: 3 }),
     ]
-    expect(dayBars(days).map((bar) => bar.row.id)).toEqual([
+    expect(usageChart(days, 'cost').columns.map((column) => column.label)).toEqual([
       '2026-10-30',
       '2026-10-31',
       '2026-11-01',
@@ -292,9 +323,13 @@ describe('the usage face over one report', () => {
       row({ id: '2026-10-30', label: '2026-10-30', cost: 0 }),
       row({ id: '2026-10-29', label: '2026-10-29', cost: 1 }),
     ]
-    const bars = dayBars(days)
-    expect(bars.map((bar) => bar.row.id)).toEqual(['2026-10-29', '2026-10-30', '2026-10-31'])
-    expect(bars.map((bar) => bar.heightPercent)).toEqual([50, 0, 100])
+    const chart = usageChart(days, 'cost')
+    expect(chart.columns.map((column) => column.label)).toEqual([
+      '2026-10-29',
+      '2026-10-30',
+      '2026-10-31',
+    ])
+    expect(chart.columns.map((column) => column.bars[0]?.heightPercent)).toEqual([50, 0, 100])
   })
 
   it('reads totals in Total mode, byte-identical to today', () => {
@@ -394,43 +429,238 @@ describe('the usage face over one report', () => {
     expect(coverage(drawn, 'all-time')).toBe('reported by 3 of 4 records')
   })
 
-  it('defaults the graph to total tokens with seven picker series beside it', () => {
-    expect(DEFAULT_GRAPH_SERIES).toEqual(['totalTokens'])
-    expect(GRAPH_SERIES).toEqual([
-      'totalTokens',
+  it('draws four charts split by scale, with total tokens on its own', () => {
+    expect(CHART_KINDS).toEqual(['tokens', 'cache', 'total', 'cost'])
+    expect(CHART_KINDS.map((kind) => CHART_TITLES[kind])).toEqual([
+      'Tokens',
+      'Cache',
+      'Total tokens',
+      'Cost',
+    ])
+    expect(TOKEN_PIECES).toEqual(['input', 'output'])
+    expect(CACHE_PIECES).toEqual(['cacheRead', 'cacheWrite'])
+    expect(DEFAULT_TOKEN_SERIES).toEqual(['input', 'output'])
+    expect(DEFAULT_CACHE_SERIES).toEqual(['cacheRead', 'cacheWrite'])
+    expect(TOKEN_PIECES.map(seriesLabel)).toEqual(['Input', 'Output'])
+    expect(CACHE_PIECES.map(seriesLabel)).toEqual(['Cache read', 'Cache write'])
+
+    const day = row({
+      tokens: { input: 3000, output: 500, reasoning: 100, cacheRead: 200, cacheWrite: 50 },
+    })
+    expect(usageChart([day], 'tokens').columns[0]?.bars.map((bar) => bar.series)).toEqual([
       'input',
       'output',
+    ])
+    expect(usageChart([day], 'cache').columns[0]?.bars.map((bar) => bar.series)).toEqual([
       'cacheRead',
       'cacheWrite',
-      'reasoning',
-      'records',
-      'cost',
     ])
-    expect(GRAPH_SERIES.map(seriesLabel)).toEqual([
-      'Total tokens',
-      'Input',
-      'Output',
-      'Cache read',
-      'Cache write',
-      'Reasoning',
-      'Records',
-      'Cost',
+    expect(usageChart([day], 'total').columns[0]?.bars.map((bar) => bar.series)).toEqual([
+      'totalTokens',
+    ])
+    expect(usageChart([day], 'total').columns[0]?.bars[0]?.value).toBe(3850)
+    expect(usageChart([day], 'cost').columns[0]?.bars.map((bar) => bar.series)).toEqual(['cost'])
+
+    // The records chart and the reasoning slice are gone from every chart.
+    const charted = CHART_KINDS.flatMap(
+      (kind) => usageChart([day], kind).columns[0]?.bars.map((bar) => bar.series) ?? [],
+    )
+    expect(charted).not.toContain('records')
+    expect(charted).not.toContain('reasoning')
+  })
+
+  it('draws input and output as grouped bars on one scale, and cache read and write on another', () => {
+    const days = [
+      row({
+        id: '2026-10-31',
+        label: '2026-10-31',
+        tokens: {
+          input: 2000,
+          output: null,
+          reasoning: 0,
+          cacheRead: 800_000,
+          cacheWrite: null,
+        },
+      }),
+      row({
+        id: '2026-10-30',
+        label: '2026-10-30',
+        tokens: {
+          input: 6000,
+          output: 3000,
+          reasoning: 0,
+          cacheRead: 1_200_000,
+          cacheWrite: 300_000,
+        },
+      }),
+    ]
+
+    const tokens = usageChart(days, 'tokens')
+    expect(tokens.columns.map((column) => column.label)).toEqual(['2026-10-30', '2026-10-31'])
+    const [older, newer] = tokens.columns
+    expect(older?.bars.map((bar) => bar.series)).toEqual(['input', 'output'])
+    // Absent stays absent: no output bar on the newer day.
+    expect(newer?.bars.map((bar) => bar.series)).toEqual(['input'])
+    // The scale is the tallest single bar actually drawn, never the combined
+    // input + output of one day.
+    expect(tokens.max).toBe(6000)
+    expect(tokens.columns.map((column) => column.amount)).toEqual([6000, 2000])
+    expect(older?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(100)
+    expect(older?.bars.find((bar) => bar.series === 'output')?.heightPercent).toBe(50)
+    expect(newer?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(33.33333333333333)
+
+    const cache = usageChart(days, 'cache')
+    expect(cache.columns[0]?.bars.map((bar) => bar.series)).toEqual(['cacheRead', 'cacheWrite'])
+    expect(cache.columns[1]?.bars.map((bar) => bar.series)).toEqual(['cacheRead'])
+    expect(cache.max).toBe(1_200_000)
+    expect(cache.columns[0]?.bars.map((bar) => bar.value)).toEqual([1_200_000, 300_000])
+    expect(cache.columns[0]?.bars.map((bar) => bar.heightPercent)).toEqual([100, 25])
+    expect(cache.columns[1]?.bars[0]?.heightPercent).toBe(66.66666666666666)
+
+    // The two grouped charts share one colour pair: the first piece of each
+    // group reads one colour and the second another, so Input and Cache read
+    // draw alike and Output and Cache write draw alike across the charts.
+    expect(tokens.columns[0]?.bars.map((bar) => seriesColour(bar.series))).toEqual([
+      seriesColour('input'),
+      seriesColour('output'),
+    ])
+    expect(cache.columns[0]?.bars.map((bar) => seriesColour(bar.series))).toEqual([
+      seriesColour('cacheRead'),
+      seriesColour('cacheWrite'),
+    ])
+    expect(seriesColour('input')).toBe(seriesColour('cacheRead'))
+    expect(seriesColour('output')).toBe(seriesColour('cacheWrite'))
+    expect(seriesColour('input')).not.toBe(seriesColour('output'))
+    // The single-series charts carry their own colour, distinct from each other.
+    expect(seriesColour('totalTokens')).not.toBe(seriesColour('cost'))
+    expect(seriesColour('totalTokens')).not.toBe(seriesColour('input'))
+    expect(seriesColour('cost')).not.toBe(seriesColour('output'))
+  })
+
+  it('draws one grouped bar per series with a value, none for an absent value, and a zero height for a reported zero', () => {
+    const days = [
+      row({
+        id: '2026-10-31',
+        label: '2026-10-31',
+        tokens: { input: 2000, output: 0, reasoning: 0, cacheRead: null, cacheWrite: null },
+      }),
+      row({
+        id: '2026-10-30',
+        label: '2026-10-30',
+        tokens: { input: null, output: 500, reasoning: 0, cacheRead: null, cacheWrite: null },
+      }),
+    ]
+
+    const chart = usageChart(days, 'tokens')
+    // The older day reported only output: its group holds one bar.
+    expect(chart.columns[0]?.bars.map((bar) => bar.series)).toEqual(['output'])
+    // The newer day reported both pieces: input has a value, output a reported zero.
+    expect(chart.columns[1]?.bars.map((bar) => bar.series)).toEqual(['input', 'output'])
+    expect(chart.columns[1]?.bars.find((bar) => bar.series === 'output')?.value).toBe(0)
+    expect(chart.columns[1]?.bars.find((bar) => bar.series === 'output')?.heightPercent).toBe(0)
+    // The scale is the tallest drawn bar, so input's 2,000 is the ceiling.
+    expect(chart.max).toBe(2000)
+    expect(chart.columns[1]?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(100)
+    expect(chart.columns[0]?.bars[0]?.heightPercent).toBe(25)
+  })
+
+  it('ticks each chart at half and max of its own scale', () => {
+    const days = [
+      row({
+        id: '2026-10-30',
+        label: '2026-10-30',
+        records: 4,
+        cost: 2,
+        tokens: { input: 3000, output: 1000, reasoning: 500, cacheRead: 8000, cacheWrite: 2000 },
+      }),
+    ]
+
+    const tokenChart = usageChart(days, 'tokens')
+    // Grouped bars scale to the tallest single piece: input's 3,000.
+    expect(tokenChart.max).toBe(3000)
+    expect(tokenChart.ticks.map((tick) => tick.label)).toEqual(['1,500', '3,000'])
+    expect(tokenChart.ticks.map((tick) => tick.heightPercent)).toEqual([50, 100])
+
+    const cacheChart = usageChart(days, 'cache')
+    // Grouped bars scale to the taller of cache read and cache write: 8,000.
+    expect(cacheChart.max).toBe(8000)
+    expect(cacheChart.ticks.map((tick) => tick.label)).toEqual(['4,000', '8,000'])
+
+    const totalChart = usageChart(days, 'total')
+    expect(totalChart.max).toBe(14_500)
+    expect(totalChart.ticks.map((tick) => tick.label)).toEqual(['7,250', '14,500'])
+
+    const costChart = usageChart(days, 'cost')
+    expect(costChart.max).toBe(2)
+    expect(costChart.ticks.map((tick) => tick.label)).toEqual(['$1.00', '$2.00'])
+
+    // A chart whose days report nothing on its scale draws no tick.
+    const emptyDays = [
+      row({
+        id: '2026-10-28',
+        label: '2026-10-28',
+        reported: 0,
+        cost: 0,
+        records: 0,
+        tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
+      }),
+    ]
+    for (const kind of ['tokens', 'cache', 'total', 'cost'] as const) {
+      const empty = usageChart(emptyDays, kind)
+      expect(empty.max).toBe(0)
+      expect(empty.ticks).toEqual([])
+    }
+  })
+
+  it('all-time days bucket into Monday-started weeks, labeled by the week first day', () => {
+    // 2026-11-01 is a Sunday; its Monday is 2026-10-26, a different column
+    // from the Monday 2026-11-02 that follows it.
+    expect(weekStart('2026-11-01')).toBe('2026-10-26')
+    expect(weekStart('2026-11-02')).toBe('2026-11-02')
+    expect(weekStart('2026-10-31')).toBe('2026-10-26')
+    expect(weekStart('2026-10-26')).toBe('2026-10-26')
+
+    const labels = ['2026-11-02', '2026-11-01', '2026-10-31', '2026-10-26']
+    const days = labels.map((label, index) =>
+      row({ id: label, label, cost: index + 1, records: 1 }),
+    )
+
+    const weekly = usageChart(days, 'cost', { weekly: true })
+    expect(weekly.columns.map((column) => column.label)).toEqual([
+      '2026-10-26',
+      '2026-11-02',
+    ])
+    expect(weekly.columns[0]?.rows.map((entry) => entry.label)).toEqual([
+      '2026-10-26',
+      '2026-10-31',
+      '2026-11-01',
+    ])
+    expect(weekly.columns[1]?.rows.map((entry) => entry.label)).toEqual(['2026-11-02'])
+    expect(weekly.columns[0]?.bars[0]?.value).toBe(2 + 3 + 4)
+    expect(weekly.columns[1]?.bars[0]?.value).toBe(1)
+    expect(weekly.max).toBe(9)
+
+    // The day windows keep one column per day row, unchanged.
+    expect(usageChart(days, 'cost').columns.map((column) => column.label)).toEqual([
+      '2026-10-26',
+      '2026-10-31',
+      '2026-11-01',
+      '2026-11-02',
     ])
   })
 
-  it('reads each picker series from the day row, absent never zero', () => {
+  it('reads each charted series from the day row, absent never zero', () => {
     const entry = row({
       cost: 1.5,
       tokens: { input: 3000, output: null, reasoning: 100, cacheRead: 200, cacheWrite: null },
     })
+    // Total tokens still sums every reported piece, reasoning included.
     expect(totalTokens(entry)).toBe(3300)
     expect(seriesValue(entry, 'totalTokens')).toBe(3300)
     expect(seriesValue(entry, 'input')).toBe(3000)
     expect(seriesValue(entry, 'output')).toBeNull()
     expect(seriesValue(entry, 'cacheRead')).toBe(200)
     expect(seriesValue(entry, 'cacheWrite')).toBeNull()
-    expect(seriesValue(entry, 'reasoning')).toBe(100)
-    expect(seriesValue(entry, 'records')).toBe(1)
     expect(seriesValue(entry, 'cost')).toBe(1.5)
   })
 
@@ -443,35 +673,68 @@ describe('the usage face over one report', () => {
     expect(seriesValue(entry, 'totalTokens')).toBeNull()
   })
 
-  it('shares one token scale and draws cost on its own', () => {
+  it('draws each chart against its own scale', () => {
     const days = [
-      row({ id: '2026-10-31', label: '2026-10-31', cost: 2, tokens: { input: 6000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } }),
-      row({ id: '2026-10-30', label: '2026-10-30', cost: 1, tokens: { input: 3000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } }),
+      row({
+        id: '2026-10-31',
+        label: '2026-10-31',
+        cost: 2,
+        tokens: { input: 6000, output: 0, reasoning: 0, cacheRead: 900_000, cacheWrite: 0 },
+      }),
+      row({
+        id: '2026-10-30',
+        label: '2026-10-30',
+        cost: 1,
+        tokens: { input: 3000, output: 0, reasoning: 0, cacheRead: 300_000, cacheWrite: 0 },
+      }),
     ]
-    const scales = graphScales(days, ['input', 'cost'])
-    expect(scales.tokenMax).toBe(6000)
-    expect(scales.costMax).toBe(2)
-    const bars = graphBars(days, ['input', 'cost'])
-    expect(bars.map((bar) => bar.row.id)).toEqual(['2026-10-30', '2026-10-31'])
-    expect(bars[0]?.heights.input).toBe(50)
-    expect(bars[1]?.heights.input).toBe(100)
-    expect(bars[0]?.heights.cost).toBe(50)
-    expect(bars[1]?.heights.cost).toBe(100)
+    const tokenChart = usageChart(days, 'tokens')
+    expect(tokenChart.max).toBe(6000)
+    expect(tokenChart.columns.map((column) => column.bars[0]?.heightPercent)).toEqual([50, 100])
+    const cacheChart = usageChart(days, 'cache')
+    expect(cacheChart.max).toBe(900_000)
+    expect(cacheChart.columns[0]?.bars[0]?.heightPercent).toBeCloseTo(100 / 3)
+    expect(cacheChart.columns[1]?.bars[0]?.heightPercent).toBe(100)
+    const totalChart = usageChart(days, 'total')
+    expect(totalChart.max).toBe(906_000)
+    expect(totalChart.columns[0]?.bars[0]?.heightPercent).toBeCloseTo((303_000 / 906_000) * 100)
+    expect(totalChart.columns[1]?.bars[0]?.heightPercent).toBe(100)
+    const costChart = usageChart(days, 'cost')
+    expect(costChart.max).toBe(2)
+    expect(costChart.columns.map((column) => column.bars[0]?.heightPercent)).toEqual([50, 100])
   })
 
-  it('keeps zero and absent days in their slots', () => {
+  it('keeps zero and absent pieces in their slots', () => {
     const days = [
-      row({ id: '2026-10-31', label: '2026-10-31', cost: 2, tokens: { input: 2000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } }),
-      row({ id: '2026-10-30', label: '2026-10-30', reported: 0, cost: 0, tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null } }),
-      row({ id: '2026-10-29', label: '2026-10-29', cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 } }),
+      row({
+        id: '2026-10-31',
+        label: '2026-10-31',
+        tokens: { input: 2000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      }),
+      row({
+        id: '2026-10-30',
+        label: '2026-10-30',
+        reported: 0,
+        tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
+      }),
+      row({
+        id: '2026-10-29',
+        label: '2026-10-29',
+        tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      }),
     ]
-    const bars = graphBars(days, ['input'])
-    expect(bars.map((bar) => bar.row.id)).toEqual(['2026-10-29', '2026-10-30', '2026-10-31'])
-    expect(bars[1]?.values.input).toBeNull()
-    expect(bars[1]?.heights.input).toBe(0)
-    expect(bars[0]?.values.input).toBe(0)
-    expect(bars[0]?.heights.input).toBe(0)
-    expect(bars[2]?.heights.input).toBe(100)
+    const chart = usageChart(days, 'tokens')
+    expect(chart.columns.map((column) => column.label)).toEqual([
+      '2026-10-29',
+      '2026-10-30',
+      '2026-10-31',
+    ])
+    // The day that reported nothing draws no slice at all.
+    expect(chart.columns[1]?.bars).toEqual([])
+    // A reported zero keeps its slice at zero height.
+    expect(chart.columns[0]?.bars.find((bar) => bar.series === 'input')?.value).toBe(0)
+    expect(chart.columns[0]?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(0)
+    expect(chart.columns[2]?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(100)
   })
 
   it('sorts non-day tables by label A-Z with day exempt', () => {
