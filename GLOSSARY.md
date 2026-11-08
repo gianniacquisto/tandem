@@ -53,12 +53,16 @@ A ticket that has not yet been completed.
 _Avoid_: pending, active
 
 **Done**:
-A ticket that has been completed.
-_Avoid_: closed, finished, complete (as a noun)
+A ticket sitting in the active workflow's finished stage. The default `agile` workflow names that stage `done`; a custom workflow names its own, and `ticket complete` moves the ticket there.
+_Avoid_: closed, finished (as a second flag), complete (as a noun)
 
 **Status**:
-A ticket's position in the workflow: backlog (the default), on-hold, ready, in-progress, in-review, or done. One axis with six values — done is where the workflow ends, not a flag set beside it; in-review is a finished piece of work whose PR is waiting for a reader, before it counts as done.
-_Avoid_: state, stage, step
+A ticket's position in the workflow: the key of one of the active workflow's ordered stages. The default `agile` workflow's six are `backlog` (intake), `on-hold` (parked), `ready`, `in-progress`, `in-review` and `done` (finished); `workflow set` writes others. The set is data, not code, so a custom stage appears without a build and an unknown stored key from an older build reads as `backlog`.
+_Avoid_: state, step, column
+
+**Stage**:
+One entry in a workflow's ordered list: a stable key, an editable label, a role (`intake`, `parked`, `ready`, `active`, `review` or `finished`) and an optional binding to a roster role and one of the three passes. A ticket's Status is a stage's key; the board's columns, the list's status filter and the sheet's status menu all draw the active workflow's stages.
+_Avoid_: status (when the entry is meant), column (that is the board's drawing of a stage)
 
 **Archived**:
 A ticket set aside: out of the default views, still in the store. Any ticket can be archived, and archiving a done ticket is how a list is cleared without deleting. The app's archive view is where one is brought back; the board does not draw archived tickets at all.

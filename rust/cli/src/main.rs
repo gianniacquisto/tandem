@@ -1282,23 +1282,20 @@ fn workflow(home: &Home, command: Option<&WorkflowCommand>) -> Result<(), Failur
 
     match command {
         WorkflowCommand::List => {
-            let workflows = workflows.list().map_err(Failure::domain)?;
+            let (list, revision) = workflows.list_snapshot().map_err(Failure::domain)?;
             let active = Workflows::new(&store).active().map_err(Failure::domain)?.id;
             print(&WorkflowListReply {
-                revision: revision(),
-                workflows,
+                revision,
+                workflows: list,
                 active,
             })
         }
         WorkflowCommand::Show(args) => {
-            let workflow = match args.id.as_deref() {
-                Some(id) => workflows.get(id).map_err(Failure::domain)?,
-                None => workflows.active().map_err(Failure::domain)?,
+            let (workflow, revision) = match args.id.as_deref() {
+                Some(id) => workflows.get_snapshot(id).map_err(Failure::domain)?,
+                None => workflows.active_snapshot().map_err(Failure::domain)?,
             };
-            print(&WorkflowReply {
-                revision: revision(),
-                workflow,
-            })
+            print(&WorkflowReply { revision, workflow })
         }
         WorkflowCommand::Set(args) => {
             let text = read_standard_input()?;

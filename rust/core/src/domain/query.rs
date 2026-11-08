@@ -43,6 +43,10 @@ pub struct TicketQuery {
     pub text: Option<String>,
     /// The statuses in view; empty means every status.
     pub statuses: Vec<Status>,
+    /// Restrict to finished or unfinished tickets: the shipped `done`/`open`
+    /// filters. `None` means either. Derived from the ticket's finished key, so
+    /// a custom finished stage is found without naming its literal key.
+    pub done: Option<bool>,
     pub assignee: AssigneeAxis,
     pub lane: LaneAxis,
     pub archived: Archived,
@@ -59,6 +63,7 @@ impl Default for TicketQuery {
         Self {
             text: None,
             statuses: Vec::new(),
+            done: None,
             assignee: AssigneeAxis::Any,
             lane: LaneAxis::Any,
             archived: Archived::Excluded,
@@ -73,10 +78,7 @@ impl TicketQuery {
     /// The queue is the assignee alone.
     pub fn inbox() -> Self {
         Self {
-            statuses: Status::WORKFLOW
-                .into_iter()
-                .filter(|status| !status.is_done())
-                .collect(),
+            done: Some(false),
             assignee: AssigneeAxis::Named(HUMAN.to_string()),
             archived: Archived::Excluded,
             ..Self::default()
@@ -108,6 +110,11 @@ impl TicketQuery {
             Archived::Included => {}
         }
         if !self.statuses.is_empty() && !self.statuses.contains(&ticket.status) {
+            return false;
+        }
+        if let Some(done) = self.done
+            && ticket.done() != done
+        {
             return false;
         }
         if self.blocked_only && !ticket.blocked() {
@@ -190,6 +197,7 @@ impl TicketQuery {
             if !named_filter {
                 // The archive alone: statuses ignored.
                 query.statuses = Vec::new();
+                query.done = None;
                 query.archived = Archived::Only;
             } else {
                 // Named with a filter, the archive joins that filter.
@@ -200,6 +208,9 @@ impl TicketQuery {
             query.text = Some(text.to_string());
         }
         if let Some(status) = status {
+            // An explicit status list overrides the shipped filter's finished
+            // half, as `--filter done --status ready` has always meant.
+            query.done = None;
             query.statuses = parse_statuses(status)?;
         }
         if let Some(assignee) = assignee {
@@ -278,20 +289,19 @@ impl Filter {
         }
     }
 
-    /// The query this filter stands for: `open` is every status but done, `done` is
-    /// done, and `all` is everything, archived tickets included (the app's `All`).
+    /// The query this filter stands for: `open` is every unfinished ticket,
+    /// `done` is every finished one, and `all` is everything, archived tickets
+    /// included (the app's `All`). Finished is the ticket's own derived flag, so
+    /// a custom finished stage is found without naming its key.
     pub fn query(&self) -> TicketQuery {
         match self {
             Self::Open => TicketQuery {
-                statuses: Status::WORKFLOW
-                    .into_iter()
-                    .filter(|status| !status.is_done())
-                    .collect(),
+                done: Some(false),
                 archived: Archived::Excluded,
                 ..TicketQuery::default()
             },
             Self::Done => TicketQuery {
-                statuses: vec![Status::Done],
+                done: Some(true),
                 archived: Archived::Excluded,
                 ..TicketQuery::default()
             },

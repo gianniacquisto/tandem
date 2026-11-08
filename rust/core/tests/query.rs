@@ -277,12 +277,13 @@ fn parse_defaults_to_the_shipped_open_filter() {
     let query = TicketQuery::parse(None, None, None, None, None, false, false).unwrap();
     assert_eq!(query.archived, Archived::Excluded);
     assert_eq!(
-        query.statuses,
-        Status::WORKFLOW
-            .into_iter()
-            .filter(|status| !status.is_done())
-            .collect::<Vec<_>>(),
-        "open is every value the domain accepts but done"
+        query.done,
+        Some(false),
+        "open is every unfinished ticket, whatever its workflow's finished key"
+    );
+    assert!(
+        query.statuses.is_empty(),
+        "open is the done axis, not a fixed status list"
     );
     assert_eq!(query.assignee, AssigneeAxis::Any);
     assert_eq!(query.lane, LaneAxis::Any);
@@ -369,20 +370,58 @@ fn parse_keeps_the_shipped_filter_as_sugar_and_the_clis_filters_never_carry_the_
     assert_eq!(
         TicketQuery::parse(Some("done"), None, None, None, None, false, false)
             .unwrap()
-            .statuses,
-        [Status::Done]
+            .done,
+        Some(true)
     );
     assert_eq!(
         TicketQuery::parse(Some("open"), None, None, None, None, false, false)
             .unwrap()
-            .statuses,
-        [
-            Status::Backlog,
-            Status::OnHold,
-            Status::Ready,
-            Status::InProgress,
-            Status::InReview
-        ]
+            .done,
+        Some(false)
+    );
+    assert!(
+        TicketQuery::parse(Some("done"), None, None, None, None, false, false)
+            .unwrap()
+            .statuses
+            .is_empty(),
+        "the shipped filters are the done axis, not a fixed status list"
+    );
+}
+
+#[test]
+fn the_done_filter_reads_the_tickets_finished_key_not_the_literal_done() {
+    let shipped = Ticket {
+        status: Status::Custom("shipped".to_string()),
+        finished_key: "shipped".to_string(),
+        ..ticket("shipped")
+    };
+    let open = Ticket {
+        status: Status::Custom("doing".to_string()),
+        finished_key: "shipped".to_string(),
+        ..ticket("doing")
+    };
+    let tickets = vec![shipped, open];
+    assert_eq!(
+        TicketQuery {
+            done: Some(true),
+            ..TicketQuery::default()
+        }
+        .apply(&tickets)
+        .into_iter()
+        .map(|ticket| ticket.title)
+        .collect::<Vec<_>>(),
+        ["shipped"]
+    );
+    assert_eq!(
+        TicketQuery {
+            done: Some(false),
+            ..TicketQuery::default()
+        }
+        .apply(&tickets)
+        .into_iter()
+        .map(|ticket| ticket.title)
+        .collect::<Vec<_>>(),
+        ["doing"]
     );
 }
 

@@ -12,7 +12,7 @@ use tandem_core::domain::sprint::{SprintMode, Sprints};
 use tandem_core::domain::workflow::{
     Pass, StageBinding, StageRole, WorkflowDraft, WorkflowStage, Workflows, default_workflow,
 };
-use tandem_core::domain::{AddTicket, DomainError, Status};
+use tandem_core::domain::{AddTicket, DomainError, Filter, Status};
 use tandem_core::store::{Actor, NewSetting};
 
 fn stage(key: &str, label: &str, role: StageRole) -> WorkflowStage {
@@ -382,6 +382,161 @@ fn the_default_and_the_active_workflow_cannot_be_deleted() {
         workflows.delete(&Actor::Human, "flow"),
         Err(DomainError::WorkflowIsActive(_))
     ));
+}
+
+#[test]
+fn complete_and_reopen_follow_the_active_workflows_roles() {
+    let sandbox = Sandbox::new("workflow-complete");
+    let board = sandbox.board();
+    let workflows = Workflows::new(&sandbox.store());
+    workflows
+        .set(&Actor::Human, None, minimal("flow"))
+        .expect("the workflow writes");
+    workflows
+        .use_workflow(&Actor::Human, "flow")
+        .expect("the workflow activates");
+
+    let added = board
+        .add(
+            "a shipped ticket",
+            AddTicket {
+                status: Status::parse("doing").expect("a key the flow carries"),
+                ..AddTicket::default()
+            },
+        )
+        .expect("the ticket lands");
+    let handle = added.id.to_string();
+
+    let completed = board.complete(&handle).expect("complete writes");
+    assert_eq!(
+        completed.status.as_str(),
+        "shipped",
+        "complete moves to the workflow's finished stage, not the literal done"
+    );
+    assert!(completed.done(), "a custom finished stage is done");
+    assert!(
+        completed.completed_at.is_some(),
+        "entering finished stamps the time"
+    );
+    assert_eq!(
+        board
+            .list_filter(Filter::Done)
+            .expect("the done filter reads")
+            .len(),
+        1,
+        "the done filter finds a custom finished key"
+    );
+
+    let reopened = board.reopen(&handle).expect("reopen writes");
+    assert_eq!(
+        reopened.status.as_str(),
+        "inbox",
+        "reopen lands in the workflow's intake stage"
+    );
+    assert!(!reopened.done());
+    assert!(
+        reopened.completed_at.is_none(),
+        "leaving finished clears the time"
+    );
+
+    board.complete(&handle).expect("complete again");
+    assert_eq!(board.archive_done().expect("archive done"), 1);
+}
+
+#[test]
+fn a_custom_finished_stage_lifts_a_block() {
+    let sandbox = Sandbox::new("workflow-block-lift");
+    let board = sandbox.board();
+    let workflows = Workflows::new(&sandbox.store());
+    workflows
+        .set(&Actor::Human, None, minimal("flow"))
+        .expect("the workflow writes");
+    workflows
+        .use_workflow(&Actor::Human, "flow")
+        .expect("the workflow activates");
+
+    let blocker = board
+        .add(
+            "the blocker",
+            AddTicket {
+                status: Status::parse("doing").expect("a key the flow carries"),
+                ..AddTicket::default()
+            },
+        )
+        .expect("the blocker lands");
+    let dependent = board
+        .add(
+            "the dependent",
+            AddTicket {
+                status: Status::parse("inbox").expect("a key the flow carries"),
+                ..AddTicket::default()
+            },
+        )
+        .expect("the dependent lands");
+    board
+        .block(&dependent.id.to_string(), &blocker.id.to_string())
+        .expect("the block lands");
+
+    board
+        .complete(&blocker.id.to_string())
+        .expect("the blocker completes");
+    let lifted = board
+        .ticket(&dependent.id.to_string())
+        .expect("the dependent reads");
+    assert!(
+        !lifted.blocked(),
+        "a ticket in a custom finished stage lifts the block"
+    );
+}
+
+#[test]
+fn an_update_returns_the_author_the_next_read_carries() {
+    let sandbox = Sandbox::new("workflow-author");
+    let workflows = Workflows::new(&sandbox.store());
+    let created = workflows
+        .set(&Actor::Human, None, minimal("flow"))
+        .expect("the workflow writes");
+
+    let mut renamed = minimal("flow");
+    renamed.name = "flow renamed".to_string();
+    let builder = Actor::Agent("builder".to_string());
+    let updated = workflows
+        .set(&builder, Some(&created.id), renamed)
+        .expect("the update writes");
+
+    let read = workflows.get(&created.id).expect("the read answers");
+    assert_eq!(updated, read, "the receipt is the next read");
+    assert_eq!(updated.author, "builder", "the update records the writer");
+}
+
+#[test]
+fn the_workflow_reads_carry_the_snapshots_revision() {
+    let sandbox = Sandbox::new("workflow-revision");
+    let store = sandbox.store();
+    store
+        .write(&Actor::Human, |write| {
+            write.upsert_setting(NewSetting {
+                key: "k",
+                value: "v",
+            })
+        })
+        .expect("the write lands");
+    let expected = store.last_revision();
+    assert!(expected > 0, "the write moved the revision");
+
+    let workflows = Workflows::new(&store);
+    assert_eq!(
+        workflows.list_snapshot().expect("the list reads").1,
+        expected
+    );
+    assert_eq!(
+        workflows.get_snapshot("agile").expect("the get reads").1,
+        expected
+    );
+    assert_eq!(
+        workflows.active_snapshot().expect("the active reads").1,
+        expected
+    );
 }
 
 fn default_draft() -> WorkflowDraft {

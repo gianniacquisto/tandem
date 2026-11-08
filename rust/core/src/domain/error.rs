@@ -79,8 +79,6 @@ pub enum DomainError {
     },
     /// A binding names a roster role the store does not carry.
     UnknownBindingRole { role: String, roster: Vec<String> },
-    /// A binding names a pass that is not `refine`, `build` or `review`.
-    InvalidBindingPass(String),
     /// A stage a workflow set would delete still holds tickets.
     StageOccupied { key: String, count: usize },
     /// `workflow use` was refused because a sprint is open.
@@ -320,9 +318,6 @@ impl DomainError {
                 "Unknown binding role \"{role}\". The roster is: {}.",
                 roster.join(", ")
             ),
-            Self::InvalidBindingPass(pass) => {
-                format!("A binding's pass must be refine, build or review (got \"{pass}\").")
-            }
             Self::StageOccupied { key, count } => format!(
                 "Stage \"{key}\" still holds {count} ticket(s). Move them out before deleting it."
             ),

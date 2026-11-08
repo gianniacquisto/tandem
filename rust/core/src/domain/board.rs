@@ -124,6 +124,18 @@ impl Board {
         self.validate_status(status)
     }
 
+    /// The active workflow's finished stage key, the one `complete` writes and
+    /// `done()` reads.
+    fn finished_key(&self) -> Result<String, DomainError> {
+        Ok(self.workflow()?.finished_key().to_string())
+    }
+
+    /// A status parsed from a workflow key. The workflow validates its own
+    /// document, so the only failure is an unreadable stored key.
+    fn stage_status(key: &str) -> Result<Status, DomainError> {
+        Status::parse(key)
+    }
+
     // MARK: - Reads
 
     /// `list(query)`: the tickets in view, in stored order.
@@ -143,7 +155,8 @@ impl Board {
         let Some((rows, revision)) = self.store.board_snapshot()? else {
             return Ok((Vec::new(), 0));
         };
-        let contents = Contents::from_rows(&rows)?;
+        let mut contents = Contents::from_rows(&rows)?;
+        contents.set_finished_key(&self.finished_key()?);
         Ok((query.apply(&contents.tickets), revision))
     }
 
@@ -180,7 +193,8 @@ impl Board {
                 open: Vec::new(),
             });
         };
-        let contents = Contents::from_rows(&rows)?;
+        let mut contents = Contents::from_rows(&rows)?;
+        contents.set_finished_key(&self.finished_key()?);
         let (_, index) = contents.require_ticket(handle)?;
         Ok((contents.tickets[index].clone(), revision))
     }
@@ -557,6 +571,7 @@ impl Board {
             ticket.assignee = assignee.clone();
             ticket.origin = origin.clone();
             ticket.lane = fields.lane.map(str::to_string);
+            ticket.finished_key = contents.finished_key.clone();
             ticket.set_status(fields.status, now);
             insert_at_top(&mut ticket, contents);
             Ok((ticket, true))
@@ -597,6 +612,7 @@ impl Board {
             ticket.origin = origin.clone();
             ticket.lane = fields.lane.map(str::to_string);
             ticket.link = Some(path.to_string());
+            ticket.finished_key = contents.finished_key.clone();
             ticket.set_status(fields.status, now);
             // The same placement `add` gives it: the top of its lane.
             let start = contents.block_start(fields.lane);
@@ -651,14 +667,16 @@ impl Board {
 
     // MARK: - Complete, reopen, undo
 
-    /// `complete(id)`: idempotent. On a transition to done, `completed_at` is
-    /// stamped. The stored order is never changed.
+    /// `complete(id)`: idempotent. Moves the ticket to the active workflow's
+    /// finished stage and stamps `completed_at` on the transition. The stored
+    /// order is never changed.
     pub fn complete(&self, handle: &str) -> Result<Ticket, DomainError> {
+        let finished = Self::stage_status(self.workflow()?.finished_key())?;
         self.mutate(|contents| {
             let index = contents.require_ticket(handle)?.1;
             let mut changed = false;
             if !contents.tickets[index].done() {
-                contents.tickets[index].set_status(Status::Done, timestamp::unix_now());
+                contents.tickets[index].set_status(finished.clone(), timestamp::unix_now());
                 changed = true;
             }
             Ok((contents.tickets[index].clone(), changed))
@@ -666,13 +684,15 @@ impl Board {
     }
 
     /// `reopen(id)`: the inverse of `complete`, idempotent. **A reopen lands in
-    /// backlog**, because completing erased the stage it came from.
+    /// the active workflow's intake stage**, because completing erased the stage
+    /// it came from.
     pub fn reopen(&self, handle: &str) -> Result<Ticket, DomainError> {
+        let intake = Self::stage_status(self.workflow()?.landing_key())?;
         self.mutate(|contents| {
             let index = contents.require_ticket(handle)?.1;
             let mut changed = false;
             if contents.tickets[index].done() {
-                contents.tickets[index].set_status(Status::Backlog, timestamp::unix_now());
+                contents.tickets[index].set_status(intake.clone(), timestamp::unix_now());
                 changed = true;
             }
             Ok((contents.tickets[index].clone(), changed))
@@ -1016,7 +1036,9 @@ impl Board {
     /// The board as one value, with the refs and the edges made true.
     fn load(&self) -> Result<Contents, DomainError> {
         let rows = self.store.board_rows()?.unwrap_or_default();
-        Contents::from_rows(&rows)
+        let mut contents = Contents::from_rows(&rows)?;
+        contents.set_finished_key(&self.finished_key()?);
+        Ok(contents)
     }
 
     /// One transaction: read the board **inside** it, let `body` change it, and
@@ -1035,6 +1057,7 @@ impl Board {
         &self,
         body: impl FnOnce(&mut Contents) -> Result<(T, bool), DomainError>,
     ) -> Result<T, DomainError> {
+        let finished_key = self.finished_key()?;
         let refused: std::cell::RefCell<Option<DomainError>> = std::cell::RefCell::new(None);
         let outcome = self.store.write(&self.actor, |write| {
             let before = write.board_rows()?;
@@ -1047,6 +1070,7 @@ impl Board {
                     ));
                 }
             };
+            contents.set_finished_key(&finished_key);
             let (value, changed) = match body(&mut contents) {
                 Ok(step) => step,
                 Err(error) => {

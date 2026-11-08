@@ -257,14 +257,76 @@ pub(crate) const WORKFLOWS_VERSION: i64 = 7;
 /// "the default" is a fact no user edit can rename away.
 pub(crate) const DEFAULT_WORKFLOW_ID: &str = "00000000-0000-4000-8000-000000000001";
 
+/// The default workflow's name.
+pub const DEFAULT_WORKFLOW_NAME: &str = "agile";
+
+/// The default workflow's stamps: the seed writes them, and the in-memory
+/// fallback carries the same ones.
+pub(crate) const DEFAULT_WORKFLOW_CREATED: &str = "2026-11-08T00:00:00Z";
+
+/// One stage of the default `agile` workflow, as the v7 seed writes it and the
+/// in-memory fallback builds it: key, label, role, and an optional binding
+/// (roster role, pass).
+pub(crate) struct DefaultStage {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub role: &'static str,
+    pub binding: Option<(&'static str, &'static str)>,
+}
+
+/// **The default's one truth.** The v7 seed and [`default_workflow`] both read
+/// this list, so a fresh home and the in-memory fallback cannot disagree. A
+/// later default lands as its own migration, not an edit here (append only).
+///
+/// [`default_workflow`]: crate::domain::workflow::default_workflow
+pub(crate) const DEFAULT_STAGES: [DefaultStage; 6] = [
+    DefaultStage {
+        key: "backlog",
+        label: "Backlog",
+        role: "intake",
+        binding: Some(("refiner", "refine")),
+    },
+    DefaultStage {
+        key: "on-hold",
+        label: "On hold",
+        role: "parked",
+        binding: None,
+    },
+    DefaultStage {
+        key: "ready",
+        label: "Ready",
+        role: "ready",
+        binding: Some(("builder", "build")),
+    },
+    DefaultStage {
+        key: "in-progress",
+        label: "In progress",
+        role: "active",
+        binding: Some(("builder", "build")),
+    },
+    DefaultStage {
+        key: "in-review",
+        label: "In Review",
+        role: "review",
+        binding: Some(("reviewer", "review")),
+    },
+    DefaultStage {
+        key: "done",
+        label: "Done",
+        role: "finished",
+        binding: None,
+    },
+];
+
 /// Version 7: the workflow entity, its ordered stages, and the nullable
 /// `projects.workflow` hook for the later per-project adoption.
 ///
-/// The default `agile` workflow seeds here, on a fresh home and on the v6
-/// migration alike, because a fresh home walks every migration. Its stage keys
-/// are the six the board already draws, in UI-15's order: backlog, on-hold,
-/// ready, in-progress, in-review, done. Every stored ticket status is one of
-/// those keys, so no ticket moves.
+/// The default `agile` workflow seeds in [`version_seven`] from
+/// [`DEFAULT_STAGES`], on a fresh home and on the v6 migration alike, because a
+/// fresh home walks every migration. Its stage keys are the six the board
+/// already draws, in UI-15's order: backlog, on-hold, ready, in-progress,
+/// in-review, done. Every stored ticket status is one of those keys, so no
+/// ticket moves.
 const VERSION_SEVEN: &str = "
 CREATE TABLE IF NOT EXISTS workflows (
     id         TEXT PRIMARY KEY,
@@ -285,23 +347,6 @@ CREATE TABLE IF NOT EXISTS workflow_stages (
     PRIMARY KEY (workflow_id, key)
 );
 ALTER TABLE projects ADD COLUMN workflow TEXT;
-INSERT INTO workflows (id, name, scope, created_at, updated_at, author)
-    VALUES (
-        '00000000-0000-4000-8000-000000000001',
-        'agile',
-        'home',
-        '2026-11-08T00:00:00Z',
-        '2026-11-08T00:00:00Z',
-        'human'
-    );
-INSERT INTO workflow_stages (workflow_id, position, key, label, role, binding_role, binding_pass)
-    VALUES
-        ('00000000-0000-4000-8000-000000000001', 0, 'backlog', 'Backlog', 'intake', 'refiner', 'refine'),
-        ('00000000-0000-4000-8000-000000000001', 1, 'on-hold', 'On hold', 'parked', NULL, NULL),
-        ('00000000-0000-4000-8000-000000000001', 2, 'ready', 'Ready', 'ready', 'builder', 'build'),
-        ('00000000-0000-4000-8000-000000000001', 3, 'in-progress', 'In progress', 'active', 'builder', 'build'),
-        ('00000000-0000-4000-8000-000000000001', 4, 'in-review', 'In Review', 'review', 'reviewer', 'review'),
-        ('00000000-0000-4000-8000-000000000001', 5, 'done', 'Done', 'finished', NULL, NULL);
 ";
 
 fn version_one(connection: &Connection) -> rusqlite::Result<()> {
@@ -329,7 +374,37 @@ fn version_six(connection: &Connection) -> rusqlite::Result<()> {
 }
 
 fn version_seven(connection: &Connection) -> rusqlite::Result<()> {
-    connection.execute_batch(VERSION_SEVEN)
+    connection.execute_batch(VERSION_SEVEN)?;
+    connection.execute(
+        "INSERT INTO workflows (id, name, scope, created_at, updated_at, author)
+         VALUES (?1, ?2, 'home', ?3, ?3, 'human')",
+        params![
+            DEFAULT_WORKFLOW_ID,
+            DEFAULT_WORKFLOW_NAME,
+            DEFAULT_WORKFLOW_CREATED
+        ],
+    )?;
+    for (position, stage) in DEFAULT_STAGES.iter().enumerate() {
+        let (binding_role, binding_pass) = match stage.binding {
+            Some((role, pass)) => (Some(role), Some(pass)),
+            None => (None, None),
+        };
+        connection.execute(
+            "INSERT INTO workflow_stages
+                (workflow_id, position, key, label, role, binding_role, binding_pass)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                DEFAULT_WORKFLOW_ID,
+                position as i64,
+                stage.key,
+                stage.label,
+                stage.role,
+                binding_role,
+                binding_pass
+            ],
+        )?;
+    }
+    Ok(())
 }
 
 /// The store's revision: the stored counter, or 0 when this file predates the

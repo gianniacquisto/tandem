@@ -842,29 +842,27 @@ fn execute(
             }))
         }
         Method::WorkflowList(_) => {
-            let workflows = Workflows::new(store).list().map_err(domain)?;
+            let workflows = Workflows::new(store);
+            let (list, revision) = workflows.list_snapshot().map_err(domain)?;
             let active = Workflows::new(store).active().map_err(domain)?.id;
             Ok(Reply::WorkflowList(WorkflowListReply {
-                revision: store.last_revision(),
-                workflows,
+                revision,
+                workflows: list,
                 active,
             }))
         }
         Method::WorkflowShow(params) => {
             let workflows = Workflows::new(store);
-            let workflow = match params
+            let (workflow, revision) = match params
                 .id
                 .as_deref()
                 .map(str::trim)
                 .filter(|id| !id.is_empty())
             {
-                Some(id) => workflows.get(id).map_err(domain)?,
-                None => workflows.active().map_err(domain)?,
+                Some(id) => workflows.get_snapshot(id).map_err(domain)?,
+                None => workflows.active_snapshot().map_err(domain)?,
             };
-            Ok(Reply::Workflow(WorkflowReply {
-                revision: store.last_revision(),
-                workflow,
-            }))
+            Ok(Reply::Workflow(WorkflowReply { revision, workflow }))
         }
         Method::WorkflowSet(params) => {
             let draft = WorkflowDraft {

@@ -1373,6 +1373,52 @@ mod schema {
     }
 
     #[test]
+    fn a_v6_file_reads_the_default_workflow_and_the_first_write_migrates_it() {
+        use crate::domain::workflow::Workflows;
+        use crate::domain::{AddTicket, Board, Status};
+
+        let sandbox = Sandbox::new("read-v6");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..6], &Actor::Human).expect("v6 applies");
+        drop(connection);
+
+        let store = sandbox.store();
+        let workflows = Workflows::new(&store);
+        let active = workflows
+            .active()
+            .expect("a v6 home reads the default instead of failing");
+        assert_eq!(active.name, "agile");
+        assert_eq!(
+            workflows.list().expect("the list reads").len(),
+            1,
+            "the default is the list"
+        );
+        let board = Board::with_actor(store, Actor::Human);
+        assert_eq!(
+            board.landing_status().expect("the landing reads"),
+            Status::Backlog
+        );
+        board
+            .validate_status(&Status::Backlog)
+            .expect("the default stage validates");
+        assert_eq!(
+            version(&sandbox.connection()).unwrap(),
+            Some(6),
+            "a read never migrates (ADR 0031)"
+        );
+
+        board
+            .add("probe", AddTicket::default())
+            .expect("the first write migrates and lands the ticket");
+        assert_eq!(
+            version(&sandbox.connection()).unwrap(),
+            Some(7),
+            "the write takes the store to v7"
+        );
+    }
+
+    #[test]
     fn an_unreadable_database_fails_the_write() {
         let sandbox = Sandbox::new("not-a-database");
         fs::create_dir_all(sandbox.home_path()).unwrap();

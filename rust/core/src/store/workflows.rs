@@ -7,6 +7,7 @@
 
 use rusqlite::Connection;
 
+use super::schema::has_table;
 use super::{Result, Store, translate};
 
 /// One workflow row, as the store holds it.
@@ -37,7 +38,14 @@ pub(crate) type WorkflowSnapshot = (Vec<WorkflowRow>, Vec<StageRow>, i64);
 
 /// Every workflow and every stage, read in one transaction: a listing's
 /// documents and its revision cannot be split by a concurrent writer.
+///
+/// **A read never migrates** (ADR 0031), so a home still at v6 has no workflow
+/// tables. The read answers no rows, and the domain falls back to the seeded
+/// default, rather than failing before the first write can migrate the store.
 pub(crate) fn workflow_rows(connection: &Connection) -> Result<(Vec<WorkflowRow>, Vec<StageRow>)> {
+    if !has_table(connection, "workflows")? || !has_table(connection, "workflow_stages")? {
+        return Ok((Vec::new(), Vec::new()));
+    }
     let workflows = connection
         .prepare(
             "SELECT id, name, scope, created_at, updated_at, author FROM workflows

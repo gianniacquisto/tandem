@@ -226,6 +226,16 @@ describe('the board view over the snapshot', () => {
     ])
     expect(rows[0]?.cells[1]?.tickets.map((item) => item.id)).toEqual(['e'])
     expect(
+      filterTickets(withSelected, filters({ scope: 'all', status: 'selected' })).map(
+        (item) => item.id,
+      ),
+      'the list status filter finds the custom stage',
+    ).toEqual(['e'])
+    expect(
+      filterTickets(withSelected, filters({ scope: 'open' })).map((item) => item.id),
+      'the open scope carries a custom unfinished stage',
+    ).toEqual(['a', 'b', 'e'])
+    expect(
       laneRows(['Port'], withSelected).map((row) => row.cells[1]?.status),
       'the default six do not carry the custom key',
     ).toEqual(['on-hold', 'on-hold', 'on-hold'])

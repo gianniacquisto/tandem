@@ -173,6 +173,10 @@ pub struct Ticket {
     pub reference: Option<String>,
     /// A bikeshed-root-relative note path, or `None` for an unlinked ticket.
     pub link: Option<String>,
+    /// The key of the active workflow's finished stage: `done` for the default,
+    /// the stage a completed ticket sits in. [`done`](Self::done) reads against
+    /// it, so a custom finished key is still a finished ticket.
+    pub finished_key: String,
     /// What this ticket waits on, in the order the edges were set. Derived.
     pub blocked_by: Vec<TicketBlock>,
     /// Who waits on this ticket, the far end of the same edges. Derived.
@@ -199,6 +203,7 @@ impl Ticket {
             number: None,
             reference: None,
             link: None,
+            finished_key: "done".to_string(),
             blocked_by: Vec::new(),
             blocks: Vec::new(),
             created_at: timestamp::unix_now(),
@@ -207,15 +212,19 @@ impl Ticket {
     }
 
     /// The legacy v1 field, derived: never a second truth to disagree with
-    /// `status`.
+    /// `status`. A ticket is done when it sits in the workflow's finished stage,
+    /// so a custom finished key counts and the literal `done` is only the
+    /// default's key.
     pub fn done(&self) -> bool {
-        self.status.is_done()
+        self.status.as_str() == self.finished_key
     }
 
     /// Whether this ticket is waiting: any edge whose blocker is not done. Derived,
-    /// so a block lifts the moment its blocker reaches done, with no write here.
+    /// so a block lifts the moment its blocker reaches finished, with no write here.
     pub fn blocked(&self) -> bool {
-        self.blocked_by.iter().any(|edge| !edge.status.is_done())
+        self.blocked_by
+            .iter()
+            .any(|edge| edge.status.as_str() != self.finished_key)
     }
 
     /// Why it waits: the body's `## Blocked on` section, read from the description
@@ -225,10 +234,11 @@ impl Ticket {
     }
 
     /// Move the ticket in the workflow, keeping `completed_at` truthful: entering
-    /// done stamps it, leaving done clears it.
+    /// the active workflow's finished stage stamps it, leaving it clears it.
     pub fn set_status(&mut self, status: Status, now: i64) {
-        if status.is_done() {
-            if !self.status.is_done() {
+        let finishing = status.as_str() == self.finished_key;
+        if finishing {
+            if self.status.as_str() != self.finished_key {
                 self.completed_at = Some(now);
             }
         } else {

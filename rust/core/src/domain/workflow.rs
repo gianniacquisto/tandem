@@ -19,11 +19,13 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::store::records::sprint_rows;
-use crate::store::schema::DEFAULT_WORKFLOW_ID;
+use crate::store::schema::{DEFAULT_STAGES, DEFAULT_WORKFLOW_CREATED, DEFAULT_WORKFLOW_ID};
 use crate::store::workflows::{StageRow, WorkflowRow, workflow_rows};
 use crate::store::{
     Actor, NewSetting, NewWorkflow, NewWorkflowStage, Store, StoreError, timestamp,
 };
+
+pub use crate::store::schema::DEFAULT_WORKFLOW_NAME;
 
 use super::error::{DomainError, DomainResult};
 use super::settings::Settings;
@@ -32,9 +34,6 @@ use super::ticket::Status;
 
 /// The settings key that names the active workflow.
 pub const ACTIVE_WORKFLOW_KEY: &str = "active_workflow";
-
-/// The default workflow's name.
-pub const DEFAULT_WORKFLOW_NAME: &str = "agile";
 
 /// One stage's role: what the stage means to the process, not its label.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, TS)]
@@ -124,30 +123,6 @@ pub struct WorkflowStage {
     pub binding: Option<StageBinding>,
 }
 
-impl WorkflowStage {
-    /// The default stage's shape: no binding.
-    fn new(key: &str, label: &str, role: StageRole) -> Self {
-        Self {
-            key: key.to_string(),
-            label: label.to_string(),
-            role,
-            binding: None,
-        }
-    }
-
-    fn bound(key: &str, label: &str, role: StageRole, who: &str, pass: Pass) -> Self {
-        Self {
-            key: key.to_string(),
-            label: label.to_string(),
-            role,
-            binding: Some(StageBinding {
-                role: who.to_string(),
-                pass,
-            }),
-        }
-    }
-}
-
 /// A workflow: the persistent process, its stages in order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -183,6 +158,12 @@ impl Workflow {
     /// The stage a new ticket lands in: the first intake stage in stage order.
     pub fn landing_key(&self) -> &str {
         self.stage_key(StageRole::Intake).unwrap_or("backlog")
+    }
+
+    /// The key of the stage a completed ticket sits in: the finished stage, or
+    /// `done` when a hand-edited store carries none.
+    pub fn finished_key(&self) -> &str {
+        self.stage_key(StageRole::Finished).unwrap_or("done")
     }
 
     /// Whether the workflow can run: ready, active and review are required.
@@ -264,41 +245,28 @@ impl WorkflowDraft {
 }
 
 /// The default `agile` workflow, in memory: the fallback when the store has no
-/// workflow rows, and the shape the seed migration writes.
+/// workflow rows, and the shape the v7 seed writes. Both read
+/// [`DEFAULT_STAGES`], so the seed and this value are one truth.
 pub fn default_workflow() -> Workflow {
     Workflow {
         id: DEFAULT_WORKFLOW_ID.to_string(),
         name: DEFAULT_WORKFLOW_NAME.to_string(),
         scope: "home".to_string(),
         author: "human".to_string(),
-        created_at: "2026-11-08T00:00:00Z".to_string(),
-        updated_at: "2026-11-08T00:00:00Z".to_string(),
-        stages: vec![
-            WorkflowStage::bound(
-                "backlog",
-                "Backlog",
-                StageRole::Intake,
-                "refiner",
-                Pass::Refine,
-            ),
-            WorkflowStage::new("on-hold", "On hold", StageRole::Parked),
-            WorkflowStage::bound("ready", "Ready", StageRole::Ready, "builder", Pass::Build),
-            WorkflowStage::bound(
-                "in-progress",
-                "In progress",
-                StageRole::Active,
-                "builder",
-                Pass::Build,
-            ),
-            WorkflowStage::bound(
-                "in-review",
-                "In Review",
-                StageRole::Review,
-                "reviewer",
-                Pass::Review,
-            ),
-            WorkflowStage::new("done", "Done", StageRole::Finished),
-        ],
+        created_at: DEFAULT_WORKFLOW_CREATED.to_string(),
+        updated_at: DEFAULT_WORKFLOW_CREATED.to_string(),
+        stages: DEFAULT_STAGES
+            .iter()
+            .map(|stage| WorkflowStage {
+                key: stage.key.to_string(),
+                label: stage.label.to_string(),
+                role: StageRole::parse(stage.role).expect("the seeded stage role is valid"),
+                binding: stage.binding.map(|(role, pass)| StageBinding {
+                    role: role.to_string(),
+                    pass: Pass::parse(pass).expect("the seeded binding pass is valid"),
+                }),
+            })
+            .collect(),
     }
 }
 
@@ -318,18 +286,31 @@ impl Workflows {
     /// Every workflow, in stored order. A home with no store reads as the
     /// default alone, so a fresh board still has its stage set.
     pub fn list(&self) -> DomainResult<Vec<Workflow>> {
+        self.list_snapshot().map(|(workflows, _)| workflows)
+    }
+
+    /// [`list`](Self::list) and the revision its rows are a snapshot of, read in
+    /// one transaction. A fallback to the in-memory default carries the store's
+    /// own revision so a read of a v6 home is not reported as revision zero.
+    pub fn list_snapshot(&self) -> DomainResult<(Vec<Workflow>, i64)> {
         match self.read_all()? {
-            Some(workflows) if !workflows.is_empty() => Ok(workflows),
-            _ => Ok(vec![default_workflow()]),
+            Some((workflows, revision)) if !workflows.is_empty() => Ok((workflows, revision)),
+            Some((_, revision)) => Ok((vec![default_workflow()], revision)),
+            None => Ok((vec![default_workflow()], 0)),
         }
     }
 
     /// The workflow a handle names: its UUID or its name. An unknown handle is
     /// refused with the known names.
     pub fn get(&self, handle: &str) -> DomainResult<Workflow> {
+        self.get_snapshot(handle).map(|(workflow, _)| workflow)
+    }
+
+    /// [`get`](Self::get) and the revision its rows are a snapshot of.
+    pub fn get_snapshot(&self, handle: &str) -> DomainResult<(Workflow, i64)> {
         let handle = handle.trim();
-        let workflows = self.list()?;
-        workflows
+        let (workflows, revision) = self.list_snapshot()?;
+        let found = workflows
             .iter()
             .find(|workflow| workflow.id == handle || workflow.name == handle)
             .cloned()
@@ -339,13 +320,19 @@ impl Workflows {
                     .iter()
                     .map(|workflow| workflow.name.clone())
                     .collect(),
-            })
+            })?;
+        Ok((found, revision))
     }
 
     /// The active workflow: the `active_workflow` row's target, or the default
     /// when the row is absent, unreadable or names no workflow.
     pub fn active(&self) -> DomainResult<Workflow> {
-        let workflows = self.list()?;
+        self.active_snapshot().map(|(workflow, _)| workflow)
+    }
+
+    /// [`active`](Self::active) and the revision its rows are a snapshot of.
+    pub fn active_snapshot(&self) -> DomainResult<(Workflow, i64)> {
+        let (workflows, revision) = self.list_snapshot()?;
         let stored = self
             .store
             .setting(ACTIVE_WORKFLOW_KEY)
@@ -359,14 +346,15 @@ impl Workflows {
                 .iter()
                 .find(|workflow| workflow.id == wanted || workflow.name == wanted)
         {
-            return Ok(found.clone());
+            return Ok((found.clone(), revision));
         }
-        Ok(workflows
+        let found = workflows
             .iter()
             .find(|workflow| workflow.is_default())
             .cloned()
             .or_else(|| workflows.first().cloned())
-            .unwrap_or_else(default_workflow))
+            .unwrap_or_else(default_workflow);
+        Ok((found, revision))
     }
 
     /// The stage keys a ticket status is validated against: the active
@@ -460,17 +448,17 @@ impl Workflows {
             }
         }
         let roster = Settings::new(&self.store).roster()?;
+        // A pass has already been parsed by the wire: a hand-built document
+        // carries only the three variants, so serde refuses an unknown pass
+        // before the domain sees it. Only the binding's roster role is checked.
         for stage in &stages {
-            if let Some(binding) = &stage.binding {
-                if !roster.iter().any(|name| name == &binding.role) {
-                    return Err(DomainError::UnknownBindingRole {
-                        role: binding.role.clone(),
-                        roster,
-                    });
-                }
-                // `Pass` parsed by the wire already; a hand-built document
-                // carries only the three variants, so no extra check is needed.
-                let _ = binding.pass;
+            if let Some(binding) = &stage.binding
+                && !roster.iter().any(|name| name == &binding.role)
+            {
+                return Err(DomainError::UnknownBindingRole {
+                    role: binding.role.clone(),
+                    roster,
+                });
             }
         }
 
@@ -545,7 +533,7 @@ impl Workflows {
                         id: existing.id.clone(),
                         name: name.clone(),
                         scope: existing.scope.clone(),
-                        author: existing.author.clone(),
+                        author: actor.as_str().to_string(),
                         created_at: existing.created_at.clone(),
                         updated_at: now.clone(),
                         stages: stages.clone(),
@@ -656,9 +644,8 @@ impl Workflows {
         self.list()
     }
 
-    fn read_all(&self) -> DomainResult<Option<Vec<Workflow>>> {
-        let Some((rows, stages, _revision)) =
-            self.store.workflow_snapshot().map_err(store_error)?
+    fn read_all(&self) -> DomainResult<Option<(Vec<Workflow>, i64)>> {
+        let Some((rows, stages, revision)) = self.store.workflow_snapshot().map_err(store_error)?
         else {
             return Ok(None);
         };
@@ -672,7 +659,7 @@ impl Workflows {
                 Workflow::from_rows(row.clone(), &own)
             })
             .collect::<DomainResult<Vec<_>>>()?;
-        Ok(Some(workflows))
+        Ok(Some((workflows, revision)))
     }
 
     fn open_sprint_lanes(&self) -> DomainResult<Vec<String>> {

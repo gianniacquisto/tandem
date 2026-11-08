@@ -175,6 +175,29 @@ fn a_custom_stage_round_trips_and_the_board_reads_it() {
 }
 
 #[test]
+fn a_workflow_read_reports_the_stores_revision() {
+    let sandbox = Sandbox::new("revision");
+    let added = json(&sandbox.run(&["ticket", "add", "--title", "moved"]));
+    assert_eq!(added["status"], "backlog");
+
+    let shown = json(&sandbox.run(&["workflow", "show"]));
+    let revision = shown["revision"]
+        .as_i64()
+        .expect("the reply carries a revision");
+    assert!(
+        revision > 0,
+        "the read carries the store's revision, got {revision}"
+    );
+
+    let listed = json(&sandbox.run(&["workflow", "list"]));
+    assert_eq!(
+        listed["revision"].as_i64(),
+        Some(revision),
+        "list and show report the same snapshot revision"
+    );
+}
+
+#[test]
 fn a_ticket_add_without_a_status_lands_in_the_first_intake_stage() {
     let sandbox = Sandbox::new("landing");
     let created = json(&sandbox.run_stdin(&["workflow", "set"], &document("flow", true)));

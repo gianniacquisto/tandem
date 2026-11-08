@@ -30,6 +30,9 @@ pub struct Contents {
     pub tickets: Vec<Ticket>,
     /// Every dependency edge: (dependent, blocker), in the order it was set.
     pub edges: Vec<(Uuid, Uuid)>,
+    /// The active workflow's finished stage key, applied to every ticket and to
+    /// a ticket `add` creates. `done` until a Board sets it.
+    pub finished_key: String,
 }
 
 impl Contents {
@@ -82,6 +85,7 @@ impl Contents {
             projects,
             tickets,
             edges,
+            finished_key: "done".to_string(),
         };
         contents.normalize();
         contents.prepare();
@@ -214,6 +218,17 @@ impl Contents {
                 .count();
         }
         start
+    }
+
+    /// Tell the tickets which stage means finished: the active workflow's
+    /// finished key. `done()` and `blocked()` read against it, so a custom
+    /// finished stage is a finished ticket. Re-derives the dependency half.
+    pub fn set_finished_key(&mut self, finished_key: &str) {
+        self.finished_key = finished_key.to_string();
+        for ticket in &mut self.tickets {
+            ticket.finished_key = finished_key.to_string();
+        }
+        self.refresh_blocked();
     }
 
     /// Re-establish the grouping invariant, stably: groups in `ordered_keys` order,
@@ -520,6 +535,7 @@ fn ticket_from_row(row: &TicketRow) -> Result<Ticket, DomainError> {
         number: row.number,
         reference: None,
         link: row.link.clone(),
+        finished_key: "done".to_string(),
         blocked_by: Vec::new(),
         blocks: Vec::new(),
         created_at: timestamp::decode(&row.created_at).ok_or_else(|| {
