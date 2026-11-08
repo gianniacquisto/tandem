@@ -337,8 +337,8 @@ export function UsageFace({ report, window, onWindowChange, onOpenTicket }: Usag
 }
 
 /**
- * The stacked charts' legend and toggle in one: each piece is a button carrying
- * its swatch, so turning a piece off drops its slice and its swatch together.
+ * The grouped charts' legend and toggle in one: each piece is a button carrying
+ * its swatch, so turning a piece off drops its bar and its swatch together.
  */
 function SeriesPicker({
   label,
@@ -391,9 +391,9 @@ function SingleLegend({ series }: { series: UsageSeries }) {
 
 /**
  * One small chart: its quiet heading, its gridlines at Half and Max with the
- * formatted tick, its columns oldest first, and its legend below. Bars stack in
- * a column per day (one bar per day for the single-series charts), each slice's
- * height already a share of the chart's own maximum.
+ * formatted tick, its columns oldest first, and its legend below. A column's
+ * bars sit side by side in a group (one bar for the single-series charts), each
+ * bar's height already a share of the chart's own maximum.
  */
 function Chart({
   title,
@@ -436,7 +436,7 @@ function Chart({
             {chart.columns.map((column) => (
               <div key={column.label} className="usage__bar-cell">
                 <div className="usage__bar-track">
-                  <div className="usage__bar-stack">
+                  <div className="usage__bar-group">
                     {column.bars.map((bar) => {
                       const reading = bar.series === 'cost' ? money(bar.value) : tokens(bar.value)
                       const name = `${column.label} ${seriesLabel(bar.series)}: ${reading}`

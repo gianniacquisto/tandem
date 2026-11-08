@@ -468,7 +468,7 @@ describe('the usage face over one report', () => {
     expect(charted).not.toContain('reasoning')
   })
 
-  it('stacks input and output on one scale and cache read and write on another', () => {
+  it('draws input and output as grouped bars on one scale, and cache read and write on another', () => {
     const days = [
       row({
         id: '2026-10-31',
@@ -498,20 +498,50 @@ describe('the usage face over one report', () => {
     expect(tokens.columns.map((column) => column.label)).toEqual(['2026-10-30', '2026-10-31'])
     const [older, newer] = tokens.columns
     expect(older?.bars.map((bar) => bar.series)).toEqual(['input', 'output'])
-    // Absent stays absent: no output slice on the newer day.
+    // Absent stays absent: no output bar on the newer day.
     expect(newer?.bars.map((bar) => bar.series)).toEqual(['input'])
-    // The scale is the largest combined input + output, not one piece's max.
-    expect(tokens.max).toBe(9000)
-    expect(older?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(66.66666666666666)
-    expect(older?.bars.find((bar) => bar.series === 'output')?.heightPercent).toBe(33.33333333333333)
-    expect(newer?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(22.22222222222222)
+    // The scale is the tallest single bar actually drawn, never the combined
+    // input + output of one day.
+    expect(tokens.max).toBe(6000)
+    expect(tokens.columns.map((column) => column.amount)).toEqual([6000, 2000])
+    expect(older?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(100)
+    expect(older?.bars.find((bar) => bar.series === 'output')?.heightPercent).toBe(50)
+    expect(newer?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(33.33333333333333)
 
     const cache = usageChart(days, 'cache')
     expect(cache.columns[0]?.bars.map((bar) => bar.series)).toEqual(['cacheRead', 'cacheWrite'])
     expect(cache.columns[1]?.bars.map((bar) => bar.series)).toEqual(['cacheRead'])
-    expect(cache.max).toBe(1_500_000)
+    expect(cache.max).toBe(1_200_000)
     expect(cache.columns[0]?.bars.map((bar) => bar.value)).toEqual([1_200_000, 300_000])
-    expect(cache.columns[0]?.bars.map((bar) => bar.heightPercent)).toEqual([80, 20])
+    expect(cache.columns[0]?.bars.map((bar) => bar.heightPercent)).toEqual([100, 25])
+    expect(cache.columns[1]?.bars[0]?.heightPercent).toBe(66.66666666666666)
+  })
+
+  it('draws one grouped bar per series with a value, none for an absent value, and a zero height for a reported zero', () => {
+    const days = [
+      row({
+        id: '2026-10-31',
+        label: '2026-10-31',
+        tokens: { input: 2000, output: 0, reasoning: 0, cacheRead: null, cacheWrite: null },
+      }),
+      row({
+        id: '2026-10-30',
+        label: '2026-10-30',
+        tokens: { input: null, output: 500, reasoning: 0, cacheRead: null, cacheWrite: null },
+      }),
+    ]
+
+    const chart = usageChart(days, 'tokens')
+    // The older day reported only output: its group holds one bar.
+    expect(chart.columns[0]?.bars.map((bar) => bar.series)).toEqual(['output'])
+    // The newer day reported both pieces: input has a value, output a reported zero.
+    expect(chart.columns[1]?.bars.map((bar) => bar.series)).toEqual(['input', 'output'])
+    expect(chart.columns[1]?.bars.find((bar) => bar.series === 'output')?.value).toBe(0)
+    expect(chart.columns[1]?.bars.find((bar) => bar.series === 'output')?.heightPercent).toBe(0)
+    // The scale is the tallest drawn bar, so input's 2,000 is the ceiling.
+    expect(chart.max).toBe(2000)
+    expect(chart.columns[1]?.bars.find((bar) => bar.series === 'input')?.heightPercent).toBe(100)
+    expect(chart.columns[0]?.bars[0]?.heightPercent).toBe(25)
   })
 
   it('ticks each chart at half and max of its own scale', () => {
@@ -526,13 +556,15 @@ describe('the usage face over one report', () => {
     ]
 
     const tokenChart = usageChart(days, 'tokens')
-    expect(tokenChart.max).toBe(4000)
-    expect(tokenChart.ticks.map((tick) => tick.label)).toEqual(['2,000', '4,000'])
+    // Grouped bars scale to the tallest single piece: input's 3,000.
+    expect(tokenChart.max).toBe(3000)
+    expect(tokenChart.ticks.map((tick) => tick.label)).toEqual(['1,500', '3,000'])
     expect(tokenChart.ticks.map((tick) => tick.heightPercent)).toEqual([50, 100])
 
     const cacheChart = usageChart(days, 'cache')
-    expect(cacheChart.max).toBe(10_000)
-    expect(cacheChart.ticks.map((tick) => tick.label)).toEqual(['5,000', '10,000'])
+    // Grouped bars scale to the taller of cache read and cache write: 8,000.
+    expect(cacheChart.max).toBe(8000)
+    expect(cacheChart.ticks.map((tick) => tick.label)).toEqual(['4,000', '8,000'])
 
     const totalChart = usageChart(days, 'total')
     expect(totalChart.max).toBe(14_500)

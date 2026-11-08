@@ -236,29 +236,27 @@ body {
   border-bottom: var(--hairline) solid var(--ink-dim);
 }
 
-.usage__bar-stack {
+/* A column's bars sit side by side on the baseline: one bar per drawn series,
+ * each at its own day or week value. */
+.usage__bar-group {
   display: flex;
-  flex-direction: column-reverse;
-  width: min(100%, 28px);
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  width: min(100%, 30px);
   height: 100%;
 }
 
 .usage__bar {
-  width: 100%;
-  flex: none;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 14px;
+  border-radius: 3px 3px 0 0;
   background: var(--accent-deep);
 }
 
-.usage__bar-stack .usage__bar:last-child {
-  border-radius: 3px 3px 0 0;
-}
-
-.usage__bar-stack .usage__bar + .usage__bar {
-  box-shadow: inset 0 1px 0 var(--paper);
-}
-
-/* The token pieces are translucent fills over their series token, so a stack's
- * slices stay separable; the total bar and the single-series charts stay solid. */
+/* The token pieces are translucent fills over their series token; the total
+ * bar and the single-series charts stay solid. */
 .usage__bar--totalTokens {
   background: var(--accent-deep);
 }

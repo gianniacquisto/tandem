@@ -72,7 +72,8 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
     }
   }
 
-  // Tokens opens on input and output stacked; Cache on cache read and write.
+  // Tokens groups input and output side by side; Cache groups cache read and
+  // write. A column draws one bar per piece with a value, never a stacked slice.
   const tokenSeries = tokenChart.locator('.usage__series-option')
   await expect(tokenSeries).toHaveText(['Input', 'Output'])
   await expect(tokenChart.locator('.usage__series-option[aria-pressed="true"]')).toHaveText([
@@ -93,8 +94,30 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
   await expect(costChart.locator('.usage__swatch')).toHaveCount(1)
   await expect(costChart.locator('.usage__legend-items')).toHaveText('Cost')
 
-  // Each drawn slice names its column, its piece and its value. The records
-  // chart and the reasoning slice are gone.
+  // Every column owns one bar group: the grouped charts draw one to two bars
+  // per group, the single-series charts exactly one. Nothing stacks.
+  for (const chart of [tokenChart, cacheChart, totalChart, costChart]) {
+    const columnCount = await chart.locator('.usage__bar-label').count()
+    const groups = chart.locator('.usage__bar-group')
+    await expect(groups).toHaveCount(columnCount)
+  }
+  for (const chart of [tokenChart, cacheChart]) {
+    const groups = chart.locator('.usage__bar-group')
+    for (let index = 0; index < (await groups.count()); index += 1) {
+      const count = await groups.nth(index).getByRole('img').count()
+      expect(count).toBeGreaterThanOrEqual(1)
+      expect(count).toBeLessThanOrEqual(2)
+    }
+  }
+  for (const chart of [totalChart, costChart]) {
+    const counts = await chart
+      .locator('.usage__bar-group')
+      .evaluateAll((groups) => groups.map((group) => group.querySelectorAll('[role="img"]').length))
+    expect(counts.every((count) => count === 1)).toBe(true)
+  }
+
+  // Each drawn bar names its column, its piece and its value. The records
+  // chart and the reasoning bar are gone.
   for (const name of await tokenChart.getByRole('img').evaluateAll((bars) =>
     bars.map((bar) => bar.getAttribute('aria-label')),
   )) {
@@ -126,7 +149,7 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
     expect(tick).toMatch(/^\$\d+\.\d{2}$/)
   }
 
-  // The legend round-trip: turning a piece off drops its slice and its swatch,
+  // The legend round-trip: turning a piece off drops its bars and its swatch,
   // and turning it back on restores both.
   const inputOption = tokenSeries.filter({ hasText: 'Input' })
   await inputOption.click()

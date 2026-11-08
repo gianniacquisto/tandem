@@ -195,7 +195,7 @@ export function seriesLabel(series: UsageSeries): string {
 /**
  * The four charts, split by scale: input and output share one order of
  * magnitude, cache read and write another, the token total sums both, and the
- * cost is its own unit. The records chart and the reasoning slice are gone.
+ * cost is its own unit. The records chart and the reasoning bar are gone.
  */
 export type ChartKind = 'tokens' | 'cache' | 'total' | 'cost'
 
@@ -208,13 +208,13 @@ export const CHART_TITLES: Record<ChartKind, string> = {
   cost: 'Cost',
 }
 
-/** The tokens chart stacks input and output, in this order. */
+/** The tokens chart groups input and output, in this order. */
 export const TOKEN_PIECES: readonly UsageSeries[] = ['input', 'output']
 
-/** The cache chart stacks cache read and cache write, in this order. */
+/** The cache chart groups cache read and cache write, in this order. */
 export const CACHE_PIECES: readonly UsageSeries[] = ['cacheRead', 'cacheWrite']
 
-/** Each stacked chart opens on all its pieces; a picker can turn one off. */
+/** Each grouped chart opens on all its pieces; a picker can turn one off. */
 export const DEFAULT_TOKEN_SERIES: readonly UsageSeries[] = [...TOKEN_PIECES]
 export const DEFAULT_CACHE_SERIES: readonly UsageSeries[] = [...CACHE_PIECES]
 
@@ -261,7 +261,7 @@ export type ChartTick = {
   heightPercent: number
 }
 
-/** One drawn slice: a reported value and its share of the chart's scale. */
+/** One drawn bar: a reported value and its share of the chart's scale. */
 export type ChartBar = {
   series: UsageSeries
   value: number
@@ -273,9 +273,9 @@ export type ChartColumn = {
   label: string
   /** The day rows behind the column, oldest first. */
   rows: UsageRowView[]
-  /** The column's value on the chart's unit: the stack sum for tokens. */
+  /** The column's value on the chart's unit: the tallest grouped bar, or the one bar. */
   amount: number
-  /** The drawn slices in GRAPH_SERIES order; an absent value draws no slice. */
+  /** The drawn bars in the chart's own piece order; an absent value draws no bar. */
   bars: ChartBar[]
 }
 
@@ -373,17 +373,17 @@ function sumSeries(rows: UsageRowView[], series: UsageSeries): number | null {
 }
 
 /**
- * The column's value on the chart's own scale: the stacked chart's pieces
- * combined, the token total, or the spend. The pieces are read from the chart's
- * full set, never from the picker's state, so turning a slice off never
- * rescales the axis.
+ * The column's value on the chart's own scale: the tallest of the grouped
+ * chart's bars, the token total, or the spend. The pieces are read from the
+ * chart's full set, never from the picker's state, so turning a bar off never
+ * rescales the axis, and an absent piece contributes no bar rather than zero.
  */
 function scaleAmount(rows: UsageRowView[], kind: ChartKind): number {
   switch (kind) {
     case 'tokens':
-      return (sumSeries(rows, 'input') ?? 0) + (sumSeries(rows, 'output') ?? 0)
+      return Math.max(sumSeries(rows, 'input') ?? 0, sumSeries(rows, 'output') ?? 0)
     case 'cache':
-      return (sumSeries(rows, 'cacheRead') ?? 0) + (sumSeries(rows, 'cacheWrite') ?? 0)
+      return Math.max(sumSeries(rows, 'cacheRead') ?? 0, sumSeries(rows, 'cacheWrite') ?? 0)
     case 'total':
       return sumSeries(rows, 'totalTokens') ?? 0
     case 'cost':
@@ -392,9 +392,9 @@ function scaleAmount(rows: UsageRowView[], kind: ChartKind): number {
 }
 
 /**
- * The column's drawable slices: a stacked chart's active pieces, or the one bar
- * of the totals and cost charts. A piece no row reported draws no slice, never
- * a zero slice.
+ * The column's drawable bars: a grouped chart's active pieces, or the one bar
+ * of the totals and cost charts. A piece no row reported draws no bar, never a
+ * zero bar.
  */
 function chartBars(
   rows: UsageRowView[],
@@ -404,6 +404,7 @@ function chartBars(
   if (kind === 'tokens' || kind === 'cache') {
     // The chart's own piece order holds however the picker was toggled.
     const pieces = kind === 'tokens' ? TOKEN_PIECES : CACHE_PIECES
+    // Each piece is a whole day's value for that series, drawn beside the others.
     return pieces.flatMap((name) => {
       if (!series.includes(name)) return []
       const value = sumSeries(rows, name)
@@ -417,7 +418,9 @@ function chartBars(
 /**
  * One chart over the day table: the four charts draw where they are read, each
  * against its own maximum, so the token pieces and the cache pieces live on
- * scales an order of magnitude apart and neither borrows the other's.
+ * scales an order of magnitude apart and neither borrows the other's. The
+ * grouped charts scale to the tallest bar actually drawn, never to a column's
+ * sum of pieces.
  */
 export function usageChart(
   days: UsageRowView[],
