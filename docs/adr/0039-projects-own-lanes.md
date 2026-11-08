@@ -1,5 +1,7 @@
 # Projects own lanes; a lane has exactly one parent
 
+> **Amended 2026-11-08 by [ADR 0041](0041-workflows-are-data.md):** `projects.workflow` is the later hook for a per-project workflow. Projects still own lanes unchanged; this record's model gains the nullable column and no reader yet. The amendment's text is ADR 0041's.
+
 Project and lane are coupled but not the same entity. A project holds several
 lanes, and every lane has exactly one parent project. Refs stay lane-keyed
 (`TAN-42`), sprint identity stays `(lane, number)`, and the default area stays

@@ -1,5 +1,7 @@
 # No embedded agent loop; the app is a board and notes surface
 
+> **Amended 2026-11-08 by [ADR 0041](0041-workflows-are-data.md):** workflow configuration is a Settings section, not a Workflow face, and orchestration stays the CLI's and the MCP server's. The amendment's text is ADR 0041's.
+
 The app shipped a Workflow face plus an embedded opencode harness: a pinned binary, a `~/.tandem/harness` home, a Settings sign-in, and an in-app agent loop. SHE-1 asked whether the app should keep that runtime or become a control surface; SHE-3 builds the cut.
 
 Decided 2026-11-05 (SHE-1 decided, SHE-3 built).

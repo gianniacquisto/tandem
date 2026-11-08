@@ -31,6 +31,7 @@ import {
   type Filters,
 } from '../renderer/src/shell/board'
 import type { TicketSummary } from '../renderer/src/wire/TicketSummary'
+import type { WorkflowStage } from '../renderer/src/wire/WorkflowStage'
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
 const renderer = join(appRoot, 'renderer', 'src')
@@ -189,6 +190,55 @@ describe('the board view over the snapshot', () => {
       [],
       ['c'],
     ])
+  })
+
+  it('draws a custom stage from the active workflow, without a code change', () => {
+    const stages: WorkflowStage[] = [
+      { key: 'backlog', label: 'Backlog', role: 'intake', binding: null },
+      { key: 'selected', label: 'Selected for development', role: 'intake', binding: null },
+      { key: 'ready', label: 'Ready', role: 'ready', binding: null },
+      { key: 'in-progress', label: 'In progress', role: 'active', binding: null },
+      { key: 'in-review', label: 'In Review', role: 'review', binding: null },
+      { key: 'done', label: 'Done', role: 'finished', binding: null },
+    ]
+    const withSelected = [
+      ...board,
+      ticket({ id: 'e', title: 'Echo', status: 'selected' }),
+    ]
+
+    expect(boardStatuses(stages).map((status) => status.value)).toEqual([
+      'backlog',
+      'selected',
+      'ready',
+      'in-progress',
+      'in-review',
+      'done',
+    ])
+    expect(statusLabel('selected', stages)).toBe('Selected for development')
+    const rows = laneRows(['Port'], withSelected, stages)
+    expect(rows[0]?.cells.map((cell) => cell.status)).toEqual([
+      'backlog',
+      'selected',
+      'ready',
+      'in-progress',
+      'in-review',
+      'done',
+    ])
+    expect(rows[0]?.cells[1]?.tickets.map((item) => item.id)).toEqual(['e'])
+    expect(
+      filterTickets(withSelected, filters({ scope: 'all', status: 'selected' })).map(
+        (item) => item.id,
+      ),
+      'the list status filter finds the custom stage',
+    ).toEqual(['e'])
+    expect(
+      filterTickets(withSelected, filters({ scope: 'open' })).map((item) => item.id),
+      'the open scope carries a custom unfinished stage',
+    ).toEqual(['a', 'b', 'e'])
+    expect(
+      laneRows(['Port'], withSelected).map((row) => row.cells[1]?.status),
+      'the default six do not carry the custom key',
+    ).toEqual(['on-hold', 'on-hold', 'on-hold'])
   })
 
   it('draws every status cell of a declared lane, so each stays a drop target', () => {

@@ -3,7 +3,7 @@
 //! The brief's contract, three assertions plus the exclusion pin:
 //!
 //! - every covered [`Method`](tandem_core::wire::rpc::Method) has a tool;
-//! - every tool names a covered method, and the count is exactly 37;
+//! - every tool names a covered method, and the count is exactly 42;
 //! - every tool's schema derives from its params struct: the schema's
 //!   property set is the struct's serialized field set, and `required` is
 //!   empty, because every wire param is optional at parse (an absent field is
@@ -29,7 +29,7 @@ use tandem_core::wire::rpc::METHODS;
 /// sprint verbs (three of which already rode the wire for the app), the
 /// capture verb, the setup report, the settings focus pair and the vault's
 /// link-graph read.
-const COVERED: [&str; 37] = [
+const COVERED: [&str; 42] = [
     "ticket.list",
     "ticket.show",
     "ticket.add",
@@ -67,6 +67,11 @@ const COVERED: [&str; 37] = [
     "settings.get",
     "settings.set",
     "note.health",
+    "workflow.list",
+    "workflow.show",
+    "workflow.set",
+    "workflow.use",
+    "workflow.delete",
 ];
 
 /// The wire methods with no tool. Every row of [`METHODS`] is either here or

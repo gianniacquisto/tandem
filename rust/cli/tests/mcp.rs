@@ -5,7 +5,7 @@
 //! newline-delimited JSON-RPC 2.0. The child is a separate process, so these
 //! are the claims a unit test over an in-memory stream cannot make:
 //!
-//! - the stdio handshake negotiates, lists the 37 tools, and drives the
+//! - the stdio handshake negotiates, lists the 42 tools, and drives the
 //!   ticket loop (file, read, set, complete) with no shell call;
 //! - an unknown method, a batch and a malformed frame are answered as frames
 //!   and leave the child answering;
@@ -172,7 +172,7 @@ fn the_handshake_tools_and_ticket_loop_need_no_shell() {
     let listed = session.receive();
     assert_eq!(listed["id"], 2);
     let tools = listed["result"]["tools"].as_array().expect("tools");
-    assert_eq!(tools.len(), 37, "the door covers every covered wire method");
+    assert_eq!(tools.len(), 42, "the door covers every covered wire method");
 
     session.send(call(3, "ticket_add", json!({"title": "First"})));
     let added: Value =
@@ -197,6 +197,57 @@ fn the_handshake_tools_and_ticket_loop_need_no_shell() {
     let done: Value =
         serde_json::from_str(&tool_text(&session.receive())).expect("the tool result is JSON");
     assert_eq!(done["ticket"]["status"], "done");
+}
+
+#[test]
+fn the_workflow_tools_round_trip_over_the_server() {
+    let sandbox = Sandbox::new("workflow");
+    let mut session = Session::start(&sandbox);
+
+    session.send(call(1, "workflow_list", json!({})));
+    let listed: Value =
+        serde_json::from_str(&tool_text(&session.receive())).expect("the tool result is JSON");
+    assert_eq!(listed["workflows"][0]["name"], "agile");
+    let active = listed["active"].as_str().expect("an active id").to_string();
+
+    session.send(call(2, "workflow_show", json!({})));
+    let shown: Value =
+        serde_json::from_str(&tool_text(&session.receive())).expect("the tool result is JSON");
+    assert_eq!(shown["workflow"]["id"], active);
+
+    let stages = json!([
+        {"key": "inbox", "label": "Inbox", "role": "intake", "binding": null},
+        {"key": "parked", "label": "Parked", "role": "parked", "binding": null},
+        {"key": "queued", "label": "Queued", "role": "ready", "binding": {"role": "builder", "pass": "build"}},
+        {"key": "doing", "label": "Doing", "role": "active", "binding": {"role": "builder", "pass": "build"}},
+        {"key": "checking", "label": "Checking", "role": "review", "binding": {"role": "reviewer", "pass": "review"}},
+        {"key": "shipped", "label": "Shipped", "role": "finished", "binding": null}
+    ]);
+    session.send(call(
+        3,
+        "workflow_set",
+        json!({"name": "flow", "scope": "home", "stages": stages}),
+    ));
+    let created: Value =
+        serde_json::from_str(&tool_text(&session.receive())).expect("the tool result is JSON");
+    let id = created["workflow"]["id"]
+        .as_str()
+        .expect("an id")
+        .to_string();
+
+    session.send(call(4, "workflow_use", json!({"id": id})));
+    let used: Value =
+        serde_json::from_str(&tool_text(&session.receive())).expect("the tool result is JSON");
+    assert_eq!(used["workflow"]["name"], "flow");
+
+    session.send(call(5, "workflow_list", json!({})));
+    let relisted: Value =
+        serde_json::from_str(&tool_text(&session.receive())).expect("the tool result is JSON");
+    assert_eq!(relisted["active"], id, "the switch is the active row");
+    assert_eq!(
+        relisted["workflows"].as_array().expect("workflows").len(),
+        2
+    );
 }
 
 #[test]

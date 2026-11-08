@@ -1078,7 +1078,7 @@ mod schema {
     }
 
     #[test]
-    fn a_v5_file_upgrades_to_v6_with_projects_backfilled() {
+    fn a_v5_file_upgrades_to_v7_with_projects_and_the_agile_workflow() {
         let sandbox = Sandbox::new("upgrade-v6");
         fs::create_dir_all(sandbox.home_path()).unwrap();
         let connection = Connection::open(sandbox.database()).unwrap();
@@ -1141,9 +1141,9 @@ mod schema {
         assert_eq!(
             version(&connection).unwrap(),
             Some(CURRENT_VERSION),
-            "v6 is the current version"
+            "v7 is the current version"
         );
-        assert_eq!(CURRENT_VERSION, 6, "the build writes schema v6");
+        assert_eq!(CURRENT_VERSION, 7, "the build writes schema v7");
         let mut projects: Vec<(String, i64)> = connection
             .prepare("SELECT name, position FROM projects ORDER BY position, rowid")
             .unwrap()
@@ -1239,6 +1239,182 @@ mod schema {
                 ),
             ],
             "refs, numbers, positions and the default-area ticket are untouched"
+        );
+        let workflows: Vec<(String, String)> = connection
+            .prepare("SELECT id, name FROM workflows")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+        assert_eq!(
+            workflows,
+            vec![(
+                "00000000-0000-4000-8000-000000000001".to_string(),
+                "agile".to_string()
+            )],
+            "the v7 migration seeds the one default workflow"
+        );
+        let stages: Vec<(String, String, String)> = connection
+            .prepare(
+                "SELECT key, label, role FROM workflow_stages
+                 WHERE workflow_id = '00000000-0000-4000-8000-000000000001'
+                 ORDER BY position",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+        assert_eq!(
+            stages,
+            vec![
+                (
+                    "backlog".to_string(),
+                    "Backlog".to_string(),
+                    "intake".to_string()
+                ),
+                (
+                    "on-hold".to_string(),
+                    "On hold".to_string(),
+                    "parked".to_string()
+                ),
+                (
+                    "ready".to_string(),
+                    "Ready".to_string(),
+                    "ready".to_string()
+                ),
+                (
+                    "in-progress".to_string(),
+                    "In progress".to_string(),
+                    "active".to_string()
+                ),
+                (
+                    "in-review".to_string(),
+                    "In Review".to_string(),
+                    "review".to_string()
+                ),
+                (
+                    "done".to_string(),
+                    "Done".to_string(),
+                    "finished".to_string()
+                ),
+            ],
+            "the seed carries the six keys every existing ticket already uses"
+        );
+        let workflow: Option<String> = connection
+            .query_row("SELECT workflow FROM projects LIMIT 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(workflow, None, "projects.workflow starts unset");
+        let sprint_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM sprints", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(sprint_count, 0, "the sprints table is untouched by v7");
+    }
+
+    #[test]
+    fn a_v6_file_with_rows_upgrades_to_v7_keeping_tickets_sprints_and_the_default_stage_set() {
+        let sandbox = Sandbox::new("upgrade-v7");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..6], &Actor::Human).expect("v6 applies");
+        connection
+            .execute(
+                "INSERT INTO tickets
+                    (id, title, status, archived, lane, number, origin, assignee, position,
+                     created_at, completed_at, author)
+                 VALUES ('00000000-0000-0000-0000-0000000000aa', 'kept', 'in-review', 0,
+                         NULL, NULL, 'human', NULL, 0, '2026-10-30T00:00:00Z', NULL, 'human')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sprints
+                    (lane, number, session, mode, batch, runs, close, status, opened_at,
+                     closed_at, author)
+                 VALUES ('Tandem', 1, NULL, 'serial', '[]', '[]', NULL, 'closed',
+                         '2026-10-30T00:00:00Z', '2026-10-30T00:00:00Z', 'human')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        setting(&sandbox.store(), &Actor::Human, "k", "v");
+
+        let connection = sandbox.connection();
+        assert_eq!(version(&connection).unwrap(), Some(7));
+        let status: String = connection
+            .query_row("SELECT status FROM tickets", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(status, "in-review", "an existing ticket keeps its status");
+        let stage: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_stages WHERE key = 'in-review'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stage, 1, "every existing status is a default stage");
+        let sprint: String = connection
+            .query_row("SELECT status FROM sprints", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(sprint, "closed", "the sprint row is untouched");
+    }
+
+    #[test]
+    fn a_v6_file_reads_the_default_workflow_and_the_first_write_migrates_it() {
+        use crate::domain::workflow::Workflows;
+        use crate::domain::{AddTicket, Board, Status};
+
+        let sandbox = Sandbox::new("read-v6");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..6], &Actor::Human).expect("v6 applies");
+        drop(connection);
+
+        let store = sandbox.store();
+        let workflows = Workflows::new(&store);
+        let active = workflows
+            .active()
+            .expect("a v6 home reads the default instead of failing");
+        assert_eq!(active.name, "agile");
+        assert_eq!(
+            workflows.list().expect("the list reads").len(),
+            1,
+            "the default is the list"
+        );
+        let board = Board::with_actor(store, Actor::Human);
+        assert_eq!(
+            board.landing_status().expect("the landing reads"),
+            Status::Backlog
+        );
+        board
+            .validate_status(&Status::Backlog)
+            .expect("the default stage validates");
+        assert_eq!(
+            version(&sandbox.connection()).unwrap(),
+            Some(6),
+            "a read never migrates (ADR 0031)"
+        );
+
+        board
+            .add("probe", AddTicket::default())
+            .expect("the first write migrates and lands the ticket");
+        assert_eq!(
+            version(&sandbox.connection()).unwrap(),
+            Some(7),
+            "the write takes the store to v7"
         );
     }
 

@@ -1,4 +1,5 @@
-import { boardStatuses, type LaneRow } from '../shell/board'
+import type { LaneRow, StatusChoice } from '../shell/board'
+import type { WorkflowStage } from '../wire/WorkflowStage'
 import type { TicketSummary } from '../wire/TicketSummary'
 import { BoardCell } from './BoardCell'
 
@@ -9,6 +10,10 @@ export type BoardProject = {
 
 export type BoardLayoutProps = {
   rows: LaneRow[]
+  /** The active workflow's stages, in order: the columns. */
+  statuses: ReadonlyArray<StatusChoice>
+  /** The same stages, so a card's custom label draws. */
+  stages?: readonly WorkflowStage[] | null
   /** Every project with its lanes, in render order: the board's grouping. */
   projects?: BoardProject[]
   selected: string | null
@@ -36,6 +41,8 @@ export type BoardLayoutProps = {
  */
 export function BoardLayout({
   rows,
+  statuses,
+  stages,
   projects = [],
   selected,
   onSelect,
@@ -49,7 +56,7 @@ export function BoardLayout({
     <div className="board">
       <div className="board__lane board__lane--head">
         <span className="board__title board__title--head" aria-hidden="true" />
-        {boardStatuses().map((status) => (
+        {statuses.map((status) => (
           <h2 key={status.value} className="board__status" data-status={status.value}>
             {status.label}
           </h2>
@@ -59,6 +66,7 @@ export function BoardLayout({
         <GroupRows
           key={group.project ?? 'uncategorized'}
           group={group}
+          stages={stages}
           selected={selected}
           onSelect={onSelect}
           onToggle={onToggle}
@@ -112,6 +120,7 @@ function groupRows(rows: LaneRow[], projects: BoardProject[]): RowGroup[] {
 
 function GroupRows({
   group,
+  stages,
   selected,
   onSelect,
   onToggle,
@@ -122,7 +131,7 @@ function GroupRows({
   group: RowGroup
 } & Pick<
   BoardLayoutProps,
-  'selected' | 'onSelect' | 'onToggle' | 'onOpen' | 'onDropOn' | 'onDropCell'
+  'stages' | 'selected' | 'onSelect' | 'onToggle' | 'onOpen' | 'onDropOn' | 'onDropCell'
 >) {
   const count = group.rows.reduce(
     (total, row) => total + row.cells.reduce((sum, cell) => sum + cell.tickets.length, 0),
@@ -155,6 +164,7 @@ function GroupRows({
               key={cell.status}
               lane={row}
               cell={cell}
+              stages={stages}
               selected={selected}
               onSelect={onSelect}
               onToggle={onToggle}

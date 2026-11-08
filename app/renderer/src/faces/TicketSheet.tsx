@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type { Method } from '../../../src/shared/bridge'
-import { STATUSES, assigneeChoices } from '../shell/board'
+import { assigneeChoices, boardStatuses, statusLabel } from '../shell/board'
 import { passButtons, type PassKind } from '../shell/pass'
 import {
   EMPTY_COMMENT_REFUSAL,
@@ -26,6 +26,7 @@ import type { Write } from '../shell/write'
 import type { CommentView } from '../wire/CommentView'
 import type { MarkdownBlockView } from '../wire/MarkdownBlockView'
 import type { TicketDetail } from '../wire/TicketDetail'
+import type { WorkflowStage } from '../wire/WorkflowStage'
 import { MarkdownDocument } from './MarkdownDocument'
 import { SessionsSection } from './SessionsSection'
 
@@ -38,6 +39,8 @@ export type TicketSheetProps = {
   lanes: string[]
   /** The names the assignee picker offers, off-roster names aside. */
   roster: string[]
+  /** The active workflow's stages, so a custom status label draws. */
+  stages?: readonly WorkflowStage[] | null
   /** The revision the face last read; the shell's write guard pins to it. */
   revision: number | null
   /** A write through the shell's one guarded door. */
@@ -74,6 +77,7 @@ export function TicketSheet({
   expandedSession,
   lanes,
   roster,
+  stages,
   revision,
   onWrite,
   onDismiss,
@@ -563,7 +567,7 @@ export function TicketSheet({
                           value={status}
                           onChange={(event) => setStatus(event.target.value)}
                         >
-                          {STATUSES.map((entry) => (
+                          {boardStatuses(stages).map((entry) => (
                             <option key={entry.value} value={entry.value}>
                               {entry.label}
                             </option>
@@ -638,7 +642,7 @@ export function TicketSheet({
                                   >
                                     <span className="sheet__edge-ref">{block.ref ?? 'no ref'}</span>
                                     <span className="sheet__edge-title">{block.title}</span>
-                                    <span className="sheet__edge-status">{STATUSES.find((entry) => entry.value === block.status)?.label ?? block.status}</span>
+                                    <span className="sheet__edge-status">{statusLabel(block.status, stages)}</span>
                                   </button>
                                 </li>
                               ))}
@@ -661,7 +665,7 @@ export function TicketSheet({
                                   >
                                     <span className="sheet__edge-ref">{block.ref ?? 'no ref'}</span>
                                     <span className="sheet__edge-title">{block.title}</span>
-                                    <span className="sheet__edge-status">{STATUSES.find((entry) => entry.value === block.status)?.label ?? block.status}</span>
+                                    <span className="sheet__edge-status">{statusLabel(block.status, stages)}</span>
                                   </button>
                                 </li>
                               ))}

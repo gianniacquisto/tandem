@@ -116,6 +116,16 @@ describe('the tickets list hierarchy and state colour (TAND-11)', () => {
     ).toBeGreaterThanOrEqual(4.5)
   })
 
+  it('draws the status filter from the active workflow, so a custom stage is offered', () => {
+    expect(
+      face,
+      'the filter options come from the workflow, not a fixed status list',
+    ).toContain('const statuses = boardStatuses(stages)')
+    expect(face, 'the status filter maps over those stages').toMatch(
+      /\{statuses\.map\(\(status\) => \(/,
+    )
+  })
+
   it('leaves the board layout alone: this pass is list rows only', () => {
     expect(
       css,

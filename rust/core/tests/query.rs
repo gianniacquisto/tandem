@@ -277,12 +277,13 @@ fn parse_defaults_to_the_shipped_open_filter() {
     let query = TicketQuery::parse(None, None, None, None, None, false, false).unwrap();
     assert_eq!(query.archived, Archived::Excluded);
     assert_eq!(
-        query.statuses,
-        Status::WORKFLOW
-            .into_iter()
-            .filter(|status| !status.is_done())
-            .collect::<Vec<_>>(),
-        "open is every value the domain accepts but done"
+        query.done,
+        Some(false),
+        "open is every unfinished ticket, whatever its workflow's finished key"
+    );
+    assert!(
+        query.statuses.is_empty(),
+        "open is the done axis, not a fixed status list"
     );
     assert_eq!(query.assignee, AssigneeAxis::Any);
     assert_eq!(query.lane, LaneAxis::Any);
@@ -308,22 +309,14 @@ fn parse_takes_comma_separated_statuses() {
 }
 
 #[test]
-fn parse_rejects_an_unknown_status_by_name_listing_the_live_values() {
-    let error = TicketQuery::parse(None, None, Some("ready,blocked"), None, None, false, false)
-        .unwrap_err();
-    match error {
-        DomainError::InvalidStatus(bad) => {
-            assert_eq!(bad, "blocked");
-            for value in Status::WIRE_VALUES {
-                assert!(
-                    DomainError::InvalidStatus(bad.clone())
-                        .message()
-                        .contains(value)
-                );
-            }
-        }
-        other => panic!("expected invalidStatus, got {other:?}"),
-    }
+fn parse_accepts_a_custom_stage_key_and_the_board_owns_the_stage_set() {
+    let query = TicketQuery::parse(None, None, Some("ready,blocked"), None, None, false, false)
+        .expect("the query does not own the workflow's stage set");
+    assert_eq!(
+        query.statuses,
+        vec![Status::Ready, Status::Custom("blocked".to_string())],
+        "a custom key is carried to the board, which refuses one the workflow lacks"
+    );
 }
 
 #[test]
@@ -377,20 +370,58 @@ fn parse_keeps_the_shipped_filter_as_sugar_and_the_clis_filters_never_carry_the_
     assert_eq!(
         TicketQuery::parse(Some("done"), None, None, None, None, false, false)
             .unwrap()
-            .statuses,
-        [Status::Done]
+            .done,
+        Some(true)
     );
     assert_eq!(
         TicketQuery::parse(Some("open"), None, None, None, None, false, false)
             .unwrap()
-            .statuses,
-        [
-            Status::Backlog,
-            Status::OnHold,
-            Status::Ready,
-            Status::InProgress,
-            Status::InReview
-        ]
+            .done,
+        Some(false)
+    );
+    assert!(
+        TicketQuery::parse(Some("done"), None, None, None, None, false, false)
+            .unwrap()
+            .statuses
+            .is_empty(),
+        "the shipped filters are the done axis, not a fixed status list"
+    );
+}
+
+#[test]
+fn the_done_filter_reads_the_tickets_finished_key_not_the_literal_done() {
+    let shipped = Ticket {
+        status: Status::Custom("shipped".to_string()),
+        finished_key: "shipped".to_string(),
+        ..ticket("shipped")
+    };
+    let open = Ticket {
+        status: Status::Custom("doing".to_string()),
+        finished_key: "shipped".to_string(),
+        ..ticket("doing")
+    };
+    let tickets = vec![shipped, open];
+    assert_eq!(
+        TicketQuery {
+            done: Some(true),
+            ..TicketQuery::default()
+        }
+        .apply(&tickets)
+        .into_iter()
+        .map(|ticket| ticket.title)
+        .collect::<Vec<_>>(),
+        ["shipped"]
+    );
+    assert_eq!(
+        TicketQuery {
+            done: Some(false),
+            ..TicketQuery::default()
+        }
+        .apply(&tickets)
+        .into_iter()
+        .map(|ticket| ticket.title)
+        .collect::<Vec<_>>(),
+        ["doing"]
     );
 }
 
@@ -557,7 +588,7 @@ fn waiting(title: &str, status: Status, blockers: &[(uuid::Uuid, Status)]) -> Ti
                 id: *id,
                 reference: None,
                 title: "blocker".to_string(),
-                status: *blocker_status,
+                status: blocker_status.clone(),
             })
             .collect(),
         ..ticket(title)

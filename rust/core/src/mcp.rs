@@ -35,7 +35,8 @@ use crate::wire::rpc::{
     SessionStartParams, SettingsSetParams, SprintCloseParams, SprintListParams, SprintOpenParams,
     SprintRunParams, SprintShowParams, SprintTicketParams, TicketAddFromNoteParams,
     TicketAddParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
-    TicketMoveParams, TicketSetParams, TicketUnblockParams,
+    TicketMoveParams, TicketSetParams, TicketUnblockParams, WorkflowIdParams, WorkflowSetParams,
+    WorkflowShowParams,
 };
 
 /// The server name the `initialize` answer carries.
@@ -409,7 +410,7 @@ impl Tool {
     }
 }
 
-/// The 37 tools: one per covered wire method. The schema beside each entry is
+/// The 42 tools: one per covered wire method. The schema beside each entry is
 /// the params struct's own derivation, so the list cannot drift from the wire
 /// without the registry test failing.
 pub fn tools() -> Vec<Tool> {
@@ -672,6 +673,41 @@ pub fn tools() -> Vec<Tool> {
             description: "Check the vault's link graph: broken links, orphans and counts, the same report note links prints.",
             input_schema: EmptyParams::schema(),
             method: Method::NoteHealth(EmptyParams {}),
+        },
+        Tool {
+            name: "workflow_list",
+            method_tag: "workflow.list",
+            description: "List every workflow and the active one's id.",
+            input_schema: EmptyParams::schema(),
+            method: Method::WorkflowList(EmptyParams {}),
+        },
+        Tool {
+            name: "workflow_show",
+            method_tag: "workflow.show",
+            description: "Read one workflow whole. Omit the id for the active workflow.",
+            input_schema: WorkflowShowParams::schema(),
+            method: Method::WorkflowShow(WorkflowShowParams::default()),
+        },
+        Tool {
+            name: "workflow_set",
+            method_tag: "workflow.set",
+            description: "Write a workflow's whole document atomically. Omit the id to create one.",
+            input_schema: WorkflowSetParams::schema(),
+            method: Method::WorkflowSet(WorkflowSetParams::default()),
+        },
+        Tool {
+            name: "workflow_use",
+            method_tag: "workflow.use",
+            description: "Activate a workflow. Refused while a sprint is open or tickets sit in stages it lacks.",
+            input_schema: WorkflowIdParams::schema(),
+            method: Method::WorkflowUse(WorkflowIdParams::default()),
+        },
+        Tool {
+            name: "workflow_delete",
+            method_tag: "workflow.delete",
+            description: "Delete a non-default, inactive workflow; refused for the default or the active one.",
+            input_schema: WorkflowIdParams::schema(),
+            method: Method::WorkflowDelete(WorkflowIdParams::default()),
         },
     ]
 }

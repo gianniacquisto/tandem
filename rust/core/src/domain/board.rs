@@ -30,9 +30,10 @@ use super::lane::{Lane, LaneDeletion};
 use super::query::{Filter, HUMAN, TicketQuery};
 use super::ticket::{Status, Ticket};
 use super::undo::CompletionUndo;
+use super::workflow::Workflow;
 
 /// The fields a new ticket may be given, over the title it must have.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct AddTicket<'a> {
     pub lane: Option<&'a str>,
     pub status: Status,
@@ -56,7 +57,7 @@ impl Default for AddTicket<'_> {
 
 /// The fields `set` may change. Each is an [`Edit`], so "leave it alone" and
 /// "clear it" are different instructions.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct SetFields<'a> {
     pub title: Edit<&'a str>,
     pub status: Edit<Status>,
@@ -99,6 +100,42 @@ impl Board {
         &self.actor
     }
 
+    // MARK: - The workflow
+
+    /// The active workflow, or the seeded default when the `active_workflow`
+    /// row is missing or unreadable.
+    pub fn workflow(&self) -> Result<Workflow, DomainError> {
+        super::workflow::Workflows::new(&self.store).active()
+    }
+
+    /// The stage a new ticket lands in: the active workflow's first intake
+    /// stage. A caller that names no `--status` writes this.
+    pub fn landing_status(&self) -> Result<Status, DomainError> {
+        super::workflow::Workflows::new(&self.store).landing_status()
+    }
+
+    /// Refuse a status the active workflow does not declare, naming the valid
+    /// stage keys.
+    pub fn validate_status(&self, status: &Status) -> Result<(), DomainError> {
+        super::workflow::Workflows::new(&self.store).validate_status(status)
+    }
+
+    fn validate_named_status(&self, status: &Status) -> Result<(), DomainError> {
+        self.validate_status(status)
+    }
+
+    /// The active workflow's finished stage key, the one `complete` writes and
+    /// `done()` reads.
+    fn finished_key(&self) -> Result<String, DomainError> {
+        Ok(self.workflow()?.finished_key().to_string())
+    }
+
+    /// A status parsed from a workflow key. The workflow validates its own
+    /// document, so the only failure is an unreadable stored key.
+    fn stage_status(key: &str) -> Result<Status, DomainError> {
+        Status::parse(key)
+    }
+
     // MARK: - Reads
 
     /// `list(query)`: the tickets in view, in stored order.
@@ -118,7 +155,8 @@ impl Board {
         let Some((rows, revision)) = self.store.board_snapshot()? else {
             return Ok((Vec::new(), 0));
         };
-        let contents = Contents::from_rows(&rows)?;
+        let mut contents = Contents::from_rows(&rows)?;
+        contents.set_finished_key(&self.finished_key()?);
         Ok((query.apply(&contents.tickets), revision))
     }
 
@@ -155,7 +193,8 @@ impl Board {
                 open: Vec::new(),
             });
         };
-        let contents = Contents::from_rows(&rows)?;
+        let mut contents = Contents::from_rows(&rows)?;
+        contents.set_finished_key(&self.finished_key()?);
         let (_, index) = contents.require_ticket(handle)?;
         Ok((contents.tickets[index].clone(), revision))
     }
@@ -523,6 +562,7 @@ impl Board {
         let assignee = normalize_assignee(fields.assignee);
         let origin = normalize_origin(Some(fields.origin));
         let description = description::normalize(fields.description);
+        self.validate_named_status(&fields.status)?;
         self.mutate(|contents| {
             contents.validate_lane(fields.lane)?;
             let now = timestamp::unix_now();
@@ -531,6 +571,7 @@ impl Board {
             ticket.assignee = assignee.clone();
             ticket.origin = origin.clone();
             ticket.lane = fields.lane.map(str::to_string);
+            ticket.finished_key = contents.finished_key.clone();
             ticket.set_status(fields.status, now);
             insert_at_top(&mut ticket, contents);
             Ok((ticket, true))
@@ -561,6 +602,7 @@ impl Board {
         let assignee = normalize_assignee(fields.assignee);
         let origin = normalize_origin(Some(fields.origin));
         let description = description::normalize(Some(selection));
+        self.validate_named_status(&fields.status)?;
         self.mutate(|contents| {
             contents.validate_lane(fields.lane)?;
             let now = timestamp::unix_now();
@@ -570,6 +612,7 @@ impl Board {
             ticket.origin = origin.clone();
             ticket.lane = fields.lane.map(str::to_string);
             ticket.link = Some(path.to_string());
+            ticket.finished_key = contents.finished_key.clone();
             ticket.set_status(fields.status, now);
             // The same placement `add` gives it: the top of its lane.
             let start = contents.block_start(fields.lane);
@@ -609,6 +652,7 @@ impl Board {
         status: Status,
         at: usize,
     ) -> Result<Ticket, DomainError> {
+        self.validate_named_status(&status)?;
         self.mutate(|contents| {
             let from = contents.require_ticket(handle)?.1;
             contents.validate_lane(lane)?;
@@ -623,14 +667,16 @@ impl Board {
 
     // MARK: - Complete, reopen, undo
 
-    /// `complete(id)`: idempotent. On a transition to done, `completed_at` is
-    /// stamped. The stored order is never changed.
+    /// `complete(id)`: idempotent. Moves the ticket to the active workflow's
+    /// finished stage and stamps `completed_at` on the transition. The stored
+    /// order is never changed.
     pub fn complete(&self, handle: &str) -> Result<Ticket, DomainError> {
+        let finished = Self::stage_status(self.workflow()?.finished_key())?;
         self.mutate(|contents| {
             let index = contents.require_ticket(handle)?.1;
             let mut changed = false;
             if !contents.tickets[index].done() {
-                contents.tickets[index].set_status(Status::Done, timestamp::unix_now());
+                contents.tickets[index].set_status(finished.clone(), timestamp::unix_now());
                 changed = true;
             }
             Ok((contents.tickets[index].clone(), changed))
@@ -638,13 +684,15 @@ impl Board {
     }
 
     /// `reopen(id)`: the inverse of `complete`, idempotent. **A reopen lands in
-    /// backlog**, because completing erased the stage it came from.
+    /// the active workflow's intake stage**, because completing erased the stage
+    /// it came from.
     pub fn reopen(&self, handle: &str) -> Result<Ticket, DomainError> {
+        let intake = Self::stage_status(self.workflow()?.landing_key())?;
         self.mutate(|contents| {
             let index = contents.require_ticket(handle)?.1;
             let mut changed = false;
             if contents.tickets[index].done() {
-                contents.tickets[index].set_status(Status::Backlog, timestamp::unix_now());
+                contents.tickets[index].set_status(intake.clone(), timestamp::unix_now());
                 changed = true;
             }
             Ok((contents.tickets[index].clone(), changed))
@@ -690,6 +738,9 @@ impl Board {
             Edit::Set(raw) => Some(DescriptionBody::required(raw)?),
             Edit::Unchanged => None,
         };
+        if let Edit::Set(status) = &fields.status {
+            self.validate_named_status(status)?;
+        }
         self.mutate(|contents| {
             let index = contents.require_ticket(handle)?.1;
             let mut ticket = contents.tickets[index].clone();
@@ -985,7 +1036,9 @@ impl Board {
     /// The board as one value, with the refs and the edges made true.
     fn load(&self) -> Result<Contents, DomainError> {
         let rows = self.store.board_rows()?.unwrap_or_default();
-        Contents::from_rows(&rows)
+        let mut contents = Contents::from_rows(&rows)?;
+        contents.set_finished_key(&self.finished_key()?);
+        Ok(contents)
     }
 
     /// One transaction: read the board **inside** it, let `body` change it, and
@@ -1004,6 +1057,7 @@ impl Board {
         &self,
         body: impl FnOnce(&mut Contents) -> Result<(T, bool), DomainError>,
     ) -> Result<T, DomainError> {
+        let finished_key = self.finished_key()?;
         let refused: std::cell::RefCell<Option<DomainError>> = std::cell::RefCell::new(None);
         let outcome = self.store.write(&self.actor, |write| {
             let before = write.board_rows()?;
@@ -1016,6 +1070,7 @@ impl Board {
                     ));
                 }
             };
+            contents.set_finished_key(&finished_key);
             let (value, changed) = match body(&mut contents) {
                 Ok(step) => step,
                 Err(error) => {

@@ -1,9 +1,12 @@
 import type { LaneColumn } from '../shell/board'
 import type { TicketSummary } from '../wire/TicketSummary'
+import type { WorkflowStage } from '../wire/WorkflowStage'
 import { TicketRow } from './TicketRow'
 
 export type TicketListProps = {
   columns: LaneColumn[]
+  /** The active workflow's stages, for every row's status label. */
+  stages?: readonly WorkflowStage[] | null
   selected: string | null
   onSelect: (id: string) => void
   onToggle: (ticket: TicketSummary) => void
@@ -18,6 +21,7 @@ export type TicketListProps = {
  */
 export function TicketList({
   columns,
+  stages,
   selected,
   onSelect,
   onToggle,
@@ -40,6 +44,7 @@ export function TicketList({
                 key={ticket.id}
                 ticket={ticket}
                 layout="list"
+                stages={stages}
                 selected={ticket.id === selected}
                 onSelect={() => onSelect(ticket.id)}
                 onToggle={() => onToggle(ticket)}

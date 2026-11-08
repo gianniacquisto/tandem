@@ -49,6 +49,7 @@ pub mod ticket;
 pub mod ticket_to_note;
 pub mod undo;
 pub mod usage;
+pub mod workflow;
 
 pub use board::{AddTicket, Board, SetFields, resolve_assignee, resolve_origin};
 pub use comment::{Comment, CommentRead};
@@ -68,3 +69,7 @@ pub use settings::Settings;
 pub use ticket::{Status, Ticket, TicketBlock};
 pub use ticket_to_note::{Notes, PromotedNote, TicketToNote};
 pub use undo::CompletionUndo;
+pub use workflow::{
+    Pass, StageBinding, StageRole, Workflow, WorkflowDraft, WorkflowStage, Workflows,
+    default_workflow,
+};

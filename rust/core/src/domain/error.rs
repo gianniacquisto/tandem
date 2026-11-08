@@ -46,8 +46,50 @@ pub enum DomainError {
     StandardInputNotUtf8,
     /// `list` was given a filter that is not `open`, `done` or `all`.
     InvalidFilter(String),
-    /// A status value that is not one of the six.
+    /// A status value that is empty, or not one of the six default keys.
     InvalidStatus(String),
+    /// A status value the active workflow does not declare. `stages` is the
+    /// valid stage-key list, so the refusal names what the caller may pick.
+    InvalidStage { value: String, stages: Vec<String> },
+    /// A workflow handle (id or name) named nothing. `workflows` is every
+    /// declared name, so the refusal lets the caller recover in one turn.
+    UnknownWorkflow {
+        handle: String,
+        workflows: Vec<String>,
+    },
+    /// A workflow name was empty or whitespace-only.
+    EmptyWorkflowName,
+    /// A workflow name another workflow already holds.
+    DuplicateWorkflowName(String),
+    /// A workflow scope other than `home`; per-project adoption is later.
+    InvalidWorkflowScope(String),
+    /// A workflow document carries no stages.
+    EmptyWorkflowStages,
+    /// Two stages share a key.
+    DuplicateStageKey(String),
+    /// A stage key was empty or whitespace-only.
+    EmptyStageKey,
+    /// A stage label was empty or whitespace-only.
+    EmptyStageLabel(String),
+    /// A stage role appears a cardinality the model refuses.
+    StageRoleCount {
+        role: String,
+        count: usize,
+        expected: String,
+    },
+    /// A binding names a roster role the store does not carry.
+    UnknownBindingRole { role: String, roster: Vec<String> },
+    /// A stage a workflow set would delete still holds tickets.
+    StageOccupied { key: String, count: usize },
+    /// `workflow use` was refused because a sprint is open.
+    WorkflowHasOpenSprint { lanes: Vec<String> },
+    /// `workflow use` was refused because tickets sit in stages the target
+    /// lacks. Each pair is the stage key and how many tickets sit in it.
+    WorkflowMissingStages { stages: Vec<(String, usize)> },
+    /// The default workflow cannot be deleted.
+    WorkflowIsDefault(String),
+    /// The active workflow cannot be deleted.
+    WorkflowIsActive(String),
     /// A cycle lane name was empty or whitespace-only.
     EmptyLaneName,
     /// A cycle lane name was already in use.
@@ -235,6 +277,68 @@ impl DomainError {
                 "status must be one of {} (got \"{bad}\").",
                 super::ticket::Status::WIRE_VALUES.join(", ")
             ),
+            Self::InvalidStage { value, stages } => format!(
+                "Unknown stage \"{value}\". The active workflow's stages are: {}.",
+                stages.join(", ")
+            ),
+            Self::UnknownWorkflow { handle, workflows } if workflows.is_empty() => {
+                format!("Unknown workflow \"{handle}\". No workflows are declared yet.")
+            }
+            Self::UnknownWorkflow { handle, workflows } => format!(
+                "Unknown workflow \"{handle}\". The known workflows are: {}.",
+                workflows.join(", ")
+            ),
+            Self::EmptyWorkflowName => {
+                "Workflow name is empty. Provide a non-empty name and try again.".to_string()
+            }
+            Self::DuplicateWorkflowName(name) => {
+                format!("A workflow named \"{name}\" already exists.")
+            }
+            Self::InvalidWorkflowScope(scope) => format!(
+                "Workflow scope must be home (got \"{scope}\"). Per-project workflows land later."
+            ),
+            Self::EmptyWorkflowStages => {
+                "A workflow needs at least one stage. Add a stage and try again.".to_string()
+            }
+            Self::DuplicateStageKey(key) => {
+                format!("The stage key \"{key}\" is already in use. Pick another key.")
+            }
+            Self::EmptyStageKey => {
+                "A stage key is empty. Provide a non-empty key and try again.".to_string()
+            }
+            Self::EmptyStageLabel(key) => {
+                format!("The stage \"{key}\" has an empty label. Give it a label.")
+            }
+            Self::StageRoleCount {
+                role,
+                count,
+                expected,
+            } => format!("A workflow needs {expected} {role} stage (found {count})."),
+            Self::UnknownBindingRole { role, roster } => format!(
+                "Unknown binding role \"{role}\". The roster is: {}.",
+                roster.join(", ")
+            ),
+            Self::StageOccupied { key, count } => format!(
+                "Stage \"{key}\" still holds {count} ticket(s). Move them out before deleting it."
+            ),
+            Self::WorkflowHasOpenSprint { lanes } => format!(
+                "A sprint is open on {}. Close it before activating another workflow.",
+                lanes.join(", ")
+            ),
+            Self::WorkflowMissingStages { stages } => format!(
+                "The target workflow lacks stages tickets sit in: {}. Move them first.",
+                stages
+                    .iter()
+                    .map(|(key, count)| format!("\"{key}\" ({count})"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Self::WorkflowIsDefault(handle) => {
+                format!("Workflow \"{handle}\" is the default. It cannot be deleted.")
+            }
+            Self::WorkflowIsActive(handle) => {
+                format!("Workflow \"{handle}\" is active. Activate another one before deleting it.")
+            }
             Self::EmptyLaneName => {
                 "Cycle lane name is empty. Provide a non-empty name and try again.".to_string()
             }
