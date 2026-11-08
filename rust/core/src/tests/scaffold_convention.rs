@@ -294,6 +294,49 @@ fn the_build_names_no_grill_and_triage_reports_backlog() {
     );
 }
 
+/// UI-13: a renderer diff gets the dev app deployed for the human before the
+/// PR opens, on a scratch copy of the fixture home so the exercise writes are
+/// disposable. The deploy states itself once in `agents/builder.md`, the build
+/// skill points at it, and the sprint's close reaps the surviving worktree.
+#[test]
+fn the_builder_deploys_a_renderer_head_to_a_scratch_home() {
+    let builder = file("agents/builder.md");
+    for phrase in [
+        "app/renderer",
+        "## Test this head",
+        "scratch home",
+        "TANDEM_HOME",
+        "outlives this session",
+        "npm run dev",
+        "npm run typecheck",
+        "TANDEM_SHOTS_OUT",
+        "Scripts/make-fixture-home.sh",
+        "fixture_db.rs",
+        "agents/reviewer.md",
+        "UI-16",
+    ] {
+        assert!(builder.contains(phrase), "the builder names `{phrase}`");
+    }
+    assert!(
+        builder.contains("never opens the real `~/.tandem`"),
+        "the deployed app never opens the real home"
+    );
+    assert!(
+        builder.contains("sign-off"),
+        "the worktree survives for the human's sign-off"
+    );
+    let build = file("skills/tandem-build/SKILL.md");
+    assert!(
+        build.contains("agents/builder.md") && build.contains("deploy contract's home"),
+        "the build skill points at the deploy contract's home"
+    );
+    let close = section(&file("skills/tandem-sprint/SKILL.md"), "## 6. Close");
+    assert!(
+        close.contains("worktree") && close.contains("sign-off"),
+        "the close sweeps the renderer ticket's surviving worktree"
+    );
+}
+
 /// The close sweep still clears an owner only where a question is open. The
 /// park it names is refine's hold now (`agents/refiner.md`), closed via a
 /// comment plus `set`.
