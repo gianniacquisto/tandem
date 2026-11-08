@@ -102,9 +102,18 @@ test('the tickets face shows one board two ways: the list and the board over one
   await window.getByRole('tab', { name: 'Board' }).click()
   await expect(window.locator('.board')).toBeVisible()
   await expect(window.locator('.board__cell').first()).toBeVisible()
+  // The header row reads in the declared workflow order, On hold second.
   await expect(window.locator('.board__status')).toHaveCount(6)
-  // The parked status is the last column, not one among the workflow ones.
-  await expect(window.locator('.board__status').last()).toHaveText('On hold')
+  expect(await window.locator('.board__status').allInnerTexts()).toEqual([
+    'Backlog',
+    'On hold',
+    'Ready',
+    'In progress',
+    'In Review',
+    'Done',
+  ])
+  // Done is the last column, the end of the workflow.
+  await expect(window.locator('.board__status').last()).toHaveText('Done')
 
   // The board card is a token card: its corner is --radius-control.
   expect(await computed(window, '.ticket-row--board', 'border-radius')).toBe(
@@ -138,7 +147,7 @@ test('the tickets face shows one board two ways: the list and the board over one
   // The pictures are the Open board, the face's default.
   await window.getByRole('tab', { name: /^Open/ }).click()
   // The grid needs 1288 px for its lane title and six status columns, and the
-  // shell spends a gutter either side of it: a 1080 window scrolls On hold off
+  // shell spends a gutter either side of it: a 1080 window scrolls Done off
   // the right edge, and the picture would be half a board.
   await capture(app, window, scene('tickets-board'), 1330)
   // The frame just shot holds the whole board: a column past the edge is a
@@ -255,7 +264,7 @@ test('the keyboard set reaches the fields and moves a ticket, and a second write
   expect(ticket).not.toBeNull()
 
   const before = await cellOf(window, ticket as string)
-  const statuses = ['backlog', 'ready', 'in-progress', 'in-review', 'done', 'on-hold']
+  const statuses = ['backlog', 'on-hold', 'ready', 'in-progress', 'in-review', 'done']
   const atStatus = statuses.indexOf(before.status ?? '')
   expect(atStatus).toBeGreaterThanOrEqual(0)
   // Step away from whichever end the ticket sits at, so there is a cell to land in.

@@ -161,33 +161,33 @@ describe('the board view over the snapshot', () => {
     expect(columns[2]?.tickets).toEqual([])
   })
 
-  it('draws a row per lane and a cell per status, with on-hold parked last', () => {
+  it('draws a row per lane and a cell per status, in the declared workflow order', () => {
     expect(boardStatuses().map((status) => status.value)).toEqual([
       'backlog',
+      'on-hold',
       'ready',
       'in-progress',
       'in-review',
       'done',
-      'on-hold',
     ])
 
     const rows = laneRows(['Port'], board)
     expect(rows.map((row) => row.title)).toEqual(['Uncategorized', 'Port', 'Tandem'])
     expect(rows[1]?.cells.map((cell) => cell.status)).toEqual([
       'backlog',
+      'on-hold',
       'ready',
       'in-progress',
       'in-review',
       'done',
-      'on-hold',
     ])
     expect(rows[1]?.cells.map((cell) => cell.tickets.map((t) => t.id))).toEqual([
+      [],
       [],
       ['a'],
       [],
       [],
       ['c'],
-      [],
     ])
   })
 

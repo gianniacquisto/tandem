@@ -29,6 +29,10 @@ test('the usage face, with a ticket row rolled down', async ({ app, window }) =>
   await win.filter({ hasText: 'All time' }).click()
   await expect(window.locator('.usage__window [aria-selected="true"]')).toHaveText('All time')
   await expect(window.locator('.usage__coverage')).toHaveText(/^reported by \d+ of \d+ records$/)
+  // The window narrows the report asynchronously: wait for the All time rows
+  // before reading them, so a home whose frozen days have aged out of the
+  // default seven-day window still reads its own figures here.
+  await expect(window.locator('.usage__row').first()).toBeVisible()
 
   // The graph defaults to total tokens per day, one bar per day row above the
   // picker, each named with its day and token figure. The bars share the meter

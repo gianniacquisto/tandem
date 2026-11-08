@@ -85,12 +85,12 @@ export function statusLabel(status: string): string {
 }
 
 /**
- * The board's six columns: `STATUSES` in workflow order, with the parked
- * `on-hold` cell last. Derived from the one declared list, never a copy of it.
+ * The board's six columns: `STATUSES` in workflow order, so the board reads
+ * left to right as the store declares it. Derived from the one declared list,
+ * never a copy of it.
  */
 export function boardStatuses(): ReadonlyArray<{ value: string; label: string }> {
-  const parked = STATUSES.filter((status) => status.value === 'on-hold')
-  return [...STATUSES.filter((status) => status.value !== 'on-hold'), ...parked]
+  return STATUSES
 }
 
 /** The reserved assignee: the human, spelled the same in every face. */
