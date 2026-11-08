@@ -325,6 +325,28 @@ fn the_builder_deploys_a_renderer_head_to_a_scratch_home() {
         builder.contains("sign-off"),
         "the worktree survives for the human's sign-off"
     );
+    assert!(
+        builder.contains("git diff --name-only origin/main")
+            && !builder.contains("origin/main...HEAD"),
+        "the deploy trigger reads the working tree (`git diff --name-only origin/main`), not the committed range"
+    );
+    assert!(
+        builder.contains("git rev-parse HEAD"),
+        "the `## Test this head` block names the pushed head by `git rev-parse HEAD`"
+    );
+    let commit = builder
+        .find("**Commit and push**")
+        .expect("the builder commits and pushes before deploying");
+    let deploy = builder
+        .find("git diff --name-only origin/main")
+        .expect("the deploy trigger reads the working tree");
+    let head = builder
+        .find("## Test this head")
+        .expect("the builder posts the head under test");
+    assert!(
+        commit < deploy && deploy < head,
+        "the order runs commit and push, then deploy and its head block, never before the commit"
+    );
     let build = file("skills/tandem-build/SKILL.md");
     assert!(
         build.contains("agents/builder.md") && build.contains("deploy contract's home"),
