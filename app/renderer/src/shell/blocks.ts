@@ -401,7 +401,11 @@ function toBlock(node: TreeNode, text: string, from = node.from): Block {
   const source = text.slice(from, node.to)
   if (node.name === 'Paragraph') return paragraphBlock(node, text)
   if (node.name.startsWith('ATXHeading')) {
-    return headingBlock(node, text, Number.parseInt(node.name.slice(10), 10))
+    const level = Number.parseInt(node.name.slice(10), 10)
+    // The Write surface edits h1 to h3; h4 to h6 are an unmodelled construct
+    // and draw as a read-only source card (UI-18's What).
+    if (level > 3) return { kind: 'opaque', source, edited: false }
+    return headingBlock(node, text, level)
   }
   if (node.name === 'SetextHeading1') return headingBlock(node, text, 1)
   if (node.name === 'SetextHeading2') return headingBlock(node, text, 2)

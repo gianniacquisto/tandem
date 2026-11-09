@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { expect } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
 import { capture, openTab, test } from '../../shots/app'
 import { seedPath } from '../../shots/home'
@@ -60,6 +60,7 @@ test('the bikeshed face, over the seeded vault', async ({ window }) => {
  */
 test('the breadcrumb names the note', async ({ window }) => {
   await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
   const breadcrumb = window.locator('.bikeshed__breadcrumb')
@@ -94,6 +95,7 @@ test('the breadcrumb sticks and the footer is reachable', async ({ app, window }
   )
 
   await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
   const editor = window.frameLocator('.editor__frame')
@@ -167,9 +169,9 @@ test('the mode control lives in the breadcrumb', async ({ window }) => {
   const editor = window.frameLocator('.editor__frame')
   await expect(editor.locator('.cm-content')).toContainText('The project overview')
 
-  await mode.locator('button:not([aria-pressed="true"])').click()
+  await mode.locator('button', { hasText: 'Edit' }).click()
 
-  await expect(breadcrumb.locator('[aria-pressed="true"]')).not.toHaveText('Preview')
+  await expect(mode.locator('[aria-pressed="true"]')).toHaveText('Edit')
   await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'true')
   await expect(editor.locator('.cm-content')).toContainText('The project overview')
 })
@@ -244,10 +246,16 @@ test('a new note through the tree control opens in the editor ready to type', as
   await expect(window.locator('.bikeshed__crumb').first()).toHaveText('Bikeshed')
   await expect(window.locator('.banner')).toHaveCount(0)
 
-  const editor = window.frameLocator('.editor__frame')
-  await editor.locator('.cm-content').click()
+  // An empty creation opens in Write, ready to type.
+  await expect(window.locator('.editor__mode-button', { hasText: 'Write' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  const blocks = window.locator('.blocks')
+  await expect(blocks).toBeVisible()
+  await blocks.locator('.block--paragraph .block__text').first().click()
   await window.keyboard.type('hello from UI-1')
-  await expect(editor.locator('.cm-content')).toContainText('hello from UI-1')
+  await expect(blocks).toContainText('hello from UI-1')
   expect(existsSync(join(seedPath(), 'bikeshed', 'from-ui.md'))).toBe(true)
 })
 
@@ -292,15 +300,16 @@ test("today's note opens-or-creates and keeps staged content", async ({ window }
   await expect(window.locator('.bikeshed__crumb--current')).toHaveText(day)
   await expect(window.locator('.bikeshed__crumb').first()).toHaveText('daily')
 
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('.cm-content')).toBeVisible()
-  await editor.locator('.cm-content').click()
+  // Today's note is created empty, so it opens in Write.
+  const blocks = window.locator('.blocks')
+  await expect(blocks).toBeVisible()
+  await blocks.locator('.block--paragraph .block__text').first().click()
   await window.keyboard.type(' words for today')
-  await expect(editor.locator('.cm-content')).toContainText('words for today')
+  await expect(blocks).toContainText('words for today')
 
   await action.click()
   await expect(window.locator(`.tree__label[title="${title}"]`)).toBeVisible()
-  await expect(editor.locator('.cm-content')).toContainText('words for today')
+  await expect(blocks).toContainText('words for today')
   await expect(window.locator('.banner')).toHaveCount(0)
 })
 
@@ -387,6 +396,7 @@ test('an external write on focus is a conflict, and the tab switch keeps the dra
  */
 test('the editor send files a ticket linked to the note', async ({ window }) => {
   await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
   const editor = window.frameLocator('.editor__frame')
@@ -531,19 +541,221 @@ test('mod+e and the control switch between preview and edit', async ({ window })
 })
 
 /**
- * An empty note opens in Edit ready to type, regardless of the stored
+ * An empty note opens in Write ready to type, regardless of the stored
  * Preview choice: the buffer-is-truth rule keeps UI-1/UI-4 creations typing.
  */
-test('an empty note opens in edit focused', async ({ window }) => {
+test('an empty note opens in Write focused', async ({ window }) => {
   writeFileSync(join(seedPath(), 'bikeshed', 'empty-preview.md'), '')
   await openTab(window, 'bikeshed')
   await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
   await window.evaluate("window.dispatchEvent(new Event('focus'))")
   await window.locator('.tree__label[title="empty-preview.md"]').click()
 
-  const edit = window.locator('.editor__mode-button', { hasText: 'Edit' })
-  await expect(edit).toHaveAttribute('aria-pressed', 'true')
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('#tandem-toolbar')).toBeVisible()
-  await expect(editor.locator('.cm-content')).toBeFocused()
+  const write = window.locator('.editor__mode-button', { hasText: 'Write' })
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
+  await expect(window.locator('.blocks')).toBeFocused()
+  await expect(window.locator('.block--paragraph')).toHaveCount(1)
+})
+
+/**
+ * Write is the third mode: open a note in it and the block surface is the
+ * editable document, over the seeded vault. The helpers below stage a note in
+ * the scratch home and switch the face to Write, which is the only gesture the
+ * scenes rely on.
+ */
+const writeFile = (name: string): string => join(seedPath(), 'bikeshed', name)
+const writeText = (name: string): string => readFileSync(writeFile(name), 'utf8')
+const modKey = process.platform === 'darwin' ? 'Meta' : 'Control'
+
+/** Put the DOM caret at the start or end of a block's text, without Home/End. */
+async function caretAt(
+  window: Page,
+  block: number,
+  where: 'start' | 'end',
+): Promise<void> {
+  await window.locator('.block__text').nth(block).evaluate((element, at) => {
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    range.collapse(at === 'start')
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }, where)
+}
+
+async function openWrite(window: Page, name: string, content: string): Promise<void> {
+  writeFileSync(writeFile(name), content)
+  await openTab(window, 'bikeshed')
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
+  await window.locator(`.tree__label[title="${name}"]`).click()
+  const write = window.locator('.editor__mode-button', { hasText: 'Write' })
+  if ((await write.getAttribute('aria-pressed')) !== 'true') await write.click()
+  await expect(window.locator('.blocks')).toBeVisible()
+}
+
+test('Write is reachable and typing autosaves through the real path', async ({ window }) => {
+  await openWrite(window, 'write-typing.md', '# Title\n\nA paragraph.')
+
+  await expect(window.locator('.block--heading .block__text')).toHaveText('Title')
+  await expect(window.locator('.block--paragraph .block__text')).toHaveText('A paragraph.')
+
+  await window.locator('.block--paragraph .block__text').first().click()
+  await caretAt(window, 1, 'end')
+  await window.keyboard.type(' Edited.')
+  await expect.poll(() => writeText('write-typing.md'), { timeout: 8000 }).toBe(
+    '# Title\n\nA paragraph. Edited.',
+  )
+})
+
+test('Enter splits and Backspace at the start merges', async ({ window }) => {
+  await openWrite(window, 'write-enter.md', 'alpha')
+
+  await window.locator('.block--paragraph .block__text').first().click()
+  await caretAt(window, 0, 'end')
+  await window.keyboard.press('Enter')
+  await window.keyboard.type('beta')
+  await expect.poll(() => writeText('write-enter.md'), { timeout: 8000 }).toBe('alpha\nbeta')
+
+  await caretAt(window, 1, 'start')
+  await window.keyboard.press('Backspace')
+  await expect.poll(() => writeText('write-enter.md'), { timeout: 8000 }).toBe('alphabeta')
+})
+
+test('the arrows cross blocks and Shift+arrow extends across them', async ({ window }) => {
+  await openWrite(window, 'write-arrows.md', 'ab\n\ncd')
+
+  await window.locator('.block--paragraph .block__text').first().click()
+  await caretAt(window, 0, 'end')
+  await window.keyboard.press('ArrowRight')
+  await window.keyboard.type('X')
+  await expect.poll(() => writeText('write-arrows.md'), { timeout: 8000 }).toBe('ab\n\nXcd')
+
+  // From the end of the first block, Shift+ArrowRight crosses the boundary and
+  // then selects the next character; the cut leaves the two outer pieces.
+  await caretAt(window, 0, 'end')
+  await window.keyboard.press('Shift+ArrowRight')
+  await window.keyboard.press('Shift+ArrowRight')
+  await window.keyboard.press(`${modKey}+x`)
+  await expect.poll(() => writeText('write-arrows.md'), { timeout: 8000 }).toBe('abcd')
+})
+
+test('a multi-block selection cuts and pastes', async ({ window }) => {
+  await openWrite(window, 'write-cut.md', 'one\n\ntwo')
+  await window.locator('.blocks').click()
+
+  await window.keyboard.press(`${modKey}+a`)
+  await window.keyboard.press(`${modKey}+x`)
+  await expect.poll(() => writeText('write-cut.md'), { timeout: 8000 }).toBe('')
+
+  await window.keyboard.press(`${modKey}+v`)
+  await expect.poll(() => writeText('write-cut.md'), { timeout: 8000 }).toBe('one\ntwo')
+})
+
+test('a multi-line paste becomes blocks', async ({ window }) => {
+  await openWrite(window, 'write-paste.md', 'start')
+  await window.locator('.block--paragraph .block__text').first().click()
+  await caretAt(window, 0, 'end')
+
+  await window.locator('.blocks').evaluate((element) => {
+    const data = new DataTransfer()
+    data.setData('text/plain', '- a\n- b')
+    element.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+  })
+
+  await expect.poll(() => writeText('write-paste.md'), { timeout: 8000 }).toBe('start\n- a\n- b')
+})
+
+test('a markdown shortcut converts a paragraph as it is typed', async ({ window }) => {
+  await openWrite(window, 'write-shortcut.md', '')
+  await window.locator('.block--paragraph .block__text').first().click()
+
+  await window.keyboard.type('# ')
+  await window.keyboard.type('Heading')
+  await expect.poll(() => writeText('write-shortcut.md'), { timeout: 8000 }).toBe('# Heading')
+})
+
+test('an IME composition lands the composed text once', async ({ window }) => {
+  await openWrite(window, 'write-ime.md', '')
+  await window.locator('.block--paragraph .block__text').first().click()
+
+  const session = await window.context().newCDPSession(window)
+  await session.send('Input.imeSetComposition', { text: 'に', selectionStart: 1, selectionEnd: 1 })
+  await session.send('Input.imeSetComposition', { text: 'にほ', selectionStart: 2, selectionEnd: 2 })
+  await session.send('Input.insertText', { text: 'にほ' })
+  await session.detach()
+
+  await expect.poll(() => writeText('write-ime.md'), { timeout: 8000 }).toBe('にほ')
+  const drawn = await window.locator('.blocks').innerText()
+  expect(drawn.split('にほ').length - 1).toBe(1)
+})
+
+test('the conflict scene passes in Write mode', async ({ window }) => {
+  await openWrite(window, 'write-conflict.md', 'original words')
+  await window.locator('.block--paragraph .block__text').first().click()
+  await caretAt(window, 0, 'end')
+  await window.keyboard.type(' and my unsaved words')
+  await window.waitForTimeout(300)
+
+  const binary = join(
+    REPO_ROOT,
+    'rust',
+    'target',
+    'debug',
+    process.platform === 'win32' ? 'tandem.exe' : 'tandem',
+  )
+  execFileSync(binary, [
+    '--home',
+    seedPath(),
+    'note',
+    'write',
+    '--path',
+    'write-conflict.md',
+    '--text',
+    'the CLI wrote this while the editor was dirty',
+  ])
+
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
+  await expect(window.locator('.conflict')).toBeVisible()
+  await expect(window.locator('.conflict__text').nth(0)).toContainText('my unsaved words')
+  await expect(window.locator('.conflict__text').nth(1)).toContainText(
+    'the CLI wrote this while the editor was dirty',
+  )
+
+  await window.locator('.button', { hasText: 'Take theirs' }).click()
+  await expect(window.locator('.conflict')).toHaveCount(0)
+  await expect(window.locator('.blocks')).toContainText('the CLI wrote this while the editor was dirty')
+})
+
+test('opening and leaving a note in Write writes the same bytes', async ({ window }) => {
+  const content = '# Keep\n\n* starred item\n\n> quote\n\n```ts\nx\n```\n'
+  await openWrite(window, 'write-noop.md', content)
+  await window.waitForTimeout(1600)
+  expect(writeText('write-noop.md')).toBe(content)
+})
+
+test('typing a task marker makes a task block', async ({ window }) => {
+  await openWrite(window, 'write-task.md', '')
+  await window.locator('.block--paragraph .block__text').first().click()
+
+  await window.keyboard.type('- [ ] Task')
+  await expect(window.locator('.block--task')).toBeVisible()
+  await expect(window.locator('.block--task .block__check')).toHaveAttribute('aria-checked', 'false')
+  await expect.poll(() => writeText('write-task.md'), { timeout: 8000 }).toBe('- [ ] Task')
+})
+
+test('the code language field keeps focus and its keys out of the note', async ({ window }) => {
+  await openWrite(window, 'write-language.md', '```ts\nconst x = 1\n```')
+
+  const language = window.locator('.block__code-lang')
+  await expect(language).toHaveValue('ts')
+  await language.fill('')
+  await language.click()
+  await window.keyboard.type('py')
+
+  await expect(language).toBeFocused()
+  await expect(language).toHaveValue('py')
+  await expect(window.locator('.block--code .block__text')).toContainText('const x = 1')
+  await expect.poll(() => writeText('write-language.md'), { timeout: 8000 }).toBe(
+    '```py\nconst x = 1\n```',
+  )
 })

@@ -136,20 +136,22 @@ export function saveEditorFontSize(value: number, storage?: FontStorage | null):
 }
 
 /**
- * The preview/edit mode (the titlebar segmented control).
+ * The Preview, Edit and Write modes (the titlebar segmented control).
  *
  * The bundle owns the readOnly/editable switch (`Editor/src/main.js`:
  * `setMode`); the renderer owns the persistence and the default rule, so a
  * relaunch restores the last choice and the frame is told it on `loaded`.
+ * Write is the renderer's own block surface and never reaches the bundle.
  * The key sits beside the rail/hidden/font-size keys in `BikeshedFace`.
+ * UI-21 renames Edit to Source and retires Preview; this ticket adds Write.
  */
-export type BikeshedMode = 'preview' | 'edit'
+export type BikeshedMode = 'preview' | 'edit' | 'write'
 
 export const BIKESHED_MODE_KEY = 'tandem.bikeshed.mode'
 export const BIKESHED_MODE_DEFAULT: BikeshedMode = 'preview'
 
 function isMode(value: unknown): value is BikeshedMode {
-  return value === 'preview' || value === 'edit'
+  return value === 'preview' || value === 'edit' || value === 'write'
 }
 
 /** The stored choice, or the preview default when nothing (or nonsense) is stored. */
@@ -170,12 +172,12 @@ export function saveBikeshedMode(mode: BikeshedMode, storage?: FontStorage | nul
 
 /**
  * The mode a newly opened note starts in: an empty note (every UI-1/UI-4
- * creation) always opens in Edit ready to type, regardless of the stored
- * choice; otherwise the stored choice wins.
+ * creation) always opens in Write ready to type, regardless of the stored
+ * choice; otherwise the stored choice wins (Preview by default until UI-21).
  */
 export function defaultBikeshedMode(stored: unknown, text: string): BikeshedMode {
-  if (text.trim() === '') return 'edit'
-  return stored === 'edit' ? 'edit' : 'preview'
+  if (text.trim() === '') return 'write'
+  return isMode(stored) ? stored : 'preview'
 }
 
 /** `setMode(mode)`: the preview/edit switch the committed bundle reads. */
