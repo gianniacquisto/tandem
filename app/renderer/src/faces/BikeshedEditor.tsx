@@ -25,16 +25,9 @@ export type BikeshedEditorProps = {
   token: number
   /** Every note path, the flat list the committed bundle's resolver reads. */
   noteIndex: string[]
-  saving: boolean
   onMessage: (message: EditorMessage) => void
-  /** The side rail's state: the titlebar toggle flips it without moving focus. */
-  railOpen: boolean
-  /** Backlinks plus linked tickets, the count the collapsed toggle names. */
-  railCount: number
-  onToggleRail: () => void
   /** Preview is the same document read-only; Edit is writable. */
   mode: BikeshedMode
-  onToggleMode: (mode: BikeshedMode) => void
 }
 
 /**
@@ -46,19 +39,17 @@ export type BikeshedEditorProps = {
  * the `dirty` message's markdown, and the frame holds no bridge of its own: the
  * only call surface is `window.tandem` in the parent, which this frame never
  * touches.
+ *
+ * The face's breadcrumb carries the note's name, the saving word and the mode
+ * control; this component owns the frame and the mode it is put in.
  */
 export function BikeshedEditor({
   path,
   text,
   token,
   noteIndex,
-  saving,
   onMessage,
-  railOpen,
-  railCount,
-  onToggleRail,
   mode,
-  onToggleMode,
 }: BikeshedEditorProps) {
   const frame = useRef<HTMLIFrameElement | null>(null)
   const listener = useRef(onMessage)
@@ -66,7 +57,6 @@ export function BikeshedEditor({
   const [ready, setReady] = useState(false)
   const modeRef = useRef(mode)
   modeRef.current = mode
-  const previewButton = useRef<HTMLButtonElement | null>(null)
 
   function post(call: { type: string; name: string; args: unknown[] }): void {
     frame.current?.contentWindow?.postMessage(call, '*')
@@ -102,14 +92,12 @@ export function BikeshedEditor({
   }, [noteIndex, ready])
 
   // Preview is the same document read-only: entering Edit focuses the
-  // editor, entering Preview leaves focus on the toggle.
+  // editor; the face's breadcrumb keeps the focus on entering Preview.
   useEffect(() => {
     if (!ready || path === '') return
     post(editorMode(mode))
     if (mode === 'edit') {
       post(editorCall('focusEditor'))
-    } else {
-      previewButton.current?.focus()
     }
     // `mode` is the view revision: the document stays, only readOnly flips.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,7 +107,8 @@ export function BikeshedEditor({
     if (!ready || path === '') return
     frame.current?.contentWindow?.postMessage(editorDocument(path, text), '*')
     // A new document opens ready to type only in Edit; Preview keeps the
-    // focus it already has (the toggle, or the tree that opened the note).
+    // focus it already has (the breadcrumb toggle, or the tree that opened
+    // the note).
     if (modeRef.current === 'edit') {
       frame.current?.contentWindow?.postMessage(editorCall('focusEditor'), '*')
     }
@@ -128,46 +117,8 @@ export function BikeshedEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, ready, path])
 
-  const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
-  const title = (path.split('/').pop() ?? '').replace(/\.md$/i, '')
-
   return (
     <section className="editor" aria-label="Note editor">
-      <header className="editor__titlebar">
-        <span className="editor__folder">{folder === '' ? 'Bikeshed' : folder}</span>
-        <span className="editor__title">{title === '' ? 'No note selected' : title}</span>
-        {saving ? <span className="editor__saving">saving{'\u2026'}</span> : null}
-        {path === '' ? null : (
-          <div className="editor__mode" role="group" aria-label="Preview or edit">
-            <button
-              type="button"
-              ref={previewButton}
-              className="editor__mode-button"
-              aria-pressed={mode === 'preview'}
-              onClick={() => onToggleMode('preview')}
-            >
-              Preview
-            </button>
-            <button
-              type="button"
-              className="editor__mode-button"
-              aria-pressed={mode === 'edit'}
-              onClick={() => onToggleMode('edit')}
-            >
-              Edit
-            </button>
-          </div>
-        )}
-        <button
-          type="button"
-          className="editor__rail-toggle"
-          aria-expanded={railOpen}
-          aria-controls="note-rail"
-          onClick={onToggleRail}
-        >
-          {railOpen ? 'Hide links' : railCount > 0 ? `Links (${railCount})` : 'Links'}
-        </button>
-      </header>
       {path === '' ? (
         <div className="editor__empty">
           <p className="editor__empty-title">No note selected</p>
