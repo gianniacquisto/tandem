@@ -732,3 +732,30 @@ test('opening and leaving a note in Write writes the same bytes', async ({ windo
   await window.waitForTimeout(1600)
   expect(writeText('write-noop.md')).toBe(content)
 })
+
+test('typing a task marker makes a task block', async ({ window }) => {
+  await openWrite(window, 'write-task.md', '')
+  await window.locator('.block--paragraph .block__text').first().click()
+
+  await window.keyboard.type('- [ ] Task')
+  await expect(window.locator('.block--task')).toBeVisible()
+  await expect(window.locator('.block--task .block__check')).toHaveAttribute('aria-checked', 'false')
+  await expect.poll(() => writeText('write-task.md'), { timeout: 8000 }).toBe('- [ ] Task')
+})
+
+test('the code language field keeps focus and its keys out of the note', async ({ window }) => {
+  await openWrite(window, 'write-language.md', '```ts\nconst x = 1\n```')
+
+  const language = window.locator('.block__code-lang')
+  await expect(language).toHaveValue('ts')
+  await language.fill('')
+  await language.click()
+  await window.keyboard.type('py')
+
+  await expect(language).toBeFocused()
+  await expect(language).toHaveValue('py')
+  await expect(window.locator('.block--code .block__text')).toContainText('const x = 1')
+  await expect.poll(() => writeText('write-language.md'), { timeout: 8000 }).toBe(
+    '```py\nconst x = 1\n```',
+  )
+})

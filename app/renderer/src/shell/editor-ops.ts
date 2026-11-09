@@ -26,7 +26,13 @@ export type Position = { block: number; row: number; offset: number }
 
 export type Selection = { anchor: Position; head: Position }
 
-export type SurfaceRow = { text: string; checked?: boolean }
+/**
+ * One editable row. `rest` carries the blocks a composite holds under the row
+ * (a nested list, a second paragraph, a nested quote): the surface edits the
+ * text and hands the hidden children back untouched, so an edit never flattens
+ * the block.
+ */
+export type SurfaceRow = { text: string; checked?: boolean; rest?: Block[] }
 
 type Base = {
   /** The gap UI-17 placed before this block, kept so an untouched note round-trips. */
@@ -113,9 +119,11 @@ function surfaceOf(block: Block, gap: string): SurfaceBlock {
           kind: 'task',
           rows: block.items.map((item) => {
             const task = taskOf(item[0])
+            const rest = [...(task?.blocks.slice(1) ?? []), ...item.slice(1)]
             return {
               text: paragraphText(task?.blocks[0]),
               checked: task?.checked === true,
+              ...(rest.length > 0 ? { rest } : {}),
             }
           }),
         }
@@ -125,23 +133,48 @@ function surfaceOf(block: Block, gap: string): SurfaceBlock {
         kind: 'list',
         ordered: block.ordered,
         start: block.start,
-        rows: block.items.map((item) => ({ text: paragraphText(item[0]) })),
+        rows: block.items.map((item) => {
+          // An item whose first block is not a paragraph keeps every block;
+          // the visible row is empty and the children ride along in `rest`.
+          const first = item[0]
+          const rest = first?.kind === 'paragraph' ? item.slice(1) : item
+          return {
+            text: paragraphText(first),
+            ...(rest.length > 0 ? { rest } : {}),
+          }
+        }),
       }
     }
-    case 'task':
+    case 'task': {
+      const rest = block.blocks.slice(1)
       return {
         ...base,
         kind: 'task',
-        rows: [{ text: paragraphText(block.blocks[0]), checked: block.checked }],
+        rows: [
+          {
+            text: paragraphText(block.blocks[0]),
+            checked: block.checked,
+            ...(rest.length > 0 ? { rest } : {}),
+          },
+        ],
       }
-    case 'quote':
-      return {
-        ...base,
-        kind: 'quote',
-        rows: block.blocks.flatMap((child) =>
-          paragraphText(child).split('\n').map((text) => ({ text })),
-        ),
+    }
+    case 'quote': {
+      const rows: SurfaceRow[] = []
+      for (const child of block.blocks) {
+        if (child.kind === 'paragraph') {
+          for (const text of child.text.split('\n')) rows.push({ text })
+        } else {
+          // A non-paragraph child (a nested list or quote) follows the row it
+          // sat after; with no paragraph before it, it gets an empty row so
+          // the order is kept.
+          if (rows.length === 0) rows.push({ text: '' })
+          const last = rows[rows.length - 1]!
+          last.rest = [...(last.rest ?? []), child]
+        }
       }
+      return { ...base, kind: 'quote', rows }
+    }
     case 'code':
       return { ...base, kind: 'code', language: block.language, text: block.text }
     case 'image':
@@ -189,6 +222,12 @@ function paragraph(text: string): Block {
   return { kind: 'paragraph', text, source: '', edited: true }
 }
 
+/** A task row's children: its edited paragraph, then its hidden nested blocks. */
+function taskChildBlocks(row: SurfaceRow): Block[] {
+  const rest = row.rest ?? []
+  return row.text === '' ? rest : [paragraph(row.text), ...rest]
+}
+
 function blockOf(surface: SurfaceBlock): Block {
   switch (surface.kind) {
     case 'paragraph':
@@ -202,7 +241,7 @@ function blockOf(surface: SurfaceBlock): Block {
         edited: true,
       }
     case 'list': {
-      const items = surface.rows.map((row) => [paragraph(row.text)])
+      const items = surface.rows.map((row) => [paragraph(row.text), ...(row.rest ?? [])])
       return {
         kind: 'list',
         ordered: surface.ordered === true,
@@ -216,7 +255,7 @@ function blockOf(surface: SurfaceBlock): Block {
       const tasks = surface.rows.map((row) => ({
         kind: 'task' as const,
         checked: row.checked === true,
-        blocks: row.text === '' ? [] : [paragraph(row.text)],
+        blocks: taskChildBlocks(row),
         source: '',
         edited: true,
       }))
@@ -229,7 +268,11 @@ function blockOf(surface: SurfaceBlock): Block {
     case 'quote':
       return {
         kind: 'quote',
-        blocks: surface.rows.map((row) => paragraph(row.text)),
+        blocks: surface.rows.flatMap((row) => {
+          const rest = row.rest ?? []
+          if (row.text === '' && rest.length > 0) return rest
+          return [paragraph(row.text), ...rest]
+        }),
         source: '',
         edited: true,
       }
@@ -539,9 +582,10 @@ export function backspace(state: EditorState): EditorState {
     const previous = surface.rows[position.row - 1]
     const current = surface.rows[position.row]
     if (previous === undefined || current === undefined) return state
+    const rest = [...(previous.rest ?? []), ...(current.rest ?? [])]
     const rows = [
       ...surface.rows.slice(0, position.row - 1),
-      { ...previous, text: previous.text + current.text },
+      { ...previous, text: previous.text + current.text, ...(rest.length > 0 ? { rest } : {}) },
       ...surface.rows.slice(position.row + 1),
     ]
     return finish(
@@ -598,7 +642,18 @@ function convertToParagraph(state: EditorState, index: number, offset: number): 
     edited: true,
     origin: surface.origin,
   }
-  return finish(replaceBlockState(state, index, paragraph), index, 0, offset)
+  // The nested children cannot live in a paragraph, so they follow it as their
+  // own blocks rather than disappearing with the marker.
+  const rest = isText(surface)
+    ? surface.rows.flatMap((row) => row.rest ?? []).map((block) => surfaceOf(block, '\n'))
+    : []
+  const blocks = [
+    ...state.blocks.slice(0, index),
+    paragraph,
+    ...rest,
+    ...state.blocks.slice(index + 1),
+  ]
+  return finish({ ...state, blocks }, index, 0, offset)
 }
 
 /* ---------------------------------------------------------- Delete forward */
@@ -640,9 +695,10 @@ export function deleteForward(state: EditorState): EditorState {
     const current = surface.rows[position.row]
     const next = surface.rows[position.row + 1]
     if (current === undefined || next === undefined) return state
+    const rest = [...(current.rest ?? []), ...(next.rest ?? [])]
     const rows = [
       ...surface.rows.slice(0, position.row),
-      { ...current, text: current.text + next.text },
+      { ...current, text: current.text + next.text, ...(rest.length > 0 ? { rest } : {}) },
       ...surface.rows.slice(position.row + 2),
     ]
     return finish(replaceBlockState(state, position.block, { ...surface, rows }), position.block, position.row, position.offset)
@@ -673,7 +729,14 @@ function mergeForward(state: EditorState, index: number): EditorState {
     rows: [{ text: rowText(surface, 0) + text }],
     edited: true,
   }
-  const blocks = state.blocks.filter((_, i) => i !== index + 1).map((block, i) => (i === index ? merged : block))
+  const rest = isText(next)
+    ? next.rows.flatMap((row) => row.rest ?? []).map((block) => surfaceOf(block, '\n'))
+    : []
+  const blocks = state.blocks.flatMap((block, i) => {
+    if (i === index) return [merged]
+    if (i === index + 1) return rest
+    return [block]
+  })
   return finish({ ...state, blocks }, index, 0, rowText(surface, 0).length)
 }
 
@@ -760,12 +823,14 @@ export function deleteSelection(state: EditorState): EditorState {
     if (isText(surface)) {
       const startRow = surface.rows[from.row]
       const endRow = surface.rows[to.row]
+      const rest = [...(startRow?.rest ?? []), ...(endRow?.rest ?? [])]
       const merged =
         startRow === undefined || endRow === undefined
           ? undefined
           : {
               ...startRow,
               text: startRow.text.slice(0, from.offset) + endRow.text.slice(to.offset),
+              ...(rest.length > 0 ? { rest } : {}),
             }
       const rows = [
         ...surface.rows.slice(0, from.row),
@@ -975,7 +1040,40 @@ export function applyShortcut(state: EditorState, trigger: 'space' | 'enter'): E
   if (!collapsed(state)) return state
   const position = state.selection.head
   const surface = state.blocks[position.block]
-  if (surface === undefined || surface.kind !== 'paragraph' || position.row !== 0) return state
+  if (surface === undefined) return state
+
+  if (surface.kind === 'list') {
+    // `- ` has already converted the paragraph into a one-item bullet list, so
+    // the longer task token has to win on that list row: `[ ] ` or `[x] ` at
+    // the end of a one-item bullet list becomes a task.
+    if (
+      trigger !== 'space' ||
+      surface.ordered === true ||
+      surface.rows.length !== 1 ||
+      position.row !== 0
+    ) {
+      return state
+    }
+    const text = rowText(surface, 0)
+    if (position.offset !== text.length) return state
+    const unchecked = /^\[ \]\s$/.exec(text)
+    const checked = /^\[[xX]\]\s$/.exec(text)
+    const match = unchecked ?? checked
+    if (match === null) return state
+    const rest = text.slice(match[0].length)
+    const next: SurfaceBlock = {
+      kind: 'task',
+      rows: [{ text: rest, checked: checked !== null }],
+      gap: surface.gap,
+      source: '',
+      edited: true,
+      origin: surface.origin,
+    }
+    const blocks = state.blocks.map((block, index) => (index === position.block ? next : block))
+    return withCaret({ ...state, blocks }, position.block, 0, rest.length)
+  }
+
+  if (surface.kind !== 'paragraph' || position.row !== 0) return state
   const text = rowText(surface, 0)
   if (position.offset !== text.length) return state
 

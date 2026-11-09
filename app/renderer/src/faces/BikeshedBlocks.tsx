@@ -156,6 +156,10 @@ export function BikeshedBlocks({
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
     if (composing.current || event.nativeEvent.isComposing) return
+    // The code language field and the task checkbox are not the note: their
+    // keys never reach the caret model.
+    const origin = event.target as HTMLElement
+    if (origin.closest('input, textarea, select, button') !== null) return
     const target = host.current
     if (target === null) return
     const mod = event.metaKey || event.ctrlKey
@@ -293,9 +297,21 @@ export function BikeshedBlocks({
 
   function updateLanguage(index: number, language: string): void {
     const surface = stateRef.current.blocks[index]
-    if (surface === undefined || surface.kind !== 'code') return
-    const blocks = stateRef.current.blocks.map((block, i) => (i === index ? { ...surface, language, edited: true } : block))
-    apply({ ...stateRef.current, blocks }, false)
+    if (surface === undefined || surface.kind !== 'code' || surface.language === language) return
+    const next: EditorState = {
+      ...stateRef.current,
+      blocks: stateRef.current.blocks.map((block, i) =>
+        i === index ? { ...surface, language, edited: true } : block,
+      ),
+    }
+    // A language change is an input-originated edit: it must not claim the
+    // note's caret, or the layout effect would move focus out of the field
+    // after one character.
+    historyRef.current = record(historyRef.current, stateRef.current, { merge: true })
+    stateRef.current = next
+    lastText.current = serialiseDocument(toDocument(next))
+    setState(next)
+    onChange(toDocument(next))
   }
 
   function checkTask(block: number, row: number): void {
@@ -313,7 +329,10 @@ export function BikeshedBlocks({
       suppressContentEditableWarning
       spellCheck={false}
       style={{ fontSize: `${fontSize}px` }}
-      onInput={handleInput}
+      onInput={(event) => {
+        if ((event.target as HTMLElement).closest('input, textarea, select, button') !== null) return
+        handleInput()
+      }}
       onKeyDown={handleKeyDown}
       onPaste={handlePaste}
       onCopy={(event) => handleCopy(event, false)}
@@ -424,6 +443,11 @@ function BlockView({ index, surface, onCheck, onLanguage, onSwitchToSource }: Bl
               value={surface.language ?? ''}
               placeholder="language"
               onChange={(event) => onLanguage(event.target.value)}
+              onKeyDown={(event) => event.stopPropagation()}
+              onInput={(event) => event.stopPropagation()}
+              onPaste={(event) => event.stopPropagation()}
+              onCopy={(event) => event.stopPropagation()}
+              onCut={(event) => event.stopPropagation()}
             />
           </div>
           <pre className="block__code-body">

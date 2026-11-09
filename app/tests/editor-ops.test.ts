@@ -124,6 +124,30 @@ describe('Backspace merges and Delete mirrors', () => {
   })
 })
 
+describe('an edit preserves the nested content it does not show', () => {
+  it('keeps a nested list inside a list item', () => {
+    const value = insertText(caret(state('- one\n  - two\n  - three'), 0, 0, 0), 'X')
+    expect(serialise(value)).toBe('- Xone\n  - two\n  - three')
+  })
+
+  it('keeps a second paragraph in a list item', () => {
+    const value = insertText(caret(state('- one\n\n  second para of the item'), 0, 0, 0), 'X')
+    expect(serialise(value)).toBe('- Xone\n  second para of the item')
+  })
+
+  it('keeps a nested list inside a quote', () => {
+    const value = insertText(caret(state('> one\n> - a\n> - b'), 0, 0, 3), 'X')
+    expect(serialise(value)).toBe('> oneX\n> - a\n> - b')
+  })
+
+  it('keeps a nested list inside a task', () => {
+    const value = insertText(caret(state('- [ ] one\n  - two'), 0, 0, 3), 'X')
+    // The edited task block renders canonically: its marker is six columns, so
+    // the nested list sits at its content column.
+    expect(serialise(value)).toBe('- [ ] oneX\n      - two')
+  })
+})
+
 describe('the markdown shortcuts', () => {
   const shortcut = (text: string, trigger: 'space' | 'enter' = 'space'): EditorState =>
     applyShortcut(caret(paragraphState(text), 0, 0, text.length), trigger)
@@ -164,6 +188,26 @@ describe('the markdown shortcuts', () => {
 
   it('does not fire a space shortcut on Enter', () => {
     expect(shortcut('# ', 'enter').blocks[0]?.kind).toBe('paragraph')
+  })
+
+  it('converts a task marker typed one key at a time', () => {
+    let value = caret(paragraphState(''), 0, 0, 0)
+    for (const key of ['-', ' ', '[', ' ', ']', ' ']) {
+      value = insertText(value, key)
+      value = applyShortcut(value, 'space')
+    }
+    expect(value.blocks[0]).toMatchObject({ kind: 'task', rows: [{ text: '', checked: false }] })
+    expect(serialise(value)).toBe('- [ ]')
+  })
+
+  it('converts a checked task marker typed one key at a time', () => {
+    let value = caret(paragraphState(''), 0, 0, 0)
+    for (const key of ['-', ' ', '[', 'x', ']', ' ']) {
+      value = insertText(value, key)
+      value = applyShortcut(value, 'space')
+    }
+    expect(value.blocks[0]).toMatchObject({ kind: 'task', rows: [{ text: '', checked: true }] })
+    expect(serialise(value)).toBe('- [x]')
   })
 })
 
