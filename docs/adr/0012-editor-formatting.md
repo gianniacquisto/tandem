@@ -1,5 +1,7 @@
 # The editor gains a formatting toolbar and a persisted font size
 
+> **Amended 2026-11-09 by [ADR 0042](0042-the-bikeshed-editor-is-a-block-editor.md):** the editor's primary path is a block editor over the same markdown, so the CM6 inline live preview this page builds on is no longer the primary path. The toolbar, the persisted font size and "raw markdown stays the source of truth" stand.
+
 The bikeshed editor is one HTML page (ticket 07): a CM6 inline-live preview, a Ligne theme, and the Swift host. Two of its standing gripes are addressed at once — *"need options to control font and add checkboxes etc"* and *"bikeshed needs to be clean — better formatting options like Obsidian."* We decided: the page gains a **quiet formatting toolbar** above the note (Bold, Italic, Strikethrough, Inline code, Link, Heading, Bullet list, Numbered list, Task list, Quote, Code block) and a **font-size control** (`A− size A+`, 11–20 px, step 1). Both are **page-side** — part of the editor bundle, rendered by `Editor/src/toolbar.js`, not SwiftUI chrome. Every button dispatches an **ordinary CM6 transaction** built by pure spec functions in `main.js`, so **raw markdown stays the source of truth** and the autosave/conflict machinery ([ADR 0004](0004-vault-protocol.md)) is untouched. The font size sets the CSS custom property `--tandem-editor-font-size` on the editor root and persists across launches via the bridge in `UserDefaults`.
 
 ## Why the toolbar is page-side, not SwiftUI chrome
