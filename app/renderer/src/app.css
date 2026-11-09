@@ -96,6 +96,7 @@ body {
   margin: var(--space-gutter);
 }
 
+.shell__error {
   max-width: 540px;
   margin: 0 0 var(--space-gutter);
   padding: 10px 14px;

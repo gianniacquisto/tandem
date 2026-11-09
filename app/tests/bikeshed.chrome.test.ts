@@ -66,6 +66,15 @@ describe('the bikeshed chrome', () => {
     expect(css).not.toContain('.rail')
   })
 
+  it('keeps the shell error row boxed so the rules after it parse', () => {
+    const error = block(css, '.shell__error')
+    expect(error).toContain('padding: 10px 14px')
+    expect(error).toContain('border: var(--hairline) solid var(--ember)')
+    expect(error).toContain('max-width: 540px')
+    // The block sits above `.face`: an orphaned one takes that rule with it.
+    expect(block(css, '.face')).toContain('max-width: 540px')
+  })
+
   it('places the focus control inside the tree column', () => {
     const tree = face.indexOf('bikeshed__tree')
     const focus = face.indexOf('<FocusControl')
