@@ -19,19 +19,21 @@ function fakeStorage(initial: Record<string, string> = {}) {
   }
 }
 
-describe('the preview/edit default rule', () => {
+describe('the Write default rule', () => {
   it('opens a note with content in preview when nothing is stored', () => {
     expect(defaultBikeshedMode(null, '# Note\n\nSome words')).toBe('preview')
   })
 
-  it('opens an empty note in edit even when preview is stored', () => {
-    expect(defaultBikeshedMode('preview', '')).toBe('edit')
-    expect(defaultBikeshedMode('preview', '   \n')).toBe('edit')
+  it('opens an empty note in Write even when preview is stored', () => {
+    expect(defaultBikeshedMode('preview', '')).toBe('write')
+    expect(defaultBikeshedMode('preview', '   \n')).toBe('write')
+    expect(defaultBikeshedMode('write', '')).toBe('write')
   })
 
-  it('remembers the last choice for notes with content', () => {
+  it('remembers the last choice for notes with content, including Write', () => {
     expect(defaultBikeshedMode('edit', '# Note')).toBe('edit')
     expect(defaultBikeshedMode('preview', '# Note')).toBe('preview')
+    expect(defaultBikeshedMode('write', '# Note')).toBe('write')
   })
 
   it('falls back to preview for content when the stored value is nonsense', () => {
@@ -40,7 +42,7 @@ describe('the preview/edit default rule', () => {
   })
 })
 
-describe('the persisted preview/edit choice', () => {
+describe('the persisted mode choice', () => {
   it('defaults to preview when nothing is stored', () => {
     expect(loadBikeshedMode(fakeStorage())).toBe('preview')
   })
@@ -50,6 +52,10 @@ describe('the persisted preview/edit choice', () => {
     saveBikeshedMode('edit', storage)
     expect(storage.data.get(BIKESHED_MODE_KEY)).toBe('edit')
     expect(loadBikeshedMode(storage)).toBe('edit')
+
+    saveBikeshedMode('write', storage)
+    expect(storage.data.get(BIKESHED_MODE_KEY)).toBe('write')
+    expect(loadBikeshedMode(storage)).toBe('write')
   })
 
   it('falls back to preview on nonsense', () => {
@@ -68,6 +74,11 @@ describe('the setMode page global', () => {
       type: 'tandem-editor-call',
       name: 'setMode',
       args: ['edit'],
+    })
+    expect(editorMode('write')).toEqual({
+      type: 'tandem-editor-call',
+      name: 'setMode',
+      args: ['write'],
     })
   })
 })

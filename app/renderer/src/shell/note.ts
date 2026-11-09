@@ -114,6 +114,20 @@ export function applyDirty(buffer: NoteBuffer | null, text: string): NoteBuffer 
   return { ...buffer, text, dirty: true, document: parseDocument(text) }
 }
 
+/**
+ * A Write-surface edit as data: the surface's block document is the truth and
+ * the save still writes it through UI-17's serialiser. Unlike `applyDirty` it
+ * keeps the exact document (gaps and untouched sources included) rather than
+ * reparsing, and it never re-dirties a buffer whose serialised text it already
+ * holds.
+ */
+export function applyEditor(buffer: NoteBuffer | null, document: Document): NoteBuffer | null {
+  if (buffer === null) return null
+  const text = serialiseDocument(document)
+  if (buffer.text === text) return { ...buffer, document }
+  return { ...buffer, text, dirty: true, document }
+}
+
 /** A note read reply, or null for any other reply. */
 export function noteContentOf(reply: unknown): NoteContentView | null {
   if (!isRecord(reply)) return null

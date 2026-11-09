@@ -16,11 +16,13 @@ import {
 import {
   defaultBikeshedMode,
   loadBikeshedMode,
+  loadEditorFontSize,
   saveBikeshedMode,
   type BikeshedMode,
 } from '../shell/editor'
 import {
   applyDirty,
+  applyEditor,
   arrival,
   conflictStillApplies,
   keepMine,
@@ -33,6 +35,7 @@ import {
   type NoteBuffer,
   type Theirs,
 } from '../shell/note'
+import { BikeshedBlocks } from './BikeshedBlocks'
 import { BikeshedEditor } from './BikeshedEditor'
 import { BikeshedTree } from './BikeshedTree'
 import { FocusControl } from './FocusControl'
@@ -73,6 +76,11 @@ function ticketsOf(reply: Reply): TicketSummary[] | null {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : 'The bikeshed could not be read.'
+}
+
+/** Mod+E keeps the Preview/Edit toggle; from Write it lands in Edit. */
+function nextToggleMode(mode: BikeshedMode): BikeshedMode {
+  return mode === 'preview' ? 'edit' : mode === 'edit' ? 'preview' : 'edit'
 }
 
 /**
@@ -482,10 +490,11 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     saveBikeshedMode(next)
   }
 
+  // Mod+E keeps its Preview/Edit meaning; from Write it lands in Edit (the raw
+  // editor is the next stop UI-21 owns the switch for).
   function toggleMode(): void {
     if (openRef.current === null) return
-    const next: BikeshedMode = modeRef.current === 'preview' ? 'edit' : 'preview'
-    setModeChoice(next)
+    setModeChoice(nextToggleMode(modeRef.current))
   }
 
   // Mod+E flips the mode whenever a note is open. The bundle owns the same
@@ -497,7 +506,7 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       if (event.key.toLowerCase() !== 'e') return
       if (openRef.current === null) return
       event.preventDefault()
-      const next: BikeshedMode = modeRef.current === 'preview' ? 'edit' : 'preview'
+      const next = nextToggleMode(modeRef.current)
       setMode(next)
       saveBikeshedMode(next)
     }
@@ -633,7 +642,15 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
                 </nav>
                 <div className="bikeshed__breadcrumb-end">
                   {saving ? <span className="editor__saving">saving{'\u2026'}</span> : null}
-                  <div className="editor__mode" role="group" aria-label="Preview or edit">
+                  <div className="editor__mode" role="group" aria-label="Write, preview or edit">
+                    <button
+                      type="button"
+                      className="editor__mode-button"
+                      aria-pressed={mode === 'write'}
+                      onClick={() => setModeChoice('write')}
+                    >
+                      Write
+                    </button>
                     <button
                       type="button"
                       ref={previewButton}
@@ -658,14 +675,27 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
           )}
 
           <div className="bikeshed__page">
-            <BikeshedEditor
-              path={open?.path ?? ''}
-              text={open?.text ?? ''}
-              token={token}
-              noteIndex={noteIndex}
-              mode={mode}
-              onMessage={onEditorMessage}
-            />
+            {open !== null && mode === 'write' ? (
+              <BikeshedBlocks
+                document={open.document}
+                focusToken={token}
+                fontSize={loadEditorFontSize()}
+                onChange={(document) => setOpen((current) => applyEditor(current, document))}
+                onSendToTodos={(text) => {
+                  if (text !== '') void fileTicket(text)
+                }}
+                onSwitchToSource={() => setModeChoice('edit')}
+              />
+            ) : (
+              <BikeshedEditor
+                path={open?.path ?? ''}
+                text={open?.text ?? ''}
+                token={token}
+                noteIndex={noteIndex}
+                mode={mode}
+                onMessage={onEditorMessage}
+              />
+            )}
             <NoteFooter
               backlinks={backlinks}
               linked={linked}
