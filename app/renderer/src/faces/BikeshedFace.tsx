@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { BikeshedHealth } from '../wire/BikeshedHealth'
 import type { BacklinkView } from '../wire/BacklinkView'
@@ -36,10 +36,9 @@ import {
 import { BikeshedEditor } from './BikeshedEditor'
 import { BikeshedTree } from './BikeshedTree'
 import { FocusControl } from './FocusControl'
-import { NoteRail } from './NoteRail'
+import { NoteFooter } from './NoteFooter'
 
 const HIDDEN_KEY = 'tandem.bikeshed.hidden'
-const RAIL_KEY = 'tandem.bikeshed.rail-open'
 
 /** `ticket.list`'s absent flags: the open board, the tickets a note may link. */
 const OPEN_BOARD = {
@@ -100,9 +99,6 @@ export type BikeshedFaceProps = {
 
 export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject }: BikeshedFaceProps) {
   const [hidden, setHidden] = useState(() => window.localStorage.getItem(HIDDEN_KEY) === 'true')
-  const [railOpen, setRailOpen] = useState(
-    () => window.localStorage.getItem(RAIL_KEY) !== 'false',
-  )
   const [mode, setMode] = useState<BikeshedMode>(() => loadBikeshedMode())
   const [nodes, setNodes] = useState<NoteNodeView[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -124,6 +120,7 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
   const modeRef = useRef(mode)
   modeRef.current = mode
   const savingRef = useRef(false)
+  const previewButton = useRef<HTMLButtonElement | null>(null)
 
   const noteIndex = useMemo(() => notePaths(nodes), [nodes])
   // The tree the focus draws: the focused project's folder alone, or the
@@ -480,14 +477,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     setHidden(next)
   }
 
-  function toggleRail(): void {
-    setRailOpen((current) => {
-      const next = !current
-      window.localStorage.setItem(RAIL_KEY, next ? 'true' : 'false')
-      return next
-    })
-  }
-
   function setModeChoice(next: BikeshedMode): void {
     setMode(next)
     saveBikeshedMode(next)
@@ -516,15 +505,27 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     return () => window.removeEventListener('keydown', handle)
   }, [])
 
+  const folder =
+    open === null || !open.path.includes('/')
+      ? ''
+      : open.path.slice(0, open.path.lastIndexOf('/'))
+  const title =
+    open === null ? '' : (open.path.split('/').pop() ?? '').replace(/\.md$/i, '')
+  const crumbs = (folder === '' ? ['Bikeshed'] : folder.split('/')).concat(
+    title === '' ? [] : [title],
+  )
+  const openPath = open?.path ?? ''
+
+  // Entering Preview leaves the focus on the breadcrumb's control, as the
+  // titlebar control held it before the rail went; Edit focuses the frame.
+  useEffect(() => {
+    if (mode === 'preview' && openPath !== '') previewButton.current?.focus()
+    // `openPath` is the document revision this focus rule follows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, openPath])
+
   return (
     <section className="face face--wide bikeshed-face" aria-label="Bikeshed">
-      <FocusControl
-        lanes={lanes}
-        active={activeProject}
-        showAll={showAll}
-        onPick={onPickProject}
-        onToggleShowAll={() => setShowAll((current) => !current)}
-      />
       {error === null ? null : (
         <div className="banner" role="alert">
           <span>{error}</span>
@@ -574,50 +575,105 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       )}
 
       <div className="bikeshed">
-        <BikeshedTree
-          nodes={drawn}
-          expanded={expanded}
-          hidden={hidden}
-          openPath={open?.path ?? null}
-          health={health}
-          onToggle={(path) =>
-            setExpanded((current) => {
-              const next = new Set(current)
-              if (next.has(path)) next.delete(path)
-              else next.add(path)
-              return next
-            })
-          }
-          onReveal={reveal}
-          onOpen={(path) => void openNote(path)}
-          onMove={(source, into) => void move(source, into)}
-          onCreateNote={(path) => void createNote(path)}
-          onCreateFolder={(path) => void createFolder(path)}
-          onDaily={() => void openDaily()}
-        />
-        <div className="bikeshed__main">
-          <BikeshedEditor
-            path={open?.path ?? ''}
-            text={open?.text ?? ''}
-            token={token}
-            noteIndex={noteIndex}
-            saving={saving}
-            railOpen={railOpen}
-            railCount={backlinks.length + linked.length}
-            onToggleRail={toggleRail}
-            mode={mode}
-            onToggleMode={setModeChoice}
-            onMessage={onEditorMessage}
+        <aside className="bikeshed__tree" aria-label="Bikeshed notes">
+          <FocusControl
+            lanes={lanes}
+            active={activeProject}
+            showAll={showAll}
+            onPick={onPickProject}
+            onToggleShowAll={() => setShowAll((current) => !current)}
           />
-          {railOpen ? (
-            <NoteRail
+          <BikeshedTree
+            nodes={drawn}
+            expanded={expanded}
+            hidden={hidden}
+            openPath={open?.path ?? null}
+            health={health}
+            onToggle={(path) =>
+              setExpanded((current) => {
+                const next = new Set(current)
+                if (next.has(path)) next.delete(path)
+                else next.add(path)
+                return next
+              })
+            }
+            onReveal={reveal}
+            onOpen={(path) => void openNote(path)}
+            onMove={(source, into) => void move(source, into)}
+            onCreateNote={(path) => void createNote(path)}
+            onCreateFolder={(path) => void createFolder(path)}
+            onDaily={() => void openDaily()}
+          />
+        </aside>
+
+        <div className="bikeshed__document">
+          {open === null ? null : (
+            <header className="bikeshed__breadcrumb">
+              <div className="bikeshed__breadcrumb-inner">
+                <nav className="bikeshed__crumbs" aria-label="Breadcrumb">
+                  {crumbs.map((crumb, index) => (
+                    <Fragment key={`${index}-${crumb}`}>
+                      {index === 0 ? null : (
+                        <span className="bikeshed__crumb-sep" aria-hidden="true">
+                          /
+                        </span>
+                      )}
+                      <span
+                        className={
+                          index === crumbs.length - 1
+                            ? 'bikeshed__crumb bikeshed__crumb--current'
+                            : 'bikeshed__crumb'
+                        }
+                        aria-current={index === crumbs.length - 1 ? 'page' : undefined}
+                      >
+                        {crumb}
+                      </span>
+                    </Fragment>
+                  ))}
+                </nav>
+                <div className="bikeshed__breadcrumb-end">
+                  {saving ? <span className="editor__saving">saving{'\u2026'}</span> : null}
+                  <div className="editor__mode" role="group" aria-label="Preview or edit">
+                    <button
+                      type="button"
+                      ref={previewButton}
+                      className="editor__mode-button"
+                      aria-pressed={mode === 'preview'}
+                      onClick={() => setModeChoice('preview')}
+                    >
+                      Preview
+                    </button>
+                    <button
+                      type="button"
+                      className="editor__mode-button"
+                      aria-pressed={mode === 'edit'}
+                      onClick={() => setModeChoice('edit')}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </header>
+          )}
+
+          <div className="bikeshed__page">
+            <BikeshedEditor
+              path={open?.path ?? ''}
+              text={open?.text ?? ''}
+              token={token}
+              noteIndex={noteIndex}
+              mode={mode}
+              onMessage={onEditorMessage}
+            />
+            <NoteFooter
               backlinks={backlinks}
               linked={linked}
               recoveries={recoveries}
               onOpenNote={(path) => void openNote(path)}
               onOpenTicket={onOpenTicket}
             />
-          ) : null}
+          </div>
         </div>
       </div>
     </section>

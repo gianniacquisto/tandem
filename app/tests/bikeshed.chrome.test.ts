@@ -12,6 +12,7 @@ const face = normalise(
 const editor = normalise(
   readFileSync(`${appRoot}renderer/src/faces/BikeshedEditor.tsx`, 'utf8'),
 )
+const app = normalise(readFileSync(`${appRoot}renderer/src/App.tsx`, 'utf8'))
 
 /** The declaration block for a selector, without its braces. */
 function block(source: string, selector: string): string {
@@ -25,35 +26,52 @@ function block(source: string, selector: string): string {
 }
 
 describe('the bikeshed chrome', () => {
-  it('does not repeat the face title and blurb above the tree and editor', () => {
-    expect(face).not.toContain('face__title')
-    expect(face).not.toContain('<Face')
-    expect(face).toContain('face--wide')
+  it('draws no card and takes the shell bleed on the bikeshed route alone', () => {
+    const card = block(css, '.bikeshed')
+    expect(card).not.toMatch(/(^|\s)border\s*:/)
+    expect(card).not.toMatch(/border-radius/)
+
+    const bleed = block(css, '.shell__body--bleed')
+    expect(bleed).toMatch(/padding:\s*0/)
+    expect(bleed).toMatch(/border-top:\s*0/)
+
+    expect(app).toContain(
+      "route.tab === 'bikeshed' ? 'shell__body shell__body--bleed' : 'shell__body'",
+    )
   })
 
-  it('slims the editor titlebar to one line: folder plus title plus saving', () => {
-    const titlebar = block(css, '.editor__titlebar')
-    expect(titlebar).toContain('28px')
-    expect(titlebar).not.toContain('42px')
-    expect(editor).toContain('editor__folder')
-    expect(editor).toContain('editor__title')
-    expect(editor).toContain('editor__saving')
+  it('fixes the tree at 260 and centres the document at 740', () => {
+    expect(block(css, '.bikeshed__tree')).toContain('flex: 0 0 260px')
+    const page = block(css, '.bikeshed__page')
+    expect(page).toContain('max-width: 740px')
+    expect(page).toMatch(/margin:\s*0\s+auto/)
   })
 
-  it('moves backlinks and tickets into a collapsible side rail', () => {
-    const main = block(css, '.bikeshed__main')
-    expect(main).toContain('row')
-    const rail = block(css, '.rail')
-    expect(rail).toContain('column')
-    expect(face).toContain('railOpen')
-    expect(face).toContain('onToggleRail')
-    expect(editor).toContain('editor__rail-toggle')
-    expect(editor).toContain('aria-expanded')
-    expect(editor).toContain('aria-controls')
+  it('sticks the breadcrumb over a scrolling document column', () => {
+    const breadcrumb = block(css, '.bikeshed__breadcrumb')
+    expect(breadcrumb).toContain('position: sticky')
+    expect(breadcrumb).toContain('top: 0')
+    expect(block(css, '.bikeshed__document')).toContain('overflow-y: auto')
   })
 
-  it('keeps the editor at full height when the rail is collapsed', () => {
-    expect(face).toContain('railOpen ?')
-    expect(css).not.toContain('max-height: 168px')
+  it('moves the rail into the document footer and retires its toggle', () => {
+    expect(face).toContain('<NoteFooter')
+    expect(face).toContain('backlinks=')
+    expect(face).toContain('linked=')
+    expect(face).toContain('recoveries=')
+    expect(face).not.toContain('railOpen')
+    expect(face).not.toContain('onToggleRail')
+    expect(face).not.toContain('tandem.bikeshed.rail-open')
+    expect(editor).not.toContain('editor__rail-toggle')
+    expect(css).not.toContain('.rail')
+  })
+
+  it('places the focus control inside the tree column', () => {
+    const tree = face.indexOf('bikeshed__tree')
+    const focus = face.indexOf('<FocusControl')
+    const document = face.indexOf('bikeshed__document')
+    expect(tree).toBeGreaterThan(-1)
+    expect(focus).toBeGreaterThan(tree)
+    expect(document).toBeGreaterThan(focus)
   })
 })

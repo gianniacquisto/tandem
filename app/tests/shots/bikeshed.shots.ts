@@ -11,16 +11,16 @@ import { scene } from '../../shots/scenes'
 import { computed, token } from '../../shots/tokens'
 
 /**
- * The Bikeshed face a human writes in: the tree, the committed editor bundle in
- * its frame, the backlinks the note has, the health report over the vault, and
- * a draft an interrupted save left.
+ * The Bikeshed face a human writes in: a 260 px tree column on parchment and a
+ * document column on paper, with the committed editor bundle in its frame, a
+ * sticky breadcrumb above the note, and the note's links in a footer after it.
  *
  * The recovery is staged in the seed rather than the committed fixture, so the
  * picture proves the panel names it while the fixture stays content. The
  * editor's text is the fixture note's own, read through the bundle, which is
  * the proof the verbatim copy mounts and the bridge supplied its document.
  */
-test('the bikeshed face, over the seeded vault', async ({ app, window }) => {
+test('the bikeshed face, over the seeded vault', async ({ window }) => {
   writeFileSync(
     join(seedPath(), 'bikeshed', '.note-0000-0000-0000-000000000001.tmp'),
     'a draft from a save that was killed',
@@ -30,49 +30,155 @@ test('the bikeshed face, over the seeded vault', async ({ app, window }) => {
 
   await expect(window.locator('.bikeshed-face')).toBeVisible()
   await expect(window.locator('.bikeshed-face .face__title')).toHaveCount(0)
+
+  // Two columns: the tree is a fixed 260 wide, the document starts after it.
+  const tree = window.locator('.bikeshed__tree')
+  await expect(tree).toBeVisible()
+  const treeBox = await tree.boundingBox()
+  expect(treeBox?.width).toBe(260)
+  const document = window.locator('.bikeshed__document')
+  await expect(document).toBeVisible()
+  const documentBox = await document.boundingBox()
+  expect(documentBox?.x).toBe(260)
+
   await expect(window.locator('.tree__vault-name')).toHaveText('Bikeshed')
   await expect(window.locator('.tree__action', { hasText: "Today's note" })).toBeVisible()
   await expect(window.locator('.tree__new--note')).toHaveText('New note')
   await expect(window.locator('.tree__new--folder')).toHaveText('New folder')
   await expect(window.locator('.tree__name')).toHaveCount(6)
 
+  // The focus control decides what the tree draws, so it sits at its top.
+  await expect(window.locator('.focus')).toBeVisible()
+  await expect(tree.locator('.focus__picker')).toBeVisible()
+
+  await expect(window.locator('.health__count')).toHaveText('1 orphan')
+})
+
+/**
+ * The breadcrumb: the note's folder crumbs then its title as the current crumb,
+ * plain text, above a sticky header the mode control and the saving word share.
+ */
+test('the breadcrumb names the note', async ({ window }) => {
+  await openTab(window, 'bikeshed')
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+
+  const breadcrumb = window.locator('.bikeshed__breadcrumb')
+  await expect(breadcrumb).toBeVisible()
+  await expect(breadcrumb.locator('.bikeshed__crumb')).toHaveText([
+    'projects',
+    'fixture',
+    'fixture',
+  ])
+  await expect(breadcrumb.locator('.bikeshed__crumb--current')).toHaveText('fixture')
+
+  const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('.cm-content')).toContainText('The project overview')
+
+  // The breadcrumb's rule is the palette's sand, not a UA border.
+  expect(await computed(window, '.bikeshed__breadcrumb', 'border-bottom-color')).toBe(
+    token('sand'),
+  )
+
+  await expect(window.locator('.banner')).toHaveCount(0)
+})
+
+/**
+ * The page: the document column scrolls, the breadcrumb sticks to its top, and
+ * the note's links are its footer, reached at the end of the note rather than
+ * docked to a rail. The editor send is the fixture's own linked ticket.
+ */
+test('the breadcrumb sticks and the footer is reachable', async ({ app, window }) => {
+  writeFileSync(
+    join(seedPath(), 'bikeshed', '.note-0000-0000-0000-000000000001.tmp'),
+    'a draft from a save that was killed',
+  )
+
+  await openTab(window, 'bikeshed')
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
   const editor = window.frameLocator('.editor__frame')
   await expect(editor.locator('.cm-content')).toContainText('The project overview')
-  await expect(window.locator('.editor__title')).toHaveText('fixture')
-  await expect(window.locator('.editor__folder')).toHaveText('projects/fixture')
 
-  // The editor frame's titlebar rule is the palette's sand, not a UA border.
-  expect(await computed(window, '.editor__titlebar', 'border-bottom-color')).toBe(token('sand'))
+  const frame = window.frames().find((candidate) => candidate.url().includes('editor-frame.html'))
+  expect(frame).toBeDefined()
+  await frame?.evaluate(
+    `window.webkit.messageHandlers.tandem.postMessage(${JSON.stringify(
+      JSON.stringify({ type: 'send-to-todos', text: '- [ ] File this from the note' }),
+    )})`,
+  )
 
-  await expect(window.locator('.rail__title').first()).toHaveText('Backlinks')
-  await expect(window.locator('.rail__count').first()).toHaveText('1')
-  await expect(window.locator('.rail__row-name').first()).toHaveText('Index')
+  const footer = window.locator('.note-footer')
+  await expect(footer.locator('.note-footer__section').filter({ hasText: 'Tickets' })).toBeVisible()
 
-  await expect(window.locator('.health__count')).toHaveText('1 orphan')
+  const crumb = window.locator('.bikeshed__breadcrumb')
+  const before = await crumb.boundingBox()
+  expect(before).not.toBeNull()
 
-  // The side rail collapses into the titlebar toggle: one click hides the
-  // links and the editor keeps the full height, one more brings them back.
-  const toggle = window.locator('.editor__rail-toggle')
-  await expect(toggle).toHaveText('Hide links')
-  await toggle.click()
-  await expect(window.locator('#note-rail')).toHaveCount(0)
-  await expect(toggle).toContainText('Links')
-  await toggle.click()
-  await expect(window.locator('#note-rail')).toBeVisible()
-  await expect(toggle).toHaveText('Hide links')
+  const column = window.locator('.bikeshed__document')
+  await column.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect.poll(() => column.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
 
-  await expect(window.locator('.rail__recovery')).toContainText(
+  // Sticky: the breadcrumb keeps the column's top edge while the page moves.
+  const after = await crumb.boundingBox()
+  expect(after?.y).toBe(before?.y)
+
+  await expect(footer).toBeInViewport()
+  await expect(footer.locator('.note-footer__title').first()).toHaveText('Backlinks')
+  await expect(footer.locator('.note-footer__count').first()).toHaveText('1')
+  await expect(footer.locator('.note-footer__row-name').first()).toHaveText('Index')
+  await expect(
+    footer.locator('.note-footer__section').filter({ hasText: 'Tickets' }).locator(
+      '.note-footer__row-detail',
+    ),
+  ).toContainText('File this from the note')
+
+  // The send's notice is dismissed: the picture is the face, not the echo.
+  await window.locator('.banner__dismiss').click()
+  await expect(window.locator('.banner')).toHaveCount(0)
+
+  await expect(footer.locator('.note-footer__recovery')).toContainText(
     'Unsaved draft kept from an interrupted save',
   )
-  await expect(window.locator('.rail__recovery')).toContainText('draft')
-  await expect(window.locator('.rail__recovery')).not.toContainText('.note-')
-  await expect(window.locator('.rail__recovery')).not.toContainText('.tmp')
+  await expect(footer.locator('.note-footer__recovery')).toContainText('draft')
+  await expect(footer.locator('.note-footer__recovery')).not.toContainText('.note-')
+  await expect(footer.locator('.note-footer__recovery')).not.toContainText('.tmp')
 
   await expect(window.locator('.banner')).toHaveCount(0)
 
   await capture(app, window, scene('bikeshed'))
+})
+
+/**
+ * The mode control lives in the breadcrumb now: the button group there flips
+ * the editor's mode and keeps the note's text, whatever the buttons are called.
+ */
+test('the mode control lives in the breadcrumb', async ({ window }) => {
+  await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+
+  const breadcrumb = window.locator('.bikeshed__breadcrumb')
+  await expect(breadcrumb).toBeVisible()
+  const mode = breadcrumb.getByRole('group')
+  await expect(mode).toBeVisible()
+
+  const editor = window.frameLocator('.editor__frame')
+  await expect(editor.locator('.cm-content')).toContainText('The project overview')
+
+  await mode.locator('button:not([aria-pressed="true"])').click()
+
+  await expect(breadcrumb.locator('[aria-pressed="true"]')).not.toHaveText('Preview')
+  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'true')
+  await expect(editor.locator('.cm-content')).toContainText('The project overview')
+})
+
+/** The rail is gone: no toggle in the face's chrome and no dock to open. */
+test('no rail toggle and no rail', async ({ window }) => {
+  await openTab(window, 'bikeshed')
+  await expect(window.locator('.editor__rail-toggle')).toHaveCount(0)
+  await expect(window.locator('#note-rail')).toHaveCount(0)
 })
 
 /**
@@ -134,8 +240,8 @@ test('a new note through the tree control opens in the editor ready to type', as
   await dialog.getByRole('button', { name: 'Create' }).click()
 
   await expect(window.locator('.tree__label[title="from-ui.md"]')).toBeVisible()
-  await expect(window.locator('.editor__title')).toHaveText('from-ui')
-  await expect(window.locator('.editor__folder')).toHaveText('Bikeshed')
+  await expect(window.locator('.bikeshed__crumb--current')).toHaveText('from-ui')
+  await expect(window.locator('.bikeshed__crumb').first()).toHaveText('Bikeshed')
   await expect(window.locator('.banner')).toHaveCount(0)
 
   const editor = window.frameLocator('.editor__frame')
@@ -183,8 +289,8 @@ test("today's note opens-or-creates and keeps staged content", async ({ window }
   const title = `daily/${day}.md`
 
   await expect(window.locator(`.tree__label[title="${title}"]`)).toBeVisible()
-  await expect(window.locator('.editor__title')).toHaveText(day)
-  await expect(window.locator('.editor__folder')).toHaveText('daily')
+  await expect(window.locator('.bikeshed__crumb--current')).toHaveText(day)
+  await expect(window.locator('.bikeshed__crumb').first()).toHaveText('daily')
 
   const editor = window.frameLocator('.editor__frame')
   await expect(editor.locator('.cm-content')).toBeVisible()
@@ -296,9 +402,11 @@ test('the editor send files a ticket linked to the note', async ({ window }) => 
     `window.webkit.messageHandlers.tandem.postMessage(${JSON.stringify(message)})`,
   )
 
-  const tickets = window.locator('.rail__section').filter({ hasText: 'Tickets' })
-  await expect(tickets.locator('.rail__title')).toHaveText('Tickets')
-  await expect(tickets.locator('.rail__row-detail')).toContainText('File this from the note')
+  const tickets = window.locator('.note-footer__section').filter({ hasText: 'Tickets' })
+  await expect(tickets.locator('.note-footer__title')).toHaveText('Tickets')
+  await expect(tickets.locator('.note-footer__row-detail')).toContainText(
+    'File this from the note',
+  )
 
   const binary = join(REPO_ROOT, 'rust', 'target', 'debug', process.platform === 'win32' ? 'tandem.exe' : 'tandem')
   const listed = JSON.parse(
@@ -314,8 +422,8 @@ test('the editor send files a ticket linked to the note', async ({ window }) => 
 })
 
 /**
- * Preview is the default for a note with content: the titlebar control
- * reads Preview, the bundle is read-only, and the formatting toolbar hides.
+ * Preview is the default for a note with content: the breadcrumb control reads
+ * Preview, the bundle is read-only, and the formatting toolbar hides.
  */
 test('a note with content opens in preview with the toolbar hidden', async ({ window }) => {
   await openTab(window, 'bikeshed')
@@ -349,7 +457,7 @@ test('a wikilink click in preview navigates and stays in preview', async ({ wind
   await expect(editor.locator('.tandem-wikilink')).toBeVisible()
   await editor.locator('.tandem-wikilink').first().click()
 
-  await expect(window.locator('.editor__title')).toHaveText('fixture')
+  await expect(window.locator('.bikeshed__crumb--current')).toHaveText('fixture')
   await expect(preview).toHaveAttribute('aria-pressed', 'true')
   await expect(window.locator('.editor__saving')).toHaveCount(0)
 })

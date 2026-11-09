@@ -172,7 +172,7 @@ export function BikeshedTree({
   }
 
   return (
-    <aside className="bikeshed__tree" aria-label="Bikeshed notes">
+    <>
       <div
         className="tree__vault"
         data-over={over === '' ? 'true' : undefined}
@@ -278,6 +278,6 @@ export function BikeshedTree({
           )}
         </section>
       )}
-    </aside>
+    </>
   )
 }

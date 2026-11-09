@@ -81,7 +81,21 @@ body {
   border-top: var(--hairline) solid var(--sand);
 }
 
-.shell__error {
+.shell__body--bleed {
+  padding: 0;
+  border-top: 0;
+}
+
+/* Bikeshed's full bleed: the face's own rows keep a gutter, the tree reaches
+ * the window edge. */
+.shell__body--bleed .shell__error,
+.shell__body--bleed .shell__notice,
+.shell__body--bleed .bikeshed-face > .banner,
+.shell__body--bleed .bikeshed-face > .conflict {
+  max-width: none;
+  margin: var(--space-gutter);
+}
+
   max-width: 540px;
   margin: 0 0 var(--space-gutter);
   padding: 10px 14px;
@@ -1448,9 +1462,9 @@ body {
   cursor: pointer;
 }
 
-/* The Bikeshed face: the tree and its Health panel, the editor frame and the
- * backlinks dock. The layout is the Swift face's (a 232 pt sidebar, a title
- * bar, the dock under the editor); only the widths are the window's. */
+/* The Bikeshed face: a 260 px tree column on parchment, a document column on
+ * paper with a sticky breadcrumb and the note's links in its footer. No card:
+ * the body bleeds and the tree starts at the window edge. */
 
 .banner {
   display: flex;
@@ -1481,28 +1495,98 @@ body {
 
 .bikeshed {
   display: flex;
-  height: calc(100vh - 144px);
+  height: calc(100vh - 56px);
   min-height: 380px;
   overflow: hidden;
-  border: var(--hairline) solid var(--sand);
-  border-radius: var(--radius-card);
-  background: var(--paper);
 }
 
 .bikeshed__tree {
   display: flex;
-  flex: 0 0 232px;
+  box-sizing: border-box;
+  flex: 0 0 260px;
   flex-direction: column;
   overflow: auto;
   border-right: var(--hairline) solid var(--sand);
+  background: var(--parchment);
 }
 
-.bikeshed__main {
+.bikeshed__tree > .focus {
+  margin: 10px 0 4px;
+  padding: 0 10px;
+}
+
+.bikeshed__document {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 0;
-  flex-direction: row;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--paper);
+}
+
+.bikeshed__breadcrumb {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex: none;
+  border-bottom: var(--hairline) solid var(--sand);
+  background: var(--paper);
+}
+
+.bikeshed__breadcrumb-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lane);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 740px;
+  min-height: 40px;
+  margin: 0 auto;
+  padding: 0 var(--space-gutter);
+}
+
+.bikeshed__crumbs {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.bikeshed__crumb {
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+}
+
+.bikeshed__crumb--current {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.bikeshed__crumb-sep {
+  color: var(--ink-dim);
+}
+
+.bikeshed__breadcrumb-end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.bikeshed__page {
+  display: flex;
+  flex: 1 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 740px;
+  flex-direction: column;
+  margin: 0 auto;
+  padding: 15px var(--space-gutter) 0;
 }
 
 .tree__vault {
@@ -1707,14 +1791,14 @@ body {
 }
 
 .health__clean,
-.rail__empty {
+.note-footer__empty {
   margin: 6px 0 0;
   color: var(--ink-dim);
   font-size: 11.5px;
 }
 
 .health__rows,
-.rail__rows {
+.note-footer__rows {
   margin: 6px 0 0;
   padding: 0;
   list-style: none;
@@ -1739,7 +1823,7 @@ body {
 }
 
 .health__row-detail,
-.rail__row-detail {
+.note-footer__row-detail {
   overflow: hidden;
   color: var(--ink-dim);
   font-size: 11px;
@@ -1751,67 +1835,14 @@ body {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 0;
+  min-height: calc(100vh - 56px);
   flex-direction: column;
-}
-
-.editor__titlebar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 28px;
-  min-height: 28px;
-  padding: 0 10px 0 14px;
-  overflow: hidden;
-  border-bottom: var(--hairline) solid var(--sand);
-  white-space: nowrap;
-}
-
-.editor__folder {
-  flex: none;
-  overflow: hidden;
-  color: var(--ink-dim);
-  font-size: 12.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.editor__title {
-  flex: 1 1 auto;
-  overflow: hidden;
-  min-width: 0;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .editor__saving {
   flex: none;
   color: var(--ink-dim);
   font-size: 11.5px;
-}
-
-.editor__rail-toggle {
-  flex: none;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--ink-dim);
-  font: inherit;
-  font-size: 11.5px;
-  line-height: 1;
-  padding: 4px 8px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.editor__rail-toggle:hover {
-  color: var(--ink);
-}
-
-.editor__rail-toggle[aria-expanded="true"] {
-  background: var(--parchment);
-  color: var(--ink);
 }
 
 .editor__mode {
@@ -1876,39 +1907,37 @@ body {
   font-size: 12.5px;
 }
 
-.rail {
+.note-footer {
   display: flex;
-  flex: 0 0 232px;
-  flex-direction: column;
-  gap: 12px;
-  overflow: auto;
-  padding: 10px 14px;
-  border-left: var(--hairline) solid var(--sand);
-}
-
-.rail__section {
-  min-width: 0;
   flex: none;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 0 28px;
+  border-top: var(--hairline) solid var(--sand);
 }
 
-.rail__header {
+.note-footer__section {
+  min-width: 0;
+}
+
+.note-footer__header {
   display: flex;
   align-items: baseline;
   gap: 6px;
 }
 
-.rail__title {
+.note-footer__title {
   margin: 0;
   font-size: 12.5px;
   font-weight: 600;
 }
 
-.rail__count {
+.note-footer__count {
   color: var(--ink-dim);
   font-size: 11.5px;
 }
 
-.rail__row {
+.note-footer__row {
   display: flex;
   width: 100%;
   flex-direction: column;
@@ -1923,28 +1952,24 @@ body {
   cursor: pointer;
 }
 
-.rail__row:hover .rail__row-name {
+.note-footer__row:hover .note-footer__row-name {
   text-decoration: underline;
 }
 
 .tree__label:focus-visible,
 .health__row:focus-visible,
-.rail__row:focus-visible,
+.note-footer__row:focus-visible,
 .sheet:focus-visible,
 .button:focus-visible {
   outline: var(--hairline) solid var(--accent);
   outline-offset: -1px;
 }
 
-.rail__row-name {
+.note-footer__row-name {
   font-size: 12.5px;
 }
 
-.rail__section--recovery {
-  flex: 1 1 0;
-}
-
-.rail__recovery {
+.note-footer__recovery {
   padding: 4px 0;
   color: var(--ink-dim);
   font-size: 11.5px;
