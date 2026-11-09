@@ -4,7 +4,7 @@ import type { TicketSummary } from '../wire/TicketSummary'
 
 import { recoverableLabel, ticketHref } from '../shell/bikeshed'
 
-export type NoteRailProps = {
+export type NoteFooterProps = {
   backlinks: BacklinkView[]
   linked: TicketSummary[]
   recoveries: RecoveryView[]
@@ -26,15 +26,12 @@ function ticketName(ticket: TicketSummary): string {
 }
 
 /**
- * The note's lower dock: who links here, the tickets that name this note, and
- * any draft a killed save left.
+ * The note's footer: who links here, the tickets that name this note, and any
+ * draft a killed save left, after the note in its scrolling page.
  *
  * The section names are the Swift panel's ("Backlinks", the health panel's
  * sibling under the tree); a recovery is drawn as what it is, a draft, never as
- * an error banner.
- *
- * Each section is exported on its own so the side rail (TAND-7) can mount the
- * same cleaned sections outside the bottom dock. Either order works.
+ * an error banner. There is no collapse control: a footer costs no width.
  */
 export function BacklinksSection({
   backlinks,
@@ -44,24 +41,24 @@ export function BacklinksSection({
   onOpenNote: (path: string) => void
 }) {
   return (
-    <div className="rail__section">
-      <header className="rail__header">
-        <h2 className="rail__title">Backlinks</h2>
-        <span className="rail__count">{backlinks.length}</span>
+    <div className="note-footer__section">
+      <header className="note-footer__header">
+        <h2 className="note-footer__title">Backlinks</h2>
+        <span className="note-footer__count">{backlinks.length}</span>
       </header>
       {backlinks.length === 0 ? (
-        <p className="rail__empty">Nothing links here yet.</p>
+        <p className="note-footer__empty">Nothing links here yet.</p>
       ) : (
-        <ul className="rail__rows">
+        <ul className="note-footer__rows">
           {backlinks.map((backlink) => (
             <li key={backlink.path}>
               <button
                 type="button"
-                className="rail__row"
+                className="note-footer__row"
                 onClick={() => onOpenNote(backlink.path)}
               >
-                <span className="rail__row-name">{name(backlink.path)}</span>
-                <span className="rail__row-detail">{backlink.line}</span>
+                <span className="note-footer__row-name">{name(backlink.path)}</span>
+                <span className="note-footer__row-detail">{backlink.line}</span>
               </button>
             </li>
           ))}
@@ -80,16 +77,16 @@ export function LinkedTicketsSection({
 }) {
   if (linked.length === 0) return null
   return (
-    <div className="rail__section">
-      <header className="rail__header">
-        <h2 className="rail__title">Tickets</h2>
-        <span className="rail__count">{linked.length}</span>
+    <div className="note-footer__section">
+      <header className="note-footer__header">
+        <h2 className="note-footer__title">Tickets</h2>
+        <span className="note-footer__count">{linked.length}</span>
       </header>
-      <ul className="rail__rows">
+      <ul className="note-footer__rows">
         {linked.map((ticket) => (
           <li key={ticket.id}>
             <a
-              className="rail__row"
+              className="note-footer__row"
               href={ticketHref(ticket.id)}
               onClick={(event) => {
                 if (onOpenTicket === undefined) return
@@ -97,8 +94,8 @@ export function LinkedTicketsSection({
                 onOpenTicket(ticket)
               }}
             >
-              <span className="rail__row-name">{ticketName(ticket)}</span>
-              <span className="rail__row-detail">{ticket.title}</span>
+              <span className="note-footer__row-name">{ticketName(ticket)}</span>
+              <span className="note-footer__row-detail">{ticket.title}</span>
             </a>
           </li>
         ))}
@@ -110,14 +107,14 @@ export function LinkedTicketsSection({
 export function RecoveriesSection({ recoveries }: { recoveries: RecoveryView[] }) {
   if (recoveries.length === 0) return null
   return (
-    <div className="rail__section rail__section--recovery">
-      <header className="rail__header">
-        <h2 className="rail__title">Recoveries</h2>
-        <span className="rail__count">{recoveries.length}</span>
+    <div className="note-footer__section note-footer__section--recovery">
+      <header className="note-footer__header">
+        <h2 className="note-footer__title">Recoveries</h2>
+        <span className="note-footer__count">{recoveries.length}</span>
       </header>
-      <ul className="rail__rows">
+      <ul className="note-footer__rows">
         {recoveries.map((recovery) => (
-          <li key={recovery.file} className="rail__recovery">
+          <li key={recovery.file} className="note-footer__recovery">
             {recoverableLabel(recovery)}
           </li>
         ))}
@@ -126,18 +123,18 @@ export function RecoveriesSection({ recoveries }: { recoveries: RecoveryView[] }
   )
 }
 
-export function NoteRail({
+export function NoteFooter({
   backlinks,
   linked,
   recoveries,
   onOpenNote,
   onOpenTicket,
-}: NoteRailProps) {
+}: NoteFooterProps) {
   return (
-    <section className="rail" id="note-rail" aria-label="Note links">
+    <footer className="note-footer" aria-label="Note links">
       <BacklinksSection backlinks={backlinks} onOpenNote={onOpenNote} />
       <LinkedTicketsSection linked={linked} onOpenTicket={onOpenTicket} />
       <RecoveriesSection recoveries={recoveries} />
-    </section>
+    </footer>
   )
 }

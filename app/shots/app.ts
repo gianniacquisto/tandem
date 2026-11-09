@@ -115,7 +115,7 @@ export async function openTab(page: Page, tab: string): Promise<void> {
  * out at its own height, the window keeps its 760 width and its floor, and
  * `fullPage` captures the lot. Every value is the app's own CSS.
  */
-const FULL_HEIGHT = `html, body, #root { height: auto } .shell { height: auto; min-height: ${WINDOW_FLOOR.height}px } .shell__body { overflow: visible }`
+const FULL_HEIGHT = `html, body, #root { height: auto } .shell { height: auto; min-height: ${WINDOW_FLOOR.height}px } .shell__body { overflow: visible } .bikeshed { height: auto; overflow: visible } .bikeshed__document { overflow: visible }`
 
 export async function capture(
   app: ElectronApplication,
