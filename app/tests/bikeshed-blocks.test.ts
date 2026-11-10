@@ -129,17 +129,17 @@ describe('the Write surface draws each block kind', () => {
 })
 
 describe('the read-only source card', () => {
-  it('draws an unmodelled construct as its exact source and points at the raw editor', () => {
+  it('draws an unmodelled construct as its exact source and points at Source mode', () => {
     const markup = draw('| a | b |\n| - | - |')
     expect(markup).toContain('block block--opaque')
     expect(markup).toContain('| a | b |')
-    expect(markup).toContain('Edit this in the raw editor')
+    expect(markup).toContain('Edit in Source mode')
   })
 
   it('draws frontmatter read-only, outside the editable text', () => {
     const markup = draw('---\ntitle: A note\n---\n\nA paragraph.')
     expect(markup).toContain('block block--opaque')
     expect(markup).toContain('title: A note')
-    expect(markup).toContain('Edit this in the raw editor')
+    expect(markup).toContain('Edit in Source mode')
   })
 })

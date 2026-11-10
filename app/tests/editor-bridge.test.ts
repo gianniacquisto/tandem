@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   editorCall,
   editorDocument,
-  editorMode,
   parseEditorMessage,
 } from '../renderer/src/shell/editor'
 
@@ -37,12 +36,6 @@ describe('the editor page bridge', () => {
 })
 
 describe('the page globals the bundle expects', () => {
-  it('reads a toggle-mode request from the bundle Mod+E', () => {
-    expect(parseEditorMessage(JSON.stringify({ type: 'toggle-mode' }))).toEqual({
-      type: 'toggle-mode',
-    })
-  })
-
   it('replaces the document with its markdown and note path', () => {
     expect(editorDocument('Index.md', '# Index')).toEqual({
       type: 'tandem-editor-call',
@@ -69,19 +62,6 @@ describe('the page globals the bundle expects', () => {
       type: 'tandem-editor-call',
       name: 'requestTicketCandidate',
       args: [],
-    })
-  })
-
-  it('switches the preview/edit mode with the stored choice', () => {
-    expect(editorMode('preview')).toEqual({
-      type: 'tandem-editor-call',
-      name: 'setMode',
-      args: ['preview'],
-    })
-    expect(editorMode('edit')).toEqual({
-      type: 'tandem-editor-call',
-      name: 'setMode',
-      args: ['edit'],
     })
   })
 })

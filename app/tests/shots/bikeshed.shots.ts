@@ -60,7 +60,6 @@ test('the bikeshed face, over the seeded vault', async ({ window }) => {
  */
 test('the breadcrumb names the note', async ({ window }) => {
   await openTab(window, 'bikeshed')
-  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
   const breadcrumb = window.locator('.bikeshed__breadcrumb')
@@ -72,8 +71,8 @@ test('the breadcrumb names the note', async ({ window }) => {
   ])
   await expect(breadcrumb.locator('.bikeshed__crumb--current')).toHaveText('fixture')
 
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('.cm-content')).toContainText('The project overview')
+  // A note with content opens in Write: the block surface is the preview.
+  await expect(window.locator('.blocks')).toContainText('The project overview')
 
   // The breadcrumb's rule is the palette's sand, not a UA border.
   expect(await computed(window, '.bikeshed__breadcrumb', 'border-bottom-color')).toBe(
@@ -86,7 +85,7 @@ test('the breadcrumb names the note', async ({ window }) => {
 /**
  * The page: the document column scrolls, the breadcrumb sticks to its top, and
  * the note's links are its footer, reached at the end of the note rather than
- * docked to a rail. The editor send is the fixture's own linked ticket.
+ * docked to a rail. The picture is the Write surface over the fixture note.
  */
 test('the breadcrumb sticks and the footer is reachable', async ({ app, window }) => {
   writeFileSync(
@@ -95,22 +94,12 @@ test('the breadcrumb sticks and the footer is reachable', async ({ app, window }
   )
 
   await openTab(window, 'bikeshed')
-  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
-
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('.cm-content')).toContainText('The project overview')
-
-  const frame = window.frames().find((candidate) => candidate.url().includes('editor-frame.html'))
-  expect(frame).toBeDefined()
-  await frame?.evaluate(
-    `window.webkit.messageHandlers.tandem.postMessage(${JSON.stringify(
-      JSON.stringify({ type: 'send-to-todos', text: '- [ ] File this from the note' }),
-    )})`,
-  )
+  await expect(window.locator('.blocks')).toContainText('The project overview')
 
   const footer = window.locator('.note-footer')
-  await expect(footer.locator('.note-footer__section').filter({ hasText: 'Tickets' })).toBeVisible()
+  await expect(footer.locator('.note-footer__section').filter({ hasText: 'Backlinks' })).toBeVisible()
 
   const crumb = window.locator('.bikeshed__breadcrumb')
   const before = await crumb.boundingBox()
@@ -130,15 +119,6 @@ test('the breadcrumb sticks and the footer is reachable', async ({ app, window }
   await expect(footer.locator('.note-footer__title').first()).toHaveText('Backlinks')
   await expect(footer.locator('.note-footer__count').first()).toHaveText('1')
   await expect(footer.locator('.note-footer__row-name').first()).toHaveText('Index')
-  await expect(
-    footer.locator('.note-footer__section').filter({ hasText: 'Tickets' }).locator(
-      '.note-footer__row-detail',
-    ),
-  ).toContainText('File this from the note')
-
-  // The send's notice is dismissed: the picture is the face, not the echo.
-  await window.locator('.banner__dismiss').click()
-  await expect(window.locator('.banner')).toHaveCount(0)
 
   await expect(footer.locator('.note-footer__recovery')).toContainText(
     'Unsaved draft kept from an interrupted save',
@@ -153,12 +133,12 @@ test('the breadcrumb sticks and the footer is reachable', async ({ app, window }
 })
 
 /**
- * The mode control lives in the breadcrumb now: the button group there flips
- * the editor's mode and keeps the note's text, whatever the buttons are called.
+ * The mode control lives in the breadcrumb: the two-button group there is
+ * Write|Source, and Preview is gone with the iframe.
  */
 test('the mode control lives in the breadcrumb', async ({ window }) => {
   await openTab(window, 'bikeshed')
-  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
   const breadcrumb = window.locator('.bikeshed__breadcrumb')
@@ -166,14 +146,16 @@ test('the mode control lives in the breadcrumb', async ({ window }) => {
   const mode = breadcrumb.getByRole('group')
   await expect(mode).toBeVisible()
 
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('.cm-content')).toContainText('The project overview')
+  const write = mode.locator('button', { hasText: 'Write' })
+  const source = mode.locator('button', { hasText: 'Source' })
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
+  await expect(window.locator('.blocks')).toContainText('The project overview')
 
-  await mode.locator('button', { hasText: 'Edit' }).click()
+  await source.click()
 
-  await expect(mode.locator('[aria-pressed="true"]')).toHaveText('Edit')
-  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'true')
-  await expect(editor.locator('.cm-content')).toContainText('The project overview')
+  await expect(source).toHaveAttribute('aria-pressed', 'true')
+  await expect(window.locator('.source')).toHaveValue(/The project overview/)
+  await expect(window.locator('.editor__frame')).toHaveCount(0)
 })
 
 /** The rail is gone: no toggle in the face's chrome and no dock to open. */
@@ -192,14 +174,15 @@ test('a concurrent CLI write is a conflict with both bodies, never a lost write'
   window,
 }) => {
   await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'source')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
-  // Content notes open in Preview; the conflict needs a dirty buffer, so enter Edit first.
-  await window.locator('.editor__mode-button', { hasText: 'Edit' }).click()
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'true')
-  await editor.locator('.cm-content').click()
+  // Source mode edits the exact bytes, so the dirty buffer is the textarea's.
+  const source = window.locator('.source')
+  await expect(source).toBeVisible()
+  await source.click()
   await window.keyboard.type(' and my unsaved words')
+  await expect(source).toHaveValue(/my unsaved words/)
 
   const binary = join(REPO_ROOT, 'rust', 'target', 'debug', process.platform === 'win32' ? 'tandem.exe' : 'tandem')
   execFileSync(binary, [
@@ -220,9 +203,7 @@ test('a concurrent CLI write is a conflict with both bodies, never a lost write'
 
   await window.locator('.button', { hasText: 'Take theirs' }).click()
   await expect(window.locator('.conflict')).toHaveCount(0)
-  await expect(editor.locator('.cm-content')).toContainText(
-    'the CLI wrote this while the editor was dirty',
-  )
+  await expect(source).toHaveValue('the CLI wrote this while the editor was dirty')
 })
 
 /**
@@ -343,17 +324,17 @@ test('an external write on focus is a conflict, and the tab switch keeps the dra
   window,
 }) => {
   await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'source')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
-  // Content notes open in Preview; typing needs Edit.
-  await window.locator('.editor__mode-button', { hasText: 'Edit' }).click()
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'true')
-  await editor.locator('.cm-content').click()
+  // Source mode is writable: the dirty buffer is the textarea's exact bytes.
+  const source = window.locator('.source')
+  await expect(source).toBeVisible()
+  await source.click()
   await window.keyboard.type(' and words no save has seen')
-  await expect(editor.locator('.cm-content')).toContainText('words no save has seen')
-  // The dirty message crosses the frame's postMessage before the face has it;
-  // the focus must see the buffer, not the keystroke before it.
+  await expect(source).toHaveValue(/words no save has seen/)
+  // The dirty message reaches the face as the textarea's change; the focus
+  // must see the buffer, not the keystroke before it.
   await window.waitForTimeout(300)
 
   const binary = join(REPO_ROOT, 'rust', 'target', 'debug', process.platform === 'win32' ? 'tandem.exe' : 'tandem')
@@ -383,34 +364,28 @@ test('an external write on focus is a conflict, and the tab switch keeps the dra
   await window.locator('.tab', { hasText: 'Bikeshed' }).click()
   await expect(window.locator('.bikeshed-face')).toBeVisible()
 
-  await expect(editor.locator('.cm-content')).toContainText('words no save has seen')
+  await expect(window.locator('.source')).toHaveValue(/words no save has seen/)
   await expect(window.locator('.banner--notice')).toContainText('draft')
   await expect(window.locator('.conflict')).toBeVisible()
 })
 
 /**
- * The editor's own send: the bundle's Mod-Shift-t posts the selection as
- * `send-to-todos`, and the face files it as a ticket linked to the note. The
- * shortcut is the bundle's (its own suite covers it); the message is the seam
- * the port must answer, so this posts the exact message and checks the store.
+ * The Write surface's send: Mod-Shift-t files the selected task, and the face
+ * files it as a ticket linked to the note. Preview's iframe send is retired;
+ * the block surface is the one editor path.
  */
 test('the editor send files a ticket linked to the note', async ({ window }) => {
+  writeFileSync(writeFile('send-note.md'), '- [ ] File this from the note\n')
   await openTab(window, 'bikeshed')
-  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
-  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
+  await window.locator('.tree__label[title="send-note.md"]').click()
 
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('.cm-content')).toBeVisible()
-
-  const frame = window.frames().find((candidate) => candidate.url().includes('editor-frame.html'))
-  expect(frame).toBeDefined()
-  const message = JSON.stringify({
-    type: 'send-to-todos',
-    text: '- [ ] File this from the note',
-  })
-  await frame?.evaluate(
-    `window.webkit.messageHandlers.tandem.postMessage(${JSON.stringify(message)})`,
-  )
+  const write = window.locator('.editor__mode-button', { hasText: 'Write' })
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
+  const task = window.locator('.block--task .block__text')
+  await task.click()
+  await window.keyboard.press(`${modKey}+Shift+t`)
 
   const tickets = window.locator('.note-footer__section').filter({ hasText: 'Tickets' })
   await expect(tickets.locator('.note-footer__title')).toHaveText('Tickets')
@@ -424,132 +399,142 @@ test('the editor send files a ticket linked to the note', async ({ window }) => 
   ) as { tickets: Array<{ title: string; link: string | null }> }
   expect(
     listed.tickets.some(
-      (ticket) =>
-        ticket.title === 'File this from the note' &&
-        ticket.link === 'projects/fixture/fixture.md',
+      (ticket) => ticket.title === 'File this from the note' && ticket.link === 'send-note.md',
     ),
   ).toBe(true)
 })
 
 /**
- * Preview is the default for a note with content: the breadcrumb control reads
- * Preview, the bundle is read-only, and the formatting toolbar hides.
+ * Preview is retired: a note with content opens in Write, and the block
+ * surface is the one editable view. The iframe is no longer mounted.
  */
-test('a note with content opens in preview with the toolbar hidden', async ({ window }) => {
+test('a note with content opens in Write over the block surface', async ({ window }) => {
   await openTab(window, 'bikeshed')
-  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
-  const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
-  const edit = window.locator('.editor__mode-button', { hasText: 'Edit' })
-  await expect(preview).toHaveAttribute('aria-pressed', 'true')
-  await expect(edit).toHaveAttribute('aria-pressed', 'false')
+  const write = window.locator('.editor__mode-button', { hasText: 'Write' })
+  const source = window.locator('.editor__mode-button', { hasText: 'Source' })
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
+  await expect(source).toHaveAttribute('aria-pressed', 'false')
 
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('.cm-content')).toContainText('The project overview')
-  await expect(editor.locator('#tandem-toolbar')).toBeHidden()
+  await expect(window.locator('.blocks')).toContainText('The project overview')
+  await expect(window.locator('.editor__frame')).toHaveCount(0)
 })
 
 /**
- * In Preview, a wikilink click navigates and stays in Preview: no caret,
- * no dirty, the buffer is the truth.
+ * A wikilink's chip in Write opens its target and stays in Write: no caret
+ * jump, no dirty, the buffer is the truth.
  */
-test('a wikilink click in preview navigates and stays in preview', async ({ window }) => {
+test('a wikilink click in Write opens its target and stays in Write', async ({ window }) => {
   await openTab(window, 'bikeshed')
-  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
   await window.locator('.tree__label[title="Index.md"]').click()
 
-  const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
-  await expect(preview).toHaveAttribute('aria-pressed', 'true')
+  const write = window.locator('.editor__mode-button', { hasText: 'Write' })
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
 
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'false')
-  await expect(editor.locator('.tandem-wikilink')).toBeVisible()
-  await editor.locator('.tandem-wikilink').first().click()
+  const chip = window.locator('.blocks .wikilink-chip').first()
+  await expect(chip).toBeVisible()
+  await chip.click()
 
   await expect(window.locator('.bikeshed__crumb--current')).toHaveText('fixture')
-  await expect(preview).toHaveAttribute('aria-pressed', 'true')
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
   await expect(window.locator('.editor__saving')).toHaveCount(0)
 })
 
 /**
- * In Preview, a checkbox click toggles through the existing dirty/autosave
- * path and survives a reopen: no new rpc, the buffer is the truth.
+ * A task checkbox in Write toggles through the existing dirty/autosave path
+ * and survives a reopen: no new rpc, the buffer is the truth.
  */
-test('a checkbox toggles in preview and survives reload', async ({ window }) => {
-  writeFileSync(join(seedPath(), 'bikeshed', 'checkbox-preview.md'), '# Check\n\n- [ ] preview toggle\n')
+test('a task checkbox toggles in Write and survives reload', async ({ window }) => {
+  writeFileSync(join(seedPath(), 'bikeshed', 'checkbox-write.md'), '# Check\n\n- [ ] write toggle\n')
   await openTab(window, 'bikeshed')
-  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
   await window.evaluate("window.dispatchEvent(new Event('focus'))")
-  await window.locator('.tree__label[title="checkbox-preview.md"]').click()
+  await window.locator('.tree__label[title="checkbox-write.md"]').click()
 
-  const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
-  await expect(preview).toHaveAttribute('aria-pressed', 'true')
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('#tandem-toolbar')).toBeHidden()
-  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'false')
-  await expect(editor.locator('.tandem-checkbox')).toBeVisible()
-  const before = readFileSync(join(seedPath(), 'bikeshed', 'checkbox-preview.md'), 'utf8')
-  expect(before).toContain('- [ ] preview toggle')
-  await editor.locator('.tandem-checkbox').click()
+  const write = window.locator('.editor__mode-button', { hasText: 'Write' })
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
+  await expect(window.locator('.block--task .block__check')).toBeVisible()
+  const before = readFileSync(join(seedPath(), 'bikeshed', 'checkbox-write.md'), 'utf8')
+  expect(before).toContain('- [ ] write toggle')
+  await window.locator('.block--task .block__check').click()
   await expect
     .poll(
-      () => readFileSync(join(seedPath(), 'bikeshed', 'checkbox-preview.md'), 'utf8'),
+      () => readFileSync(join(seedPath(), 'bikeshed', 'checkbox-write.md'), 'utf8'),
       { timeout: 8000 },
     )
-    .toContain('- [x] preview toggle')
+    .toContain('- [x] write toggle')
 
   await window.locator('.tree__label[title="Index.md"]').click()
-  await window.locator('.tree__label[title="checkbox-preview.md"]').click()
-  await expect(preview).toHaveAttribute('aria-pressed', 'true')
-  await expect(editor.locator('.cm-content')).toContainText('preview toggle')
+  await window.locator('.tree__label[title="checkbox-write.md"]').click()
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
+  await expect(window.locator('.blocks')).toContainText('write toggle')
 })
 
 /**
- * Mod+E and the control flip both ways: Edit dirties and autosaves, Preview
- * hides the toolbar and keeps the buffer.
+ * The control flips Write and Source both ways and persists the choice. A
+ * dirty buffer is flushed before the surface changes, and a Source edit is the
+ * same buffer the Write surface draws. Mod+E is inline code (UI-19) and no
+ * longer changes the mode.
  */
-test('mod+e and the control switch between preview and edit', async ({ window }) => {
+test('the control switches between Write and Source and flushes first', async ({ window }) => {
+  writeFileSync(writeFile('switch.md'), '# Switch\n\nsource words')
   await openTab(window, 'bikeshed')
-  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
-  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
+  await window.locator('.tree__label[title="switch.md"]').click()
 
-  const preview = window.locator('.editor__mode-button', { hasText: 'Preview' })
-  const edit = window.locator('.editor__mode-button', { hasText: 'Edit' })
-  await expect(preview).toHaveAttribute('aria-pressed', 'true')
+  const write = window.locator('.editor__mode-button', { hasText: 'Write' })
+  const source = window.locator('.editor__mode-button', { hasText: 'Source' })
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
 
-  await edit.click()
-  await expect(edit).toHaveAttribute('aria-pressed', 'true')
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('#tandem-toolbar')).toBeVisible()
-  await expect(editor.locator('.cm-content')).toHaveAttribute('contenteditable', 'true')
+  // A dirty Write buffer is flushed before Source draws it.
+  await window.locator('.block--paragraph .block__text').first().click()
+  await caretAt(window, 1, 'end')
+  await window.keyboard.type(' plus write words')
+  await source.click()
+  await expect(source).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => writeText('switch.md'), { timeout: 8000 }).toBe(
+    '# Switch\n\nsource words plus write words',
+  )
+  await expect(window.locator('.source')).toHaveValue(
+    '# Switch\n\nsource words plus write words',
+  )
 
-  await editor.locator('.cm-content').click()
-  await window.keyboard.type(' typed in edit')
-  await expect
-    .poll(
-      () =>
-        readFileSync(join(seedPath(), 'bikeshed', 'projects', 'fixture', 'fixture.md'), 'utf8'),
-      { timeout: 8000 },
-    )
-    .toContain('typed in edit')
+  // A Source edit is the same buffer; switching back flushes it too.
+  await window.locator('.source').evaluate((element) => {
+    const area = element as HTMLTextAreaElement
+    area.focus()
+    area.setSelectionRange(area.value.length, area.value.length)
+  })
+  await window.keyboard.type(' plus source words')
+  await write.click()
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => writeText('switch.md'), { timeout: 8000 }).toBe(
+    '# Switch\n\nsource words plus write words plus source words',
+  )
+  await expect(window.locator('.blocks')).toContainText('plus source words')
 
-  const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
-  await window.keyboard.press(`${mod}+e`)
-  await expect(preview).toHaveAttribute('aria-pressed', 'true')
-  await expect(editor.locator('#tandem-toolbar')).toBeHidden()
+  // The stored choice survived the switch.
+  expect(await window.evaluate("window.localStorage.getItem('tandem.bikeshed.mode')")).toBe('write')
+
+  // Mod+E is inline code now: it does not change the mode.
+  await window.keyboard.press(`${modKey}+e`)
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
 })
 
 /**
- * An empty note opens in Write ready to type, regardless of the stored
- * Preview choice: the buffer-is-truth rule keeps UI-1/UI-4 creations typing.
+ * An empty note opens in Write ready to type, regardless of the stored Source
+ * choice: the buffer-is-truth rule keeps UI-1/UI-4 creations typing.
  */
 test('an empty note opens in Write focused', async ({ window }) => {
-  writeFileSync(join(seedPath(), 'bikeshed', 'empty-preview.md'), '')
+  writeFileSync(join(seedPath(), 'bikeshed', 'empty-source.md'), '')
   await openTab(window, 'bikeshed')
-  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'source')")
   await window.evaluate("window.dispatchEvent(new Event('focus'))")
-  await window.locator('.tree__label[title="empty-preview.md"]').click()
+  await window.locator('.tree__label[title="empty-source.md"]').click()
 
   const write = window.locator('.editor__mode-button', { hasText: 'Write' })
   await expect(write).toHaveAttribute('aria-pressed', 'true')
@@ -767,9 +752,9 @@ const DOT_PNG = Buffer.from(
 )
 
 /**
- * The image path over the real app: the committed-bundle iframe and the Write
- * surface both load a vault file through `tandem:`, and a missing, escaping and
- * remote target all draw the placeholder without a network request.
+ * The image path over the real app: the Write surface loads a vault file
+ * through `tandem:`, and a missing, escaping and remote target all draw the
+ * placeholder without a network request.
  */
 test('a vault image is served over the tandem protocol, and nothing escapes it', async ({
   window,
@@ -788,18 +773,10 @@ test('a vault image is served over the tandem protocol, and nothing escapes it',
   })
 
   await openTab(window, 'bikeshed')
-  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
   await window.locator('.tree__label[title="image.md"]').click()
 
-  const editor = window.frameLocator('.editor__frame')
-  const framed = editor.locator('img.tandem-img')
-  await expect(framed).toHaveCount(1)
-  await expect
-    .poll(() => framed.evaluate((element) => (element as HTMLImageElement).naturalWidth))
-    .toBe(1)
-
-  // Write mode's image block draws the same file, with its encoded src.
-  await window.locator('.editor__mode-button', { hasText: 'Write' }).click()
   const blockImage = window.locator('.block--image img')
   await expect(blockImage).toHaveCount(1)
   await expect
@@ -808,10 +785,8 @@ test('a vault image is served over the tandem protocol, and nothing escapes it',
   await expect(blockImage).toHaveAttribute('alt', 'the dot')
   await expect(blockImage).toHaveAttribute('src', 'tandem:images/dot.png')
 
-  // A missing, escaping and remote target are three placeholders in Write,
-  // never an img that could fetch one. (The iframe's committed bundle re-inserts
-  // its tracked img after its own placeholder swap, an editor-bundle defect
-  // UI-22 retires; the block surface is this ticket's durable drawing path.)
+  // A missing, escaping and remote target are three placeholders, never an img
+  // that could fetch one.
   await window.locator('.tree__label[title="image-bad.md"]').click()
   const blocks = window.locator('.blocks')
   await expect(blocks.locator('.block--image')).toHaveCount(3)
@@ -819,4 +794,33 @@ test('a vault image is served over the tandem protocol, and nothing escapes it',
   await expect(blocks.locator('.block--image img')).toHaveCount(0)
   await expect(blocks.locator('.block__image-alt')).toHaveText(['missing', 'escape', 'remote'])
   expect(remote).toEqual([])
+})
+
+/**
+ * The Source scene: the fixture note as its exact markdown in the plain
+ * textarea, with the titlebar control on Source. The picture and its catalogue
+ * row are written by the documented shots run, never by hand.
+ */
+test("the Source surface holds the note's exact markdown", async ({ app, window }) => {
+  const notePath = join(seedPath(), 'bikeshed', 'projects', 'fixture', 'fixture.md')
+  const before = readFileSync(notePath, 'utf8')
+
+  await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+
+  const source = window.locator('.editor__mode-button', { hasText: 'Source' })
+  await source.click()
+  await expect(source).toHaveAttribute('aria-pressed', 'true')
+
+  const area = window.locator('.source')
+  await expect(area).toBeVisible()
+  await expect(area).toHaveValue(before)
+  await expect(area).toBeFocused()
+
+  await capture(app, window, scene('bikeshed-source'))
+
+  // Viewing the note never rewrites it.
+  expect(readFileSync(notePath, 'utf8')).toBe(before)
 })

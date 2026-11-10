@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest'
 
 import {
   BIKESHED_MODE_KEY,
-  defaultBikeshedMode,
-  editorMode,
-  loadBikeshedMode,
-  saveBikeshedMode,
-} from '../renderer/src/shell/editor'
+  loadMode,
+  openMode,
+  saveMode,
+  switchAfterFlush,
+  switchIntent,
+} from '../renderer/src/shell/modes'
 
 function fakeStorage(initial: Record<string, string> = {}) {
   const data = new Map(Object.entries(initial))
@@ -20,65 +21,79 @@ function fakeStorage(initial: Record<string, string> = {}) {
 }
 
 describe('the Write default rule', () => {
-  it('opens a note with content in preview when nothing is stored', () => {
-    expect(defaultBikeshedMode(null, '# Note\n\nSome words')).toBe('preview')
+  it('opens a note with content in Write when nothing is stored', () => {
+    expect(openMode(null, '# Note\n\nSome words')).toBe('write')
   })
 
-  it('opens an empty note in Write even when preview is stored', () => {
-    expect(defaultBikeshedMode('preview', '')).toBe('write')
-    expect(defaultBikeshedMode('preview', '   \n')).toBe('write')
-    expect(defaultBikeshedMode('write', '')).toBe('write')
+  it('opens an empty or whitespace-only note in Write even when Source is stored', () => {
+    expect(openMode('source', '')).toBe('write')
+    expect(openMode('source', '   \n')).toBe('write')
+    expect(openMode('write', '')).toBe('write')
   })
 
-  it('remembers the last choice for notes with content, including Write', () => {
-    expect(defaultBikeshedMode('edit', '# Note')).toBe('edit')
-    expect(defaultBikeshedMode('preview', '# Note')).toBe('preview')
-    expect(defaultBikeshedMode('write', '# Note')).toBe('write')
+  it('remembers the last choice for notes with content, including Source', () => {
+    expect(openMode('source', '# Note')).toBe('source')
+    expect(openMode('write', '# Note')).toBe('write')
   })
 
-  it('falls back to preview for content when the stored value is nonsense', () => {
-    expect(defaultBikeshedMode('nonsense', '# Note')).toBe('preview')
-    expect(defaultBikeshedMode(null, '# Note')).toBe('preview')
+  it('reads a legacy preview or edit, and nonsense, as Write', () => {
+    expect(openMode('preview', '# Note')).toBe('write')
+    expect(openMode('edit', '# Note')).toBe('write')
+    expect(openMode('nonsense', '# Note')).toBe('write')
+    expect(openMode(null, '# Note')).toBe('write')
   })
 })
 
 describe('the persisted mode choice', () => {
-  it('defaults to preview when nothing is stored', () => {
-    expect(loadBikeshedMode(fakeStorage())).toBe('preview')
+  it('defaults to Write when nothing is stored', () => {
+    expect(loadMode(fakeStorage())).toBe('write')
   })
 
-  it('round-trips the mode the titlebar control posts', () => {
+  it('round-trips Source through the key', () => {
     const storage = fakeStorage()
-    saveBikeshedMode('edit', storage)
-    expect(storage.data.get(BIKESHED_MODE_KEY)).toBe('edit')
-    expect(loadBikeshedMode(storage)).toBe('edit')
+    saveMode('source', storage)
+    expect(storage.data.get(BIKESHED_MODE_KEY)).toBe('source')
+    expect(loadMode(storage)).toBe('source')
 
-    saveBikeshedMode('write', storage)
+    saveMode('write', storage)
     expect(storage.data.get(BIKESHED_MODE_KEY)).toBe('write')
-    expect(loadBikeshedMode(storage)).toBe('write')
+    expect(loadMode(storage)).toBe('write')
   })
 
-  it('falls back to preview on nonsense', () => {
-    expect(loadBikeshedMode(fakeStorage({ [BIKESHED_MODE_KEY]: 'nonsense' }))).toBe('preview')
+  it('reads a stored preview or edit as Write', () => {
+    expect(loadMode(fakeStorage({ [BIKESHED_MODE_KEY]: 'preview' }))).toBe('write')
+    expect(loadMode(fakeStorage({ [BIKESHED_MODE_KEY]: 'edit' }))).toBe('write')
+  })
+
+  it('falls back to Write on nonsense', () => {
+    expect(loadMode(fakeStorage({ [BIKESHED_MODE_KEY]: 'nonsense' }))).toBe('write')
   })
 })
 
-describe('the setMode page global', () => {
-  it('builds the preview call the committed bundle reads', () => {
-    expect(editorMode('preview')).toEqual({
-      type: 'tandem-editor-call',
-      name: 'setMode',
-      args: ['preview'],
-    })
-    expect(editorMode('edit')).toEqual({
-      type: 'tandem-editor-call',
-      name: 'setMode',
-      args: ['edit'],
-    })
-    expect(editorMode('write')).toEqual({
-      type: 'tandem-editor-call',
-      name: 'setMode',
-      args: ['write'],
-    })
+describe('the switch intent', () => {
+  it('is blocked while a conflict is pending', () => {
+    expect(switchIntent({ dirty: false, saving: false, conflict: true })).toBe('blocked')
+    expect(switchIntent({ dirty: true, saving: true, conflict: true })).toBe('blocked')
+  })
+
+  it('waits while a save is in flight', () => {
+    expect(switchIntent({ dirty: false, saving: true, conflict: false })).toBe('wait')
+    expect(switchIntent({ dirty: true, saving: true, conflict: false })).toBe('wait')
+  })
+
+  it('flushes a dirty buffer first', () => {
+    expect(switchIntent({ dirty: true, saving: false, conflict: false })).toBe('flush')
+  })
+
+  it('switches a clean buffer without a write', () => {
+    expect(switchIntent({ dirty: false, saving: false, conflict: false })).toBe('switch')
+  })
+})
+
+describe('a switch after a flush', () => {
+  it('switches only when the save landed', () => {
+    expect(switchAfterFlush('saved')).toBe('switch')
+    expect(switchAfterFlush('conflict')).toBe('stay')
+    expect(switchAfterFlush('error')).toBe('stay')
   })
 })

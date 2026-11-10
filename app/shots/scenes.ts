@@ -33,7 +33,13 @@ export const SCENES: readonly Scene[] = [
     id: 'bikeshed',
     file: 'bikeshed-face.png',
     description:
-      'the **Bikeshed** face over the fixture home: two full-bleed columns, the parchment tree at a fixed 260 with its focus picker, reveal control and Health panel, and the paper document at a centred 740 whose sticky breadcrumb names the fixture project note and holds the mode control, the committed CodeMirror bundle editing that note in its own frame, and the document footer after it carrying the Backlinks row naming the Index note, the ticket the editor send filed, and the draft a killed save left named as a recovery',
+      'the **Bikeshed** face over the fixture home: two full-bleed columns, the parchment tree at a fixed 260 with its focus picker, reveal control and Health panel, and the paper document at a centred 740 whose sticky breadcrumb names the fixture project note and holds the Write|Source mode control with Write pressed, the block surface drawing that note, and the document footer after it carrying the Backlinks row naming the Index note and the draft a killed save left named as a recovery',
+  },
+  {
+    id: 'bikeshed-source',
+    file: 'bikeshed-source.png',
+    description:
+      'the **Bikeshed** face in Source mode over the fixture home: the fixture project note as its exact markdown in one monospace textarea on the paper and ink tokens, the sticky breadcrumb above it holding the Write|Source control with Source pressed, and the document footer after it',
   },
   {
     id: 'settings',
