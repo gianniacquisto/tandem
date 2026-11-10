@@ -47,7 +47,7 @@ describe('the shots home', () => {
   })
 
   it('threads the seed root through the fixture app path', () => {
-    expect(appPath('/seed')).toBe('/seed/app/Tandem.app')
+    expect(appPath('seed')).toBe(join('seed', 'app', 'Tandem.app'))
   })
 
   it('seeds a scratch copy so no run writes into the committed home', () => {
