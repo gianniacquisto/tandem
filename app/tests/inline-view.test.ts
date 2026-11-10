@@ -74,11 +74,14 @@ describe('the inline runs draw their elements', () => {
     expect(markup).toContain('$x^2$')
   })
 
-  it('draws inline math with KaTeX when the block is not being edited', () => {
+  it('paints inline math as its raw delimiters until the chunk arrives', () => {
+    // Static markup has no effects, which is the first-open gap UI-24 keeps:
+    // the note paints with the source and the chunk fills the typeset math in.
     const markup = draw('a $x^2$ b', { editing: false })
     expect(markup).toContain('run--math')
-    expect(markup).toContain('class="katex"')
-    expect(markup).not.toContain('$x^2$')
+    expect(markup).toContain('$x^2$')
+    expect(markup).not.toContain('class="katex"')
+    expect(markup).toContain('tandem-math-error')
   })
 
   it('renders the chip and run inside the Write surface', () => {

@@ -115,7 +115,9 @@ test('the Write surface draws the inline runs and its footer', async ({ app, win
   await expect(window.locator('.bikeshed__toolbar')).toBeVisible()
   await expect(blocks.locator('.run--wikilink .wikilink-chip')).toHaveText('Index')
   await expect(blocks.locator('.run--wikilink')).toHaveAttribute('data-target', 'Index')
-  await expect(blocks.locator('.block--math')).toContainText('x = 1')
+  // KaTeX's `output: "html"` drops the MathML annotation that used to carry
+  // the source's spaces, so the typeset span is the proof, not its text run.
+  await expect(blocks.locator('.block--math .katex')).toBeVisible()
 
   const footer = window.locator('.note-footer')
 

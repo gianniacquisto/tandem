@@ -2342,6 +2342,13 @@ body {
   color: var(--ink);
 }
 
+/* The raw delimiters, both before the chunk arrives and after a parse error or
+   a failed chunk. The editor's last-resort surface, reused: no new token. */
+.tandem-math-error {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--ink);
+}
+
 .block--math .block__math-rendered {
   padding: 8px 12px;
   border: var(--hairline) solid var(--line);
