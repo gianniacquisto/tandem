@@ -97,6 +97,8 @@ fn session(
         cost,
         model: model.map(str::to_string),
         skills: None,
+        turns: None,
+        calls: None,
     }
 }
 

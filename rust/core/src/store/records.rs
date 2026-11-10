@@ -29,15 +29,26 @@ const SESSION_COLUMNS: &str = "id, project, agent, brief, status, outcome, summa
 /// older home answers those columns NULL rather than an engine error. The
 /// fragments are literals; nothing here is a caller's string.
 pub(crate) fn session_rows(connection: &Connection) -> Result<Vec<SessionRow>> {
-    let sql = if super::schema::has_harness(connection)? {
+    let sql = if super::schema::has_turns(connection)? {
         format!(
-            "SELECT {SESSION_COLUMNS}, skills, harness_session_id, harness_transport \
-             FROM sessions ORDER BY rowid"
+            "SELECT {SESSION_COLUMNS}, skills, harness_session_id, harness_transport, \
+             turns, calls FROM sessions ORDER BY rowid"
+        )
+    } else if super::schema::has_harness(connection)? {
+        format!(
+            "SELECT {SESSION_COLUMNS}, skills, harness_session_id, harness_transport, \
+             NULL, NULL FROM sessions ORDER BY rowid"
         )
     } else if super::schema::has_skills(connection)? {
-        format!("SELECT {SESSION_COLUMNS}, skills, NULL, NULL FROM sessions ORDER BY rowid")
+        format!(
+            "SELECT {SESSION_COLUMNS}, skills, NULL, NULL, NULL, NULL \
+             FROM sessions ORDER BY rowid"
+        )
     } else {
-        format!("SELECT {SESSION_COLUMNS}, NULL, NULL, NULL FROM sessions ORDER BY rowid")
+        format!(
+            "SELECT {SESSION_COLUMNS}, NULL, NULL, NULL, NULL, NULL \
+             FROM sessions ORDER BY rowid"
+        )
     };
     let mut statement = connection
         .prepare(&sql)
@@ -66,6 +77,8 @@ pub(crate) fn session_rows(connection: &Connection) -> Result<Vec<SessionRow>> {
                 skills: row.get(18)?,
                 harness_session_id: row.get(19)?,
                 harness_transport: row.get(20)?,
+                turns: row.get(21)?,
+                calls: row.get(22)?,
             })
         })
         .map_err(|error| translate(error, connection))?;

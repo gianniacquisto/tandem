@@ -5,7 +5,7 @@
 use crate::domain::error::DomainError;
 use crate::domain::session::{
     Ending, HarnessSession, HarnessTransport, SessionOutcome, SessionStatus, Sessions, SkillCounts,
-    Stamp, parse_skills,
+    Stamp, parse_skills, usage_comment_body,
 };
 use crate::store::Actor;
 use crate::store::records::session_skills;
@@ -136,6 +136,8 @@ fn an_end_stamps_once_and_a_second_end_cannot_restate_it() {
                 cost: Some(0.5),
                 model: Some("deepseek-v4.1-flash"),
                 skills: Some(SkillCounts::from([("thinking".to_string(), 2)])),
+                turns: None,
+                calls: None,
                 at: Some(&at(60)),
             },
         )
@@ -315,6 +317,75 @@ fn a_read_of_a_v2_home_answers_its_records_with_no_skill_counts() {
         store.schema_version().unwrap(),
         Some(2),
         "the read migrated nothing"
+    );
+}
+
+#[test]
+fn a_read_of_a_v7_home_answers_its_records_with_no_counts() {
+    let sandbox = Sandbox::new("v7-home");
+    let store = sandbox.store();
+    std::fs::create_dir_all(store.home().directory()).expect("the home directory is creatable");
+    {
+        // A home the previous build wrote: the seam at v7, the session row
+        // without the turns and calls columns v8 adds.
+        let connection = rusqlite::Connection::open(store.database()).expect("the v7 file opens");
+        crate::store::schema::migrate_with(
+            &connection,
+            &crate::store::schema::MIGRATIONS[..7],
+            &Actor::Human,
+        )
+        .expect("a v7 home is the shape the previous build writes");
+        connection
+            .execute(
+                "INSERT INTO sessions
+                    (id, project, agent, brief, status, outcome, summary, started_at,
+                     ended_at, tokens_input, tokens_output, tokens_reasoning,
+                     tokens_cache_read, tokens_cache_write, seconds, cost, model,
+                     tickets, skills, harness_session_id, harness_transport, author)
+                 VALUES (?1, 'tandem', 'builder', 'A record the v7 build wrote.', 'ended',
+                         'succeeded', NULL, ?2, ?3, NULL, NULL, NULL, NULL, NULL,
+                         NULL, NULL, NULL, '[]', NULL, NULL, NULL, 'human')",
+                rusqlite::params!["ses_v7", at(0), at(5)],
+            )
+            .expect("the v7 row lands");
+    }
+
+    let sessions = Sessions::new(&store);
+    let listed = sessions
+        .list(None, None)
+        .expect("a read never writes (ADR 0031), and a v7 home still reads");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, "ses_v7");
+    assert_eq!(
+        listed[0].turns, None,
+        "the additive columns read NULL, not as an engine error"
+    );
+    assert_eq!(listed[0].calls, None);
+    assert_eq!(
+        store.schema_version().unwrap(),
+        Some(7),
+        "the read migrated nothing"
+    );
+
+    sessions
+        .start(
+            &sandbox.actor(),
+            "ses_new",
+            "tandem",
+            None,
+            "A new record.",
+            Some(&at(10)),
+        )
+        .expect("the first write migrates");
+    assert_eq!(
+        store.schema_version().unwrap(),
+        Some(crate::store::schema::CURRENT_VERSION),
+        "the write migrates to the current version"
+    );
+    assert_eq!(
+        sessions.show("ses_v7").unwrap().turns,
+        None,
+        "the old row still answers no counts after the migration"
     );
 }
 
@@ -513,6 +584,141 @@ fn the_skill_counts_are_a_column_a_record_written_before_it_reads_empty() {
     assert_eq!(
         sessions.show("ses_old").unwrap().skills,
         Some(SkillCounts::from([("opencode".to_string(), 1)]))
+    );
+}
+
+#[test]
+fn end_stamps_the_counts_and_a_second_end_cannot_restate_them() {
+    let sandbox = Sandbox::new("end-counts");
+    let actor = sandbox.actor();
+    let sessions = Sessions::new(&sandbox.store());
+    start(&sessions, &actor, "ses_1", "One.");
+
+    let stamp = sessions
+        .end(
+            &actor,
+            "ses_1",
+            Ending {
+                outcome: SessionOutcome::Succeeded,
+                turns: Some(7),
+                calls: Some(3),
+                at: Some(&at(60)),
+                ..Ending::default()
+            },
+        )
+        .expect("the first end stamps");
+    assert!(stamp.stamped);
+    assert_eq!(stamp.session.turns, Some(7));
+    assert_eq!(stamp.session.calls, Some(3));
+
+    let again = sessions
+        .end(
+            &actor,
+            "ses_1",
+            Ending {
+                outcome: SessionOutcome::Failed,
+                turns: Some(99),
+                calls: Some(99),
+                at: Some(&at(99)),
+                ..Ending::default()
+            },
+        )
+        .expect("a second end is a success that changed nothing");
+    assert!(!again.stamped);
+    assert_eq!(again.session.turns, Some(7), "the first stamp is the fact");
+    assert_eq!(again.session.calls, Some(3));
+}
+
+#[test]
+fn the_usage_comment_lists_the_counts_and_the_ratio() {
+    let sandbox = Sandbox::new("usage-comment");
+    let actor = sandbox.actor();
+    let sessions = Sessions::new(&sandbox.store());
+
+    // The pair with the ratio at two decimals.
+    start(&sessions, &actor, "ses_1", "One.");
+    let stamp = sessions
+        .end(
+            &actor,
+            "ses_1",
+            Ending {
+                outcome: SessionOutcome::Succeeded,
+                cost: Some(0.5),
+                turns: Some(2),
+                calls: Some(2),
+                at: Some(&at(60)),
+                ..Ending::default()
+            },
+        )
+        .unwrap();
+    let body = usage_comment_body(&stamp.session);
+    assert!(body.contains("cost $0.50"), "the cost stays: {body}");
+    assert!(body.contains("calls 2"), "the call count is named: {body}");
+    assert!(body.contains("turns 2"), "the turn count is named: {body}");
+    assert!(
+        body.contains("per turn 1.00"),
+        "the ratio is derived, two decimals: {body}"
+    );
+
+    // Zero calls is a real count, and the ratio is zero, not absent.
+    start(&sessions, &actor, "ses_2", "Two.");
+    let stamp = sessions
+        .end(
+            &actor,
+            "ses_2",
+            Ending {
+                outcome: SessionOutcome::Succeeded,
+                turns: Some(4),
+                calls: Some(0),
+                at: Some(&at(70)),
+                ..Ending::default()
+            },
+        )
+        .unwrap();
+    let body = usage_comment_body(&stamp.session);
+    assert!(body.contains("calls 0"), "a zero call count reads: {body}");
+    assert!(body.contains("per turn 0.00"), "zero calls is 0.00: {body}");
+
+    // Turns of zero omit the ratio: the arithmetic has no denominator.
+    start(&sessions, &actor, "ses_3", "Three.");
+    let stamp = sessions
+        .end(
+            &actor,
+            "ses_3",
+            Ending {
+                outcome: SessionOutcome::Succeeded,
+                turns: Some(0),
+                calls: Some(0),
+                at: Some(&at(80)),
+                ..Ending::default()
+            },
+        )
+        .unwrap();
+    let body = usage_comment_body(&stamp.session);
+    assert!(body.contains("turns 0"), "the turn count reads: {body}");
+    assert!(
+        !body.contains("per turn"),
+        "turns of zero has no ratio: {body}"
+    );
+
+    // No pair is no lines at all.
+    start(&sessions, &actor, "ses_4", "Four.");
+    let stamp = sessions
+        .end(
+            &actor,
+            "ses_4",
+            Ending {
+                outcome: SessionOutcome::Succeeded,
+                cost: Some(1.0),
+                at: Some(&at(90)),
+                ..Ending::default()
+            },
+        )
+        .unwrap();
+    let body = usage_comment_body(&stamp.session);
+    assert!(
+        !body.contains("calls ") && !body.contains("turns ") && !body.contains("per turn"),
+        "a record with no pair carries none of the three: {body}"
     );
 }
 

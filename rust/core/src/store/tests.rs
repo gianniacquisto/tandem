@@ -1141,9 +1141,13 @@ mod schema {
         assert_eq!(
             version(&connection).unwrap(),
             Some(CURRENT_VERSION),
-            "v7 is the current version"
+            "the current version"
         );
-        assert_eq!(CURRENT_VERSION, 7, "the build writes schema v7");
+        assert_eq!(
+            CURRENT_VERSION,
+            super::super::schema::TURNS_VERSION,
+            "the build writes the current schema"
+        );
         let mut projects: Vec<(String, i64)> = connection
             .prepare("SELECT name, position FROM projects ORDER BY position, rowid")
             .unwrap()
@@ -1353,7 +1357,7 @@ mod schema {
         setting(&sandbox.store(), &Actor::Human, "k", "v");
 
         let connection = sandbox.connection();
-        assert_eq!(version(&connection).unwrap(), Some(7));
+        assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
         let status: String = connection
             .query_row("SELECT status FROM tickets", [], |row| row.get(0))
             .unwrap();
@@ -1413,8 +1417,8 @@ mod schema {
             .expect("the first write migrates and lands the ticket");
         assert_eq!(
             version(&sandbox.connection()).unwrap(),
-            Some(7),
-            "the write takes the store to v7"
+            Some(CURRENT_VERSION),
+            "the write takes the store to the current version"
         );
     }
 
@@ -1778,6 +1782,8 @@ mod actor {
                     seconds: Some(1.5),
                     cost: Some(0.01),
                     skills: Some("{\"thinking\":2}"),
+                    turns: Some(4),
+                    calls: Some(9),
                 })?;
                 write.insert_sprint(NewSprint {
                     lane: "Port",

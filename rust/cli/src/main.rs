@@ -1505,6 +1505,8 @@ fn session(home: &Home, command: Option<&SessionCommand>) -> Result<(), Failure>
                 Some(raw) => parse_skills(raw).map_err(Failure::domain)?,
                 None => None,
             };
+            let mut turns = None;
+            let mut calls = None;
             if args.usage_from_harness {
                 let record = sessions.show(&id).map_err(Failure::domain)?;
                 let reported = harness_usage(&record, home, args.harness_url.as_deref())?;
@@ -1512,6 +1514,8 @@ fn session(home: &Home, command: Option<&SessionCommand>) -> Result<(), Failure>
                 cost = reported.cost.or(cost);
                 model = reported.model.or(model);
                 skills = reported.skills.or(skills);
+                turns = reported.turns.or(turns);
+                calls = reported.calls.or(calls);
             }
             let stamp = sessions
                 .end(
@@ -1524,6 +1528,8 @@ fn session(home: &Home, command: Option<&SessionCommand>) -> Result<(), Failure>
                         cost,
                         model: model.as_deref(),
                         skills,
+                        turns,
+                        calls,
                         at: None,
                     },
                 )
@@ -2124,57 +2130,13 @@ fn post_usage_comments(
     }
     let board = Board::new(store.clone());
     let author = session.agent.clone().unwrap_or_else(|| "usage".to_string());
-    let body = usage_comment_body(session);
+    let body = tandem_core::domain::session::usage_comment_body(session);
     for ticket in &session.tickets {
         board
             .append_comment(ticket, &author, &body)
             .map_err(Failure::domain)?;
     }
     Ok(())
-}
-
-/// `Usage` plus the session id and model, then one line per reported piece.
-fn usage_comment_body(session: &tandem_core::domain::session::Session) -> String {
-    let mut lines = Vec::new();
-    let mut header = format!("Usage \u{2014} {}", session.id);
-    if let Some(model) = &session.model {
-        header.push_str(" \u{00b7} ");
-        header.push_str(model);
-    }
-    lines.push(header);
-    let mut metric = |name: &str, value: Option<i64>| {
-        if let Some(value) = value {
-            lines.push(format!("{name} {}", grouped(value)));
-        }
-    };
-    if let Some(tokens) = &session.tokens {
-        metric("input", tokens.input);
-        metric("output", tokens.output);
-        metric("cache read", tokens.cache_read);
-        metric("cache write", tokens.cache_write);
-        metric("reasoning", tokens.reasoning);
-    }
-    if let Some(cost) = session.cost {
-        lines.push(format!("cost ${cost:.2}"));
-    }
-    lines.join("\n")
-}
-
-/// Thousands grouped with commas, en_US style, so a bare count reads.
-fn grouped(value: i64) -> String {
-    let text = value.to_string();
-    let (sign, digits) = match text.strip_prefix('-') {
-        Some(digits) => ("-", digits),
-        None => ("", text.as_str()),
-    };
-    let mut out = String::new();
-    for (index, character) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(character);
-    }
-    format!("{sign}{out}")
 }
 
 /// A sprint's mode: absent is `serial`.

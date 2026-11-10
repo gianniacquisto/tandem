@@ -247,6 +247,11 @@ pub struct Ending<'a> {
     pub model: Option<&'a str>,
     /// The skill counts the pass loaded (TAN-241).
     pub skills: Option<SkillCounts>,
+    /// The assistant turns the session ran (TAN-348). The pair is stamped
+    /// together or not at all: a record with no harness read carries neither.
+    pub turns: Option<i64>,
+    /// The tool calls those turns made (TAN-348).
+    pub calls: Option<i64>,
     /// The caller's own end time, whole seconds like the store's stamps;
     /// absent, it is now.
     pub at: Option<&'a str>,
@@ -308,6 +313,13 @@ pub struct Session {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skills: Option<SkillCounts>,
+    /// The assistant turns the record ran (TAN-348), absent when no harness
+    /// read counted them. Stamped with `calls` or not at all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turns: Option<i64>,
+    /// The tool calls those turns made (TAN-348), absent with `turns`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calls: Option<i64>,
 }
 
 impl Session {
@@ -315,7 +327,7 @@ impl Session {
     /// The model alone is usage too, so a reported model with no cost still
     /// counts as reported (TAN-208).
     pub fn carries_usage(&self) -> bool {
-        if self.cost.is_some() || self.model.is_some() {
+        if self.cost.is_some() || self.model.is_some() || self.turns.is_some() {
             return true;
         }
         self.tokens.as_ref().is_some_and(SessionTokens::reported)
@@ -359,6 +371,18 @@ impl Session {
             cache_read: row.tokens_cache_read,
             cache_write: row.tokens_cache_write,
         };
+        // The pair is stamped together or not at all. A row carrying one and
+        // not the other is corrupt, the way an unknown status word is.
+        let (turns, calls) = match (row.turns, row.calls) {
+            (Some(turns), Some(calls)) => (Some(turns), Some(calls)),
+            (None, None) => (None, None),
+            _ => {
+                return Err(StoreError::Io(format!(
+                    "a session row carries one of turns and calls without the other ({})",
+                    row.id
+                )));
+            }
+        };
         Ok(Self {
             id: row.id,
             // A transport word this build does not know is flattened to absence,
@@ -385,6 +409,8 @@ impl Session {
             cost: row.cost,
             model: row.model,
             skills,
+            turns,
+            calls,
         })
     }
 
@@ -522,6 +548,8 @@ impl Sessions {
                 cost: None,
                 model: None,
                 skills: None,
+                turns: None,
+                calls: None,
             };
             sessions.push(session.clone());
             Ok((session.clone(), Some(session), None))
@@ -544,6 +572,8 @@ impl Sessions {
             cost,
             model,
             skills,
+            turns,
+            calls,
             at,
         } = ending;
         let handle = self.handle(id)?;
@@ -555,6 +585,17 @@ impl Sessions {
             .map(str::trim)
             .filter(|name| !name.is_empty())
             .map(str::to_string);
+        // The pair is stamped together or not at all, so a caller cannot write
+        // the corrupt row the read refuses.
+        let (turns, calls) = match (turns, calls) {
+            (Some(turns), Some(calls)) => (Some(turns), Some(calls)),
+            (None, None) => (None, None),
+            _ => {
+                return Err(DomainError::Io(
+                    "the turn and call counts are stamped together or not at all".to_string(),
+                ));
+            }
+        };
         let ended_at = stamp(at)?;
         let ((value, stamped), note) = self.mutate(actor, |sessions| {
             let Some(index) = sessions.iter().position(|session| session.id == handle) else {
@@ -578,6 +619,8 @@ impl Sessions {
             record.cost = cost;
             record.model = model.clone();
             record.skills = skills.clone();
+            record.turns = turns;
+            record.calls = calls;
             record.status = SessionStatus::Ended;
             Ok(((record.clone(), true), Some(record.clone()), None))
         })?;
@@ -778,6 +821,8 @@ impl Sessions {
                     seconds: seconds(&record),
                     cost: record.cost,
                     skills: skills.as_deref(),
+                    turns: record.turns,
+                    calls: record.calls,
                 };
                 if write.session_exists(&record.id)? {
                     write.update_session(new)?;
@@ -794,6 +839,62 @@ impl Sessions {
         outcome?;
         result.ok_or_else(|| DomainError::Io("the write answered nothing".to_string()))
     }
+}
+
+/// The one `usage` comment a stamped session posts on every ticket it carried.
+///
+/// **One body for both doors.** The CLI and the RPC stamp the same record, so
+/// they post the same words: a header naming the session id and the model, then
+/// one line per reported piece. The counts ride after the cost line, and the
+/// ratio is derived here, never stored.
+pub fn usage_comment_body(session: &Session) -> String {
+    let mut lines = Vec::new();
+    let mut header = format!("Usage \u{2014} {}", session.id);
+    if let Some(model) = &session.model {
+        header.push_str(" \u{00b7} ");
+        header.push_str(model);
+    }
+    lines.push(header);
+    let mut metric = |name: &str, value: Option<i64>| {
+        if let Some(value) = value {
+            lines.push(format!("{name} {}", grouped(value)));
+        }
+    };
+    if let Some(tokens) = &session.tokens {
+        metric("input", tokens.input);
+        metric("output", tokens.output);
+        metric("cache read", tokens.cache_read);
+        metric("cache write", tokens.cache_write);
+        metric("reasoning", tokens.reasoning);
+    }
+    if let Some(cost) = session.cost {
+        lines.push(format!("cost ${cost:.2}"));
+    }
+    if let (Some(turns), Some(calls)) = (session.turns, session.calls) {
+        lines.push(format!("calls {}", grouped(calls)));
+        lines.push(format!("turns {}", grouped(turns)));
+        if turns > 0 {
+            lines.push(format!("per turn {:.2}", calls as f64 / turns as f64));
+        }
+    }
+    lines.join("\n")
+}
+
+/// Thousands grouped with commas, en_US style, so a bare count reads.
+fn grouped(value: i64) -> String {
+    let text = value.to_string();
+    let (sign, digits) = match text.strip_prefix('-') {
+        Some(digits) => ("-", digits),
+        None => ("", text.as_str()),
+    };
+    let mut out = String::new();
+    for (index, character) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(character);
+    }
+    format!("{sign}{out}")
 }
 
 /// The caller's stamp for a write, or now.
