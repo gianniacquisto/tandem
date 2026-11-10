@@ -2,13 +2,19 @@ import { describe, expect, it } from 'vitest'
 
 import { parseDocument, serialiseDocument, type Block } from '../renderer/src/shell/blocks'
 import {
+  applyCommand,
   applyShortcut,
   backspace,
+  BLOCK_COMMANDS,
   deleteForward,
   deleteSelection,
+  dropIndex,
   emptyHistory,
+  filterCommands,
   fromDocument,
+  insertBelow,
   insertText,
+  moveBlock,
   moveDown,
   moveLeft,
   moveRight,
@@ -16,6 +22,7 @@ import {
   paste,
   record,
   redo,
+  rowText,
   selectAll,
   selectedText,
   serialise,
@@ -321,5 +328,217 @@ describe('undo and redo', () => {
     history = record(history, typed, { merge: false })
     expect(history.past).toHaveLength(2)
     expect(serialise(undo(history, splitState).state)).toBe('abc')
+  })
+})
+
+describe('the slash menu commands', () => {
+  it("the command table is the model's editable kinds", () => {
+    expect(BLOCK_COMMANDS.map((command) => command.label)).toEqual([
+      'Text',
+      'Heading 1',
+      'Heading 2',
+      'Heading 3',
+      'Bulleted list',
+      'Numbered list',
+      'Task list',
+      'Quote',
+      'Code',
+      'Divider',
+    ])
+
+    // Each column is unique: two rows a human cannot tell apart are a bug.
+    for (const column of ['label', 'description', 'glyph'] as const) {
+      const values = BLOCK_COMMANDS.map((command) => command[column])
+      expect(new Set(values).size, column).toBe(values.length)
+    }
+    const keywords = BLOCK_COMMANDS.flatMap((command) => command.keywords)
+    expect(new Set(keywords).size).toBe(keywords.length)
+
+    // The targets are the model's editable kinds, in the reference's order.
+    expect(BLOCK_COMMANDS.map((command) => command.target.kind)).toEqual([
+      'paragraph',
+      'heading',
+      'heading',
+      'heading',
+      'list',
+      'list',
+      'task',
+      'quote',
+      'code',
+      'rule',
+    ])
+    const headings = BLOCK_COMMANDS.filter((command) => command.target.kind === 'heading')
+    expect(headings.map((command) => command.target.level)).toEqual([1, 2, 3])
+    const lists = BLOCK_COMMANDS.filter((command) => command.target.kind === 'list')
+    expect(lists.map((command) => command.target.ordered)).toEqual([false, true])
+
+    // No command for a kind the surface cannot author.
+    const kinds = new Set<string>(BLOCK_COMMANDS.map((command) => command.target.kind))
+    for (const kind of ['image', 'math', 'opaque']) expect(kinds.has(kind), kind).toBe(false)
+
+    // Every keyword the brief names is on the command it belongs to.
+    const keywordOf = (label: string): string[] =>
+      BLOCK_COMMANDS.find((command) => command.label === label)?.keywords ?? []
+    expect(keywordOf('Text')).toEqual(['p', 'paragraph', 'plain'])
+    expect(keywordOf('Heading 1')).toEqual(['h1', 'heading 1', 'title', '#'])
+    expect(keywordOf('Heading 2')).toEqual(['h2', 'heading 2', '##'])
+    expect(keywordOf('Heading 3')).toEqual(['h3', 'heading 3', '###'])
+    expect(keywordOf('Bulleted list')).toEqual(['ul', 'bullet', '-'])
+    expect(keywordOf('Numbered list')).toEqual(['ol', 'numbered', '1.'])
+    expect(keywordOf('Task list')).toEqual(['todo', 'task', 'checkbox', '[]'])
+    expect(keywordOf('Quote')).toEqual(['quote', '>'])
+    expect(keywordOf('Code')).toEqual(['code', 'fence', '```'])
+    expect(keywordOf('Divider')).toEqual(['divider', 'rule', 'hr', '---'])
+  })
+
+  it('the slash filter matches label and keywords', () => {
+    const ids = (query: string): string[] =>
+      filterCommands(query).map((command) => command.label)
+
+    expect(ids('')).toHaveLength(10)
+    expect(ids('   ')).toHaveLength(10)
+    expect(ids('H2')).toEqual(['Heading 2'])
+    expect(ids('heading 1')).toEqual(['Heading 1'])
+    expect(ids('title')).toEqual(['Heading 1'])
+    // A substring, as specified, not a token: `#` is inside `##` and `###`.
+    expect(ids('#')).toEqual(['Heading 1', 'Heading 2', 'Heading 3'])
+    // A substring, not a fuzzy score: `##` is inside `###` too.
+    expect(ids('##')).toEqual(['Heading 2', 'Heading 3'])
+    // A substring, not a fuzzy score: `ul` sits inside `rule` too.
+    expect(ids('ul')).toEqual(['Bulleted list', 'Divider'])
+    expect(ids('bullet')).toEqual(['Bulleted list'])
+    expect(ids('-')).toEqual(['Bulleted list', 'Divider'])
+    expect(ids('1.')).toEqual(['Numbered list'])
+    expect(ids('todo')).toEqual(['Task list'])
+    expect(ids('[]')).toEqual(['Task list'])
+    expect(ids('>')).toEqual(['Quote'])
+    expect(ids('```')).toEqual(['Code'])
+    expect(ids('---')).toEqual(['Divider'])
+    expect(ids('no such block')).toEqual([])
+  })
+
+  it("a type change keeps the block's text and runs", () => {
+    // The caret sits after the typed query, so the run source after it survives.
+    const start = caret(state('/quo **bold** and plain'), 0, 0, 5)
+    const quote = BLOCK_COMMANDS.find((command) => command.label === 'Quote')!
+    const changed = applyCommand(start, 0, quote)
+
+    expect(kinds(changed)).toEqual(['quote'])
+    expect(rowText(changed.blocks[0]!, 0)).toBe('**bold** and plain')
+    expect(changed.selection.head).toEqual({ block: 0, row: 0, offset: 0 })
+    expect(serialise(changed)).toBe('> **bold** and plain')
+    // The converted block is canonical; the old source does not round-trip through it.
+    expect(changed.blocks[0]!.edited).toBe(true)
+
+    const heading = BLOCK_COMMANDS.find((command) => command.label === 'Heading 2')!
+    const titled = applyCommand(caret(state('/h2 Title'), 0, 0, 4), 0, heading)
+    expect(titled.blocks[0]!.kind).toBe('heading')
+    expect(rowText(titled.blocks[0]!, 0)).toBe('Title')
+    expect(serialise(titled)).toBe('## Title')
+
+    const list = applyCommand(caret(state('/1. one'), 0, 0, 4), 0,
+      BLOCK_COMMANDS.find((command) => command.label === 'Numbered list')!)
+    expect(serialise(list)).toBe('1. one')
+
+    const task = applyCommand(caret(state('/todo call'), 0, 0, 6), 0,
+      BLOCK_COMMANDS.find((command) => command.label === 'Task list')!)
+    expect(serialise(task)).toBe('- [ ] call')
+
+    const code = applyCommand(caret(state('/code x = 1'), 0, 0, 6), 0,
+      BLOCK_COMMANDS.find((command) => command.label === 'Code')!)
+    expect(code.blocks[0]!.kind).toBe('code')
+    expect(serialise(code)).toBe('```\nx = 1\n```')
+  })
+
+  it('a divider conversion leaves somewhere to type', () => {
+    const divider = BLOCK_COMMANDS.find((command) => command.label === 'Divider')!
+    const last = applyCommand(caret(state('/hr'), 0, 0, 3), 0, divider)
+    expect(kinds(last)).toEqual(['rule', 'paragraph'])
+    expect(last.selection.head).toEqual({ block: 1, row: 0, offset: 0 })
+    expect(serialise(last)).toBe('---\n\n')
+
+    // With a block below, the divider takes the focus there instead of appending.
+    const next = applyCommand(caret(state('/hr\n\ntext'), 0, 0, 3), 0, divider)
+    expect(kinds(next)).toEqual(['rule', 'paragraph'])
+    expect(next.selection.head).toEqual({ block: 1, row: 0, offset: 0 })
+    expect(serialise(next)).toBe('---\n\ntext')
+  })
+
+  it('a two-item list refuses a type change and keeps its content', () => {
+    const list = state('- /\n- b')
+    expect(serialise(list)).toBe('- /\n- b')
+
+    const text = BLOCK_COMMANDS.find((command) => command.label === 'Text')!
+    expect(applyCommand(list, 0, text)).toBe(list)
+    expect(serialise(list)).toBe('- /\n- b')
+  })
+
+  it('a two-line quote refuses a type change and keeps its content', () => {
+    const quote = state('> /\n> b')
+    expect(serialise(quote)).toBe('> /\n> b')
+
+    const heading = BLOCK_COMMANDS.find((command) => command.label === 'Heading 1')!
+    expect(applyCommand(quote, 0, heading)).toBe(quote)
+    expect(serialise(quote)).toBe('> /\n> b')
+  })
+
+  it('the add-below inserts a paragraph after the block', () => {
+    const middle = insertBelow(state('one\n\ntwo'), 0)
+    expect(kinds(middle)).toEqual(['paragraph', 'paragraph', 'paragraph'])
+    expect(rowText(middle.blocks[1]!, 0)).toBe('')
+    expect(middle.selection.head).toEqual({ block: 1, row: 0, offset: 0 })
+    expect(serialise(middle)).toBe('one\n\n\n\ntwo')
+
+    // The empty note is already a paragraph, and the add-below still appends one.
+    const empty = state('')
+    expect(empty.blocks).toHaveLength(1)
+    const after = insertBelow(empty, 0)
+    expect(kinds(after)).toEqual(['paragraph', 'paragraph'])
+    expect(after.selection.head).toEqual({ block: 1, row: 0, offset: 0 })
+
+    // A list row is one top-level block: the plus adds a paragraph after the list.
+    const list = insertBelow(state('- a\n- b'), 0)
+    expect(kinds(list)).toEqual(['list', 'paragraph'])
+    expect(serialise(list)).toBe('- a\n- b\n\n')
+
+    expect(insertBelow(state('one'), 3)).toEqual(state('one'))
+  })
+
+  it("a move preserves every block's bytes", () => {
+    const start = state('a\n\nb\n\nc')
+    expect(start.blocks.map((block) => block.source)).toEqual(['a', 'b', 'c'])
+
+    const down = moveBlock(start, 0, 2)
+    expect(serialise(down)).toBe('b\n\nc\n\na')
+    expect(down.blocks.map((block) => block.source)).toEqual(['b', 'c', 'a'])
+    expect(down.blocks.map((block) => block.edited)).toEqual([false, false, false])
+    expect(parseDocument(serialise(down)).parts.filter((part) => part.type === 'block')).toHaveLength(3)
+
+    const up = moveBlock(start, 2, 0)
+    expect(serialise(up)).toBe('c\n\na\n\nb')
+    expect(up.blocks.map((block) => block.source)).toEqual(['c', 'a', 'b'])
+
+    expect(moveBlock(start, 1, 1)).toBe(start)
+    expect(moveBlock(start, 0, 0)).toBe(start)
+    expect(serialise(moveBlock(start, 2, 9))).toBe('a\n\nb\n\nc')
+    expect(serialise(moveBlock(start, 0, -1))).toBe('a\n\nb\n\nc')
+
+    // The caret rides the moved block, so the keyboard move keeps typing there.
+    const moved = moveBlock(caret(state('one\n\ntwo\n\nthree'), 0, 0, 2), 0, 1)
+    expect(serialise(moved)).toBe('two\n\none\n\nthree')
+    expect(moved.selection.head).toEqual({ block: 1, row: 0, offset: 2 })
+  })
+
+  it('the drop maps a target block and a half onto a final index', () => {
+    // Dropping on the top half lands before the target, the bottom half after it.
+    expect(dropIndex(0, 1, false)).toBe(0)
+    expect(dropIndex(0, 1, true)).toBe(1)
+    expect(dropIndex(2, 1, false)).toBe(1)
+    expect(dropIndex(2, 1, true)).toBe(2)
+    expect(dropIndex(0, 2, false)).toBe(1)
+    expect(dropIndex(0, 2, true)).toBe(2)
+    // A drop on the source is a no-op, whichever half.
+    expect(dropIndex(1, 1, false)).toBe(1)
+    expect(dropIndex(1, 1, true)).toBe(1)
   })
 })

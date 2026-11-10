@@ -787,6 +787,323 @@ test('the code language field keeps focus and its keys out of the note', async (
   )
 })
 
+/**
+ * The `/` menu over the real app: a `/` in an empty text block opens the
+ * listbox, typing filters it, the arrows and Home/End move the selection, Enter
+ * and Tab apply it, Escape closes it and leaves the typed query, and an empty
+ * result keeps the menu open on its no-match row.
+ */
+test('the slash menu opens, filters and applies', async ({ window }) => {
+  await openWrite(window, 'write-slash.md', '')
+  const blocks = window.locator('.blocks')
+  const menu = window.locator('.block__menu')
+
+  await expect(window.locator('.block__placeholder')).toHaveText("Type '/' for commands")
+  await blocks.locator('.block--paragraph .block__text').first().click()
+  await window.keyboard.type('/')
+
+  await expect(menu).toBeVisible()
+  await expect(menu).toHaveAttribute('role', 'listbox')
+  await expect(menu.locator('.block__menu-head')).toHaveText('Blocks')
+  await expect(menu.locator('.block__menu-label')).toHaveText([
+    'Text',
+    'Heading 1',
+    'Heading 2',
+    'Heading 3',
+    'Bulleted list',
+    'Numbered list',
+    'Task list',
+    'Quote',
+    'Code',
+    'Divider',
+  ])
+  // The block keeps focus and names the menu and its selected row.
+  await expect(blocks).toBeFocused()
+  await expect(blocks).toHaveAttribute('aria-controls', 'block-command-menu')
+  await expect(blocks).toHaveAttribute('aria-activedescendant', 'block-command-menu-0')
+
+  await window.keyboard.type('heading')
+  await expect(menu.locator('.block__menu-label')).toHaveText([
+    'Heading 1',
+    'Heading 2',
+    'Heading 3',
+  ])
+  // Spaces are part of a query: the filter is a substring over label and keywords.
+  await window.keyboard.type(' 2')
+  await expect(menu.locator('.block__menu-label')).toHaveText(['Heading 2'])
+
+  // Tab applies the selected row: a Heading 2 that still holds the caret.
+  await window.keyboard.press('Tab')
+  await expect(menu).toHaveCount(0)
+  await expect(window.locator('.block--heading')).toHaveAttribute('data-level', '2')
+  await expect(blocks).toBeFocused()
+  await window.keyboard.type('Title')
+  await expect.poll(() => writeText('write-slash.md'), { timeout: 8000 }).toBe('## Title')
+
+  // A no-match query keeps the menu open on its row; Escape is the way out.
+  await window.keyboard.press('Enter')
+  await window.keyboard.type('/zzz')
+  await expect(menu).toBeVisible()
+  await expect(menu.locator('.block__menu-empty')).toHaveText('No blocks match')
+  await expect(menu.locator('[role="option"]')).toHaveCount(0)
+
+  await window.keyboard.press('Escape')
+  await expect(menu).toHaveCount(0)
+  await window.keyboard.type('kept')
+  await expect(menu).toHaveCount(0)
+  await expect(window.locator('.block--paragraph').last()).toContainText('/zzzkept')
+
+  // Backspace back to the bare `/` reopens the menu; the keys navigate it.
+  for (let i = 0; i < 7; i++) await window.keyboard.press('Backspace')
+  await expect(menu).toBeVisible()
+  await window.keyboard.press('ArrowDown')
+  await expect(blocks).toHaveAttribute('aria-activedescendant', 'block-command-menu-1')
+  await expect(menu.locator('.block__menu-row--active .block__menu-label')).toHaveText(
+    'Heading 1',
+  )
+  await window.keyboard.press('End')
+  await expect(menu.locator('.block__menu-row--active .block__menu-label')).toHaveText('Divider')
+  await window.keyboard.press('Home')
+  await expect(menu.locator('.block__menu-row--active .block__menu-label')).toHaveText('Text')
+  await window.keyboard.press('ArrowUp')
+  await expect(menu.locator('.block__menu-row--active .block__menu-label')).toHaveText('Divider')
+
+  // Enter applies: a divider that leaves an editable block after it.
+  await window.keyboard.press('Enter')
+  await expect(menu).toHaveCount(0)
+  await expect(window.locator('.block--rule')).toHaveCount(1)
+  await expect(blocks).toBeFocused()
+  await window.keyboard.type('after')
+  await expect.poll(() => writeText('write-slash.md'), { timeout: 8000 }).toBe(
+    '## Title\n---\n\nafter',
+  )
+})
+
+test('the slash menu stays out of non-text blocks', async ({ window }) => {
+  const content = 'a paragraph\n\n```\ncode\n```\n\n| a | b |\n| - | - |'
+  await openWrite(window, 'write-slash-literal.md', content)
+  const menu = window.locator('.block__menu')
+
+  // A non-empty paragraph keeps a `/` literal: the menu needs an empty block.
+  await window.locator('.block--paragraph .block__text').first().click()
+  await caretAt(window, 0, 'end')
+  await window.keyboard.type('/')
+  await expect(menu).toHaveCount(0)
+  await expect(window.locator('.block--paragraph').first()).toContainText('a paragraph/')
+
+  // A code block takes a literal `/` too.
+  await window.locator('.block--code .block__text').click()
+  await caretAt(window, 1, 'start')
+  await window.keyboard.type('/')
+  await expect(menu).toHaveCount(0)
+  await expect(window.locator('.block--code .block__text')).toContainText('/code')
+
+  // The read-only source card has no caret and no menu.
+  await window.locator('.block--opaque').click()
+  await expect(menu).toHaveCount(0)
+
+  await expect.poll(() => writeText('write-slash-literal.md'), { timeout: 8000 }).toBe(
+    'a paragraph/\n\n```\n/code\n```\n\n| a | b |\n| - | - |',
+  )
+
+  // A block with more than one row has no single query: the menu stays out, so
+  // a two-item list cannot lose its second item to a conversion.
+  await openWrite(window, 'write-slash-list.md', '- x\n- b')
+  await window.locator('.block--list .block__text').first().click()
+  await caretAt(window, 0, 'end')
+  await window.keyboard.press('Backspace')
+  await window.keyboard.type('/')
+  await expect(menu).toHaveCount(0)
+  await expect.poll(() => writeText('write-slash-list.md'), { timeout: 8000 }).toBe('- /\n- b')
+})
+
+test('the add-below handle adds and focuses a paragraph', async ({ window }) => {
+  await openWrite(window, 'write-add-below.md', 'one\n\n- a\n- b')
+  const shells = window.locator('.block-shell')
+  const first = shells.first()
+
+  await first.hover()
+  await expect(first.locator('.block__handles')).toHaveCSS('opacity', '1')
+  await first.getByRole('button', { name: 'Add a block below' }).click()
+
+  await expect(window.locator('.block--paragraph')).toHaveCount(2)
+  await expect(window.locator('.blocks')).toBeFocused()
+  await window.keyboard.type('two')
+  await expect.poll(() => writeText('write-add-below.md'), { timeout: 8000 }).toBe(
+    'one\n\ntwo\n\n- a\n- b',
+  )
+
+  // The handles also show on focus alone, on the block that holds the caret.
+  await window.mouse.move(2, 2)
+  await window.locator('.block--list .block__text').first().click()
+  await expect(shells.nth(2).locator('.block__handles')).toHaveCSS('opacity', '1')
+  await expect(shells.nth(0).locator('.block__handles')).toHaveCSS('opacity', '0')
+
+  // A read-only card takes an add-below: the plus is the way past a card.
+  await openWrite(window, 'write-add-card.md', '| a | b |\n| - | - |\n\ntail')
+  const card = shells.first()
+  await expect(card.locator('.block--opaque')).toBeVisible()
+  await card.hover()
+  await card.getByRole('button', { name: 'Add a block below' }).click()
+  await window.keyboard.type('inserted')
+  await expect.poll(() => writeText('write-add-card.md'), { timeout: 8000 }).toBe(
+    '| a | b |\n| - | - |\n\ninserted\n\ntail',
+  )
+
+  // A last-block divider conversion leaves somewhere to type.
+  await openWrite(window, 'write-divider.md', '')
+  await window.locator('.block--paragraph .block__text').first().click()
+  await window.keyboard.type('/divider')
+  await window.keyboard.press('Enter')
+  await expect(window.locator('.block--rule')).toHaveCount(1)
+  await expect(window.locator('.blocks')).toBeFocused()
+  await window.keyboard.type('after')
+  await expect.poll(() => writeText('write-divider.md'), { timeout: 8000 }).toBe(
+    '---\n\nafter',
+  )
+})
+
+test('the drag and the keyboard move reorder a block', async ({ window }) => {
+  await openWrite(window, 'write-drag.md', 'a\n\nb\n\nc')
+  const shells = window.locator('.block-shell')
+  await expect(shells).toHaveCount(3)
+
+  // The keyboard path moves the focused block one position and keeps it focused.
+  await window.locator('.block--paragraph .block__text').first().click()
+  await caretAt(window, 0, 'start')
+  await window.keyboard.press(`${modKey}+Shift+ArrowDown`)
+  await expect(window.locator('.blocks')).toBeFocused()
+  await expect.poll(() => writeText('write-drag.md'), { timeout: 8000 }).toBe('b\n\na\n\nc')
+
+  const grip = shells
+    .first()
+    .getByRole('button', { name: 'Drag to reorder; Mod+Shift+Arrow moves it' })
+
+  await shells.first().hover()
+  const from = await grip.boundingBox()
+  const to = await shells.nth(2).boundingBox()
+  expect(from).not.toBeNull()
+  expect(to).not.toBeNull()
+
+  await window.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2)
+  await window.mouse.down()
+  await window.mouse.move(to!.x + 20, to!.y + to!.height - 3, { steps: 8 })
+
+  // The source dims and a 2px accent line marks the target's bottom edge.
+  const drop = window.locator('.block-shell--drop-below .block__drop')
+  await expect(drop).toBeVisible()
+  await expect(drop).toHaveCSS('height', '2px')
+  await expect(drop).toHaveCSS('background-color', token('accent'))
+  await expect(shells.first()).toHaveClass(/block-shell--dragging/)
+
+  await window.mouse.up()
+  await expect(window.locator('.block__drop')).toHaveCount(0)
+  await expect.poll(() => writeText('write-drag.md'), { timeout: 8000 }).toBe('a\n\nc\n\nb')
+
+  // A drop on the source is a no-op.
+  const before = writeText('write-drag.md')
+  const self = shells.first()
+  const selfBox = await self.boundingBox()
+  const selfGrip = await self
+    .getByRole('button', { name: 'Drag to reorder; Mod+Shift+Arrow moves it' })
+    .boundingBox()
+  await window.mouse.move(selfGrip!.x + 8, selfGrip!.y + 8)
+  await window.mouse.down()
+  await window.mouse.move(selfBox!.x + 20, selfBox!.y + 4, { steps: 6 })
+  await window.mouse.up()
+  await window.waitForTimeout(400)
+  expect(writeText('write-drag.md')).toBe(before)
+})
+
+test('the handles are absent outside Write', async ({ window }) => {
+  await openWrite(window, 'write-hands.md', 'one\n\ntwo')
+  await expect(window.locator('.block__handles')).toHaveCount(2)
+  await expect(window.locator('.block__menu')).toHaveCount(0)
+
+  // Source is the exact bytes in a textarea: no blocks, no gutter, no menu.
+  await window.locator('.editor__mode-button', { hasText: 'Source' }).click()
+  await expect(window.locator('.blocks')).toHaveCount(0)
+  await expect(window.locator('.block__handles')).toHaveCount(0)
+  await expect(window.locator('.block__menu')).toHaveCount(0)
+  await window.locator('.editor__mode-button', { hasText: 'Write' }).click()
+  await expect(window.locator('.blocks')).toBeVisible()
+
+  // A read-only card in Write keeps both handles, and its grip drags the block.
+  await openWrite(window, 'write-card-drag.md', '| a | b |\n| - | - |\n\ntail')
+  const card = window.locator('.block-shell').first()
+  await expect(card.locator('.block--opaque')).toBeVisible()
+  await expect(card.locator('.block__handles')).toHaveCount(1)
+  await expect(
+    card.getByRole('button', { name: 'Add a block below' }),
+  ).toBeVisible()
+
+  const grip = await card
+    .getByRole('button', { name: 'Drag to reorder; Mod+Shift+Arrow moves it' })
+    .boundingBox()
+  const tail = await window.locator('.block-shell').nth(1).boundingBox()
+  await window.mouse.move(grip!.x + 8, grip!.y + 8)
+  await window.mouse.down()
+  await window.mouse.move(tail!.x + 20, tail!.y + tail!.height - 3, { steps: 8 })
+  await window.mouse.up()
+  await expect.poll(() => writeText('write-card-drag.md'), { timeout: 8000 }).toBe(
+    'tail\n\n| a | b |\n| - | - |',
+  )
+})
+
+/**
+ * The menu and the drop line are the app's own surfaces: paper, line, shadow
+ * and the card radius, the selected row on parchment, the glyph dim, and the
+ * same in night. Neither reflows the text column, and a block at the window's
+ * floor opens its menu upward.
+ */
+test('the menu and indicator use the tokens', async ({ window }) => {
+  await openWrite(window, 'write-tokens.md', 'a\n\nb')
+  const blocks = window.locator('.blocks')
+  await window.locator('.block--paragraph .block__text').nth(1).click()
+  await caretAt(window, 1, 'end')
+  await window.keyboard.press('Enter')
+
+  const textX = (await window.locator('.block--paragraph .block__text').last().boundingBox())?.x
+  await window.keyboard.type('/')
+  const menu = window.locator('.block__menu')
+  await expect(menu).toBeVisible()
+
+  await expect(menu).toHaveCSS('background-color', token('paper'))
+  await expect(menu).toHaveCSS('border-top-color', token('line'))
+  await expect(menu).toHaveCSS('border-top-left-radius', token('radius-card'))
+  const active = menu.locator('.block__menu-row--active')
+  await expect(active).toHaveCSS('background-color', token('parchment'))
+  await expect(active.locator('.block__menu-glyph')).toHaveCSS('color', token('ink-dim'))
+
+  // The menu hangs off the block: the text column does not move for it.
+  expect((await window.locator('.block--paragraph .block__text').last().boundingBox())?.x).toBe(
+    textX,
+  )
+
+  await window.emulateMedia({ colorScheme: 'dark' })
+  await expect(menu).toHaveCSS('background-color', token('paper', 'night'))
+  await expect(active).toHaveCSS('background-color', token('parchment', 'night'))
+  await window.emulateMedia({ colorScheme: 'light' })
+  await expect(menu).toHaveCSS('background-color', token('paper'))
+
+  // A block at the bottom of the window opens its menu upward.
+  const lines = Array.from({ length: 40 }, (_, index) => `line ${index}`).join('\n\n')
+  await openWrite(window, 'write-flip.md', lines)
+  await window.locator('.bikeshed__document').evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await window.locator('.block--paragraph .block__text').last().click()
+  await caretAt(window, 39, 'end')
+  await window.keyboard.press('Enter')
+  await window.keyboard.type('/')
+
+  const flipped = window.locator('.block__menu--above')
+  await expect(flipped).toBeVisible()
+  const menuBox = await flipped.boundingBox()
+  const blockBox = await window.locator('.block-shell').last().boundingBox()
+  expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(blockBox!.y + 2)
+})
+
 /** A 1x1 PNG: the bytes prove the protocol served a file, not a placeholder. */
 const DOT_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z2S8AAAAASUVORK5CYII=',
