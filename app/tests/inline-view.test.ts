@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { BikeshedBlocks } from '../renderer/src/faces/BikeshedBlocks'
 import { InlineRuns, WikilinkPicker } from '../renderer/src/faces/InlineRuns'
 import { parseDocument } from '../renderer/src/shell/blocks'
+import { parseInline, serialiseInline } from '../renderer/src/shell/inline'
 
 const notes = ['Index.md', 'daily/Index.md', 'projects/fixture/fixture.md']
 
@@ -103,11 +104,35 @@ describe('the drawing keeps the row source', () => {
     'a ``code`` b',
     'a _x_ and [[Index]] b',
     'Use snake_case and **bold** here',
+    '**a [[Index]] b**',
+    '*a [[Index]] b*',
+    '**a $x$ b**',
     '[[Index|Alias]] and [Notes](folder/Notes.md) and $x$',
   ]
 
   it('draws the row so its textContent is exactly the source', () => {
     for (const source of sources) expect(textContent(draw(source)), source).toBe(source)
+  })
+
+  it('keeps a span open across a wikilink or math atom', () => {
+    for (const source of ['**a [[Index]] b**', '*a [[Index]] b*', '**a $x$ b**']) {
+      expect(serialiseInline(parseInline(source)), source).toBe(source)
+    }
+
+    const boldChip = draw('**a [[Index]] b**')
+    expect(boldChip).toContain('<strong>')
+    expect(boldChip).toContain('run--wikilink')
+    expect(textContent(boldChip)).toBe('**a [[Index]] b**')
+
+    const italicChip = draw('*a [[Index]] b*')
+    expect(italicChip).toContain('<em>')
+    expect(italicChip).toContain('run--wikilink')
+    expect(textContent(italicChip)).toBe('*a [[Index]] b*')
+
+    const boldMath = draw('**a $x$ b**')
+    expect(boldMath).toContain('<strong>')
+    expect(boldMath).toContain('run--math')
+    expect(textContent(boldMath)).toBe('**a $x$ b**')
   })
 
   it('keeps the element for the three gate reproductions', () => {
