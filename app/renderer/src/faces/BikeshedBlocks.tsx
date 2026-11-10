@@ -310,6 +310,9 @@ export function BikeshedBlocks({
     const head = value.selection.head
     const surface = value.blocks[head.block]
     if (surface === undefined || !isTextSurface(surface)) return null
+    // Only a block whose whole content is the `/query` opens the menu: a list,
+    // task list or quote with several rows has no single query to filter.
+    if (rowCount(surface) !== 1) return null
     const text = rowText(surface, head.row)
     if (!text.startsWith('/')) return null
     return { block: head.block, row: head.row, query: text.slice(1) }

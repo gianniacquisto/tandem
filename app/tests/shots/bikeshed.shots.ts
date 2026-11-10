@@ -871,6 +871,16 @@ test('the slash menu stays out of non-text blocks', async ({ window }) => {
   await expect.poll(() => writeText('write-slash-literal.md'), { timeout: 8000 }).toBe(
     'a paragraph/\n\n```\n/code\n```\n\n| a | b |\n| - | - |',
   )
+
+  // A block with more than one row has no single query: the menu stays out, so
+  // a two-item list cannot lose its second item to a conversion.
+  await openWrite(window, 'write-slash-list.md', '- x\n- b')
+  await window.locator('.block--list .block__text').first().click()
+  await caretAt(window, 0, 'end')
+  await window.keyboard.press('Backspace')
+  await window.keyboard.type('/')
+  await expect(menu).toHaveCount(0)
+  await expect.poll(() => writeText('write-slash-list.md'), { timeout: 8000 }).toBe('- /\n- b')
 })
 
 test('the add-below handle adds and focuses a paragraph', async ({ window }) => {

@@ -1400,6 +1400,10 @@ export function applyCommand(
 ): EditorState {
   const surface = state.blocks[block]
   if (surface === undefined || !isText(surface)) return state
+  // A command converts the whole block, so it reaches only a block whose whole
+  // content is the `/query`: one row. The second row of a list, a task list or
+  // a quote has no place in the target kind, so converting would drop it.
+  if (rowCount(surface) !== 1) return state
 
   const head = state.selection.head
   const row = head.block === block ? Math.min(head.row, rowCount(surface) - 1) : 0

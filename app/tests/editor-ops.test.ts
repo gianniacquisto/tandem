@@ -464,6 +464,24 @@ describe('the slash menu commands', () => {
     expect(serialise(next)).toBe('---\n\ntext')
   })
 
+  it('a two-item list refuses a type change and keeps its content', () => {
+    const list = state('- /\n- b')
+    expect(serialise(list)).toBe('- /\n- b')
+
+    const text = BLOCK_COMMANDS.find((command) => command.label === 'Text')!
+    expect(applyCommand(list, 0, text)).toBe(list)
+    expect(serialise(list)).toBe('- /\n- b')
+  })
+
+  it('a two-line quote refuses a type change and keeps its content', () => {
+    const quote = state('> /\n> b')
+    expect(serialise(quote)).toBe('> /\n> b')
+
+    const heading = BLOCK_COMMANDS.find((command) => command.label === 'Heading 1')!
+    expect(applyCommand(quote, 0, heading)).toBe(quote)
+    expect(serialise(quote)).toBe('> /\n> b')
+  })
+
   it('the add-below inserts a paragraph after the block', () => {
     const middle = insertBelow(state('one\n\ntwo'), 0)
     expect(kinds(middle)).toEqual(['paragraph', 'paragraph', 'paragraph'])
