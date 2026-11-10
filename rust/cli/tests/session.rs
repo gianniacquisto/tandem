@@ -115,29 +115,54 @@ struct Stub {
 
 impl Stub {
     fn start(password: &str, session: &str, messages: &str) -> (Self, thread::JoinHandle<()>) {
-        Self::start_hits("ses_events", password, session, messages, 2)
+        Self::start_hits(
+            "ses_events",
+            password,
+            vec![session.to_string()],
+            messages,
+            2,
+        )
     }
 
     fn start_one(password: &str, session: &str, messages: &str) -> (Self, thread::JoinHandle<()>) {
-        Self::start_hits("ses_events", password, session, messages, 1)
+        Self::start_hits(
+            "ses_events",
+            password,
+            vec![session.to_string()],
+            messages,
+            1,
+        )
+    }
+
+    /// A stub whose harness session grows between passes: each `session end`
+    /// reads the next snapshot, in order, as one harness session's cumulative
+    /// total does.
+    fn start_snapshots(
+        expected_id: &str,
+        password: &str,
+        snapshots: Vec<String>,
+        messages: &str,
+    ) -> (Self, thread::JoinHandle<()>) {
+        let hits = snapshots.len() * 2; // one session read and one message page per end
+        Self::start_hits(expected_id, password, snapshots, messages, hits)
     }
 
     fn start_hits(
         expected_id: &str,
         password: &str,
-        session: &str,
+        sessions: Vec<String>,
         messages: &str,
         hits: usize,
     ) -> (Self, thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("the stub binds loopback");
         let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
         let expected = format!("Basic {}", basic(password));
-        let session = session.to_string();
         let messages = messages.to_string();
         let wanted = expected_id.to_string();
         let password_check = password.to_string();
         let base_clone = base.clone();
         let handle = thread::spawn(move || {
+            let mut session_read = 0usize;
             for stream in listener.incoming().take(hits) {
                 let mut stream = stream.expect("a harness connection arrives");
                 let mut reader = BufReader::new(stream.try_clone().expect("the stub clones"));
@@ -196,7 +221,9 @@ impl Stub {
                     }
                 } else if path.contains("/api/session/") {
                     if path.contains(wanted.as_str()) {
-                        (200, session.clone())
+                        let body = sessions.get(session_read).cloned().unwrap_or_default();
+                        session_read += 1;
+                        (200, body)
                     } else {
                         (
                             404,
@@ -351,7 +378,7 @@ fn an_explicit_url_wins_over_the_environment_and_the_rendezvous() {
     let (decoy, decoy_handle) = Stub::start_hits(
         "ses_events",
         "harness-secret",
-        &session_body(),
+        vec![session_body()],
         &messages_body(),
         0,
     );
@@ -420,7 +447,7 @@ fn the_environment_url_wins_over_the_rendezvous_file() {
     let (decoy, decoy_handle) = Stub::start_hits(
         "ses_events",
         "harness-secret",
-        &session_body(),
+        vec![session_body()],
         &messages_body(),
         0,
     );
@@ -1037,4 +1064,96 @@ fn ending_with_usage_from_harness_without_a_pointer_names_the_failure() {
         "the failure names the missing pointer: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+/// A re-dispatched pass opens its own record under the same harness pointer
+/// (ADR 0027), so two records share one harness session's cumulative total. The
+/// second pass's `usage` comment states its own share, and the record keeps the
+/// snapshot the harness answered.
+#[test]
+fn a_second_pass_in_one_harness_session_posts_its_own_share() {
+    let sandbox = Sandbox::new("shared-harness-share");
+    let snapshots = vec![
+        r#"{"data":{"id":"ses_harness","tokens":{"input":1500},"cost":0.5,"model":{"id":"deepseek-v4.1-flash"}}}"#.to_string(),
+        r#"{"data":{"id":"ses_harness","tokens":{"input":2000},"cost":1.0,"model":{"id":"deepseek-v4.1-flash"}}}"#.to_string(),
+    ];
+    let (stub, handle) =
+        Stub::start_snapshots("ses_harness", "harness-secret", snapshots, &messages_body());
+
+    let first = sandbox.json(&["ticket", "add", "--title", "The first pass's ticket"]);
+    let second = sandbox.json(&["ticket", "add", "--title", "The second pass's ticket"]);
+    let first_ticket = first["id"].as_str().expect("the first ticket's id");
+    let second_ticket = second["id"].as_str().expect("the second ticket's id");
+
+    for (record, ticket) in [("ses_pass_1", first_ticket), ("ses_pass_2", second_ticket)] {
+        sandbox.json(&[
+            "session",
+            "start",
+            "--session",
+            record,
+            "--harness-session",
+            "ses_harness",
+            "--harness-transport",
+            "event-stream",
+            "--project",
+            "tandem",
+            "--agent",
+            "builder",
+            "--brief",
+            "A pass.",
+        ]);
+        sandbox.json(&["session", "link", "--session", record, "--ticket", ticket]);
+    }
+
+    let end = |record: &str| -> Value {
+        let output = sandbox.run_with_env(
+            &[
+                "session",
+                "end",
+                "--session",
+                record,
+                "--outcome",
+                "succeeded",
+                "--summary",
+                "What landed.",
+                "--usage-from-harness",
+                "--harness-url",
+                &stub.base,
+            ],
+            None,
+            &[("TANDEM_HARNESS_PASSWORD", "harness-secret")],
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "end reads the loopback: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).expect("the verb answers JSON")
+    };
+
+    let first_end = end("ses_pass_1");
+    assert_eq!(first_end["tokens"]["input"], 1500, "the first snapshot");
+    let second_end = end("ses_pass_2");
+    assert_eq!(
+        second_end["tokens"]["input"], 2000,
+        "the record keeps the snapshot it stamped"
+    );
+
+    let comments = sandbox.json(&["ticket", "comment", "list", "--id", second_ticket]);
+    let body = comments["comments"][0]["body"]
+        .as_str()
+        .expect("the second ticket carries one usage comment");
+    assert!(
+        body.contains("input 500"),
+        "the second pass's share, not its 2,000 snapshot: {body}"
+    );
+    assert!(!body.contains("input 2,000"), "not the snapshot: {body}");
+
+    let shown = sandbox.json(&["session", "show", "--session", "ses_pass_2"]);
+    assert_eq!(
+        shown["tokens"]["input"], 2000,
+        "show still answers the harness's snapshot"
+    );
+    handle.join().expect("the stub ends");
 }
