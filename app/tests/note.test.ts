@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest'
 import type { Call } from '../src/shared/bridge'
 import { documentBlocks, editBlock, parseDocument } from '../renderer/src/shell/blocks'
 import {
-  applyDirty,
   arrival,
   conflictStillApplies,
   defaultCreateFolder,
@@ -216,25 +215,6 @@ describe('a stale save completing after Take theirs', () => {
 
     expect(conflictStillApplies(other, saved)).toBe(false)
     expect(conflictStillApplies(null, saved)).toBe(false)
-  })
-})
-
-describe('an editor message that changes nothing', () => {
-  it('leaves a clean buffer clean when the text is identical', () => {
-    const clean: NoteBuffer = { ...buffer, dirty: false }
-
-    expect(applyDirty(clean, clean.text)).toBe(clean)
-  })
-
-  it('keeps the baseline when new typing dirties the buffer', () => {
-    const clean: NoteBuffer = { ...buffer, dirty: false, baseline: 'aaaa', text: 'old' }
-
-    expect(applyDirty(clean, 'old plus typing')).toEqual({
-      ...clean,
-      text: 'old plus typing',
-      dirty: true,
-      document: parseDocument('old plus typing'),
-    })
   })
 })
 

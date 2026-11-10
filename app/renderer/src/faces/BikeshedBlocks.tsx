@@ -12,13 +12,13 @@ import {
 } from 'react'
 
 import { serialiseDocument, type Document } from '../shell/blocks'
-import type { BlockPoint } from '../shell/caret'
 import { assetUrl, resolveImageTarget } from '../shell/image'
 import {
   applyCommand,
   applyShortcut,
   backspace,
   candidateText,
+  commitBlockSource,
   deleteForward,
   deleteSelection,
   dropIndex,
@@ -32,14 +32,12 @@ import {
   moveRight,
   moveUp,
   paste,
-  positionAtSource,
   record,
   redo,
   rowCount,
   rowText,
   selectAll,
   selectedText,
-  sourceOffset,
   split,
   toDocument,
   toggleStyle,
@@ -70,14 +68,8 @@ export type BikeshedBlocksProps = {
   focusToken: number
   /** The containing note's vault path: image targets resolve against its folder. */
   notePath: string
-  /** The caret a mode switch carried, as a block point; null for none. */
-  caret?: BlockPoint | null
   onChange: (next: Document) => void
-  /** Reports the surface's caret so a switch can carry it. */
-  onCaret?: (point: BlockPoint | null) => void
   onSendToTodos: (text: string) => void
-  /** The read-only card's pointer: switch the face to Source at that block. */
-  onSwitchToSource: (block: number) => void
   /** Every note path in the face's index, for chips and the `[[` picker. */
   noteIndex?: string[]
   /** Open a resolved note; the chip and a bikeshed link call it. */
@@ -132,11 +124,8 @@ export function BikeshedBlocks({
   document: doc,
   focusToken,
   notePath,
-  caret,
   onChange,
-  onCaret,
   onSendToTodos,
-  onSwitchToSource,
   noteIndex = [],
   onOpenNote,
   readOnly = false,
@@ -146,6 +135,9 @@ export function BikeshedBlocks({
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [drag, setDrag] = useState<DragState | null>(null)
   const [focused, setFocused] = useState(false)
+  // The one block a human is editing as raw markdown, or null. The text is
+  // local until Done commits it through the document model.
+  const [markdown, setMarkdown] = useState<{ block: number; text: string } | null>(null)
   // The live model. React's `state` is the rendered structure; typing updates
   // this ref alone, so a keystroke never re-renders under the caret.
   const stateRef = useRef(state)
@@ -155,10 +147,6 @@ export function BikeshedBlocks({
   const composing = useRef(false)
   const pending = useRef<Selection | null>(null)
   const lastText = useRef(serialiseDocument(doc))
-  // The switch's caret, read once when this surface takes focus: the face
-  // passes a fresh object each render, and re-placing it would fight typing.
-  const incoming = useRef<BlockPoint | null>(caret ?? null)
-  incoming.current = caret ?? null
 
   // An external document (open, adopt, Take theirs) replaces the surface; the
   // face's own echo of our change serialises to the same bytes and is ignored.
@@ -184,23 +172,9 @@ export function BikeshedBlocks({
       setState(next)
       pending.current = next.selection
       onChange(toDocument(next))
-      reportCaret(next.selection.head)
     },
-    // `reportCaret` reads the live refs; only the prop is a dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onChange, onCaret],
+    [onChange],
   )
-
-  /** Report the caret as a block point, the unit the switch carries. */
-  function reportCaret(at?: Position): void {
-    if (onCaret === undefined) return
-    const target = host.current
-    const selection = target === null ? null : readSelection(target)
-    const state = stateRef.current
-    const position = at ?? selection?.head ?? state.selection.head
-    const surface = state.blocks[position.block]
-    onCaret(surface === undefined ? null : { block: position.block, offset: sourceOffset(surface, position) })
-  }
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
@@ -223,22 +197,14 @@ export function BikeshedBlocks({
     const target = host.current
     if (target === null) return
     target.focus()
-    // The switch's offset wins when one arrived; otherwise the surface focuses
-    // the note's own caret (the empty note's first block after a creation).
-    const point = incoming.current
-    const surface = point === null ? undefined : stateRef.current.blocks[point.block]
-    if (point !== null && surface !== undefined) {
-      const position = positionAtSource(surface, point.block, point.offset)
-      const next = withCaret(stateRef.current, position.block, position.row, position.offset)
-      stateRef.current = next
-      setState(next)
-      pending.current = next.selection
-      setDomSelection(target, next.selection)
-      return
-    }
     setDomSelection(target, stateRef.current.selection)
     // `focusToken` is the document revision this focus rule follows.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusToken])
+
+  // A new note or an adopted body is not the block being edited as markdown.
+  useEffect(() => {
+    setMarkdown(null)
   }, [focusToken])
 
   // A mouse click or an arrow move changes which run holds the caret, and the
@@ -490,7 +456,6 @@ export function BikeshedBlocks({
     const markdown = serialiseDocument(toDocument(base))
     lastText.current = markdown
     onChange(toDocument(base))
-    reportCaret(base.selection.head)
     // Plain prose keeps UI-18's no-render typing path. Once a construct is in
     // the row, a render is what draws it; a menu needs one to redraw its rows,
     // so the model that was typed is handed back with the caret restored.
@@ -767,7 +732,6 @@ export function BikeshedBlocks({
     stateRef.current = next
     pending.current = next.selection
     setState({ ...next })
-    reportCaret(next.selection.head)
   }
 
   const activeRow =
@@ -800,8 +764,6 @@ export function BikeshedBlocks({
         handleInput()
       }}
       onKeyDown={handleKeyDown}
-      onKeyUp={() => reportCaret()}
-      onMouseUp={() => reportCaret()}
       onPaste={handlePaste}
       onCopy={(event) => handleCopy(event, false)}
       onCut={(event) => handleCopy(event, true)}
@@ -840,8 +802,20 @@ export function BikeshedBlocks({
           onOpenNote={onOpenNote}
           onCheck={(row) => checkTask(index, row)}
           onLanguage={(language) => updateLanguage(index, language)}
-          onSwitchToSource={onSwitchToSource}
+          markdown={markdown !== null && markdown.block === index ? markdown.text : null}
+          onMarkdownStart={(source) => setMarkdown({ block: index, text: source })}
+          onMarkdownChange={(text) =>
+            setMarkdown((current) => (current === null ? current : { ...current, text }))
+          }
+          onMarkdownCommit={() => {
+            const edit = markdown
+            if (edit === null) return
+            setMarkdown(null)
+            apply(commitBlockSource(stateRef.current, edit.block, edit.text), false)
+          }}
+          onMarkdownCancel={() => setMarkdown(null)}
           onReveal={() => revealBlock(index)}
+          editable={!readOnly}
           handles={!readOnly}
           active={focused && state.selection.head.block === index}
           indicator={
@@ -896,8 +870,13 @@ type BlockViewProps = {
   onOpenNote?: (path: string) => void
   onCheck: (row: number) => void
   onLanguage: (language: string) => void
-  onSwitchToSource: (block: number) => void
+  markdown: string | null
+  onMarkdownStart: (source: string) => void
+  onMarkdownChange: (text: string) => void
+  onMarkdownCommit: () => void
+  onMarkdownCancel: () => void
   onReveal: () => void
+  editable: boolean
   handles: boolean
   active: boolean
   indicator: 'above' | 'below' | null
@@ -1111,8 +1090,13 @@ type BlockBodyProps = {
   onOpenNote?: (path: string) => void
   onCheck: (row: number) => void
   onLanguage: (language: string) => void
-  onSwitchToSource: (block: number) => void
+  markdown: string | null
+  onMarkdownStart: (source: string) => void
+  onMarkdownChange: (text: string) => void
+  onMarkdownCommit: () => void
+  onMarkdownCancel: () => void
   onReveal: () => void
+  editable: boolean
 }
 
 /**
@@ -1132,8 +1116,13 @@ function BlockBody({
   onOpenNote,
   onCheck,
   onLanguage,
-  onSwitchToSource,
+  markdown,
+  onMarkdownStart,
+  onMarkdownChange,
+  onMarkdownCommit,
+  onMarkdownCancel,
   onReveal,
+  editable,
 }: BlockBodyProps) {
   const [imageFailed, setImageFailed] = useState(false)
   const common = {
@@ -1337,14 +1326,48 @@ function BlockBody({
     case 'opaque':
       return (
         <div {...common} className="block block--opaque" contentEditable={false}>
-          <pre className="block__opaque-source">{surface.source}</pre>
-          <button
-            type="button"
-            className="block__source-button"
-            onClick={() => onSwitchToSource(index)}
-          >
-            Edit in Source mode
-          </button>
+          {markdown === null ? (
+            <>
+              <pre className="block__opaque-source">{surface.source}</pre>
+              {editable ? (
+                <button
+                  type="button"
+                  className="block__source-button"
+                  onClick={() => onMarkdownStart(surface.source)}
+                >
+                  Edit as Markdown
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <div className="block__markdown">
+              <textarea
+                className="block__markdown-source"
+                aria-label="Edit block as markdown"
+                spellCheck={false}
+                autoFocus
+                value={markdown}
+                onChange={(event) => onMarkdownChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    onMarkdownCancel()
+                  } else if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                    event.preventDefault()
+                    onMarkdownCommit()
+                  }
+                }}
+              />
+              <div className="block__markdown-actions">
+                <button type="button" className="button" onClick={onMarkdownCommit}>
+                  Done
+                </button>
+                <button type="button" className="block__source-button" onClick={onMarkdownCancel}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )
   }

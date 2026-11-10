@@ -1905,8 +1905,7 @@ body {
   font-size: 11.5px;
 }
 
-.editor__size,
-.editor__mode {
+.editor__size {
   display: flex;
   flex: none;
   border: var(--hairline) solid var(--line);
@@ -1918,8 +1917,7 @@ body {
   border-left: var(--hairline) solid var(--line);
 }
 
-.editor__size-button,
-.editor__mode-button {
+.editor__size-button {
   border: 0;
   background: transparent;
   color: var(--ink-dim);
@@ -1943,24 +1941,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.editor__mode-button + .editor__mode-button {
-  border-left: var(--hairline) solid var(--line);
-}
-
-.editor__size-button:hover,
-.editor__mode-button:hover {
+.editor__size-button:hover {
   color: var(--ink);
 }
 
 .editor__size-button:disabled {
   color: var(--line);
   cursor: default;
-}
-
-.editor__mode-button[aria-pressed="true"] {
-  background: var(--parchment);
-  color: var(--ink);
-  font-weight: 600;
 }
 
 /* Write mode: one contenteditable host over UI-17's block list. */
@@ -1978,30 +1965,6 @@ body {
 
 .blocks:focus {
   outline: none;
-}
-
-/* Source mode: the same note as its exact markdown in one plain textarea. */
-.source {
-  flex: 1 1 auto;
-  width: 100%;
-  min-height: calc(100vh - 160px);
-  margin: 0;
-  padding: 0 0 28px;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: var(--tandem-editor-font-size, 16px);
-  line-height: 1.65;
-  resize: none;
-  outline: none;
-  white-space: pre-wrap;
-  caret-color: var(--ink);
-}
-
-.source:focus {
-  outline: var(--hairline) solid var(--sand);
-  outline-offset: 4px;
 }
 
 .block {
@@ -2273,6 +2236,37 @@ body {
 
 .block__source-button:hover {
   text-decoration: underline;
+}
+
+/* The opaque block's in-place escape: its exact markdown in a raw textarea. */
+.block__markdown-source {
+  display: block;
+  width: 100%;
+  min-height: 8em;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: var(--tandem-editor-font-size, 16px);
+  line-height: 1.65;
+  resize: vertical;
+  outline: none;
+  white-space: pre-wrap;
+  caret-color: var(--ink);
+}
+
+.block__markdown-source:focus {
+  outline: var(--hairline) solid var(--sand);
+  outline-offset: 4px;
+}
+
+.block__markdown-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
 }
 
 /* The inline layer: styled runs with their markers hidden, the caret's run

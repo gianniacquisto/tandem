@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -94,50 +94,43 @@ function sourceFiles(directory: string): string[] {
   return out
 }
 
-describe('the Write|Source switch', () => {
+describe('the one editor', () => {
   const blocks = normalise(
     readFileSync(`${appRoot}renderer/src/faces/BikeshedBlocks.tsx`, 'utf8'),
   )
-  const source = normalise(
-    readFileSync(`${appRoot}renderer/src/faces/SourceSurface.tsx`, 'utf8'),
-  )
   const shellEditor = normalise(readFileSync(`${appRoot}renderer/src/shell/fontSize.ts`, 'utf8'))
 
-  it('draws Write and Source in the titlebar, and nowhere Preview or Edit', () => {
-    const start = face.indexOf('editor__mode')
-    expect(start).toBeGreaterThan(-1)
-    const group = face.slice(start, face.indexOf('</div>', start))
-    expect(group).toMatch(/>\s*Write\s*</)
-    expect(group).toMatch(/>\s*Source\s*</)
-    expect(group).not.toMatch(/>\s*Preview\s*</)
-    expect(group).not.toMatch(/>\s*Edit\s*</)
+  it('draws no mode control and keeps no mode memory', () => {
+    expect(face).not.toContain('editor__mode')
+    expect(face).not.toContain('SourceSurface')
+    expect(face).not.toContain('loadMode')
+    expect(face).not.toContain('saveMode')
+    expect(face).not.toContain('requestMode')
     expect(face).not.toContain('Preview')
-    expect(face).not.toContain('nextToggleMode')
+    expect(existsSync(`${appRoot}renderer/src/faces/SourceSurface.tsx`)).toBe(false)
+    expect(existsSync(`${appRoot}renderer/src/shell/modes.ts`)).toBe(false)
+    expect(css).not.toContain('.source')
+    expect(css).not.toContain('.editor__mode')
   })
 
-  it('hides the control while no note is open', () => {
-    const group = face.indexOf('editor__mode')
-    const guard = face.lastIndexOf('open === null ? null : (', group)
-    expect(group).toBeGreaterThan(-1)
-    expect(guard).toBeGreaterThan(-1)
+  it('draws the block surface as the only surface, with no mode switch', () => {
+    expect(face).toContain('<BikeshedBlocks')
+    expect(face).not.toContain('<SourceSurface')
+    expect(face).not.toContain('mode ===')
   })
 
-  it('persists the choice on a switch and flushes before changing the surface', () => {
-    const request = face.slice(
-      face.indexOf('async function requestMode'),
-      face.indexOf('const folder'),
-    )
-    expect(request).toContain('switchIntent(')
-    expect(request).toContain('switchAfterFlush(')
-    expect(request.indexOf('switchAfterFlush')).toBeLessThan(request.indexOf('setMode('))
-    expect(request.indexOf('await save(')).toBeLessThan(request.indexOf('setMode('))
-    expect(request.indexOf('setMode(')).toBeLessThan(request.indexOf('saveMode('))
+  it('points an opaque block at in-place markdown, not a mode switch', () => {
+    expect(blocks).toContain('Edit as Markdown')
+    expect(blocks).toContain('onMarkdownStart')
+    expect(blocks).toContain('commitBlockSource')
+    expect(blocks).not.toContain('onSwitchToSource')
+    expect(blocks).not.toContain('Edit in Source mode')
   })
 
-  it('points the read-only card at Source with its anchor', () => {
-    expect(blocks).toContain('Edit in Source mode')
-    expect(blocks).toContain('onSwitchToSource(index)')
-    expect(face).toMatch(/onSwitchToSource=\{\(block\) =>[\s\S]*?requestMode\('source'/)
+  it('draws the raw markdown block as a textarea in place', () => {
+    expect(blocks).toContain('<textarea')
+    expect(blocks).toContain('aria-label="Edit block as markdown"')
+    expect(blocks).toContain('onMarkdownCommit')
   })
 
   it('retires the preview vocabulary from the shell', () => {
@@ -146,17 +139,15 @@ describe('the Write|Source switch', () => {
     )
   })
 
-  it('draws Source as a plain textarea, and imports no CodeMirror', () => {
-    expect(source).toContain('<textarea')
-    expect(source).toContain('aria-label="Note source"')
+  it('imports no CodeMirror', () => {
     expect(readFileSync(`${appRoot}package.json`, 'utf8')).not.toContain('@codemirror')
     for (const file of sourceFiles(`${appRoot}renderer/src`)) {
       expect(readFileSync(file, 'utf8')).not.toContain('@codemirror')
     }
   })
 
-  it('reads the source text as the note on the paper and ink tokens', () => {
-    const area = block(css, '.source')
+  it('reads the in-place markdown on the paper and ink tokens', () => {
+    const area = block(css, '.block__markdown-source')
     expect(area).toContain('var(--ink)')
     expect(area).toContain('ui-monospace')
     expect(area).toContain('var(--tandem-editor-font-size')
@@ -211,23 +202,17 @@ describe('the note size control', () => {
   const blocks = normalise(
     readFileSync(`${appRoot}renderer/src/faces/BikeshedBlocks.tsx`, 'utf8'),
   )
-  const source = normalise(
-    readFileSync(`${appRoot}renderer/src/faces/SourceSurface.tsx`, 'utf8'),
-  )
 
-  it('draws the size group in the header, immediately left of the mode group', () => {
+  it('draws the size group at the end of the header, with no mode group', () => {
     const headerStart = face.indexOf('<header className="bikeshed__breadcrumb">')
     const headerEnd = face.indexOf('</header>', headerStart)
     expect(headerStart).toBeGreaterThan(-1)
     const header = face.slice(headerStart, headerEnd)
-    const size = header.indexOf('<NoteSizeControl')
-    const mode = header.indexOf('editor__mode')
-    expect(size).toBeGreaterThan(-1)
-    expect(mode).toBeGreaterThan(-1)
-    expect(size).toBeLessThan(mode)
+    expect(header.indexOf('<NoteSizeControl')).toBeGreaterThan(-1)
+    expect(header).not.toContain('editor__mode')
   })
 
-  it('hides the size group with no note open, as the mode group is hidden', () => {
+  it('hides the size group with no note open', () => {
     const header = face.indexOf('<header className="bikeshed__breadcrumb">')
     const guard = face.lastIndexOf('open === null ? null : (', header)
     expect(header).toBeGreaterThan(-1)
@@ -255,22 +240,19 @@ describe('the note size control', () => {
     expect(face).toContain('saveEditorFontSize(next)')
   })
 
-  it('sets the note size once on the wrapper both surfaces share', () => {
+  it('sets the note size once on the wrapper the surface sits in', () => {
     const applied = face.match(/--tandem-editor-font-size/g) ?? []
     expect(applied).toHaveLength(1)
     expect(face).toContain("'--tandem-editor-font-size': `${size}px`")
     expect(blocks).not.toContain('--tandem-editor-font-size')
-    expect(source).not.toContain('--tandem-editor-font-size')
   })
 
-  it('leaves neither surface reading the stored key or carrying a size prop', () => {
-    for (const surface of [blocks, source]) {
-      expect(surface).not.toContain('loadEditorFontSize')
-      expect(surface).not.toContain('fontSize={')
-      expect(surface).not.toMatch(/fontSize:\s*number/)
-    }
+  it('leaves the surface off the stored key and without a size prop', () => {
+    expect(blocks).not.toContain('loadEditorFontSize')
+    expect(blocks).not.toContain('fontSize={')
+    expect(blocks).not.toMatch(/fontSize:\s*number/)
     expect(block(css, '.blocks')).toContain('var(--tandem-editor-font-size')
-    expect(block(css, '.source')).toContain('var(--tandem-editor-font-size')
+    expect(block(css, '.block__markdown-source')).toContain('var(--tandem-editor-font-size')
   })
 
   it("retires the bundle's font-size message and page global", () => {

@@ -33,13 +33,7 @@ export const SCENES: readonly Scene[] = [
     id: 'bikeshed',
     file: 'bikeshed-face.png',
     description:
-      'the **Bikeshed** face over the fixture home: two full-bleed columns, the parchment tree at a fixed 260 with its focus picker, reveal control and Health panel, and the paper document at a centred 740 whose sticky breadcrumb names the staged inline note and holds the mode control, the pinned formatting toolbar above the Write surface with its pressed Heading action and its eleven line-drawn glyphs, the Write surface drawing a bold run, a link, a wikilink chip and a display-math block rendered by KaTeX, and the document footer after it naming the draft a killed save left as a recovery',
-  },
-  {
-    id: 'bikeshed-source',
-    file: 'bikeshed-source.png',
-    description:
-      'the **Bikeshed** face in Source mode over the fixture home: the fixture project note as its exact markdown in one monospace textarea on the paper and ink tokens, the sticky breadcrumb above it holding the Write|Source control with Source pressed, and the document footer after it',
+      'the **Bikeshed** face over the fixture home: two full-bleed columns, the parchment tree at a fixed 260 with its focus picker, reveal control and Health panel, and the paper document at a centred 740 whose sticky breadcrumb names the staged inline note and holds the note size control, the pinned formatting toolbar above the block surface with its pressed Heading action and its eleven line-drawn glyphs, the block surface drawing a bold run, a link, a wikilink chip and a display-math block rendered by KaTeX, and the document footer after it naming the draft a killed save left as a recovery',
   },
   {
     id: 'settings',

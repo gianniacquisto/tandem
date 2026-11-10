@@ -48,7 +48,6 @@ test('a note without a fence or math asks for neither chunk', async ({ window })
   await window.waitForSelector('.shell')
 
   await openTab(window, 'bikeshed')
-  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
   await window.evaluate("window.dispatchEvent(new Event('focus'))")
 
   const requested: string[] = []

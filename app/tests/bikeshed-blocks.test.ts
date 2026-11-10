@@ -13,7 +13,6 @@ function draw(text: string, notePath = ''): string {
       notePath,
       onChange: () => undefined,
       onSendToTodos: () => undefined,
-      onSwitchToSource: () => undefined,
     }),
   )
 }
@@ -33,7 +32,6 @@ function drawWith({
       readOnly,
       onChange: () => undefined,
       onSendToTodos: () => undefined,
-      onSwitchToSource: () => undefined,
     }),
   )
 }
@@ -46,7 +44,6 @@ function drawDocument(document: Document): string {
       notePath: '',
       onChange: () => undefined,
       onSendToTodos: () => undefined,
-      onSwitchToSource: () => undefined,
     }),
   )
 }
@@ -146,19 +143,19 @@ describe('the Write surface draws each block kind', () => {
   })
 })
 
-describe('the read-only source card', () => {
-  it('draws an unmodelled construct as its exact source and points at Source mode', () => {
+describe('the opaque block', () => {
+  it('draws an unmodelled construct as its exact source with a markdown escape', () => {
     const markup = draw('| a | b |\n| - | - |')
     expect(markup).toContain('block block--opaque')
     expect(markup).toContain('| a | b |')
-    expect(markup).toContain('Edit in Source mode')
+    expect(markup).toContain('Edit as Markdown')
   })
 
   it('draws frontmatter read-only, outside the editable text', () => {
     const markup = draw('---\ntitle: A note\n---\n\nA paragraph.')
     expect(markup).toContain('block block--opaque')
     expect(markup).toContain('title: A note')
-    expect(markup).toContain('Edit in Source mode')
+    expect(markup).toContain('Edit as Markdown')
   })
 })
 
