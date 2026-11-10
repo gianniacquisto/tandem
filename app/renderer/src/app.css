@@ -2061,10 +2061,9 @@ body {
   min-height: 1.65em;
 }
 
-/* The empty paragraph names the trigger; generated, so it is not the text node.
-   A lone <br> is the browser's marker for a cleared line, not content. */
-.block--paragraph > .block__text:empty::before,
-.block--paragraph > .block__text:has(> br:only-child)::before {
+/* The hint belongs to the block under the caret, as in the reference app. */
+.block--paragraph[data-active] > .block__text:empty::before,
+.block--paragraph[data-active] > .block__text:has(> br:only-child)::before {
   content: attr(data-ph);
   color: var(--ink-dim);
   pointer-events: none;
