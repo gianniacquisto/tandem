@@ -57,8 +57,8 @@ import {
 } from '../shell/editor-ops'
 import { inlineKey } from '../shell/inline-commands'
 import { filterNotes, parseInline, wikilinkQueryAt, type NoteChoice } from '../shell/inline'
-import { renderMath } from '../shell/math'
 import { InlineRuns, WikilinkPicker } from './InlineRuns'
+import { MathSurface } from './MathSurface'
 import { MermaidDiagram } from './MermaidDiagram'
 
 export type BikeshedBlocksProps = {
@@ -1275,8 +1275,9 @@ function BlockBody({
                 event.preventDefault()
                 onReveal()
               }}
-              dangerouslySetInnerHTML={{ __html: renderMath(surface.text, true) }}
-            />
+            >
+              <MathSurface tex={surface.text} display />
+            </div>
           )}
         </div>
       )
