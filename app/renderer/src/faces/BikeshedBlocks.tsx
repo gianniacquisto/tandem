@@ -817,7 +817,6 @@ export function BikeshedBlocks({
           onReveal={() => revealBlock(index)}
           editable={!readOnly}
           handles={!readOnly}
-          active={focused && state.selection.head.block === index}
           indicator={
             drag !== null && drag.over === index ? (drag.below ? 'below' : 'above') : null
           }
@@ -878,7 +877,6 @@ type BlockViewProps = {
   onReveal: () => void
   editable: boolean
   handles: boolean
-  active: boolean
   indicator: 'above' | 'below' | null
   dragging: boolean
   menu: MenuState | null
@@ -897,7 +895,6 @@ export type BlockShellProps = {
   kind: SurfaceBlock['kind']
   indicator?: 'above' | 'below' | null
   dragging?: boolean
-  active?: boolean
   onDragOver?: (event: ReactDragEvent<HTMLDivElement>) => void
   onDragLeave?: (event: ReactDragEvent<HTMLDivElement>) => void
   onDrop?: (event: ReactDragEvent<HTMLDivElement>) => void
@@ -914,7 +911,6 @@ export function BlockShell({
   kind,
   indicator = null,
   dragging = false,
-  active = false,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -922,7 +918,6 @@ export function BlockShell({
 }: BlockShellProps) {
   const classes = ['block-shell']
   if (dragging) classes.push('block-shell--dragging')
-  if (active) classes.push('block-shell--active')
   if (indicator === 'above') classes.push('block-shell--drop-above')
   if (indicator === 'below') classes.push('block-shell--drop-below')
   return (
@@ -1039,7 +1034,6 @@ function BlockView({
   index,
   surface,
   handles,
-  active,
   indicator,
   dragging,
   menu,
@@ -1059,7 +1053,6 @@ function BlockView({
       kind={surface.kind}
       indicator={indicator}
       dragging={dragging}
-      active={active}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
