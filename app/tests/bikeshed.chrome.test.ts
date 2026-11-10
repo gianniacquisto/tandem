@@ -193,3 +193,101 @@ describe('the formatting toolbar chrome', () => {
     expect(toolbar).not.toContain('--tandem-editor-font-size')
   })
 })
+
+/** The declaration block at a selector, including a grouped selector's tail. */
+function ruleAt(source: string, selector: string): string {
+  const start = source.indexOf(selector)
+  if (start === -1) return ''
+  const open = source.indexOf('{', start)
+  const close = source.indexOf('}', open)
+  if (open === -1 || close === -1) return ''
+  return source.slice(open + 1, close)
+}
+
+describe('the note size control', () => {
+  const control = normalise(
+    readFileSync(`${appRoot}renderer/src/faces/NoteSizeControl.tsx`, 'utf8'),
+  )
+  const blocks = normalise(
+    readFileSync(`${appRoot}renderer/src/faces/BikeshedBlocks.tsx`, 'utf8'),
+  )
+  const source = normalise(
+    readFileSync(`${appRoot}renderer/src/faces/SourceSurface.tsx`, 'utf8'),
+  )
+
+  it('draws the size group in the header, immediately left of the mode group', () => {
+    const headerStart = face.indexOf('<header className="bikeshed__breadcrumb">')
+    const headerEnd = face.indexOf('</header>', headerStart)
+    expect(headerStart).toBeGreaterThan(-1)
+    const header = face.slice(headerStart, headerEnd)
+    const size = header.indexOf('<NoteSizeControl')
+    const mode = header.indexOf('editor__mode')
+    expect(size).toBeGreaterThan(-1)
+    expect(mode).toBeGreaterThan(-1)
+    expect(size).toBeLessThan(mode)
+  })
+
+  it('hides the size group with no note open, as the mode group is hidden', () => {
+    const header = face.indexOf('<header className="bikeshed__breadcrumb">')
+    const guard = face.lastIndexOf('open === null ? null : (', header)
+    expect(header).toBeGreaterThan(-1)
+    expect(guard).toBeGreaterThan(-1)
+    expect(guard).toBeLessThan(header)
+  })
+
+  it('names the group, both buttons and the live numeric readout', () => {
+    expect(control).toContain('role="group"')
+    expect(control).toContain('aria-label="Note size"')
+    expect(control).toContain('aria-label="Decrease note font size"')
+    expect(control).toContain('aria-label="Increase note font size"')
+    expect(control).toContain('aria-live="polite"')
+    expect(control).toContain('{size}')
+  })
+
+  it('disables each button at its bound', () => {
+    expect(control).toContain('disabled={size <= EDITOR_FONT_SIZE_MIN}')
+    expect(control).toContain('disabled={size >= EDITOR_FONT_SIZE_MAX}')
+  })
+
+  it('holds one size loaded from the key and persists a step', () => {
+    expect(face).toContain('useState(() => loadEditorFontSize())')
+    expect(face).toContain('stepEditorFontSize(size, delta)')
+    expect(face).toContain('saveEditorFontSize(next)')
+  })
+
+  it('sets the note size once on the wrapper both surfaces share', () => {
+    const applied = face.match(/--tandem-editor-font-size/g) ?? []
+    expect(applied).toHaveLength(1)
+    expect(face).toContain("'--tandem-editor-font-size': `${size}px`")
+    expect(blocks).not.toContain('--tandem-editor-font-size')
+    expect(source).not.toContain('--tandem-editor-font-size')
+  })
+
+  it('leaves neither surface reading the stored key or carrying a size prop', () => {
+    for (const surface of [blocks, source]) {
+      expect(surface).not.toContain('loadEditorFontSize')
+      expect(surface).not.toContain('fontSize={')
+      expect(surface).not.toMatch(/fontSize:\s*number/)
+    }
+    expect(block(css, '.blocks')).toContain('var(--tandem-editor-font-size')
+    expect(block(css, '.source')).toContain('var(--tandem-editor-font-size')
+  })
+
+  it("retires the bundle's font-size message and page global", () => {
+    for (const file of sourceFiles(`${appRoot}renderer/src`)) {
+      const text = normalise(readFileSync(file, 'utf8'))
+      expect(text).not.toContain('setFontSize')
+      expect(text).not.toMatch(/type:\s*['"]font-size['"]/)
+    }
+  })
+
+  it('draws the control on tokens and never at the note size', () => {
+    for (const selector of ['.editor__size', '.editor__size-button', '.editor__size-readout']) {
+      const rule = ruleAt(css, selector)
+      expect(rule, selector).not.toBe('')
+      expect(rule, selector).toMatch(/var\(--/)
+      expect(rule, selector).not.toMatch(/#[0-9a-f]{3,8}|rgba?\(/i)
+      expect(rule, selector).not.toContain('--tandem-editor-font-size')
+    }
+  })
+})

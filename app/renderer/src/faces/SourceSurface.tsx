@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type CSSProperties } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 
 /**
  * The Source surface: the open note's exact markdown in one plain textarea.
@@ -16,8 +16,6 @@ import { useLayoutEffect, useRef, type CSSProperties } from 'react'
 export type SourceSurfaceProps = {
   /** The buffer's exact markdown; never a normalised form. */
   text: string
-  /** The stored note size, the same value the Write surface applies. */
-  fontSize: number
   /** The document offset the switch carried, or null when there is none. */
   caret: number | null
   /** Changes when the note is opened or adopted, so the surface takes focus. */
@@ -43,7 +41,6 @@ function reveal(area: HTMLTextAreaElement, offset: number): void {
 
 export function SourceSurface({
   text,
-  fontSize,
   caret,
   focusToken,
   onChange,
@@ -76,7 +73,6 @@ export function SourceSurface({
       autoCapitalize="off"
       autoCorrect="off"
       value={text}
-      style={{ '--tandem-editor-font-size': `${fontSize}px` } as CSSProperties}
       onChange={(event) => {
         onChange(event.target.value)
         onCaret(event.target.selectionStart)
