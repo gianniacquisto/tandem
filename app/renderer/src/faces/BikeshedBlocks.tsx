@@ -972,7 +972,7 @@ export function BlockHandles({ onAddBelow, onDragStart, onDragEnd }: BlockHandle
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
-        {'\u283f'}
+        {'\u22ee\u22ee'}
       </button>
     </span>
   )

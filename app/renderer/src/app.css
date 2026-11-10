@@ -1544,7 +1544,7 @@ body {
   max-width: 740px;
   min-height: 40px;
   margin: 0 auto;
-  padding: 0 var(--space-gutter);
+  padding: 0 calc(var(--space-gutter) * 2);
 }
 
 .bikeshed__crumbs {
@@ -1587,7 +1587,7 @@ body {
   max-width: 740px;
   flex-direction: column;
   margin: 0 auto;
-  padding: 15px var(--space-gutter) 0;
+  padding: 15px calc(var(--space-gutter) * 2) 0;
 }
 
 /*
@@ -1999,21 +1999,23 @@ body {
   bottom: -1px;
 }
 
-/* The plus and the grip sit in the page's gutter: absolute, so no reflow. */
+/* The plus and the grip sit in the page's gutter: absolute, so no reflow.
+   Like the reference app: quiet, borderless, and only while the block is
+   hovered or holds a focused control. */
 .block__handles {
   position: absolute;
-  top: 0;
-  left: calc(2px - var(--space-gutter));
+  top: 2px;
+  left: calc(-16px - var(--space-gutter) + 2px);
   z-index: 4;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  gap: 0;
   opacity: 0;
+  transition: opacity 0.1s;
 }
 
 .block-shell:hover > .block__handles,
 .block-shell:focus-within > .block__handles,
-.block-shell--active > .block__handles,
 .block__handles:focus-within {
   opacity: 1;
 }
@@ -2023,27 +2025,28 @@ body {
   align-items: center;
   justify-content: center;
   width: 16px;
-  height: 16px;
+  height: 18px;
   padding: 0;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-checkbox);
-  background: var(--paper);
+  border: 0;
+  border-radius: 4px;
+  background: none;
   color: var(--ink-dim);
   font: inherit;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
 }
 
 .block__handle:hover,
 .block__handle:focus-visible {
-  border-color: var(--accent);
+  background: var(--parchment);
   color: var(--ink);
 }
 
 .block__handle--drag {
   cursor: grab;
-  font-size: 9px;
+  font-size: 12px;
+  letter-spacing: -1px;
 }
 
 .block__text {
