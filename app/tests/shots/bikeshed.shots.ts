@@ -197,7 +197,7 @@ test('a concurrent CLI write is a conflict with both bodies, never a lost write'
   // The block surface's dirty buffer is the paragraph's text.
   const paragraph = window.locator('.block--paragraph .block__text').first()
   await paragraph.click()
-  await caretAt(window, 0, 'end')
+  await caretAt(window, 1, 'end')
   await window.keyboard.type(' and my unsaved words')
   await expect(paragraph).toContainText('my unsaved words')
 
@@ -344,7 +344,7 @@ test('an external write on focus is a conflict, and the tab switch keeps the dra
   // The block surface's dirty buffer is the paragraph's text.
   const paragraph = window.locator('.block--paragraph .block__text').first()
   await paragraph.click()
-  await caretAt(window, 0, 'end')
+  await caretAt(window, 1, 'end')
   await window.keyboard.type(' and words no save has seen')
   await expect(paragraph).toContainText('words no save has seen')
   await window.waitForTimeout(300)
