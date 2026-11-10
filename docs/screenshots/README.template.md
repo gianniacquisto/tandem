@@ -60,6 +60,12 @@ the shot. Seed: the named home is copied to the fixed scratch seed
 spec that writes cannot change the next spec's picture and no run writes into
 the committed fixture.
 
+One seed, one run. Because the seed is one fixed path on the machine, a run
+takes an exclusive lock on it (`app/shots/lock.ts`): a second run on the same
+machine waits for the lock rather than reading or writing the same seed, and
+two runs therefore never share one. A run that dies leaves its lock behind, and
+the next run breaks it as stale with a printed notice.
+
 The seed is the named fixture home plus a fixed clock: the page's `Date` is
 pinned to `2026-10-30T12:00:00Z` before the first application script runs, and
 `TZ` is UTC, so a scene that renders a now-relative time renders one instant.
