@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { expect, type Page } from '@playwright/test'
@@ -85,9 +85,9 @@ test('the breadcrumb names the note', async ({ window }) => {
 
 /**
  * The inline runs in Write: a staged note holds a bold run, a wikilink chip and
- * a display-math block drawn as its source lines. The footer still carries the
- * note's backlink and the ticket the Write surface's own send filed, and the
- * picture is re-taken from this head by the repo's shot run.
+ * a display-math block drawn as its source lines, and the footer names the
+ * draft a killed save left. The picture is re-taken from this head by the
+ * repo's shot run.
  */
 test('the Write surface draws the inline runs and its footer', async ({ app, window }) => {
   writeFileSync(
@@ -735,4 +735,65 @@ test('the code language field keeps focus and its keys out of the note', async (
   await expect.poll(() => writeText('write-language.md'), { timeout: 8000 }).toBe(
     '```py\nconst x = 1\n```',
   )
+})
+
+/** A 1x1 PNG: the bytes prove the protocol served a file, not a placeholder. */
+const DOT_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z2S8AAAAASUVORK5CYII=',
+  'base64',
+)
+
+/**
+ * The image path over the real app: the committed-bundle iframe and the Write
+ * surface both load a vault file through `tandem:`, and a missing, escaping and
+ * remote target all draw the placeholder without a network request.
+ */
+test('a vault image is served over the tandem protocol, and nothing escapes it', async ({
+  window,
+}) => {
+  mkdirSync(join(seedPath(), 'bikeshed', 'images'), { recursive: true })
+  writeFileSync(join(seedPath(), 'bikeshed', 'images', 'dot.png'), DOT_PNG)
+  writeFileSync(join(seedPath(), 'bikeshed', 'image.md'), '![the dot](images/dot.png)\n')
+  writeFileSync(
+    join(seedPath(), 'bikeshed', 'image-bad.md'),
+    '![missing](missing.png)\n\n![escape](../escape.png)\n\n![remote](https://example.com/x.png)\n',
+  )
+
+  const remote: string[] = []
+  window.on('request', (request) => {
+    if (/^https?:/i.test(request.url())) remote.push(request.url())
+  })
+
+  await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
+  await window.locator('.tree__label[title="image.md"]').click()
+
+  const editor = window.frameLocator('.editor__frame')
+  const framed = editor.locator('img.tandem-img')
+  await expect(framed).toHaveCount(1)
+  await expect
+    .poll(() => framed.evaluate((element) => (element as HTMLImageElement).naturalWidth))
+    .toBe(1)
+
+  // Write mode's image block draws the same file, with its encoded src.
+  await window.locator('.editor__mode-button', { hasText: 'Write' }).click()
+  const blockImage = window.locator('.block--image img')
+  await expect(blockImage).toHaveCount(1)
+  await expect
+    .poll(() => blockImage.evaluate((element) => (element as HTMLImageElement).naturalWidth))
+    .toBe(1)
+  await expect(blockImage).toHaveAttribute('alt', 'the dot')
+  await expect(blockImage).toHaveAttribute('src', 'tandem:images/dot.png')
+
+  // A missing, escaping and remote target are three placeholders in Write,
+  // never an img that could fetch one. (The iframe's committed bundle re-inserts
+  // its tracked img after its own placeholder swap, an editor-bundle defect
+  // UI-22 retires; the block surface is this ticket's durable drawing path.)
+  await window.locator('.tree__label[title="image-bad.md"]').click()
+  const blocks = window.locator('.blocks')
+  await expect(blocks.locator('.block--image')).toHaveCount(3)
+  await expect(blocks.locator('.block--image .block__image-placeholder')).toHaveCount(3)
+  await expect(blocks.locator('.block--image img')).toHaveCount(0)
+  await expect(blocks.locator('.block__image-alt')).toHaveText(['missing', 'escape', 'remote'])
+  expect(remote).toEqual([])
 })

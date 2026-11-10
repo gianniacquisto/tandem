@@ -9,6 +9,7 @@ import {
 } from 'react'
 
 import { serialiseDocument, type Document } from '../shell/blocks'
+import { assetUrl, resolveImageTarget } from '../shell/image'
 import {
   applyShortcut,
   backspace,
@@ -52,6 +53,8 @@ export type BikeshedBlocksProps = {
   focusToken: number
   /** The persisted note font size; Write keeps the same reading size. */
   fontSize: number
+  /** The containing note's vault path: image targets resolve against its folder. */
+  notePath: string
   onChange: (next: Document) => void
   onSendToTodos: (text: string) => void
   /** The read-only card's pointer: switch the face to the raw editor. */
@@ -88,6 +91,7 @@ export function BikeshedBlocks({
   document: doc,
   focusToken,
   fontSize,
+  notePath,
   onChange,
   onSendToTodos,
   onSwitchToSource,
@@ -526,6 +530,7 @@ export function BikeshedBlocks({
           key={index}
           index={index}
           surface={surface}
+          notePath={notePath}
           selection={state.selection}
           noteIndex={noteIndex}
           onOpenNote={onOpenNote}
@@ -559,6 +564,7 @@ function textOf(surface: SurfaceBlock, row: number): string {
 type BlockViewProps = {
   index: number
   surface: SurfaceBlock
+  notePath: string
   selection: Selection
   noteIndex: string[]
   onOpenNote?: (path: string) => void
@@ -570,6 +576,7 @@ type BlockViewProps = {
 function BlockView({
   index,
   surface,
+  notePath,
   selection,
   noteIndex,
   onOpenNote,
@@ -577,6 +584,7 @@ function BlockView({
   onLanguage,
   onSwitchToSource,
 }: BlockViewProps) {
+  const [imageFailed, setImageFailed] = useState(false)
   const common = {
     className: `block block--${surface.kind}`,
     'data-block': index,
@@ -693,15 +701,30 @@ function BlockView({
           <hr className="block__rule" />
         </div>
       )
-    case 'image':
+    case 'image': {
+      const target = resolveImageTarget(surface.destination, notePath)
+      const src =
+        target.kind === 'bikeshed' && target.path !== '' && !imageFailed
+          ? assetUrl(target.path)
+          : null
       return (
         <figure {...common} className="block block--image" contentEditable={false}>
-          <div className="block__image-placeholder">
-            <span className="block__image-alt">{surface.alt}</span>
-            <span className="block__image-target">{surface.destination}</span>
-          </div>
+          {src === null ? (
+            <div className="block__image-placeholder">
+              <span className="block__image-alt">{surface.alt}</span>
+              <span className="block__image-target">{surface.destination}</span>
+            </div>
+          ) : (
+            <img
+              className="block__image-img"
+              src={src}
+              alt={surface.alt}
+              onError={() => setImageFailed(true)}
+            />
+          )}
         </figure>
       )
+    }
     case 'opaque':
       return (
         <div {...common} className="block block--opaque" contentEditable={false}>

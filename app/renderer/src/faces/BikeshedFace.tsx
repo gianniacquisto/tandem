@@ -644,6 +644,7 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
                 document={open.document}
                 focusToken={token}
                 fontSize={loadEditorFontSize()}
+                notePath={open.path}
                 onChange={(document) => setOpen((current) => applyEditor(current, document))}
                 onSendToTodos={(text) => {
                   if (text !== '') void fileTicket(text)

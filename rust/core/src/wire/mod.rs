@@ -27,11 +27,11 @@ pub fn slashed_path(path: &Path) -> String {
 
 pub use views::{
     ArchivedView, BacklinkView, CommentList, CommentResult, CommentView, LaneDeletionView,
-    LaneList, MarkdownBlockView, MarkdownInlineView, MovedNoteView, NoteContentView, NoteMoveView,
-    NoteNodeView, NotePathView, NoteWriteView, ProjectList, ProjectView, RecoveryView,
-    SessionDetailView, SessionList, SessionResult, SprintList, SprintResult, TicketBlockView,
-    TicketDetail, TicketList, TicketSummary, UsageReportView, UsageRowView, UsageSessionView,
-    UsageTokensView,
+    LaneList, MarkdownBlockView, MarkdownInlineView, MovedNoteView, NoteAssetView, NoteContentView,
+    NoteMoveView, NoteNodeView, NotePathView, NoteWriteView, ProjectList, ProjectView,
+    RecoveryView, SessionDetailView, SessionList, SessionResult, SprintList, SprintResult,
+    TicketBlockView, TicketDetail, TicketList, TicketSummary, UsageReportView, UsageRowView,
+    UsageSessionView, UsageTokensView,
 };
 
 /// What `doctor` answers: ADR 0014's shape, `{"ok": bool, "checks": [...]}`.

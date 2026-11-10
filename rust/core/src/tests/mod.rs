@@ -30,6 +30,7 @@ mod support;
 mod transcript;
 mod usage_report;
 
+mod bikeshed_asset;
 mod bikeshed_backlink;
 mod bikeshed_capture;
 mod bikeshed_conflict;
