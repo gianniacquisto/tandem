@@ -165,6 +165,11 @@ export function BikeshedBlocks({
     function onSelectionChange(): void {
       const target = host.current
       if (target === null) return
+      // The code language field and the task checkbox are not the note: a
+      // selection change inside them must not re-render the surface under
+      // their value.
+      const active = document.activeElement
+      if (active !== null && active.closest('input, textarea, select, button') !== null) return
       const selection = readSelection(target)
       if (selection === null) return
       const current = stateRef.current
@@ -173,6 +178,8 @@ export function BikeshedBlocks({
       }
       const next = withSelection(current, selection.anchor, selection.head)
       stateRef.current = next
+      const surface = next.blocks[next.selection.head.block]
+      if (surface === undefined || !isTextSurface(surface)) return
       if (revealKey(current.selection) === revealKey(next.selection)) return
       pending.current = next.selection
       setState({ ...next })
@@ -652,7 +659,6 @@ function BlockView({
               placeholder="language"
               onChange={(event) => onLanguage(event.target.value)}
               onKeyDown={(event) => event.stopPropagation()}
-              onInput={(event) => event.stopPropagation()}
               onPaste={(event) => event.stopPropagation()}
               onCopy={(event) => event.stopPropagation()}
               onCut={(event) => event.stopPropagation()}
