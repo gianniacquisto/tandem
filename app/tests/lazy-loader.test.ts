@@ -165,7 +165,6 @@ describe('the parsed content is the only trigger', () => {
     return createElement(BikeshedBlocks, {
       document: parseDocument(source),
       focusToken: 0,
-      fontSize: 16,
       notePath: 'note.md',
       onChange: () => undefined,
       onSendToTodos: () => undefined,
