@@ -938,14 +938,28 @@ test('the code language field keeps focus and its keys out of the note', async (
  * and Tab apply it, Escape closes it and leaves the typed query, and an empty
  * result keeps the menu open on its no-match row.
  */
+test('the placeholder returns after a cleared paragraph', async ({ window }) => {
+  await openWrite(window, 'write-placeholder.md', '')
+  const text = window.locator('.block--paragraph .block__text').first()
+  await expect.poll(() => text.evaluate((el) => getComputedStyle(el, '::before').content)).toBe(`"Type '/' for commands"`)
+  await text.click()
+  await window.keyboard.type('x')
+  await expect.poll(() => text.evaluate((el) => getComputedStyle(el, '::before').content)).toBe('none')
+  await window.keyboard.press('Backspace')
+  await expect.poll(() => text.evaluate((el) => getComputedStyle(el, '::before').content)).toBe(`"Type '/' for commands"`)
+})
+
 test('the slash menu opens, filters and applies', async ({ window }) => {
   await openWrite(window, 'write-slash.md', '')
   const blocks = window.locator('.blocks')
   const menu = window.locator('.block__menu')
 
-  await expect(blocks.locator('.block--paragraph .block__text').first()).toHaveAttribute('data-ph', "Type '/' for commands")
-  await blocks.locator('.block--paragraph .block__text').first().click()
+  const firstText = blocks.locator('.block--paragraph .block__text').first()
+  await expect(firstText).toHaveAttribute('data-ph', "Type '/' for commands")
+  await expect.poll(() => firstText.evaluate((el) => getComputedStyle(el, '::before').content)).toBe(`"Type '/' for commands"`)
+  await firstText.click()
   await window.keyboard.type('/')
+  await expect.poll(() => firstText.evaluate((el) => getComputedStyle(el, '::before').content)).toBe('none')
 
   await expect(menu).toBeVisible()
   await expect(menu).toHaveAttribute('role', 'listbox')
