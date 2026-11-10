@@ -60,6 +60,7 @@ test('the bikeshed face, over the seeded vault', async ({ window }) => {
  */
 test('the breadcrumb names the note', async ({ window }) => {
   await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
 
   const breadcrumb = window.locator('.bikeshed__breadcrumb')
@@ -99,6 +100,7 @@ test('the Write surface draws the inline runs and its footer', async ({ app, win
     '# Inline runs\n\nA **bold run** and a [[Index]] chip.\n\n$$\nx = 1\n$$\n',
   )
 
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.font-size', '16')")
   await openTab(window, 'bikeshed')
   await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
   await window.evaluate("window.dispatchEvent(new Event('focus'))")
@@ -185,7 +187,7 @@ test('the mode control lives in the breadcrumb', async ({ window }) => {
 
   const breadcrumb = window.locator('.bikeshed__breadcrumb')
   await expect(breadcrumb).toBeVisible()
-  const mode = breadcrumb.getByRole('group')
+  const mode = breadcrumb.getByRole('group', { name: 'Editor mode' })
   await expect(mode).toBeVisible()
 
   const write = mode.locator('button', { hasText: 'Write' })
@@ -1164,6 +1166,7 @@ test("the Source surface holds the note's exact markdown", async ({ app, window 
   const notePath = join(seedPath(), 'bikeshed', 'projects', 'fixture', 'fixture.md')
   const before = readFileSync(notePath, 'utf8')
 
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.font-size', '16')")
   await openTab(window, 'bikeshed')
   await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
   await window.evaluate("window.dispatchEvent(new Event('focus'))")
@@ -1182,4 +1185,72 @@ test("the Source surface holds the note's exact markdown", async ({ app, window 
 
   // Viewing the note never rewrites it.
   expect(readFileSync(notePath, 'utf8')).toBe(before)
+})
+
+/**
+ * The note size control: A− 16 A+ beside the mode group, one app-wide size on
+ * Write and Source with no reload, the stored value a relaunch opens and the
+ * clamp a nonsense value lands on. The pictures above already frame the header,
+ * so this test proves the behaviour without a new scene.
+ */
+test('the note size control steps both surfaces and honours the stored size', async ({
+  window,
+}) => {
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.font-size', '16')")
+  await openTab(window, 'bikeshed')
+
+  // A size with no note sizes nothing: the control hides with the mode group.
+  await expect(window.getByRole('group', { name: 'Note size' })).toHaveCount(0)
+
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+  const size = window.getByRole('group', { name: 'Note size' })
+  const readout = size.locator('.editor__size-readout')
+  const increase = size.getByRole('button', { name: 'Increase note font size' })
+  const decrease = size.getByRole('button', { name: 'Decrease note font size' })
+
+  await expect(size).toBeVisible()
+  await expect(readout).toHaveText('16')
+  await expect(window.locator('.blocks')).toHaveCSS('font-size', '16px')
+
+  // A step moves the note and the readout, and lands in the stored key.
+  await increase.click()
+  await expect(readout).toHaveText('17')
+  await expect(window.locator('.blocks')).toHaveCSS('font-size', '17px')
+  expect(await window.evaluate("window.localStorage.getItem('tandem.bikeshed.font-size')")).toBe(
+    '17',
+  )
+
+  // Source takes the same size with no reload, and steps from the control.
+  await window.locator('.editor__mode-button', { hasText: 'Source' }).click()
+  await expect(window.locator('.source')).toHaveCSS('font-size', '17px')
+  await decrease.click()
+  await decrease.click()
+  await expect(readout).toHaveText('15')
+  await expect(window.locator('.source')).toHaveCSS('font-size', '15px')
+
+  // The stored 18 is what a relaunch opens, on both surfaces.
+  await openTab(window, 'tickets')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.font-size', '18')")
+  await openTab(window, 'bikeshed')
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+  await expect(window.getByRole('group', { name: 'Note size' }).locator('.editor__size-readout')).toHaveText('18')
+  await expect(window.locator('.source')).toHaveCSS('font-size', '18px')
+  await window.locator('.editor__mode-button', { hasText: 'Write' }).click()
+  await expect(window.locator('.blocks')).toHaveCSS('font-size', '18px')
+
+  // The stored nonsense is clamped end to end, and the bound disables the step.
+  await openTab(window, 'tickets')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.font-size', '99')")
+  await openTab(window, 'bikeshed')
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+  await expect(window.getByRole('group', { name: 'Note size' }).locator('.editor__size-readout')).toHaveText('20')
+  await expect(window.locator('.blocks')).toHaveCSS('font-size', '20px')
+  await expect(
+    window.getByRole('group', { name: 'Note size' }).getByRole('button', {
+      name: 'Increase note font size',
+    }),
+  ).toBeDisabled()
+  await window.locator('.editor__mode-button', { hasText: 'Source' }).click()
+  await expect(window.locator('.source')).toHaveCSS('font-size', '20px')
 })
