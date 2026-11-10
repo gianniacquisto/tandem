@@ -152,6 +152,13 @@ describe('the one editor', () => {
     expect(area).toContain('ui-monospace')
     expect(area).toContain('var(--tandem-editor-font-size')
   })
+
+  it('draws the list marker as generated content on the row', () => {
+    const generated = block(css, '.block__row[data-marker]::before')
+    expect(generated).toContain('content: attr(data-marker)')
+    expect(generated).toContain('white-space: pre')
+    expect(block(css, '.block__marker')).toBe('')
+  })
 })
 
 describe('the formatting toolbar chrome', () => {

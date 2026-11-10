@@ -1166,7 +1166,12 @@ function BlockBody({
       return (
         <div {...common} className={`block block--${surface.kind} ${listClass}`}>
           {surface.rows.map((row, rowIndex) => (
-            <div className="block__row" data-row={rowIndex} key={rowIndex}>
+            <div
+              className="block__row"
+              data-row={rowIndex}
+              data-marker={task ? undefined : marker(surface, rowIndex)}
+              key={rowIndex}
+            >
               {task ? (
                 <button
                   type="button"
@@ -1180,11 +1185,7 @@ function BlockBody({
                 >
                   {row.checked === true ? '\u2713' : ''}
                 </button>
-              ) : (
-                <span className="block__marker" contentEditable={false} aria-hidden="true">
-                  {marker(surface, rowIndex)}
-                </span>
-              )}
+              ) : null}
               <span className="block__text" data-text key={`text-${rowIndex}-${row.text}`}>
                 <InlineRuns
                   source={row.text}
@@ -1368,7 +1369,6 @@ function BlockBody({
 }
 
 function marker(surface: SurfaceBlock, row: number): string {
-  if (surface.kind === 'task') return surface.rows[row]?.checked === true ? '- [x] ' : '- [ ] '
   if (surface.kind === 'quote') return '> '
   if (surface.kind === 'list' && surface.ordered === true) return `${(surface.start ?? 1) + row}. `
   if (surface.kind === 'list') return '- '
@@ -1438,7 +1438,24 @@ function syncDomText(host: HTMLElement, state: EditorState): void {
       const text = texts[rowIndex]
       if (text !== undefined && text.textContent !== row.text) text.textContent = row.text
     })
+    // The model is the only truth here: a character the browser landed outside
+    // `[data-text]` must not survive a render as a second, invisible copy of
+    // the line. A row holds elements only.
+    for (const row of Array.from(element.querySelectorAll('.block__row'))) {
+      for (const child of Array.from(row.childNodes)) {
+        if (child.nodeType === Node.TEXT_NODE) child.remove()
+      }
+    }
   }
+}
+
+/** A row's editable text: everything except the view-only descendants (the checkbox). */
+function editableText(element: HTMLElement): string {
+  const clone = element.cloneNode(true) as HTMLElement
+  for (const fixed of Array.from(clone.querySelectorAll('[contenteditable="false"]'))) {
+    fixed.remove()
+  }
+  return clone.textContent ?? ''
 }
 
 /** Read the edited text back from the DOM, leaving untouched blocks alone. */
@@ -1459,10 +1476,17 @@ function readFromDom(host: HTMLElement, current: EditorState): EditorState {
       continue
     }
     if (!isTextSurface(surface)) continue
-    const rows = surface.rows.map((row, rowIndex) => ({
-      ...row,
-      text: texts[rowIndex]?.textContent ?? row.text,
-    }))
+    const rowElements = Array.from(element.querySelectorAll('[data-row]')) as HTMLElement[]
+    const rows = surface.rows.map((row, rowIndex) => {
+      const rowElement = rowElements[rowIndex]
+      // Everything editable in the row, so a character typed outside
+      // `[data-text]` reaches the model on the same input event.
+      const text =
+        rowElement === undefined
+          ? (texts[rowIndex]?.textContent ?? row.text)
+          : editableText(rowElement)
+      return { ...row, text }
+    })
     const changed = rows.some((row, rowIndex) => row.text !== surface.rows[rowIndex]?.text)
     if (changed) blocks[index] = { ...surface, rows, edited: true }
   }
