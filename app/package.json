@@ -13,6 +13,7 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
+    "test:build": "vitest run --config vitest.build.config.mts",
     "binary": "cargo build -p tandem --manifest-path ../rust/Cargo.toml",
     "binary:release": "node scripts/prepare-binary.mjs",
     "check:artifact": "node scripts/check-artifact.mjs",
@@ -22,6 +23,9 @@
     "shots": "npm run build && playwright test"
   },
   "dependencies": {
+    "@lezer/markdown": "1.8.0",
+    "katex": "0.19.0",
+    "mermaid": "12.2.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
@@ -38,5 +42,8 @@
     "typescript": "^5.9.3",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "katex": "0.19.0"
   }
 }

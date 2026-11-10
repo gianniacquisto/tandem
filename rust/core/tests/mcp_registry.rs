@@ -15,9 +15,9 @@
 //! `note.daily`, and the CLI's `note rename`, which has no wire row and
 //! stays out), and the app's reads
 //! (`usage.report`, `markdown.blocks`, `note.tree`,
-//! `note.read`, `note.backlinks`, `note.recoveries`, `setup.status`,
-//! `session.transcript`). The vault's link-graph read (`note.health`), the
-//! settings focus (`settings.get`, `settings.set`) and the setup report
+//! `note.read`, `note.asset`, `note.backlinks`, `note.recoveries`,
+//! `setup.status`, `session.transcript`). The vault's link-graph read
+//! (`note.health`), the settings focus (`settings.get`, `settings.set`) and the setup report
 //! (`doctor.report`) ride the MCP door with the ticket, lane, project,
 //! session, sprint and capture verbs.
 
@@ -80,7 +80,7 @@ const COVERED: [&str; 42] = [
 /// it, and the MCP door lists sessions but does not page transcripts in v1.
 /// `note.daily` stays wire-only for the face's Today's note: the day file is
 /// human-owned, and the consolidation pass reads it but never writes one.
-const EXCLUDED: [&str; 14] = [
+const EXCLUDED: [&str; 15] = [
     "setup.install",
     "note.write",
     "note.move",
@@ -91,6 +91,7 @@ const EXCLUDED: [&str; 14] = [
     "markdown.blocks",
     "note.tree",
     "note.read",
+    "note.asset",
     "note.backlinks",
     "note.recoveries",
     "setup.status",

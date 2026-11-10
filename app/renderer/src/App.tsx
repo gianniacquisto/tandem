@@ -317,7 +317,7 @@ export function App() {
         </nav>
       </header>
 
-      <main className="shell__body">
+      <main className={route.tab === 'bikeshed' ? 'shell__body shell__body--bleed' : 'shell__body'}>
         {snapshot.error === null ? null : (
           <p className="shell__error" role="alert">
             {snapshot.error}

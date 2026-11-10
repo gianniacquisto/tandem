@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import type { BikeshedHealth } from '../wire/BikeshedHealth'
 import type { BacklinkView } from '../wire/BacklinkView'
@@ -11,16 +11,9 @@ import {
   focusNodes,
   folderPaths,
   notePaths,
-  resolveWikilink,
 } from '../shell/bikeshed'
 import {
-  defaultBikeshedMode,
-  loadBikeshedMode,
-  saveBikeshedMode,
-  type BikeshedMode,
-} from '../shell/editor'
-import {
-  applyDirty,
+  applyEditor,
   arrival,
   conflictStillApplies,
   keepMine,
@@ -31,15 +24,21 @@ import {
   takeDraft,
   takeTheirs,
   type NoteBuffer,
+  type SaveOutcome,
   type Theirs,
 } from '../shell/note'
-import { BikeshedEditor } from './BikeshedEditor'
+import {
+  loadEditorFontSize,
+  saveEditorFontSize,
+  stepEditorFontSize,
+} from '../shell/fontSize'
+import { BikeshedBlocks } from './BikeshedBlocks'
 import { BikeshedTree } from './BikeshedTree'
 import { FocusControl } from './FocusControl'
-import { NoteRail } from './NoteRail'
+import { NoteFooter } from './NoteFooter'
+import { NoteSizeControl } from './NoteSizeControl'
 
 const HIDDEN_KEY = 'tandem.bikeshed.hidden'
-const RAIL_KEY = 'tandem.bikeshed.rail-open'
 
 /** `ticket.list`'s absent flags: the open board, the tickets a note may link. */
 const OPEN_BOARD = {
@@ -100,10 +99,9 @@ export type BikeshedFaceProps = {
 
 export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject }: BikeshedFaceProps) {
   const [hidden, setHidden] = useState(() => window.localStorage.getItem(HIDDEN_KEY) === 'true')
-  const [railOpen, setRailOpen] = useState(
-    () => window.localStorage.getItem(RAIL_KEY) !== 'false',
-  )
-  const [mode, setMode] = useState<BikeshedMode>(() => loadBikeshedMode())
+  // One app-wide note size: ADR 0012's preference, applied once on the wrapper
+  // the block surface sits in.
+  const [size, setSize] = useState(() => loadEditorFontSize())
   const [nodes, setNodes] = useState<NoteNodeView[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState<NoteBuffer | null>(null)
@@ -121,9 +119,11 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
   const seeded = useRef(false)
   const openRef = useRef<NoteBuffer | null>(null)
   openRef.current = open
-  const modeRef = useRef(mode)
-  modeRef.current = mode
-  const savingRef = useRef(false)
+  const conflictRef = useRef<Theirs | null>(null)
+  conflictRef.current = conflict
+  // One write at a time: a save that meets an autosave awaits that same promise
+  // instead of starting a second one (ADR 0004's one save path).
+  const inFlight = useRef<Promise<SaveOutcome> | null>(null)
 
   const noteIndex = useMemo(() => notePaths(nodes), [nodes])
   // The tree the focus draws: the focused project's folder alone, or the
@@ -207,12 +207,25 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open?.path])
 
-  async function save(buffer: NoteBuffer): Promise<void> {
-    if (!buffer.dirty || savingRef.current) return
-    savingRef.current = true
+  /**
+   * The one write path. A dirty buffer is handed to `saveNote`; a second
+   * caller while a save is in flight awaits that same promise, so two callers
+   * can never write twice.
+   */
+  function save(buffer: NoteBuffer): Promise<SaveOutcome> {
+    if (!buffer.dirty) return Promise.resolve({ type: 'saved', hash: buffer.baseline })
+    if (inFlight.current !== null) return inFlight.current
+    const run = write(buffer)
+    inFlight.current = run
+    void run.finally(() => {
+      if (inFlight.current === run) inFlight.current = null
+    })
+    return run
+  }
+
+  async function write(buffer: NoteBuffer): Promise<SaveOutcome> {
     setSaving(true)
     const outcome = await saveNote(window.tandem.call, buffer)
-    savingRef.current = false
     setSaving(false)
     if (outcome.type === 'saved') {
       setOpen((current) =>
@@ -223,17 +236,18 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       // A write can move the links and the orphan set, so the panels re-read.
       void refreshVault()
       void refreshNote(buffer.path)
-      return
+      return outcome
     }
     if (outcome.type === 'conflict') {
       // A save started before Take theirs lands after the choice with the same
       // disk body: the open buffer already adopted it, so the stale outcome
       // must not re-raise the banner the choice just cleared.
-      if (!conflictStillApplies(openRef.current, buffer)) return
+      if (!conflictStillApplies(openRef.current, buffer)) return outcome
       setConflict(outcome.theirs)
-      return
+      return outcome
     }
     setError(outcome.message)
+    return outcome
   }
 
   // A tab switch unmounts the face and the pending timer dies with it. The
@@ -255,7 +269,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     const draft = takeDraft()
     if (draft === null) return
     setOpen(draft)
-    setMode(defaultBikeshedMode(loadBikeshedMode(), draft.text))
     setToken((current) => current + 1)
     setExpanded((current) => new Set([...current, ...ancestorsOf(draft.path)]))
     setNotice('A draft from your last visit was kept. Saving again.')
@@ -338,10 +351,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       return
     }
     setOpen(openBuffer({ path: note.path, text: note.text, hash: note.hash }))
-    // Empty always wins over stored Preview, so UI-1/UI-4 creations open
-    // ready to type; otherwise the last explicit choice wins. Opening never
-    // persists: only the control (or Mod+E) writes the stored choice.
-    setMode(defaultBikeshedMode(loadBikeshedMode(), note.text))
     setConflict(null)
     setExpanded((current) => new Set([...current, ...ancestorsOf(path)]))
     setToken((current) => current + 1)
@@ -449,82 +458,30 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     void refreshNote(open.path)
   }
 
-  function onEditorMessage(next: { type: string; text?: string; target?: string }): void {
-    if (next.type === 'dirty' && typeof next.text === 'string') {
-      const text = next.text
-      // A same-text echo (the frame re-announcing the document it was handed)
-      // is not an edit: re-dirtying here would autosave the adopted disk and
-      // re-raise the conflict Take theirs just cleared.
-      setOpen((current) => applyDirty(current, text))
-      return
-    }
-    if (next.type === 'link-opened' && typeof next.target === 'string') {
-      const target = next.target.trim()
-      if (target.includes('://')) return
-      const path = resolveWikilink(target, noteIndex)
-      if (path !== null) void openNote(path)
-      return
-    }
-    if (next.type === 'toggle-mode') {
-      if (openRef.current === null) return
-      toggleMode()
-      return
-    }
-    if (next.type === 'send-to-todos' && typeof next.text === 'string') {
-      void fileTicket(next.text)
-    }
-  }
-
   function reveal(next: boolean): void {
     window.localStorage.setItem(HIDDEN_KEY, next ? 'true' : 'false')
     setHidden(next)
   }
 
-  function toggleRail(): void {
-    setRailOpen((current) => {
-      const next = !current
-      window.localStorage.setItem(RAIL_KEY, next ? 'true' : 'false')
-      return next
-    })
+  /** A step is view state: it writes the preference, never the note. */
+  function stepSize(delta: number): void {
+    const next = stepEditorFontSize(size, delta)
+    setSize(next)
+    saveEditorFontSize(next)
   }
 
-  function setModeChoice(next: BikeshedMode): void {
-    setMode(next)
-    saveBikeshedMode(next)
-  }
-
-  function toggleMode(): void {
-    if (openRef.current === null) return
-    const next: BikeshedMode = modeRef.current === 'preview' ? 'edit' : 'preview'
-    setModeChoice(next)
-  }
-
-  // Mod+E flips the mode whenever a note is open. The bundle owns the same
-  // shortcut inside the frame (it posts toggle-mode); this owns it outside.
-  useEffect(() => {
-    function handle(event: KeyboardEvent): void {
-      const mod = event.metaKey || event.ctrlKey
-      if (!mod || event.altKey || event.shiftKey) return
-      if (event.key.toLowerCase() !== 'e') return
-      if (openRef.current === null) return
-      event.preventDefault()
-      const next: BikeshedMode = modeRef.current === 'preview' ? 'edit' : 'preview'
-      setMode(next)
-      saveBikeshedMode(next)
-    }
-    window.addEventListener('keydown', handle)
-    return () => window.removeEventListener('keydown', handle)
-  }, [])
+  const folder =
+    open === null || !open.path.includes('/')
+      ? ''
+      : open.path.slice(0, open.path.lastIndexOf('/'))
+  const title =
+    open === null ? '' : (open.path.split('/').pop() ?? '').replace(/\.md$/i, '')
+  const crumbs = (folder === '' ? ['Bikeshed'] : folder.split('/')).concat(
+    title === '' ? [] : [title],
+  )
 
   return (
     <section className="face face--wide bikeshed-face" aria-label="Bikeshed">
-      <FocusControl
-        lanes={lanes}
-        active={activeProject}
-        showAll={showAll}
-        onPick={onPickProject}
-        onToggleShowAll={() => setShowAll((current) => !current)}
-      />
       {error === null ? null : (
         <div className="banner" role="alert">
           <span>{error}</span>
@@ -574,50 +531,100 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       )}
 
       <div className="bikeshed">
-        <BikeshedTree
-          nodes={drawn}
-          expanded={expanded}
-          hidden={hidden}
-          openPath={open?.path ?? null}
-          health={health}
-          onToggle={(path) =>
-            setExpanded((current) => {
-              const next = new Set(current)
-              if (next.has(path)) next.delete(path)
-              else next.add(path)
-              return next
-            })
-          }
-          onReveal={reveal}
-          onOpen={(path) => void openNote(path)}
-          onMove={(source, into) => void move(source, into)}
-          onCreateNote={(path) => void createNote(path)}
-          onCreateFolder={(path) => void createFolder(path)}
-          onDaily={() => void openDaily()}
-        />
-        <div className="bikeshed__main">
-          <BikeshedEditor
-            path={open?.path ?? ''}
-            text={open?.text ?? ''}
-            token={token}
-            noteIndex={noteIndex}
-            saving={saving}
-            railOpen={railOpen}
-            railCount={backlinks.length + linked.length}
-            onToggleRail={toggleRail}
-            mode={mode}
-            onToggleMode={setModeChoice}
-            onMessage={onEditorMessage}
+        <aside className="bikeshed__tree" aria-label="Bikeshed notes">
+          <FocusControl
+            lanes={lanes}
+            active={activeProject}
+            showAll={showAll}
+            onPick={onPickProject}
+            onToggleShowAll={() => setShowAll((current) => !current)}
           />
-          {railOpen ? (
-            <NoteRail
+          <BikeshedTree
+            nodes={drawn}
+            expanded={expanded}
+            hidden={hidden}
+            openPath={open?.path ?? null}
+            health={health}
+            onToggle={(path) =>
+              setExpanded((current) => {
+                const next = new Set(current)
+                if (next.has(path)) next.delete(path)
+                else next.add(path)
+                return next
+              })
+            }
+            onReveal={reveal}
+            onOpen={(path) => void openNote(path)}
+            onMove={(source, into) => void move(source, into)}
+            onCreateNote={(path) => void createNote(path)}
+            onCreateFolder={(path) => void createFolder(path)}
+            onDaily={() => void openDaily()}
+          />
+        </aside>
+
+        <div className="bikeshed__document">
+          {open === null ? null : (
+            <header className="bikeshed__breadcrumb">
+              <div className="bikeshed__breadcrumb-inner">
+                <nav className="bikeshed__crumbs" aria-label="Breadcrumb">
+                  {crumbs.map((crumb, index) => (
+                    <Fragment key={`${index}-${crumb}`}>
+                      {index === 0 ? null : (
+                        <span className="bikeshed__crumb-sep" aria-hidden="true">
+                          /
+                        </span>
+                      )}
+                      <span
+                        className={
+                          index === crumbs.length - 1
+                            ? 'bikeshed__crumb bikeshed__crumb--current'
+                            : 'bikeshed__crumb'
+                        }
+                        aria-current={index === crumbs.length - 1 ? 'page' : undefined}
+                      >
+                        {crumb}
+                      </span>
+                    </Fragment>
+                  ))}
+                </nav>
+                <div className="bikeshed__breadcrumb-end">
+                  {saving ? <span className="editor__saving">saving{'\u2026'}</span> : null}
+                  <NoteSizeControl size={size} onStep={stepSize} />
+                </div>
+              </div>
+            </header>
+          )}
+
+          <div
+            className="bikeshed__page"
+            style={{ '--tandem-editor-font-size': `${size}px` } as CSSProperties}
+          >
+            {open === null ? (
+              <div className="editor__empty">
+                <p className="editor__empty-title">No note selected</p>
+                <p className="editor__empty-body">Pick a note in the tree.</p>
+              </div>
+            ) : (
+              <BikeshedBlocks
+                document={open.document}
+                focusToken={token}
+                notePath={open.path}
+                onChange={(document) => setOpen((current) => applyEditor(current, document))}
+                onSendToTodos={(text) => {
+                  if (text !== '') void fileTicket(text)
+                }}
+                noteIndex={noteIndex}
+                onOpenNote={(path) => void openNote(path)}
+              />
+            )}
+            <NoteFooter
               backlinks={backlinks}
               linked={linked}
               recoveries={recoveries}
               onOpenNote={(path) => void openNote(path)}
               onOpenTicket={onOpenTicket}
             />
-          ) : null}
+          </div>
         </div>
       </div>
     </section>

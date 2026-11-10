@@ -1,0 +1,46 @@
+{
+  "files": [
+    { "name": "paragraph.md", "kinds": ["paragraph"] },
+    { "name": "heading-atx.md", "kinds": ["heading", "heading"] },
+    { "name": "heading-setext.md", "kinds": ["heading", "heading"] },
+    { "name": "list-bullet.md", "kinds": ["list"] },
+    { "name": "list-ordered.md", "kinds": ["list"] },
+    { "name": "task-list.md", "kinds": ["list"] },
+    { "name": "quote.md", "kinds": ["quote", "quote"] },
+    { "name": "code-fenced.md", "kinds": ["code"] },
+    { "name": "code-indented.md", "kinds": ["code"] },
+    { "name": "rule.md", "kinds": ["rule", "rule", "rule"] },
+    { "name": "image.md", "kinds": ["image"] },
+    { "name": "frontmatter.md", "kinds": ["opaque", "paragraph"] },
+    { "name": "table.md", "kinds": ["opaque"] },
+    { "name": "html.md", "kinds": ["opaque", "opaque", "paragraph"] },
+    { "name": "mermaid.md", "kinds": ["code"] },
+    { "name": "math.md", "kinds": ["math", "paragraph"] },
+    { "name": "footnote.md", "kinds": ["opaque", "paragraph"] },
+    { "name": "lazy-continuation.md", "kinds": ["paragraph", "paragraph"] },
+    { "name": "wikilinks.md", "kinds": ["paragraph", "paragraph", "paragraph"] },
+    { "name": "crlf.md", "kinds": ["heading", "paragraph"] },
+    { "name": "no-final-newline.md", "kinds": ["paragraph"] },
+    { "name": "empty.md", "kinds": [] },
+    { "name": "long.md" },
+    {
+      "name": "kitchen-sink.md",
+      "kinds": [
+        "opaque",
+        "heading",
+        "paragraph",
+        "list",
+        "opaque",
+        "quote",
+        "code",
+        "math",
+        "opaque",
+        "opaque",
+        "heading",
+        "image",
+        "rule",
+        "paragraph"
+      ]
+    }
+  ]
+}

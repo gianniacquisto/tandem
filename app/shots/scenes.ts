@@ -33,7 +33,7 @@ export const SCENES: readonly Scene[] = [
     id: 'bikeshed',
     file: 'bikeshed-face.png',
     description:
-      'the **Bikeshed** face over the fixture home: the scaffold tree with its reveal control, the committed CodeMirror bundle editing the fixture project note in its own frame, the Backlinks dock naming the Index note, the Health panel reporting the daily note as an orphan, and a draft a killed save left named as a recovery',
+      'the **Bikeshed** face over the fixture home: two full-bleed columns, the parchment tree at a fixed 260 with its focus picker, reveal control and Health panel, and the paper document at a centred 740 whose sticky breadcrumb names the staged inline note and holds the note size control, the pinned formatting toolbar above the block surface with its pressed Heading action and its eleven line-drawn glyphs, the block surface drawing a bold run, a link, a wikilink chip and a display-math block rendered by KaTeX, and the document footer after it naming the draft a killed save left as a recovery',
   },
   {
     id: 'settings',

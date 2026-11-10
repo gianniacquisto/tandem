@@ -1,5 +1,7 @@
 # One stack: a Rust core and an Electron shell, one app for three platforms
 
+> **Amended 2026-11-09 by [ADR 0042](0042-the-bikeshed-editor-is-a-block-editor.md):** the CM6 bundle is no longer the reason the UI is a webview; the renderer and its block editor are. The rest of this decision stands.
+
 Tandem is a macOS-only product by construction. `Package.swift` declares `.macOS(.v27)`, `GLOSSARY.md` defines the agent as "running as the same OS user on the same Mac", and 8,934 of the repository's 22,306 Swift lines are SwiftUI and AppKit that exist on no other platform. The core underneath is already nearly portable: `TandemCore` is 11,377 lines with no AppKit or SwiftUI import at all, `tandem-cli` is 1,995 lines of Foundation over it, and three years of decisions live in tests, ADRs and the agent face rather than in the file format. The store is SQLite behind a version seam, and the CLI speaks JSON to every skill and pass prompt. Nothing about the product needs the Mac; only the presentation layer does.
 
 Decided 2026-10-30, with the work carried by `PRT-1`.

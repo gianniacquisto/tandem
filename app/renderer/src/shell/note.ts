@@ -1,5 +1,6 @@
 import type { Method, MethodCall } from '../../../src/shared/bridge'
 import type { NoteContentView } from '../wire/NoteContentView'
+import { parseDocument, serialiseDocument, type Document } from './blocks'
 
 /**
  * The save discipline, as plain data (`BikeshedModel.performSave` in Swift).
@@ -16,6 +17,12 @@ export type NoteBuffer = {
   /** The on-disk hash the buffer last agreed with. */
   baseline: string
   dirty: boolean
+  /**
+   * The parsed document behind the text. A full parse per posted change, by
+   * choice: notes are small and a second, incrementally updated block list
+   * would be a second truth.
+   */
+  document: Document
 }
 
 export type Theirs = { text: string; hash: string }
@@ -34,7 +41,13 @@ export type NoteCall = (call: Method) => Promise<MethodCall>
 
 /** The buffer an open note starts from: clean, at the hash the read reported. */
 export function openBuffer(note: { path: string; text: string; hash: string }): NoteBuffer {
-  return { path: note.path, text: note.text, baseline: note.hash, dirty: false }
+  return {
+    path: note.path,
+    text: note.text,
+    baseline: note.hash,
+    dirty: false,
+    document: parseDocument(note.text),
+  }
 }
 
 /** The buffer after an external write arrives: adopt it when clean, conflict when dirty. */
@@ -43,7 +56,13 @@ export function arrival(buffer: NoteBuffer, onDisk: Theirs): Arrival {
   if (!buffer.dirty) {
     return {
       type: 'adopted',
-      buffer: { path: buffer.path, text: onDisk.text, baseline: onDisk.hash, dirty: false },
+      buffer: {
+        path: buffer.path,
+        text: onDisk.text,
+        baseline: onDisk.hash,
+        dirty: false,
+        document: parseDocument(onDisk.text),
+      },
     }
   }
   return { type: 'conflict', theirs: onDisk }
@@ -60,7 +79,13 @@ export function keepMine(buffer: NoteBuffer, theirs: Theirs): NoteBuffer {
 
 /** "Take theirs": the on-disk body replaces the buffer and the edits are dropped. */
 export function takeTheirs(buffer: NoteBuffer, theirs: Theirs): NoteBuffer {
-  return { path: buffer.path, text: theirs.text, baseline: theirs.hash, dirty: false }
+  return {
+    path: buffer.path,
+    text: theirs.text,
+    baseline: theirs.hash,
+    dirty: false,
+    document: parseDocument(theirs.text),
+  }
 }
 
 /**
@@ -79,14 +104,16 @@ export function conflictStillApplies(
 }
 
 /**
- * The editor's dirty message as data: new typing dirties the buffer, an echo of
- * the text it already holds changes nothing. A same-text post (the frame
- * re-announcing the document it was just handed) must not re-dirty a clean
- * buffer after Take theirs, or the next autosave re-reads the adopted disk.
+ * A block-surface edit as data: the surface's block document is the truth and
+ * the save still writes it through UI-17's serialiser. It keeps the exact
+ * document (gaps and untouched sources included) rather than reparsing, and it
+ * never re-dirties a buffer whose serialised text it already holds.
  */
-export function applyDirty(buffer: NoteBuffer | null, text: string): NoteBuffer | null {
-  if (buffer === null || buffer.text === text) return buffer
-  return { ...buffer, text, dirty: true }
+export function applyEditor(buffer: NoteBuffer | null, document: Document): NoteBuffer | null {
+  if (buffer === null) return null
+  const text = serialiseDocument(document)
+  if (buffer.text === text) return { ...buffer, document }
+  return { ...buffer, text, dirty: true, document }
 }
 
 /** A note read reply, or null for any other reply. */
@@ -156,6 +183,16 @@ export function resolveFolderPath(folder: string, name: string): string {
 export async function saveNote(call: NoteCall, buffer: NoteBuffer): Promise<SaveOutcome> {
   if (!buffer.dirty) return { type: 'saved', hash: buffer.baseline }
 
+  // The bytes the save writes come from the model, never from a silent string
+  // walk: a block that cannot render fails the save into the banner instead.
+  let text: string
+  try {
+    text = serialiseDocument(buffer.document)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'The note could not be serialised.'
+    return { type: 'error', message }
+  }
+
   const disk = await call({ method: 'note.read', params: { path: buffer.path } })
   if ('error' in disk) return { type: 'error', message: disk.error.message }
 
@@ -167,7 +204,7 @@ export async function saveNote(call: NoteCall, buffer: NoteBuffer): Promise<Save
 
   const written = await call({
     method: 'note.write',
-    params: { path: buffer.path, text: buffer.text },
+    params: { path: buffer.path, text },
   })
   if ('error' in written) return { type: 'error', message: written.error.message }
 

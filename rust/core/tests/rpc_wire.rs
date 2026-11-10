@@ -59,6 +59,7 @@ fn the_read_methods_without_a_cli_verb_are_named_here() {
         vec![
             "note.tree",
             "note.read",
+            "note.asset",
             "note.backlinks",
             "note.recoveries",
             "usage.report",
@@ -1185,4 +1186,42 @@ fn lane_move_reorders_the_declared_lanes_over_the_wire() {
         message.contains("lane add") && message.contains("lane list"),
         "the refusal names the fix: {refused}"
     );
+}
+
+#[test]
+fn a_note_asset_answers_the_confined_file_type_and_size() {
+    let sandbox = Sandbox::new("rpc-note-asset");
+    let store = sandbox.store();
+    let bikeshed = sandbox.root().join("home").join("bikeshed");
+    std::fs::create_dir_all(bikeshed.join("img")).expect("the vault is creatable");
+    std::fs::write(bikeshed.join("img").join("dot.png"), "png-bytes")
+        .expect("the image is written");
+
+    let answer = handle(
+        &store,
+        &frame(1, "note.asset", json!({"path": "img/dot.png"})),
+    );
+    assert_eq!(answer["result"]["asset"]["path"], "img/dot.png");
+    assert_eq!(answer["result"]["asset"]["mediaType"], "image/png");
+    assert_eq!(answer["result"]["asset"]["size"], 9);
+    let file = answer["result"]["asset"]["file"]
+        .as_str()
+        .unwrap_or_else(|| panic!("the asset names its file: {answer}"));
+    assert_eq!(
+        std::path::Path::new(file),
+        bikeshed.join("img").join("dot.png"),
+        "the file is the confined absolute path"
+    );
+
+    for (id, bad) in [(2, "../escape.png"), (3, "/etc/passwd.png")] {
+        let refused = handle(&store, &frame(id, "note.asset", json!({"path": bad})));
+        assert_eq!(
+            refused["error"]["code"], "domain",
+            "{bad} is a domain refusal"
+        );
+        assert!(
+            refused.get("result").is_none(),
+            "a refusal carries no asset reply: {refused}"
+        );
+    }
 }

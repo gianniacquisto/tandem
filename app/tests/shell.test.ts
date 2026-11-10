@@ -18,9 +18,8 @@ function filesUnder(directory: string, extensions: string[]): string[] {
   })
 }
 
-// `public/` is the committed editor bundle, copied byte for byte from the Swift
-// resource: its colours and its own CSS are not the app's to rewrite, and
-// `tests/bundle.test.ts` is the test that keeps it verbatim.
+// `public/` holds no committed bundle after UI-22 retired the editor iframe;
+// any file here is the shell's own and is read like the rest.
 const sources = filesUnder(renderer, ['.ts', '.tsx', '.css', '.html']).filter(
   (path) => !path.includes(`${join('renderer', 'public')}`),
 )
@@ -133,6 +132,11 @@ describe('the shell', () => {
 
     for (const path of sources) {
       if (path.endsWith('tokens.css')) continue
+      // The mermaid theme bridge mirrors the day palette as fallbacks for a
+      // context with no computed style (Node, the unit test); it is the one
+      // place a token value is spelled outside tokens.css, and
+      // tests/mermaid.test.ts pins each fallback.
+      if (path.endsWith(join('shell', 'lazy.ts'))) continue
       expect(readFileSync(path, 'utf8'), `${path} carries a colour literal`).not.toMatch(literal)
     }
   })

@@ -13,10 +13,11 @@ describe('the content security policy', () => {
     expect(policy).toContain("frame-ancestors 'self'")
   })
 
-  it('admits exactly the editor frame the bundle loads in, and no remote frame', () => {
+  it('admits no frame and no remote frame', () => {
     const policy = contentSecurityPolicy(false)
 
-    expect(policy).toContain("frame-src 'self'")
+    expect(policy).toContain("frame-src 'none'")
+    expect(policy).not.toContain("frame-src 'self'")
     expect(policy).not.toContain("frame-ancestors 'none'")
     expect(policy).not.toMatch(/frame-src[^;]*https?:/)
   })
@@ -24,5 +25,32 @@ describe('the content security policy', () => {
   it('admits the dev server socket only in development', () => {
     expect(contentSecurityPolicy(true)).toContain('ws://localhost:*')
     expect(contentSecurityPolicy(false)).not.toContain('ws://')
+  })
+
+  it('admits the tandem scheme for images and nothing else', () => {
+    for (const development of [false, true]) {
+      const policy = contentSecurityPolicy(development)
+      expect(policy).toContain("img-src 'self' data: tandem:")
+      expect(policy).not.toMatch(/img-src[^;]*https?:/)
+      expect(policy).not.toMatch(/img-src[^;]*\*/)
+    }
+  })
+
+  it('keeps every other directive unchanged', () => {
+    expect(contentSecurityPolicy(false)).toBe(
+      [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: tandem:",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'none'",
+        "frame-src 'none'",
+        "frame-ancestors 'self'",
+      ].join('; '),
+    )
   })
 })
