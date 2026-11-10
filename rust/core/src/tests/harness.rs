@@ -450,6 +450,105 @@ fn a_second_page_is_followed_through_the_cursor() {
 }
 
 #[test]
+fn the_read_counts_assistant_messages_and_their_tool_parts() {
+    let session =
+        r#"{"data":{"id":"ses_1","tokens":{"input":10},"cost":0.1,"model":{"id":"model-a"}}}"#
+            .to_string();
+    let messages = r#"{"data":[
+        {"id":"msg_1","type":"assistant","content":[
+            {"type":"tool","id":"prt_1","name":"shell","state":{"input":{"command":"ls"}}},
+            {"type":"tool","id":"prt_2","name":"read","state":{"input":{"filePath":"a"}}}
+        ]},
+        {"id":"msg_2","type":"assistant","content":[{"type":"text","id":"prt_3","text":"done"}]},
+        {"id":"msg_3","type":"user","content":[{"type":"text","id":"prt_4","text":"go"}]},
+        {"id":"msg_4","content":[{"type":"tool","id":"prt_5","name":"shell"}]}
+    ],"cursor":{"next":null}}"#
+        .to_string();
+    let stub = Stub::start(
+        "harness-secret",
+        vec![
+            Route {
+                prefix: "/api/session/ses_1/message".to_string(),
+                status: 200,
+                body: messages,
+            },
+            Route {
+                prefix: "/api/session/ses_1".to_string(),
+                status: 200,
+                body: session,
+            },
+        ],
+        2,
+    );
+
+    let usage = read_api(&stub.base, "harness-secret", "ses_1").expect("the loopback answers");
+
+    assert_eq!(usage.turns, Some(2), "two assistant messages are two turns");
+    assert_eq!(
+        usage.calls,
+        Some(2),
+        "two tool parts ride the assistant messages; the user message and the \
+         typeless message contribute no turn and no call"
+    );
+    stub.join();
+}
+
+#[test]
+fn the_counts_sum_across_pages_and_skip_a_child_session_s_parts() {
+    let session =
+        r#"{"data":{"id":"ses_1","tokens":{"input":10},"cost":0.1,"model":{"id":"model-a"}}}"#
+            .to_string();
+    let page_one = r#"{"data":[
+        {"id":"msg_1","type":"assistant","content":[
+            {"type":"tool","id":"prt_1","name":"shell","sessionID":"ses_1"}
+        ]}
+    ],"cursor":{"next":"page-2"}}"#
+        .to_string();
+    let page_two = r#"{"data":[
+        {"id":"msg_2","type":"assistant","content":[
+            {"type":"tool","id":"prt_2","name":"shell","sessionID":"ses_1"},
+            {"type":"tool","id":"prt_3","name":"shell","sessionID":"ses_child"}
+        ]},
+        {"id":"msg_3","type":"user","content":[
+            {"type":"tool","id":"prt_4","name":"shell","sessionID":"ses_1"}
+        ]}
+    ],"cursor":{"next":null}}"#
+        .to_string();
+    let stub = Stub::start(
+        "harness-secret",
+        vec![
+            Route {
+                prefix: "/api/session/ses_1/message?limit=100&cursor=page-2".to_string(),
+                status: 200,
+                body: page_two,
+            },
+            Route {
+                prefix: "/api/session/ses_1/message".to_string(),
+                status: 200,
+                body: page_one,
+            },
+            Route {
+                prefix: "/api/session/ses_1".to_string(),
+                status: 200,
+                body: session,
+            },
+        ],
+        3,
+    );
+
+    let usage = read_api(&stub.base, "harness-secret", "ses_1").expect("the loopback answers");
+
+    assert_eq!(usage.turns, Some(2), "the turns sum across pages");
+    assert_eq!(
+        usage.calls,
+        Some(2),
+        "a child session's tool part is not this session's call, and a user \
+         message carries no call"
+    );
+    stub.join();
+}
+
+#[test]
 fn parts_of_another_session_are_not_this_session_usage() {
     let session =
         r#"{"data":{"id":"ses_1","tokens":{"input":1},"cost":0.0,"model":{"id":"m"}}}"#.to_string();
@@ -569,6 +668,8 @@ fn a_second_pass_reads_the_harness_into_a_record_of_its_own() {
                 cost: usage.cost,
                 model: usage.model.as_deref(),
                 skills: usage.skills.clone(),
+                turns: usage.turns,
+                calls: usage.calls,
                 at: Some(&at(150)),
             },
         )

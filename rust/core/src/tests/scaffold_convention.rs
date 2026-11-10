@@ -1231,3 +1231,62 @@ fn the_close_cuts_no_release_by_default() {
         "the manual release still files notes the same way"
     );
 }
+
+/// TAN-348: the turn budget is the builder's to read. The number lives once,
+/// in `agents/builder.md` step 4, with the batched shapes named, and step 9
+/// names the below-target duty the record feeds.
+#[test]
+fn the_builder_contract_states_the_turn_budget() {
+    let builder = file("agents/builder.md");
+    assert!(
+        builder.contains("three tool calls per turn or more"),
+        "the builder names the target"
+    );
+    for shape in [
+        "one command for the checks a change needs",
+        "one message for the facts a round needs",
+        "one call for a loop over a list",
+        "no re-read of a file already read",
+    ] {
+        assert!(
+            builder.contains(shape),
+            "the builder names the batch shape `{shape}`"
+        );
+    }
+    assert!(
+        builder.contains("the ratio is below the target"),
+        "step 9 names the below-target duty"
+    );
+    assert!(
+        builder.contains("names the repeats"),
+        "the below-target summary names what to cut next time"
+    );
+}
+
+/// TAN-348: the build skill measures the ratio from the record, reads the
+/// previous child's ratio before the next claim, and keeps the store SQL as the
+/// fallback for a record with no harness read.
+#[test]
+fn the_build_skill_measures_the_ratio_and_briefs_below_it() {
+    let budget = section(&file("skills/tandem-build/SKILL.md"), "## Budget the turns");
+    assert!(
+        budget.contains("agents/builder.md"),
+        "the number's one home is the builder contract"
+    );
+    assert!(
+        budget.contains("session show"),
+        "the record's ratio is read with `session show`"
+    );
+    assert!(
+        budget.contains("Below"),
+        "the dispatch rule keeps its `Below` trigger"
+    );
+    assert!(
+        budget.contains("fallback"),
+        "the store SQL stays as the fallback"
+    );
+    assert!(
+        budget.contains("batch shape"),
+        "the dispatch names the shape it briefed"
+    );
+}

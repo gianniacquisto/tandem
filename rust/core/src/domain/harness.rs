@@ -30,14 +30,20 @@ use super::error::{DomainError, DomainResult};
 use super::session::{SessionTokens, SkillCounts};
 use crate::store::{StoreError, translate};
 
-/// What the harness reported for one session: the usage triple and the skill
-/// counts, each piece absent when the harness did not report it.
+/// What the harness reported for one session: the usage triple, the skill
+/// counts and the turn budget, each piece absent when the harness did not
+/// report it.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct HarnessUsage {
     pub tokens: SessionTokens,
     pub cost: Option<f64>,
     pub model: Option<String>,
     pub skills: Option<SkillCounts>,
+    /// The assistant turns the message pages carry (TAN-348). The pair is
+    /// absent when no message named its type: unknown is absent, not a guess.
+    pub turns: Option<i64>,
+    /// The tool parts those assistant turns carry (TAN-348).
+    pub calls: Option<i64>,
 }
 
 impl HarnessUsage {
@@ -83,12 +89,17 @@ pub fn read_api(base_url: &str, password: &str, session_id: &str) -> DomainResul
         cost: data.get("cost").and_then(Value::as_f64),
         model: session_model(data.get("model")),
         skills: None,
+        turns: None,
+        calls: None,
     };
 
     let mut skills: BTreeMap<String, i64> = BTreeMap::new();
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut part_index = 0usize;
     let mut cursor: Option<String> = None;
+    let mut turns: i64 = 0;
+    let mut calls: i64 = 0;
+    let mut saw_type = false;
     loop {
         let mut page_url = format!("{base}/api/session/{id}/message?limit=100");
         if let Some(next) = cursor.as_deref() {
@@ -101,6 +112,17 @@ pub fn read_api(base_url: &str, password: &str, session_id: &str) -> DomainResul
             .and_then(Value::as_array)
             .ok_or_else(|| unreadable(&base, 200, &page_body.to_string()))?;
         for message in messages {
+            // The turn count is the messages that say they are the assistant's.
+            // A message with no type is not counted: unknown is absent, not a
+            // guess. A call is a tool part of such a message.
+            let kind = message.get("type").and_then(Value::as_str);
+            if kind.is_some() {
+                saw_type = true;
+            }
+            let assistant = kind == Some("assistant");
+            if assistant {
+                turns += 1;
+            }
             let Some(content) = message.get("content").and_then(Value::as_array) else {
                 continue;
             };
@@ -108,16 +130,19 @@ pub fn read_api(base_url: &str, password: &str, session_id: &str) -> DomainResul
                 if part.get("type").and_then(Value::as_str) != Some("tool") {
                     continue;
                 }
+                if let Some(owner) = part.get("sessionID").and_then(Value::as_str)
+                    && owner != session_id.trim()
+                {
+                    continue;
+                }
+                if assistant {
+                    calls += 1;
+                }
                 let tool = part
                     .get("tool")
                     .or_else(|| part.get("name"))
                     .and_then(Value::as_str);
                 if tool != Some("skill") {
-                    continue;
-                }
-                if let Some(owner) = part.get("sessionID").and_then(Value::as_str)
-                    && owner != session_id.trim()
-                {
                     continue;
                 }
                 let key = part
@@ -152,6 +177,10 @@ pub fn read_api(base_url: &str, password: &str, session_id: &str) -> DomainResul
         }
     }
     usage.skills = (!skills.is_empty()).then_some(skills);
+    if saw_type {
+        usage.turns = Some(turns);
+        usage.calls = Some(calls);
+    }
     Ok(usage)
 }
 

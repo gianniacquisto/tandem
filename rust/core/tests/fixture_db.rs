@@ -188,6 +188,15 @@ fn reading_the_fixture_home_leaves_it_untouched() {
         24,
         "the frozen set is five weeks of records, twenty-four in all"
     );
+    let seeded = sessions
+        .iter()
+        .find(|session| session.id == "ses_a")
+        .expect("the seed names ses_a");
+    assert_eq!(
+        (seeded.turns, seeded.calls),
+        (Some(12), Some(36)),
+        "the committed artifact carries the turn budget pair (TAN-348)"
+    );
 
     for sidecar in [
         "tandem.db-wal",

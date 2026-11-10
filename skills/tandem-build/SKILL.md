@@ -33,7 +33,17 @@ The human in the session picks the mode before the first dispatch — **one at a
 
 ## Budget the turns
 
-A turn re-reads the whole window, so a session's bill is its turn count times its context — the same rule the terse style states (`terse/TERSE.md`, Budget). One turn per dispatch, with the calls it needs in it: gather every fact the brief needs in one message — a turn that needs three facts fetches three facts in one message, and a loop over a list is one call, not N. Watch it drift: calls per turn is countable from the host's store, `~/.local/share/opencode/opencode.db` — read-only:
+A turn re-reads the whole window, so a session's bill is its turn count times its context — the same rule the terse style states (`terse/TERSE.md`, Budget). The number lives once, in `agents/builder.md` step 4: **three tool calls per turn or more**, with the batched shapes named there. This skill points at it rather than restating it, the way it points at the deploy contract.
+
+**The record is the measure, and it costs no call.** `session end --usage-from-harness` stamps `turns`, `calls` and the derived `per turn` ratio on the record, and the usage comment it posts on every linked ticket carries the same three. The dispatch reads the ratio of the sprint's most recently ended child in the same message as the claim's own reads:
+
+```sh
+tandem-cli session show --session <the last child's id>
+```
+
+**Below the builder's target**, the briefs that follow name the batch shape they briefed, and the run note says which shape it was: the reads named in one message, the checks in one command, the loop in one call, no re-read of a file already read.
+
+**The fallback is the host's store**, for a record with no harness read: calls per turn is countable from `~/.local/share/opencode/opencode.db`, read-only:
 
 ```sh
 sqlite3 "file:$HOME/.local/share/opencode/opencode.db?mode=ro" '

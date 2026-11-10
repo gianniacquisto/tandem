@@ -389,6 +389,8 @@ fn a_usage_report_is_one_message_over_the_records() {
                 cost: Some(0.5),
                 model: Some("deepseek-v4"),
                 skills: None,
+                turns: None,
+                calls: None,
                 at: Some("2026-10-30T12:05:00Z"),
             },
         )

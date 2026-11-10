@@ -88,6 +88,11 @@ pub struct NewSession<'a> {
     /// The skill counts the pass loaded, as one JSON object (TAN-241). `None`
     /// writes NULL: a record that loaded nothing to count says so by absence.
     pub skills: Option<&'a str>,
+    /// The assistant turns the session ran (TAN-348). The pair is written
+    /// together or not at all: a record with no harness read carries neither.
+    pub turns: Option<i64>,
+    /// The tool calls those turns made (TAN-348).
+    pub calls: Option<i64>,
 }
 
 /// A session row, read back: every column the record carries, as the store
@@ -116,6 +121,8 @@ pub struct SessionRow {
     pub model: Option<String>,
     pub tickets: Option<String>,
     pub skills: Option<String>,
+    pub turns: Option<i64>,
+    pub calls: Option<i64>,
 }
 
 /// A sprint row, read back: the pair (lane, number) is the identity, and the

@@ -1143,6 +1143,8 @@ fn execute(
                 Some(raw) => parse_skills(raw).map_err(domain)?,
                 None => None,
             };
+            let mut turns = None;
+            let mut calls = None;
             let mut note: Option<String> = None;
             if params.usage_from_harness.unwrap_or(true) {
                 let record = sessions.show(&id).map_err(domain)?;
@@ -1152,6 +1154,8 @@ fn execute(
                         cost = reported.cost.or(cost);
                         model = reported.model.or(model);
                         skills = reported.skills.or(skills);
+                        turns = reported.turns.or(turns);
+                        calls = reported.calls.or(calls);
                     }
                     Err(error) if is_absent_harness(&error) => {
                         note = Some(format!("{}. Stamped without usage.", error.message()));
@@ -1170,6 +1174,8 @@ fn execute(
                         cost,
                         model: model.as_deref(),
                         skills,
+                        turns,
+                        calls,
                         at: None,
                     },
                 )
@@ -1719,55 +1725,11 @@ fn post_usage_comments(
     }
     let board = Board::with_actor(store.clone(), actor.clone());
     let author = session.agent.clone().unwrap_or_else(|| "usage".to_string());
-    let body = usage_comment_body(session);
+    let body = crate::domain::session::usage_comment_body(session);
     for ticket in &session.tickets {
         board.append_comment(ticket, &author, &body)?;
     }
     Ok(())
-}
-
-/// `Usage` plus the session id and model, then one line per reported piece.
-fn usage_comment_body(session: &crate::domain::session::Session) -> String {
-    let mut lines = Vec::new();
-    let mut header = format!("Usage \u{2014} {}", session.id);
-    if let Some(model) = &session.model {
-        header.push_str(" \u{00b7} ");
-        header.push_str(model);
-    }
-    lines.push(header);
-    let mut metric = |name: &str, value: Option<i64>| {
-        if let Some(value) = value {
-            lines.push(format!("{name} {}", grouped(value)));
-        }
-    };
-    if let Some(tokens) = &session.tokens {
-        metric("input", tokens.input);
-        metric("output", tokens.output);
-        metric("cache read", tokens.cache_read);
-        metric("cache write", tokens.cache_write);
-        metric("reasoning", tokens.reasoning);
-    }
-    if let Some(cost) = session.cost {
-        lines.push(format!("cost ${cost:.2}"));
-    }
-    lines.join("\n")
-}
-
-/// Thousands grouped with commas, en_US style, so a bare count reads.
-fn grouped(value: i64) -> String {
-    let text = value.to_string();
-    let (sign, digits) = match text.strip_prefix('-') {
-        Some(digits) => ("-", digits),
-        None => ("", text.as_str()),
-    };
-    let mut out = String::new();
-    for (index, character) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(character);
-    }
-    format!("{sign}{out}")
 }
 
 /// The working directory's last component: the project a capture or session

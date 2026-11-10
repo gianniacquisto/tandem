@@ -297,7 +297,7 @@ fn session_body() -> String {
 }
 
 fn messages_body() -> String {
-    r#"{"data":[{"id":"msg_1","content":[{"type":"tool","id":"prt_1","name":"skill","state":{"input":{"id":"opencode"}}}]},{"id":"msg_2","content":[{"type":"tool","id":"prt_2","name":"skill","state":{"input":{"id":"tdd"}}},{"type":"tool","id":"prt_3","name":"shell","state":{"input":{"command":"ls"}}}]}],"cursor":{"next":null}}"#.to_string()
+    r#"{"data":[{"id":"msg_1","content":[{"type":"tool","id":"prt_1","name":"skill","state":{"input":{"id":"opencode"}}}]},{"id":"msg_2","content":[{"type":"tool","id":"prt_2","name":"skill","state":{"input":{"id":"tdd"}}},{"type":"tool","id":"prt_3","name":"shell","state":{"input":{"command":"ls"}}}]},{"id":"msg_3","type":"assistant","content":[{"type":"tool","id":"prt_4","name":"shell","state":{"input":{"command":"ls"}}},{"type":"tool","id":"prt_5","name":"read","state":{"input":{"filePath":"a"}}}]},{"id":"msg_4","type":"assistant","content":[{"type":"text","id":"prt_6","text":"done"}]},{"id":"msg_5","type":"user","content":[{"type":"text","id":"prt_7","text":"go"}]}],"cursor":{"next":null}}"#.to_string()
 }
 
 #[test]
@@ -369,6 +369,181 @@ fn a_harness_session_is_a_foreign_pointer_show_answers_and_end_reads_the_api() {
     assert_eq!(ended["skills"]["opencode"], 1);
     assert_eq!(ended["skills"]["tdd"], 1);
     handle.join().expect("the stub ends");
+}
+
+#[test]
+fn ending_from_the_harness_stamps_the_turns_and_calls_it_counted() {
+    let sandbox = Sandbox::new("harness-counts");
+    let (stub, handle) = Stub::start("harness-secret", &session_body(), &messages_body());
+
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_pass_1",
+        "--harness-session",
+        "ses_events",
+        "--harness-transport",
+        "event-stream",
+        "--project",
+        "tandem",
+        "--agent",
+        "builder",
+        "--brief",
+        "A pass in the embedded harness.",
+    ]);
+
+    let output = sandbox.run_with_env(
+        &[
+            "session",
+            "end",
+            "--session",
+            "ses_pass_1",
+            "--outcome",
+            "succeeded",
+            "--usage-from-harness",
+            "--harness-url",
+            &stub.base,
+        ],
+        None,
+        &[("TANDEM_HARNESS_PASSWORD", "harness-secret")],
+    );
+    let ended = json_of(output, &["session", "end"]);
+    assert_eq!(ended["turns"], 2, "two assistant messages are two turns");
+    assert_eq!(ended["calls"], 2, "their tool parts are the calls");
+    handle.join().expect("the stub ends");
+}
+
+#[test]
+fn the_usage_comment_carries_the_counts_and_the_ratio() {
+    let sandbox = Sandbox::new("harness-comment");
+    let (stub, handle) = Stub::start("harness-secret", &session_body(), &messages_body());
+
+    let added = sandbox.json(&["ticket", "add", "--title", "Carried"]);
+    let ticket = added["id"].as_str().expect("an id").to_string();
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_pass_1",
+        "--harness-session",
+        "ses_events",
+        "--harness-transport",
+        "event-stream",
+        "--project",
+        "tandem",
+        "--agent",
+        "builder",
+        "--brief",
+        "A pass in the embedded harness.",
+    ]);
+    sandbox.json(&[
+        "session",
+        "link",
+        "--session",
+        "ses_pass_1",
+        "--ticket",
+        &ticket,
+    ]);
+    let output = sandbox.run_with_env(
+        &[
+            "session",
+            "end",
+            "--session",
+            "ses_pass_1",
+            "--outcome",
+            "succeeded",
+            "--usage-from-harness",
+            "--harness-url",
+            &stub.base,
+        ],
+        None,
+        &[("TANDEM_HARNESS_PASSWORD", "harness-secret")],
+    );
+    json_of(output, &["session", "end"]);
+
+    let comments = sandbox.json(&["ticket", "comment", "list", "--id", &ticket]);
+    let bodies: Vec<&str> = comments["comments"]
+        .as_array()
+        .expect("comments")
+        .iter()
+        .filter_map(|comment| comment["body"].as_str())
+        .collect();
+    let body = bodies
+        .iter()
+        .find(|body| body.starts_with("Usage"))
+        .unwrap_or_else(|| panic!("the usage comment posts: {bodies:?}"));
+    assert!(
+        body.contains("calls 2"),
+        "the comment carries the calls: {body}"
+    );
+    assert!(
+        body.contains("turns 2"),
+        "the comment carries the turns: {body}"
+    );
+    assert!(
+        body.contains("per turn 1.00"),
+        "the comment carries the derived ratio: {body}"
+    );
+    handle.join().expect("the stub ends");
+}
+
+#[test]
+fn ending_with_no_harness_read_carries_no_counts() {
+    let sandbox = Sandbox::new("no-harness-counts");
+
+    let added = sandbox.json(&["ticket", "add", "--title", "Carried"]);
+    let ticket = added["id"].as_str().expect("an id").to_string();
+    sandbox.json(&[
+        "session",
+        "start",
+        "--session",
+        "ses_hand",
+        "--project",
+        "tandem",
+        "--agent",
+        "builder",
+        "--brief",
+        "A hand-driven pass.",
+    ]);
+    sandbox.json(&[
+        "session",
+        "link",
+        "--session",
+        "ses_hand",
+        "--ticket",
+        &ticket,
+    ]);
+    let ended = sandbox.json(&[
+        "session",
+        "end",
+        "--session",
+        "ses_hand",
+        "--outcome",
+        "succeeded",
+        "--cost",
+        "0.5",
+    ]);
+    assert!(
+        ended.get("turns").is_none() && ended.get("calls").is_none(),
+        "no harness read stamps neither count: {ended}"
+    );
+
+    let comments = sandbox.json(&["ticket", "comment", "list", "--id", &ticket]);
+    let bodies: Vec<&str> = comments["comments"]
+        .as_array()
+        .expect("comments")
+        .iter()
+        .filter_map(|comment| comment["body"].as_str())
+        .collect();
+    let body = bodies
+        .iter()
+        .find(|body| body.starts_with("Usage"))
+        .unwrap_or_else(|| panic!("the usage comment posts: {bodies:?}"));
+    assert!(
+        !body.contains("calls ") && !body.contains("turns ") && !body.contains("per turn"),
+        "no counts, no lines: {body}"
+    );
 }
 
 #[test]

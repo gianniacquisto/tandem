@@ -98,6 +98,10 @@ struct Session {
     model: Option<String>,
     seconds: Option<f64>,
     skills: Option<String>,
+    /// The turn budget pair (TAN-348). Absent on a record written before the
+    /// columns existed, and stamped together or not at all.
+    turns: Option<i64>,
+    calls: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -222,6 +226,8 @@ fn write(seed_path: &Path, target: &Path) -> Result<(), String> {
                     seconds: session.seconds,
                     cost: session.cost,
                     skills: session.skills.as_deref(),
+                    turns: session.turns,
+                    calls: session.calls,
                 })?;
             }
             Ok(())

@@ -25,7 +25,7 @@ use super::{Actor, Result, StoreError, timestamp, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 7;
+pub const CURRENT_VERSION: i64 = 8;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -71,6 +71,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: WORKFLOWS_VERSION,
         name: "the workflows and their stages",
         apply: version_seven,
+    },
+    Migration {
+        version: TURNS_VERSION,
+        name: "the session's turns and calls",
+        apply: version_eight,
     },
 ];
 
@@ -373,6 +378,25 @@ fn version_six(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_SIX)
 }
 
+/// The version that adds the session's turn and call counts (TAN-348).
+pub(crate) const TURNS_VERSION: i64 = 8;
+
+/// Version 8: how many assistant turns a session ran and how many tool calls
+/// they made (TAN-348).
+///
+/// **Additive, and the pair is stamped together or not at all.** Both columns
+/// are nullable: a record written before this version, or one with no harness
+/// read, carries neither, never an invented zero. A row carrying one and not
+/// the other is corrupt and refused on read.
+const VERSION_EIGHT: &str = "
+ALTER TABLE sessions ADD COLUMN turns INTEGER;
+ALTER TABLE sessions ADD COLUMN calls INTEGER;
+";
+
+fn version_eight(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(VERSION_EIGHT)
+}
+
 fn version_seven(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_SEVEN)?;
     connection.execute(
@@ -556,6 +580,14 @@ pub(crate) fn has_skills(connection: &Connection) -> Result<bool> {
 /// NULL, and nothing is written (ADR 0031).
 pub(crate) fn has_harness(connection: &Connection) -> Result<bool> {
     Ok(version(connection)?.unwrap_or(0) >= HARNESS_VERSION)
+}
+
+/// Whether the file carries the session record's turn and call columns (v8).
+///
+/// A read asks this rather than migrating: an older home answers both columns
+/// NULL, and nothing is written (ADR 0031).
+pub(crate) fn has_turns(connection: &Connection) -> Result<bool> {
+    Ok(version(connection)?.unwrap_or(0) >= TURNS_VERSION)
 }
 
 /// Whether a store is behind the version this build writes.

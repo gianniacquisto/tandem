@@ -62,7 +62,9 @@
       "cost": 0.25,
       "model": "deepseek-v4.1-flash",
       "seconds": 0.0,
-      "skills": null
+      "skills": null,
+      "turns": 12,
+      "calls": 36
     },
     {
       "id": "ses_b",

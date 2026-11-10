@@ -172,6 +172,8 @@ fn record(
                 cost: Some(0.5),
                 model: Some("deepseek-v4"),
                 skills: None,
+                turns: None,
+                calls: None,
                 at: Some("2026-10-30T12:05:00Z"),
             },
         )
