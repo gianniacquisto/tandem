@@ -4,21 +4,29 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ClipboardEvent as ReactClipboardEvent,
+  type ReactNode,
+  type RefObject,
 } from 'react'
 
 import { serialiseDocument, type Document } from '../shell/blocks'
 import type { BlockPoint } from '../shell/caret'
 import { assetUrl, resolveImageTarget } from '../shell/image'
 import {
+  applyCommand,
   applyShortcut,
   backspace,
   candidateText,
   deleteForward,
   deleteSelection,
+  dropIndex,
+  filterCommands,
   fromDocument,
+  insertBelow,
   insertText,
+  moveBlock,
   moveDown,
   moveLeft,
   moveRight,
@@ -40,6 +48,7 @@ import {
   withCaret,
   withSelection,
   emptyHistory,
+  type BlockCommand,
   type EditorState,
   type History,
   type Position,
@@ -71,6 +80,8 @@ export type BikeshedBlocksProps = {
   noteIndex?: string[]
   /** Open a resolved note; the chip and a bikeshed link call it. */
   onOpenNote?: (path: string) => void
+  /** A whole-surface read-only view: no handles, no menu, no editing. */
+  readOnly?: boolean
 }
 
 type PickerState = {
@@ -83,6 +94,26 @@ type PickerState = {
   left: number
   top: number
 }
+
+type MenuState = {
+  block: number
+  row: number
+  query: string
+  active: number
+  /** The block had no room below, so the menu opens upward. */
+  above: boolean
+}
+
+type DragState = {
+  from: number
+  /** The block the pointer is over, or null in the gaps between blocks. */
+  over: number | null
+  below: boolean
+}
+
+const MENU_ID = 'block-command-menu'
+const MENU_MAX_HEIGHT = 264
+const DRAG_TYPE = 'application/x-tandem-block'
 
 /**
  * The Write surface: one contenteditable host over UI-17's blocks.
@@ -107,14 +138,19 @@ export function BikeshedBlocks({
   onSwitchToSource,
   noteIndex = [],
   onOpenNote,
+  readOnly = false,
 }: BikeshedBlocksProps) {
   const [state, setState] = useState<EditorState>(() => fromDocument(doc))
   const [picker, setPicker] = useState<PickerState | null>(null)
+  const [menu, setMenu] = useState<MenuState | null>(null)
+  const [drag, setDrag] = useState<DragState | null>(null)
+  const [focused, setFocused] = useState(false)
   // The live model. React's `state` is the rendered structure; typing updates
   // this ref alone, so a keystroke never re-renders under the caret.
   const stateRef = useRef(state)
   const historyRef = useRef<History>(emptyHistory)
   const host = useRef<HTMLDivElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
   const composing = useRef(false)
   const pending = useRef<Selection | null>(null)
   const lastText = useRef(serialiseDocument(doc))
@@ -227,6 +263,13 @@ export function BikeshedBlocks({
       stateRef.current = next
       const surface = next.blocks[next.selection.head.block]
       if (surface === undefined || !isTextSurface(surface)) return
+      // A move to another block re-renders, so the gutter's handles follow the
+      // caret; inside one block only the run reveal needs a render.
+      if (next.selection.head.block !== current.selection.head.block) {
+        pending.current = next.selection
+        setState({ ...next })
+        return
+      }
       if (revealKey(current.selection) === revealKey(next.selection)) return
       pending.current = next.selection
       setState({ ...next })
@@ -234,6 +277,112 @@ export function BikeshedBlocks({
     document.addEventListener('selectionchange', onSelectionChange)
     return () => document.removeEventListener('selectionchange', onSelectionChange)
   }, [])
+
+  // An outside click closes the menu; the block itself does not count as outside.
+  const menuOpen = menu !== null
+  useEffect(() => {
+    if (!menuOpen || typeof document === 'undefined') return
+    function onPointerDown(event: MouseEvent): void {
+      const target = event.target as Node | null
+      if (target !== null && menuRef.current !== null && menuRef.current.contains(target)) return
+      setMenu(null)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    return () => document.removeEventListener('mousedown', onPointerDown)
+  }, [menuOpen])
+
+  // The menu is anchored to its block inside the scroll container, so it moves
+  // with the note; it flips above the block when the viewport has no room.
+  useLayoutEffect(() => {
+    if (menu === null || typeof window === 'undefined') return
+    const active = menuRef.current?.querySelector('.block__menu-row--active')
+    if (active instanceof HTMLElement) active.scrollIntoView({ block: 'nearest' })
+    const shell = host.current?.querySelector(`[data-block="${menu.block}"]`)
+    if (!(shell instanceof HTMLElement)) return
+    const rect = shell.getBoundingClientRect()
+    const room = window.innerHeight - rect.bottom
+    const above = room < MENU_MAX_HEIGHT && rect.top > room
+    setMenu((current) => (current === null || current.above === above ? current : { ...current, above }))
+  }, [menu?.block, menu?.query, menu?.active])
+
+  /** The `/query` the caret sits in, if the block can take a command. */
+  function slashAt(value: EditorState): { block: number; row: number; query: string } | null {
+    const head = value.selection.head
+    const surface = value.blocks[head.block]
+    if (surface === undefined || !isTextSurface(surface)) return null
+    // Only a block whose whole content is the `/query` opens the menu: a list,
+    // task list or quote with several rows has no single query to filter.
+    if (rowCount(surface) !== 1) return null
+    const text = rowText(surface, head.row)
+    if (!text.startsWith('/')) return null
+    return { block: head.block, row: head.row, query: text.slice(1) }
+  }
+
+  /**
+   * Keep the menu in step with the model. It opens only when the block's
+   * content becomes `/`; once open it holds while the content starts with `/`.
+   * Returns whether the menu is (or just opened) on screen, so the caller can
+   * force the render a listbox needs under the typing path.
+   */
+  function syncMenu(next: EditorState): boolean {
+    const slash = slashAt(next)
+    if (menu === null) {
+      if (slash === null) return false
+      const surface = next.blocks[slash.block]
+      if (surface === undefined || rowText(surface, slash.row).trim() !== '/') return false
+      setMenu({ block: slash.block, row: slash.row, query: slash.query, active: 0, above: false })
+      return true
+    }
+    if (slash === null || slash.block !== menu.block || slash.row !== menu.row) {
+      setMenu(null)
+      return false
+    }
+    setMenu((current) =>
+      current === null || current.query === slash.query
+        ? current
+        : { ...current, query: slash.query, active: 0 },
+    )
+    return true
+  }
+
+  function chooseCommand(command: BlockCommand): void {
+    const current = stateRef.current
+    const index = menu?.block ?? current.selection.head.block
+    setMenu(null)
+    apply(applyCommand(current, index, command), false)
+  }
+
+  function overBlock(event: ReactDragEvent<HTMLDivElement>, index: number): void {
+    if (drag === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'move'
+    const rect = event.currentTarget.getBoundingClientRect()
+    const below = event.clientY > rect.top + rect.height / 2
+    setDrag((current) =>
+      current === null || (current.over === index && current.below === below)
+        ? current
+        : { ...current, over: index, below },
+    )
+  }
+
+  function dropOnBlock(event: ReactDragEvent<HTMLDivElement>, index: number): void {
+    if (drag === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const below = event.clientY > rect.top + rect.height / 2
+    const target = dropIndex(drag.from, index, below)
+    const from = drag.from
+    setDrag(null)
+    if (target !== from) apply(moveBlock(stateRef.current, from, target), false)
+  }
+
+  function leaveBlock(index: number): void {
+    setDrag((current) =>
+      current === null || current.over !== index ? current : { ...current, over: null },
+    )
+  }
 
   function caretPoint(target: HTMLElement): { left: number; top: number } {
     if (typeof window === 'undefined') return { left: 0, top: 0 }
@@ -320,7 +469,7 @@ export function BikeshedBlocks({
     const converted = applyShortcut(base, 'space')
     if (converted !== base) {
       apply(converted, false)
-      refreshPicker(converted)
+      if (!syncMenu(converted)) refreshPicker(converted)
       return
     }
     stateRef.current = base
@@ -330,8 +479,15 @@ export function BikeshedBlocks({
     onChange(toDocument(base))
     reportCaret(base.selection.head)
     // Plain prose keeps UI-18's no-render typing path. Once a construct is in
-    // the row, a render is what draws it, so the model that was typed is handed
-    // back with the caret restored.
+    // the row, a render is what draws it; a menu needs one to redraw its rows,
+    // so the model that was typed is handed back with the caret restored.
+    const shown = syncMenu(base)
+    if (shown) {
+      setPicker(null)
+      pending.current = base.selection
+      setState({ ...base })
+      return
+    }
     if (!plainRow(base)) {
       pending.current = base.selection
       setState({ ...base })
@@ -349,6 +505,37 @@ export function BikeshedBlocks({
     if (target === null) return
     const mod = event.metaKey || event.ctrlKey
     const key = event.key.toLowerCase()
+
+    // The menu is the block's, not a focusable field: the block keeps focus and
+    // these five keys move, apply or close it. Typing keeps editing the text.
+    if (menu !== null && !mod) {
+      const rows = filterCommands(menu.query)
+      const select = (active: number): void => setMenu({ ...menu, active })
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMenu(null)
+        return
+      }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        if (rows.length === 0) return
+        const delta = event.key === 'ArrowDown' ? 1 : -1
+        select((menu.active + delta + rows.length) % rows.length)
+        return
+      }
+      if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault()
+        if (rows.length === 0) return
+        select(event.key === 'Home' ? 0 : rows.length - 1)
+        return
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault()
+        const command = rows[menu.active]
+        if (command !== undefined) chooseCommand(command)
+        return
+      }
+    }
 
     if (picker !== null) {
       if (event.key === 'Escape') {
@@ -405,6 +592,17 @@ export function BikeshedBlocks({
       setDomSelection(target, all.selection)
       return
     }
+    // The keyboard route to reorder, matching the reference's moveBlock: one
+    // position, no wrap, one update, the caret on the moved block.
+    if (mod && event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault()
+      const current = stateRef.current
+      const from = current.selection.head.block
+      const landing = from + (event.key === 'ArrowUp' ? -1 : 1)
+      if (landing < 0 || landing >= current.blocks.length) return
+      apply(moveBlock(current, from, landing), false)
+      return
+    }
 
     const selection = readSelection(target)
     const base = selection === null ? stateRef.current : withSelection(stateRef.current, selection.anchor, selection.head)
@@ -449,7 +647,7 @@ export function BikeshedBlocks({
       event.preventDefault()
       const next = event.key === 'Backspace' ? backspace(base) : deleteForward(base)
       apply(next, false)
-      refreshPicker(next)
+      if (!syncMenu(next)) refreshPicker(next)
       return
     }
 
@@ -542,6 +740,8 @@ export function BikeshedBlocks({
     apply(toggleTask(stateRef.current, block, row), false)
   }
 
+  const activeRow =
+    menu === null ? undefined : filterCommands(menu.query)[menu.active]
   return (
     <div
       ref={host}
@@ -549,10 +749,17 @@ export function BikeshedBlocks({
       role="textbox"
       aria-label="Note text"
       aria-multiline="true"
-      contentEditable
+      aria-controls={menu === null ? undefined : MENU_ID}
+      aria-activedescendant={activeRow === undefined ? undefined : `${MENU_ID}-${menu?.active}`}
+      contentEditable={!readOnly}
       suppressContentEditableWarning
       spellCheck={false}
       style={{ fontSize: `${fontSize}px` }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false)
+        setMenu(null)
+      }}
       onInput={(event) => {
         if ((event.target as HTMLElement).closest('input, textarea, select, button') !== null) return
         handleInput()
@@ -570,6 +777,22 @@ export function BikeshedBlocks({
         composing.current = false
         handleInput()
       }}
+      onDragOver={(event) => {
+        // The empty space below the last block is the append target.
+        if (drag === null) return
+        if ((event.target as HTMLElement).closest('[data-block]') !== null) return
+        event.preventDefault()
+        setDrag({ ...drag, over: state.blocks.length - 1, below: true })
+      }}
+      onDrop={(event) => {
+        if (drag === null) return
+        if ((event.target as HTMLElement).closest('[data-block]') !== null) return
+        event.preventDefault()
+        const from = drag.from
+        const landing = state.blocks.length - 1
+        setDrag(null)
+        if (from !== landing) apply(moveBlock(stateRef.current, from, landing), false)
+      }}
     >
       {state.blocks.map((surface, index) => (
         <BlockView
@@ -583,6 +806,25 @@ export function BikeshedBlocks({
           onCheck={(row) => checkTask(index, row)}
           onLanguage={(language) => updateLanguage(index, language)}
           onSwitchToSource={onSwitchToSource}
+          handles={!readOnly}
+          active={focused && state.selection.head.block === index}
+          indicator={
+            drag !== null && drag.over === index ? (drag.below ? 'below' : 'above') : null
+          }
+          dragging={drag !== null && drag.from === index}
+          menu={menu !== null && menu.block === index ? menu : null}
+          menuRef={menuRef}
+          onChoose={chooseCommand}
+          onAddBelow={() => apply(insertBelow(stateRef.current, index), false)}
+          onDragStart={(event) => {
+            event.dataTransfer.setData(DRAG_TYPE, String(index))
+            event.dataTransfer.effectAllowed = 'move'
+            setDrag({ from: index, over: null, below: false })
+          }}
+          onDragEnd={() => setDrag(null)}
+          onDragOver={(event) => overBlock(event, index)}
+          onDragLeave={() => leaveBlock(index)}
+          onDrop={(event) => dropOnBlock(event, index)}
         />
       ))}
       {picker === null ? null : (
@@ -617,9 +859,231 @@ type BlockViewProps = {
   onCheck: (row: number) => void
   onLanguage: (language: string) => void
   onSwitchToSource: (block: number) => void
+  handles: boolean
+  active: boolean
+  indicator: 'above' | 'below' | null
+  dragging: boolean
+  menu: MenuState | null
+  menuRef: RefObject<HTMLDivElement | null>
+  onChoose: (command: BlockCommand) => void
+  onAddBelow: () => void
+  onDragStart: (event: ReactDragEvent<HTMLButtonElement>) => void
+  onDragEnd: () => void
+  onDragOver: (event: ReactDragEvent<HTMLDivElement>) => void
+  onDragLeave: () => void
+  onDrop: (event: ReactDragEvent<HTMLDivElement>) => void
+}
+
+export type BlockShellProps = {
+  index: number
+  kind: SurfaceBlock['kind']
+  indicator?: 'above' | 'below' | null
+  dragging?: boolean
+  active?: boolean
+  onDragOver?: (event: ReactDragEvent<HTMLDivElement>) => void
+  onDragLeave?: (event: ReactDragEvent<HTMLDivElement>) => void
+  onDrop?: (event: ReactDragEvent<HTMLDivElement>) => void
+  children?: ReactNode
+}
+
+/**
+ * One top-level block's wrapper: the gutter's handles, the `/` menu and the
+ * drop line all hang off it, absolutely positioned so the text column never
+ * moves. It carries `data-block`, which is how the surface finds a block's DOM.
+ */
+export function BlockShell({
+  index,
+  kind,
+  indicator = null,
+  dragging = false,
+  active = false,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  children,
+}: BlockShellProps) {
+  const classes = ['block-shell']
+  if (dragging) classes.push('block-shell--dragging')
+  if (active) classes.push('block-shell--active')
+  if (indicator === 'above') classes.push('block-shell--drop-above')
+  if (indicator === 'below') classes.push('block-shell--drop-below')
+  return (
+    <div
+      className={classes.join(' ')}
+      data-block={index}
+      data-kind={kind}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {indicator === null ? null : <span className="block__drop" aria-hidden="true" />}
+      {children}
+    </div>
+  )
+}
+
+export const ADD_BLOCK_LABEL = 'Add a block below'
+export const DRAG_BLOCK_LABEL = 'Drag to reorder; Mod+Shift+Arrow moves it'
+
+export type BlockHandlesProps = {
+  onAddBelow: () => void
+  onDragStart: (event: ReactDragEvent<HTMLButtonElement>) => void
+  onDragEnd: () => void
+}
+
+/** The plus and the grip, in the block's left gutter. */
+export function BlockHandles({ onAddBelow, onDragStart, onDragEnd }: BlockHandlesProps) {
+  return (
+    <span className="block__handles" contentEditable={false}>
+      <button
+        type="button"
+        className="block__handle block__handle--add"
+        aria-label={ADD_BLOCK_LABEL}
+        title={ADD_BLOCK_LABEL}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={onAddBelow}
+      >
+        +
+      </button>
+      <button
+        type="button"
+        className="block__handle block__handle--drag"
+        aria-label={DRAG_BLOCK_LABEL}
+        title={DRAG_BLOCK_LABEL}
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+      >
+        {'\u283f'}
+      </button>
+    </span>
+  )
+}
+
+export type BlockMenuProps = {
+  query: string
+  active: number
+  above?: boolean
+  onChoose: (command: BlockCommand) => void
+  menuRef?: RefObject<HTMLDivElement | null>
+}
+
+/**
+ * The `/` menu: a listbox over the command table, not a focusable field. The
+ * block keeps focus and names the selected row with `aria-activedescendant`.
+ */
+export function BlockMenu({
+  query,
+  active,
+  above = false,
+  onChoose,
+  menuRef,
+}: BlockMenuProps) {
+  const rows = filterCommands(query)
+  return (
+    <div
+      ref={menuRef}
+      id={MENU_ID}
+      className={`block__menu${above ? ' block__menu--above' : ''}`}
+      role="listbox"
+      aria-label="Blocks"
+      contentEditable={false}
+    >
+      <div className="block__menu-head" aria-hidden="true">
+        Blocks
+      </div>
+      {rows.length === 0 ? (
+        <div className="block__menu-empty">No blocks match</div>
+      ) : (
+        rows.map((command, index) => (
+          <div
+            key={command.id}
+            id={`${MENU_ID}-${index}`}
+            role="option"
+            aria-selected={index === active}
+            className={`block__menu-row${index === active ? ' block__menu-row--active' : ''}`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onChoose(command)}
+          >
+            <span className="block__menu-glyph" aria-hidden="true">
+              {command.glyph}
+            </span>
+            <span className="block__menu-label">{command.label}</span>
+            <span className="block__menu-note">{command.description}</span>
+          </div>
+        ))
+      )}
+    </div>
+  )
 }
 
 function BlockView({
+  index,
+  surface,
+  handles,
+  active,
+  indicator,
+  dragging,
+  menu,
+  menuRef,
+  onChoose,
+  onAddBelow,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  ...body
+}: BlockViewProps) {
+  return (
+    <BlockShell
+      index={index}
+      kind={surface.kind}
+      indicator={indicator}
+      dragging={dragging}
+      active={active}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {handles ? (
+        <BlockHandles onAddBelow={onAddBelow} onDragStart={onDragStart} onDragEnd={onDragEnd} />
+      ) : null}
+      <BlockBody index={index} surface={surface} {...body} />
+      {menu === null ? null : (
+        <BlockMenu
+          query={menu.query}
+          active={menu.active}
+          above={menu.above}
+          onChoose={onChoose}
+          menuRef={menuRef}
+        />
+      )}
+    </BlockShell>
+  )
+}
+
+type BlockBodyProps = {
+  index: number
+  surface: SurfaceBlock
+  notePath: string
+  selection: Selection
+  noteIndex: string[]
+  onOpenNote?: (path: string) => void
+  onCheck: (row: number) => void
+  onLanguage: (language: string) => void
+  onSwitchToSource: (block: number) => void
+}
+
+/**
+ * One block's own markup.
+ *
+ * Every text span is keyed on the model's text. A structural render then
+ * remounts the span instead of reconciling over it, so React never tries to
+ * delete or rewrite a text node the browser created under the caret while the
+ * human typed; the layout effect restores the caret from the model either way.
+ */
+function BlockBody({
   index,
   surface,
   notePath,
@@ -629,11 +1093,10 @@ function BlockView({
   onCheck,
   onLanguage,
   onSwitchToSource,
-}: BlockViewProps) {
+}: BlockBodyProps) {
   const [imageFailed, setImageFailed] = useState(false)
   const common = {
     className: `block block--${surface.kind}`,
-    'data-block': index,
     'data-kind': surface.kind,
   }
   switch (surface.kind) {
@@ -645,7 +1108,12 @@ function BlockView({
           className={`${common.className}${surface.kind === 'heading' ? ' block--h' : ''}`}
           data-level={surface.kind === 'heading' ? surface.level ?? 1 : undefined}
         >
-          <span className="block__text" data-text data-row="0">
+          {surface.kind === 'paragraph' && textOf(surface, 0) === '' ? (
+            <span className="block__placeholder" contentEditable={false} aria-hidden="true">
+              {"Type '/' for commands"}
+            </span>
+          ) : null}
+          <span className="block__text" data-text data-row="0" key={`text-0-${textOf(surface, 0)}`}>
             <InlineRuns
               source={textOf(surface, 0)}
               notes={noteIndex}
@@ -689,7 +1157,7 @@ function BlockView({
                   {marker(surface, rowIndex)}
                 </span>
               )}
-              <span className="block__text" data-text>
+              <span className="block__text" data-text key={`text-${rowIndex}-${row.text}`}>
                 <InlineRuns
                   source={row.text}
                   notes={noteIndex}
@@ -719,7 +1187,7 @@ function BlockView({
             />
           </div>
           <pre className="block__code-body">
-            <span className="block__text" data-text data-row="0">
+            <span className="block__text" data-text data-row="0" key={`text-0-${surface.text}`}>
               {surface.text}
             </span>
           </pre>
@@ -732,7 +1200,7 @@ function BlockView({
             <span className="block__math-line" contentEditable={false} aria-hidden="true">
               {'$$'}
             </span>
-            <span className="block__text" data-text data-row="0">
+            <span className="block__text" data-text data-row="0" key={`text-0-${surface.text}`}>
               {surface.text}
             </span>
             <span className="block__math-line" contentEditable={false} aria-hidden="true">

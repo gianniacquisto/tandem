@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { parseDocument, type Document } from '../renderer/src/shell/blocks'
-import { BikeshedBlocks } from '../renderer/src/faces/BikeshedBlocks'
+import { BikeshedBlocks, BlockMenu, BlockShell } from '../renderer/src/faces/BikeshedBlocks'
 
 function draw(text: string, notePath = ''): string {
   return renderToStaticMarkup(
@@ -12,6 +12,27 @@ function draw(text: string, notePath = ''): string {
       focusToken: 0,
       fontSize: 16,
       notePath,
+      onChange: () => undefined,
+      onSendToTodos: () => undefined,
+      onSwitchToSource: () => undefined,
+    }),
+  )
+}
+
+function drawWith({
+  text,
+  readOnly = false,
+}: {
+  text: string
+  readOnly?: boolean
+}): string {
+  return renderToStaticMarkup(
+    createElement(BikeshedBlocks, {
+      document: parseDocument(text),
+      focusToken: 0,
+      fontSize: 16,
+      notePath: '',
+      readOnly,
       onChange: () => undefined,
       onSendToTodos: () => undefined,
       onSwitchToSource: () => undefined,
@@ -141,5 +162,73 @@ describe('the read-only source card', () => {
     expect(markup).toContain('block block--opaque')
     expect(markup).toContain('title: A note')
     expect(markup).toContain('Edit in Source mode')
+  })
+})
+
+describe('the block surface draws the handles and the menu', () => {
+  it('draws a plus and a grip on every block, the read-only card included', () => {
+    const markup = draw('one\n\n- a\n- b\n\n---\n\n| a | b |\n| - | - |')
+    expect(markup.match(/block__handles/g)).toHaveLength(4)
+    expect(markup.match(/aria-label="Add a block below"/g)).toHaveLength(4)
+    expect(
+      markup.match(/aria-label="Drag to reorder; Mod\+Shift\+Arrow moves it"/g),
+    ).toHaveLength(4)
+    expect(markup.match(/draggable="true"/g)).toHaveLength(4)
+    // The read-only card is a block like any other: it takes both handles.
+    expect(markup).toContain('block block--opaque')
+  })
+
+  it('draws no handles on a read-only surface', () => {
+    const markup = drawWith({ text: 'one\n\ntwo', readOnly: true })
+    expect(markup).toContain('block block--paragraph')
+    expect(markup).not.toContain('block__handles')
+    expect(markup).not.toContain('block__menu')
+  })
+
+  it('draws the listbox with its rows, the header and the selected row', () => {
+    const markup = renderToStaticMarkup(
+      createElement(BlockMenu, { query: '', active: 2, onChoose: () => undefined }),
+    )
+    expect(markup).toContain('role="listbox"')
+    expect(markup).toContain('aria-label="Blocks"')
+    expect(markup).toContain('Blocks')
+    expect(markup.match(/role="option"/g)).toHaveLength(10)
+    expect(markup.match(/aria-selected="true"/g)).toHaveLength(1)
+    expect(markup.match(/block__menu-row--active/g)).toHaveLength(1)
+
+    const filtered = renderToStaticMarkup(
+      createElement(BlockMenu, { query: 'h2', active: 0, onChoose: () => undefined }),
+    )
+    expect(filtered.match(/role="option"/g)).toHaveLength(1)
+    expect(filtered).toContain('Heading 2')
+  })
+
+  it('draws the no-match row and keeps the listbox', () => {
+    const markup = renderToStaticMarkup(
+      createElement(BlockMenu, { query: 'nothing here', active: 0, onChoose: () => undefined }),
+    )
+    expect(markup).toContain('role="listbox"')
+    expect(markup).toContain('No blocks match')
+    expect(markup.match(/role="option"/g)).toBeNull()
+  })
+
+  it('draws the drop indicator above and below the block', () => {
+    const above = renderToStaticMarkup(
+      createElement(BlockShell, { index: 0, kind: 'paragraph', indicator: 'above' }, 'text'),
+    )
+    expect(above).toContain('block-shell--drop-above')
+    expect(above).toContain('block__drop')
+
+    const below = renderToStaticMarkup(
+      createElement(BlockShell, { index: 1, kind: 'paragraph', indicator: 'below' }, 'text'),
+    )
+    expect(below).toContain('block-shell--drop-below')
+    expect(below).toContain('block__drop')
+
+    const none = renderToStaticMarkup(
+      createElement(BlockShell, { index: 0, kind: 'paragraph' }, 'text'),
+    )
+    expect(none).toContain('block-shell')
+    expect(none).not.toContain('block__drop')
   })
 })
