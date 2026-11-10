@@ -108,4 +108,48 @@ describe('the opaque block edits in place as markdown', () => {
     expect(changes).toHaveLength(0)
     expect(host.textContent).toContain('| a | b |')
   })
+
+  it('leaves the opaque block unchanged on Escape', async () => {
+    const changes: Document[] = []
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    await act(async () => {
+      root!.render(
+        createElement(BikeshedBlocks, {
+          document: parseDocument('| a | b |\n| - | - |'),
+          focusToken: 0,
+          notePath: '',
+          onChange: (document) => changes.push(document),
+          onSendToTodos: () => undefined,
+        }),
+      )
+    })
+
+    await act(async () => {
+      const button = Array.from(host!.querySelectorAll('button')).find(
+        (element) => element.textContent === 'Edit as Markdown',
+      )
+      button!.click()
+    })
+
+    const area = host.querySelector('textarea')!
+    const setValue = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      'value',
+    )!.set!
+    await act(async () => {
+      setValue.call(area, 'unsaved replacement')
+      area.dispatchEvent(new Event('input', { bubbles: true }))
+      area.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      )
+    })
+
+    expect(host.querySelector('textarea')).toBeNull()
+    expect(changes).toHaveLength(0)
+    expect(host.querySelector('.block--opaque')).not.toBeNull()
+    expect(host.textContent).toContain('| a | b |')
+    expect(host.textContent).not.toContain('unsaved replacement')
+  })
 })

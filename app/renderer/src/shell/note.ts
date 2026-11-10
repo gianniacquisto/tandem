@@ -104,22 +104,10 @@ export function conflictStillApplies(
 }
 
 /**
- * The editor's dirty message as data: new typing dirties the buffer, an echo of
- * the text it already holds changes nothing. A same-text post (the frame
- * re-announcing the document it was just handed) must not re-dirty a clean
- * buffer after Take theirs, or the next autosave re-reads the adopted disk.
- */
-export function applyDirty(buffer: NoteBuffer | null, text: string): NoteBuffer | null {
-  if (buffer === null || buffer.text === text) return buffer
-  return { ...buffer, text, dirty: true, document: parseDocument(text) }
-}
-
-/**
- * A Write-surface edit as data: the surface's block document is the truth and
- * the save still writes it through UI-17's serialiser. Unlike `applyDirty` it
- * keeps the exact document (gaps and untouched sources included) rather than
- * reparsing, and it never re-dirties a buffer whose serialised text it already
- * holds.
+ * A block-surface edit as data: the surface's block document is the truth and
+ * the save still writes it through UI-17's serialiser. It keeps the exact
+ * document (gaps and untouched sources included) rather than reparsing, and it
+ * never re-dirties a buffer whose serialised text it already holds.
  */
 export function applyEditor(buffer: NoteBuffer | null, document: Document): NoteBuffer | null {
   if (buffer === null) return null
