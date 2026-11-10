@@ -168,7 +168,6 @@ describe('the parsed content is the only trigger', () => {
       notePath: 'note.md',
       onChange: () => undefined,
       onSendToTodos: () => undefined,
-      onSwitchToSource: () => undefined,
       noteIndex: [],
     })
   }

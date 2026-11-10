@@ -92,7 +92,6 @@ describe('the inline runs draw their elements', () => {
         notePath: 'inline-runs.md',
         onChange: () => undefined,
         onSendToTodos: () => undefined,
-        onSwitchToSource: () => undefined,
         noteIndex: notes,
       }),
     )

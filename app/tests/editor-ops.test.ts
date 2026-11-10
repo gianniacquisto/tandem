@@ -6,6 +6,7 @@ import {
   applyShortcut,
   backspace,
   BLOCK_COMMANDS,
+  commitBlockSource,
   deleteForward,
   deleteSelection,
   dropIndex,
@@ -254,6 +255,46 @@ describe('paste, the task toggle and the escape', () => {
     expect(text).toBe('\\# not a heading')
     const reopened = parseDocument(text)
     expect(reopened.parts[0]).toMatchObject({ type: 'block', block: { kind: 'paragraph' } })
+  })
+})
+
+describe('an opaque block commits its source in place', () => {
+  it('reparses the committed markdown through the document model', () => {
+    const before = state('intro\n\n| a | b |\n| - | - |')
+    expect(kinds(before)).toEqual(['paragraph', 'opaque'])
+
+    const after = commitBlockSource(before, 1, 'a whole paragraph')
+
+    expect(kinds(after)).toEqual(['paragraph', 'paragraph'])
+    expect(serialise(after)).toBe('intro\n\na whole paragraph')
+    expect(after.selection.head.block).toBe(1)
+  })
+
+  it('keeps the block gap and the blocks after it when the source grows', () => {
+    const before = state('intro\n\n| a | b |\n| - | - |\n\ntail')
+
+    const after = commitBlockSource(before, 1, 'one\n\ntwo')
+
+    expect(kinds(after)).toEqual(['paragraph', 'paragraph', 'paragraph', 'paragraph'])
+    expect(serialise(after)).toBe('intro\n\none\n\ntwo\n\ntail')
+  })
+
+  it('keeps frontmatter opaque with its exact new bytes', () => {
+    const before = state('---\ntitle: A\n---\n\nbody')
+
+    const after = commitBlockSource(before, 0, '---\ntitle: B\n---')
+
+    expect(after.blocks[0]?.kind).toBe('opaque')
+    expect(serialise(after)).toBe('---\ntitle: B\n---\n\nbody')
+  })
+
+  it('turns an emptied opaque block into an editable paragraph', () => {
+    const before = state('| a | b |\n| - | - |\n\ntail')
+
+    const after = commitBlockSource(before, 0, '')
+
+    expect(kinds(after)).toEqual(['paragraph', 'paragraph'])
+    expect(after.blocks[0]?.kind).toBe('paragraph')
   })
 })
 

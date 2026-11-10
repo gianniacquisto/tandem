@@ -217,6 +217,41 @@ export function fromDocument(document: Document): EditorState {
   return { blocks, trailingGap: gap, selection: { anchor: start(), head: start() } }
 }
 
+/**
+ * Commit one block's raw markdown back into the surface.
+ *
+ * The text is parsed through UI-17's document model, so an opaque table that a
+ * human rewrites into prose comes back as the prose's blocks and one that stays
+ * a table comes back opaque with its new bytes. The edited block's own gap is
+ * kept before the first replacement, the parsed trailing whitespace lands on
+ * the next block, and the caret returns to the replacement's start.
+ */
+export function commitBlockSource(
+  state: EditorState,
+  index: number,
+  source: string,
+): EditorState {
+  const target = state.blocks[index]
+  if (target === undefined) throw new RangeError(`no block at index ${index}`)
+  const parsed = fromDocument(parseDocument(source))
+  const replacement = parsed.blocks
+  replacement[0] = { ...replacement[0]!, gap: target.gap + replacement[0]!.gap }
+  const next = state.blocks[index + 1]
+  const blocks = [...state.blocks]
+  blocks.splice(index, 1, ...replacement)
+  let trailingGap = state.trailingGap
+  if (next !== undefined) {
+    blocks[index + replacement.length] = {
+      ...next,
+      gap: parsed.trailingGap + next.gap,
+    }
+  } else {
+    trailingGap = parsed.trailingGap + trailingGap
+  }
+  const head = { block: index, row: 0, offset: 0 }
+  return { blocks, trailingGap, selection: { anchor: head, head } }
+}
+
 const PARAGRAPH_MARKER = /^(#{1,6}(\s|$)|[-*+](\s|$)|\d+[.)](\s|$)|>(\s|$)|```|~~~|(?:-{3,}|\*{3,}|_{3,})\s*$)/
 
 /** A paragraph that would parse as a construct is escaped so it reopens as a paragraph. */

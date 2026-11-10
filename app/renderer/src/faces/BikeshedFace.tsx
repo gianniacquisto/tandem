@@ -13,7 +13,6 @@ import {
   notePaths,
 } from '../shell/bikeshed'
 import {
-  applyDirty,
   applyEditor,
   arrival,
   conflictStillApplies,
@@ -28,26 +27,16 @@ import {
   type SaveOutcome,
   type Theirs,
 } from '../shell/note'
-import { blockPoint, documentOffset } from '../shell/caret'
 import {
   loadEditorFontSize,
   saveEditorFontSize,
   stepEditorFontSize,
 } from '../shell/fontSize'
-import {
-  loadMode,
-  openMode,
-  saveMode,
-  switchAfterFlush,
-  switchIntent,
-  type Mode,
-} from '../shell/modes'
 import { BikeshedBlocks } from './BikeshedBlocks'
 import { BikeshedTree } from './BikeshedTree'
 import { FocusControl } from './FocusControl'
 import { NoteFooter } from './NoteFooter'
 import { NoteSizeControl } from './NoteSizeControl'
-import { SourceSurface } from './SourceSurface'
 
 const HIDDEN_KEY = 'tandem.bikeshed.hidden'
 
@@ -110,14 +99,9 @@ export type BikeshedFaceProps = {
 
 export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject }: BikeshedFaceProps) {
   const [hidden, setHidden] = useState(() => window.localStorage.getItem(HIDDEN_KEY) === 'true')
-  const [mode, setMode] = useState<Mode>(() => loadMode())
   // One app-wide note size: ADR 0012's preference, applied once on the wrapper
-  // both surfaces share.
+  // the block surface sits in.
   const [size, setSize] = useState(() => loadEditorFontSize())
-  // The switch's one carried value: a document offset, or null when there is
-  // none (an empty note, or an untouched switch). It is state so the arriving
-  // surface receives it on render; the ref reads it without a stale closure.
-  const [caret, setCaret] = useState<number | null>(null)
   const [nodes, setNodes] = useState<NoteNodeView[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState<NoteBuffer | null>(null)
@@ -135,13 +119,10 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
   const seeded = useRef(false)
   const openRef = useRef<NoteBuffer | null>(null)
   openRef.current = open
-  const modeRef = useRef(mode)
-  modeRef.current = mode
   const conflictRef = useRef<Theirs | null>(null)
   conflictRef.current = conflict
-  const caretRef = useRef<number | null>(null)
-  // One write at a time: a switch that meets an autosave awaits that same
-  // promise instead of starting a second one (ADR 0004's one save path).
+  // One write at a time: a save that meets an autosave awaits that same promise
+  // instead of starting a second one (ADR 0004's one save path).
   const inFlight = useRef<Promise<SaveOutcome> | null>(null)
 
   const noteIndex = useMemo(() => notePaths(nodes), [nodes])
@@ -228,8 +209,8 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
 
   /**
    * The one write path. A dirty buffer is handed to `saveNote`; a second
-   * caller while a save is in flight awaits that same promise, so a switch and
-   * a pending autosave can never write twice.
+   * caller while a save is in flight awaits that same promise, so two callers
+   * can never write twice.
    */
   function save(buffer: NoteBuffer): Promise<SaveOutcome> {
     if (!buffer.dirty) return Promise.resolve({ type: 'saved', hash: buffer.baseline })
@@ -288,9 +269,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     const draft = takeDraft()
     if (draft === null) return
     setOpen(draft)
-    setMode(openMode(loadMode(), draft.text))
-    setCaret(null)
-    caretRef.current = null
     setToken((current) => current + 1)
     setExpanded((current) => new Set([...current, ...ancestorsOf(draft.path)]))
     setNotice('A draft from your last visit was kept. Saving again.')
@@ -373,12 +351,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       return
     }
     setOpen(openBuffer({ path: note.path, text: note.text, hash: note.hash }))
-    // Empty always wins over a stored Source, so UI-1/UI-4 creations open
-    // ready to type; otherwise the last explicit choice wins. Opening never
-    // persists: only a switch writes the stored choice.
-    setMode(openMode(loadMode(), note.text))
-    setCaret(null)
-    caretRef.current = null
     setConflict(null)
     setExpanded((current) => new Set([...current, ...ancestorsOf(path)]))
     setToken((current) => current + 1)
@@ -496,50 +468,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     const next = stepEditorFontSize(size, delta)
     setSize(next)
     saveEditorFontSize(next)
-  }
-
-  /**
-   * The one switch path, for the titlebar control and the read-only card.
-   *
-   * The intent decides whether the surface may change: a conflict freezes the
-   * face, a save in flight is awaited (never doubled), and a dirty buffer is
-   * flushed through the one save path first. A flush that conflicts or errors
-   * leaves the mode where it was and the existing banner shows why. The
-   * chosen mode is stored here, on the switch, never on open.
-   */
-  async function requestMode(next: Mode, anchor?: number | null): Promise<void> {
-    const current = openRef.current
-    if (current === null || next === modeRef.current) return
-    const state = (): { dirty: boolean; saving: boolean; conflict: boolean } => ({
-      dirty: openRef.current?.dirty === true,
-      saving: inFlight.current !== null,
-      conflict: conflictRef.current !== null,
-    })
-    let intent = switchIntent(state())
-    // Await the save that is already running, then look again: the buffer may
-    // have grown dirty meanwhile, and that flush is this switch's own.
-    while (intent === 'wait') {
-      const pending = inFlight.current
-      if (pending === null) break
-      await pending
-      if (inFlight.current === pending) inFlight.current = null
-      if (openRef.current === null) return
-      intent = switchIntent(state())
-    }
-    if (intent === 'blocked') return
-    if (intent === 'flush') {
-      const buffer = openRef.current
-      if (buffer === null) return
-      const outcome = await save(buffer)
-      if (switchAfterFlush(outcome.type) !== 'switch') return
-    }
-    // The switch carries the departing caret (or the card's anchor) to the
-    // arriving surface. It is not a document change: the open token stays.
-    const carried = anchor === undefined ? caretRef.current : anchor
-    setCaret(carried)
-    caretRef.current = carried
-    setMode(next)
-    saveMode(next)
   }
 
   const folder =
@@ -662,24 +590,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
                 <div className="bikeshed__breadcrumb-end">
                   {saving ? <span className="editor__saving">saving{'\u2026'}</span> : null}
                   <NoteSizeControl size={size} onStep={stepSize} />
-                  <div className="editor__mode" role="group" aria-label="Editor mode">
-                    <button
-                      type="button"
-                      className="editor__mode-button"
-                      aria-pressed={mode === 'write'}
-                      onClick={() => void requestMode('write')}
-                    >
-                      Write
-                    </button>
-                    <button
-                      type="button"
-                      className="editor__mode-button"
-                      aria-pressed={mode === 'source'}
-                      onClick={() => void requestMode('source')}
-                    >
-                      Source
-                    </button>
-                  </div>
                 </div>
               </div>
             </header>
@@ -694,36 +604,14 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
                 <p className="editor__empty-title">No note selected</p>
                 <p className="editor__empty-body">Pick a note in the tree.</p>
               </div>
-            ) : mode === 'source' ? (
-              <SourceSurface
-                text={open.text}
-                caret={caret}
-                focusToken={token}
-                onChange={(text) => setOpen((current) => applyDirty(current, text))}
-                onCaret={(offset) => {
-                  caretRef.current = offset
-                }}
-              />
             ) : (
               <BikeshedBlocks
                 document={open.document}
                 focusToken={token}
                 notePath={open.path}
-                caret={caret === null ? null : blockPoint(open.document, caret)}
                 onChange={(document) => setOpen((current) => applyEditor(current, document))}
-                onCaret={(point) => {
-                  caretRef.current =
-                    point === null
-                      ? null
-                      : documentOffset(openRef.current?.document ?? open.document, point)
-                }}
                 onSendToTodos={(text) => {
                   if (text !== '') void fileTicket(text)
-                }}
-                onSwitchToSource={(block) => {
-                  const anchor =
-                    documentOffset(openRef.current?.document ?? open.document, { block, offset: 0 }) ?? 0
-                  void requestMode('source', anchor)
                 }}
                 noteIndex={noteIndex}
                 onOpenNote={(path) => void openNote(path)}
