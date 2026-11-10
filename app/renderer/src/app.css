@@ -1544,7 +1544,7 @@ body {
   max-width: 740px;
   min-height: 40px;
   margin: 0 auto;
-  padding: 0 var(--space-gutter);
+  padding: 0 calc(var(--space-gutter) * 2);
 }
 
 .bikeshed__crumbs {
@@ -1587,7 +1587,7 @@ body {
   max-width: 740px;
   flex-direction: column;
   margin: 0 auto;
-  padding: 15px var(--space-gutter) 0;
+  padding: 15px calc(var(--space-gutter) * 2) 0;
 }
 
 /*
