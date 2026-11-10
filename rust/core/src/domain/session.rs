@@ -285,6 +285,13 @@ pub struct Session {
     /// The harness's own session, as a foreign pointer (PRT-29). Tandem's `id`
     /// is the primary key; this column is how a pass is joined to what the
     /// harness recorded, and it is absent on a hand-driven run.
+    ///
+    /// **The pointer's usage is cumulative.** A record stamped with
+    /// `--usage-from-harness` holds the harness session's running total, and
+    /// several records can share one pointer (a re-dispatched pass opens its
+    /// own, ADR 0027). A record's share is derived
+    /// (`usage::attribute_harness_usage`), so the records under one pointer sum
+    /// to the session's totals instead of each counting the whole snapshot.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub harness_session_id: Option<String>,
     /// Which harness the pass ran in: `event-stream` or `database`, provenance
