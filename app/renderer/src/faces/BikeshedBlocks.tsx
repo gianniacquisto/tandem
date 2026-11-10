@@ -66,8 +66,6 @@ export type BikeshedBlocksProps = {
   document: Document
   /** Changes when the note is opened or adopted, so the host takes focus. */
   focusToken: number
-  /** The persisted note font size; Write keeps the same reading size. */
-  fontSize: number
   /** The containing note's vault path: image targets resolve against its folder. */
   notePath: string
   /** The caret a mode switch carried, as a block point; null for none. */
@@ -131,7 +129,6 @@ const DRAG_TYPE = 'application/x-tandem-block'
 export function BikeshedBlocks({
   document: doc,
   focusToken,
-  fontSize,
   notePath,
   caret,
   onChange,
@@ -773,7 +770,6 @@ export function BikeshedBlocks({
       contentEditable={!readOnly}
       suppressContentEditableWarning
       spellCheck={false}
-      style={{ fontSize: `${fontSize}px` }}
       onFocus={() => setFocused(true)}
       onBlur={() => {
         setFocused(false)

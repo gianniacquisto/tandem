@@ -49,3 +49,8 @@ export function saveEditorFontSize(value: number, storage?: FontStorage | null):
   if (store === null) return
   store.setItem(EDITOR_FONT_SIZE_KEY, String(clampEditorFontSize(value)))
 }
+
+/** One ADR 0012 step from a (possibly nonsense) current, clamped at both ends. */
+export function stepEditorFontSize(current: unknown, delta: number): number {
+  return clampEditorFontSize(clampEditorFontSize(current) + delta)
+}

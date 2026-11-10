@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import type { BikeshedHealth } from '../wire/BikeshedHealth'
 import type { BacklinkView } from '../wire/BacklinkView'
@@ -29,7 +29,11 @@ import {
   type Theirs,
 } from '../shell/note'
 import { blockPoint, documentOffset } from '../shell/caret'
-import { loadEditorFontSize } from '../shell/fontSize'
+import {
+  loadEditorFontSize,
+  saveEditorFontSize,
+  stepEditorFontSize,
+} from '../shell/fontSize'
 import {
   loadMode,
   openMode,
@@ -42,6 +46,7 @@ import { BikeshedBlocks } from './BikeshedBlocks'
 import { BikeshedTree } from './BikeshedTree'
 import { FocusControl } from './FocusControl'
 import { NoteFooter } from './NoteFooter'
+import { NoteSizeControl } from './NoteSizeControl'
 import { SourceSurface } from './SourceSurface'
 
 const HIDDEN_KEY = 'tandem.bikeshed.hidden'
@@ -106,6 +111,9 @@ export type BikeshedFaceProps = {
 export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject }: BikeshedFaceProps) {
   const [hidden, setHidden] = useState(() => window.localStorage.getItem(HIDDEN_KEY) === 'true')
   const [mode, setMode] = useState<Mode>(() => loadMode())
+  // One app-wide note size: ADR 0012's preference, applied once on the wrapper
+  // both surfaces share.
+  const [size, setSize] = useState(() => loadEditorFontSize())
   // The switch's one carried value: a document offset, or null when there is
   // none (an empty note, or an untouched switch). It is state so the arriving
   // surface receives it on render; the ref reads it without a stale closure.
@@ -483,6 +491,13 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     setHidden(next)
   }
 
+  /** A step is view state: it writes the preference, never the note. */
+  function stepSize(delta: number): void {
+    const next = stepEditorFontSize(size, delta)
+    setSize(next)
+    saveEditorFontSize(next)
+  }
+
   /**
    * The one switch path, for the titlebar control and the read-only card.
    *
@@ -646,6 +661,7 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
                 </nav>
                 <div className="bikeshed__breadcrumb-end">
                   {saving ? <span className="editor__saving">saving{'\u2026'}</span> : null}
+                  <NoteSizeControl size={size} onStep={stepSize} />
                   <div className="editor__mode" role="group" aria-label="Editor mode">
                     <button
                       type="button"
@@ -669,7 +685,10 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
             </header>
           )}
 
-          <div className="bikeshed__page">
+          <div
+            className="bikeshed__page"
+            style={{ '--tandem-editor-font-size': `${size}px` } as CSSProperties}
+          >
             {open === null ? (
               <div className="editor__empty">
                 <p className="editor__empty-title">No note selected</p>
@@ -678,7 +697,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
             ) : mode === 'source' ? (
               <SourceSurface
                 text={open.text}
-                fontSize={loadEditorFontSize()}
                 caret={caret}
                 focusToken={token}
                 onChange={(text) => setOpen((current) => applyDirty(current, text))}
@@ -690,7 +708,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
               <BikeshedBlocks
                 document={open.document}
                 focusToken={token}
-                fontSize={loadEditorFontSize()}
                 notePath={open.path}
                 caret={caret === null ? null : blockPoint(open.document, caret)}
                 onChange={(document) => setOpen((current) => applyEditor(current, document))}

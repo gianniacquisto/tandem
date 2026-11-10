@@ -1846,6 +1846,7 @@ body {
   font-size: 11.5px;
 }
 
+.editor__size,
 .editor__mode {
   display: flex;
   flex: none;
@@ -1854,6 +1855,11 @@ body {
   overflow: hidden;
 }
 
+.editor__size > * + * {
+  border-left: var(--hairline) solid var(--line);
+}
+
+.editor__size-button,
 .editor__mode-button {
   border: 0;
   background: transparent;
@@ -1866,12 +1872,30 @@ body {
   cursor: pointer;
 }
 
+.editor__size-readout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2ch;
+  padding: 4px 6px;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
 .editor__mode-button + .editor__mode-button {
   border-left: var(--hairline) solid var(--line);
 }
 
+.editor__size-button:hover,
 .editor__mode-button:hover {
   color: var(--ink);
+}
+
+.editor__size-button:disabled {
+  color: var(--line);
+  cursor: default;
 }
 
 .editor__mode-button[aria-pressed="true"] {
@@ -1886,6 +1910,7 @@ body {
   min-height: calc(100vh - 160px);
   padding-bottom: 28px;
   color: var(--ink);
+  font-size: var(--tandem-editor-font-size, 16px);
   line-height: 1.65;
   outline: none;
   white-space: pre-wrap;

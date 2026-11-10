@@ -89,7 +89,6 @@ describe('the inline runs draw their elements', () => {
       createElement(BikeshedBlocks, {
         document: parseDocument('**bold** and [[Index]] and $x^2$\n\n$$\nx = 1\n$$'),
         focusToken: 0,
-        fontSize: 16,
         notePath: 'inline-runs.md',
         onChange: () => undefined,
         onSendToTodos: () => undefined,
