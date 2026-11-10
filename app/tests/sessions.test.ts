@@ -33,6 +33,8 @@ function session(overrides: Partial<Session>): Session {
     cost: 0.42,
     model: 'deepseek-v4',
     skills: null,
+    turns: null,
+    calls: null,
     ...overrides,
   }
 }
