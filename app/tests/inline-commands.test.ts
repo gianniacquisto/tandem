@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  inlineAction,
   inlineKey,
+  linkInline,
   toggleInlineStyle,
   type InlineStyle,
 } from '../renderer/src/shell/inline-commands'
+import { parseDocument } from '../renderer/src/shell/blocks'
+import {
+  applyCommand,
+  fromDocument,
+  serialise,
+  toggleStyle,
+  withSelection,
+  BLOCK_COMMANDS,
+} from '../renderer/src/shell/editor-ops'
+import { TOOLBAR_ROWS, type ToolbarAction } from '../renderer/src/shell/toolbar'
 
 const toggle = (source: string, from: number, to: number, style: InlineStyle) =>
   toggleInlineStyle(source, { from, to }, style)
@@ -98,5 +110,76 @@ describe('the key mapping', () => {
     expect(inlineKey({ key: 'e', mod: true, shift: true, alt: false })).toBeNull()
     expect(inlineKey({ key: 'e', mod: true, shift: false, alt: true })).toBeNull()
     expect(inlineKey({ key: 'x', mod: true, shift: false, alt: false })).toBeNull()
+  })
+})
+
+describe('the link command', () => {
+  it('the link command wraps the selection and selects the placeholder', () => {
+    const wrapped = linkInline('before plain after', { from: 7, to: 12 })
+    expect(wrapped.source).toBe('before [plain](url) after')
+    expect(wrapped.source.slice(wrapped.selection.from, wrapped.selection.to)).toBe('url')
+
+    // A collapsed caret inserts the pair with the caret between the brackets.
+    const collapsed = linkInline('ab', { from: 1, to: 1 })
+    expect(collapsed.source).toBe('a[](url)b')
+    expect(collapsed.selection).toEqual({ from: 2, to: 2 })
+
+    // Every other byte of the block is untouched.
+    const kept = linkInline('keep **this** and that', { from: 7, to: 9 })
+    expect(kept.source).toBe('keep **[th](url)is** and that')
+  })
+})
+
+describe("the bar's table", () => {
+  it('the bar and the keymap dispatch the same command', () => {
+    const actions = TOOLBAR_ROWS.filter(
+      (row): row is ToolbarAction => row.type === 'action',
+    )
+    // The brief's prose says twelve; its own action list and the retired bar's
+    // eleven icons name eleven. The list is the truth.
+    expect(actions).toHaveLength(11)
+    expect(new Set(actions.map((action) => action.id)).size).toBe(actions.length)
+
+    const inline = actions.filter(
+      (action) => action.group === 'inline' && action.style !== undefined,
+    )
+    expect(inline).toHaveLength(4)
+    for (const row of inline) {
+      if (row.key === null || row.key === undefined) continue
+      const named = inlineAction({ key: row.key, mod: true, shift: false, alt: false })
+      expect(named).not.toBeNull()
+      expect(named?.id).toBe(row.id)
+      expect(named?.style).toBe(row.style)
+
+      const state = fromDocument(parseDocument('plain'))
+      const base = withSelection(
+        state,
+        { block: 0, row: 0, offset: 0 },
+        { block: 0, row: 0, offset: 5 },
+      )
+      expect(serialise(row.command(base))).toBe(
+        serialise(toggleStyle(base, row.style as InlineStyle)),
+      )
+    }
+
+    // Strikethrough has no shortcut: the bar is its only control.
+    expect(actions.find((action) => action.id === 'strikethrough')?.key ?? null).toBeNull()
+
+    const blockRows: Array<[string, string]> = [
+      ['bullet-list', 'bulleted'],
+      ['numbered-list', 'numbered'],
+      ['task-list', 'task'],
+      ['quote', 'quote'],
+      ['code-block', 'code'],
+    ]
+    for (const [id, commandId] of blockRows) {
+      const row = actions.find((action) => action.id === id)
+      const command = BLOCK_COMMANDS.find((entry) => entry.id === commandId)
+      expect(row).toBeDefined()
+      expect(command).toBeDefined()
+      const state = fromDocument(parseDocument('plain'))
+      expect(serialise(row!.command(state))).toBe(serialise(applyCommand(state, 0, command!)))
+      expect(row!.target).toEqual(command!.target)
+    }
   })
 })

@@ -87,22 +87,72 @@ export function toggleInlineStyle(
   }
 }
 
-/** The command a key press names, or null when it is not a plain modifier press. */
+/**
+ * Wrap the selection as `[label](url)` and select the literal placeholder, so
+ * typing replaces it. A collapsed caret inserts `[](url)` with the caret
+ * between the brackets. Every other byte of the block is untouched.
+ */
+export function linkInline(source: string, selection: InlineSelection): InlineCommandResult {
+  const start = Math.max(0, Math.min(source.length, Math.min(selection.from, selection.to)))
+  const end = Math.max(0, Math.min(source.length, Math.max(selection.from, selection.to)))
+  if (start === end) {
+    return {
+      source: source.slice(0, start) + '[](url)' + source.slice(end),
+      selection: { from: start + 1, to: start + 1 },
+    }
+  }
+  const label = source.slice(start, end)
+  const placeholder = start + 1 + label.length + 2
+  return {
+    source: source.slice(0, start) + `[${label}](url)` + source.slice(end),
+    selection: { from: placeholder, to: placeholder + 3 },
+  }
+}
+
+/**
+ * One inline action: its label and title, the style it toggles, and the key
+ * that names it (null for strikethrough, which has no shortcut). The keymap
+ * and the bar read this one table, so a key and its button cannot drift.
+ */
+export type InlineAction = {
+  id: string
+  style: InlineStyle
+  key: string | null
+  label: string
+  title: string
+}
+
+export const INLINE_ACTIONS: readonly InlineAction[] = [
+  { id: 'bold', style: 'bold', key: 'b', label: 'Bold', title: 'Bold' },
+  { id: 'italic', style: 'italic', key: 'i', label: 'Italic', title: 'Italic' },
+  {
+    id: 'strikethrough',
+    style: 'strikethrough',
+    key: null,
+    label: 'Strikethrough',
+    title: 'Strikethrough',
+  },
+  { id: 'inline-code', style: 'code', key: 'e', label: 'Inline code', title: 'Inline code' },
+]
+
+/** The action a key press names, or null when it is not a plain modifier press. */
+export function inlineAction(input: {
+  key: string
+  mod: boolean
+  shift: boolean
+  alt: boolean
+}): InlineAction | null {
+  if (!input.mod || input.shift || input.alt) return null
+  const key = input.key.toLowerCase()
+  return INLINE_ACTIONS.find((action) => action.key === key) ?? null
+}
+
+/** The style a key press toggles, or null when it is not a plain modifier press. */
 export function inlineKey(input: {
   key: string
   mod: boolean
   shift: boolean
   alt: boolean
 }): InlineStyle | null {
-  if (!input.mod || input.shift || input.alt) return null
-  switch (input.key.toLowerCase()) {
-    case 'b':
-      return 'bold'
-    case 'i':
-      return 'italic'
-    case 'e':
-      return 'code'
-    default:
-      return null
-  }
+  return inlineAction(input)?.style ?? null
 }
