@@ -45,7 +45,7 @@ A record of one agent session — its brief, its outcome, and the tickets and no
 _Avoid_: session log, journal
 
 **Sprint**:
-A record of one sprint — its lane, batch, run log and close — with its own two states (`open`, `closed`), stored in the store's `sprints` table and identified by the pair (lane, number). Its six verbs are `sprint open/ticket/run/close/list/show`. Not a ticket, and not on the board.
+A record of one sprint — its lane, batch, run log and close — with its own two states (`open`, `closed`), stored in the store's `sprints` table and identified by the pair (lane, number). Its six verbs are `sprint open/ticket/run/close/list/show`. Not a ticket, and not on the board. The batch write links each ticket to the sprint's opening session.
 _Avoid_: sprint ticket
 
 **Open**:

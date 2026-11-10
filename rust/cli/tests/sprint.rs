@@ -207,3 +207,113 @@ fn sprint_show_on_an_epic_lane_with_no_record_names_the_lane() {
         "the refusal names what the lane holds: {message}"
     );
 }
+
+#[test]
+fn a_batch_ticket_lands_on_the_sprints_session_record() {
+    let sandbox = Sandbox::new("batch-links-session");
+    let first = sandbox.json(&["ticket", "add", "--title", "First"]);
+    let second = sandbox.json(&["ticket", "add", "--title", "Second"]);
+    let first_id = first["id"].as_str().unwrap().to_string();
+    let second_id = second["id"].as_str().unwrap().to_string();
+
+    let started = sandbox.harness_json(&[
+        "session",
+        "start",
+        "--project",
+        "tandem",
+        "--agent",
+        "sprint",
+        "--brief",
+        "The sprint session.",
+    ]);
+    let record_id = started["id"].as_str().unwrap().to_string();
+    let opened = sandbox.harness_json(&["sprint", "open", "--lane", "Tandem"]);
+    assert_eq!(
+        opened["session"].as_str().unwrap(),
+        record_id,
+        "the sprint names the session record it opened from"
+    );
+
+    sandbox.harness_json(&[
+        "sprint", "ticket", "--lane", "Tandem", "--ticket", &first_id,
+    ]);
+    sandbox.harness_json(&[
+        "sprint", "ticket", "--lane", "Tandem", "--ticket", &second_id,
+    ]);
+
+    let expected = serde_json::json!([first_id, second_id]);
+    let via_pointer = sandbox.harness_json(&["session", "show"]);
+    assert_eq!(via_pointer["id"].as_str().unwrap(), record_id);
+    assert_eq!(
+        via_pointer["tickets"], expected,
+        "the sprint's record carries the batch in batch order"
+    );
+
+    let via_handle = sandbox.json(&["session", "show", "--session", &record_id]);
+    assert_eq!(
+        via_handle["tickets"], expected,
+        "the stored handle reaches the same record"
+    );
+}
+
+#[test]
+fn the_sprints_usage_reaches_the_tickets_it_drew() {
+    let sandbox = Sandbox::new("batch-usage");
+    let first = sandbox.json(&["ticket", "add", "--title", "First"]);
+    let second = sandbox.json(&["ticket", "add", "--title", "Second"]);
+    let first_id = first["id"].as_str().unwrap().to_string();
+    let second_id = second["id"].as_str().unwrap().to_string();
+
+    let started = sandbox.harness_json(&[
+        "session",
+        "start",
+        "--project",
+        "tandem",
+        "--agent",
+        "sprint",
+        "--brief",
+        "The sprint session.",
+    ]);
+    let record_id = started["id"].as_str().unwrap().to_string();
+    sandbox.harness_json(&["sprint", "open", "--lane", "Tandem"]);
+    sandbox.harness_json(&[
+        "sprint", "ticket", "--lane", "Tandem", "--ticket", &first_id,
+    ]);
+    sandbox.harness_json(&[
+        "sprint", "ticket", "--lane", "Tandem", "--ticket", &second_id,
+    ]);
+
+    sandbox.harness_json(&[
+        "session",
+        "end",
+        "--outcome",
+        "succeeded",
+        "--tokens-input",
+        "1234",
+        "--summary",
+        "The sprint landed its batch.",
+    ]);
+
+    let header = format!("Usage \u{2014} {record_id}");
+    for id in [&first_id, &second_id] {
+        let listed = sandbox.json(&["ticket", "comment", "list", "--id", id]);
+        let comments = listed["comments"].as_array().unwrap();
+        assert_eq!(
+            comments.len(),
+            1,
+            "the sprint posts one usage comment on each drawn ticket"
+        );
+        assert_eq!(comments[0]["author"], "sprint");
+        let first_line = comments[0]["body"]
+            .as_str()
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap()
+            .to_string();
+        assert!(
+            first_line.starts_with(&header),
+            "the usage header names the sprint's session: {first_line}"
+        );
+    }
+}
