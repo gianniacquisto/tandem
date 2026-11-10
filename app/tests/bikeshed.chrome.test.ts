@@ -10,9 +10,6 @@ const css = normalise(readFileSync(`${appRoot}renderer/src/app.css`, 'utf8'))
 const face = normalise(
   readFileSync(`${appRoot}renderer/src/faces/BikeshedFace.tsx`, 'utf8'),
 )
-const editor = normalise(
-  readFileSync(`${appRoot}renderer/src/faces/BikeshedEditor.tsx`, 'utf8'),
-)
 const app = normalise(readFileSync(`${appRoot}renderer/src/App.tsx`, 'utf8'))
 
 /** The declaration block for a selector, without its braces. */
@@ -63,7 +60,7 @@ describe('the bikeshed chrome', () => {
     expect(face).not.toContain('railOpen')
     expect(face).not.toContain('onToggleRail')
     expect(face).not.toContain('tandem.bikeshed.rail-open')
-    expect(editor).not.toContain('editor__rail-toggle')
+    expect(face).not.toContain('editor__rail-toggle')
     expect(css).not.toContain('.rail')
   })
 
@@ -104,7 +101,7 @@ describe('the Write|Source switch', () => {
   const source = normalise(
     readFileSync(`${appRoot}renderer/src/faces/SourceSurface.tsx`, 'utf8'),
   )
-  const shellEditor = normalise(readFileSync(`${appRoot}renderer/src/shell/editor.ts`, 'utf8'))
+  const shellEditor = normalise(readFileSync(`${appRoot}renderer/src/shell/fontSize.ts`, 'utf8'))
 
   it('draws Write and Source in the titlebar, and nowhere Preview or Edit', () => {
     const start = face.indexOf('editor__mode')

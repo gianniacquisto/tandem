@@ -13,10 +13,11 @@ describe('the content security policy', () => {
     expect(policy).toContain("frame-ancestors 'self'")
   })
 
-  it('admits exactly the editor frame the bundle loads in, and no remote frame', () => {
+  it('admits no frame and no remote frame', () => {
     const policy = contentSecurityPolicy(false)
 
-    expect(policy).toContain("frame-src 'self'")
+    expect(policy).toContain("frame-src 'none'")
+    expect(policy).not.toContain("frame-src 'self'")
     expect(policy).not.toContain("frame-ancestors 'none'")
     expect(policy).not.toMatch(/frame-src[^;]*https?:/)
   })
@@ -47,7 +48,7 @@ describe('the content security policy', () => {
         "object-src 'none'",
         "base-uri 'none'",
         "form-action 'none'",
-        "frame-src 'self'",
+        "frame-src 'none'",
         "frame-ancestors 'self'",
       ].join('; '),
     )

@@ -29,7 +29,7 @@ import {
   type Theirs,
 } from '../shell/note'
 import { blockPoint, documentOffset } from '../shell/caret'
-import { loadEditorFontSize } from '../shell/editor'
+import { loadEditorFontSize } from '../shell/fontSize'
 import {
   loadMode,
   openMode,

@@ -34,6 +34,9 @@ extraResources:
     filter:
       - tandem
       - tandem.exe
+      # The packages the renderer carries, with their verbatim licence texts
+      # (UI-22's generated `THIRD-PARTY.md`, staged by `prepare-binary.mjs`).
+      - THIRD-PARTY.md
   # The agent face (ADR 0034): the skills, the four prompts and AGENTS.md ship
   # beside the core, and `tandem-cli setup install` materialises this copy into
   # the Tandem home. `prepare-binary.mjs` writes it from the checkout and stamps

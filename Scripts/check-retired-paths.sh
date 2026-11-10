@@ -17,6 +17,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 # Every path the cutover retired. `Sources/Tandem` also matches
 # `Sources/TandemCore`, and both stay listed because this list is the record.
+# UI-22 retired the editor subproject, its committed bundle and its frame.
 retired=(
   Sources/Tandem
   Sources/TandemCore
@@ -27,6 +28,8 @@ retired=(
   Scripts/capture-goldens.sh
   Scripts/make-app-bundle.sh
   Scripts/usage-report.sh
+  Editor/
+  editor-frame.html
 )
 
 pattern=$(printf '%s\n' "${retired[@]}" | sed 's/\./\\./g' | paste -sd '|' -)
@@ -42,7 +45,8 @@ allow=(
   'docs/port.md|section:## Where the old code goes|The mapping table is the record of where each old path went. The spec prose around it is live and states the cutover, so it carries no retired path.'
   'rust/**/*.rs|^[[:space:]]*//!|A module doc comment records what the module was ported from, a reference to the git history.'
   'app/tests/*.test.ts|^[[:space:]]*//.*Sources/Tandem[^ ]*\.swift|A ported test cites the Swift file the behaviour came from, a provenance comment: the same class as the Rust module docs.'
-  'Editor/build.mjs|^console\.log\("Editor bundle|The bundle log line names the directory the bundle replaced.'
+  'app/renderer/src/shell/*.ts|Editor/|A module doc comment records the retired editor module the behaviour was ported from, a reference to the git history.'
+  'app/tests/*.test.ts|Editor/|A ported test cites the retired editor source or test it pins, a provenance comment.'
 )
 
 # `in_section <file> <line> <heading>`: is `<line>` inside the section the

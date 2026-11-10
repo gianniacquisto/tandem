@@ -48,7 +48,9 @@ import {
 } from '../shell/editor-ops'
 import { inlineKey } from '../shell/inline-commands'
 import { filterNotes, parseInline, wikilinkQueryAt, type NoteChoice } from '../shell/inline'
+import { renderMath } from '../shell/math'
 import { InlineRuns, WikilinkPicker } from './InlineRuns'
+import { MermaidDiagram } from './MermaidDiagram'
 
 export type BikeshedBlocksProps = {
   /** UI-17's document: the surface's one truth. */
@@ -542,6 +544,22 @@ export function BikeshedBlocks({
     apply(toggleTask(stateRef.current, block, row), false)
   }
 
+  /**
+   * Put the caret in a block that is drawing a view (a mermaid diagram), so
+   * its source replaces the view and the row becomes editable again. This is a
+   * caret move, not a document edit: no `onChange` and no history entry.
+   */
+  function revealBlock(block: number): void {
+    const surface = stateRef.current.blocks[block]
+    if (surface === undefined) return
+    const offset = surface.kind === 'code' || surface.kind === 'math' ? surface.text.length : 0
+    const next = withCaret(stateRef.current, block, 0, offset)
+    stateRef.current = next
+    pending.current = next.selection
+    setState({ ...next })
+    reportCaret(next.selection.head)
+  }
+
   return (
     <div
       ref={host}
@@ -583,6 +601,7 @@ export function BikeshedBlocks({
           onCheck={(row) => checkTask(index, row)}
           onLanguage={(language) => updateLanguage(index, language)}
           onSwitchToSource={onSwitchToSource}
+          onReveal={() => revealBlock(index)}
         />
       ))}
       {picker === null ? null : (
@@ -617,6 +636,7 @@ type BlockViewProps = {
   onCheck: (row: number) => void
   onLanguage: (language: string) => void
   onSwitchToSource: (block: number) => void
+  onReveal: () => void
 }
 
 function BlockView({
@@ -629,6 +649,7 @@ function BlockView({
   onCheck,
   onLanguage,
   onSwitchToSource,
+  onReveal,
 }: BlockViewProps) {
   const [imageFailed, setImageFailed] = useState(false)
   const common = {
@@ -636,6 +657,8 @@ function BlockView({
     'data-block': index,
     'data-kind': surface.kind,
   }
+  // The caret's block shows its source; a resting block draws its view.
+  const editing = selection.anchor.block === index || selection.head.block === index
   switch (surface.kind) {
     case 'paragraph':
     case 'heading':
@@ -651,6 +674,7 @@ function BlockView({
               notes={noteIndex}
               selection={revealFor(selection, index, 0)}
               onOpenNote={onOpenNote}
+              editing={editing}
             />
           </span>
         </div>
@@ -695,6 +719,7 @@ function BlockView({
                   notes={noteIndex}
                   selection={revealFor(selection, index, rowIndex)}
                   onOpenNote={onOpenNote}
+                  editing={editing}
                 />
               </span>
             </div>
@@ -702,43 +727,86 @@ function BlockView({
         </div>
       )
     }
-    case 'code':
-      return (
-        <div {...common} className="block block--code">
-          <div className="block__code-head" contentEditable={false}>
-            <input
-              className="block__code-lang"
-              aria-label="Code language"
-              value={surface.language ?? ''}
-              placeholder="language"
-              onChange={(event) => onLanguage(event.target.value)}
-              onKeyDown={(event) => event.stopPropagation()}
-              onPaste={(event) => event.stopPropagation()}
-              onCopy={(event) => event.stopPropagation()}
-              onCut={(event) => event.stopPropagation()}
-            />
-          </div>
-          <pre className="block__code-body">
-            <span className="block__text" data-text data-row="0">
-              {surface.text}
-            </span>
-          </pre>
+    case 'code': {
+      const head = (
+        <div className="block__code-head" contentEditable={false}>
+          <input
+            className="block__code-lang"
+            aria-label="Code language"
+            value={surface.language ?? ''}
+            placeholder="language"
+            onChange={(event) => onLanguage(event.target.value)}
+            onKeyDown={(event) => event.stopPropagation()}
+            onPaste={(event) => event.stopPropagation()}
+            onCopy={(event) => event.stopPropagation()}
+            onCut={(event) => event.stopPropagation()}
+          />
         </div>
       )
+      const source = (
+        <pre className="block__code-body">
+          <span className="block__text" data-text data-row="0">
+            {surface.text}
+          </span>
+        </pre>
+      )
+      // A ```mermaid fence draws its diagram while the caret is elsewhere, and
+      // shows its source while the caret is inside it (reveal-to-edit).
+      const mermaid = (surface.language ?? '').trim().toLowerCase() === 'mermaid'
+      if (!mermaid) {
+        return (
+          <div {...common} className="block block--code">
+            {head}
+            {source}
+          </div>
+        )
+      }
+      return (
+        <div {...common} className="block block--code block--mermaid">
+          {head}
+          {editing ? (
+            source
+          ) : (
+            <div
+              className="block__mermaid-reveal"
+              contentEditable={false}
+              onMouseDown={(event) => {
+                event.preventDefault()
+                onReveal()
+              }}
+            >
+              <MermaidDiagram source={surface.text} />
+            </div>
+          )}
+        </div>
+      )
+    }
     case 'math':
       return (
         <div {...common} className="block block--math">
-          <pre className="block__math-source">
-            <span className="block__math-line" contentEditable={false} aria-hidden="true">
-              {'$$'}
-            </span>
-            <span className="block__text" data-text data-row="0">
-              {surface.text}
-            </span>
-            <span className="block__math-line" contentEditable={false} aria-hidden="true">
-              {'$$'}
-            </span>
-          </pre>
+          {editing ? (
+            <pre className="block__math-source">
+              <span className="block__math-line" contentEditable={false} aria-hidden="true">
+                {'$$'}
+              </span>
+              <span className="block__text" data-text data-row="0">
+                {surface.text}
+              </span>
+              <span className="block__math-line" contentEditable={false} aria-hidden="true">
+                {'$$'}
+              </span>
+            </pre>
+          ) : (
+            <div
+              className="block__math-rendered"
+              contentEditable={false}
+              onMouseDown={(event) => {
+                event.preventDefault()
+                onReveal()
+              }}
+              dangerouslySetInnerHTML={{ __html: renderMath(surface.text, true) }}
+            />
+          )}
         </div>
       )
     case 'rule':
@@ -845,6 +913,8 @@ function syncDomText(host: HTMLElement, state: EditorState): void {
     const index = Number(element.dataset['block'])
     const surface = state.blocks[index]
     if (surface === undefined) continue
+    // A resting math atom draws its own HTML; the model has its source.
+    if (element.querySelector('[data-rendered]') !== null) continue
     const texts = Array.from(element.querySelectorAll('[data-text]')) as HTMLElement[]
     if (surface.kind === 'code' || surface.kind === 'math') {
       const text = texts[0]
@@ -867,6 +937,9 @@ function readFromDom(host: HTMLElement, current: EditorState): EditorState {
     const index = Number(element.dataset['block'])
     const surface = blocks[index]
     if (surface === undefined) continue
+    // A resting math atom draws KaTeX's own text; the surface still holds the
+    // source, and it was not the block being typed in.
+    if (element.querySelector('[data-rendered]') !== null) continue
     const texts = Array.from(element.querySelectorAll('[data-text]')) as HTMLElement[]
     if (surface.kind === 'code' || surface.kind === 'math') {
       const text = texts[0]?.textContent ?? surface.text
@@ -892,6 +965,13 @@ function positionFrom(host: HTMLElement, node: Node | null, offset: number): Pos
   const block = Number(blockElement.dataset['block'])
   const rowElement = (element?.closest('[data-row]') as HTMLElement | null) ?? blockElement
   const row = Number(rowElement.dataset['row'] ?? '0')
+  // A rendered math atom is view-only: a click in it lands at the start of the
+  // run's source, the offset the model uses.
+  const rendered = element?.closest('[data-rendered]') as HTMLElement | null
+  if (rendered !== null) {
+    const from = Number(rendered.dataset['from'] ?? '0')
+    return { block, row, offset: Number.isFinite(from) ? from : 0 }
+  }
   const textElement = rowElement.matches('[data-text]')
     ? rowElement
     : (rowElement.querySelector('[data-text]') as HTMLElement | null)

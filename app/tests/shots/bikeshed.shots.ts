@@ -12,13 +12,13 @@ import { computed, token } from '../../shots/tokens'
 
 /**
  * The Bikeshed face a human writes in: a 260 px tree column on parchment and a
- * document column on paper, with the committed editor bundle in its frame, a
+ * document column on paper, the native block surface over UI-17's model, a
  * sticky breadcrumb above the note, and the note's links in a footer after it.
  *
  * The recovery is staged in the seed rather than the committed fixture, so the
  * picture proves the panel names it while the fixture stays content. The
- * editor's text is the fixture note's own, read through the bundle, which is
- * the proof the verbatim copy mounts and the bridge supplied its document.
+ * editor's text is the fixture note's own, read through the block surface,
+ * which is the proof the native editor mounts and carries the document.
  */
 test('the bikeshed face, over the seeded vault', async ({ window }) => {
   writeFileSync(
@@ -84,9 +84,10 @@ test('the breadcrumb names the note', async ({ window }) => {
 
 /**
  * The inline runs in Write: a staged note holds a bold run, a wikilink chip and
- * a display-math block drawn as its source lines, the document column scrolls
- * under a sticky breadcrumb, and the footer names the draft a killed save left.
- * The picture is re-taken from this head by the repo's shot run.
+ * a display-math block rendered by KaTeX rather than as source lines, the
+ * document column scrolls under a sticky breadcrumb, and the footer names the
+ * draft a killed save left. The picture is re-taken from this head by the
+ * repo's shot run.
  */
 test('the Write surface draws the inline runs and its footer', async ({ app, window }) => {
   writeFileSync(
@@ -138,6 +139,39 @@ test('the Write surface draws the inline runs and its footer', async ({ app, win
   await expect(window.locator('.banner')).toHaveCount(0)
 
   await capture(app, window, scene('bikeshed'))
+})
+
+/**
+ * The render path over a staged note: a ```mermaid fence draws its SVG and a
+ * `$$` block draws KaTeX. The fence shows its source while the caret is inside
+ * it and its diagram when not (reveal-to-edit); no frame is involved.
+ */
+test('a mermaid fence and display math draw in Write', async ({ window }) => {
+  writeFileSync(
+    writeFile('render-note.md'),
+    '# Render\n\n```mermaid\ngraph TD; A-->B\n```\n\n$$\nx = 1\n$$\n',
+  )
+
+  await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
+  await window.locator('.tree__label[title="render-note.md"]').click()
+
+  const blocks = window.locator('.blocks')
+  await expect(blocks.locator('.block--mermaid svg')).toBeVisible()
+  await expect(blocks.locator('.block--math .katex')).toBeVisible()
+
+  // Reveal-to-edit: the fence shows its source while focused.
+  await blocks.locator('.block--mermaid .block__mermaid-reveal').click()
+  await expect(blocks.locator('.block--mermaid .block__code-body')).toBeVisible()
+  await expect(blocks.locator('.block--mermaid .block__code-body')).toContainText(
+    'graph TD; A-->B',
+  )
+
+  // Leaving it draws the diagram again.
+  await blocks.locator('.block').first().click()
+  await expect(blocks.locator('.block--mermaid svg')).toBeVisible()
+  await expect(blocks.locator('.block--mermaid .block__code-body')).toHaveCount(0)
 })
 
 /**
