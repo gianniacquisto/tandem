@@ -7,6 +7,7 @@ import {
   clampEditorFontSize,
   loadEditorFontSize,
   saveEditorFontSize,
+  stepEditorFontSize,
   EDITOR_FONT_SIZE_KEY,
 } from '../renderer/src/shell/fontSize'
 
@@ -51,5 +52,28 @@ describe('the persisted note font size', () => {
     saveEditorFontSize(99, storage)
     expect(loadEditorFontSize(storage)).toBe(EDITOR_FONT_SIZE_MAX)
     expect(clampEditorFontSize('nope')).toBe(EDITOR_FONT_SIZE_DEFAULT)
+  })
+
+  it('steps one pixel up and down from the stored size', () => {
+    expect(stepEditorFontSize(16, 1)).toBe(17)
+    expect(stepEditorFontSize(16, -1)).toBe(15)
+  })
+
+  it('holds at each bound rather than running past it', () => {
+    expect(stepEditorFontSize(EDITOR_FONT_SIZE_MAX, 1)).toBe(EDITOR_FONT_SIZE_MAX)
+    expect(stepEditorFontSize(EDITOR_FONT_SIZE_MIN, -1)).toBe(EDITOR_FONT_SIZE_MIN)
+  })
+
+  it('reads a nonsense current as the default, then steps from it', () => {
+    expect(stepEditorFontSize('nope', 1)).toBe(EDITOR_FONT_SIZE_DEFAULT + 1)
+    expect(stepEditorFontSize(undefined, -1)).toBe(EDITOR_FONT_SIZE_DEFAULT - 1)
+  })
+
+  it('round-trips a stepped value through the stored key', () => {
+    const storage = fakeStorage()
+    saveEditorFontSize(stepEditorFontSize(20, 1), storage)
+    expect(loadEditorFontSize(storage)).toBe(EDITOR_FONT_SIZE_MAX)
+    saveEditorFontSize(stepEditorFontSize(16, 1), storage)
+    expect(loadEditorFontSize(storage)).toBe(17)
   })
 })

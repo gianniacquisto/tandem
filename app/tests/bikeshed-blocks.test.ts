@@ -10,7 +10,6 @@ function draw(text: string, notePath = ''): string {
     createElement(BikeshedBlocks, {
       document: parseDocument(text),
       focusToken: 0,
-      fontSize: 16,
       notePath,
       onChange: () => undefined,
       onSendToTodos: () => undefined,
@@ -30,7 +29,6 @@ function drawWith({
     createElement(BikeshedBlocks, {
       document: parseDocument(text),
       focusToken: 0,
-      fontSize: 16,
       notePath: '',
       readOnly,
       onChange: () => undefined,
@@ -45,7 +43,6 @@ function drawDocument(document: Document): string {
     createElement(BikeshedBlocks, {
       document,
       focusToken: 0,
-      fontSize: 16,
       notePath: '',
       onChange: () => undefined,
       onSendToTodos: () => undefined,
