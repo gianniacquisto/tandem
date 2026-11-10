@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   editorCall,
   editorDocument,
-  editorMode,
   parseEditorMessage,
 } from '../renderer/src/shell/editor'
 
@@ -63,19 +62,6 @@ describe('the page globals the bundle expects', () => {
       type: 'tandem-editor-call',
       name: 'requestTicketCandidate',
       args: [],
-    })
-  })
-
-  it('switches the preview/edit mode with the stored choice', () => {
-    expect(editorMode('preview')).toEqual({
-      type: 'tandem-editor-call',
-      name: 'setMode',
-      args: ['preview'],
-    })
-    expect(editorMode('edit')).toEqual({
-      type: 'tandem-editor-call',
-      name: 'setMode',
-      args: ['edit'],
     })
   })
 })

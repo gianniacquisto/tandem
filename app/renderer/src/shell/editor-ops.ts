@@ -360,6 +360,90 @@ function isInert(surface: SurfaceBlock): boolean {
   return surface.kind === 'rule' || surface.kind === 'image' || surface.kind === 'opaque'
 }
 
+/* ------------------------------------------------------- source offsets */
+
+/** The bytes before a heading's editable text in its own source. */
+function headingMarker(surface: SurfaceBlock): number {
+  if (surface.kind !== 'heading') return 0
+  const match = /^#{1,6}[ \t]*/.exec(surface.source)
+  return match === null ? 0 : match[0].length
+}
+
+/** The bytes before a code block's editable text: the fence line or the indent. */
+function codeMarker(surface: SurfaceBlock): number {
+  if (surface.kind !== 'code') return 0
+  const fence = /^(?:```|~~~)[^\n]*\n/.exec(surface.source)
+  if (fence !== null) return fence[0].length
+  const indent = /^(?: {4}|\t)/.exec(surface.source)
+  return indent === null ? 0 : indent[0].length
+}
+
+/** The bytes before a row's editable text on its own source line. */
+function rowMarker(surface: SurfaceBlock, row: number): number {
+  if (surface.kind === 'heading') return headingMarker(surface)
+  return markerOf(surface, row).length
+}
+
+/**
+ * A caret's offset within the block's exact source.
+ *
+ * The block surface edits rows, each on its own source line after that row's
+ * marker (`- `, `> `, a heading's hashes, a fence's first line). A switch to
+ * Source needs that position as an offset into the note, so the markers and
+ * the newlines between rows count, exactly as UI-17's source does.
+ */
+export function sourceOffset(surface: SurfaceBlock, position: Position): number {
+  if (surface.kind === 'code') {
+    return codeMarker(surface) + Math.max(0, Math.min(surface.text.length, position.offset))
+  }
+  if (!isText(surface)) return 0
+  const row = Math.max(0, Math.min(rowCount(surface) - 1, position.row))
+  let at = 0
+  for (let index = 0; index < row; index++) {
+    at += rowMarker(surface, index) + rowText(surface, index).length + 1
+  }
+  return (
+    at +
+    rowMarker(surface, row) +
+    Math.max(0, Math.min(rowText(surface, row).length, position.offset))
+  )
+}
+
+/**
+ * The nearest editable position to a block-relative source offset.
+ *
+ * This is the block surface's clamp: an offset in a heading's hashes or a
+ * fence's info line has no editable byte, so it lands at the row's text start;
+ * an offset between rows lands on the nearer row's edge; an offset on an inert
+ * block lands at its first row.
+ */
+export function positionAtSource(
+  surface: SurfaceBlock,
+  block: number,
+  offset: number,
+): Position {
+  if (surface.kind === 'code') {
+    return {
+      block,
+      row: 0,
+      offset: Math.max(0, Math.min(surface.text.length, offset - codeMarker(surface))),
+    }
+  }
+  if (!isText(surface)) return { block, row: 0, offset: 0 }
+  let at = 0
+  for (let row = 0; row < rowCount(surface); row++) {
+    const marker = rowMarker(surface, row)
+    const length = rowText(surface, row).length
+    const end = at + marker + length
+    if (offset <= end) {
+      return { block, row, offset: Math.max(0, Math.min(length, offset - at - marker)) }
+    }
+    at = end + 1
+  }
+  const row = rowCount(surface) - 1
+  return { block, row, offset: rowText(surface, row).length }
+}
+
 export function withCaret(state: EditorState, block: number, row: number, offset: number): EditorState {
   const position = clampPosition(state, { block, row, offset })
   return { ...state, selection: { anchor: position, head: position } }

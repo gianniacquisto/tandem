@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -82,5 +83,85 @@ describe('the bikeshed chrome', () => {
     expect(tree).toBeGreaterThan(-1)
     expect(focus).toBeGreaterThan(tree)
     expect(document).toBeGreaterThan(focus)
+  })
+})
+
+/** Every file under a folder, recursively. */
+function sourceFiles(directory: string): string[] {
+  const out: string[] = []
+  for (const entry of readdirSync(directory)) {
+    const path = join(directory, entry)
+    if (statSync(path).isDirectory()) out.push(...sourceFiles(path))
+    else out.push(path)
+  }
+  return out
+}
+
+describe('the Write|Source switch', () => {
+  const blocks = normalise(
+    readFileSync(`${appRoot}renderer/src/faces/BikeshedBlocks.tsx`, 'utf8'),
+  )
+  const source = normalise(
+    readFileSync(`${appRoot}renderer/src/faces/SourceSurface.tsx`, 'utf8'),
+  )
+  const shellEditor = normalise(readFileSync(`${appRoot}renderer/src/shell/editor.ts`, 'utf8'))
+
+  it('draws Write and Source in the titlebar, and nowhere Preview or Edit', () => {
+    const start = face.indexOf('editor__mode')
+    expect(start).toBeGreaterThan(-1)
+    const group = face.slice(start, face.indexOf('</div>', start))
+    expect(group).toMatch(/>\s*Write\s*</)
+    expect(group).toMatch(/>\s*Source\s*</)
+    expect(group).not.toMatch(/>\s*Preview\s*</)
+    expect(group).not.toMatch(/>\s*Edit\s*</)
+    expect(face).not.toContain('Preview')
+    expect(face).not.toContain('nextToggleMode')
+  })
+
+  it('hides the control while no note is open', () => {
+    const group = face.indexOf('editor__mode')
+    const guard = face.lastIndexOf('open === null ? null : (', group)
+    expect(group).toBeGreaterThan(-1)
+    expect(guard).toBeGreaterThan(-1)
+  })
+
+  it('persists the choice on a switch and flushes before changing the surface', () => {
+    const request = face.slice(
+      face.indexOf('async function requestMode'),
+      face.indexOf('const folder'),
+    )
+    expect(request).toContain('switchIntent(')
+    expect(request).toContain('switchAfterFlush(')
+    expect(request.indexOf('switchAfterFlush')).toBeLessThan(request.indexOf('setMode('))
+    expect(request.indexOf('await save(')).toBeLessThan(request.indexOf('setMode('))
+    expect(request.indexOf('setMode(')).toBeLessThan(request.indexOf('saveMode('))
+  })
+
+  it('points the read-only card at Source with its anchor', () => {
+    expect(blocks).toContain('Edit in Source mode')
+    expect(blocks).toContain('onSwitchToSource(index)')
+    expect(face).toMatch(/onSwitchToSource=\{\(block\) =>[\s\S]*?requestMode\('source'/)
+  })
+
+  it('retires the preview vocabulary from the shell', () => {
+    expect(shellEditor).not.toMatch(
+      /preview|Preview|BikeshedMode|BIKESHED_MODE|defaultBikeshedMode|editorMode|toggle-mode/,
+    )
+  })
+
+  it('draws Source as a plain textarea, and imports no CodeMirror', () => {
+    expect(source).toContain('<textarea')
+    expect(source).toContain('aria-label="Note source"')
+    expect(readFileSync(`${appRoot}package.json`, 'utf8')).not.toContain('@codemirror')
+    for (const file of sourceFiles(`${appRoot}renderer/src`)) {
+      expect(readFileSync(file, 'utf8')).not.toContain('@codemirror')
+    }
+  })
+
+  it('reads the source text as the note on the paper and ink tokens', () => {
+    const area = block(css, '.source')
+    expect(area).toContain('var(--ink)')
+    expect(area).toContain('ui-monospace')
+    expect(area).toContain('var(--tandem-editor-font-size')
   })
 })

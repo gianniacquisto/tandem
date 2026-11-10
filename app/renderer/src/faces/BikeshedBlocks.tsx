@@ -12,6 +12,7 @@ import {
 } from 'react'
 
 import { serialiseDocument, type Document } from '../shell/blocks'
+import type { BlockPoint } from '../shell/caret'
 import { assetUrl, resolveImageTarget } from '../shell/image'
 import {
   applyCommand,
@@ -31,17 +32,20 @@ import {
   moveRight,
   moveUp,
   paste,
+  positionAtSource,
   record,
   redo,
   rowCount,
   rowText,
   selectAll,
   selectedText,
+  sourceOffset,
   split,
   toDocument,
   toggleStyle,
   toggleTask,
   undo,
+  withCaret,
   withSelection,
   emptyHistory,
   type BlockCommand,
@@ -64,10 +68,14 @@ export type BikeshedBlocksProps = {
   fontSize: number
   /** The containing note's vault path: image targets resolve against its folder. */
   notePath: string
+  /** The caret a mode switch carried, as a block point; null for none. */
+  caret?: BlockPoint | null
   onChange: (next: Document) => void
+  /** Reports the surface's caret so a switch can carry it. */
+  onCaret?: (point: BlockPoint | null) => void
   onSendToTodos: (text: string) => void
-  /** The read-only card's pointer: switch the face to the raw editor. */
-  onSwitchToSource: () => void
+  /** The read-only card's pointer: switch the face to Source at that block. */
+  onSwitchToSource: (block: number) => void
   /** Every note path in the face's index, for chips and the `[[` picker. */
   noteIndex?: string[]
   /** Open a resolved note; the chip and a bikeshed link call it. */
@@ -123,7 +131,9 @@ export function BikeshedBlocks({
   focusToken,
   fontSize,
   notePath,
+  caret,
   onChange,
+  onCaret,
   onSendToTodos,
   onSwitchToSource,
   noteIndex = [],
@@ -144,6 +154,10 @@ export function BikeshedBlocks({
   const composing = useRef(false)
   const pending = useRef<Selection | null>(null)
   const lastText = useRef(serialiseDocument(doc))
+  // The switch's caret, read once when this surface takes focus: the face
+  // passes a fresh object each render, and re-placing it would fight typing.
+  const incoming = useRef<BlockPoint | null>(caret ?? null)
+  incoming.current = caret ?? null
 
   // An external document (open, adopt, Take theirs) replaces the surface; the
   // face's own echo of our change serialises to the same bytes and is ignored.
@@ -169,9 +183,23 @@ export function BikeshedBlocks({
       setState(next)
       pending.current = next.selection
       onChange(toDocument(next))
+      reportCaret(next.selection.head)
     },
-    [onChange],
+    // `reportCaret` reads the live refs; only the prop is a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onChange, onCaret],
   )
+
+  /** Report the caret as a block point, the unit the switch carries. */
+  function reportCaret(at?: Position): void {
+    if (onCaret === undefined) return
+    const target = host.current
+    const selection = target === null ? null : readSelection(target)
+    const state = stateRef.current
+    const position = at ?? selection?.head ?? state.selection.head
+    const surface = state.blocks[position.block]
+    onCaret(surface === undefined ? null : { block: position.block, offset: sourceOffset(surface, position) })
+  }
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
@@ -194,7 +222,22 @@ export function BikeshedBlocks({
     const target = host.current
     if (target === null) return
     target.focus()
+    // The switch's offset wins when one arrived; otherwise the surface focuses
+    // the note's own caret (the empty note's first block after a creation).
+    const point = incoming.current
+    const surface = point === null ? undefined : stateRef.current.blocks[point.block]
+    if (point !== null && surface !== undefined) {
+      const position = positionAtSource(surface, point.block, point.offset)
+      const next = withCaret(stateRef.current, position.block, position.row, position.offset)
+      stateRef.current = next
+      setState(next)
+      pending.current = next.selection
+      setDomSelection(target, next.selection)
+      return
+    }
     setDomSelection(target, stateRef.current.selection)
+    // `focusToken` is the document revision this focus rule follows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusToken])
 
   // A mouse click or an arrow move changes which run holds the caret, and the
@@ -431,6 +474,7 @@ export function BikeshedBlocks({
     const markdown = serialiseDocument(toDocument(base))
     lastText.current = markdown
     onChange(toDocument(base))
+    reportCaret(base.selection.head)
     // Plain prose keeps UI-18's no-render typing path. Once a construct is in
     // the row, a render is what draws it; a menu needs one to redraw its rows,
     // so the model that was typed is handed back with the caret restored.
@@ -718,6 +762,8 @@ export function BikeshedBlocks({
         handleInput()
       }}
       onKeyDown={handleKeyDown}
+      onKeyUp={() => reportCaret()}
+      onMouseUp={() => reportCaret()}
       onPaste={handlePaste}
       onCopy={(event) => handleCopy(event, false)}
       onCut={(event) => handleCopy(event, true)}
@@ -809,7 +855,7 @@ type BlockViewProps = {
   onOpenNote?: (path: string) => void
   onCheck: (row: number) => void
   onLanguage: (language: string) => void
-  onSwitchToSource: () => void
+  onSwitchToSource: (block: number) => void
   handles: boolean
   active: boolean
   indicator: 'above' | 'below' | null
@@ -1023,7 +1069,7 @@ type BlockBodyProps = {
   onOpenNote?: (path: string) => void
   onCheck: (row: number) => void
   onLanguage: (language: string) => void
-  onSwitchToSource: () => void
+  onSwitchToSource: (block: number) => void
 }
 
 /**
@@ -1197,9 +1243,9 @@ function BlockBody({
           <button
             type="button"
             className="block__source-button"
-            onClick={onSwitchToSource}
+            onClick={() => onSwitchToSource(index)}
           >
-            Edit this in the raw editor
+            Edit in Source mode
           </button>
         </div>
       )

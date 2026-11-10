@@ -11,15 +11,7 @@ import {
   focusNodes,
   folderPaths,
   notePaths,
-  resolveWikilink,
 } from '../shell/bikeshed'
-import {
-  defaultBikeshedMode,
-  loadBikeshedMode,
-  loadEditorFontSize,
-  saveBikeshedMode,
-  type BikeshedMode,
-} from '../shell/editor'
 import {
   applyDirty,
   applyEditor,
@@ -33,13 +25,24 @@ import {
   takeDraft,
   takeTheirs,
   type NoteBuffer,
+  type SaveOutcome,
   type Theirs,
 } from '../shell/note'
+import { blockPoint, documentOffset } from '../shell/caret'
+import { loadEditorFontSize } from '../shell/editor'
+import {
+  loadMode,
+  openMode,
+  saveMode,
+  switchAfterFlush,
+  switchIntent,
+  type Mode,
+} from '../shell/modes'
 import { BikeshedBlocks } from './BikeshedBlocks'
-import { BikeshedEditor } from './BikeshedEditor'
 import { BikeshedTree } from './BikeshedTree'
 import { FocusControl } from './FocusControl'
 import { NoteFooter } from './NoteFooter'
+import { SourceSurface } from './SourceSurface'
 
 const HIDDEN_KEY = 'tandem.bikeshed.hidden'
 
@@ -102,7 +105,11 @@ export type BikeshedFaceProps = {
 
 export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject }: BikeshedFaceProps) {
   const [hidden, setHidden] = useState(() => window.localStorage.getItem(HIDDEN_KEY) === 'true')
-  const [mode, setMode] = useState<BikeshedMode>(() => loadBikeshedMode())
+  const [mode, setMode] = useState<Mode>(() => loadMode())
+  // The switch's one carried value: a document offset, or null when there is
+  // none (an empty note, or an untouched switch). It is state so the arriving
+  // surface receives it on render; the ref reads it without a stale closure.
+  const [caret, setCaret] = useState<number | null>(null)
   const [nodes, setNodes] = useState<NoteNodeView[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState<NoteBuffer | null>(null)
@@ -120,8 +127,14 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
   const seeded = useRef(false)
   const openRef = useRef<NoteBuffer | null>(null)
   openRef.current = open
-  const savingRef = useRef(false)
-  const previewButton = useRef<HTMLButtonElement | null>(null)
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  const conflictRef = useRef<Theirs | null>(null)
+  conflictRef.current = conflict
+  const caretRef = useRef<number | null>(null)
+  // One write at a time: a switch that meets an autosave awaits that same
+  // promise instead of starting a second one (ADR 0004's one save path).
+  const inFlight = useRef<Promise<SaveOutcome> | null>(null)
 
   const noteIndex = useMemo(() => notePaths(nodes), [nodes])
   // The tree the focus draws: the focused project's folder alone, or the
@@ -205,12 +218,25 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open?.path])
 
-  async function save(buffer: NoteBuffer): Promise<void> {
-    if (!buffer.dirty || savingRef.current) return
-    savingRef.current = true
+  /**
+   * The one write path. A dirty buffer is handed to `saveNote`; a second
+   * caller while a save is in flight awaits that same promise, so a switch and
+   * a pending autosave can never write twice.
+   */
+  function save(buffer: NoteBuffer): Promise<SaveOutcome> {
+    if (!buffer.dirty) return Promise.resolve({ type: 'saved', hash: buffer.baseline })
+    if (inFlight.current !== null) return inFlight.current
+    const run = write(buffer)
+    inFlight.current = run
+    void run.finally(() => {
+      if (inFlight.current === run) inFlight.current = null
+    })
+    return run
+  }
+
+  async function write(buffer: NoteBuffer): Promise<SaveOutcome> {
     setSaving(true)
     const outcome = await saveNote(window.tandem.call, buffer)
-    savingRef.current = false
     setSaving(false)
     if (outcome.type === 'saved') {
       setOpen((current) =>
@@ -221,17 +247,18 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       // A write can move the links and the orphan set, so the panels re-read.
       void refreshVault()
       void refreshNote(buffer.path)
-      return
+      return outcome
     }
     if (outcome.type === 'conflict') {
       // A save started before Take theirs lands after the choice with the same
       // disk body: the open buffer already adopted it, so the stale outcome
       // must not re-raise the banner the choice just cleared.
-      if (!conflictStillApplies(openRef.current, buffer)) return
+      if (!conflictStillApplies(openRef.current, buffer)) return outcome
       setConflict(outcome.theirs)
-      return
+      return outcome
     }
     setError(outcome.message)
+    return outcome
   }
 
   // A tab switch unmounts the face and the pending timer dies with it. The
@@ -253,7 +280,9 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     const draft = takeDraft()
     if (draft === null) return
     setOpen(draft)
-    setMode(defaultBikeshedMode(loadBikeshedMode(), draft.text))
+    setMode(openMode(loadMode(), draft.text))
+    setCaret(null)
+    caretRef.current = null
     setToken((current) => current + 1)
     setExpanded((current) => new Set([...current, ...ancestorsOf(draft.path)]))
     setNotice('A draft from your last visit was kept. Saving again.')
@@ -336,10 +365,12 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       return
     }
     setOpen(openBuffer({ path: note.path, text: note.text, hash: note.hash }))
-    // Empty always wins over stored Preview, so UI-1/UI-4 creations open
+    // Empty always wins over a stored Source, so UI-1/UI-4 creations open
     // ready to type; otherwise the last explicit choice wins. Opening never
-    // persists: only the control (or Mod+E) writes the stored choice.
-    setMode(defaultBikeshedMode(loadBikeshedMode(), note.text))
+    // persists: only a switch writes the stored choice.
+    setMode(openMode(loadMode(), note.text))
+    setCaret(null)
+    caretRef.current = null
     setConflict(null)
     setExpanded((current) => new Set([...current, ...ancestorsOf(path)]))
     setToken((current) => current + 1)
@@ -447,35 +478,53 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     void refreshNote(open.path)
   }
 
-  function onEditorMessage(next: { type: string; text?: string; target?: string }): void {
-    if (next.type === 'dirty' && typeof next.text === 'string') {
-      const text = next.text
-      // A same-text echo (the frame re-announcing the document it was handed)
-      // is not an edit: re-dirtying here would autosave the adopted disk and
-      // re-raise the conflict Take theirs just cleared.
-      setOpen((current) => applyDirty(current, text))
-      return
-    }
-    if (next.type === 'link-opened' && typeof next.target === 'string') {
-      const target = next.target.trim()
-      if (target.includes('://')) return
-      const path = resolveWikilink(target, noteIndex)
-      if (path !== null) void openNote(path)
-      return
-    }
-    if (next.type === 'send-to-todos' && typeof next.text === 'string') {
-      void fileTicket(next.text)
-    }
-  }
-
   function reveal(next: boolean): void {
     window.localStorage.setItem(HIDDEN_KEY, next ? 'true' : 'false')
     setHidden(next)
   }
 
-  function setModeChoice(next: BikeshedMode): void {
+  /**
+   * The one switch path, for the titlebar control and the read-only card.
+   *
+   * The intent decides whether the surface may change: a conflict freezes the
+   * face, a save in flight is awaited (never doubled), and a dirty buffer is
+   * flushed through the one save path first. A flush that conflicts or errors
+   * leaves the mode where it was and the existing banner shows why. The
+   * chosen mode is stored here, on the switch, never on open.
+   */
+  async function requestMode(next: Mode, anchor?: number | null): Promise<void> {
+    const current = openRef.current
+    if (current === null || next === modeRef.current) return
+    const state = (): { dirty: boolean; saving: boolean; conflict: boolean } => ({
+      dirty: openRef.current?.dirty === true,
+      saving: inFlight.current !== null,
+      conflict: conflictRef.current !== null,
+    })
+    let intent = switchIntent(state())
+    // Await the save that is already running, then look again: the buffer may
+    // have grown dirty meanwhile, and that flush is this switch's own.
+    while (intent === 'wait') {
+      const pending = inFlight.current
+      if (pending === null) break
+      await pending
+      if (inFlight.current === pending) inFlight.current = null
+      if (openRef.current === null) return
+      intent = switchIntent(state())
+    }
+    if (intent === 'blocked') return
+    if (intent === 'flush') {
+      const buffer = openRef.current
+      if (buffer === null) return
+      const outcome = await save(buffer)
+      if (switchAfterFlush(outcome.type) !== 'switch') return
+    }
+    // The switch carries the departing caret (or the card's anchor) to the
+    // arriving surface. It is not a document change: the open token stays.
+    const carried = anchor === undefined ? caretRef.current : anchor
+    setCaret(carried)
+    caretRef.current = carried
     setMode(next)
-    saveBikeshedMode(next)
+    saveMode(next)
   }
 
   const folder =
@@ -487,15 +536,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
   const crumbs = (folder === '' ? ['Bikeshed'] : folder.split('/')).concat(
     title === '' ? [] : [title],
   )
-  const openPath = open?.path ?? ''
-
-  // Entering Preview leaves the focus on the breadcrumb's control, as the
-  // titlebar control held it before the rail went; Edit focuses the frame.
-  useEffect(() => {
-    if (mode === 'preview' && openPath !== '') previewButton.current?.focus()
-    // `openPath` is the document revision this focus rule follows.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, openPath])
 
   return (
     <section className="face face--wide bikeshed-face" aria-label="Bikeshed">
@@ -606,31 +646,22 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
                 </nav>
                 <div className="bikeshed__breadcrumb-end">
                   {saving ? <span className="editor__saving">saving{'\u2026'}</span> : null}
-                  <div className="editor__mode" role="group" aria-label="Write, preview or edit">
+                  <div className="editor__mode" role="group" aria-label="Editor mode">
                     <button
                       type="button"
                       className="editor__mode-button"
                       aria-pressed={mode === 'write'}
-                      onClick={() => setModeChoice('write')}
+                      onClick={() => void requestMode('write')}
                     >
                       Write
                     </button>
                     <button
                       type="button"
-                      ref={previewButton}
                       className="editor__mode-button"
-                      aria-pressed={mode === 'preview'}
-                      onClick={() => setModeChoice('preview')}
+                      aria-pressed={mode === 'source'}
+                      onClick={() => void requestMode('source')}
                     >
-                      Preview
-                    </button>
-                    <button
-                      type="button"
-                      className="editor__mode-button"
-                      aria-pressed={mode === 'edit'}
-                      onClick={() => setModeChoice('edit')}
-                    >
-                      Edit
+                      Source
                     </button>
                   </div>
                 </div>
@@ -639,28 +670,46 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
           )}
 
           <div className="bikeshed__page">
-            {open !== null && mode === 'write' ? (
+            {open === null ? (
+              <div className="editor__empty">
+                <p className="editor__empty-title">No note selected</p>
+                <p className="editor__empty-body">Pick a note in the tree.</p>
+              </div>
+            ) : mode === 'source' ? (
+              <SourceSurface
+                text={open.text}
+                fontSize={loadEditorFontSize()}
+                caret={caret}
+                focusToken={token}
+                onChange={(text) => setOpen((current) => applyDirty(current, text))}
+                onCaret={(offset) => {
+                  caretRef.current = offset
+                }}
+              />
+            ) : (
               <BikeshedBlocks
                 document={open.document}
                 focusToken={token}
                 fontSize={loadEditorFontSize()}
                 notePath={open.path}
+                caret={caret === null ? null : blockPoint(open.document, caret)}
                 onChange={(document) => setOpen((current) => applyEditor(current, document))}
+                onCaret={(point) => {
+                  caretRef.current =
+                    point === null
+                      ? null
+                      : documentOffset(openRef.current?.document ?? open.document, point)
+                }}
                 onSendToTodos={(text) => {
                   if (text !== '') void fileTicket(text)
                 }}
-                onSwitchToSource={() => setModeChoice('edit')}
+                onSwitchToSource={(block) => {
+                  const anchor =
+                    documentOffset(openRef.current?.document ?? open.document, { block, offset: 0 }) ?? 0
+                  void requestMode('source', anchor)
+                }}
                 noteIndex={noteIndex}
                 onOpenNote={(path) => void openNote(path)}
-              />
-            ) : (
-              <BikeshedEditor
-                path={open?.path ?? ''}
-                text={open?.text ?? ''}
-                token={token}
-                noteIndex={noteIndex}
-                mode={mode}
-                onMessage={onEditorMessage}
               />
             )}
             <NoteFooter

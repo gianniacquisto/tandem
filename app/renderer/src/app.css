@@ -1904,6 +1904,30 @@ body {
   outline: none;
 }
 
+/* Source mode: the same note as its exact markdown in one plain textarea. */
+.source {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: calc(100vh - 160px);
+  margin: 0;
+  padding: 0 0 28px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: var(--tandem-editor-font-size, 16px);
+  line-height: 1.65;
+  resize: none;
+  outline: none;
+  white-space: pre-wrap;
+  caret-color: var(--ink);
+}
+
+.source:focus {
+  outline: var(--hairline) solid var(--sand);
+  outline-offset: 4px;
+}
+
 .block {
   margin: 0 0 10px;
   min-height: 1.65em;
