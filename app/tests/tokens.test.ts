@@ -38,7 +38,7 @@ const DAY = new Map<string, string>([
   ['hillFar', '#C8CFBB'],
   ['skin', '#E4C9A2'],
   ['sun', '#E5C07B'],
-  ['wikilinkChip', '#D9D5C4'],
+  ['wikilinkChip', '#DAD6C5'],
   ['wikilinkChipBroken', '#EFE3D6'],
 ])
 
@@ -182,7 +182,7 @@ describe('the design tokens', () => {
   it('pins the wikilink chip surfaces in both palettes', () => {
     const day = declarations(lightBlock())
     const night = declarations(darkBlock())
-    expect(day.get('wikilink-chip')).toBe('#D9D5C4')
+    expect(day.get('wikilink-chip')).toBe('#DAD6C5')
     expect(day.get('wikilink-chip-broken')).toBe('#EFE3D6')
     expect(night.get('wikilink-chip')).toBe('#33362E')
     expect(night.get('wikilink-chip-broken')).toBe('#322D27')

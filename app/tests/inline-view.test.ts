@@ -21,6 +21,17 @@ function draw(
   )
 }
 
+/** The rendered row's text, as the Write surface reads it back. */
+function textContent(markup: string): string {
+  return markup
+    .replace(/<[^>]*>/g, '')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
 describe('the inline runs draw their elements', () => {
   it('draws each text style as its own element', () => {
     const markup = draw('**bold** *italic* ~~strike~~ `code`')
@@ -79,6 +90,40 @@ describe('the inline runs draw their elements', () => {
     expect(markup).toContain('run--math')
     expect(markup).toContain('block--math')
     expect(markup).toContain('x = 1')
+  })
+})
+
+describe('the drawing keeps the row source', () => {
+  const sources = [
+    'a **bold** b',
+    'a _italic_ b',
+    'a __bold__ b',
+    'a ~~strike~~ b',
+    'a `code` b',
+    'a ``code`` b',
+    'a _x_ and [[Index]] b',
+    'Use snake_case and **bold** here',
+    '[[Index|Alias]] and [Notes](folder/Notes.md) and $x$',
+  ]
+
+  it('draws the row so its textContent is exactly the source', () => {
+    for (const source of sources) expect(textContent(draw(source)), source).toBe(source)
+  })
+
+  it('keeps the element for the three gate reproductions', () => {
+    const italic = draw('a _italic_ b')
+    expect(italic).toContain('<em>italic</em>')
+    expect(textContent(italic)).toBe('a _italic_ b')
+
+    const withChip = draw('a _x_ and [[Index]] b')
+    expect(withChip).toContain('<em>x</em>')
+    expect(withChip).toContain('run--wikilink')
+    expect(textContent(withChip)).toBe('a _x_ and [[Index]] b')
+
+    const intraword = draw('Use snake_case and **bold** here')
+    expect(intraword).toContain('<strong>bold</strong>')
+    expect(intraword).toContain('snake_case')
+    expect(textContent(intraword)).toBe('Use snake_case and **bold** here')
   })
 })
 

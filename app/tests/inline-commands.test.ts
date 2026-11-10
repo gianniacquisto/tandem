@@ -78,6 +78,12 @@ describe('the inline style commands', () => {
     const result = toggle(source, 7, 11, 'bold')
     expect(result.source).toBe('keep this and   that')
   })
+
+  it('unwraps an underscore pair by its own delimiter', () => {
+    const result = toggle('a _italic_ b', 3, 9, 'italic')
+    expect(result.source).toBe('a italic b')
+    expect(result.selection).toEqual({ from: 2, to: 8 })
+  })
 })
 
 describe('the key mapping', () => {

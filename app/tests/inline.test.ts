@@ -26,9 +26,14 @@ describe('the inline round trip', () => {
     const cases = [
       '**bold**',
       '*italic*',
+      '_italic_',
+      '__bold__',
       '~~strike~~',
       '`code`',
+      '``code``',
       '**bold and *italic* inside**',
+      'a _x_ and [[Index]] b',
+      'Use snake_case and **bold** here',
       '\\*not italic\\*',
       '[label](href.md)',
       '[[note]]',
@@ -41,11 +46,11 @@ describe('the inline round trip', () => {
     for (const source of cases) expect(serialise(source), source).toBe(source)
   })
 
-  it('serialises an edited block with canonical delimiters', () => {
-    expect(serialise('_italic_')).toBe('*italic*')
-    expect(serialise('__bold__')).toBe('**bold**')
+  it('carries the source delimiter through the parse, so a round trip matches the source', () => {
+    expect(serialise('_italic_')).toBe('_italic_')
+    expect(serialise('__bold__')).toBe('__bold__')
     expect(serialise('~~strike~~')).toBe('~~strike~~')
-    expect(serialise('``code``')).toBe('`code`')
+    expect(serialise('``code``')).toBe('``code``')
     expect(serialise('[label](href.md)')).toBe('[label](href.md)')
   })
 
@@ -79,6 +84,38 @@ describe('the inline round trip', () => {
     const code = runs.find((run) => run.kind === 'text' && run.styles.includes('code'))
     expect(code).toMatchObject({ kind: 'text', text: 'code', styles: ['bold', 'code'] })
     expect(serialise('**bold with `code`**')).toBe('**bold with `code`**')
+  })
+
+  it('applies the CommonMark intraword underscore rule', () => {
+    const snake = parseInline('snake_case_and_more')
+    expect(snake.every((run) => run.kind === 'text' && run.styles.length === 0)).toBe(true)
+    expect(serialise('snake_case_and_more')).toBe('snake_case_and_more')
+
+    const italic = parseInline('a _italic_ b')
+    expect(italic.find((run) => run.kind === 'text' && run.styles.includes('italic'))).toMatchObject({
+      kind: 'text',
+      text: 'italic',
+      styles: ['italic'],
+    })
+    expect(serialise('a _italic_ b')).toBe('a _italic_ b')
+
+    const bold = parseInline('Use snake_case and **bold** here')
+    expect(bold.find((run) => run.kind === 'text' && run.styles.includes('bold'))).toMatchObject({
+      kind: 'text',
+      text: 'bold',
+      styles: ['bold'],
+    })
+    expect(serialise('Use snake_case and **bold** here')).toBe('Use snake_case and **bold** here')
+  })
+
+  it('records the source delimiter on a styled run', () => {
+    const [run] = parseInline('__bold__')
+    expect(run).toMatchObject({
+      kind: 'text',
+      text: 'bold',
+      styles: ['bold'],
+      markers: { bold: { open: '__', close: '__' } },
+    })
   })
 
   it('carries a link run with its label and href', () => {

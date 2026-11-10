@@ -4,6 +4,7 @@ import { resolveWikilink } from '../shell/bikeshed'
 import {
   filterNotes,
   parseInline,
+  type InlineDelimiter,
   type InlineRun,
   type InlineStyle,
   type NoteChoice,
@@ -175,11 +176,12 @@ export function InlineRuns({ source, notes = [], selection = null, onOpenNote }:
   const runs = parseInline(source, notes)
   const nodes: ReactNode[] = []
   const open: InlineStyle[] = []
-  const openMarkers = new Map<InlineStyle, string>()
+  const openMarkers = new Map<InlineStyle, InlineDelimiter>()
   let lastShown = false
 
   runs.forEach((run, index) => {
     const styles = run.kind === 'text' || run.kind === 'link' ? run.styles : []
+    const markers = run.kind === 'text' || run.kind === 'link' ? run.markers : undefined
     const shown = touches(run, selection)
 
     for (let position = open.length - 1; position >= 0; position--) {
@@ -191,7 +193,7 @@ export function InlineRuns({ source, notes = [], selection = null, onOpenNote }:
           'close',
           shown || lastShown,
           `close-${index}-${style}`,
-          openMarkers.get(style) ?? DELIMITER[style],
+          openMarkers.get(style)?.close ?? DELIMITER[style],
         ),
       )
       openMarkers.delete(style)
@@ -199,12 +201,12 @@ export function InlineRuns({ source, notes = [], selection = null, onOpenNote }:
     }
     for (const style of STYLE_ORDER) {
       if (!styles.includes(style) || open.includes(style)) continue
-      const delimiter =
-        style === 'code' && run.kind === 'text' && run.marker !== undefined
-          ? run.marker
-          : DELIMITER[style]
-      nodes.push(marker(style, 'open', shown, `open-${index}-${style}`, delimiter))
-      openMarkers.set(style, delimiter)
+      const delimiters = markers?.[style] ?? {
+        open: DELIMITER[style],
+        close: DELIMITER[style],
+      }
+      nodes.push(marker(style, 'open', shown, `open-${index}-${style}`, delimiters.open))
+      openMarkers.set(style, delimiters)
       open.push(style)
     }
     nodes.push(<Fragment key={`run-${index}`}>{runNode(run, notes, shown, onOpenNote)}</Fragment>)
@@ -220,7 +222,7 @@ export function InlineRuns({ source, notes = [], selection = null, onOpenNote }:
         'close',
         lastShown,
         `close-end-${style}`,
-        openMarkers.get(style) ?? DELIMITER[style],
+        openMarkers.get(style)?.close ?? DELIMITER[style],
       ),
     )
   }

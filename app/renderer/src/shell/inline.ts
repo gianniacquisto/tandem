@@ -17,6 +17,11 @@ import { resolveWikilink } from './bikeshed'
 
 export type InlineStyle = 'bold' | 'italic' | 'strikethrough' | 'code'
 
+export type InlineDelimiter = { open: string; close: string }
+
+/** The delimiter each style wore in the source, so a run draws and serialises as written. */
+export type InlineDelimiters = Partial<Record<InlineStyle, InlineDelimiter>>
+
 export type Range = { from: number; to: number }
 
 export type TextRun = Range & {
@@ -24,8 +29,7 @@ export type TextRun = Range & {
   text: string
   /** The set of styles, in canonical order (`['bold', 'code']` for **`code`**). */
   styles: InlineStyle[]
-  /** The actual backtick run for an inline-code run, so a reveal is byte-exact. */
-  marker?: string
+  markers?: InlineDelimiters
 }
 
 export type LinkRun = Range & {
@@ -33,6 +37,7 @@ export type LinkRun = Range & {
   text: string
   href: string
   styles: InlineStyle[]
+  markers?: InlineDelimiters
 }
 
 export type WikilinkRun = Range & {
@@ -485,19 +490,42 @@ export function scanInlineDocument(text: string): {
 
 /* -------------------------------------------------------------- emphasis */
 
-type Pair = { style: InlineStyle; from: number; to: number }
+type Pair = {
+  style: InlineStyle
+  from: number
+  to: number
+  /** The exact opener and closer the source wrote (`_` stays `_`). */
+  open: string
+  close: string
+}
 
-type OpenLayer = { style: InlineStyle; len: number; contentStart: number }
+type OpenLayer = {
+  style: InlineStyle
+  len: number
+  contentStart: number
+  markerStart: number
+}
 
 type Emphasis = { pairs: Pair[]; markers: Range[] }
+
+/** A Unicode letter or digit, the CommonMark word test for the `_` rule. */
+const WORD = /[\p{L}\p{N}]/u
+
+function isWord(char: string): boolean {
+  return char !== '' && WORD.test(char)
+}
 
 /**
  * Pair the `*`, `_` and `~~` runs outside the blocked ranges.
  *
  * A run opens layers from the outside in (`***x***` is bold then italic) and a
  * matching run closes the open layers from the inside out, so the pair ranges
- * stay nested and a run's style set is always a subset of its parent's. The
- * markers themselves are recorded and skipped by the run builder.
+ * stay nested and a run's style set is always a subset of its parent's. A pair
+ * records the exact delimiters the source wrote, and only the markers of a
+ * pair are skipped by the run builder; an unmatched opener stays literal text.
+ *
+ * CommonMark's intraword `_` rule: an underscore run whose neighbours are both
+ * word characters is literal, so `snake_case` is never emphasis.
  */
 function emphasisPairs(text: string, blocked: Range[]): Emphasis {
   const pairs: Pair[] = []
@@ -528,15 +556,29 @@ function emphasisPairs(text: string, blocked: Range[]): Emphasis {
     const canOpen = after !== '' && !/\s/.test(after)
     const canClose = before !== '' && !/\s/.test(before)
 
+    if (ch === '_' && isWord(before) && isWord(after)) {
+      // Intraword underscore: literal, not an opener or a closer.
+      i = j
+      continue
+    }
+
     if (ch === '~') {
       const stack = stacks['~']
       if (canClose && stack.length > 0) {
         const layer = stack.pop()
-        pairs.push({ style: 'strikethrough', from: layer?.contentStart ?? i, to: i })
-        markers.push({ from: i, to: i + 2 })
+        if (layer !== undefined) {
+          pairs.push({
+            style: 'strikethrough',
+            from: layer.contentStart,
+            to: i,
+            open: text.slice(layer.markerStart, layer.markerStart + 2),
+            close: text.slice(i, i + 2),
+          })
+          markers.push({ from: layer.markerStart, to: layer.markerStart + 2 })
+          markers.push({ from: i, to: i + 2 })
+        }
       } else if (canOpen) {
-        stack.push({ style: 'strikethrough', len: 2, contentStart: j })
-        markers.push({ from: i, to: i + 2 })
+        stack.push({ style: 'strikethrough', len: 2, contentStart: j, markerStart: i })
       }
       i = j
       continue
@@ -549,22 +591,28 @@ function emphasisPairs(text: string, blocked: Range[]): Emphasis {
         const layer = stack[stack.length - 1]
         if (layer === undefined || layer.len > remaining) break
         stack.pop()
-        pairs.push({ style: layer.style, from: layer.contentStart, to: i })
-        markers.push({ from: i + (len - remaining), to: i + (len - remaining) + layer.len })
+        const closeStart = i + (len - remaining)
+        pairs.push({
+          style: layer.style,
+          from: layer.contentStart,
+          to: i,
+          open: text.slice(layer.markerStart, layer.markerStart + layer.len),
+          close: text.slice(closeStart, closeStart + layer.len),
+        })
+        markers.push({ from: layer.markerStart, to: layer.markerStart + layer.len })
+        markers.push({ from: closeStart, to: closeStart + layer.len })
         remaining -= layer.len
       }
     }
     if (canOpen && remaining > 0) {
       let offset = len - remaining
       while (remaining >= 2) {
-        stack.push({ style: 'bold', len: 2, contentStart: j })
-        markers.push({ from: i + offset, to: i + offset + 2 })
+        stack.push({ style: 'bold', len: 2, contentStart: j, markerStart: i + offset })
         offset += 2
         remaining -= 2
       }
       if (remaining === 1) {
-        stack.push({ style: 'italic', len: 1, contentStart: j })
-        markers.push({ from: i + offset, to: i + offset + 1 })
+        stack.push({ style: 'italic', len: 1, contentStart: j, markerStart: i + offset })
       }
     }
     i = j
@@ -580,6 +628,17 @@ function styleSetAt(pairs: Pair[], position: number): InlineStyle[] {
     if (position >= pair.from && position < pair.to) set.add(pair.style)
   }
   return STYLE_ORDER.filter((style) => set.has(style))
+}
+
+/** The source delimiters of the styles covering `position`, if any. */
+function markersAt(pairs: Pair[], position: number): InlineDelimiters | undefined {
+  let markers: InlineDelimiters | undefined
+  for (const pair of pairs) {
+    if (position < pair.from || position >= pair.to) continue
+    markers ??= {}
+    markers[pair.style] = { open: pair.open, close: pair.close }
+  }
+  return markers
 }
 
 function sameStyles(a: InlineStyle[], b: InlineStyle[]): boolean {
@@ -654,7 +713,14 @@ export function parseInline(source: string, notes: string[] = []): InlineRun[] {
 
   const flush = (to: number): void => {
     if (buffer === '') return
-    runs.push({ kind: 'text', text: buffer, styles: bufferStyles, from: bufferFrom, to })
+    runs.push({
+      kind: 'text',
+      text: buffer,
+      styles: bufferStyles,
+      markers: markersAt(pairs, bufferFrom),
+      from: bufferFrom,
+      to,
+    })
     buffer = ''
   }
 
@@ -670,9 +736,12 @@ export function parseInline(source: string, notes: string[] = []): InlineRun[] {
           kind: 'text',
           text: atom.text,
           styles: styleSet,
+          markers: {
+            ...markersAt(pairs, atom.from),
+            code: { open: atom.marker, close: atom.marker },
+          },
           from: atom.from,
           to: atom.to,
-          marker: atom.marker,
         })
       } else if (atom.kind === 'link') {
         runs.push({
@@ -680,6 +749,7 @@ export function parseInline(source: string, notes: string[] = []): InlineRun[] {
           text: atom.match.text,
           href: atom.match.href,
           styles,
+          markers: markersAt(pairs, atom.from),
           from: atom.from,
           to: atom.to,
         })
@@ -734,23 +804,27 @@ export function parseInline(source: string, notes: string[] = []): InlineRun[] {
 
 /* ------------------------------------------------------------- serialise */
 
-/** Serialise runs with canonical delimiters (`**`, `*`, `~~`, `` ` ``). */
+/** Serialise runs with the delimiters their source wrote, canonical only as a fallback. */
 export function serialiseInline(runs: InlineRun[]): string {
   let out = ''
-  let open: InlineStyle[] = []
+  const open: InlineStyle[] = []
+  const openMarkers = new Map<InlineStyle, InlineDelimiter>()
 
   const closeTo = (styles: InlineStyle[]): void => {
     for (let index = open.length - 1; index >= 0; index--) {
       const style = open[index]
       if (style === undefined || styles.includes(style)) continue
-      out += DELIMITER[style]
+      out += openMarkers.get(style)?.close ?? DELIMITER[style]
+      openMarkers.delete(style)
       open.splice(index, 1)
     }
   }
-  const openTo = (styles: InlineStyle[]): void => {
+  const openTo = (styles: InlineStyle[], run: TextRun | LinkRun): void => {
     for (const style of STYLE_ORDER) {
       if (!styles.includes(style) || open.includes(style)) continue
-      out += DELIMITER[style]
+      const delimiter = run.markers?.[style] ?? { open: DELIMITER[style], close: DELIMITER[style] }
+      out += delimiter.open
+      openMarkers.set(style, delimiter)
       open.push(style)
     }
   }
@@ -758,7 +832,7 @@ export function serialiseInline(runs: InlineRun[]): string {
   for (const run of runs) {
     if (run.kind === 'text' || run.kind === 'link') {
       closeTo(run.styles)
-      openTo(run.styles)
+      openTo(run.styles, run)
       out += run.kind === 'link' ? `[${run.text}](${run.href})` : run.text
       continue
     }
@@ -806,7 +880,7 @@ export function styleSpans(
   const { pairs } = emphasisPairs(source, blocked)
   return pairs
     .filter((pair) => pair.style === style)
-    .map((pair) => ({ from: pair.from, to: pair.to, marker: DELIMITER[style] }))
+    .map((pair) => ({ from: pair.from, to: pair.to, marker: pair.open }))
 }
 
 /* ---------------------------------------------------------------- picker */
