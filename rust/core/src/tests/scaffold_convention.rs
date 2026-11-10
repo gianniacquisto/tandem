@@ -1001,6 +1001,130 @@ fn retro_is_manual_only() {
 /// SKI-3: the close cuts no release by default. A release cuts only on the
 /// human's explicit per-sprint words naming the version, and the sprint never
 /// prompts for one; when asked, the manual steps are today's.
+/// The text between `from` and the next `to`, both named.
+fn between(text: &str, from: &str, to: &str) -> String {
+    let start = text
+        .find(from)
+        .unwrap_or_else(|| panic!("missing `{from}`"));
+    let rest = &text[start + from.len()..];
+    match rest.find(to) {
+        Some(end) => rest[..end].to_string(),
+        None => panic!("missing `{to}` after `{from}`"),
+    }
+}
+
+/// A gate-blocked fix is a dispatch of its own (TAN-350): a fresh subagent
+/// session with no resumed `sessionID`, its own Tandem record started before
+/// the first call, the claim back, the green hand back, and the PR's branch as
+/// its worktree. The build's window is never carried into it, and the build
+/// skill's step numbering survives because `preflight.rs` cites step 3.
+#[test]
+fn the_build_names_the_fix_pass_dispatch() {
+    let build = file("skills/tandem-build/SKILL.md");
+    let gate = between(&build, "3. **Review**", "4. **Record**");
+    for phrase in [
+        "fix pass",
+        "fresh subagent session",
+        "names no `sessionID`",
+        "`tandem-cli session start --agent builder",
+        "`tandem-cli session link --ticket",
+        "--status in-progress --assignee builder",
+        "--status in-review",
+        "green head bound to the new sha",
+        "PR's branch",
+    ] {
+        assert!(
+            gate.contains(phrase),
+            "the gate step names `{phrase}` for the fix pass"
+        );
+    }
+    let record = between(&build, "4. **Record**", "## Budget the turns");
+    assert!(
+        record.contains("fix pass's record handle"),
+        "the record step names the fix pass's handle beside the build's"
+    );
+    assert!(
+        build.contains("3. **Review**") && build.contains("4. **Record**"),
+        "the step numbering survives: `preflight.rs` cites step 3 as the gate"
+    );
+}
+
+/// The fix brief carries the ticket, the PR number, the head sha and the
+/// quoted finding, and nothing else: the build's reasoning and its window are
+/// not inputs, so a fix starts at a ticket and a finding.
+#[test]
+fn the_fix_brief_carries_the_gate_finding_and_nothing_else() {
+    let build = file("skills/tandem-build/SKILL.md");
+    let gate = between(&build, "3. **Review**", "4. **Record**");
+    for phrase in [
+        "four things and nothing else",
+        "the ticket id",
+        "the PR number",
+        "the head sha",
+        "the gate's finding quoted",
+        "`### file:line`",
+        "not retold",
+        "not inputs",
+    ] {
+        assert!(
+            gate.contains(phrase),
+            "the fix brief's contract names `{phrase}`"
+        );
+    }
+}
+
+/// The fresh-dispatch rule is the fix's, not the gate's: a re-gate may resume
+/// its own reviewer session, whose context starts at one ticket and one PR and
+/// which re-reads the diff on a new push. `agents/reviewer.md` keeps that rule.
+#[test]
+fn the_fix_rule_is_not_the_gates() {
+    let build = file("skills/tandem-build/SKILL.md");
+    let gate = between(&build, "3. **Review**", "4. **Record**");
+    assert!(
+        gate.contains("not the gate's"),
+        "the gate step keeps the rule from the gate's re-gate"
+    );
+    assert!(
+        gate.contains("re-gate may resume its own reviewer session"),
+        "a re-gate may resume its own reviewer session"
+    );
+    assert!(
+        gate.contains("agents/reviewer.md"),
+        "the boundary points at the gate's own contract"
+    );
+    let reviewer = file("agents/reviewer.md");
+    assert!(
+        reviewer.contains("a new push invalidates the earlier reading"),
+        "the gate keeps its re-read-on-a-new-push rule"
+    );
+}
+
+/// `agents/builder.md` states the fix shape beside its build shape: the fix
+/// brief's extra fields, the PR's branch as its worktree, and the build
+/// sentence, one ticket per session and the green-only handoff as written.
+#[test]
+fn the_builder_reads_a_fix_brief() {
+    let builder = file("agents/builder.md");
+    for phrase in [
+        "fix brief",
+        "the PR number",
+        "the head sha",
+        "the gate's finding",
+        "the PR's branch",
+        "One ticket per session",
+        "every check on the head is green",
+    ] {
+        assert!(
+            builder.contains(phrase),
+            "the builder prompt names `{phrase}`"
+        );
+    }
+    assert!(
+        builder.contains("gives you the ticket id and its description"),
+        "the build sentence stays: a build gets the ticket id and its description"
+    );
+}
+
 #[test]
 fn the_close_cuts_no_release_by_default() {
     let close = section(&file("skills/tandem-sprint/SKILL.md"), "## 6. Close");
