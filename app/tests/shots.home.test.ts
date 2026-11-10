@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { HOME_VAR, seedHome, seedPath, seedUserPath, shotsSource } from '../shots/home'
+import { HOME_VAR, appPath, seedHome, seedPath, seedUserPath, shotsSource } from '../shots/home'
 
 const repoRoot = '/repo'
 
@@ -43,6 +43,11 @@ describe('the shots home', () => {
 
     expect(seedPath()).toBe('/tmp/tandem-shots/Home')
     expect(seedUserPath()).toBe('/tmp/tandem-shots/user')
+    expect(appPath()).toBe('/tmp/tandem-shots/app/Tandem.app')
+  })
+
+  it('threads the seed root through the fixture app path', () => {
+    expect(appPath('/seed')).toBe('/seed/app/Tandem.app')
   })
 
   it('seeds a scratch copy so no run writes into the committed home', () => {

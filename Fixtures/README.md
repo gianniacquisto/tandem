@@ -11,6 +11,10 @@ is enforced by the harness, `docs/screenshots/README.md`):
     cd app
     TANDEM_SHOTS_HOME=../Fixtures/port/Home npm run shots
 
+Because the seed is one fixed path, a run takes an exclusive lock on it: a
+second run on the same machine waits for the lock rather than reading or writing
+the same seed, and the two never share one.
+
 The agent loop, the scratch look, and the traps live in
 `docs/screenshots/README.md`; this folder only holds the homes the loop reads.
 

@@ -5,8 +5,9 @@ import { defineConfig } from '@playwright/test'
  *
  * One worker: every scene is one app and one picture, so scene order is the
  * manifest's alone. A run writes its pictures into `app/shots-out/`
- * (`shots/output.ts`) and no teardown writes anything: the committed folder
- * moves only through `npm run shots:publish` (`shots/publish.ts`).
+ * (`shots/output.ts`); the teardown frees the seed lock and writes nothing, so
+ * the committed folder moves only through `npm run shots:publish`
+ * (`shots/publish.ts`).
  * `npm run shots` builds the renderer first; the rpc binary is `npm run
  * binary` (CI builds it in its own step).
  */
@@ -14,6 +15,7 @@ export default defineConfig({
   testDir: 'tests/shots',
   testMatch: '**/*.shots.ts',
   globalSetup: './shots/globalSetup.ts',
+  globalTeardown: './shots/globalTeardown.ts',
   workers: 1,
   timeout: 60_000,
   expect: { timeout: 15_000 },

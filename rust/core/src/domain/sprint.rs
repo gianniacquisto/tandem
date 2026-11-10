@@ -20,6 +20,7 @@ use ts_rs::TS;
 
 use super::error::{DomainError, DomainResult};
 use super::operation::Operation;
+use super::session;
 use crate::store::records::sprint_rows;
 use crate::store::{
     Actor, NewSprint, Result as StoreResult, SprintRow, Store, StoreError, timestamp,
@@ -156,6 +157,13 @@ pub struct SprintLaneGroup {
     pub sprints: Vec<Sprint>,
 }
 
+/// One ticket the batch write also links to the sprint's opening session
+/// (TAN-353): the batch entry and the link are one transaction.
+struct SessionLink {
+    session: String,
+    ticket: String,
+}
+
 /// The sprints store, over the home's `tandem.db`.
 #[derive(Debug, Clone)]
 pub struct Sprints {
@@ -200,6 +208,7 @@ impl Sprints {
                 return Ok((
                     existing.clone(),
                     None,
+                    None,
                     Some(format!("{} is already open", existing.name())),
                 ));
             }
@@ -223,7 +232,7 @@ impl Sprints {
                 closed_at: None,
             };
             sprints.push(sprint.clone());
-            Ok((sprint.clone(), Some(sprint), None))
+            Ok((sprint.clone(), Some(sprint), None, None))
         })?;
         Ok(Operation { value, note })
     }
@@ -235,6 +244,11 @@ impl Sprints {
     /// archive included, because the rule is about what the store carries and not
     /// what is open this minute. A ticket deleted *after* the write is not this
     /// failure: the batch keeps the id and a reader reads "not on the board".
+    ///
+    /// **The batch write is the link write** (TAN-353): the same transaction
+    /// appends the id to the `tickets` of the session record the sprint names,
+    /// so a drawn ticket is attributed to the pass that drew it. A sprint opened
+    /// with no session still takes its batch and links nothing.
     pub fn ticket(
         &self,
         actor: &Actor,
@@ -254,11 +268,19 @@ impl Sprints {
                 return Err(unknown_sprint(sprints, &lane, number));
             };
             if sprints[index].batch.iter().any(|carried| carried == ticket) {
-                return Ok((sprints[index].clone(), None, None));
+                return Ok((sprints[index].clone(), None, None, None));
             }
             let record = &mut sprints[index];
             record.batch.push(ticket.to_string());
-            Ok((record.clone(), Some(record.clone()), None))
+            // The batch write is the link write (TAN-353): the same transaction
+            // that grows the batch appends the ticket to the record's opening
+            // session, so a drawn ticket cannot land unattributed. A record
+            // opened with no session links nothing and still takes its batch.
+            let link = record.session.clone().map(|session| SessionLink {
+                session,
+                ticket: ticket.to_string(),
+            });
+            Ok((record.clone(), Some(record.clone()), link, None))
         })?;
         Ok(Operation { value, note })
     }
@@ -288,7 +310,7 @@ impl Sprints {
             };
             let record = &mut sprints[index];
             record.stamp_run(text, &stamped);
-            Ok((record.clone(), Some(record.clone()), None))
+            Ok((record.clone(), Some(record.clone()), None, None))
         })?;
         Ok(Operation { value, note })
     }
@@ -322,6 +344,7 @@ impl Sprints {
                 return Ok((
                     sprints[index].clone(),
                     None,
+                    None,
                     Some(format!("{} is already closed", sprints[index].name())),
                 ));
             }
@@ -329,7 +352,7 @@ impl Sprints {
             record.close = text.clone();
             record.closed_at = Some(closed_at.clone());
             record.status = SprintStatus::Closed;
-            Ok((record.clone(), Some(record.clone()), None))
+            Ok((record.clone(), Some(record.clone()), None, None))
         })?;
         Ok(Operation { value, note })
     }
@@ -478,10 +501,17 @@ impl Sprints {
     /// A read-modify-write in one transaction, the sessions' own shape: the rows
     /// are read under the write lock, the body changes at most one of them, and
     /// a domain failure rolls the transaction back as itself.
+    ///
+    /// The body may also name one ticket to link to the sprint's opening
+    /// session (TAN-353). The link is written through the same `write` as the
+    /// batch, so the two land together or not at all.
     fn mutate<T>(
         &self,
         actor: &Actor,
-        body: impl FnOnce(&mut Vec<Sprint>) -> DomainResult<(T, Option<Sprint>, Option<String>)>,
+        body: impl FnOnce(
+            &mut Vec<Sprint>,
+        )
+            -> DomainResult<(T, Option<Sprint>, Option<SessionLink>, Option<String>)>,
     ) -> DomainResult<(T, Option<String>)> {
         let mut failure: Option<DomainError> = None;
         let mut result: Option<(T, Option<String>)> = None;
@@ -490,7 +520,7 @@ impl Sprints {
                 .into_iter()
                 .map(Sprint::from_row)
                 .collect::<StoreResult<Vec<_>>>()?;
-            let (value, changed, note) = match body(&mut sprints) {
+            let (value, changed, link, note) = match body(&mut sprints) {
                 Ok(changed) => changed,
                 Err(error) => {
                     failure = Some(error);
@@ -521,6 +551,9 @@ impl Sprints {
                 } else {
                     write.insert_sprint(new)?;
                 }
+            }
+            if let Some(link) = link {
+                session::link_in_write(write, &link.session, &link.ticket)?;
             }
             result = Some((value, note));
             Ok(())

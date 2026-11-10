@@ -66,9 +66,12 @@ describe('the screenshot catalogue', () => {
     expect(writers).toEqual(['publish.ts'])
   })
 
-  it('declares no teardown, so a run cannot write the committed folder on its way out', () => {
+  it('declares a teardown that releases the seed lock and writes no catalogue', () => {
     const config = readFileSync(join(REPO_ROOT, 'app', 'playwright.config.ts'), 'utf8')
+    const teardown = readFileSync(join(shots, 'globalTeardown.ts'), 'utf8')
 
-    expect(config).not.toContain('globalTeardown')
+    expect(config).toContain('globalTeardown')
+    expect(teardown).toContain('releaseHeldSeedLock')
+    expect(teardown).not.toMatch(/from '\.\/catalogue'/)
   })
 })

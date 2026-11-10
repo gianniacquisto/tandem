@@ -4,6 +4,7 @@
 //! life through the store.
 
 use crate::domain::error::DomainError;
+use crate::domain::session::Sessions;
 use crate::domain::sprint::{Sprint, SprintMode, SprintStatus, Sprints};
 
 use super::support::{Sandbox, TICKET_ONE, TICKET_THREE, TICKET_TWO, at};
@@ -804,5 +805,147 @@ fn sprint_open_validates_like_the_cli_and_repeats_unchanged() {
         blank["error"]["message"],
         DomainError::EmptyLaneName.message(),
         "the lane validates as the CLI's does"
+    );
+}
+
+#[test]
+fn a_batch_ticket_is_carried_by_the_sprints_session() {
+    let sandbox = Sandbox::new("sprint-batch-link");
+    sandbox.ticket(TICKET_ONE);
+    sandbox.ticket(TICKET_TWO);
+    let store = sandbox.store();
+    let sprints = Sprints::new(&store);
+    let sessions = Sessions::new(&store);
+    let actor = sandbox.actor();
+
+    sessions
+        .start(
+            &actor,
+            "ses_sprint",
+            "tandem",
+            Some("sprint"),
+            "The sprint session.",
+            Some(&at(0)),
+        )
+        .unwrap();
+    sprints
+        .open(
+            &actor,
+            "Port",
+            SprintMode::Parallel,
+            Some("ses_sprint"),
+            Some(&at(1)),
+        )
+        .unwrap();
+
+    sprints.ticket(&actor, "Port", 1, TICKET_ONE).unwrap();
+    sprints.ticket(&actor, "Port", 1, TICKET_TWO).unwrap();
+
+    let carried = sessions.show("ses_sprint").unwrap();
+    assert_eq!(
+        carried.tickets,
+        vec![TICKET_ONE.to_string(), TICKET_TWO.to_string()],
+        "the session carries the batch in the order the batch was drawn"
+    );
+    assert_eq!(
+        sprints.show("Port", 1).unwrap().batch,
+        carried.tickets,
+        "the batch and the link say the same thing"
+    );
+
+    let repeated = sprints.ticket(&actor, "Port", 1, TICKET_TWO).unwrap();
+    assert_eq!(
+        repeated.note, None,
+        "a repeat appends nothing and says nothing"
+    );
+    assert_eq!(
+        sessions.show("ses_sprint").unwrap().tickets,
+        carried.tickets,
+        "a repeat links nothing twice"
+    );
+    assert_eq!(
+        sprints.show("Port", 1).unwrap().batch,
+        carried.tickets,
+        "a repeat appends nothing to the batch"
+    );
+}
+
+#[test]
+fn a_sprint_with_no_session_takes_its_batch_and_links_nothing() {
+    let sandbox = Sandbox::new("sprint-batch-no-session");
+    sandbox.ticket(TICKET_ONE);
+    let store = sandbox.store();
+    let sprints = Sprints::new(&store);
+    let sessions = Sessions::new(&store);
+    let actor = sandbox.actor();
+
+    sessions
+        .start(
+            &actor,
+            "ses_other",
+            "tandem",
+            Some("builder"),
+            "Another pass.",
+            Some(&at(0)),
+        )
+        .unwrap();
+    sprints
+        .open(&actor, "Port", SprintMode::Serial, None, Some(&at(1)))
+        .unwrap();
+
+    let added = sprints.ticket(&actor, "Port", 1, TICKET_ONE).unwrap();
+    assert_eq!(added.value.batch, vec![TICKET_ONE.to_string()]);
+    assert_eq!(added.note, None);
+    assert_eq!(
+        sessions.list(None, None).unwrap().len(),
+        1,
+        "no session row is written for a sprint that names none"
+    );
+    assert!(
+        sessions.show("ses_other").unwrap().tickets.is_empty(),
+        "no session row is touched for a sprint that names none"
+    );
+}
+
+#[test]
+fn a_refused_batch_write_links_nothing() {
+    let sandbox = Sandbox::new("sprint-batch-refused");
+    sandbox.ticket(TICKET_ONE);
+    let store = sandbox.store();
+    let sprints = Sprints::new(&store);
+    let sessions = Sessions::new(&store);
+    let actor = sandbox.actor();
+
+    sessions
+        .start(
+            &actor,
+            "ses_sprint",
+            "tandem",
+            Some("sprint"),
+            "The sprint session.",
+            Some(&at(0)),
+        )
+        .unwrap();
+    sprints
+        .open(
+            &actor,
+            "Port",
+            SprintMode::Serial,
+            Some("ses_sprint"),
+            Some(&at(1)),
+        )
+        .unwrap();
+
+    assert_eq!(
+        sprints.ticket(&actor, "Port", 1, TICKET_THREE).unwrap_err(),
+        DomainError::UnknownTicketId(TICKET_THREE.to_string())
+    );
+    assert!(
+        sessions.show("ses_sprint").unwrap().tickets.is_empty(),
+        "the rolled-back transaction left no link behind"
+    );
+    assert!(
+        sprints.show("Port", 1).unwrap().batch.is_empty(),
+        "the rolled-back transaction left no batch entry behind"
     );
 }

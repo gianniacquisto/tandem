@@ -26,9 +26,10 @@ export class ShotsRefused extends Error {
  * the only spelling that gives that, and it is clearly scratch.
  *
  * It is refreshed by every run (see [`seedHome`]) and deliberately never
- * removed: two runs on one machine share it, and a run that deleted it would
- * break the other's next read. A stale seed cannot outlive a run, because the
- * next run replaces it wholesale.
+ * removed: a red run's seed is the evidence of what the app read, and the next
+ * run replaces it wholesale. Two runs on one machine never share it: a run
+ * takes an exclusive lock on this root (`lock.ts`), so a second run waits
+ * rather than reading or writing the same seed.
  */
 export function seedRoot(): string {
   if (process.platform === 'win32') return resolve(process.env['TEMP'] ?? '.', 'tandem-shots')
@@ -36,8 +37,8 @@ export function seedRoot(): string {
 }
 
 /** The scratch copy of the fixture home a run's app reads. */
-export function seedPath(): string {
-  return join(seedRoot(), 'Home')
+export function seedPath(root: string = seedRoot()): string {
+  return join(root, 'Home')
 }
 
 /**
@@ -45,8 +46,8 @@ export function seedPath(): string {
  * the host roots it prints are the seed's and never a human's
  * `~/.config/opencode`, `~/.claude` or `~/.agents`.
  */
-export function seedUserPath(): string {
-  return join(seedRoot(), 'user')
+export function seedUserPath(root: string = seedRoot()): string {
+  return join(root, 'user')
 }
 
 /**
@@ -56,13 +57,13 @@ export function seedUserPath(): string {
  * installed; the fixture carries no quarantine xattr, so the row prints no
  * quarantine clause either.
  */
-export function appPath(): string {
-  return join(seedRoot(), 'app', 'Tandem.app')
+export function appPath(root: string = seedRoot()): string {
+  return join(root, 'app', 'Tandem.app')
 }
 
-/** The fixture `.app`: a bundle directory whose `Info.plist` names version 1.0.0. */
-export function seedApp(target: string = appPath()): string {
-  return replace(target, (staging) => {
+/** The fixture `.app` under `root`: a bundle directory whose `Info.plist` names version 1.0.0. */
+export function seedApp(root: string = seedRoot()): string {
+  return replace(appPath(root), (staging) => {
     mkdirSync(join(staging, 'Contents'), { recursive: true })
     writeFileSync(
       join(staging, 'Contents', 'Info.plist'),
