@@ -18,7 +18,7 @@ export function contentSecurityPolicy(development: boolean): string {
     "default-src 'self'",
     `script-src ${script}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
+    "img-src 'self' data: tandem:",
     "font-src 'self'",
     `connect-src ${connect}`,
     "object-src 'none'",

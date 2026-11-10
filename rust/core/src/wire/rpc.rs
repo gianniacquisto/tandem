@@ -34,8 +34,9 @@ use crate::domain::sprint::Sprint;
 use crate::domain::usage::UsageWindow;
 use crate::domain::workflow::{Workflow, WorkflowStage};
 use crate::wire::views::{
-    BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
-    NotePathView, NoteWriteView, RecoveryView, TicketDetail, TicketSummary, UsageReportView,
+    BacklinkView, CommentView, MarkdownBlockView, NoteAssetView, NoteContentView, NoteMoveView,
+    NoteNodeView, NotePathView, NoteWriteView, RecoveryView, TicketDetail, TicketSummary,
+    UsageReportView,
 };
 
 // MARK: - Requests
@@ -150,6 +151,11 @@ methods! {
     // two mutations name the verbs they share with the agent face.
     NoteTree: "note.tree", NoteTreeParams, "";
     NoteRead: "note.read", NotePathParams, "";
+    // The image path's core read: a vault-relative image answers its confined
+    // absolute file, media type and size. Wire-only like `note.read`, because
+    // the protocol handler is its one caller; `tandem-cli rpc` answers it and
+    // no `note asset` verb writes bytes outward.
+    NoteAsset: "note.asset", NotePathParams, "";
     NoteHealth: "note.health", EmptyParams, "note links";
     NoteBacklinks: "note.backlinks", NotePathParams, "";
     NoteRecoveries: "note.recoveries", EmptyParams, "";
@@ -1239,6 +1245,7 @@ pub enum Reply {
     Doctor(DoctorReply),
     NoteTree(NoteTreeReply),
     NoteRead(NoteReadReply),
+    NoteAsset(NoteAssetReply),
     NoteWrite(NoteWriteReply),
     NoteMove(NoteMoveReply),
     NoteHealth(NoteHealthReply),
@@ -1281,6 +1288,13 @@ pub struct NoteTreeReply {
 #[serde(rename_all = "camelCase")]
 pub struct NoteReadReply {
     pub note: NoteContentView,
+}
+
+/// `note.asset`: the confined file, media type and size of a vault image.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteAssetReply {
+    pub asset: NoteAssetView,
 }
 
 /// `note.write`: the path written and the hash that landed.

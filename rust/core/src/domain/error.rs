@@ -217,6 +217,8 @@ pub enum DomainError {
     /// `read` / `delete` / `rename` / `move` / `backlinks` was called with a path
     /// not present in the bikeshed.
     UnknownNote(String),
+    /// `asset` was given a file that is not one of the servable image types.
+    NotAnAsset(String),
     /// A create, rename or move target that already exists. An error, never an
     /// overwrite.
     NoteAlreadyExists(String),
@@ -538,6 +540,10 @@ impl DomainError {
             Self::BikeshedIo(detail) => format!("Bikeshed error: {detail}. Try again."),
             Self::UnknownNote(path) => format!(
                 "No note at \"{path}\" in the bikeshed. List the bikeshed to see what is there."
+            ),
+            Self::NotAnAsset(path) => format!(
+                "No image at \"{path}\" in the bikeshed. Only PNG, JPG, JPEG, GIF, WebP, AVIF, \
+                 SVG, BMP and ICO files are served."
             ),
             Self::NoteAlreadyExists(path) => {
                 format!("A file already exists at \"{path}\". Choose a different name.")

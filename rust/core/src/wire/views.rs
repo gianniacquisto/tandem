@@ -21,7 +21,7 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use crate::bikeshed::{
-    Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, Recovery, WriteRecord,
+    Asset, Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, Recovery, WriteRecord,
 };
 use crate::domain::session::{Session, SessionTokens};
 use crate::domain::sprint::Sprint;
@@ -378,6 +378,31 @@ impl NoteContentView {
             text: content.text.clone(),
             hash: content.hash.clone(),
             modified_at: stamp(content.modified_at),
+        }
+    }
+}
+
+/// `note.asset`: the confined file the app streams, its media type and size.
+///
+/// The renderer never sees this reply: the main process asks, streams the
+/// `file` and answers the `<img>`. The bytes stay out of the wire, so a large
+/// image cannot strain the stream on the way out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteAssetView {
+    pub path: String,
+    pub file: String,
+    pub media_type: String,
+    pub size: u64,
+}
+
+impl NoteAssetView {
+    pub fn new(asset: &Asset) -> Self {
+        Self {
+            path: asset.path.clone(),
+            file: super::slashed_path(&asset.file),
+            media_type: asset.media_type.clone(),
+            size: asset.size,
         }
     }
 }

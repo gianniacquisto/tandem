@@ -14,7 +14,7 @@ use ts_rs::{Config, TS};
 use super::rpc::{
     ArchivedReply, CommentAddParams, CommentListReply, CommentReply, DoctorReply, EmptyParams,
     Event, HostRoot, LaneAddParams, LaneDeleteParams, LaneDeletionReply, LaneListReply,
-    LaneMoveParams, LaneRenameParams, MarkdownBlocksParams, MarkdownReply, Method,
+    LaneMoveParams, LaneRenameParams, MarkdownBlocksParams, MarkdownReply, Method, NoteAssetReply,
     NoteBacklinksReply, NoteCaptureParams, NoteHealthReply, NoteMoveParams, NoteMoveReply,
     NotePathParams, NoteReadReply, NoteRecoveriesReply, NoteTreeParams, NoteTreeReply,
     NoteWriteParams, NoteWriteReply, Outcome, ProjectAddParams, ProjectDeleteParams, ProjectEntry,
@@ -30,7 +30,7 @@ use super::rpc::{
     WorkflowSetParams, WorkflowShowParams,
 };
 use super::views::{
-    BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
+    BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView, NoteAssetView,
     NoteContentView, NoteMoveView, NoteNodeView, NotePathView, NoteWriteView, RecoveryView,
     TicketBlockView, TicketDetail, TicketSummary, UsageReportView, UsageRowView, UsageSessionView,
     UsageTokensView,
@@ -327,6 +327,7 @@ pub fn files() -> Vec<(&'static str, String)> {
         render("NoteMoveParams.ts", NoteMoveParams::export_to_string(&cfg)),
         render("NoteTreeReply.ts", NoteTreeReply::export_to_string(&cfg)),
         render("NoteReadReply.ts", NoteReadReply::export_to_string(&cfg)),
+        render("NoteAssetReply.ts", NoteAssetReply::export_to_string(&cfg)),
         render("NoteWriteReply.ts", NoteWriteReply::export_to_string(&cfg)),
         render("NoteMoveReply.ts", NoteMoveReply::export_to_string(&cfg)),
         render(
@@ -346,6 +347,7 @@ pub fn files() -> Vec<(&'static str, String)> {
             "NoteContentView.ts",
             NoteContentView::export_to_string(&cfg),
         ),
+        render("NoteAssetView.ts", NoteAssetView::export_to_string(&cfg)),
         render("NoteWriteView.ts", NoteWriteView::export_to_string(&cfg)),
         render("NoteMoveView.ts", NoteMoveView::export_to_string(&cfg)),
         render("MovedNoteView.ts", MovedNoteView::export_to_string(&cfg)),
