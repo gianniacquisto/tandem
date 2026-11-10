@@ -141,7 +141,8 @@ function runNode(
     const prefix = at === -1 ? '[[' : run.source.slice(0, at)
     const suffix = at === -1 ? ']]' : run.source.slice(at + run.display.length)
     const broken = run.broken
-    return (
+    return styled(
+      run.styles,
       <span
         className={`run run--wikilink${broken ? ' run--wikilink-broken' : ''}`}
         data-target={run.target}
@@ -160,14 +161,15 @@ function runNode(
         <span className={shown ? 'run__marker run__marker--shown' : 'run__marker'} aria-hidden={!shown}>
           {suffix}
         </span>
-      </span>
+      </span>,
     )
   }
 
-  return (
+  return styled(
+    run.styles,
     <span className="run run--math" data-math={run.display ? 'display' : 'inline'}>
       {run.source}
-    </span>
+    </span>,
   )
 }
 
@@ -180,8 +182,8 @@ export function InlineRuns({ source, notes = [], selection = null, onOpenNote }:
   let lastShown = false
 
   runs.forEach((run, index) => {
-    const styles = run.kind === 'text' || run.kind === 'link' ? run.styles : []
-    const markers = run.kind === 'text' || run.kind === 'link' ? run.markers : undefined
+    const styles = run.styles
+    const markers = run.markers
     const shown = touches(run, selection)
 
     for (let position = open.length - 1; position >= 0; position--) {

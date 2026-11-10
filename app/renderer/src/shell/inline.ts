@@ -51,6 +51,8 @@ export type WikilinkRun = Range & {
   broken: boolean
   /** The construct exactly as written, delimiters included. */
   source: string
+  styles: InlineStyle[]
+  markers?: InlineDelimiters
 }
 
 export type MathRun = Range & {
@@ -59,6 +61,8 @@ export type MathRun = Range & {
   content: string
   /** The construct exactly as written, delimiters included. */
   source: string
+  styles: InlineStyle[]
+  markers?: InlineDelimiters
 }
 
 export type InlineRun = TextRun | LinkRun | WikilinkRun | MathRun
@@ -764,6 +768,8 @@ export function parseInline(source: string, notes: string[] = []): InlineRun[] {
           path,
           broken: path === null,
           source: source.slice(atom.from, atom.to),
+          styles,
+          markers: markersAt(pairs, atom.from),
           from: atom.from,
           to: atom.to,
         })
@@ -773,6 +779,8 @@ export function parseInline(source: string, notes: string[] = []): InlineRun[] {
           display: atom.match.kind === 'display',
           content: atom.match.content,
           source: source.slice(atom.from, atom.to),
+          styles,
+          markers: markersAt(pairs, atom.from),
           from: atom.from,
           to: atom.to,
         })
@@ -819,7 +827,7 @@ export function serialiseInline(runs: InlineRun[]): string {
       open.splice(index, 1)
     }
   }
-  const openTo = (styles: InlineStyle[], run: TextRun | LinkRun): void => {
+  const openTo = (styles: InlineStyle[], run: InlineRun): void => {
     for (const style of STYLE_ORDER) {
       if (!styles.includes(style) || open.includes(style)) continue
       const delimiter = run.markers?.[style] ?? { open: DELIMITER[style], close: DELIMITER[style] }
@@ -837,11 +845,13 @@ export function serialiseInline(runs: InlineRun[]): string {
       continue
     }
     if (run.kind === 'wikilink') {
-      closeTo([])
+      closeTo(run.styles)
+      openTo(run.styles, run)
       out += `[[${run.target}${run.fragment === undefined ? '' : `#${run.fragment}`}${run.alias === undefined ? '' : `|${run.alias}`}]]`
       continue
     }
-    closeTo([])
+    closeTo(run.styles)
+    openTo(run.styles, run)
     out += run.display ? `$$\n${run.content}\n$$` : `$${run.content}$`
   }
   closeTo([])
