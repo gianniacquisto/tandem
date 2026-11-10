@@ -998,6 +998,88 @@ fn retro_is_manual_only() {
     );
 }
 
+/// TAN-351: the gate reads the suite from CI on the head sha instead of
+/// re-running it in a worktree. The evidence is the checks the head carries,
+/// the run is resolved the way Test prep resolves it, the conditional gates
+/// are named as conditional, and the old worktree re-run is gone.
+#[test]
+fn the_gate_reads_the_suite_from_ci_on_the_head_sha() {
+    let reviewer = file("agents/reviewer.md");
+    assert!(
+        reviewer.contains("gh run list"),
+        "the gate resolves the run the way Test prep resolves it"
+    );
+    assert!(
+        reviewer.contains("headRefOid"),
+        "the evidence binds to the head sha, not the branch"
+    );
+    assert!(
+        reviewer.contains("the checks the head"),
+        "the section names its evidence: the checks the head carries"
+    );
+    assert!(
+        reviewer.contains("conditional"),
+        "the conditional gates are named as conditional"
+    );
+    assert!(
+        reviewer.contains("Windows") && reviewer.contains("shots (ubuntu-latest)"),
+        "the section names the platform gates it must not read as universal"
+    );
+    assert!(
+        !reviewer.contains("Run them in a throwaway worktree"),
+        "the old rule is gone: no local suite re-run on a head CI has reported"
+    );
+}
+
+/// TAN-351: the verdict line carries the run id and the head sha the gate
+/// read, so the human's run and the gate's evidence are visibly one run. The
+/// pin also holds the bar: a later edit that trades the gate's care for the
+/// speed fails here.
+#[test]
+fn the_gate_names_the_run_and_sha_in_its_verdict() {
+    let reviewer = file("agents/reviewer.md");
+    let verdict = section(&reviewer, "## Verdict");
+    assert!(
+        verdict.contains("CI run"),
+        "the verdict line names the CI run"
+    );
+    assert!(
+        verdict.contains("<sha7>"),
+        "the verdict line names seven characters of the head sha"
+    );
+    assert!(
+        reviewer.contains("A wrong merge is the expensive error"),
+        "the gate's bar survives the speed: a wrong merge is still the expensive error"
+    );
+}
+
+/// TAN-351: the build skill points at the gate's evidence rule in one clause.
+/// The rule's home is `agents/reviewer.md`, and a dispatch brief names no
+/// re-run: one truth with a pointer, never a copy.
+#[test]
+fn the_build_points_at_the_gates_evidence_rule() {
+    let build = file("skills/tandem-build/SKILL.md");
+    let start = build
+        .find("3. **Review**")
+        .expect("the build skill has its review step");
+    let end = build
+        .find("4. **Record**")
+        .expect("the build skill has its record step");
+    let step = &build[start..end];
+    assert!(
+        step.contains("agents/reviewer.md"),
+        "the review step points at the rule's home"
+    );
+    assert!(
+        step.contains("evidence"),
+        "the review step names the gate's evidence rule"
+    );
+    assert!(
+        step.contains("head sha"),
+        "the review step names the head sha the evidence binds to"
+    );
+}
+
 /// SKI-3: the close cuts no release by default. A release cuts only on the
 /// human's explicit per-sprint words naming the version, and the sprint never
 /// prompts for one; when asked, the manual steps are today's.
