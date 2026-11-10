@@ -2043,6 +2043,13 @@ body {
   font-size: 0.86em;
 }
 
+.block--image .block__image-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-card);
+}
+
 .block__image-alt {
   color: var(--ink);
   font-weight: 600;

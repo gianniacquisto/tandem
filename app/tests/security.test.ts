@@ -25,4 +25,31 @@ describe('the content security policy', () => {
     expect(contentSecurityPolicy(true)).toContain('ws://localhost:*')
     expect(contentSecurityPolicy(false)).not.toContain('ws://')
   })
+
+  it('admits the tandem scheme for images and nothing else', () => {
+    for (const development of [false, true]) {
+      const policy = contentSecurityPolicy(development)
+      expect(policy).toContain("img-src 'self' data: tandem:")
+      expect(policy).not.toMatch(/img-src[^;]*https?:/)
+      expect(policy).not.toMatch(/img-src[^;]*\*/)
+    }
+  })
+
+  it('keeps every other directive unchanged', () => {
+    expect(contentSecurityPolicy(false)).toBe(
+      [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: tandem:",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'none'",
+        "frame-src 'self'",
+        "frame-ancestors 'self'",
+      ].join('; '),
+    )
+  })
 })
