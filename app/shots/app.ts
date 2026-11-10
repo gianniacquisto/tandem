@@ -8,7 +8,7 @@ import {
 } from '@playwright/test'
 
 import { clockScript } from './clock'
-import { seedHome, seedPath, seedUserPath, shotsSource } from './home'
+import { appPath, seedHome, seedPath, seedUserPath, shotsSource } from './home'
 import { screenshotPath } from './output'
 import { WINDOW_FLOOR } from '../src/main/window'
 import { APP_ROOT, REPO_ROOT } from './roots'
@@ -24,12 +24,14 @@ function binaryPath(): string {
 
 /**
  * A browser environment with the seed in it: the scratch homes, the workspace
- * binary, and UTC, so a scene that prints a local time prints the same one on
- * every machine.
+ * binary, the fixture app, and UTC, so a scene that prints a local time prints
+ * the same one on every machine.
  *
  * `HOME` and `XDG_CONFIG_HOME` are the seeded user home, because the setup
  * report prints the agent hosts' roots from them: a Settings picture then names
- * the seed's paths, never a human's `~/.config/opencode`.
+ * the seed's paths, never a human's `~/.config/opencode`. `TANDEM_APP_PATH` is
+ * the seeded fixture app for the same reason, and `TANDEM_AGENT_BUNDLE` is
+ * deleted: a host's installed face must not reach the picture.
  */
 function seededEnv(): Record<string, string> {
   const env: Record<string, string> = {}
@@ -37,8 +39,10 @@ function seededEnv(): Record<string, string> {
     if (value !== undefined) env[key] = value
   }
   delete env['ELECTRON_RENDERER_URL']
+  delete env['TANDEM_AGENT_BUNDLE']
   env['TANDEM_HOME'] = SEEDED_HOME
   env['TANDEM_BIN'] = binaryPath()
+  env['TANDEM_APP_PATH'] = appPath()
   env['TZ'] = 'UTC'
   env['HOME'] = SEEDED_USER
   env['USERPROFILE'] = SEEDED_USER
@@ -53,6 +57,12 @@ function seededEnv(): Record<string, string> {
  * a scene that renders a now-relative time renders one instant. A spec asserts
  * its scene and then calls `capture`.
  *
+ * The launch pins the device scale factor at 2, so a scene's PNG is twice the
+ * window's CSS width on a 1x and on a 2x display alike; the committed widths
+ * (1520 for the 760 faces, 2660 for the 1330 board) are that 2x. The window
+ * emulates a light colour scheme, so a dark-mode host photographs the light
+ * face; a spec may still flip to dark and back inside its own assertions.
+ *
  * The scratch home is seeded again before every test, so a spec that writes (a
  * face's own save, a drag, the CLI as a second writer) cannot change the next
  * spec's picture or its assertions: every test starts from the named home's
@@ -66,6 +76,8 @@ export const test = base.extend<{ app: ElectronApplication; window: Page }>({
         join(APP_ROOT, 'out', 'main', 'index.js'),
         // The runner's container has no usable Chromium sandbox (app.yml).
         ...(process.platform === 'linux' ? ['--no-sandbox'] : []),
+        // The pixel scale is the harness's, not the display's.
+        '--force-device-scale-factor=2',
       ],
       cwd: APP_ROOT,
       env: seededEnv(),
@@ -82,6 +94,7 @@ export const test = base.extend<{ app: ElectronApplication; window: Page }>({
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(760, 560)
     })
+    await window.emulateMedia({ colorScheme: 'light' })
     await window.addInitScript({ content: clockScript() })
     await window.reload()
     await window.waitForSelector('.shell', { timeout: 30_000 })
@@ -101,9 +114,10 @@ export async function openTab(page: Page, tab: string): Promise<void> {
 
 /**
  * One scene, one PNG: the file the manifest names, as the spec asserted it, at
- * the window's width. A scratch look (`TANDEM_SHOTS_OUT`) writes under the
- * named directory and leaves the committed folder alone; otherwise the PNG
- * lands in `docs/screenshots` and the run's teardown keeps the catalogue.
+ * the window's width. The picture lands in the run's output directory
+ * (`shots/output.ts`): the checkout's scratch directory, or the one
+ * `TANDEM_SHOTS_OUT` names. `docs/screenshots` is written by
+ * `npm run shots:publish` alone, never by a run.
  * The window grows to the face's own content height (never
  * below the floor), so a face taller than the window is shot whole rather than
  * clipped: a picture of half a table is a picture of no table.

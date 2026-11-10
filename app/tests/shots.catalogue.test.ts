@@ -1,16 +1,9 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-import {
-  CATALOGUE_MARKER,
-  cataloguePath,
-  renderCatalogue,
-  templatePath,
-  writeCatalogue,
-} from '../shots/catalogue'
+import { CATALOGUE_MARKER, cataloguePath, renderCatalogue, templatePath } from '../shots/catalogue'
 import { REPO_ROOT } from '../shots/roots'
 import { SCENES, type Scene } from '../shots/scenes'
 
@@ -19,20 +12,7 @@ const scenes: Scene[] = [
   { id: 'second', file: 'second.png', description: 'the second scene' },
 ]
 
-const scratch: string[] = []
-
-function fixtureRepo(lines: string[]): string {
-  const root = mkdtempSync(join(tmpdir(), 'tandem-catalogue-'))
-  scratch.push(root)
-  mkdirSync(join(root, 'docs', 'screenshots'), { recursive: true })
-  writeFileSync(templatePath(root), `# Screenshots\n\n${CATALOGUE_MARKER}\n\n| file | what it shows |\n`)
-  for (const file of lines) writeFileSync(join(root, 'docs', 'screenshots', file), 'png')
-  return root
-}
-
-afterEach(() => {
-  for (const root of scratch.splice(0)) rmSync(root, { recursive: true, force: true })
-})
+const shots = join(REPO_ROOT, 'app', 'shots')
 
 describe('the screenshot catalogue', () => {
   it('renders one row per scene, in the manifest order', () => {
@@ -52,25 +32,9 @@ describe('the screenshot catalogue', () => {
     expect(() => renderCatalogue('# Screenshots\n', scenes)).toThrow(/marker/)
   })
 
-  it('refuses a catalogue for a picture the run did not make', () => {
-    const root = fixtureRepo(['first.png'])
-
-    expect(() => writeCatalogue({ repoRoot: root, scenes })).toThrow(/second\.png/)
-  })
-
-  it('writes the catalogue into the repository when every picture exists', () => {
-    const root = fixtureRepo(['first.png', 'second.png'])
-
-    writeCatalogue({ repoRoot: root, scenes })
-
-    const written = readFileSync(cataloguePath(root), 'utf8')
-    expect(written).toContain('| `first.png` | the first scene |')
-    expect(written).toContain('| `second.png` | the second scene |')
-  })
-
   it('keeps the committed catalogue the one the template and the manifest render', () => {
-    // The run writes the table from `scenes.ts`, so a reworded scene row is stale
-    // until the next run: a row that describes a layout the pictures no longer
+    // Publish writes the table from `scenes.ts`, so a reworded scene row is stale
+    // until the next publish: a row that describes a layout the pictures no longer
     // show is the drift this check exists to stop.
     //
     // The endings are compared as one: the table the writer builds is LF, while a
@@ -88,5 +52,23 @@ describe('the screenshot catalogue', () => {
     expect(new Set(SCENES.map((scene) => scene.id)).size).toBe(SCENES.length)
     expect(new Set(SCENES.map((scene) => scene.file)).size).toBe(SCENES.length)
     for (const scene of SCENES) expect(scene.file).toMatch(/\.png$/)
+  })
+
+  // The catalogue and the committed set have one writer, and it is the copy: a
+  // run writes its scratch pictures and nothing under `docs/screenshots`, so a
+  // local run cannot dirty the tree. These two read the harness's own source,
+  // because the guard is about what the suite may call, not what one call does.
+  it('has publish as the only writer of the catalogue', () => {
+    const writers = readdirSync(shots)
+      .filter((file) => file.endsWith('.ts') && file !== 'catalogue.ts')
+      .filter((file) => readFileSync(join(shots, file), 'utf8').includes('renderCatalogue('))
+
+    expect(writers).toEqual(['publish.ts'])
+  })
+
+  it('declares no teardown, so a run cannot write the committed folder on its way out', () => {
+    const config = readFileSync(join(REPO_ROOT, 'app', 'playwright.config.ts'), 'utf8')
+
+    expect(config).not.toContain('globalTeardown')
   })
 })

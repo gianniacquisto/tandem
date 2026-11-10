@@ -36,6 +36,7 @@ fn facts() -> Facts {
         comments_state: CommentsState::Absent,
         comment_rows: 0,
         comments_imported: false,
+        app_path: PathBuf::from("/Applications/Tandem.app"),
         app_present: true,
         app_version: Some("0.9.0".to_string()),
         app_quarantined: false,
@@ -552,6 +553,108 @@ fn a_quarantined_app_names_the_quarantine_strip() {
     facts.app_quarantined = true;
     let report = report(&facts);
     assert!(check(&report, "app").detail.contains("xattr -dr"));
+}
+
+// MARK: - The app row's path (TANDEM_APP_PATH, ADR 0034's seam)
+
+/// A throwaway `.app` whose `Info.plist` names `version`, and the root holding
+/// it, so a test removes one directory.
+fn fixture_app(name: &str, version: &str) -> (PathBuf, PathBuf) {
+    let root =
+        std::env::temp_dir().join(format!("tandem-doctor-app-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let app = root.join("app").join("Tandem.app");
+    std::fs::create_dir_all(app.join("Contents")).unwrap();
+    std::fs::write(
+        app.join("Contents").join("Info.plist"),
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\n\
+             <key>CFBundleShortVersionString</key>\n<string>{version}</string>\n</dict></plist>\n"
+        ),
+    )
+    .unwrap();
+    (root, app)
+}
+
+/// The environment names the app the row reads: a fixture `.app` reads as
+/// installed at its own path, with its own version and no quarantine clause
+/// (the fixture carries no xattr, and the row reads that one path for all
+/// three facts).
+#[test]
+fn the_app_row_reads_the_app_the_environment_names() {
+    let (root, app) = fixture_app("override", "1.0.0");
+    let (store, home_root) = temp_store("app-override");
+    let mut environment = tandem_core::setup::Environment::new();
+    environment.insert(
+        "TANDEM_APP_PATH".to_string(),
+        app.to_string_lossy().into_owned(),
+    );
+
+    let report = report(&diagnostics::gather(store.home(), &environment));
+    let row = check(&report, "app");
+
+    assert!(row.ok, "the app row is informational");
+    assert_eq!(
+        row.detail,
+        format!(
+            "installed at {} (version 1.0.0)",
+            tandem_core::wire::slashed_path(&app)
+        )
+    );
+    assert!(!row.detail.contains("xattr"), "{}", row.detail);
+    assert!(!row.detail.contains("quarantin"), "{}", row.detail);
+
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&home_root);
+}
+
+/// Unset, the row reads the path the cask installs to, whatever this machine
+/// holds there.
+#[test]
+fn an_unset_app_path_reads_the_cask_install() {
+    let (store, root) = temp_store("app-default");
+    let report = report(&diagnostics::gather(
+        store.home(),
+        &tandem_core::setup::Environment::new(),
+    ));
+    let row = check(&report, "app");
+
+    assert!(
+        row.detail.contains("/Applications/Tandem.app"),
+        "{}",
+        row.detail
+    );
+    assert!(
+        row.detail.starts_with("installed at ") || row.detail.starts_with("not installed at "),
+        "{}",
+        row.detail
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A named path with no app at it is the not-installed row, naming that path
+/// rather than the cask's: the row never falls back to a path it was not told.
+#[test]
+fn a_named_path_that_holds_no_app_reads_not_installed() {
+    let (root, app) = fixture_app("absent", "1.0.0");
+    std::fs::remove_dir_all(&app).unwrap();
+    let (store, home_root) = temp_store("app-absent");
+    let mut environment = tandem_core::setup::Environment::new();
+    environment.insert(
+        "TANDEM_APP_PATH".to_string(),
+        app.to_string_lossy().into_owned(),
+    );
+
+    let report = report(&diagnostics::gather(store.home(), &environment));
+    let row = check(&report, "app");
+
+    assert!(row.ok);
+    assert_eq!(
+        row.detail,
+        format!("not installed at {}", tandem_core::wire::slashed_path(&app))
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&home_root);
 }
 
 #[test]
