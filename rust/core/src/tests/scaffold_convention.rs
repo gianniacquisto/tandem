@@ -748,7 +748,7 @@ fn the_contributing_guide_names_every_gate() {
         "cargo fmt",
         "cargo clippy",
         "npm run typecheck",
-        "node --test",
+        "npm test",
     ] {
         assert!(
             guide.contains(phrase),

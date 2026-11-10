@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
  * Generate `THIRD-PARTY.md` from the production dependency closure.
  *
  * The retired editor bundle carried the only licence record of the packages
- * that shipped inside it (`Editor/build.mjs`'s generated `LICENSES.md`). UI-22
+ * that shipped inside it (the bundle build's generated `LICENSES.md`). UI-22
  * moved mermaid and KaTeX into the renderer's own graph, so the record moves
  * with them: every package in `package-lock.json` that is not a dev package,
  * its npm-declared licence, and its own verbatim licence text.
