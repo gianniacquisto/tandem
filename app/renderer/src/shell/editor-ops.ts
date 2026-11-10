@@ -1147,6 +1147,266 @@ function restLength(surface: SurfaceBlock): number {
   return surface.kind === 'code' ? 0 : rowText(surface, 0).length
 }
 
+/* ------------------------------------------------------------- the commands */
+
+/**
+ * What a `/` command converts the block into: a UI-17 kind plus the subtype it
+ * needs. The command table is the menu's only list of block types, and the
+ * conversion reads the same table, so a kind the surface cannot author never
+ * gets a row.
+ */
+export type CommandTarget = {
+  kind: 'paragraph' | 'heading' | 'list' | 'task' | 'quote' | 'code' | 'rule'
+  level?: 1 | 2 | 3
+  ordered?: boolean
+}
+
+export type BlockCommand = {
+  /** A stable identity for the row and its DOM id. */
+  id: string
+  label: string
+  /** One line, shown beside the label. */
+  description: string
+  glyph: string
+  /** The filter's other spellings: the markdown prefix and the common synonyms. */
+  keywords: string[]
+  target: CommandTarget
+}
+
+/**
+ * The ten commands, in the reference's order. Presentation over UI-17's model:
+ * Image, Page, Callout, Mermaid and Math have no row because they are not
+ * editable block kinds (`math` is inline here), and `opaque` is what the model
+ * does not cover, never a target a human picks.
+ */
+export const BLOCK_COMMANDS: readonly BlockCommand[] = [
+  {
+    id: 'text',
+    label: 'Text',
+    description: 'Plain text',
+    glyph: '\u00b6',
+    keywords: ['p', 'paragraph', 'plain'],
+    target: { kind: 'paragraph' },
+  },
+  {
+    id: 'heading-1',
+    label: 'Heading 1',
+    description: 'Top-level heading',
+    glyph: 'H1',
+    keywords: ['h1', 'heading 1', 'title', '#'],
+    target: { kind: 'heading', level: 1 },
+  },
+  {
+    id: 'heading-2',
+    label: 'Heading 2',
+    description: 'Section heading',
+    glyph: 'H2',
+    keywords: ['h2', 'heading 2', '##'],
+    target: { kind: 'heading', level: 2 },
+  },
+  {
+    id: 'heading-3',
+    label: 'Heading 3',
+    description: 'Subsection heading',
+    glyph: 'H3',
+    keywords: ['h3', 'heading 3', '###'],
+    target: { kind: 'heading', level: 3 },
+  },
+  {
+    id: 'bulleted',
+    label: 'Bulleted list',
+    description: 'An unordered list',
+    glyph: '\u2022',
+    keywords: ['ul', 'bullet', '-'],
+    target: { kind: 'list', ordered: false },
+  },
+  {
+    id: 'numbered',
+    label: 'Numbered list',
+    description: 'An ordered list',
+    glyph: '1.',
+    keywords: ['ol', 'numbered', '1.'],
+    target: { kind: 'list', ordered: true },
+  },
+  {
+    id: 'task',
+    label: 'Task list',
+    description: 'A checklist item',
+    glyph: '\u2611',
+    keywords: ['todo', 'task', 'checkbox', '[]'],
+    target: { kind: 'task' },
+  },
+  {
+    id: 'quote',
+    label: 'Quote',
+    description: 'Quoted text',
+    glyph: '\u275d',
+    keywords: ['quote', '>'],
+    target: { kind: 'quote' },
+  },
+  {
+    id: 'code',
+    label: 'Code',
+    description: 'A code block',
+    glyph: '{}',
+    keywords: ['code', 'fence', '```'],
+    target: { kind: 'code' },
+  },
+  {
+    id: 'divider',
+    label: 'Divider',
+    description: 'A horizontal rule',
+    glyph: '\u2500',
+    keywords: ['divider', 'rule', 'hr', '---'],
+    target: { kind: 'rule' },
+  },
+]
+
+/** The menu's rows for a query: a case-insensitive substring over label and keywords. */
+export function filterCommands(query: string): BlockCommand[] {
+  const needle = query.trim().toLowerCase()
+  if (needle === '') return [...BLOCK_COMMANDS]
+  return BLOCK_COMMANDS.filter(
+    (command) =>
+      command.label.toLowerCase().includes(needle) ||
+      command.keywords.some((keyword) => keyword.toLowerCase().includes(needle)),
+  )
+}
+
+function surfaceForTarget(target: CommandTarget, text: string, origin: SurfaceBlock): SurfaceBlock {
+  const base: Base = { gap: origin.gap, source: '', edited: true, origin: origin.origin }
+  switch (target.kind) {
+    case 'paragraph':
+      return { ...base, kind: 'paragraph', rows: [{ text }] }
+    case 'heading':
+      return { ...base, kind: 'heading', level: target.level ?? 1, rows: [{ text }] }
+    case 'list':
+      return {
+        ...base,
+        kind: 'list',
+        ordered: target.ordered === true,
+        start: 1,
+        rows: [{ text }],
+      }
+    case 'task':
+      return { ...base, kind: 'task', rows: [{ text, checked: false }] }
+    case 'quote':
+      return { ...base, kind: 'quote', rows: [{ text }] }
+    case 'code':
+      return { ...base, kind: 'code', language: null, text }
+    case 'rule':
+      return { ...base, kind: 'rule' }
+  }
+}
+
+/**
+ * Apply one `/` command to a text-bearing block.
+ *
+ * Only the leading `/query` goes: the `/` and the typed filter up to the caret.
+ * Whatever the block held after it survives, inline run source included, and so
+ * do the hidden children of a composite row (they follow the block). A Divider
+ * holds no text, so the surviving text follows it as a paragraph; the caret
+ * lands on the next block, or on a new paragraph when the divider is last, so
+ * the note always ends somewhere to type.
+ */
+export function applyCommand(
+  state: EditorState,
+  block: number,
+  command: BlockCommand,
+): EditorState {
+  const surface = state.blocks[block]
+  if (surface === undefined || !isText(surface)) return state
+
+  const head = state.selection.head
+  const row = head.block === block ? Math.min(head.row, rowCount(surface) - 1) : 0
+  const text = rowText(surface, row)
+  const cut = text.startsWith('/')
+    ? head.block === block && head.row === row
+      ? Math.max(1, Math.min(text.length, head.offset))
+      : text.length
+    : 0
+  const remaining = text.slice(cut)
+  const caret = cut > 0 ? 0 : Math.min(head.offset, remaining.length)
+
+  const converted = surfaceForTarget(command.target, remaining, surface)
+  const children = surface.rows.flatMap((item) => item.rest ?? []).map((child) => surfaceOf(child, '\n'))
+  const tail: SurfaceBlock[] =
+    command.target.kind === 'rule' && remaining !== ''
+      ? [surfaceForTarget({ kind: 'paragraph' }, remaining, surface)]
+      : []
+  const blocks = [
+    ...state.blocks.slice(0, block),
+    converted,
+    ...tail,
+    ...children,
+    ...state.blocks.slice(block + 1),
+  ]
+  const next: EditorState = { ...state, blocks }
+  if (command.target.kind === 'rule') {
+    if (block + 1 < blocks.length) return withCaret(next, block + 1, 0, 0)
+    const empty = surfaceForTarget({ kind: 'paragraph' }, '', surface)
+    return withCaret({ ...next, blocks: [...blocks, { ...empty, gap: '\n\n' }] }, blocks.length, 0, 0)
+  }
+  return withCaret(next, block, 0, caret)
+}
+
+/* -------------------------------------------------------------- structure */
+
+/** A new empty paragraph after `block`, focused: the gutter's add-below. */
+export function insertBelow(state: EditorState, block: number): EditorState {
+  const surface = state.blocks[block]
+  if (surface === undefined) return state
+  const inserted: SurfaceBlock = {
+    kind: 'paragraph',
+    rows: [{ text: '' }],
+    gap: '\n\n',
+    source: '',
+    edited: true,
+    origin: { kind: 'paragraph', text: '', source: '', edited: false },
+  }
+  const blocks = [
+    ...state.blocks.slice(0, block + 1),
+    inserted,
+    ...state.blocks.slice(block + 1),
+  ]
+  return withCaret({ ...state, blocks }, block + 1, 0, 0)
+}
+
+/**
+ * Move one top-level block to a final index.
+ *
+ * The blocks are slots and their gaps belong to the slot, not to the block that
+ * happens to sit in it: a move rewrites the order and leaves every separator
+ * where it was, so each block's exact source travels untouched and the document
+ * still parses back as the same blocks in the new order.
+ */
+export function moveBlock(state: EditorState, from: number, to: number): EditorState {
+  const count = state.blocks.length
+  if (from < 0 || from >= count) return state
+  const target = Math.max(0, Math.min(count - 1, to))
+  if (target === from) return state
+  const moving = state.blocks[from]!
+  const gaps = state.blocks.map((surface) => surface.gap)
+  const reordered = state.blocks.filter((_, index) => index !== from)
+  reordered.splice(target, 0, moving)
+  const blocks = reordered.map((surface, index) => ({ ...surface, gap: gaps[index] ?? '' }))
+  const shift = (position: Position): Position =>
+    position.block === from ? { ...position, block: target } : position
+  const next: EditorState = { ...state, blocks }
+  return withSelection(next, shift(state.selection.anchor), shift(state.selection.head))
+}
+
+/**
+ * The final index a drop lands on. A target block and the pointer's half name a
+ * slot: the top half is before the target, the bottom half after it, and a drop
+ * on the source itself is a no-op.
+ */
+export function dropIndex(from: number, target: number, below: boolean): number {
+  if (from === target) return from
+  if (from < target) return below ? target : target - 1
+  return below ? target + 1 : target
+}
+
 /* ------------------------------------------------------------------ paste */
 
 export function paste(state: EditorState, text: string): EditorState {
