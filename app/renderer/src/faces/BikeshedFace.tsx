@@ -708,6 +708,8 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
                     documentOffset(openRef.current?.document ?? open.document, { block, offset: 0 }) ?? 0
                   void requestMode('source', anchor)
                 }}
+                noteIndex={noteIndex}
+                onOpenNote={(path) => void openNote(path)}
               />
             )}
             <NoteFooter

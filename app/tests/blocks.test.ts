@@ -220,7 +220,7 @@ describe('the block model', () => {
     })
   })
 
-  it('frontmatter, a table, raw HTML, display math and a footnote are one opaque part each', () => {
+  it('frontmatter, a table, raw HTML and a footnote are one opaque part each', () => {
     expect(opaqueSource('frontmatter.md')).toBe(
       '---\ntitle: Frontmatter fixture\ntags:\n  - corpus\n  - notes\n---',
     )
@@ -229,8 +229,17 @@ describe('the block model', () => {
     )
     expect(opaqueSource('html.md', 0)).toBe('<div class="note">\n  raw HTML block\n</div>')
     expect(opaqueSource('html.md', 1)).toBe('<!-- a comment\nacross two lines -->')
-    expect(opaqueSource('math.md')).toBe('$$\nE = mc^2\n$$')
     expect(opaqueSource('footnote.md')).toBe('[^1]: A footnote definition.')
+  })
+
+  it('a display-math block is its own kind with the text between the delimiters', () => {
+    const math = blocksOf('math.md')[0]
+    expect(math).toMatchObject({
+      kind: 'math',
+      display: true,
+      text: 'E = mc^2',
+      source: '$$\nE = mc^2\n$$',
+    })
   })
 
   it('editing one block leaves every other part byte-identical', () => {

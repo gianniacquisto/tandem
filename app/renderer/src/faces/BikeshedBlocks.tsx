@@ -34,6 +34,7 @@ import {
   sourceOffset,
   split,
   toDocument,
+  toggleStyle,
   toggleTask,
   undo,
   withCaret,
@@ -45,6 +46,9 @@ import {
   type Selection,
   type SurfaceBlock,
 } from '../shell/editor-ops'
+import { inlineKey } from '../shell/inline-commands'
+import { filterNotes, parseInline, wikilinkQueryAt, type NoteChoice } from '../shell/inline'
+import { InlineRuns, WikilinkPicker } from './InlineRuns'
 
 export type BikeshedBlocksProps = {
   /** UI-17's document: the surface's one truth. */
@@ -63,6 +67,21 @@ export type BikeshedBlocksProps = {
   onSendToTodos: (text: string) => void
   /** The read-only card's pointer: switch the face to Source at that block. */
   onSwitchToSource: (block: number) => void
+  /** Every note path in the face's index, for chips and the `[[` picker. */
+  noteIndex?: string[]
+  /** Open a resolved note; the chip and a bikeshed link call it. */
+  onOpenNote?: (path: string) => void
+}
+
+type PickerState = {
+  block: number
+  row: number
+  /** The offset of the `[[` that opened the picker. */
+  from: number
+  query: string
+  active: number
+  left: number
+  top: number
 }
 
 /**
@@ -86,8 +105,11 @@ export function BikeshedBlocks({
   onCaret,
   onSendToTodos,
   onSwitchToSource,
+  noteIndex = [],
+  onOpenNote,
 }: BikeshedBlocksProps) {
   const [state, setState] = useState<EditorState>(() => fromDocument(doc))
+  const [picker, setPicker] = useState<PickerState | null>(null)
   // The live model. React's `state` is the rendered structure; typing updates
   // this ref alone, so a keystroke never re-renders under the caret.
   const stateRef = useRef(state)
@@ -182,6 +204,112 @@ export function BikeshedBlocks({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusToken])
 
+  // A mouse click or an arrow move changes which run holds the caret, and the
+  // run's markers must appear. The model learns the selection and a render
+  // draws the reveal; typing itself still updates the ref alone.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    function onSelectionChange(): void {
+      const target = host.current
+      if (target === null) return
+      // The code language field and the task checkbox are not the note: a
+      // selection change inside them must not re-render the surface under
+      // their value.
+      const active = document.activeElement
+      if (active !== null && active.closest('input, textarea, select, button') !== null) return
+      const selection = readSelection(target)
+      if (selection === null) return
+      const current = stateRef.current
+      if (same(selection.anchor, current.selection.anchor) && same(selection.head, current.selection.head)) {
+        return
+      }
+      const next = withSelection(current, selection.anchor, selection.head)
+      stateRef.current = next
+      const surface = next.blocks[next.selection.head.block]
+      if (surface === undefined || !isTextSurface(surface)) return
+      if (revealKey(current.selection) === revealKey(next.selection)) return
+      pending.current = next.selection
+      setState({ ...next })
+    }
+    document.addEventListener('selectionchange', onSelectionChange)
+    return () => document.removeEventListener('selectionchange', onSelectionChange)
+  }, [])
+
+  function caretPoint(target: HTMLElement): { left: number; top: number } {
+    if (typeof window === 'undefined') return { left: 0, top: 0 }
+    const selection = window.getSelection()
+    if (selection !== null && selection.rangeCount > 0) {
+      const rect = selection.getRangeAt(0).getBoundingClientRect()
+      if (rect.width !== 0 || rect.height !== 0) {
+        return { left: rect.left, top: rect.bottom + 4 }
+      }
+    }
+    const row = target.querySelector('[data-block][data-row]')
+    if (row !== null) {
+      const rect = row.getBoundingClientRect()
+      return { left: rect.left, top: rect.bottom + 4 }
+    }
+    const rect = target.getBoundingClientRect()
+    return { left: rect.left, top: rect.top }
+  }
+
+  function pickerFor(value: EditorState, point: { left: number; top: number }): PickerState | null {
+    const head = value.selection.head
+    const surface = value.blocks[head.block]
+    if (surface === undefined || !isTextSurface(surface)) return null
+    const trigger = wikilinkQueryAt(rowText(surface, head.row), head.offset)
+    if (trigger === null) return null
+    return {
+      block: head.block,
+      row: head.row,
+      from: trigger.from,
+      query: trigger.query,
+      active: picker?.block === head.block && picker.row === head.row && picker.from === trigger.from ? picker.active : 0,
+      left: point.left,
+      top: point.top,
+    }
+  }
+
+  function refreshPicker(next: EditorState): void {
+    const target = host.current
+    if (target === null) return
+    const found = pickerFor(next, caretPoint(target))
+    setPicker(found)
+    if (found !== null) {
+      // Opening the picker is a structural render: the model that was typed
+      // must be the one React renders, or the DOM returns to the old text.
+      pending.current = next.selection
+      setState({ ...next })
+    }
+  }
+
+  function choose(choice: NoteChoice): void {
+    if (picker === null) return
+    const current = stateRef.current
+    const surface = current.blocks[picker.block]
+    if (surface === undefined || !isTextSurface(surface)) return
+    const text = rowText(surface, picker.row)
+    const before = text.slice(0, picker.from)
+    const after = text.slice(picker.from + 2 + picker.query.length)
+    const inserted = `${before}[[${choice.insert}]]${after}`
+    const caret = before.length + 2 + choice.insert.length + 2
+    const rows = surface.rows.map((row, index) =>
+      index === picker.row ? { ...row, text: inserted } : row,
+    )
+    const next: EditorState = {
+      ...current,
+      blocks: current.blocks.map((block, index) =>
+        index === picker.block ? { ...surface, rows, edited: true } : block,
+      ),
+      selection: {
+        anchor: { block: picker.block, row: picker.row, offset: caret },
+        head: { block: picker.block, row: picker.row, offset: caret },
+      },
+    }
+    setPicker(null)
+    apply(next, false)
+  }
+
   function handleInput(): void {
     const target = host.current
     if (target === null || composing.current) return
@@ -192,6 +320,7 @@ export function BikeshedBlocks({
     const converted = applyShortcut(base, 'space')
     if (converted !== base) {
       apply(converted, false)
+      refreshPicker(converted)
       return
     }
     stateRef.current = base
@@ -200,6 +329,14 @@ export function BikeshedBlocks({
     lastText.current = markdown
     onChange(toDocument(base))
     reportCaret(base.selection.head)
+    // Plain prose keeps UI-18's no-render typing path. Once a construct is in
+    // the row, a render is what draws it, so the model that was typed is handed
+    // back with the caret restored.
+    if (!plainRow(base)) {
+      pending.current = base.selection
+      setState({ ...base })
+    }
+    refreshPicker(base)
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
@@ -212,6 +349,31 @@ export function BikeshedBlocks({
     if (target === null) return
     const mod = event.metaKey || event.ctrlKey
     const key = event.key.toLowerCase()
+
+    if (picker !== null) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setPicker(null)
+        return
+      }
+      const choices = filterNotes(noteIndex, picker.query)
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        if (choices.length === 0) return
+        const delta = event.key === 'ArrowDown' ? 1 : -1
+        setPicker({
+          ...picker,
+          active: (picker.active + delta + choices.length) % choices.length,
+        })
+        return
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        const choice = choices[picker.active]
+        if (choice !== undefined) choose(choice)
+        return
+      }
+    }
 
     if (mod && !event.altKey && key === 'z') {
       event.preventDefault()
@@ -228,7 +390,12 @@ export function BikeshedBlocks({
     }
     if (mod && event.shiftKey && key === 't') {
       event.preventDefault()
-      onSendToTodos(candidateText(stateRef.current))
+      const current = readSelection(target)
+      const selected =
+        current === null
+          ? stateRef.current
+          : withSelection(stateRef.current, current.anchor, current.head)
+      onSendToTodos(candidateText(selected))
       return
     }
     if (mod && !event.shiftKey && key === 'a') {
@@ -241,6 +408,13 @@ export function BikeshedBlocks({
 
     const selection = readSelection(target)
     const base = selection === null ? stateRef.current : withSelection(stateRef.current, selection.anchor, selection.head)
+
+    const inline = inlineKey({ key, mod, shift: event.shiftKey, alt: event.altKey })
+    if (inline !== null) {
+      event.preventDefault()
+      apply(toggleStyle(base, inline), false)
+      return
+    }
 
     if (event.key === 'Enter') {
       event.preventDefault()
@@ -273,7 +447,9 @@ export function BikeshedBlocks({
           : head.offset === length && head.row === rowCount(surface) - 1
       if (!atBoundary) return
       event.preventDefault()
-      apply(event.key === 'Backspace' ? backspace(base) : deleteForward(base), false)
+      const next = event.key === 'Backspace' ? backspace(base) : deleteForward(base)
+      apply(next, false)
+      refreshPicker(next)
       return
     }
 
@@ -401,11 +577,28 @@ export function BikeshedBlocks({
           index={index}
           surface={surface}
           notePath={notePath}
+          selection={state.selection}
+          noteIndex={noteIndex}
+          onOpenNote={onOpenNote}
           onCheck={(row) => checkTask(index, row)}
           onLanguage={(language) => updateLanguage(index, language)}
           onSwitchToSource={onSwitchToSource}
         />
       ))}
+      {picker === null ? null : (
+        <div
+          className="wikilink-picker-anchor"
+          contentEditable={false}
+          style={{ left: `${picker.left}px`, top: `${picker.top}px` }}
+        >
+          <WikilinkPicker
+            notes={noteIndex}
+            query={picker.query}
+            active={picker.active}
+            onChoose={choose}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -418,6 +611,9 @@ type BlockViewProps = {
   index: number
   surface: SurfaceBlock
   notePath: string
+  selection: Selection
+  noteIndex: string[]
+  onOpenNote?: (path: string) => void
   onCheck: (row: number) => void
   onLanguage: (language: string) => void
   onSwitchToSource: (block: number) => void
@@ -427,6 +623,9 @@ function BlockView({
   index,
   surface,
   notePath,
+  selection,
+  noteIndex,
+  onOpenNote,
   onCheck,
   onLanguage,
   onSwitchToSource,
@@ -447,7 +646,12 @@ function BlockView({
           data-level={surface.kind === 'heading' ? surface.level ?? 1 : undefined}
         >
           <span className="block__text" data-text data-row="0">
-            {textOf(surface, 0)}
+            <InlineRuns
+              source={textOf(surface, 0)}
+              notes={noteIndex}
+              selection={revealFor(selection, index, 0)}
+              onOpenNote={onOpenNote}
+            />
           </span>
         </div>
       )
@@ -486,7 +690,12 @@ function BlockView({
                 </span>
               )}
               <span className="block__text" data-text>
-                {row.text}
+                <InlineRuns
+                  source={row.text}
+                  notes={noteIndex}
+                  selection={revealFor(selection, index, rowIndex)}
+                  onOpenNote={onOpenNote}
+                />
               </span>
             </div>
           ))}
@@ -504,7 +713,6 @@ function BlockView({
               placeholder="language"
               onChange={(event) => onLanguage(event.target.value)}
               onKeyDown={(event) => event.stopPropagation()}
-              onInput={(event) => event.stopPropagation()}
               onPaste={(event) => event.stopPropagation()}
               onCopy={(event) => event.stopPropagation()}
               onCut={(event) => event.stopPropagation()}
@@ -513,6 +721,22 @@ function BlockView({
           <pre className="block__code-body">
             <span className="block__text" data-text data-row="0">
               {surface.text}
+            </span>
+          </pre>
+        </div>
+      )
+    case 'math':
+      return (
+        <div {...common} className="block block--math">
+          <pre className="block__math-source">
+            <span className="block__math-line" contentEditable={false} aria-hidden="true">
+              {'$$'}
+            </span>
+            <span className="block__text" data-text data-row="0">
+              {surface.text}
+            </span>
+            <span className="block__math-line" contentEditable={false} aria-hidden="true">
+              {'$$'}
             </span>
           </pre>
         </div>
@@ -575,6 +799,35 @@ function same(a: Position, b: Position): boolean {
   return a.block === b.block && a.row === b.row && a.offset === b.offset
 }
 
+function revealFor(
+  selection: Selection,
+  block: number,
+  row: number,
+): { from: number; to: number } | null {
+  const { anchor, head } = selection
+  if (anchor.block !== block || head.block !== block) return null
+  if (anchor.row !== row || head.row !== row) return null
+  return {
+    from: Math.min(anchor.offset, head.offset),
+    to: Math.max(anchor.offset, head.offset),
+  }
+}
+
+function revealKey(selection: Selection): string {
+  const { anchor, head } = selection
+  return `${anchor.block}:${anchor.row}:${anchor.offset}:${head.block}:${head.row}:${head.offset}`
+}
+
+/** Whether the caret's row is plain text, so a keystroke can skip a render. */
+function plainRow(state: EditorState): boolean {
+  const head = state.selection.head
+  const surface = state.blocks[head.block]
+  if (surface === undefined || !isTextSurface(surface)) return true
+  return parseInline(rowText(surface, head.row)).every(
+    (run) => run.kind === 'text' && run.styles.length === 0,
+  )
+}
+
 function isTextSurface(surface: SurfaceBlock): surface is Extract<SurfaceBlock, { rows: unknown }> {
   return (
     surface.kind === 'paragraph' ||
@@ -593,7 +846,7 @@ function syncDomText(host: HTMLElement, state: EditorState): void {
     const surface = state.blocks[index]
     if (surface === undefined) continue
     const texts = Array.from(element.querySelectorAll('[data-text]')) as HTMLElement[]
-    if (surface.kind === 'code') {
+    if (surface.kind === 'code' || surface.kind === 'math') {
       const text = texts[0]
       if (text !== undefined && text.textContent !== surface.text) text.textContent = surface.text
       continue
@@ -615,7 +868,7 @@ function readFromDom(host: HTMLElement, current: EditorState): EditorState {
     const surface = blocks[index]
     if (surface === undefined) continue
     const texts = Array.from(element.querySelectorAll('[data-text]')) as HTMLElement[]
-    if (surface.kind === 'code') {
+    if (surface.kind === 'code' || surface.kind === 'math') {
       const text = texts[0]?.textContent ?? surface.text
       if (text !== surface.text) blocks[index] = { ...surface, text, edited: true }
       continue

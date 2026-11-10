@@ -5,6 +5,7 @@ import {
   type Document,
   type Part,
 } from './blocks'
+import { toggleInlineStyle, type InlineStyle } from './inline-commands'
 
 /**
  * The pure editing seam under the Write surface.
@@ -64,6 +65,8 @@ export type ImageSurface = Base & {
   title: string | null
 }
 
+export type MathSurface = Base & { kind: 'math'; text: string }
+
 export type RuleSurface = Base & { kind: 'rule' }
 
 export type OpaqueSurface = Base & { kind: 'opaque' }
@@ -72,6 +75,7 @@ export type SurfaceBlock =
   | TextSurface
   | CodeSurface
   | ImageSurface
+  | MathSurface
   | RuleSurface
   | OpaqueSurface
 
@@ -187,6 +191,8 @@ function surfaceOf(block: Block, gap: string): SurfaceBlock {
       }
     case 'rule':
       return { ...base, kind: 'rule' }
+    case 'math':
+      return { ...base, kind: 'math', text: block.text }
     case 'opaque':
       return { ...base, kind: 'opaque' }
   }
@@ -289,6 +295,8 @@ function blockOf(surface: SurfaceBlock): Block {
       }
     case 'rule':
       return { kind: 'rule', source: '', edited: true }
+    case 'math':
+      return { kind: 'math', display: true, text: surface.text, source: '', edited: true }
     case 'opaque':
       throw new Error('an opaque block has no canonical rendering')
   }
@@ -312,7 +320,7 @@ export function serialise(state: EditorState): string {
 }
 
 export function rowText(surface: SurfaceBlock, row: number): string {
-  if (surface.kind === 'code') return surface.text
+  if (surface.kind === 'code' || surface.kind === 'math') return surface.text
   if (
     surface.kind === 'paragraph' ||
     surface.kind === 'heading' ||
@@ -519,9 +527,9 @@ export function insertText(state: EditorState, text: string): EditorState {
   if (!collapsed(current)) current = deleteSelection(current)
   const position = current.selection.head
   const surface = current.blocks[position.block]
-  if (surface === undefined || !isText(surface) && surface.kind !== 'code') return current
+  if (surface === undefined || !isText(surface) && surface.kind !== 'code' && surface.kind !== 'math') return current
 
-  if (surface.kind === 'code') {
+  if (surface.kind === 'code' || surface.kind === 'math') {
     const textWithInsert = splice(surface.text, position.offset, text)
     return finish(
       replaceBlockState(current, position.block, { ...surface, text: textWithInsert }),
@@ -563,7 +571,7 @@ export function split(state: EditorState): EditorState {
   const surface = state.blocks[position.block]
   if (surface === undefined) return state
   if (surface.kind === 'rule' || surface.kind === 'image' || surface.kind === 'opaque') return state
-  if (surface.kind === 'code') {
+  if (surface.kind === 'code' || surface.kind === 'math') {
     return finish(
       replaceBlockState(state, position.block, {
         ...surface,
@@ -637,7 +645,7 @@ export function backspace(state: EditorState): EditorState {
   }
   if (surface.kind === 'opaque') return state
 
-  if (surface.kind === 'code') {
+  if (surface.kind === 'code' || surface.kind === 'math') {
     if (position.offset === 0) {
       if (surface.text === '' && position.block > 0) return removeBlocks(state, position.block, 1)
       return position.block === 0 ? state : convertToParagraph(state, position.block, 0)
@@ -709,7 +717,7 @@ function mergeBackward(state: EditorState, index: number): EditorState {
 }
 
 function blockText(surface: SurfaceBlock): string {
-  if (surface.kind === 'code') return surface.text
+  if (surface.kind === 'code' || surface.kind === 'math') return surface.text
   if (isText(surface)) return surface.rows.map((row) => row.text).join('\n')
   return surface.source
 }
@@ -753,7 +761,7 @@ export function deleteForward(state: EditorState): EditorState {
   }
   if (surface.kind === 'opaque') return state
 
-  if (surface.kind === 'code') {
+  if (surface.kind === 'code' || surface.kind === 'math') {
     if (position.offset < surface.text.length) {
       return finish(
         replaceBlockState(state, position.block, {
@@ -798,7 +806,7 @@ function mergeForward(state: EditorState, index: number): EditorState {
   if (next.kind === 'rule' || next.kind === 'image') {
     return removeBlocks(state, index + 1, 1)
   }
-  if (next.kind === 'opaque' || surface.kind === 'code' || next.kind === 'code') return state
+  if (next.kind === 'opaque' || surface.kind === 'code' || next.kind === 'code' || surface.kind === 'math' || next.kind === 'math') return state
   if (!isText(surface)) return state
   if (surface.kind === 'paragraph' && next.kind === 'paragraph') {
     const left = rowText(surface, 0)
@@ -861,6 +869,8 @@ function fullRowSource(surface: SurfaceBlock, row: number): string {
       return surface.source
     case 'code':
       return surface.text
+    case 'math':
+      return `$$\n${surface.text}\n$$`
     default:
       return markerOf(surface, row) + rowText(surface, row)
   }
@@ -957,6 +967,29 @@ export function deleteSelection(state: EditorState): EditorState {
   const kept = blocks.filter((_, index) => index <= from.block || index > to.block)
   const next: EditorState = { ...state, blocks: kept }
   return withCaret(next, from.block, from.row, from.offset)
+}
+
+/* ---------------------------------------------------------- inline styles */
+
+/**
+ * Toggle one inline style over the selection inside one row. Cross-row and
+ * cross-block selections are out of UI-19's pass (settled), so they are left
+ * alone rather than guessed at.
+ */
+export function toggleStyle(state: EditorState, style: InlineStyle): EditorState {
+  const [from, to] = unordered(state)
+  if (from.block !== to.block || from.row !== to.row) return state
+  const surface = state.blocks[from.block]
+  if (surface === undefined || !isText(surface)) return state
+  const text = rowText(surface, from.row)
+  const result = toggleInlineStyle(text, { from: from.offset, to: to.offset }, style)
+  if (result.source === text) return state
+  const rows = surface.rows.map((row, index) =>
+    index === from.row ? { ...row, text: result.source } : row,
+  )
+  const next = replaceBlockState(state, from.block, { ...surface, rows })
+  const position = (offset: number): Position => ({ block: from.block, row: from.row, offset })
+  return withSelection(next, position(result.selection.from), position(result.selection.to))
 }
 
 /* --------------------------------------------------------------- arrows */

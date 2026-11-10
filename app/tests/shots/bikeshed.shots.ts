@@ -83,23 +83,36 @@ test('the breadcrumb names the note', async ({ window }) => {
 })
 
 /**
- * The page: the document column scrolls, the breadcrumb sticks to its top, and
- * the note's links are its footer, reached at the end of the note rather than
- * docked to a rail. The picture is the Write surface over the fixture note.
+ * The inline runs in Write: a staged note holds a bold run, a wikilink chip and
+ * a display-math block drawn as its source lines, the document column scrolls
+ * under a sticky breadcrumb, and the footer names the draft a killed save left.
+ * The picture is re-taken from this head by the repo's shot run.
  */
-test('the breadcrumb sticks and the footer is reachable', async ({ app, window }) => {
+test('the Write surface draws the inline runs and its footer', async ({ app, window }) => {
   writeFileSync(
     join(seedPath(), 'bikeshed', '.note-0000-0000-0000-000000000001.tmp'),
     'a draft from a save that was killed',
   )
+  writeFileSync(
+    writeFile('inline-runs.md'),
+    '# Inline runs\n\nA **bold run** and a [[Index]] chip.\n\n$$\nx = 1\n$$\n',
+  )
 
   await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
   await window.evaluate("window.dispatchEvent(new Event('focus'))")
-  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
-  await expect(window.locator('.blocks')).toContainText('The project overview')
+  await window.locator('.tree__label[title="inline-runs.md"]').click()
+
+  const write = window.locator('.editor__mode-button', { hasText: 'Write' })
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
+
+  const blocks = window.locator('.blocks')
+  await expect(blocks.locator('strong')).toHaveText('bold run')
+  await expect(blocks.locator('.run--wikilink .wikilink-chip')).toHaveText('Index')
+  await expect(blocks.locator('.run--wikilink')).toHaveAttribute('data-target', 'Index')
+  await expect(blocks.locator('.block--math')).toContainText('x = 1')
 
   const footer = window.locator('.note-footer')
-  await expect(footer.locator('.note-footer__section').filter({ hasText: 'Backlinks' })).toBeVisible()
 
   const crumb = window.locator('.bikeshed__breadcrumb')
   const before = await crumb.boundingBox()
@@ -116,14 +129,9 @@ test('the breadcrumb sticks and the footer is reachable', async ({ app, window }
   expect(after?.y).toBe(before?.y)
 
   await expect(footer).toBeInViewport()
-  await expect(footer.locator('.note-footer__title').first()).toHaveText('Backlinks')
-  await expect(footer.locator('.note-footer__count').first()).toHaveText('1')
-  await expect(footer.locator('.note-footer__row-name').first()).toHaveText('Index')
-
   await expect(footer.locator('.note-footer__recovery')).toContainText(
     'Unsaved draft kept from an interrupted save',
   )
-  await expect(footer.locator('.note-footer__recovery')).toContainText('draft')
   await expect(footer.locator('.note-footer__recovery')).not.toContainText('.note-')
   await expect(footer.locator('.note-footer__recovery')).not.toContainText('.tmp')
 
