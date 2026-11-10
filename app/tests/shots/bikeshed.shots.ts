@@ -84,66 +84,39 @@ test('the breadcrumb names the note', async ({ window }) => {
 })
 
 /**
- * The page: the document column scrolls, the breadcrumb sticks to its top, and
- * the note's links are its footer, reached at the end of the note rather than
- * docked to a rail. The editor send is the fixture's own linked ticket.
+ * The inline runs in Write: a staged note holds a bold run, a wikilink chip and
+ * a display-math block drawn as its source lines, and the footer names the
+ * draft a killed save left. The picture is re-taken from this head by the
+ * repo's shot run.
  */
-test('the breadcrumb sticks and the footer is reachable', async ({ app, window }) => {
+test('the Write surface draws the inline runs and its footer', async ({ app, window }) => {
   writeFileSync(
     join(seedPath(), 'bikeshed', '.note-0000-0000-0000-000000000001.tmp'),
     'a draft from a save that was killed',
   )
-
-  await openTab(window, 'bikeshed')
-  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
-  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
-
-  const editor = window.frameLocator('.editor__frame')
-  await expect(editor.locator('.cm-content')).toContainText('The project overview')
-
-  const frame = window.frames().find((candidate) => candidate.url().includes('editor-frame.html'))
-  expect(frame).toBeDefined()
-  await frame?.evaluate(
-    `window.webkit.messageHandlers.tandem.postMessage(${JSON.stringify(
-      JSON.stringify({ type: 'send-to-todos', text: '- [ ] File this from the note' }),
-    )})`,
+  writeFileSync(
+    writeFile('inline-runs.md'),
+    '# Inline runs\n\nA **bold run** and a [[Index]] chip.\n\n$$\nx = 1\n$$\n',
   )
 
+  await openTab(window, 'bikeshed')
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
+  await window.locator('.tree__label[title="inline-runs.md"]').click()
+
+  const write = window.locator('.editor__mode-button', { hasText: 'Write' })
+  await expect(write).toHaveAttribute('aria-pressed', 'true')
+
+  const blocks = window.locator('.blocks')
+  await expect(blocks.locator('strong')).toHaveText('bold run')
+  await expect(blocks.locator('.run--wikilink .wikilink-chip')).toHaveText('Index')
+  await expect(blocks.locator('.run--wikilink')).toHaveAttribute('data-target', 'Index')
+  await expect(blocks.locator('.block--math')).toContainText('x = 1')
+
   const footer = window.locator('.note-footer')
-  await expect(footer.locator('.note-footer__section').filter({ hasText: 'Tickets' })).toBeVisible()
-
-  const crumb = window.locator('.bikeshed__breadcrumb')
-  const before = await crumb.boundingBox()
-  expect(before).not.toBeNull()
-
-  const column = window.locator('.bikeshed__document')
-  await column.evaluate((element) => {
-    element.scrollTop = element.scrollHeight
-  })
-  await expect.poll(() => column.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
-
-  // Sticky: the breadcrumb keeps the column's top edge while the page moves.
-  const after = await crumb.boundingBox()
-  expect(after?.y).toBe(before?.y)
-
-  await expect(footer).toBeInViewport()
-  await expect(footer.locator('.note-footer__title').first()).toHaveText('Backlinks')
-  await expect(footer.locator('.note-footer__count').first()).toHaveText('1')
-  await expect(footer.locator('.note-footer__row-name').first()).toHaveText('Index')
-  await expect(
-    footer.locator('.note-footer__section').filter({ hasText: 'Tickets' }).locator(
-      '.note-footer__row-detail',
-    ),
-  ).toContainText('File this from the note')
-
-  // The send's notice is dismissed: the picture is the face, not the echo.
-  await window.locator('.banner__dismiss').click()
-  await expect(window.locator('.banner')).toHaveCount(0)
-
   await expect(footer.locator('.note-footer__recovery')).toContainText(
     'Unsaved draft kept from an interrupted save',
   )
-  await expect(footer.locator('.note-footer__recovery')).toContainText('draft')
   await expect(footer.locator('.note-footer__recovery')).not.toContainText('.note-')
   await expect(footer.locator('.note-footer__recovery')).not.toContainText('.tmp')
 
@@ -506,10 +479,11 @@ test('a checkbox toggles in preview and survives reload', async ({ window }) => 
 })
 
 /**
- * Mod+E and the control flip both ways: Edit dirties and autosaves, Preview
- * hides the toolbar and keeps the buffer.
+ * The control flips both ways: Edit dirties and autosaves, Preview hides the
+ * toolbar and keeps the buffer. Mod+E is inline code from UI-19 on, so the
+ * titlebar control is the only mode path until UI-21's switch.
  */
-test('mod+e and the control switch between preview and edit', async ({ window }) => {
+test('the control switches between preview and edit', async ({ window }) => {
   await openTab(window, 'bikeshed')
   await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'preview')")
   await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
@@ -536,6 +510,9 @@ test('mod+e and the control switch between preview and edit', async ({ window })
 
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   await window.keyboard.press(`${mod}+e`)
+  // UI-19 retired the Mod+E mode flip: the mode is unchanged.
+  await expect(edit).toHaveAttribute('aria-pressed', 'true')
+  await preview.click()
   await expect(preview).toHaveAttribute('aria-pressed', 'true')
   await expect(editor.locator('#tandem-toolbar')).toBeHidden()
 })

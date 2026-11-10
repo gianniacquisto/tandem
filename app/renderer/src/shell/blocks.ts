@@ -82,9 +82,22 @@ export type ImageBlock = BlockBase & {
 }
 
 /**
+ * A display-math block (`$$` on their own lines). Modelled now so the surface
+ * does not fall back to the read-only card; UI-22 draws it with KaTeX, and
+ * until then it is its own source lines. The block is edited as the text
+ * between the delimiters and re-rendered canonically when touched.
+ */
+export type MathBlock = BlockBase & {
+  kind: 'math'
+  display: true
+  /** The source between the delimiters, trimmed of the delimiting lines. */
+  text: string
+}
+
+/**
  * A construct the model does not cover, held as its exact source: frontmatter,
- * a table, raw HTML, display math, a footnote definition, or any range the
- * parser does not claim. One kind, not one per construct.
+ * a table, raw HTML, a footnote definition, or any range the parser does not
+ * claim. One kind, not one per construct.
  */
 export type OpaqueBlock = BlockBase & { kind: 'opaque' }
 
@@ -97,6 +110,7 @@ export type Block =
   | CodeBlock
   | RuleBlock
   | ImageBlock
+  | MathBlock
   | OpaqueBlock
 
 /** The parser's node, as much of it as the model reads. */
@@ -414,8 +428,9 @@ function toBlock(node: TreeNode, text: string, from = node.from): Block {
   if (node.name === 'Blockquote') return quoteBlock(node, text)
   if (node.name === 'FencedCode' || node.name === 'CodeBlock') return codeBlock(node, text, from)
   if (node.name === 'HorizontalRule') return { kind: 'rule', source, edited: false }
-  // Frontmatter, a table, raw HTML, display math, a footnote definition and
-  // anything else the model does not cover: one opaque block with its bytes.
+  if (node.name === 'DisplayMath') return displayMathBlock(node, text)
+  // Frontmatter, a table, raw HTML, a footnote definition and anything else
+  // the model does not cover: one opaque block with its bytes.
   return { kind: 'opaque', source, edited: false }
 }
 
@@ -431,6 +446,24 @@ function decodeImage(
   if (destination === undefined) return null
   const title = match[3] ?? match[4] ?? null
   return { alt: match[1] ?? '', destination, title }
+}
+
+/**
+ * A display-math block: `$$` alone on their own lines (or the single-line
+ * `$$content$$` form) with the content between them. The source stays exact;
+ * only an edited block renders the canonical multi-line form.
+ */
+function displayMathBlock(node: TreeNode, text: string): MathBlock {
+  const source = text.slice(node.from, node.to)
+  const open = source.startsWith('$$') ? 2 : 0
+  const close = source.length >= 2 && source.endsWith('$$') ? source.length - 2 : source.length
+  return {
+    kind: 'math',
+    display: true,
+    text: source.slice(open, close).replace(/\r?\n$/, '').replace(/^\r?\n/, '').trim(),
+    source,
+    edited: false,
+  }
 }
 
 /**
@@ -533,6 +566,8 @@ function renderBlock(block: Block): string {
       const title = block.title === null ? '' : ` "${block.title.replace(/"/g, '\\"')}"`
       return `![${block.alt}](${block.destination}${title})`
     }
+    case 'math':
+      return `$$\n${block.text}\n$$`
     case 'opaque':
       throw new Error('an opaque block has no canonical rendering')
   }

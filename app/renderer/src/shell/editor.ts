@@ -15,7 +15,6 @@ export type EditorMessage =
   | { type: 'checkbox-toggled'; line: number; checked: boolean }
   | { type: 'send-to-todos'; text: string }
   | { type: 'font-size'; value: number }
-  | { type: 'toggle-mode' }
 
 /** One call of a page global, the frame's replacement for `callAsyncJavaScript`. */
 export type EditorCall = {
@@ -68,8 +67,6 @@ export function parseEditorMessage(raw: unknown): EditorMessage | null {
       return typeof value['value'] === 'number'
         ? { type: 'font-size', value: value['value'] }
         : null
-    case 'toggle-mode':
-      return { type: 'toggle-mode' }
     default:
       return null
   }
