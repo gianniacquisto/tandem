@@ -8,7 +8,6 @@
 //   font-size {type:"font-size", value:<px>}              (preset, persisted)
 //   send-to-todos {type:"send-to-todos", text:<the text to file>} (the
 //     selection, or the caret's checkbox line; "" when there is nothing)
-//   toggle-mode {type:"toggle-mode"}                     (Mod+E in the bundle)
 //
 // Swift → JS via page globals (see main.js): setDocument, insertText,
 // revealLine, setNoteIndex, setFontSize, setMode, focusEditor,
@@ -31,9 +30,6 @@ export const postLinkOpened = (target) => send({ type: "link-opened", target });
 export const postCheckboxToggled = (line, checked) =>
   send({ type: "checkbox-toggled", line, checked });
 export const postFontSize = (value) => send({ type: "font-size", value });
-// Mod+E in the bundle: the renderer owns the mode, so the page asks it to
-// toggle (the titlebar control and the parent Mod+E do the same).
-export const postToggleMode = () => send({ type: "toggle-mode" });
 // The text a "send to todos" action would file. Swift files the ticket —
 // the core owns what a ticket made of that text is.
 export const postSendToTodos = (text) => send({ type: "send-to-todos", text });

@@ -78,11 +78,6 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : 'The bikeshed could not be read.'
 }
 
-/** Mod+E keeps the Preview/Edit toggle; from Write it lands in Edit. */
-function nextToggleMode(mode: BikeshedMode): BikeshedMode {
-  return mode === 'preview' ? 'edit' : mode === 'edit' ? 'preview' : 'edit'
-}
-
 /**
  * The Bikeshed face: the tree, the editor frame, backlinks, health and the
  * save discipline (`BikeFaceView` in the Swift app).
@@ -125,8 +120,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
   const seeded = useRef(false)
   const openRef = useRef<NoteBuffer | null>(null)
   openRef.current = open
-  const modeRef = useRef(mode)
-  modeRef.current = mode
   const savingRef = useRef(false)
   const previewButton = useRef<HTMLButtonElement | null>(null)
 
@@ -470,11 +463,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       if (path !== null) void openNote(path)
       return
     }
-    if (next.type === 'toggle-mode') {
-      if (openRef.current === null) return
-      toggleMode()
-      return
-    }
     if (next.type === 'send-to-todos' && typeof next.text === 'string') {
       void fileTicket(next.text)
     }
@@ -489,30 +477,6 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
     setMode(next)
     saveBikeshedMode(next)
   }
-
-  // Mod+E keeps its Preview/Edit meaning; from Write it lands in Edit (the raw
-  // editor is the next stop UI-21 owns the switch for).
-  function toggleMode(): void {
-    if (openRef.current === null) return
-    setModeChoice(nextToggleMode(modeRef.current))
-  }
-
-  // Mod+E flips the mode whenever a note is open. The bundle owns the same
-  // shortcut inside the frame (it posts toggle-mode); this owns it outside.
-  useEffect(() => {
-    function handle(event: KeyboardEvent): void {
-      const mod = event.metaKey || event.ctrlKey
-      if (!mod || event.altKey || event.shiftKey) return
-      if (event.key.toLowerCase() !== 'e') return
-      if (openRef.current === null) return
-      event.preventDefault()
-      const next = nextToggleMode(modeRef.current)
-      setMode(next)
-      saveBikeshedMode(next)
-    }
-    window.addEventListener('keydown', handle)
-    return () => window.removeEventListener('keydown', handle)
-  }, [])
 
   const folder =
     open === null || !open.path.includes('/')
@@ -685,6 +649,8 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
                   if (text !== '') void fileTicket(text)
                 }}
                 onSwitchToSource={() => setModeChoice('edit')}
+                noteIndex={noteIndex}
+                onOpenNote={(path) => void openNote(path)}
               />
             ) : (
               <BikeshedEditor

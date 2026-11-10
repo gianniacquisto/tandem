@@ -72,7 +72,7 @@ import {
 } from "./widgets.js";
 import { ligneTheme } from "./theme.js";
 import { currentTheme, renderDiagram } from "./mermaid.js";
-import { postDirty, postLinkOpened, postLoaded, postFontSize, postToggleMode, postSendToTodos } from "./bridge.js";
+import { postDirty, postLinkOpened, postLoaded, postFontSize, postSendToTodos } from "./bridge.js";
 import { mountToolbar } from "./toolbar.js";
 
 // -- Fenced code: the curated highlighting set ------------------------------------
@@ -333,7 +333,6 @@ export function editorExtensions() {
     // Soft-wrap long lines: the pane never scrolls sideways.
     EditorView.lineWrapping,
     sendToTodosKeymap,
-    toggleModeKeymap,
     ...ligneTheme,
     basicSetup,
   ];
@@ -485,20 +484,6 @@ const sendToTodosKeymap = keymap.of([
     key: "Mod-Shift-t",
     run: (view) => {
       postSendToTodos(todoCandidateText(view.state));
-      return true;
-    },
-  },
-]);
-
-// Preview/edit toggle: Mod+E asks the renderer to flip the mode. The
-// renderer owns the persistence and the titlebar, so the bundle only asks;
-// the answer comes back as setMode. Free: no clash with quick-add,
-// search, or Mod-Shift-t.
-const toggleModeKeymap = keymap.of([
-  {
-    key: "Mod-e",
-    run: () => {
-      postToggleMode();
       return true;
     },
   },

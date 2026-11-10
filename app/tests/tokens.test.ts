@@ -38,6 +38,8 @@ const DAY = new Map<string, string>([
   ['hillFar', '#C8CFBB'],
   ['skin', '#E4C9A2'],
   ['sun', '#E5C07B'],
+  ['wikilinkChip', '#D9D5C4'],
+  ['wikilinkChipBroken', '#EFE3D6'],
 ])
 
 const NIGHT = new Map<string, string>([
@@ -59,6 +61,8 @@ const NIGHT = new Map<string, string>([
   ['hillFar', '#313A36'],
   ['skin', '#E3C29B'],
   ['sun', '#EDE6D3'],
+  ['wikilinkChip', '#33362E'],
+  ['wikilinkChipBroken', '#322D27'],
 ])
 
 /** The variables a CSS block declares, as name to value. */
@@ -116,7 +120,7 @@ describe('the design tokens', () => {
 
   it('keeps every day palette entry, value for value', () => {
     const day = DAY
-    expect(day.size).toBe(18)
+    expect(day.size).toBe(20)
 
     const declared = declarations(lightBlock())
     for (const [name, hex] of day) {
@@ -126,7 +130,7 @@ describe('the design tokens', () => {
 
   it('keeps every night palette entry, value for value', () => {
     const night = NIGHT
-    expect(night.size).toBe(18)
+    expect(night.size).toBe(20)
 
     const declared = declarations(darkBlock())
     for (const [name, hex] of night) {
@@ -145,6 +149,7 @@ describe('the design tokens', () => {
       'space-row',
       'space-control',
       'space-lane',
+      'space-chip',
       'motion-insert',
       'motion-toggle',
       'motion-remove',
@@ -167,10 +172,20 @@ describe('the design tokens', () => {
     expect(tokens.get('space-row')).toBe('40px')
     expect(tokens.get('space-control')).toBe('32px')
     expect(tokens.get('space-lane')).toBe('12px')
+    expect(tokens.get('space-chip')).toBe('6px')
     expect(tokens.get('motion-insert')).toBe('200ms')
     expect(tokens.get('motion-toggle')).toBe('180ms')
     expect(tokens.get('motion-remove')).toBe('150ms')
     expect(tokens.get('window-floor')).toBe('760px')
+  })
+
+  it('pins the wikilink chip surfaces in both palettes', () => {
+    const day = declarations(lightBlock())
+    const night = declarations(darkBlock())
+    expect(day.get('wikilink-chip')).toBe('#D9D5C4')
+    expect(day.get('wikilink-chip-broken')).toBe('#EFE3D6')
+    expect(night.get('wikilink-chip')).toBe('#33362E')
+    expect(night.get('wikilink-chip-broken')).toBe('#322D27')
   })
 
   it('follows the system appearance rather than forcing one', () => {

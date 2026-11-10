@@ -37,12 +37,6 @@ describe('the editor page bridge', () => {
 })
 
 describe('the page globals the bundle expects', () => {
-  it('reads a toggle-mode request from the bundle Mod+E', () => {
-    expect(parseEditorMessage(JSON.stringify({ type: 'toggle-mode' }))).toEqual({
-      type: 'toggle-mode',
-    })
-  })
-
   it('replaces the document with its markdown and note path', () => {
     expect(editorDocument('Index.md', '# Index')).toEqual({
       type: 'tandem-editor-call',
