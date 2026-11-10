@@ -1,11 +1,12 @@
 /**
- * The scenes one run photographs: the id a spec asks for, the file under
- * `docs/screenshots/` it writes, and the line the catalogue carries.
+ * The scenes one run photographs: the id a spec asks for, the file
+ * `npm run shots:publish` copies into `docs/screenshots/`, and the line the
+ * catalogue carries.
  *
  * This list is the run's whole output, and the catalogue is generated from it,
  * so a picture and its row cannot drift. A face adds its scene here and its
- * spec beside `tests/shots/`; the same run then writes both the PNG and the
- * README row.
+ * spec beside `tests/shots/`; the run writes the PNG into its own output
+ * directory, and publish copies it and renders its row.
  *
  * A kept surface whose ticket has not landed is not listed: a picture of a face
  * frame is not a picture of the face. The list grows as the faces do.

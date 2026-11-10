@@ -11,7 +11,7 @@ The roles are the roster's (`skills/tandem-team/SKILL.md`): the session runs the
 
 ## 1. Orient
 
-Start the session record (`AGENTS.md` — `session start --agent sprint`, `session link --ticket` for what this sprint carries), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's **Overview**, the open threads.
+Start the session record (`AGENTS.md` — `session start --agent sprint`), then walk the memory protocol (`skills/tandem-memory/SKILL.md`): `Index.md`, the project's **Overview**, the open threads. The sprint does not link its tickets by hand here: §3's batch write carries them.
 
 ## 2. Triage
 
@@ -42,6 +42,8 @@ done
 ```
 
 `--mode parallel` is the human's call before the first dispatch; the record stores it. The open replies with the record: its `number` is the handle's second half, and `tandem-cli sprint show --lane "$lane" --number <n>` reads it back later. The opening session is the session record `sprint open` resolves (`--session`, else `$OPENCODE_SESSION_ID` at open time, the way `session end` reads it) — that record id, not the harness pointer and not a title, is what the dead-sprint rule reads.
+
+`sprint ticket` writes the batch entry and the session link together: each drawn ticket is appended to the opening session's record in the same transaction, so the sprint links nothing by hand and `sprint open` plus one `sprint ticket` per drawn slot is the whole opening act.
 
 The batch lives on the record, in stored order, and nowhere else. The batch comment that named the sprint on each ticket is gone: the record is the machine truth, and a comment would be a second copy of it.
 

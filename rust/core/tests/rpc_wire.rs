@@ -13,8 +13,11 @@ mod support;
 
 use serde_json::{Value, json};
 use support::Sandbox;
+use tandem_core::domain::AddTicket;
 use tandem_core::domain::DomainError;
-use tandem_core::domain::session::{Ending, SessionOutcome, Sessions};
+use tandem_core::domain::session::{
+    Ending, HarnessSession, HarnessTransport, SessionOutcome, SessionTokens, Sessions,
+};
 use tandem_core::store::{Actor, NewSetting};
 use tandem_core::wire::rpc::{METHODS, Request};
 
@@ -452,6 +455,234 @@ fn a_home_whose_records_predate_usage_reports_zeros_over_its_records() {
     assert_eq!(report["reported"], 0, "no record reports usage");
     assert_eq!(report["cost"], 0.0, "no sum invents a cost");
     assert_eq!(report["agent"][0]["barPercent"], 0.0, "and no bar is drawn");
+}
+
+/// One harness session carries two records, because a re-dispatched pass opens
+/// its own (ADR 0027). Each stamps the harness's cumulative snapshot, and the
+/// derivation attributes each record its share, so the report counts the
+/// session once.
+#[test]
+fn a_usage_report_counts_one_harness_session_once() {
+    let sandbox = Sandbox::new("rpc-usage-attribution");
+    let store = sandbox.store();
+    let sessions = Sessions::new(&store);
+    let actor = Actor::Agent("builder".to_string());
+    let harness = || HarnessSession {
+        id: "ses_one".to_string(),
+        transport: HarnessTransport::Database,
+    };
+    let input = |value: i64| {
+        Some(SessionTokens {
+            input: Some(value),
+            ..SessionTokens::default()
+        })
+    };
+
+    for (id, started, ended, tokens_input) in [
+        (
+            "ses_first",
+            "2026-10-30T09:00:00Z",
+            "2026-10-30T09:10:00Z",
+            1_000,
+        ),
+        (
+            "ses_second",
+            "2026-10-30T10:00:00Z",
+            "2026-10-30T10:10:00Z",
+            1_500,
+        ),
+    ] {
+        sessions
+            .start_with_harness(
+                &actor,
+                id,
+                "tandem",
+                Some("builder"),
+                "A brief.",
+                harness(),
+                Some(started),
+            )
+            .expect("the record starts");
+        sessions
+            .end(
+                &actor,
+                id,
+                Ending {
+                    outcome: SessionOutcome::Succeeded,
+                    tokens: input(tokens_input),
+                    cost: Some(1.0),
+                    at: Some(ended),
+                    ..Ending::default()
+                },
+            )
+            .expect("the record stamps");
+    }
+
+    let answer = handle(&store, &frame(1, "usage.report", json!({})));
+    let report = &answer["result"]["report"];
+    assert_eq!(report["records"], 2, "both records are still listed");
+    assert_eq!(
+        report["tokens"]["input"], 1_500,
+        "the session's own total, not the sum of the snapshots"
+    );
+}
+
+/// Attribution runs before the window: a record whose earlier sibling fell
+/// outside the selected window still reports its own share, never the whole
+/// snapshot.
+#[test]
+fn a_usage_report_attributes_before_the_window_narrows() {
+    let sandbox = Sandbox::new("rpc-usage-window");
+    let store = sandbox.store();
+    let sessions = Sessions::new(&store);
+    let actor = Actor::Agent("builder".to_string());
+    let harness = || HarnessSession {
+        id: "ses_one".to_string(),
+        transport: HarnessTransport::Database,
+    };
+    let input = |value: i64| {
+        Some(SessionTokens {
+            input: Some(value),
+            ..SessionTokens::default()
+        })
+    };
+
+    // The earlier sibling is far outside Last 7 days; the later record starts
+    // now, so it is inside.
+    sessions
+        .start_with_harness(
+            &actor,
+            "ses_old",
+            "tandem",
+            Some("builder"),
+            "A brief.",
+            harness(),
+            Some("2000-01-01T09:00:00Z"),
+        )
+        .expect("the record starts");
+    sessions
+        .end(
+            &actor,
+            "ses_old",
+            Ending {
+                outcome: SessionOutcome::Succeeded,
+                tokens: input(1_000),
+                cost: Some(1.0),
+                at: Some("2000-01-01T09:10:00Z"),
+                ..Ending::default()
+            },
+        )
+        .expect("the record stamps");
+    sessions
+        .start_with_harness(
+            &actor,
+            "ses_new",
+            "tandem",
+            Some("builder"),
+            "A brief.",
+            harness(),
+            None,
+        )
+        .expect("the record starts");
+    sessions
+        .end(
+            &actor,
+            "ses_new",
+            Ending {
+                outcome: SessionOutcome::Succeeded,
+                tokens: input(1_500),
+                cost: Some(2.0),
+                at: None,
+                ..Ending::default()
+            },
+        )
+        .expect("the record stamps");
+
+    let answer = handle(
+        &store,
+        &frame(1, "usage.report", json!({"window": "last-7-days"})),
+    );
+    let report = &answer["result"]["report"];
+    assert_eq!(report["records"], 1, "only the record inside the window");
+    assert_eq!(
+        report["tokens"]["input"], 500,
+        "its share, not the 1,500 snapshot it stamped"
+    );
+}
+
+/// The RPC end door posts the same share the derivation would report: the
+/// second pass in one harness session gets a `usage` comment stating the
+/// difference, while the record keeps the harness's snapshot.
+#[test]
+fn the_rpc_door_posts_the_second_passes_share() {
+    let sandbox = Sandbox::new("rpc-usage-door");
+    let store = sandbox.store();
+    let board = sandbox.board();
+    let ticket = board
+        .add("The ticket", AddTicket::default())
+        .expect("the ticket is added");
+    let ticket_id = ticket.id.to_string();
+    let sessions = Sessions::new(&store);
+    let actor = Actor::Agent("builder".to_string());
+    let harness = || HarnessSession {
+        id: "ses_one".to_string(),
+        transport: HarnessTransport::Database,
+    };
+
+    for (id, started, tokens_input) in [
+        ("ses_first", "2026-10-30T09:00:00Z", 1_500),
+        ("ses_second", "2026-10-30T10:00:00Z", 2_000),
+    ] {
+        sessions
+            .start_with_harness(
+                &actor,
+                id,
+                "tandem",
+                Some("builder"),
+                "A brief.",
+                harness(),
+                Some(started),
+            )
+            .expect("the record starts");
+        sessions
+            .link(&actor, id, &ticket_id)
+            .expect("the ticket is linked");
+        let answer = handle(
+            &store,
+            &frame(
+                1,
+                "session.end",
+                json!({
+                    "session": id,
+                    "outcome": "succeeded",
+                    "usageFromHarness": false,
+                    "tokensInput": tokens_input,
+                }),
+            ),
+        );
+        assert_eq!(
+            answer["result"]["session"]["tokens"]["input"], tokens_input,
+            "the record keeps the snapshot it stamped"
+        );
+    }
+
+    let comments = board.comments(&ticket_id).expect("the comments read");
+    let usage: Vec<&str> = comments
+        .iter()
+        .filter(|comment| comment.author == "builder")
+        .map(|comment| comment.body.as_str())
+        .collect();
+    assert_eq!(usage.len(), 2, "each stamp posted one usage comment");
+    assert!(
+        usage[0].contains("input 1,500"),
+        "the first pass's share: {}",
+        usage[0]
+    );
+    assert!(
+        usage[1].contains("input 500"),
+        "the second pass's share, not its 2,000 snapshot: {}",
+        usage[1]
+    );
 }
 
 #[test]

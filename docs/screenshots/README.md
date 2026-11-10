@@ -4,21 +4,37 @@ The app, photographed. Every picture here is the running app's own window,
 captured by a spec. The Playwright suite photographs the app; every run
 uses a fixture home.
 
-## The port's suite
+## What a run writes, and what only publish writes
 
-`app/tests/shots/*.shots.ts` is the rule: no session hand-builds a rig, and a
-picture is one scene of one spec. A run checks the named home, copies it to a
-scratch seed at `/tmp/tandem-shots/Home`, builds the fixture user home beside
-it (`/tmp/tandem-shots/user`, the `HOME` a Settings picture reads its agent
-hosts from), launches the built app at its 760 pt width, asserts each scene,
-writes one PNG per scene into this folder, and rewrites the table below from
-`app/shots/scenes.ts`:
+A run writes scratch. Its pictures land in `app/shots-out/` (git-ignored), or in
+the directory `TANDEM_SHOTS_OUT` names for a one-spec look; its seed lives at
+`/tmp/tandem-shots`. A run never writes this folder and never rewrites the table
+below: `docs/screenshots/` and `README.md` move only through
+`npm run shots:publish`, which copies a run's bytes and never re-renders. So a
+local run leaves `git status` clean, and one machine's pixels are committed only
+when a human asks for them.
 
     cd app
     npm ci
     npm run binary
     TANDEM_SHOTS_HOME=../Fixtures/port/Home npm run shots
     TANDEM_SHOTS_HOME=../Fixtures/port/Board npx playwright test tests/shots/tickets.shots.ts tests/shots/focus.shots.ts
+    npm run shots:publish
+
+The two home commands write into the same scratch directory, so the publish
+after them resolves every scene. Publish refuses a scene the run did not make,
+naming it and changing nothing, and refuses a template that lost its table
+marker before it copies a single picture.
+
+## The port's suite
+
+`app/tests/shots/*.shots.ts` is the rule: no session hand-builds a rig, and a
+picture is one scene of one spec. A run checks the named home, copies it to a
+scratch seed at `/tmp/tandem-shots/Home`, builds the fixture user home beside
+it (`/tmp/tandem-shots/user`, the `HOME` a Settings picture reads its agent
+hosts from) and the fixture app (`/tmp/tandem-shots/app/Tandem.app`, whose
+version the doctor's `app` row prints), launches the built app at its 760 pt
+width, asserts each scene, and writes one PNG per scene into the run's output.
 
 `TANDEM_SHOTS_HOME` is required, and it must resolve under the repository's
 `Fixtures/`: a run that names no home is refused, and so is `~/.tandem` or any
@@ -33,19 +49,20 @@ this folder are the second.
 
 ## The agent loop
 
-A session iterating on a face looks without dirtying the committed pictures:
-set `TANDEM_SHOTS_OUT` to a scratch directory and run one spec. The PNG lands
-under the named directory, the committed folder is untouched, and the catalogue
-is not rewritten:
+A session iterating on a face looks without touching the committed pictures:
+run one spec. The PNG lands under `app/shots-out/` (or under the directory
+`TANDEM_SHOTS_OUT` names), and this folder is untouched:
 
     cd app
-    TANDEM_SHOTS_HOME=../Fixtures/port/Home TANDEM_SHOTS_OUT=/tmp/shots-look npx playwright test tests/shots/shell.shots.ts
+    TANDEM_SHOTS_HOME=../Fixtures/port/Home npx playwright test tests/shots/shell.shots.ts
 
-Run a single spec file while iterating; run both home commands to regenerate
-every committed picture before opening the PR:
+Run a single spec file while iterating; run both home commands and then
+`npm run shots:publish` to regenerate every committed picture before opening
+the PR:
 
     TANDEM_SHOTS_HOME=../Fixtures/port/Home npm run shots
     TANDEM_SHOTS_HOME=../Fixtures/port/Board npx playwright test tests/shots/tickets.shots.ts tests/shots/focus.shots.ts
+    npm run shots:publish
 
 CI runs both commands in this order on the Linux runner under a virtual display
 (`.github/workflows/app.yml`), so a deliberately broken selector is a red job
@@ -60,14 +77,41 @@ the shot. Seed: the named home is copied to the fixed scratch seed
 spec that writes cannot change the next spec's picture and no run writes into
 the committed fixture.
 
+One seed, one run. Because the seed is one fixed path on the machine, a run
+takes an exclusive lock on it (`app/shots/lock.ts`): a second run on the same
+machine waits for the lock rather than reading or writing the same seed, and
+two runs therefore never share one. A run that dies leaves its lock behind, and
+the next run breaks it as stale with a printed notice.
+
 The seed is the named fixture home plus a fixed clock: the page's `Date` is
 pinned to `2026-10-30T12:00:00Z` before the first application script runs, and
 `TZ` is UTC, so a scene that renders a now-relative time renders one instant.
-The two seeded paths are fixed too, because the Settings face prints them: a run
-in one checkout writes the same bytes as a run in any other. Two things stay the
-machine's own, and no fixture can make them otherwise: the `app` row of the
-doctor report names the Tandem installed on the machine, and the PNG's pixel
-size follows the display's scale factor.
+The seeded paths are fixed too, because the Settings face prints them: a run
+in one checkout writes the same bytes as a run in any other.
+
+## What the harness pins
+
+These facts are the harness's, not the machine's, so a picture carries nothing
+of the host that made it:
+
+- **the clock**: `2026-10-30T12:00:00.000Z`, with `TZ` at UTC.
+- **the colour scheme**: the window emulates `light` before every scene, so a
+  dark-mode host photographs the light face; a spec may still flip to dark and
+  back inside its own assertions.
+- **the pixel scale**: the launch pins the device scale factor at 2, so a
+  scene's PNG is twice its CSS width on a 1x and on a 2x display alike. The
+  committed widths are that 2x: 1520 for the 760 faces, 2660 for the 1330 board.
+- **the seeded paths**: `/tmp/tandem-shots/Home`, `/tmp/tandem-shots/user` and
+  `/tmp/tandem-shots/app/Tandem.app`.
+- **the doctor's app row**: `TANDEM_APP_PATH` names the seeded fixture app and
+  its `Info.plist` names version 1.0.0, so the row reads
+  `installed at /tmp/tandem-shots/app/Tandem.app (version 1.0.0)` with no
+  quarantine clause. A host's `TANDEM_AGENT_BUNDLE` is deleted from the
+  environment, so no installed agent face reaches the picture.
+
+One thing stays the machine's own: the renderer's rasterisation is the
+platform's, so a re-render on another platform is not the committed bytes. CI
+asserts each scene and never diffs the committed pictures.
 
 A face taller than the window is laid out at its own height (the scroll
 constraint lifted, the width kept) and shot whole, so a picture of a table is
@@ -75,8 +119,8 @@ the whole table; a board is laid out at the width its six status columns need,
 so the picture is the whole board rather than a column and a half of it. The
 scratch home is seeded again before every test, so a spec that writes (a drag, a
 save, the CLI as a second writer) cannot change the next spec's picture or its
-assertions. A failing spec fails the run, and the catalogue is rewritten only
-when every scene's picture exists, so a picture and its row cannot drift.
+assertions. A failing spec fails the run, and publish refuses a scene it has no
+picture for, so a picture and its row cannot drift.
 
 CI runs both home commands on the Linux runner under a virtual display
 (`.github/workflows/app.yml`, the agent loop above), so a deliberately broken

@@ -30,7 +30,7 @@ use super::error::{DomainError, DomainResult};
 use super::operation::Operation;
 use crate::store::records::session_rows;
 use crate::store::{
-    Actor, NewSession, Result as StoreResult, SessionRow, Store, StoreError, timestamp,
+    Actor, NewSession, Result as StoreResult, SessionRow, Store, StoreError, Write, timestamp,
 };
 
 /// The skill counts a pass loaded, by skill name: `thinking=2, plan=1`.
@@ -290,6 +290,13 @@ pub struct Session {
     /// The harness's own session, as a foreign pointer (PRT-29). Tandem's `id`
     /// is the primary key; this column is how a pass is joined to what the
     /// harness recorded, and it is absent on a hand-driven run.
+    ///
+    /// **The pointer's usage is cumulative.** A record stamped with
+    /// `--usage-from-harness` holds the harness session's running total, and
+    /// several records can share one pointer (a re-dispatched pass opens its
+    /// own, ADR 0027). A record's share is derived
+    /// (`usage::attribute_harness_usage`), so the records under one pointer sum
+    /// to the session's totals instead of each counting the whole snapshot.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub harness_session_id: Option<String>,
     /// Which harness the pass ran in: `event-stream` or `database`, provenance
@@ -795,40 +802,7 @@ impl Sessions {
                 }
             };
             if let Some(record) = changed {
-                let (tickets, skills) = record.to_row()?;
-                let new = NewSession {
-                    id: &record.id,
-                    harness_session_id: record.harness_session_id.as_deref(),
-                    harness_transport: record.harness_transport.map(|transport| transport.as_str()),
-                    project: &record.project,
-                    agent: record.agent.as_deref(),
-                    brief: &record.brief,
-                    status: record.status.as_str(),
-                    outcome: record.outcome.map(|outcome| outcome.as_str()),
-                    summary: record.summary.as_deref(),
-                    started_at: &record.started_at,
-                    ended_at: record.ended_at.as_deref(),
-                    tickets: Some(&tickets),
-                    model: record.model.as_deref(),
-                    tokens_input: record.tokens.as_ref().and_then(|tokens| tokens.input),
-                    tokens_output: record.tokens.as_ref().and_then(|tokens| tokens.output),
-                    tokens_reasoning: record.tokens.as_ref().and_then(|tokens| tokens.reasoning),
-                    tokens_cache_read: record.tokens.as_ref().and_then(|tokens| tokens.cache_read),
-                    tokens_cache_write: record
-                        .tokens
-                        .as_ref()
-                        .and_then(|tokens| tokens.cache_write),
-                    seconds: seconds(&record),
-                    cost: record.cost,
-                    skills: skills.as_deref(),
-                    turns: record.turns,
-                    calls: record.calls,
-                };
-                if write.session_exists(&record.id)? {
-                    write.update_session(new)?;
-                } else {
-                    write.insert_session(new)?;
-                }
+                write_session(write, &record)?;
             }
             result = Some((value, note));
             Ok(())
@@ -895,6 +869,68 @@ fn grouped(value: i64) -> String {
         out.push(character);
     }
     format!("{sign}{out}")
+}
+
+/// Write one session record's mutable half through the write's own transaction:
+/// the one row shape every session write uses.
+fn write_session(write: &Write<'_>, record: &Session) -> StoreResult<()> {
+    let (tickets, skills) = record.to_row()?;
+    let new = NewSession {
+        id: &record.id,
+        harness_session_id: record.harness_session_id.as_deref(),
+        harness_transport: record.harness_transport.map(|transport| transport.as_str()),
+        project: &record.project,
+        agent: record.agent.as_deref(),
+        brief: &record.brief,
+        status: record.status.as_str(),
+        outcome: record.outcome.map(|outcome| outcome.as_str()),
+        summary: record.summary.as_deref(),
+        started_at: &record.started_at,
+        ended_at: record.ended_at.as_deref(),
+        tickets: Some(&tickets),
+        model: record.model.as_deref(),
+        tokens_input: record.tokens.as_ref().and_then(|tokens| tokens.input),
+        tokens_output: record.tokens.as_ref().and_then(|tokens| tokens.output),
+        tokens_reasoning: record.tokens.as_ref().and_then(|tokens| tokens.reasoning),
+        tokens_cache_read: record.tokens.as_ref().and_then(|tokens| tokens.cache_read),
+        tokens_cache_write: record.tokens.as_ref().and_then(|tokens| tokens.cache_write),
+        seconds: seconds(record),
+        cost: record.cost,
+        skills: skills.as_deref(),
+        turns: record.turns,
+        calls: record.calls,
+    };
+    if write.session_exists(&record.id)? {
+        write.update_session(new)
+    } else {
+        write.insert_session(new)
+    }
+}
+
+/// Append one ticket to a session record inside the caller's write transaction
+/// (TAN-353): the sprint's batch write links the sprint's opening session
+/// through this, so the batch entry and the link commit together or not at all.
+///
+/// A handle that names no record is skipped, never refused: a sprint opened
+/// with no session still takes its batch, and the link is the piece absent. A
+/// ticket already carried is not linked twice.
+pub(crate) fn link_in_write(write: &Write<'_>, id: &str, ticket: &str) -> StoreResult<()> {
+    let mut sessions = session_rows(write.connection)?
+        .into_iter()
+        .map(Session::from_row)
+        .collect::<StoreResult<Vec<_>>>()?;
+    let Some(index) = sessions.iter().position(|session| session.id == id) else {
+        return Ok(());
+    };
+    if sessions[index]
+        .tickets
+        .iter()
+        .any(|carried| carried == ticket)
+    {
+        return Ok(());
+    }
+    sessions[index].tickets.push(ticket.to_string());
+    write_session(write, &sessions[index])
 }
 
 /// The caller's stamp for a write, or now.

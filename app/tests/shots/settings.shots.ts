@@ -1,9 +1,11 @@
-import { mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect } from '@playwright/test'
 
 import { capture, openTab, test } from '../../shots/app'
-import { seedPath } from '../../shots/home'
+import { appPath, seedPath } from '../../shots/home'
+import { screenshotPath } from '../../shots/output'
+import { REPO_ROOT } from '../../shots/roots'
 import { scene } from '../../shots/scenes'
 import { computed, token } from '../../shots/tokens'
 
@@ -84,7 +86,25 @@ test('the settings face, over the seeded homes', async ({ app, window }) => {
   await expect(setup.locator('.settings__hint')).toContainText('Nothing is written until you press it')
   await expect(setup.locator('.settings__action')).toHaveText(/^(Install|Repair)$/)
 
+  // The Setup line is host-free: a debug build bundles no face and the seeded
+  // home has installed none.
+  await expect(setup.locator('.settings__versions')).toContainText('Installed nothing; bundled nothing')
+
+  // The app row names the seeded fixture app, its pinned version and no
+  // quarantine clause, so the picture carries nothing of this machine's install.
+  const appRow = setup.locator('.settings__check', {
+    has: window.locator('.settings__check-name', { hasText: /^app$/ }),
+  })
+  await expect(appRow.locator('.settings__detail')).toHaveText(`installed at ${appPath()} (version 1.0.0)`)
+  await expect(appRow.locator('.settings__detail')).not.toContainText('quarantin')
+
   await capture(app, window, scene('settings'))
+
+  // The run writes its picture into its own output directory; the committed
+  // folder moves only through `npm run shots:publish`.
+  const written = screenshotPath(process.env, REPO_ROOT, scene('settings'))
+  expect(written).not.toBe(join(REPO_ROOT, 'docs', 'screenshots', 'settings-face.png'))
+  expect(existsSync(written)).toBe(true)
 })
 
 /**

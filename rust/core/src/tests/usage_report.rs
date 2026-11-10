@@ -11,9 +11,12 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::domain::session::{Session, SessionOutcome, SessionStatus, SessionTokens, Sessions};
+use crate::domain::session::{
+    HarnessTransport, Session, SessionOutcome, SessionStatus, SessionTokens, Sessions,
+};
 use crate::domain::usage::{
-    Calendar, NO_TICKET_LABEL, UsageReport, UsageRow, UsageTicket, UsageWindow, usage_report,
+    Calendar, NO_TICKET_LABEL, UsageReport, UsageRow, UsageTicket, UsageWindow,
+    attribute_harness_usage, usage_report,
 };
 use crate::domain::{Board, Filter};
 use crate::store::{Actor, Home, Store};
@@ -99,6 +102,26 @@ fn session(
         skills: None,
         turns: None,
         calls: None,
+    }
+}
+
+/// A record that points at a harness session, as a re-dispatched pass's record
+/// does (PRT-29): the same shape `session` builds, with the pointer set.
+#[allow(clippy::too_many_arguments)]
+fn session_in(
+    harness: &str,
+    id: &str,
+    started_at: &str,
+    agent: Option<&str>,
+    model: Option<&str>,
+    tokens: Option<SessionTokens>,
+    cost: Option<f64>,
+    tickets: &[&str],
+) -> Session {
+    Session {
+        harness_session_id: Some(harness.to_string()),
+        harness_transport: Some(HarnessTransport::Database),
+        ..session(id, started_at, agent, model, tokens, cost, tickets)
     }
 }
 
@@ -876,4 +899,273 @@ fn windowed_averages_keep_per_reported_record_semantics() {
     assert_eq!(row.average_tokens.input, Some(1000));
     assert_eq!(row.average_tokens.output, Some(500));
     assert_eq!(row.average_cost, 1.0);
+}
+
+/// UI-19's shape in one line: one harness session at 518,033 input and 99.3M
+/// cache read, carried by two records stamped 420,489 then 511,671 and 66M then
+/// 97M. Each record keeps its own share and the group sums to the session's own
+/// totals, not to the sum of the snapshots.
+#[test]
+fn two_records_on_one_harness_session_split_the_snapshot_and_sum_to_it() {
+    let sessions = vec![
+        session_in(
+            "ses_ui19",
+            "ses_first",
+            "2026-10-30T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4.1-flash"),
+            tokens5(Some(420_489), None, None, Some(66_000_000), None),
+            Some(0.5),
+            &[],
+        ),
+        session_in(
+            "ses_ui19",
+            "ses_second",
+            "2026-10-30T10:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4.1-flash"),
+            tokens5(Some(511_671), None, None, Some(97_000_000), None),
+            Some(1.0),
+            &[],
+        ),
+    ];
+
+    let attributed = attribute_harness_usage(&sessions);
+    let share = |id: &str| {
+        attributed
+            .iter()
+            .find(|session| session.id == id)
+            .expect("the record keeps its row")
+    };
+    let first = share("ses_first");
+    assert_eq!(first.tokens.as_ref().unwrap().input, Some(420_489));
+    assert_eq!(first.tokens.as_ref().unwrap().cache_read, Some(66_000_000));
+    assert_eq!(first.cost, Some(0.5));
+    let second = share("ses_second");
+    assert_eq!(second.tokens.as_ref().unwrap().input, Some(91_182));
+    assert_eq!(second.tokens.as_ref().unwrap().cache_read, Some(31_000_000));
+    assert_eq!(second.cost, Some(0.5));
+
+    let report = usage_report(&attributed, &[], &Calendar::Utc);
+    assert_eq!(
+        report.tokens.input,
+        Some(511_671),
+        "the session's own total, not the sum of the snapshots"
+    );
+    assert_eq!(report.tokens.cache_read, Some(97_000_000));
+    assert!((report.cost - 1.0).abs() < 1e-9);
+    assert_eq!(report.reported, 2, "both records still report their share");
+}
+
+#[test]
+fn three_records_report_the_difference_from_the_record_before_them() {
+    // Handed over scrambled: the function sorts by the records' own stamps.
+    let sessions = vec![
+        session_in(
+            "ses_harness",
+            "ses_b",
+            "2026-10-30T10:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens(Some(1_600), None, None),
+            Some(0.6),
+            &[],
+        ),
+        session_in(
+            "ses_harness",
+            "ses_c",
+            "2026-10-30T11:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens(Some(2_000), None, None),
+            Some(1.0),
+            &[],
+        ),
+        session_in(
+            "ses_harness",
+            "ses_a",
+            "2026-10-30T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens(Some(1_000), None, None),
+            Some(0.3),
+            &[],
+        ),
+    ];
+
+    let attributed = attribute_harness_usage(&sessions);
+    let input = |id: &str| {
+        attributed
+            .iter()
+            .find(|session| session.id == id)
+            .and_then(|session| session.tokens.as_ref())
+            .and_then(|tokens| tokens.input)
+    };
+    assert_eq!(input("ses_a"), Some(1_000));
+    assert_eq!(input("ses_b"), Some(600));
+    assert_eq!(input("ses_c"), Some(400));
+}
+
+#[test]
+fn a_record_with_no_harness_session_is_its_own_usage() {
+    let sessions = vec![
+        session(
+            "ses_a",
+            "2026-10-30T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens(Some(1_000), None, None),
+            Some(0.5),
+            &[],
+        ),
+        session(
+            "ses_b",
+            "2026-10-30T10:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens(Some(2_000), None, None),
+            Some(0.5),
+            &[],
+        ),
+    ];
+
+    let attributed = attribute_harness_usage(&sessions);
+    assert_eq!(
+        attributed, sessions,
+        "a pointerless record passes through untouched"
+    );
+    let report = usage_report(&attributed, &[], &Calendar::Utc);
+    assert_eq!(
+        report.tokens.input,
+        Some(3_000),
+        "both stamps are their own usage"
+    );
+}
+
+#[test]
+fn a_snapshot_that_moves_backwards_attributes_zero_and_never_goes_negative() {
+    let sessions = vec![
+        session_in(
+            "ses_harness",
+            "ses_a",
+            "2026-10-30T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens(Some(1_000), None, None),
+            Some(1.0),
+            &[],
+        ),
+        session_in(
+            "ses_harness",
+            "ses_b",
+            "2026-10-30T10:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens(Some(800), None, None),
+            Some(0.5),
+            &[],
+        ),
+    ];
+
+    let attributed = attribute_harness_usage(&sessions);
+    let second = attributed
+        .iter()
+        .find(|session| session.id == "ses_b")
+        .expect("the record keeps its row");
+    assert_eq!(second.tokens.as_ref().unwrap().input, Some(0));
+    assert_eq!(second.cost, Some(0.0));
+}
+
+#[test]
+fn a_record_that_reported_no_usage_sets_no_baseline() {
+    let sessions = vec![
+        session_in(
+            "ses_harness",
+            "ses_a",
+            "2026-10-30T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens(Some(1_000), None, None),
+            Some(1.0),
+            &[],
+        ),
+        session_in(
+            "ses_harness",
+            "ses_b",
+            "2026-10-30T10:00:00Z",
+            Some("builder"),
+            None,
+            None,
+            None,
+            &[],
+        ),
+        session_in(
+            "ses_harness",
+            "ses_c",
+            "2026-10-30T11:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens(Some(1_500), None, None),
+            Some(1.5),
+            &[],
+        ),
+    ];
+
+    let attributed = attribute_harness_usage(&sessions);
+    let share = |id: &str| {
+        attributed
+            .iter()
+            .find(|session| session.id == id)
+            .expect("the record keeps its row")
+    };
+    assert_eq!(share("ses_a").tokens.as_ref().unwrap().input, Some(1_000));
+    assert_eq!(
+        share("ses_b").tokens,
+        None,
+        "a record that reported nothing stays absent"
+    );
+    assert_eq!(share("ses_b").cost, None);
+    assert_eq!(
+        share("ses_c").tokens.as_ref().unwrap().input,
+        Some(500),
+        "the silent record is no baseline"
+    );
+}
+
+#[test]
+fn a_piece_absent_from_the_baseline_is_reported_whole() {
+    let sessions = vec![
+        session_in(
+            "ses_harness",
+            "ses_a",
+            "2026-10-30T09:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(1_000), None, None, None, None),
+            Some(1.0),
+            &[],
+        ),
+        session_in(
+            "ses_harness",
+            "ses_b",
+            "2026-10-30T10:00:00Z",
+            Some("builder"),
+            Some("deepseek-v4"),
+            tokens5(Some(1_500), None, None, Some(400), None),
+            Some(1.5),
+            &[],
+        ),
+    ];
+
+    let attributed = attribute_harness_usage(&sessions);
+    let second = attributed
+        .iter()
+        .find(|session| session.id == "ses_b")
+        .expect("the record keeps its row");
+    assert_eq!(second.tokens.as_ref().unwrap().input, Some(500));
+    assert_eq!(
+        second.tokens.as_ref().unwrap().cache_read,
+        Some(400),
+        "a piece the baseline never reported is kept whole"
+    );
 }

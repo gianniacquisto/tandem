@@ -3,8 +3,11 @@ import { defineConfig } from '@playwright/test'
 /**
  * The screenshot suite (`docs/screenshots/README.md`, `docs/port.md`).
  *
- * One worker: every scene is one app and one picture, and the run's whole
- * output is the committed catalogue, so scene order is the manifest's alone.
+ * One worker: every scene is one app and one picture, so scene order is the
+ * manifest's alone. A run writes its pictures into `app/shots-out/`
+ * (`shots/output.ts`); the teardown frees the seed lock and writes nothing, so
+ * the committed folder moves only through `npm run shots:publish`
+ * (`shots/publish.ts`).
  * `npm run shots` builds the renderer first; the rpc binary is `npm run
  * binary` (CI builds it in its own step).
  */

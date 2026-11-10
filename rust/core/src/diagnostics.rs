@@ -95,6 +95,10 @@ pub struct Facts {
     pub sessions_json: Vec<PathBuf>,
     pub settings_json: Vec<PathBuf>,
     pub todos_json: Vec<PathBuf>,
+    /// The `.app` the `app` row reads: `TANDEM_APP_PATH` when the environment
+    /// names one, else the cask's install path. The row prints this path, so the
+    /// report is a function of it like every other fact.
+    pub app_path: PathBuf,
     pub app_present: bool,
     pub app_version: Option<String>,
     pub app_quarantined: bool,
@@ -430,6 +434,7 @@ pub fn age_text(age: f64) -> String {
 }
 
 fn app_check(facts: &Facts) -> DoctorCheck {
+    let path = slashed_path(&facts.app_path);
     if facts.app_present {
         let version = facts
             .app_version
@@ -437,23 +442,20 @@ fn app_check(facts: &Facts) -> DoctorCheck {
             .map(|version| format!("version {version}"))
             .unwrap_or_else(|| "version unknown".to_string());
         let quarantine = if facts.app_quarantined {
-            format!(
-                "; quarantined \u{2014} run: xattr -dr com.apple.quarantine {}",
-                APP_PATH
-            )
+            format!("; quarantined \u{2014} run: xattr -dr com.apple.quarantine {path}")
         } else {
             String::new()
         };
         DoctorCheck {
             name: "app".to_string(),
             ok: true,
-            detail: format!("installed at {APP_PATH} ({version}{quarantine})"),
+            detail: format!("installed at {path} ({version}{quarantine})"),
         }
     } else {
         DoctorCheck {
             name: "app".to_string(),
             ok: true,
-            detail: format!("not installed at {APP_PATH}"),
+            detail: format!("not installed at {path}"),
         }
     }
 }
@@ -597,10 +599,30 @@ fn mcp_check(agent_face: &Option<State>) -> DoctorCheck {
     }
 }
 
-/// The app the cask installs (ADR 0003). The shell's Windows and Linux install
-/// paths land with PRT-12; until then the row names this one, which exists on no
-/// other host, and reads as "not installed" there.
+/// The app the cask installs (ADR 0003), when the environment names none. The
+/// shell's Windows and Linux install paths land with PRT-12; until then the row
+/// names this one, which exists on no other host, and reads as "not installed"
+/// there.
 const APP_PATH: &str = "/Applications/Tandem.app";
+
+/// The `.app` the `app` row reads: `TANDEM_APP_PATH` when the environment sets
+/// it, else [`APP_PATH`]. ADR 0034's shape for `TANDEM_AGENT_BUNDLE`: a test
+/// seam and a deliberate override in the environment, never a verb flag, so the
+/// shots harness photographs a fixture app and a human can point the row at
+/// another install.
+///
+/// The bound: this is a path the environment names, and the row reads exactly
+/// three things from it, a directory stat, `<app>/Contents/Info.plist` and the
+/// `com.apple.quarantine` xattr. Nothing is written, created or opened for
+/// reading beyond that one file, and a path that holds no app is the
+/// "not installed" row, not a failure.
+pub fn app_path(environment: &Environment) -> PathBuf {
+    environment
+        .get("TANDEM_APP_PATH")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(APP_PATH))
+}
 
 // MARK: - Gathering (impure)
 
@@ -624,10 +646,10 @@ pub fn gather(home: &Home, environment: &Environment) -> Facts {
     let comments_state = store::comments_state(&comments_path);
     let comments_health = store.comments_health();
 
-    let app_path = Path::new(APP_PATH);
+    let app_path = app_path(environment);
     let app_present = app_path.exists();
-    let app_version = app_present.then(|| app_version(app_path)).flatten();
-    let app_quarantined = app_present && has_quarantine(app_path);
+    let app_version = app_present.then(|| app_version(&app_path)).flatten();
+    let app_quarantined = app_present && has_quarantine(&app_path);
 
     let context = setup::Context::new(home.directory(), environment);
     let executable = std::env::current_exe().unwrap_or_default();
@@ -680,6 +702,7 @@ pub fn gather(home: &Home, environment: &Environment) -> Facts {
         sessions_json,
         settings_json,
         todos_json,
+        app_path,
         app_present,
         app_version,
         app_quarantined,

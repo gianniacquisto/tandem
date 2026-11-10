@@ -43,7 +43,8 @@ use crate::domain::session::{
 };
 use crate::domain::sprint::{SprintMode, SprintStatus, Sprints};
 use crate::domain::usage::{
-    Calendar, UsageTicket, UsageWindow, filter_sessions_by_window, usage_report,
+    Calendar, UsageTicket, UsageWindow, attribute_harness_usage, filter_sessions_by_window,
+    usage_report,
 };
 use crate::domain::workflow::{WorkflowDraft, Workflows};
 use crate::domain::{
@@ -592,14 +593,19 @@ fn execute(
         Method::UsageReport(params) => {
             // The derivation is the one `usage_report` froze (TAN-208): the
             // dispatch only feeds it the records and the board's labels, the way
-            // the Swift window fed it the model it already held. The window
-            // narrows the sessions first, so one narrowed report feeds the
-            // header, the tables and the graph; absent is All time for old
-            // callers, and the derivation itself stays pure and clock-free.
+            // the Swift window fed it the model it already held. Attribution
+            // runs before the window narrows (TAN-352): a record whose earlier
+            // sibling fell outside the selected window still reports its own
+            // share, never the whole snapshot. The window then narrows the
+            // attributed set, so one narrowed report feeds the header, the
+            // tables and the graph; absent is All time for old callers, and the
+            // derivation itself stays pure and clock-free.
             let window = params.window.unwrap_or(UsageWindow::AllTime);
             let sessions = Sessions::new(store).list(None, None).map_err(domain)?;
+            let attributed = attribute_harness_usage(&sessions);
             let today = local_today();
-            let narrowed = filter_sessions_by_window(&sessions, &window, &today, &Calendar::Local);
+            let narrowed =
+                filter_sessions_by_window(&attributed, &window, &today, &Calendar::Local);
             let tickets: Vec<UsageTicket> = Board::new(store.clone())
                 .list_filter(Filter::All)
                 .map_err(domain)?
@@ -1175,7 +1181,11 @@ fn execute(
                 )
                 .map_err(domain)?;
             if stamp.stamped && stamp.session.carries_usage() {
-                post_usage_comments(store, &stamp.session, actor).map_err(domain)?;
+                // The comment states the record's attributed share, the same
+                // row the report counts (TAN-352), while the record keeps the
+                // harness's snapshot.
+                let share = attributed_share(store, &stamp.session).map_err(domain)?;
+                post_usage_comments(store, &share, actor).map_err(domain)?;
             }
             let stamp_note = stamp.note.or(note);
             Ok(Reply::Session(SessionReply {
@@ -1684,6 +1694,22 @@ fn is_absent_harness(error: &DomainError) -> bool {
             | DomainError::NoHarnessServer { .. }
             | DomainError::UnknownHarnessSession { .. }
     )
+}
+
+/// The stamped record's attributed share: the one derivation over the records
+/// the store holds, so the `usage` comment a stamp posts states what the report
+/// would count (TAN-352). A record the read cannot find falls back to its own
+/// stamp, which is the whole of a lone record's usage anyway.
+fn attributed_share(
+    store: &Store,
+    session: &crate::domain::session::Session,
+) -> Result<crate::domain::session::Session, DomainError> {
+    let sessions = Sessions::new(store).list(None, None)?;
+    let attributed = attribute_harness_usage(&sessions);
+    Ok(attributed
+        .into_iter()
+        .find(|row| row.id == session.id)
+        .unwrap_or_else(|| session.clone()))
 }
 
 /// The one `usage` comment a stamped session posts on every ticket it carried,
