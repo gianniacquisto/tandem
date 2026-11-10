@@ -2098,11 +2098,9 @@ body {
   min-height: 1.65em;
 }
 
-/* The empty paragraph names the trigger; absolute, so it is not the text node. */
-.block__placeholder {
-  position: absolute;
-  top: 0;
-  left: 0;
+/* The empty paragraph names the trigger; generated, so it is not the text node. */
+.block--paragraph > .block__text:empty::before {
+  content: attr(data-ph);
   color: var(--ink-dim);
   pointer-events: none;
 }

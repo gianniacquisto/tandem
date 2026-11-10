@@ -943,7 +943,7 @@ test('the slash menu opens, filters and applies', async ({ window }) => {
   const blocks = window.locator('.blocks')
   const menu = window.locator('.block__menu')
 
-  await expect(window.locator('.block__placeholder')).toHaveText("Type '/' for commands")
+  await expect(blocks.locator('.block--paragraph .block__text').first()).toHaveAttribute('data-ph', "Type '/' for commands")
   await blocks.locator('.block--paragraph .block__text').first().click()
   await window.keyboard.type('/')
 
