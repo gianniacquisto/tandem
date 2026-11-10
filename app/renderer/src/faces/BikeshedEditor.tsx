@@ -3,11 +3,9 @@ import { useEffect, useRef, useState } from 'react'
 import {
   editorCall,
   editorDocument,
-  editorMode,
   loadEditorFontSize,
   parseEditorMessage,
   saveEditorFontSize,
-  type BikeshedMode,
   type EditorMessage,
 } from '../shell/editor'
 
@@ -26,8 +24,6 @@ export type BikeshedEditorProps = {
   /** Every note path, the flat list the committed bundle's resolver reads. */
   noteIndex: string[]
   onMessage: (message: EditorMessage) => void
-  /** Preview is the same document read-only; Edit is writable. */
-  mode: BikeshedMode
 }
 
 /**
@@ -41,7 +37,9 @@ export type BikeshedEditorProps = {
  * touches.
  *
  * The face's breadcrumb carries the note's name, the saving word and the mode
- * control; this component owns the frame and the mode it is put in.
+ * control; this component owns the frame alone. Preview and Edit are retired
+ * (UI-21), so the frame is no longer mounted by the face and UI-22 deletes it
+ * with the bundle.
  */
 export function BikeshedEditor({
   path,
@@ -49,14 +47,11 @@ export function BikeshedEditor({
   token,
   noteIndex,
   onMessage,
-  mode,
 }: BikeshedEditorProps) {
   const frame = useRef<HTMLIFrameElement | null>(null)
   const listener = useRef(onMessage)
   listener.current = onMessage
   const [ready, setReady] = useState(false)
-  const modeRef = useRef(mode)
-  modeRef.current = mode
 
   function post(call: { type: string; name: string; args: unknown[] }): void {
     frame.current?.contentWindow?.postMessage(call, '*')
@@ -91,27 +86,10 @@ export function BikeshedEditor({
     frame.current?.contentWindow?.postMessage(editorCall('setNoteIndex', [noteIndex]), '*')
   }, [noteIndex, ready])
 
-  // Preview is the same document read-only: entering Edit focuses the
-  // editor; the face's breadcrumb keeps the focus on entering Preview.
-  useEffect(() => {
-    if (!ready || path === '') return
-    post(editorMode(mode))
-    if (mode === 'edit') {
-      post(editorCall('focusEditor'))
-    }
-    // `mode` is the view revision: the document stays, only readOnly flips.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, ready, path])
-
   useEffect(() => {
     if (!ready || path === '') return
     frame.current?.contentWindow?.postMessage(editorDocument(path, text), '*')
-    // A new document opens ready to type only in Edit; Preview keeps the
-    // focus it already has (the breadcrumb toggle, or the tree that opened
-    // the note).
-    if (modeRef.current === 'edit') {
-      frame.current?.contentWindow?.postMessage(editorCall('focusEditor'), '*')
-    }
+    frame.current?.contentWindow?.postMessage(editorCall('focusEditor'), '*')
     // `token` is the document revision: a new token replaces the document; a
     // changed `text` is the human's own typing and must not reset the caret.
     // eslint-disable-next-line react-hooks/exhaustive-deps
