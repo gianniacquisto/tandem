@@ -35,10 +35,8 @@ function labelsIn(markup: string): string[] {
 }
 
 describe('the toolbar row', () => {
-  it('the row draws twelve actions in order, split by one separator', () => {
+  it('the row draws eleven actions in order, split by one separator', () => {
     const markup = draw(plain())
-    // The brief's prose says twelve; its own action list and the retired bar's
-    // eleven icons name eleven. The list is the truth.
     expect((markup.match(/<button/g) ?? []).length).toBe(LABELS.length)
     expect(LABELS).toHaveLength(11)
     expect(labelsIn(markup)).toEqual(LABELS)

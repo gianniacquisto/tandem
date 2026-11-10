@@ -713,6 +713,22 @@ test('the Heading button cycles H1, H2, H3 and body', async ({ window }) => {
   await expect.poll(() => writeText('toolbar-heading.md'), { timeout: 8000 }).toBe('Title')
 })
 
+test('the bar follows the caret into a code fence', async ({ window }) => {
+  await openWrite(window, 'toolbar-fence.md', '# Title\n\n```\ncode\n```')
+  const heading = toolbarButton(window, 'Heading')
+  const code = toolbarButton(window, 'Code block')
+
+  // The note opens with its caret in the heading, so Heading is pressed.
+  await expect(heading).toHaveAttribute('aria-pressed', 'true')
+  await expect(code).toHaveAttribute('aria-pressed', 'false')
+
+  // A move into the fence is a block change: the row must render it, not
+  // return before the state the pressed derivation reads.
+  await window.locator('.block--code .block__text').click()
+  await expect(code).toHaveAttribute('aria-pressed', 'true')
+  await expect(heading).toHaveAttribute('aria-pressed', 'false')
+})
+
 test('the bar stays in view while the note scrolls', async ({ window }) => {
   const lines = Array.from({ length: 40 }, (_, index) => `line ${index}`).join('\n\n')
   await openWrite(window, 'toolbar-pin.md', lines)

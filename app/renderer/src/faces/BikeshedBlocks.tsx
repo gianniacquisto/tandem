@@ -262,15 +262,16 @@ export function BikeshedBlocks({
       }
       const next = withSelection(current, selection.anchor, selection.head)
       stateRef.current = next
-      const surface = next.blocks[next.selection.head.block]
-      if (surface === undefined || !isTextSurface(surface)) return
-      // A move to another block re-renders, so the gutter's handles follow the
-      // caret; inside one block only the run reveal needs a render.
+      // A move to another block re-renders, so the gutter's handles and the
+      // toolbar's pressed state follow the caret, including into a code fence
+      // or an opaque card. Inside one block only the run reveal needs a render.
       if (next.selection.head.block !== current.selection.head.block) {
         pending.current = next.selection
         setState({ ...next })
         return
       }
+      const surface = next.blocks[next.selection.head.block]
+      if (surface === undefined || !isTextSurface(surface)) return
       if (revealKey(current.selection) === revealKey(next.selection)) return
       pending.current = next.selection
       setState({ ...next })
