@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, renameSync, rmSync } from 'node:fs'
+import { cpSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
 import { isFixtureHome } from '../src/main/shot'
@@ -48,6 +48,35 @@ export function seedPath(root: string = seedRoot()): string {
  */
 export function seedUserPath(root: string = seedRoot()): string {
   return join(root, 'user')
+}
+
+/**
+ * The scratch `.app` a Settings picture reads its version from. The doctor's
+ * `app` row resolves its path from `TANDEM_APP_PATH` (`diagnostics.rs`), so the
+ * picture names the seed's app and version rather than the one a human
+ * installed; the fixture carries no quarantine xattr, so the row prints no
+ * quarantine clause either.
+ */
+export function appPath(root: string = seedRoot()): string {
+  return join(root, 'app', 'Tandem.app')
+}
+
+/** The fixture `.app` under `root`: a bundle directory whose `Info.plist` names version 1.0.0. */
+export function seedApp(root: string = seedRoot()): string {
+  return replace(appPath(root), (staging) => {
+    mkdirSync(join(staging, 'Contents'), { recursive: true })
+    writeFileSync(
+      join(staging, 'Contents', 'Info.plist'),
+      `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0.0</string>
+</dict>
+</plist>
+`,
+    )
+  })
 }
 
 /** The source home a run was told to read, or a refusal saying why not. */

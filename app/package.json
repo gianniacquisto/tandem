@@ -20,7 +20,8 @@
     "smoke": "node scripts/smoke-packaged.mjs",
     "pack": "npm run build && npm run binary:release && electron-builder --dir",
     "dist": "npm run build && npm run binary:release && electron-builder --publish never",
-    "shots": "npm run build && playwright test"
+    "shots": "npm run build && playwright test",
+    "shots:publish": "tsx shots/publish.ts"
   },
   "dependencies": {
     "@lezer/markdown": "1.8.0",
@@ -39,6 +40,7 @@
     "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",
     "happy-dom": "^21.0.4",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"

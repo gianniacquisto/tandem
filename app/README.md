@@ -106,8 +106,9 @@ and filed as its own backlog ticket.
 ## A picture
 
 The screenshots are `app/tests/shots/`, the one screenshot rig: one spec per
-scene, one PNG per scene, the catalogue under `docs/screenshots/` rewritten by
-the same run.
+scene, one PNG per scene. A run writes its pictures to `app/shots-out/` and
+never to `docs/screenshots/`; `npm run shots:publish` copies them into
+`docs/screenshots/` and rewrites the catalogue there.
 
 ```sh
 npm run binary

@@ -1,4 +1,4 @@
-import { seedHome, seedPath, seedRoot, seedUserHome, seedUserPath, shotsSource } from './home'
+import { seedApp, seedHome, seedPath, seedRoot, seedUserHome, seedUserPath, shotsSource } from './home'
 import { acquireSeedLock, releaseSeedLock, type SeedLock } from './lock'
 import { REPO_ROOT } from './roots'
 
@@ -24,9 +24,11 @@ export function releaseHeldSeedLock(): void {
 
 /**
  * The run's seed, before any window opens: the named fixture home is checked
- * against the rule and copied to the scratch path the specs read, and the
- * fixture user home is created beside it. A refusal here fails the whole run
- * with no picture written.
+ * against the rule and copied to the scratch path the specs read, the fixture
+ * user home is created beside it, and the fixture app is written beside both so
+ * the Settings face reads a pinned version rather than the host's.
+ *
+ * A refusal here fails the whole run with no picture written.
  *
  * The run takes the seed lock before its first write to the root, so a run that
  * waits has written nothing while it waits. The seed root is one fixed path on
@@ -42,4 +44,5 @@ export default async function globalSetup(overrides: ShotsSetupOverrides = {}): 
 
   seedHome(source, seedPath(root))
   seedUserHome(seedUserPath(root))
+  seedApp(root)
 }

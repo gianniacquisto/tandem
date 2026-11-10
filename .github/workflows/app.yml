@@ -147,12 +147,11 @@ jobs:
   # Two invocations, one per committed home: the full suite over
   # `Fixtures/port/Home`, then the Tickets spec over `Fixtures/port/Board`,
   # which is the home the Tickets pictures are shot on. Each run writes its
-  # PNGs and the catalogue into the runner's checkout, which is the point: the
-  # job is the spec's verdict on the pictures a developer's machine commits.
-  # The catalogue rewrite is manifest-derived, so the second run keeps the same
-  # table rather than merging one; it still refuses a catalogue over a missing
-  # picture. The core is built first because the specs drive the real shell
-  # over `rpc`, so the binary is the subject and not a stub.
+  # PNGs to `app/shots-out/` in the runner's checkout and nothing under
+  # `docs/screenshots/`: the job is the spec's verdict on the scenes, and the
+  # committed pictures move only through `npm run shots:publish`. The core is
+  # built first because the specs drive the real shell over `rpc`, so the
+  # binary is the subject and not a stub.
   shots:
     name: shots (ubuntu-latest)
     runs-on: ubuntu-latest

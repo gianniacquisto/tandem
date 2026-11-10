@@ -29,7 +29,7 @@ function fixtureRepo(): string {
   return repo
 }
 
-/** The same repo, plus every committed picture and the template a green teardown writes. */
+/** The same repo, plus every committed picture and the template publish renders from. */
 function shotRepo(): string {
   const repo = fixtureRepo()
   const screenshots = join(repo, 'docs', 'screenshots')
@@ -78,21 +78,32 @@ describe('the shots run hooks', () => {
     expect(existsSync(join(seed, '.lock'))).toBe(true)
 
     process.env[OUT_VAR] = scratchDir('tandem-shots-setup-look-')
-    globalTeardown({ repoRoot: repo })
+    globalTeardown()
 
     expect(existsSync(join(seed, '.lock'))).toBe(false)
   })
 
-  it('the run releases the lock on a green teardown', async () => {
+  it('seeds the fixture app under the root the run was given', async () => {
+    const repo = fixtureRepo()
+    const seed = scratchDir('tandem-shots-setup-seed-')
+    process.env[HOME_VAR] = homeOf(repo)
+
+    await globalSetup({ repoRoot: repo, seedRoot: seed, waitBoundMs: 1000 })
+
+    const plist = readFileSync(join(seed, 'app', 'Tandem.app', 'Contents', 'Info.plist'), 'utf8')
+    expect(plist).toContain('1.0.0')
+  })
+
+  it('the run releases the lock on a green teardown and writes no catalogue', async () => {
     const repo = shotRepo()
     const seed = scratchDir('tandem-shots-setup-seed-')
     process.env[HOME_VAR] = homeOf(repo)
     delete process.env[OUT_VAR]
 
     await globalSetup({ repoRoot: repo, seedRoot: seed, waitBoundMs: 1000 })
-    globalTeardown({ repoRoot: repo })
+    globalTeardown()
 
     expect(existsSync(join(seed, '.lock'))).toBe(false)
-    expect(readFileSync(cataloguePath(repo), 'utf8')).toContain('`electron-shell.png`')
+    expect(existsSync(cataloguePath(repo))).toBe(false)
   })
 })
