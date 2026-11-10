@@ -1140,12 +1140,13 @@ function BlockBody({
           className={`${common.className}${surface.kind === 'heading' ? ' block--h' : ''}`}
           data-level={surface.kind === 'heading' ? surface.level ?? 1 : undefined}
         >
-          {surface.kind === 'paragraph' && textOf(surface, 0) === '' ? (
-            <span className="block__placeholder" contentEditable={false} aria-hidden="true">
-              {"Type '/' for commands"}
-            </span>
-          ) : null}
-          <span className="block__text" data-text data-row="0" key={`text-0-${textOf(surface, 0)}`}>
+          <span
+            className="block__text"
+            data-text
+            data-row="0"
+            data-ph={surface.kind === 'paragraph' ? "Type '/' for commands" : undefined}
+            key={`text-0-${textOf(surface, 0)}`}
+          >
             <InlineRuns
               source={textOf(surface, 0)}
               notes={noteIndex}

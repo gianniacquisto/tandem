@@ -2061,11 +2061,11 @@ body {
   min-height: 1.65em;
 }
 
-/* The empty paragraph names the trigger; absolute, so it is not the text node. */
-.block__placeholder {
-  position: absolute;
-  top: 0;
-  left: 0;
+/* The empty paragraph names the trigger; generated, so it is not the text node.
+   A lone <br> is the browser's marker for a cleared line, not content. */
+.block--paragraph > .block__text:empty::before,
+.block--paragraph > .block__text:has(> br:only-child)::before {
+  content: attr(data-ph);
   color: var(--ink-dim);
   pointer-events: none;
 }
