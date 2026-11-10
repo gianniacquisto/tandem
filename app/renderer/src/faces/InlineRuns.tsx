@@ -9,7 +9,7 @@ import {
   type InlineStyle,
   type NoteChoice,
 } from '../shell/inline'
-import { renderMath } from '../shell/math'
+import { MathSurface } from './MathSurface'
 
 /**
  * The drawing half of the inline layer: runs with their markers hidden, the
@@ -179,12 +179,13 @@ function runNode(
       {editing ? (
         run.source
       ) : (
-        <span
+        <MathSurface
+          tex={run.content}
+          display={run.display}
           className="run__math-rendered"
           data-rendered
           data-from={run.from}
           contentEditable={false}
-          dangerouslySetInnerHTML={{ __html: renderMath(run.content, run.display) }}
         />
       )}
     </span>,

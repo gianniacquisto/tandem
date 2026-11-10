@@ -132,11 +132,11 @@ describe('the shell', () => {
 
     for (const path of sources) {
       if (path.endsWith('tokens.css')) continue
-      // The mermaid bridge mirrors the day palette as fallbacks for a context
-      // with no computed style (Node, the unit test); it is the one place a
-      // token value is spelled outside tokens.css, and tests/mermaid.test.ts
-      // pins each fallback.
-      if (path.endsWith(join('shell', 'mermaid.ts'))) continue
+      // The mermaid theme bridge mirrors the day palette as fallbacks for a
+      // context with no computed style (Node, the unit test); it is the one
+      // place a token value is spelled outside tokens.css, and
+      // tests/mermaid.test.ts pins each fallback.
+      if (path.endsWith(join('shell', 'lazy.ts'))) continue
       expect(readFileSync(path, 'utf8'), `${path} carries a colour literal`).not.toMatch(literal)
     }
   })

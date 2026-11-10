@@ -74,6 +74,11 @@ jobs:
       - name: "Gate: build"
         run: npm run build
 
+      - name: "Gate: mermaid and KaTeX load only on demand"
+        # UI-24's permanent guard: the build manifest proves neither library is
+        # reachable from the entry chunk and both ride dynamic imports only.
+        run: npm run test:build
+
       - name: "Gate: the renderer is one page with its fonts as files"
         # UI-22 retired the committed editor bundle and its frame. The built
         # renderer carries one page, no editor chunk and no `public/editor`

@@ -29,6 +29,7 @@ configuration and electron-builder copies it in.
 npm run typecheck        # the Node and the browser programs
 npm test                 # the seams: tokens, bridge, spawn, window, shell
 npm run build            # out/main, out/preload, out/renderer
+npm run test:build       # the build-manifest guard, after npm run build
 ```
 
 ## The render path
@@ -39,11 +40,19 @@ dependency graph: `katex` (0.19.0) for an inline `$…$` run and a `$$` block,
 frame, no second build and no committed blob; `npm run build` is
 `electron-vite build` alone.
 
-KaTeX's stylesheet is imported from `renderer/src/main.tsx`, so Vite emits the
-20 woff2 faces as assets beside the CSS. `assetsInlineLimit` is 0 because
-`font-src 'self'` stays: a face inlined as a `data:` URL would be a font the
-page cannot load. `scripts/check-renderer.mjs` proves the one-page build, the
-20 faces and the absence of an inlined font.
+Both libraries are lazy chunks (UI-24): `renderer/src/shell/lazy.ts` owns the
+two dynamic imports and only the open note's parsed content calls them. A note
+without a fence or math asks for neither, and the first paint shows the raw
+source in the existing `.tandem-mermaid-error` / `.tandem-math-error` surface
+until the chunk fills it in.
+
+KaTeX's stylesheet is imported by the lazy KaTeX chunk
+(`renderer/src/shell/katex.ts`), so Vite emits the 20 woff2 faces as assets
+beside that chunk's CSS. `assetsInlineLimit` is 0 because `font-src 'self'`
+stays: a face inlined as a `data:` URL would be a font the page cannot load.
+`scripts/check-renderer.mjs` proves the one-page build, the 20 faces and the
+absence of an inlined font; `tests/lazy-chunks.test.ts` reads the build
+manifest and fails if either library returns to the entry's static graph.
 
 The mermaid fence parity list (TAN-239) is the standing check:
 
