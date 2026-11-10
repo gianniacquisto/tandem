@@ -163,6 +163,37 @@ describe('the Write|Source switch', () => {
   })
 })
 
+describe('the formatting toolbar chrome', () => {
+  const toolbar = normalise(
+    readFileSync(`${appRoot}renderer/src/faces/BikeshedToolbar.tsx`, 'utf8'),
+  )
+
+  it('the toolbar row is pinned under the breadcrumb', () => {
+    const row = block(css, '.bikeshed__toolbar')
+    expect(row).toContain('position: sticky')
+    expect(row).toMatch(/top:\s*40px/)
+    expect(row).toContain('var(--paper)')
+    expect(row).toContain('var(--sand)')
+    expect(row).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    expect(row).toContain('font-size: 12px')
+
+    const button = block(css, '.bikeshed__toolbar-button')
+    expect(button).toContain('var(--ink-dim)')
+    expect(block(css, '.bikeshed__toolbar-button[aria-pressed="true"]')).toContain(
+      'var(--parchment)',
+    )
+    expect(block(css, '.bikeshed__toolbar-button[aria-pressed="true"]')).toContain(
+      'var(--radius-control)',
+    )
+  })
+
+  it('draws inline SVG glyphs and never follows the note font size', () => {
+    expect(toolbar).toContain('<svg')
+    expect(toolbar).not.toContain('dangerouslySetInnerHTML')
+    expect(toolbar).not.toContain('--tandem-editor-font-size')
+  })
+})
+
 /** The declaration block at a selector, including a grouped selector's tail. */
 function ruleAt(source: string, selector: string): string {
   const start = source.indexOf(selector)

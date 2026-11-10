@@ -5,7 +5,7 @@ import {
   type Document,
   type Part,
 } from './blocks'
-import { toggleInlineStyle, type InlineStyle } from './inline-commands'
+import { linkInline, toggleInlineStyle, type InlineStyle } from './inline-commands'
 
 /**
  * The pure editing seam under the Write surface.
@@ -992,6 +992,27 @@ export function toggleStyle(state: EditorState, style: InlineStyle): EditorState
   return withSelection(next, position(result.selection.from), position(result.selection.to))
 }
 
+/**
+ * Insert a link over the selection inside one row, the one creation path the
+ * bar adds. The revealed markup is where the href is edited afterwards, so the
+ * command writes the placeholder pair once and never toggles.
+ */
+export function insertLink(state: EditorState): EditorState {
+  const [from, to] = unordered(state)
+  if (from.block !== to.block || from.row !== to.row) return state
+  const surface = state.blocks[from.block]
+  if (surface === undefined || !isText(surface)) return state
+  const text = rowText(surface, from.row)
+  const result = linkInline(text, { from: from.offset, to: to.offset })
+  if (result.source === text) return state
+  const rows = surface.rows.map((row, index) =>
+    index === from.row ? { ...row, text: result.source } : row,
+  )
+  const next = replaceBlockState(state, from.block, { ...surface, rows })
+  const position = (offset: number): Position => ({ block: from.block, row: from.row, offset })
+  return withSelection(next, position(result.selection.from), position(result.selection.to))
+}
+
 /* --------------------------------------------------------------- arrows */
 
 function previousPosition(state: EditorState, position: Position): Position | null {
@@ -1384,14 +1405,48 @@ function surfaceForTarget(target: CommandTarget, text: string, origin: SurfaceBl
 }
 
 /**
+ * Convert one single-row text block to the target kind: the one operation the
+ * `/` menu and the toolbar's block rows share. Whatever the row held survives,
+ * inline run source included, and so do the hidden children of a composite row
+ * (they follow the block). A Divider holds no text, so the surviving text
+ * follows it as a paragraph; the caret lands on the next block, or on a new
+ * paragraph when the divider is last, so the note always ends somewhere to type.
+ */
+function convertSurface(
+  state: EditorState,
+  block: number,
+  surface: TextSurface,
+  target: CommandTarget,
+  remaining: string,
+  caret: number,
+): EditorState {
+  const converted = surfaceForTarget(target, remaining, surface)
+  const children = surface.rows.flatMap((item) => item.rest ?? []).map((child) => surfaceOf(child, '\n'))
+  const tail: SurfaceBlock[] =
+    target.kind === 'rule' && remaining !== ''
+      ? [surfaceForTarget({ kind: 'paragraph' }, remaining, surface)]
+      : []
+  const blocks = [
+    ...state.blocks.slice(0, block),
+    converted,
+    ...tail,
+    ...children,
+    ...state.blocks.slice(block + 1),
+  ]
+  const next: EditorState = { ...state, blocks }
+  if (target.kind === 'rule') {
+    if (block + 1 < blocks.length) return withCaret(next, block + 1, 0, 0)
+    const empty = surfaceForTarget({ kind: 'paragraph' }, '', surface)
+    return withCaret({ ...next, blocks: [...blocks, { ...empty, gap: '\n\n' }] }, blocks.length, 0, 0)
+  }
+  return withCaret(next, block, 0, caret)
+}
+
+/**
  * Apply one `/` command to a text-bearing block.
  *
  * Only the leading `/query` goes: the `/` and the typed filter up to the caret.
- * Whatever the block held after it survives, inline run source included, and so
- * do the hidden children of a composite row (they follow the block). A Divider
- * holds no text, so the surviving text follows it as a paragraph; the caret
- * lands on the next block, or on a new paragraph when the divider is last, so
- * the note always ends somewhere to type.
+ * The rest of the block survives through `convertSurface`.
  */
 export function applyCommand(
   state: EditorState,
@@ -1415,27 +1470,26 @@ export function applyCommand(
     : 0
   const remaining = text.slice(cut)
   const caret = cut > 0 ? 0 : Math.min(head.offset, remaining.length)
+  return convertSurface(state, block, surface, command.target, remaining, caret)
+}
 
-  const converted = surfaceForTarget(command.target, remaining, surface)
-  const children = surface.rows.flatMap((item) => item.rest ?? []).map((child) => surfaceOf(child, '\n'))
-  const tail: SurfaceBlock[] =
-    command.target.kind === 'rule' && remaining !== ''
-      ? [surfaceForTarget({ kind: 'paragraph' }, remaining, surface)]
-      : []
-  const blocks = [
-    ...state.blocks.slice(0, block),
-    converted,
-    ...tail,
-    ...children,
-    ...state.blocks.slice(block + 1),
-  ]
-  const next: EditorState = { ...state, blocks }
-  if (command.target.kind === 'rule') {
-    if (block + 1 < blocks.length) return withCaret(next, block + 1, 0, 0)
-    const empty = surfaceForTarget({ kind: 'paragraph' }, '', surface)
-    return withCaret({ ...next, blocks: [...blocks, { ...empty, gap: '\n\n' }] }, blocks.length, 0, 0)
-  }
-  return withCaret(next, block, 0, caret)
+/**
+ * Convert the block the toolbar's block row names, keeping its text and inline
+ * runs. The same `convertSurface` the `/` menu uses, so a bar click and a menu
+ * pick are one operation.
+ */
+export function convertBlock(
+  state: EditorState,
+  block: number,
+  target: CommandTarget,
+): EditorState {
+  const surface = state.blocks[block]
+  if (surface === undefined || !isText(surface)) return state
+  if (rowCount(surface) !== 1) return state
+  const head = state.selection.head
+  const text = rowText(surface, 0)
+  const caret = head.block === block ? Math.min(head.offset, text.length) : 0
+  return convertSurface(state, block, surface, target, text, caret)
 }
 
 /* -------------------------------------------------------------- structure */

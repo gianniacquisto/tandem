@@ -55,7 +55,9 @@ import {
   type Selection,
   type SurfaceBlock,
 } from '../shell/editor-ops'
-import { inlineKey } from '../shell/inline-commands'
+import { inlineAction } from '../shell/inline-commands'
+import type { ToolbarAction } from '../shell/toolbar'
+import { BikeshedToolbar } from './BikeshedToolbar'
 import { filterNotes, parseInline, wikilinkQueryAt, type NoteChoice } from '../shell/inline'
 import { InlineRuns, WikilinkPicker } from './InlineRuns'
 import { MathSurface } from './MathSurface'
@@ -260,15 +262,16 @@ export function BikeshedBlocks({
       }
       const next = withSelection(current, selection.anchor, selection.head)
       stateRef.current = next
-      const surface = next.blocks[next.selection.head.block]
-      if (surface === undefined || !isTextSurface(surface)) return
-      // A move to another block re-renders, so the gutter's handles follow the
-      // caret; inside one block only the run reveal needs a render.
+      // A move to another block re-renders, so the gutter's handles and the
+      // toolbar's pressed state follow the caret, including into a code fence
+      // or an opaque card. Inside one block only the run reveal needs a render.
       if (next.selection.head.block !== current.selection.head.block) {
         pending.current = next.selection
         setState({ ...next })
         return
       }
+      const surface = next.blocks[next.selection.head.block]
+      if (surface === undefined || !isTextSurface(surface)) return
       if (revealKey(current.selection) === revealKey(next.selection)) return
       pending.current = next.selection
       setState({ ...next })
@@ -349,6 +352,17 @@ export function BikeshedBlocks({
     const index = menu?.block ?? current.selection.head.block
     setMenu(null)
     apply(applyCommand(current, index, command), false)
+  }
+
+  /** One bar press: the same edit path a key or a menu pick takes. */
+  function runToolbarAction(action: ToolbarAction): void {
+    const target = host.current
+    const selection = target === null ? null : readSelection(target)
+    const base =
+      selection === null
+        ? stateRef.current
+        : withSelection(stateRef.current, selection.anchor, selection.head)
+    apply(action.command(base), false)
   }
 
   function overBlock(event: ReactDragEvent<HTMLDivElement>, index: number): void {
@@ -606,10 +620,10 @@ export function BikeshedBlocks({
     const selection = readSelection(target)
     const base = selection === null ? stateRef.current : withSelection(stateRef.current, selection.anchor, selection.head)
 
-    const inline = inlineKey({ key, mod, shift: event.shiftKey, alt: event.altKey })
+    const inline = inlineAction({ key, mod, shift: event.shiftKey, alt: event.altKey })
     if (inline !== null) {
       event.preventDefault()
-      apply(toggleStyle(base, inline), false)
+      apply(toggleStyle(base, inline.style), false)
       return
     }
 
@@ -759,6 +773,12 @@ export function BikeshedBlocks({
   const activeRow =
     menu === null ? undefined : filterCommands(menu.query)[menu.active]
   return (
+    <>
+      <BikeshedToolbar
+        state={state}
+        focused={focused && !readOnly}
+        onRun={runToolbarAction}
+      />
     <div
       ref={host}
       className="blocks"
@@ -858,8 +878,10 @@ export function BikeshedBlocks({
         </div>
       )}
     </div>
+    </>
   )
 }
+
 
 function textOf(surface: SurfaceBlock, row: number): string {
   return rowText(surface, row)

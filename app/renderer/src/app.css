@@ -1590,6 +1590,65 @@ body {
   padding: 15px var(--space-gutter) 0;
 }
 
+/*
+ * The editor's formatting row: a hairline of icon buttons in the Ligne
+ * register, pinned under the breadcrumb (its 40px minimum) so a selection deep
+ * in a long note keeps its controls. Chrome-sized: it never follows the note's
+ * --tandem-editor-font-size.
+ */
+.bikeshed__toolbar {
+  position: sticky;
+  top: 40px;
+  z-index: 1;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 3px 0;
+  border-bottom: var(--hairline) solid var(--sand);
+  background: var(--paper);
+  font-size: 12px;
+}
+
+.bikeshed__toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+.bikeshed__toolbar-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.bikeshed__toolbar-button[aria-pressed="true"] {
+  background: var(--parchment);
+  color: var(--ink);
+  border-radius: var(--radius-control);
+}
+
+.bikeshed__toolbar-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.bikeshed__toolbar-sep {
+  width: var(--hairline);
+  height: 16px;
+  margin: 0 4px;
+  background: var(--sand);
+}
+
 .tree__vault {
   display: flex;
   align-items: center;

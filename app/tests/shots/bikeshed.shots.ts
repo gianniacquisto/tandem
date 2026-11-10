@@ -97,7 +97,7 @@ test('the Write surface draws the inline runs and its footer', async ({ app, win
   )
   writeFileSync(
     writeFile('inline-runs.md'),
-    '# Inline runs\n\nA **bold run** and a [[Index]] chip.\n\n$$\nx = 1\n$$\n',
+    '# Inline runs\n\nA **bold run**, a [link](https://example.com) and a [[Index]] chip.\n\n$$\nx = 1\n$$\n',
   )
 
   await window.evaluate("window.localStorage.setItem('tandem.bikeshed.font-size', '16')")
@@ -111,6 +111,8 @@ test('the Write surface draws the inline runs and its footer', async ({ app, win
 
   const blocks = window.locator('.blocks')
   await expect(blocks.locator('strong')).toHaveText('bold run')
+  await expect(blocks.locator('a')).toHaveAttribute('data-href', 'https://example.com')
+  await expect(window.locator('.bikeshed__toolbar')).toBeVisible()
   await expect(blocks.locator('.run--wikilink .wikilink-chip')).toHaveText('Index')
   await expect(blocks.locator('.run--wikilink')).toHaveAttribute('data-target', 'Index')
   // KaTeX's `output: "html"` drops the MathML annotation that used to carry
@@ -595,7 +597,14 @@ test('an empty note opens in Write focused', async ({ window }) => {
  * scenes rely on.
  */
 const writeFile = (name: string): string => join(seedPath(), 'bikeshed', name)
-const writeText = (name: string): string => readFileSync(writeFile(name), 'utf8')
+const writeText = (name: string): string => {
+  try {
+    return readFileSync(writeFile(name), 'utf8')
+  } catch {
+    // The seed is replaced between tests; a poll may catch that gap.
+    return ''
+  }
+}
 const modKey = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 /** Put the DOM caret at the start or end of a block's text, without Home/End. */
@@ -623,6 +632,138 @@ async function openWrite(window: Page, name: string, content: string): Promise<v
   if ((await write.getAttribute('aria-pressed')) !== 'true') await write.click()
   await expect(window.locator('.blocks')).toBeVisible()
 }
+
+/** Select a character range of one block's text, so a bar press has a run. */
+async function selectText(
+  window: Page,
+  block: number,
+  from: number,
+  to: number,
+): Promise<void> {
+  await window.locator('.block__text').nth(block).evaluate(
+    (element, range) => {
+      const node = element.firstChild
+      if (node === null) return
+      const selection = document.getSelection()
+      const dom = document.createRange()
+      dom.setStart(node, range.from)
+      dom.setEnd(node, range.to)
+      selection?.removeAllRanges()
+      selection?.addRange(dom)
+    },
+    { from, to },
+  )
+}
+
+const toolbarButton = (window: Page, label: string) =>
+  window.locator(`.bikeshed__toolbar-button[aria-label="${label}"]`)
+
+test('the Bold button styles the selection and keeps the caret', async ({ window }) => {
+  await openWrite(window, 'toolbar-bold.md', 'one two three')
+  await window.locator('.block--paragraph .block__text').first().click()
+  await selectText(window, 0, 4, 7)
+
+  const bold = toolbarButton(window, 'Bold')
+  await expect(bold).toHaveAttribute('aria-pressed', 'false')
+  await bold.click()
+
+  await expect(window.locator('.blocks strong')).toHaveText('two')
+  await expect(bold).toHaveAttribute('aria-pressed', 'true')
+  // The click never took the caret: the note still has it.
+  await expect(window.locator('.blocks')).toBeFocused()
+  await expect.poll(() => writeText('toolbar-bold.md'), { timeout: 8000 }).toBe(
+    'one **two** three',
+  )
+})
+
+test('the Link button inserts the pair with the placeholder selected', async ({ window }) => {
+  await openWrite(window, 'toolbar-link.md', 'a label b')
+  await window.locator('.block--paragraph .block__text').first().click()
+  await selectText(window, 0, 2, 7)
+
+  await toolbarButton(window, 'Link').click()
+  await window.keyboard.type('https://example.com')
+
+  const link = window.locator('.blocks a')
+  await expect(link).toHaveText('label')
+  await expect(link).toHaveAttribute('data-href', 'https://example.com')
+  await expect(window.locator('.blocks')).toBeFocused()
+  await expect.poll(() => writeText('toolbar-link.md'), { timeout: 8000 }).toBe(
+    'a [label](https://example.com) b',
+  )
+})
+
+test('the Heading button cycles H1, H2, H3 and body', async ({ window }) => {
+  await openWrite(window, 'toolbar-heading.md', 'Title')
+  await window.locator('.block--paragraph .block__text').first().click()
+  const heading = toolbarButton(window, 'Heading')
+
+  await heading.click()
+  await expect(window.locator('.block--heading')).toHaveAttribute('data-level', '1')
+  await expect.poll(() => writeText('toolbar-heading.md'), { timeout: 8000 }).toBe('# Title')
+
+  await heading.click()
+  await expect(window.locator('.block--heading')).toHaveAttribute('data-level', '2')
+  await expect.poll(() => writeText('toolbar-heading.md'), { timeout: 8000 }).toBe('## Title')
+
+  await heading.click()
+  await expect(window.locator('.block--heading')).toHaveAttribute('data-level', '3')
+  await expect.poll(() => writeText('toolbar-heading.md'), { timeout: 8000 }).toBe('### Title')
+
+  await heading.click()
+  await expect(window.locator('.block--heading')).toHaveCount(0)
+  await expect.poll(() => writeText('toolbar-heading.md'), { timeout: 8000 }).toBe('Title')
+})
+
+test('the bar follows the caret into a code fence', async ({ window }) => {
+  await openWrite(window, 'toolbar-fence.md', '# Title\n\n```\ncode\n```')
+  const heading = toolbarButton(window, 'Heading')
+  const code = toolbarButton(window, 'Code block')
+
+  // The note opens with its caret in the heading, so Heading is pressed.
+  await expect(heading).toHaveAttribute('aria-pressed', 'true')
+  await expect(code).toHaveAttribute('aria-pressed', 'false')
+
+  // A move into the fence is a block change: the row must render it, not
+  // return before the state the pressed derivation reads.
+  await window.locator('.block--code .block__text').click()
+  await expect(code).toHaveAttribute('aria-pressed', 'true')
+  await expect(heading).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('the bar stays in view while the note scrolls', async ({ window }) => {
+  const lines = Array.from({ length: 40 }, (_, index) => `line ${index}`).join('\n\n')
+  await openWrite(window, 'toolbar-pin.md', lines)
+
+  const column = window.locator('.bikeshed__document')
+  await column.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect.poll(() => column.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+
+  const bar = window.locator('.bikeshed__toolbar')
+  await expect(bar).toBeInViewport()
+  const box = await bar.boundingBox()
+  const columnBox = await column.boundingBox()
+  expect(box!.y).toBeGreaterThanOrEqual(columnBox!.y + 40)
+  expect(box!.y).toBeLessThan(columnBox!.y + 80)
+})
+
+test('no bar outside Write', async ({ window }) => {
+  await openTab(window, 'bikeshed')
+  // No note is open, so there is no editor region and no bar.
+  await expect(window.locator('.blocks')).toHaveCount(0)
+  await expect(window.locator('.bikeshed__toolbar')).toHaveCount(0)
+
+  await window.evaluate("window.localStorage.setItem('tandem.bikeshed.mode', 'write')")
+  await window.evaluate("window.dispatchEvent(new Event('focus'))")
+  await window.locator('.tree__label[title="projects/fixture/fixture.md"]').click()
+  await expect(window.locator('.bikeshed__toolbar')).toHaveCount(1)
+
+  // Source is the raw escape hatch and keeps no bar.
+  await window.locator('.editor__mode-button', { hasText: 'Source' }).click()
+  await expect(window.locator('.bikeshed__toolbar')).toHaveCount(0)
+})
 
 test('Write is reachable and typing autosaves through the real path', async ({ window }) => {
   await openWrite(window, 'write-typing.md', '# Title\n\nA paragraph.')
