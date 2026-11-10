@@ -62,3 +62,19 @@ export function lazyChunkFiles(manifest: RendererManifest): string[] {
     .filter(isLazyChunk)
     .map((chunk) => chunk.file)
 }
+
+/**
+ * A string that only exists inside each library's own code, never in the
+ * renderer that calls it. The manifest alone cannot see a library that is both
+ * statically and dynamically imported, because Rollup inlines it and leaves no
+ * chunk edge; these signatures catch that in the entry's bytes.
+ */
+export const KATEX_SIGNATURE = 'katex-error'
+export const MERMAID_SIGNATURE = 'mermaidAPI'
+
+/** The library a source appears to have inlined, or null when it inlines none. */
+export function inlinedLibrary(source: string): 'mermaid' | 'KaTeX' | null {
+  if (source.includes(KATEX_SIGNATURE)) return 'KaTeX'
+  if (source.includes(MERMAID_SIGNATURE)) return 'mermaid'
+  return null
+}

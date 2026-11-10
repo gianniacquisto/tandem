@@ -5,11 +5,15 @@ import { describe, expect, it } from 'vitest'
 
 import {
   entryKey,
+  inlinedLibrary,
   isKatexChunk,
   isMermaidChunk,
+  KATEX_SIGNATURE,
   lazyChunkFiles,
+  MERMAID_SIGNATURE,
   readRendererManifest,
   staticClosure,
+  type ManifestChunk,
 } from './lazy-manifest'
 
 /**
@@ -22,12 +26,33 @@ import {
  * excluded from `npm test` because a clean checkout has no build to read.
  */
 const appRoot = process.cwd()
+const outRoot = join(appRoot, 'out', 'renderer')
 const manifest = readRendererManifest(appRoot)
 const entry = entryKey(manifest)
 const eager = staticClosure(manifest, entry)
 const eagerKeys = new Set(eager.map(([key]) => key))
 const chunks = Object.entries(manifest).filter(([, chunk]) => chunk.file.endsWith('.js'))
 const lazy = chunks.filter(([, chunk]) => isMermaidChunk(chunk) || isKatexChunk(chunk))
+
+const entryFile = manifest[entry]?.file
+if (entryFile === undefined) throw new Error('the renderer manifest names no entry file')
+const entrySource = readFileSync(join(outRoot, entryFile), 'utf8')
+
+const katexLibrary = Object.values(manifest).find(
+  (chunk) => chunk.file.endsWith('.js') && /katex\.mjs$/.test(chunk.src ?? ''),
+)
+const mermaidLibrary = Object.values(manifest).find(
+  (chunk) => chunk.file.endsWith('.js') && /mermaid\.core\.mjs$/.test(chunk.src ?? ''),
+)
+
+function chunkSource(chunk: ManifestChunk): string {
+  return readFileSync(join(outRoot, chunk.file), 'utf8')
+}
+
+/** The real library chunk, or its signature when Rollup has inlined it. */
+function librarySource(chunk: ManifestChunk | undefined, signature: string): string {
+  return chunk === undefined ? signature : chunkSource(chunk)
+}
 
 describe('the entry chunk', () => {
   it('does not reach mermaid or KaTeX by a static import', () => {
@@ -39,6 +64,24 @@ describe('the entry chunk', () => {
     const entryChunk = manifest[entry]
     expect(entryChunk?.isEntry).toBe(true)
     expect(entryChunk?.file).toMatch(/\.js$/)
+  })
+})
+
+describe('the entry content', () => {
+  it('carries no KaTeX or mermaid signature', () => {
+    expect(inlinedLibrary(entrySource)).toBeNull()
+  })
+
+  it('fails when a static import inlines KaTeX, the gate reproduction', () => {
+    // A module that is both statically and dynamically imported is inlined by
+    // Rollup and leaves no chunk edge for the manifest walk, so the bytes are
+    // the guard: the real KaTeX chunk appended to the entry is what the gate
+    // build carried when `main.tsx` imported it.
+    expect(inlinedLibrary(`${entrySource}\n${librarySource(katexLibrary, KATEX_SIGNATURE)}`)).toBe('KaTeX')
+  })
+
+  it('fails when a static import inlines mermaid', () => {
+    expect(inlinedLibrary(librarySource(mermaidLibrary, MERMAID_SIGNATURE))).toBe('mermaid')
   })
 })
 
