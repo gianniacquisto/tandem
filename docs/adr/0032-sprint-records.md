@@ -1,6 +1,8 @@
 # Sprints are records, not tickets: a sprint's own row, handle, batch and close
 
 > **Amended 2026-11-08 by [ADR 0041](0041-workflows-are-data.md):** a sprint becomes the workflow's current run; TAN-332 turns this record's table into the `workflow_runs` history. Until then the `sprints` table is untouched. The amendment's text is ADR 0041's.
+>
+> **Amended 2026-11-10 by TAN-353:** the batch write is also the link to the sprint's opening session, so a ticket the sprint drew is attributed to the pass that drew it. `sprint ticket` appends the batch entry and the session link in one transaction; a sprint opened with no session still takes its batch and links nothing.
 
 [ADR 0029](0029-the-ceremony-set.md) made the sprint a ticket: a `Sprint <n> — <lane>` row, `in-progress` while it ran, its description carrying `## The batch`, one `## Run` per landing and a `## Close`. Five sprints ran that way. The convention put a sprint's row on a work board, where every triage pass had to read it and dispatch it like work; it made the number a fact a title had to carry, and the title-derived numbering collided — three of the five archived tickets read `Sprint 1 — Tandem`; and it kept a sprint's history in a ticket description, which the archive swallows and no reader lists without an id. The dead-sprint rule read the title pattern. The human's answer (2026-10-23) settles it the other way: **a sprint is its own record — the session record's shape ([ADR 0027](0027-session-records.md)) applied to sprints — and the app gets its own Sprints tab.**
 
