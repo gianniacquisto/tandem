@@ -822,6 +822,19 @@ test('the code language field keeps focus and its keys out of the note', async (
  * and Tab apply it, Escape closes it and leaves the typed query, and an empty
  * result keeps the menu open on its no-match row.
  */
+test('only the caret block shows the hint', async ({ window }) => {
+  await openWrite(window, 'write-hint-scope.md', '')
+  const texts = window.locator('.block--paragraph .block__text')
+  await texts.first().click()
+  await window.keyboard.press('Enter')
+  await window.keyboard.press('Enter')
+  const hint = (index: number) =>
+    texts.nth(index).evaluate((el) => getComputedStyle(el, '::before').content)
+  await expect.poll(() => hint(2)).toBe(`"Type '/' for commands"`)
+  await expect.poll(() => hint(0)).toBe('none')
+  await expect.poll(() => hint(1)).toBe('none')
+})
+
 test('the placeholder returns after a cleared paragraph', async ({ window }) => {
   await openWrite(window, 'write-placeholder.md', '')
   const text = window.locator('.block--paragraph .block__text').first()
