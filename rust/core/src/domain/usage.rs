@@ -8,8 +8,17 @@
 //!
 //! **Absent is absent, never zero.** A record that reports no usage adds to
 //! `records` and to no sum, and a record that reported `$0.00` is a reported
-//! zero that counts and keeps its rows. A token piece is the sum of the records
-//! that reported that piece, and stays `None` when none did.
+//! zero that counts and keeps its rows. A token piece is the sum of the
+//! records' attributed shares, and stays `None` when none did.
+//!
+//! **A harness session is counted once.** A record stamped with
+//! `--usage-from-harness` carries the harness session's cumulative total, and a
+//! harness session can carry several records (a re-dispatched pass opens its
+//! own, ADR 0027). [`attribute_harness_usage`] turns those snapshots into the
+//! difference each record added, so the group sums to the harness session's own
+//! totals while every record keeps a row. The dispatch attributes before the
+//! window narrows, so a record whose earlier sibling fell outside the selected
+//! window still reports its own share.
 //!
 //! **Three partitions and one overlap.** The day, model and agent rows are three
 //! views of one number: each covers every record once, and their costs sum to
@@ -159,6 +168,114 @@ pub fn filter_sessions_by_window(
         .filter(|session| window.contains(&calendar.day_key(&session.started_at), today))
         .cloned()
         .collect()
+}
+
+/// Attribute each harness session's cumulative snapshot to the records that
+/// share it (TAN-352).
+///
+/// A harness session carries one total, and every Tandem record that ran in it
+/// stamps that same running total at `session end` (ADR 0027: a re-dispatched
+/// pass opens its own record under the same pointer). This derivation turns the
+/// snapshots into shares, so the report counts the session once and each record
+/// keeps a row of its own:
+///
+/// - Group by `Session::harness_session_id`. A record with no pointer passes
+///   through untouched: its own stamp is its own usage.
+/// - Order each group by `(ended_at, else started_at, started_at, id)`
+///   ascending, never the caller's order (`Sessions::list` answers newest
+///   first).
+/// - A record that does not `Session::carries_usage` passes through and becomes
+///   no baseline for the next one.
+/// - Per piece (`input`, `output`, `reasoning`, `cache_read`, `cache_write`) and
+///   for `cost`: the attributed value is the record's stamp minus the last value
+///   that piece took in the group, saturating at zero (whole tokens, and `0.0`
+///   for a cost that moves backwards). A piece the group has not reported yet is
+///   kept whole by the record that reports it first.
+/// - Everything else on the record (`id`, times, project, agent, tickets,
+///   status, outcome, brief, summary, `model`, `skills`) is copied unchanged, so
+///   the rows that group by model, agent, day and ticket read the same records
+///   with attributed numbers.
+///
+/// By construction a group's attributed pieces sum to the last value each piece
+/// reported in that group: the harness session's own totals. The residual is
+/// spend inside the harness session before the earliest record this home holds
+/// for that pointer, which lands on that first record; the group total is still
+/// the session's total, only the split is coarse.
+pub fn attribute_harness_usage(sessions: &[Session]) -> Vec<Session> {
+    let mut groups: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+    for (index, session) in sessions.iter().enumerate() {
+        if let Some(harness) = session.harness_session_id.as_deref() {
+            groups.entry(harness).or_default().push(index);
+        }
+    }
+
+    let mut attributed: Vec<Option<Session>> = vec![None; sessions.len()];
+    for indices in groups.values() {
+        let mut ordered = indices.clone();
+        ordered.sort_by(|&left, &right| {
+            let key = |session: &Session| {
+                (
+                    session
+                        .ended_at
+                        .clone()
+                        .unwrap_or_else(|| session.started_at.clone()),
+                    session.started_at.clone(),
+                    session.id.clone(),
+                )
+            };
+            key(&sessions[left]).cmp(&key(&sessions[right]))
+        });
+
+        let mut last_input: Option<i64> = None;
+        let mut last_output: Option<i64> = None;
+        let mut last_reasoning: Option<i64> = None;
+        let mut last_cache_read: Option<i64> = None;
+        let mut last_cache_write: Option<i64> = None;
+        let mut last_cost: Option<f64> = None;
+
+        for index in ordered {
+            let session = &sessions[index];
+            if !session.carries_usage() {
+                attributed[index] = Some(session.clone());
+                continue;
+            }
+            let mut share = session.clone();
+            if let Some(tokens) = &session.tokens {
+                share.tokens = Some(SessionTokens {
+                    input: attributed_piece(tokens.input, &mut last_input),
+                    output: attributed_piece(tokens.output, &mut last_output),
+                    reasoning: attributed_piece(tokens.reasoning, &mut last_reasoning),
+                    cache_read: attributed_piece(tokens.cache_read, &mut last_cache_read),
+                    cache_write: attributed_piece(tokens.cache_write, &mut last_cache_write),
+                });
+            }
+            if let Some(cost) = session.cost {
+                let baseline = last_cost.unwrap_or(0.0);
+                share.cost = Some((cost - baseline).max(0.0));
+                last_cost = Some(cost);
+            }
+            attributed[index] = Some(share);
+        }
+    }
+
+    sessions
+        .iter()
+        .enumerate()
+        .map(|(index, session)| attributed[index].take().unwrap_or_else(|| session.clone()))
+        .collect()
+}
+
+/// One piece's share: the stamp minus the last value the group reported for it,
+/// saturating at zero, and the stamp becomes the next baseline. A piece the
+/// group has not reported yet is kept whole.
+fn attributed_piece(value: Option<i64>, last: &mut Option<i64>) -> Option<i64> {
+    let value = value?;
+    let share = match *last {
+        Some(previous) => (value - previous).max(0),
+        None => value,
+    };
+    *last = Some(value);
+    Some(share)
 }
 
 /// The board row the report labels a ticket row with: its id, the lane key and

@@ -1529,7 +1529,15 @@ fn session(home: &Home, command: Option<&SessionCommand>) -> Result<(), Failure>
                 )
                 .map_err(Failure::domain)?;
             if stamp.stamped && stamp.session.carries_usage() {
-                post_usage_comments(&store, &stamp.session)?;
+                // The comment states the record's attributed share, the same row
+                // the report counts (TAN-352); the record keeps the snapshot.
+                let recorded = sessions.list(None, None).map_err(Failure::domain)?;
+                let attributed = tandem_core::domain::usage::attribute_harness_usage(&recorded);
+                let share = attributed
+                    .into_iter()
+                    .find(|row| row.id == stamp.session.id)
+                    .unwrap_or_else(|| stamp.session.clone());
+                post_usage_comments(&store, &share)?;
             }
             print(&SessionResult {
                 session: stamp.session,
