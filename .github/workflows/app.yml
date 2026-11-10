@@ -53,7 +53,6 @@ jobs:
           cache: npm
           cache-dependency-path: |
             app/package-lock.json
-            Editor/package-lock.json
 
       - name: Warm the Rust toolchain
         # The artifact carries the core it runs (below). The proxy reads
@@ -75,21 +74,20 @@ jobs:
       - name: "Gate: build"
         run: npm run build
 
-      - name: "Gate: editor bundle tests + reproducible build"
-        # The editor bundle is committed at `app/renderer/public/editor` and is
-        # built from `Editor/`. The pinned inputs must regenerate those bytes
-        # exactly: a test passes, and a non-empty diff after the rebuild is a
-        # hand edit or a source/lockfile drift, which this step makes red.
-        if: runner.os == 'macOS'
-        working-directory: Editor
-        run: |
-          npm ci
-          node --test
-          npm run build
+      - name: "Gate: the renderer is one page with its fonts as files"
+        # UI-22 retired the committed editor bundle and its frame. The built
+        # renderer carries one page, no editor chunk and no `public/editor`
+        # copy, and KaTeX's 20 woff2 faces are emitted beside the CSS rather
+        # than inlined as `data:` URLs (the policy keeps `font-src 'self'`).
+        run: node scripts/check-renderer.mjs
 
-      - name: "Gate: the committed editor bundle is current"
+      - name: "Gate: the third-party notice is current"
+        # The notice is generated from the production lockfile closure, so the
+        # committed copy cannot drift from the packages the app actually ships.
         if: runner.os == 'macOS'
-        run: git diff --exit-code -- app/renderer/public/editor
+        run: |
+          node scripts/third-party-notice.mjs
+          git diff --exit-code -- THIRD-PARTY.md
 
       - name: "Gate: the tree names no retired path"
         # The cutover deleted the Swift tree and retired two scripts (RET-91).
@@ -165,7 +163,6 @@ jobs:
           cache: npm
           cache-dependency-path: |
             app/package-lock.json
-            Editor/package-lock.json
 
       - name: Build the core
         working-directory: rust

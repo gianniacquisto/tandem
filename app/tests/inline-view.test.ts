@@ -11,13 +11,14 @@ const notes = ['Index.md', 'daily/Index.md', 'projects/fixture/fixture.md']
 
 function draw(
   source: string,
-  options: { notes?: string[]; selection?: { from: number; to: number } | null } = {},
+  options: { notes?: string[]; selection?: { from: number; to: number } | null; editing?: boolean } = {},
 ): string {
   return renderToStaticMarkup(
     createElement(InlineRuns, {
       source,
       notes: options.notes ?? notes,
       selection: options.selection ?? null,
+      editing: options.editing ?? true,
     }),
   )
 }
@@ -67,10 +68,17 @@ describe('the inline runs draw their elements', () => {
     expect(markup).toContain('title="Missing note: Ghost note"')
   })
 
-  it('draws inline math as its source text in the accent ink', () => {
+  it('draws inline math as its source text while the block is being edited', () => {
     const markup = draw('a $x^2$ b')
     expect(markup).toContain('run--math')
     expect(markup).toContain('$x^2$')
+  })
+
+  it('draws inline math with KaTeX when the block is not being edited', () => {
+    const markup = draw('a $x^2$ b', { editing: false })
+    expect(markup).toContain('run--math')
+    expect(markup).toContain('class="katex"')
+    expect(markup).not.toContain('$x^2$')
   })
 
   it('renders the chip and run inside the Write surface', () => {

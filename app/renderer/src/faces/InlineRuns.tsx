@@ -9,6 +9,7 @@ import {
   type InlineStyle,
   type NoteChoice,
 } from '../shell/inline'
+import { renderMath } from '../shell/math'
 
 /**
  * The drawing half of the inline layer: runs with their markers hidden, the
@@ -38,6 +39,12 @@ export type InlineRunsProps = {
   notes?: string[]
   selection?: InlineSelection | null
   onOpenNote?: (path: string) => void
+  /**
+   * True while the caret is in this block: math atoms show their raw TeX so
+   * the row stays editable and its textContent stays the source. False draws
+   * them with KaTeX.
+   */
+  editing?: boolean
 }
 
 function touches(run: InlineRun, selection: InlineSelection | null | undefined): boolean {
@@ -100,6 +107,7 @@ function runNode(
   notes: string[],
   shown: boolean,
   onOpenNote: ((path: string) => void) | undefined,
+  editing: boolean,
 ): ReactNode {
   if (run.kind === 'text') return styled(run.styles, run.text)
 
@@ -168,13 +176,29 @@ function runNode(
   return styled(
     run.styles,
     <span className="run run--math" data-math={run.display ? 'display' : 'inline'}>
-      {run.source}
+      {editing ? (
+        run.source
+      ) : (
+        <span
+          className="run__math-rendered"
+          data-rendered
+          data-from={run.from}
+          contentEditable={false}
+          dangerouslySetInnerHTML={{ __html: renderMath(run.content, run.display) }}
+        />
+      )}
     </span>,
   )
 }
 
 /** Draw one block's inline source, markers hidden except inside the caret's run. */
-export function InlineRuns({ source, notes = [], selection = null, onOpenNote }: InlineRunsProps) {
+export function InlineRuns({
+  source,
+  notes = [],
+  selection = null,
+  onOpenNote,
+  editing = false,
+}: InlineRunsProps) {
   const runs = parseInline(source, notes)
   const nodes: ReactNode[] = []
   const open: InlineStyle[] = []
@@ -211,7 +235,7 @@ export function InlineRuns({ source, notes = [], selection = null, onOpenNote }:
       openMarkers.set(style, delimiters)
       open.push(style)
     }
-    nodes.push(<Fragment key={`run-${index}`}>{runNode(run, notes, shown, onOpenNote)}</Fragment>)
+    nodes.push(<Fragment key={`run-${index}`}>{runNode(run, notes, shown, onOpenNote, editing)}</Fragment>)
     lastShown = shown
   })
 

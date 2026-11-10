@@ -32,6 +32,14 @@ for (const file of ['AGENTS.md', 'VERSION', join('skills', 'tandem', 'SKILL.md')
   }
 }
 
+// The packages whose code the renderer carries, with their licence texts
+// (UI-22). It is one generated record, staged beside the core.
+const notice = join(app.resources, 'THIRD-PARTY.md')
+if (!existsSync(notice)) {
+  console.error(`the packaged app carries no third-party notice at ${notice}`)
+  process.exit(1)
+}
+
 if (process.platform === 'darwin') {
   const link = join(app.root, 'Contents', 'MacOS', 'tandem-cli')
   if (!existsSync(link) || !lstatSync(link).isSymbolicLink()) {

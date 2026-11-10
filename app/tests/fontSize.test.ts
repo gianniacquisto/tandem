@@ -8,7 +8,7 @@ import {
   loadEditorFontSize,
   saveEditorFontSize,
   EDITOR_FONT_SIZE_KEY,
-} from '../renderer/src/shell/editor'
+} from '../renderer/src/shell/fontSize'
 
 function fakeStorage(initial: Record<string, string> = {}) {
   const data = new Map(Object.entries(initial))
@@ -27,7 +27,7 @@ describe('the persisted note font size', () => {
     expect(EDITOR_FONT_SIZE_DEFAULT).toBe(16)
   })
 
-  it('round-trips a size the toolbar posts', () => {
+  it('round-trips a size the control will post', () => {
     const storage = fakeStorage()
     saveEditorFontSize(18, storage)
     expect(storage.data.get(EDITOR_FONT_SIZE_KEY)).toBe('18')
@@ -46,7 +46,7 @@ describe('the persisted note font size', () => {
     )
   })
 
-  it('clamps the value it saves, so a stray post cannot stick an absurd size', () => {
+  it('clamps the value it saves, so a stray write cannot stick an absurd size', () => {
     const storage = fakeStorage()
     saveEditorFontSize(99, storage)
     expect(loadEditorFontSize(storage)).toBe(EDITOR_FONT_SIZE_MAX)

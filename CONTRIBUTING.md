@@ -28,7 +28,7 @@ Apple silicon Mac is only for shipped-app work.
   [rust/rust-toolchain.toml](rust/rust-toolchain.toml) (currently 1.99.1 with
   the `rustfmt` and `clippy` components), so the right toolchain arrives on
   first use; do not override it with a floating channel.
-- Node 22, for `app/` and `Editor/`.
+- Node 22, for `app/`.
 
 ## Setup
 
@@ -65,17 +65,6 @@ In `app/`:
 ```sh
 npm run typecheck && npm test
 ```
-
-In `Editor/`:
-
-```sh
-npm ci && node --test
-```
-
-Note on the editor bundle: the committed editor bundle is prebuilt, and CI
-rebuilds it and fails on any byte that differs. If you touch `Editor/src`,
-rebuild the bundle and commit the result, so what you tested is byte-identical
-to what CI builds.
 
 ## Conventions
 

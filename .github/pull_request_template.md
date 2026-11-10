@@ -15,7 +15,6 @@ every area this PR touches:
 - [ ] `cargo test`, `cargo fmt --all --check`,
       `cargo clippy --all-targets -- -D warnings` in `rust/`
 - [ ] `npm run typecheck && npm test` in `app/`
-- [ ] `npm ci && node --test` in `Editor/`
 - [ ] Untouched areas: <!-- name them, or n/a -->
 
 ## Words and decisions

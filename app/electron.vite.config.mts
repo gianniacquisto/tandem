@@ -39,12 +39,14 @@ export default defineConfig({
     root: resolve('renderer'),
     plugins: [react(), policy],
     build: {
+      // KaTeX's woff2 faces are the editor's fonts; none may be inlined as a
+      // `data:` URL, because the policy keeps `font-src 'self'` and emits the
+      // faces as assets beside the CSS. Vite's 4,096-byte default would inline
+      // `KaTeX_Size3-Regular.woff2` (3,624 B), so nothing is inlined.
+      assetsInlineLimit: 0,
       rollupOptions: {
         input: {
-          // The shell, and the editor frame its one same-origin iframe loads.
-          // `public/editor/` is copied verbatim beside both.
           index: resolve('renderer/index.html'),
-          editor: resolve('renderer/editor-frame.html'),
         },
       },
     },

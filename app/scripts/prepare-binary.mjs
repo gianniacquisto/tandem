@@ -48,3 +48,10 @@ cpSync(join(repoRoot, 'agents'), join(face, 'agents'), { recursive: true })
 const version = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8')).version
 writeFileSync(join(face, 'VERSION'), `${version}\n`)
 console.log(`staged the agent face at ${face}`)
+
+// The generated third-party notice rides beside the core (UI-22): the
+// packages whose code the renderer carries, with their licence texts. The
+// committed copy is the source of truth; `third-party-notice.mjs` regenerates
+// it and app.yml fails on a diff.
+copyFileSync(join(appRoot, 'THIRD-PARTY.md'), join(staged, 'THIRD-PARTY.md'))
+console.log(`staged the third-party notice at ${join(staged, 'THIRD-PARTY.md')}`)

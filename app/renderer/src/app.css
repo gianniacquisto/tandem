@@ -1880,14 +1880,6 @@ body {
   font-weight: 600;
 }
 
-.editor__frame {
-  flex: 1 1 auto;
-  width: 100%;
-  min-height: 0;
-  border: 0;
-  background: var(--paper);
-}
-
 /* Write mode: one contenteditable host over UI-17's block list. */
 .blocks {
   flex: 1 0 auto;
@@ -2259,6 +2251,43 @@ body {
 .run--math {
   color: var(--accent);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.run__math-rendered {
+  display: inline-block;
+  color: var(--ink);
+}
+
+.block--math .block__math-rendered {
+  padding: 8px 12px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  overflow-x: auto;
+}
+
+.block__mermaid-reveal {
+  cursor: text;
+}
+
+.block__mermaid {
+  overflow-x: auto;
+}
+
+.block__mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.block__mermaid.tandem-mermaid-error {
+  padding: 8px 12px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ember);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.84em;
+  white-space: pre-wrap;
 }
 
 .block--math .block__math-source {
