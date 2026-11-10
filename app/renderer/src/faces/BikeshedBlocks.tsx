@@ -1139,6 +1139,7 @@ function BlockBody({
           {...common}
           className={`${common.className}${surface.kind === 'heading' ? ' block--h' : ''}`}
           data-level={surface.kind === 'heading' ? surface.level ?? 1 : undefined}
+          data-active={editing ? 'true' : undefined}
         >
           <span
             className="block__text"

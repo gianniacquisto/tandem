@@ -825,8 +825,8 @@ test('the code language field keeps focus and its keys out of the note', async (
 test('the placeholder returns after a cleared paragraph', async ({ window }) => {
   await openWrite(window, 'write-placeholder.md', '')
   const text = window.locator('.block--paragraph .block__text').first()
-  await expect.poll(() => text.evaluate((el) => getComputedStyle(el, '::before').content)).toBe(`"Type '/' for commands"`)
   await text.click()
+  await expect.poll(() => text.evaluate((el) => getComputedStyle(el, '::before').content)).toBe(`"Type '/' for commands"`)
   await window.keyboard.type('x')
   await expect.poll(() => text.evaluate((el) => getComputedStyle(el, '::before').content)).toBe('none')
   await window.keyboard.press('Backspace')
@@ -840,8 +840,8 @@ test('the slash menu opens, filters and applies', async ({ window }) => {
 
   const firstText = blocks.locator('.block--paragraph .block__text').first()
   await expect(firstText).toHaveAttribute('data-ph', "Type '/' for commands")
-  await expect.poll(() => firstText.evaluate((el) => getComputedStyle(el, '::before').content)).toBe(`"Type '/' for commands"`)
   await firstText.click()
+  await expect.poll(() => firstText.evaluate((el) => getComputedStyle(el, '::before').content)).toBe(`"Type '/' for commands"`)
   await window.keyboard.type('/')
   await expect.poll(() => firstText.evaluate((el) => getComputedStyle(el, '::before').content)).toBe('none')
 
