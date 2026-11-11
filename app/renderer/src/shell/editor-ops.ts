@@ -540,12 +540,33 @@ export function split(state: EditorState): EditorState {
 
   if (surface.kind === 'list' || surface.kind === 'task' || surface.kind === 'quote') {
     if (text === '' && surface.kind !== 'quote') {
-      // Enter on an empty item ends the list.
-      const rows = surface.rows.filter((_, index) => index !== position.row)
-      if (rows.length === 0) return removeBlocks(state, position.block, 1)
-      const next = replaceBlockState(state, position.block, { ...surface, rows })
-      const row = Math.max(0, position.row - 1)
-      return withCaret(next, position.block, row, rowText(next.blocks[position.block]!, row).length)
+      // Enter on an empty item returns into a new paragraph in place: the rows
+      // above keep a list, the rows below start a new one, and the paragraph
+      // sits between them with the caret at its start.
+      const head = surface.rows.slice(0, position.row)
+      const tail = surface.rows.slice(position.row + 1)
+      const above = head.length > 0 ? [{ ...surface, rows: head, edited: true }] : []
+      const below =
+        tail.length > 0
+          ? [
+              {
+                ...surface,
+                rows: tail,
+                edited: true,
+                gap: '\n',
+                start:
+                  surface.ordered === true ? (surface.start ?? 1) + position.row + 1 : surface.start,
+              },
+            ]
+          : []
+      const blocks = [
+        ...state.blocks.slice(0, position.block),
+        ...above,
+        surfaceOf(paragraph(''), above.length > 0 ? '\n' : surface.gap),
+        ...below,
+        ...state.blocks.slice(position.block + 1),
+      ]
+      return finish({ ...state, blocks }, position.block + above.length, 0, 0)
     }
     const rows = [
       ...surface.rows.slice(0, position.row),

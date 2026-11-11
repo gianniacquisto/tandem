@@ -223,6 +223,11 @@ export function BikeshedBlocks({
       const selection = readSelection(target)
       if (selection === null) return
       const current = stateRef.current
+      // A caret the DOM places past the model's row is a character the input
+      // event has not read back yet. Clamping it into the model would strand
+      // the character, so the next input event brings the row in first.
+      const head = current.blocks[selection.head.block]
+      if (head !== undefined && selection.head.offset > rowText(head, selection.head.row).length) return
       if (same(selection.anchor, current.selection.anchor) && same(selection.head, current.selection.head)) {
         return
       }
@@ -1166,7 +1171,12 @@ function BlockBody({
       return (
         <div {...common} className={`block block--${surface.kind} ${listClass}`}>
           {surface.rows.map((row, rowIndex) => (
-            <div className="block__row" data-row={rowIndex} key={rowIndex}>
+            <div
+              className="block__row"
+              data-row={rowIndex}
+              data-marker={task ? undefined : marker(surface, rowIndex)}
+              key={rowIndex}
+            >
               {task ? (
                 <button
                   type="button"
@@ -1180,11 +1190,7 @@ function BlockBody({
                 >
                   {row.checked === true ? '\u2713' : ''}
                 </button>
-              ) : (
-                <span className="block__marker" contentEditable={false} aria-hidden="true">
-                  {marker(surface, rowIndex)}
-                </span>
-              )}
+              ) : null}
               <span className="block__text" data-text key={`text-${rowIndex}-${row.text}`}>
                 <InlineRuns
                   source={row.text}
@@ -1368,7 +1374,6 @@ function BlockBody({
 }
 
 function marker(surface: SurfaceBlock, row: number): string {
-  if (surface.kind === 'task') return surface.rows[row]?.checked === true ? '- [x] ' : '- [ ] '
   if (surface.kind === 'quote') return '> '
   if (surface.kind === 'list' && surface.ordered === true) return `${(surface.start ?? 1) + row}. `
   if (surface.kind === 'list') return '- '
@@ -1438,7 +1443,38 @@ function syncDomText(host: HTMLElement, state: EditorState): void {
       const text = texts[rowIndex]
       if (text !== undefined && text.textContent !== row.text) text.textContent = row.text
     })
+    // The model is the only truth here: a character the browser landed outside
+    // `[data-text]` must not survive a render as a second, invisible copy of
+    // the line. A row holds elements only.
+    for (const row of Array.from(element.querySelectorAll('.block__row'))) {
+      for (const child of Array.from(row.childNodes)) {
+        if (child.nodeType === Node.TEXT_NODE) child.remove()
+      }
+    }
   }
+}
+
+/** A row's editable text: everything except the view-only descendants (the checkbox). */
+function editableText(element: HTMLElement): string {
+  const clone = element.cloneNode(true) as HTMLElement
+  for (const fixed of Array.from(clone.querySelectorAll('[contenteditable="false"]'))) {
+    fixed.remove()
+  }
+  return clone.textContent ?? ''
+}
+
+/** The editable text length before `node` inside a row. */
+function textOffsetBefore(row: HTMLElement, node: Node): number {
+  let length = 0
+  for (const child of Array.from(row.childNodes)) {
+    if (child === node) return length
+    if (child.nodeType === Node.TEXT_NODE) {
+      length += child.nodeValue?.length ?? 0
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      length += editableText(child as HTMLElement).length
+    }
+  }
+  return length
 }
 
 /** Read the edited text back from the DOM, leaving untouched blocks alone. */
@@ -1459,10 +1495,17 @@ function readFromDom(host: HTMLElement, current: EditorState): EditorState {
       continue
     }
     if (!isTextSurface(surface)) continue
-    const rows = surface.rows.map((row, rowIndex) => ({
-      ...row,
-      text: texts[rowIndex]?.textContent ?? row.text,
-    }))
+    const rowElements = Array.from(element.querySelectorAll('[data-row]')) as HTMLElement[]
+    const rows = surface.rows.map((row, rowIndex) => {
+      const rowElement = rowElements[rowIndex]
+      // Everything editable in the row, so a character typed outside
+      // `[data-text]` reaches the model on the same input event.
+      const text =
+        rowElement === undefined
+          ? (texts[rowIndex]?.textContent ?? row.text)
+          : editableText(rowElement)
+      return { ...row, text }
+    })
     const changed = rows.some((row, rowIndex) => row.text !== surface.rows[rowIndex]?.text)
     if (changed) blocks[index] = { ...surface, rows, edited: true }
   }
@@ -1489,6 +1532,14 @@ function positionFrom(host: HTMLElement, node: Node | null, offset: number): Pos
     : (rowElement.querySelector('[data-text]') as HTMLElement | null)
   if (textElement === null) return { block, row, offset: 0 }
   if (!textElement.contains(node)) {
+    // A caret at the row boundary sits in a text node beside `[data-text]`.
+    // Its offset is measured in the row's editable content, so Enter splits
+    // where the character sits, not at the end of the item.
+    if (node.nodeType === Node.TEXT_NODE && node.parentNode === rowElement) {
+      const before = textOffsetBefore(rowElement, node)
+      const length = node.nodeValue?.length ?? 0
+      return { block, row, offset: before + Math.max(0, Math.min(offset, length)) }
+    }
     const length = textElement.textContent?.length ?? 0
     if (node === textElement.parentNode) {
       const index = Array.prototype.indexOf.call(node.childNodes, textElement)

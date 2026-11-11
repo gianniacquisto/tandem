@@ -2098,11 +2098,12 @@ body {
   min-height: 1.65em;
 }
 
-.block__marker {
+.block__row[data-marker]::before {
+  content: attr(data-marker);
   flex: none;
+  white-space: pre;
   color: var(--ink-dim);
   user-select: none;
-  white-space: pre;
 }
 
 .block--quote {
