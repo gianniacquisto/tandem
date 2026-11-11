@@ -938,6 +938,92 @@ fn the_sprint_draws_ready_only() {
     );
 }
 
+/// TAN-327: refine reads the active workflow's intake stages in stage order.
+/// The intake stage nearest Ready is the queue; the backlog stays the pool,
+/// shown only on the human's explicit ask and only when the queue has tickets.
+#[test]
+fn the_refine_pass_reads_the_nearest_ready_intake_stage() {
+    let refine = file("skills/tandem-refine/SKILL.md");
+    for phrase in [
+        "the active workflow",
+        "intake stages",
+        "nearest Ready",
+        "the queue",
+        "as a count",
+        "explicit ask",
+        "falls back to the backlog",
+    ] {
+        assert!(
+            refine.contains(phrase),
+            "the refine pass names `{phrase}`"
+        );
+    }
+}
+
+/// TAN-327: the sprint's triage reports the selected queue as one count line.
+/// It never draws, promotes or dispatches a selected ticket: promotion is the
+/// human's, and the refine pass drains the queue.
+#[test]
+fn triage_reports_the_selected_queue_without_drawing_it() {
+    let sprint = file("skills/tandem-sprint/SKILL.md");
+    for phrase in [
+        "the selected queue",
+        "one count line",
+        "never draws, promotes, or dispatches it",
+    ] {
+        assert!(
+            sprint.contains(phrase),
+            "the sprint triage names `{phrase}`"
+        );
+    }
+}
+
+/// TAN-327: the refiner's prompt names the intake stages and the split rule.
+#[test]
+fn the_refiner_prompt_names_the_intake_stages() {
+    let refiner = file("agents/refiner.md");
+    for phrase in ["intake stages", "nearest Ready", "`selected`"] {
+        assert!(
+            refiner.contains(phrase),
+            "the refiner prompt names `{phrase}`"
+        );
+    }
+}
+
+/// TAN-327: a selected ticket split into parts files them in `selected`, so the
+/// parts stay in the queue; a backlog parent's parts stay backlog.
+#[test]
+fn a_split_selected_ticket_files_its_parts_in_selected() {
+    let refiner = file("agents/refiner.md");
+    assert!(
+        refiner.contains("parts of a `selected` ticket are filed in `selected`"),
+        "the split rule keeps a selected ticket's parts in the queue"
+    );
+    assert!(
+        refiner.contains("a backlog parent's parts stay `backlog`"),
+        "the split rule leaves a backlog parent's parts in the pool"
+    );
+}
+
+/// TAN-327: ADR 0041 carries the second intake stage, the at-least-one intake
+/// rule, the first-intake landing stage and the nearest-Ready queue.
+#[test]
+fn adr_0041_names_the_selected_stage() {
+    let adr = file("docs/adr/0041-workflows-are-data.md");
+    for phrase in [
+        "Selected for development",
+        "at least one intake",
+        "first intake",
+        "nearest Ready",
+        "the default's seven stages",
+    ] {
+        assert!(
+            adr.contains(phrase),
+            "ADR 0041 names `{phrase}`"
+        );
+    }
+}
+
 /// SKI-3: every refiner pass runs at least one interactive human grilling
 /// round per ticket before any brief is written. A dispatched refiner relays
 /// its frontier through the dispatching session and waits; the only opt-out

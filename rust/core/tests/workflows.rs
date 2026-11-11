@@ -12,7 +12,7 @@ use tandem_core::domain::sprint::{SprintMode, Sprints};
 use tandem_core::domain::workflow::{
     Pass, StageBinding, StageRole, WorkflowDraft, WorkflowStage, Workflows, default_workflow,
 };
-use tandem_core::domain::{AddTicket, DomainError, Filter, Status};
+use tandem_core::domain::{AddTicket, DomainError, Edit, Filter, SetFields, Status, TicketQuery};
 use tandem_core::store::{Actor, NewSetting};
 
 fn stage(key: &str, label: &str, role: StageRole) -> WorkflowStage {
@@ -41,7 +41,7 @@ fn minimal(name: &str) -> WorkflowDraft {
 }
 
 #[test]
-fn a_fresh_home_seeds_the_agile_default_in_the_board_order() {
+fn a_fresh_home_ends_with_the_seven_stage_agile_default() {
     let sandbox = Sandbox::new("workflow-seed");
     let workflows = Workflows::new(&sandbox.store());
 
@@ -55,12 +55,13 @@ fn a_fresh_home_seeds_the_agile_default_in_the_board_order() {
         vec![
             "backlog",
             "on-hold",
+            "selected",
             "ready",
             "in-progress",
             "in-review",
             "done"
         ],
-        "the seed follows UI-15's board order"
+        "the migration inserts selected before ready, leaving UI-15's order intact"
     );
     assert_eq!(agile.stage_key(StageRole::Intake), Some("backlog"));
     assert_eq!(agile.stage_key(StageRole::Parked), Some("on-hold"));
@@ -78,6 +79,12 @@ fn a_fresh_home_seeds_the_agile_default_in_the_board_order() {
         })
     );
     assert_eq!(agile.stages[1].binding, None, "on-hold is parked, unbound");
+    let selected = &agile.stages[2];
+    assert_eq!(selected.key, "selected");
+    assert_eq!(selected.label, "Selected for development");
+    assert_eq!(selected.role, StageRole::Intake);
+    assert_eq!(selected.binding, None, "selected carries no binding");
+    assert_eq!(agile.stages[3].key, "ready", "ready follows selected");
     assert!(
         agile.is_runnable(),
         "the default carries the three run roles"
@@ -87,7 +94,7 @@ fn a_fresh_home_seeds_the_agile_default_in_the_board_order() {
     assert_eq!(agile.name, memory.name);
     assert_eq!(
         agile.stages, memory.stages,
-        "the seed is the in-memory default"
+        "the migrated default is the in-memory default"
     );
 }
 
@@ -178,7 +185,7 @@ fn a_custom_stage_round_trips_and_the_board_validates_against_the_active_workflo
 }
 
 #[test]
-fn a_new_ticket_lands_in_the_first_intake_stage() {
+fn a_ticket_with_no_status_lands_in_the_first_intake_stage() {
     let sandbox = Sandbox::new("workflow-landing");
     let board = sandbox.board();
     let workflows = Workflows::new(&sandbox.store());
@@ -205,6 +212,106 @@ fn a_new_ticket_lands_in_the_first_intake_stage() {
         Status::parse("selected").expect("a valid key"),
         "the first intake stage in stage order lands the ticket"
     );
+}
+
+#[test]
+fn workflow_set_accepts_two_intake_stages_and_refuses_zero() {
+    let sandbox = Sandbox::new("workflow-intake-count");
+    let workflows = Workflows::new(&sandbox.store());
+
+    let mut two_intakes = minimal("flow");
+    two_intakes
+        .stages
+        .insert(1, stage("selected", "Selected for development", StageRole::Intake));
+    let written = workflows
+        .set(&Actor::Human, None, two_intakes)
+        .expect("two intake stages are legal");
+    assert_eq!(
+        written
+            .stages
+            .iter()
+            .filter(|stage| stage.role == StageRole::Intake)
+            .count(),
+        2
+    );
+
+    let mut no_intake = minimal("no-intake");
+    no_intake
+        .stages
+        .retain(|stage| stage.role != StageRole::Intake);
+    assert!(matches!(
+        workflows.set(&Actor::Human, None, no_intake),
+        Err(DomainError::StageRoleCount { role, count: 0, .. }) if role == "intake"
+    ));
+}
+
+#[test]
+fn a_ticket_moves_to_and_lists_by_the_selected_stage() {
+    let sandbox = Sandbox::new("selected-roundtrip");
+    let board = sandbox.board();
+    let selected = Status::Custom("selected".to_string());
+
+    let added = board
+        .add(
+            "promoted for the next refine",
+            AddTicket {
+                status: selected.clone(),
+                ..AddTicket::default()
+            },
+        )
+        .expect("the default workflow declares selected");
+    assert_eq!(added.status, selected);
+
+    let parked = board
+        .add("later", AddTicket::default())
+        .expect("the ticket lands backlog");
+    board
+        .set(
+            &parked.id.to_string(),
+            SetFields {
+                status: Edit::Set(selected.clone()),
+                ..SetFields::default()
+            },
+        )
+        .expect("a status move is free-form");
+
+    let listed = board
+        .list(&TicketQuery {
+            statuses: vec![selected.clone()],
+            ..TicketQuery::default()
+        })
+        .expect("the status listing reads");
+    let titles: Vec<&str> = listed.iter().map(|ticket| ticket.title.as_str()).collect();
+    assert_eq!(titles.len(), 2, "both tickets are in the stage: {titles:?}");
+    assert!(titles.contains(&"promoted for the next refine"));
+    assert!(titles.contains(&"later"));
+    assert!(listed.iter().all(|ticket| ticket.status == selected));
+}
+
+#[test]
+fn an_unknown_stage_names_selected_among_the_valid_keys() {
+    let sandbox = Sandbox::new("selected-unknown");
+    let board = sandbox.board();
+
+    let refused = board
+        .add(
+            "nowhere",
+            AddTicket {
+                status: Status::Custom("nowhere".to_string()),
+                ..AddTicket::default()
+            },
+        )
+        .expect_err("an unknown stage is refused");
+    match refused {
+        DomainError::InvalidStage { value, stages } => {
+            assert_eq!(value, "nowhere");
+            assert!(
+                stages.iter().any(|stage| stage == "selected"),
+                "the refusal names selected: {stages:?}"
+            );
+        }
+        other => panic!("expected InvalidStage, got {other:?}"),
+    }
 }
 
 #[test]
@@ -281,7 +388,7 @@ fn the_whole_document_validation_names_each_refusal() {
         .expect("the default still reads");
     assert_eq!(
         original.stages.len(),
-        6,
+        7,
         "a refused write leaves the stored workflow whole"
     );
 }

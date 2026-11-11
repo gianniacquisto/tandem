@@ -78,7 +78,7 @@ test('the focused tickets face draws only the active project across the columns'
   const chips = await window.locator('.ticket-card__lane').allInnerTexts()
   expect(chips.length).toBe(focusCount)
   for (const chip of chips) expect(project.lanes).toContain(chip.trim())
-  await expect(window.locator('.board__column')).toHaveCount(6)
+  await expect(window.locator('.board__column')).toHaveCount(7)
 
   // The list draws the same project alone, at its All scope so a done project
   // still draws its lanes.

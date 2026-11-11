@@ -122,6 +122,7 @@ fn a_fresh_home_lists_the_agile_default_as_active() {
         vec![
             "backlog",
             "on-hold",
+            "selected",
             "ready",
             "in-progress",
             "in-review",
@@ -131,7 +132,37 @@ fn a_fresh_home_lists_the_agile_default_as_active() {
 }
 
 #[test]
-fn a_custom_stage_round_trips_and_the_board_reads_it() {
+fn workflow_show_reports_the_seven_stage_default() {
+    let sandbox = Sandbox::new("show-default");
+    let shown = json(&sandbox.run(&["workflow", "show", "--id", "agile"]));
+
+    let stages = shown["workflow"]["stages"].as_array().expect("stages");
+    assert_eq!(
+        stages
+            .iter()
+            .map(|stage| stage["key"].as_str().unwrap_or(""))
+            .collect::<Vec<_>>(),
+        vec![
+            "backlog",
+            "on-hold",
+            "selected",
+            "ready",
+            "in-progress",
+            "in-review",
+            "done"
+        ]
+    );
+    let selected = stages
+        .iter()
+        .find(|stage| stage["key"] == "selected")
+        .expect("selected is declared");
+    assert_eq!(selected["label"], "Selected for development");
+    assert_eq!(selected["role"], "intake");
+    assert_eq!(selected["binding"], Value::Null, "no binding on selected");
+}
+
+#[test]
+fn workflow_set_round_trips_a_second_intake_stage() {
     let sandbox = Sandbox::new("custom");
     let created = json(&sandbox.run_stdin(&["workflow", "set"], &document("flow", true)));
     assert_eq!(created["workflow"]["name"], "flow");
@@ -198,7 +229,29 @@ fn a_workflow_read_reports_the_stores_revision() {
 }
 
 #[test]
-fn a_ticket_add_without_a_status_lands_in_the_first_intake_stage() {
+fn ticket_set_and_list_round_trip_selected() {
+    let sandbox = Sandbox::new("selected-roundtrip");
+    let added = json(&sandbox.run(&["ticket", "add", "--title", "promoted"]));
+    let id = added["id"].as_str().expect("an id");
+    assert_eq!(added["status"], "backlog", "a new ticket lands backlog");
+
+    let moved = json(&sandbox.run(&["ticket", "set", "--id", id, "--status", "selected"]));
+    assert_eq!(moved["status"], "selected");
+
+    let listed = json(&sandbox.run(&["ticket", "list", "--filter", "all", "--status", "selected"]));
+    assert_eq!(
+        listed["tickets"]
+            .as_array()
+            .expect("tickets")
+            .iter()
+            .map(|ticket| ticket["title"].as_str().unwrap_or(""))
+            .collect::<Vec<_>>(),
+        vec!["promoted"]
+    );
+}
+
+#[test]
+fn ticket_add_lands_in_the_first_intake_stage() {
     let sandbox = Sandbox::new("landing");
     let created = json(&sandbox.run_stdin(&["workflow", "set"], &document("flow", true)));
     let id = created["workflow"]["id"]
@@ -221,6 +274,10 @@ fn an_unknown_stage_is_refused_with_the_valid_keys() {
     assert!(
         failure.contains("backlog"),
         "the refusal names the stages: {failure}"
+    );
+    assert!(
+        failure.contains("selected"),
+        "the refusal names selected among the stages: {failure}"
     );
 }
 
