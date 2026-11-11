@@ -246,8 +246,8 @@ fn store_check(facts: &Facts) -> DoctorCheck {
             name: "store".to_string(),
             ok: false,
             detail: format!(
-                "{path} \u{2014} schema v{version}, which this build does not read; import it \
-                 once with Scripts/import-legacy.py (PRT-18); {backup}"
+                "{path} \u{2014} schema v{version}, which this build does not read; the one-off \
+                 import of a v5 home is recorded in ADR 0031 and the git history (PRT-18); {backup}"
             ),
         },
         Health::Unreadable => {
