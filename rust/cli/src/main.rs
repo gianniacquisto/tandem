@@ -171,6 +171,7 @@ enum NoteCommand {
     Rename(NoteRenameArgs),
     Capture(NoteCaptureArgs),
     Stats(NoteStatsArgs),
+    Prune,
     Links,
     Write(NoteWriteArgs),
     Move(NoteMoveArgs),
@@ -809,6 +810,7 @@ impl NoteCommand {
             Self::Rename(_) => "note rename",
             Self::Capture(_) => "note capture",
             Self::Stats(_) => "note stats",
+            Self::Prune => "note prune",
             Self::Links => "note links",
             Self::Write(_) => "note write",
             Self::Move(_) => "note move",
@@ -1394,6 +1396,10 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
                 .stats(args.project.as_deref())
                 .map_err(Failure::domain)?;
             print(&stats.value)
+        }
+        NoteCommand::Prune => {
+            let pruned = vault.prune().map_err(Failure::domain)?;
+            print(&pruned.value)
         }
         NoteCommand::Links => {
             let health = vault.health().map_err(Failure::domain)?;
