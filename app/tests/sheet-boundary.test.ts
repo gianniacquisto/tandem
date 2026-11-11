@@ -283,3 +283,164 @@ describe('the sheet boundary (TAN-312)', () => {
     expect(errors).toEqual([])
   })
 })
+
+/** The sheet's three metadata controls, by the label the human reads. */
+function control(host: HTMLElement, label: string): HTMLSelectElement {
+  const found = host.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`)
+  if (found === null) throw new Error(`the sheet draws no ${label} control`)
+  return found
+}
+
+/** A pick through the control's own event, as a keyboard or a click makes it. */
+function pick(host: HTMLElement, label: string, value: string): void {
+  const select = control(host, label)
+  // The native setter, so React's tracked value sees the change: assigning
+  // `select.value` directly leaves the tracker holding the old value.
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, value)
+  select.dispatchEvent(new window.Event('change', { bubbles: true }))
+}
+
+async function press(host: HTMLElement, selector: string): Promise<void> {
+  const button = host.querySelector<HTMLButtonElement>(selector)
+  if (button === null) throw new Error(`the sheet draws no ${selector}`)
+  await act(async () => {
+    button.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+}
+
+describe('the sheet metadata row (UI-34)', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+    vi.restoreAllMocks()
+  })
+
+  it('draws status, assignee and lane above the description, in the sticky band', async () => {
+    stubBackend()
+    const { host } = await mountSheet(createElement(TicketSheet, sheetProps()))
+    try {
+      const row = host.querySelector('.sheet__meta')
+      expect(row).not.toBeNull()
+      // The three facts, in the row and out of the collapsed Details.
+      expect(row?.querySelector('select[aria-label="Status"]')).not.toBeNull()
+      expect(row?.querySelector('select[aria-label="Assignee"]')).not.toBeNull()
+      expect(row?.querySelector('select[aria-label="Lane"]')).not.toBeNull()
+      // The status dot rides beside its select, so the colour reads with it.
+      expect(row?.querySelector('.sheet__status-dot')).not.toBeNull()
+
+      // The row is inside the sticky band, and the band is drawn above the
+      // description in document order (4 is DOCUMENT_POSITION_FOLLOWING).
+      const sticky = host.querySelector('.sheet__sticky')
+      expect(sticky?.querySelector('.sheet__meta')).not.toBeNull()
+      const description = host.querySelector('.sheet__description')
+      expect(description).not.toBeNull()
+      expect(Number(row?.compareDocumentPosition(description as Node) ?? 0) & 4).toBe(4)
+    } finally {
+      host.remove()
+    }
+  })
+
+  it('says in sight which write each control makes', async () => {
+    stubBackend()
+    const { host } = await mountSheet(createElement(TicketSheet, sheetProps()))
+    try {
+      const row = host.querySelector('.sheet__meta')
+      expect(row?.textContent).toContain('saves with Save')
+      expect(row?.textContent).toContain('moves at once')
+    } finally {
+      host.remove()
+    }
+  })
+
+  it('still starts its Details closed, with the row in reach', async () => {
+    stubBackend()
+    const { host } = await mountSheet(createElement(TicketSheet, sheetProps()))
+    try {
+      const details = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(
+        (button) => button.textContent === 'Details',
+      )
+      expect(details?.getAttribute('aria-expanded')).toBe('false')
+      expect(host.querySelector('.sheet__details-body')).toBeNull()
+      expect(control(host, 'Lane').closest('.sheet__details')).toBeNull()
+    } finally {
+      host.remove()
+    }
+  })
+
+  it('opens a terse ticket with the row ready to write', async () => {
+    stubBackend((method) => {
+      if (method === 'ticket.show') {
+        return {
+          reply: { ticket: { ...ticket, id: 'terse', description: null, title: 'A terse ticket' }, revision: 7 },
+        }
+      }
+      return undefined
+    })
+    const { host } = await mountSheet(
+      createElement(TicketSheet, sheetProps({ ticketId: 'terse' })),
+    )
+    try {
+      expect(control(host, 'Status').value).toBe(ticket.status)
+      expect(control(host, 'Assignee').value).toBe(ticket.assignee)
+      expect(control(host, 'Lane').value).toBe(ticket.lane)
+      expect(host.querySelector('.sheet__meta')).not.toBeNull()
+    } finally {
+      host.remove()
+    }
+  })
+
+  it('drafts status and assignee for one Save that carries only what moved', async () => {
+    stubBackend()
+    const onWrite = vi.fn(async () => ({ ok: true as const }))
+    const { host } = await mountSheet(createElement(TicketSheet, sheetProps({ onWrite })))
+    try {
+      await act(async () => {
+        pick(host, 'Status', 'in-progress')
+        pick(host, 'Assignee', 'human')
+      })
+      // Neither pick writes: both wait for Save.
+      expect(onWrite).not.toHaveBeenCalled()
+
+      await press(host, '.sheet__save')
+      expect(onWrite).toHaveBeenCalledTimes(1)
+      expect(onWrite).toHaveBeenCalledWith(
+        {
+          method: 'ticket.set',
+          params: {
+            id: ticket.id,
+            title: null,
+            status: 'in-progress',
+            assignee: 'human',
+            description: null,
+          },
+        },
+        7,
+        undefined,
+      )
+    } finally {
+      host.remove()
+    }
+  })
+
+  it('moves the lane at once, and leaves Save nothing to write', async () => {
+    stubBackend()
+    const onWrite = vi.fn(async () => ({ ok: true as const }))
+    const { host } = await mountSheet(createElement(TicketSheet, sheetProps({ onWrite })))
+    try {
+      await act(async () => {
+        pick(host, 'Lane', 'Retro')
+      })
+      expect(onWrite).toHaveBeenCalledTimes(1)
+      expect(onWrite).toHaveBeenCalledWith(
+        { method: 'ticket.move', params: { id: ticket.id, lane: 'Retro', index: null } },
+        7,
+        undefined,
+      )
+
+      await press(host, '.sheet__save')
+      expect(onWrite).toHaveBeenCalledTimes(1)
+    } finally {
+      host.remove()
+    }
+  })
+})

@@ -511,3 +511,35 @@ describe('the sheet reads under payload drift (TAN-312)', () => {
     ])
   })
 })
+
+describe('the sheet metadata row (UI-34)', () => {
+  it('draws the row above the description, inside the sticky band', () => {
+    const sheet = source('faces/TicketSheet.tsx')
+    const bodyAt = sheet.indexOf('sheet__body')
+    const stickyAt = sheet.indexOf('sheet__sticky')
+    const metaAt = sheet.indexOf('sheet__meta')
+    const descriptionAt = sheet.indexOf('sheet__description')
+    expect(stickyAt).toBeGreaterThan(bodyAt)
+    expect(metaAt).toBeGreaterThan(stickyAt)
+    expect(descriptionAt).toBeGreaterThan(metaAt)
+  })
+
+  it('reuses the three option helpers, with no second option list beside them', () => {
+    const sheet = source('faces/TicketSheet.tsx')
+    expect(sheet.match(/boardStatuses\(/g)?.length).toBe(1)
+    expect(sheet.match(/assigneeChoices\(/g)?.length).toBe(1)
+    expect(sheet.match(/laneChoices\(/g)?.length).toBe(1)
+    expect(sheet).toContain('moveToLane')
+    expect(sheet).toContain("method: 'ticket.move'")
+  })
+
+  it('names each control\'s write in sight, so two save semantics are legible', () => {
+    const sheet = source('faces/TicketSheet.tsx')
+    expect(sheet).toContain('saves with Save')
+    expect(sheet).toContain('moves at once')
+    // The lane picker writes through the move path, never a fabricated set.
+    const metaAt = sheet.indexOf('sheet__meta')
+    const laneAt = sheet.indexOf('aria-label="Lane"')
+    expect(laneAt).toBeGreaterThan(metaAt)
+  })
+})
