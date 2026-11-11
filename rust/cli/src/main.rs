@@ -172,6 +172,7 @@ enum NoteCommand {
     Rename(NoteRenameArgs),
     Capture(NoteCaptureArgs),
     Stats(NoteStatsArgs),
+    Prune,
     Links,
     Write(NoteWriteArgs),
     Move(NoteMoveArgs),
@@ -887,6 +888,7 @@ impl NoteCommand {
             Self::Rename(_) => "note rename",
             Self::Capture(_) => "note capture",
             Self::Stats(_) => "note stats",
+            Self::Prune => "note prune",
             Self::Links => "note links",
             Self::Write(_) => "note write",
             Self::Move(_) => "note move",
@@ -1596,6 +1598,10 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
                 .map_err(Failure::domain)?;
             print(&stats.value)
         }
+        NoteCommand::Prune => {
+            let pruned = vault.prune().map_err(Failure::domain)?;
+            print(&pruned.value)
+        }
         NoteCommand::Links => {
             let health = vault.health().map_err(Failure::domain)?;
             print(&health.value)
@@ -1750,17 +1756,6 @@ fn session(home: &Home, command: Option<&SessionCommand>) -> Result<(), Failure>
                     },
                 )
                 .map_err(Failure::domain)?;
-            if stamp.stamped && stamp.session.carries_usage() {
-                // The comment states the record's attributed share, the same row
-                // the report counts (TAN-352); the record keeps the snapshot.
-                let recorded = sessions.list(None, None).map_err(Failure::domain)?;
-                let attributed = tandem_core::domain::usage::attribute_harness_usage(&recorded);
-                let share = attributed
-                    .into_iter()
-                    .find(|row| row.id == stamp.session.id)
-                    .unwrap_or_else(|| stamp.session.clone());
-                post_usage_comments(&store, &share)?;
-            }
             print(&SessionResult {
                 session: stamp.session,
                 note: stamp.note,
@@ -2342,25 +2337,6 @@ fn usage_model(raw: Option<&str>) -> Option<String> {
     raw.map(str::trim)
         .filter(|model| !model.is_empty())
         .map(str::to_string)
-}
-
-/// The one `usage` comment a stamped session posts on every ticket it carried.
-fn post_usage_comments(
-    store: &Store,
-    session: &tandem_core::domain::session::Session,
-) -> Result<(), Failure> {
-    if session.tickets.is_empty() {
-        return Ok(());
-    }
-    let board = Board::new(store.clone());
-    let author = session.agent.clone().unwrap_or_else(|| "usage".to_string());
-    let body = tandem_core::domain::session::usage_comment_body(session);
-    for ticket in &session.tickets {
-        board
-            .append_comment(ticket, &author, &body)
-            .map_err(Failure::domain)?;
-    }
-    Ok(())
 }
 
 /// A sprint's mode: absent is `serial`.
