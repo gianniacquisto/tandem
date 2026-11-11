@@ -55,7 +55,7 @@ A hold closes via a comment plus `ticket_set`: the human decides in the app, fro
 
 **Every pass starts with `ticket_list` and `assignee` human.** That read is the queue, whole-board on purpose: a decision left unread is a worse failure than a read that spans lanes, but acting on another lane's ticket belongs to that project's own sprint.
 
-**An escalated merge is already the human's act.** An `in-review` ticket assigned `human` whose comment log names a PR has been merged by the human outside any pass — `gh pr view <n> --json state,mergedAt,mergeCommit` answers `MERGED` — so the pass completes it: `ticket complete --id <id>` with the merge commit in a signed comment. A PR still open leaves the ticket in the human's queue, untouched.
+**An escalated merge is already the human's act.** An `in-review` ticket assigned `human` whose comment log names a PR has been merged by the human outside any pass — `gh pr view <n> --json state,mergedAt,mergeCommit` answers `MERGED` — so the pass completes it: `ticket_complete` with `id`, the merge commit in a signed comment. A PR still open leaves the ticket in the human's queue, untouched.
 
 ## 6. Close
 

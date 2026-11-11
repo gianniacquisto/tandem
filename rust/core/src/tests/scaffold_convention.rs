@@ -1533,17 +1533,59 @@ fn the_build_skill_measures_the_ratio_and_briefs_below_it() {
 /// prose_resolves` proves its MCP table against the registry).
 const CLI_REFERENCE: &str = "skills/tandem/SKILL.md";
 
-/// The exception set: the human's install pass, the CLI-only note verbs
-/// (`note rename`, and `note prune`, which TAN-326 landed with no MCP tool
-/// beside it), the MCP server as a config fact, and `--help` as a pointer at
-/// the CLI's own documentation.
+/// The exception set: the human's install pass, the two CLI-only note verbs
+/// (`note rename`, which no tool covers, and `note prune`, which TAN-322 landed
+/// under PR #413 with no tool beside it; TAN-364 files that gap), the MCP
+/// server as a config fact, and `--help` as a pointer at the CLI's own
+/// documentation.
 const TANDEM_CLI_EXCEPTIONS: [&str; 5] = ["setup", "note rename", "note prune", "mcp", "--help"];
 
-/// Every verb the CLI spells, so the word after `tandem-cli` is classified as
-/// a command form or as a noun ("on PATH", a path, a version).
+/// Every top-level verb the CLI's clap enum spells (`rust/cli/src/main.rs`), so
+/// the word after `tandem-cli` is classified as a command form or as a noun
+/// ("on PATH", a path, a version). `rpc` is a verb like the rest; there is no
+/// `usage` verb.
 const TANDEM_CLI_VERBS: [&str; 12] = [
-    "ticket", "lane", "project", "settings", "note", "session", "sprint", "doctor", "setup", "mcp",
-    "usage", "workflow",
+    "ticket", "lane", "project", "settings", "note", "session", "sprint", "doctor", "setup", "rpc",
+    "mcp", "workflow",
+];
+
+/// Every subcommand each top-level verb spells, so a bare `verb subcommand`
+/// span in agent prose classifies as the CLI command form it is. A lone verb
+/// word is a noun ("the ticket surface"), and a tool name (`ticket_set`) is the
+/// tool's spelling, so the bare scan needs both words to read a command.
+const TANDEM_CLI_SUBCOMMANDS: [(&str, &[&str]); 9] = [
+    (
+        "ticket",
+        &[
+            "list", "show", "add", "file", "set", "move", "block", "unblock", "complete",
+            "archive", "comment",
+        ],
+    ),
+    ("lane", &["list", "add", "rename", "delete", "move"]),
+    ("project", &["list", "add", "rename", "delete"]),
+    (
+        "note",
+        &[
+            "rename",
+            "capture",
+            "stats",
+            "prune",
+            "links",
+            "write",
+            "move",
+            "create",
+            "create-folder",
+            "daily",
+        ],
+    ),
+    ("session", &["start", "end", "link", "list", "show"]),
+    (
+        "sprint",
+        &["open", "ticket", "run", "close", "list", "show"],
+    ),
+    ("workflow", &["list", "show", "set", "use", "delete"]),
+    ("setup", &["install", "uninstall", "status"]),
+    ("settings", &["get", "set"]),
 ];
 
 /// Every markdown file the host serves as the agent face (ADR 0034), in a
@@ -1576,12 +1618,20 @@ fn agent_face_files() -> Vec<String> {
     files
 }
 
-/// The command form on one line, when the line writes one: `tandem-cli`
-/// followed by a CLI verb. A `tandem-cli` followed by anything else is a noun
+/// Whether a classified form is one the exception set admits. Prefixed forms
+/// classify as the verb (`setup`), bare spans as verb and subcommand
+/// (`setup install`), so the verb half is read too; `note rename` and
+/// `note prune` stay the two verbs whose own name is the exception.
+fn is_cli_exception(form: &str) -> bool {
+    TANDEM_CLI_EXCEPTIONS.contains(&form)
+        || form
+            .split_whitespace()
+            .next()
+            .is_some_and(|verb| TANDEM_CLI_EXCEPTIONS.contains(&verb))
+}
+/// that token is a CLI verb. A `tandem-cli` followed by anything else is a noun
 /// (the binary on PATH, a path, a version) and is no act.
-fn tandem_cli_form(line: &str) -> Option<String> {
-    let start = line.find("tandem-cli")?;
-    let rest = &line[start + "tandem-cli".len()..];
+fn classify_tandem_cli_rest(rest: &str) -> Option<String> {
     let rest = rest.trim_start_matches(|character: char| {
         matches!(character, '`' | '$' | '"' | ',' | ';' | ':')
     });
@@ -1606,6 +1656,41 @@ fn tandem_cli_form(line: &str) -> Option<String> {
     Some(first.to_string())
 }
 
+/// Every command form a line writes, one per `tandem-cli` occurrence: the
+/// token after each, classified as a command form or as a noun. A line may
+/// write more than one, so all occurrences are read, never only the first.
+fn tandem_cli_forms(line: &str) -> Vec<String> {
+    line.match_indices("tandem-cli")
+        .filter_map(|(start, _)| classify_tandem_cli_rest(&line[start + "tandem-cli".len()..]))
+        .collect()
+}
+
+/// The bare command form a line writes in a code span: a backticked span whose
+/// first word is a CLI verb and whose second is one of that verb's
+/// subcommands. A single verb word is a noun, and a tool name (`ticket_set`) is
+/// the tool's spelling, so neither reads as a CLI act.
+fn bare_cli_form(line: &str) -> Option<String> {
+    for span in line.split('`').skip(1).step_by(2) {
+        let mut words = span.split_whitespace();
+        let Some(verb) = words.next() else {
+            continue;
+        };
+        let Some(second) = words.next() else {
+            continue;
+        };
+        let subcommand = second.trim_end_matches(|character: char| {
+            !character.is_ascii_alphanumeric() && character != '-'
+        });
+        let spells_it = TANDEM_CLI_SUBCOMMANDS
+            .iter()
+            .any(|(name, subcommands)| *name == verb && subcommands.contains(&subcommand));
+        if spells_it {
+            return Some(format!("{verb} {subcommand}"));
+        }
+    }
+    None
+}
+
 /// The inline code spans on one line that are a single identifier, the shape
 /// the prose writes a tool call in.
 fn backticked_tokens(line: &str) -> Vec<&str> {
@@ -1625,11 +1710,15 @@ fn backticked_tokens(line: &str) -> Vec<&str> {
 /// TAN-325: a pass's spoken command is a tool call. The face carried the CLI's
 /// shell spellings beside every verb, and a pass that followed them paid a
 /// shell round trip the tools exist to avoid (and the CLI's stdin and flag
-/// shapes have no meaning over a tool call). The exception set is the human's
-/// install pass, the CLI-only note rename, the MCP server as a config fact and
-/// `--help` as a documentation pointer; the allowlist names it exactly, and
-/// the classifier assertions below prove which forms each side admits, so the
-/// exceptions and the prose cannot drift apart in either direction.
+/// shapes have no meaning over a tool call). The scan reads both spellings the
+/// face can carry: `tandem-cli`-prefixed forms, every occurrence on a line, and
+/// bare `verb subcommand` forms in a code span. The exception set is the
+/// human's install pass, the two CLI-only note verbs (`note rename`, and
+/// `note prune` from TAN-322's PR #413 with its tool gap filed as TAN-364),
+/// the MCP server as a config fact and `--help` as a documentation pointer; the
+/// allowlist names it exactly, and the classifier assertions below prove which
+/// forms each side admits, so the exceptions and the prose cannot drift apart
+/// in either direction.
 #[test]
 fn no_tandem_cli_command_lines_in_agent_prose() {
     let files = agent_face_files();
@@ -1639,10 +1728,12 @@ fn no_tandem_cli_command_lines_in_agent_prose() {
             continue;
         }
         for (index, line) in file(path).lines().enumerate() {
-            if let Some(form) = tandem_cli_form(line)
-                && !TANDEM_CLI_EXCEPTIONS.contains(&form.as_str())
-            {
-                offenders.push(format!("{path}:{}: tandem-cli {form}", index + 1));
+            let mut forms = tandem_cli_forms(line);
+            forms.extend(bare_cli_form(line));
+            for form in forms {
+                if !is_cli_exception(&form) {
+                    offenders.push(format!("{path}:{}: command form `{form}`", index + 1));
+                }
             }
         }
     }
@@ -1659,9 +1750,12 @@ fn no_tandem_cli_command_lines_in_agent_prose() {
         "`tandem-cli mcp`",
         "`tandem-cli --help`",
     ] {
-        let form = tandem_cli_form(allowed).expect("the exception is a command form");
+        let form = tandem_cli_forms(allowed)
+            .into_iter()
+            .next()
+            .expect("the exception is a command form");
         assert!(
-            TANDEM_CLI_EXCEPTIONS.contains(&form.as_str()),
+            is_cli_exception(&form),
             "`{allowed}` classifies as `{form}`, which the allowlist must name"
         );
     }
@@ -1670,20 +1764,51 @@ fn no_tandem_cli_command_lines_in_agent_prose() {
         "`tandem-cli note capture`",
         "`tandem-cli session end`",
         "`tandem-cli doctor`",
+        "`tandem-cli rpc`",
     ] {
-        let form = tandem_cli_form(flagged).expect("the form is a command");
+        let form = tandem_cli_forms(flagged)
+            .into_iter()
+            .next()
+            .expect("the form is a command");
         assert!(
-            !TANDEM_CLI_EXCEPTIONS.contains(&form.as_str()),
+            !is_cli_exception(&form),
             "`{flagged}` classifies as `{form}`, which the allowlist must not admit"
         );
     }
+    assert_eq!(
+        tandem_cli_forms("`tandem-cli ticket list` then `tandem-cli session end`"),
+        vec!["ticket".to_string(), "session".to_string()],
+        "a line's every `tandem-cli` occurrence is read, not only the first"
+    );
     assert!(
-        tandem_cli_form("`tandem-cli` is on PATH").is_none(),
+        tandem_cli_forms("`tandem-cli` is on PATH").is_empty(),
         "a bare `tandem-cli` is a noun, not an act"
     );
     assert!(
-        tandem_cli_form("`command -v tandem-cli`").is_none(),
+        tandem_cli_forms("`command -v tandem-cli`").is_empty(),
         "the binary in a lookup is a noun, not an act"
+    );
+
+    assert_eq!(
+        bare_cli_form("so the pass completes it: `ticket complete --id <id>`"),
+        Some("ticket complete".to_string()),
+        "a bare `verb subcommand` span is a command form"
+    );
+    assert!(
+        !is_cli_exception(&bare_cli_form("`ticket complete`").unwrap()),
+        "a bare build or review command is not an exception"
+    );
+    assert_eq!(
+        bare_cli_form("`note prune` is the one CLI step"),
+        Some("note prune".to_string())
+    );
+    assert!(
+        bare_cli_form("the `session record` is a row").is_none(),
+        "a verb plus a plain noun is prose, not a command"
+    );
+    assert!(
+        bare_cli_form("`ticket_set` with `status` in-review").is_none(),
+        "a tool name is the tool's spelling, not the CLI's"
     );
 
     let reference = file(CLI_REFERENCE);
