@@ -16,12 +16,24 @@ description: "The roster — which agent fills which role, what to write in --as
 
 `sprint` and `human` fill no subagent — the sprint is a procedure the session runs, the human is the decision. `retro` is not a role: it is a skill (`skills/retro/SKILL.md`) that runs at every sprint close and on human request, filing `backlog` tickets into the project's lane, and into `Retro` only when no project owns the finding. Capture is not a role either: it is the session rule in `AGENTS.md`.
 
+## The specialists
+
+A specialist reader owns one lens, not a ticket. It speaks in the minutes at refine and on the PR at review, and the reviewer keeps the one verdict.
+
+| specialist | the lens it owns | where it lives | the rule |
+| --- | --- | --- | --- |
+| `architect` | `architecture` | `agents/architect.md` | speaks as `--author`; owns no ticket; never merges |
+| `security` | `security` | `agents/security.md` | speaks as `--author`; owns no ticket; never merges |
+| `ux` | `ux` | `agents/ux.md` | speaks as `--author`; owns no ticket; never merges |
+
+The lens table in `skills/review-lenses/SKILL.md` is the mapping: it names each lens's owner beside the file it reads.
+
 ## The name rule
 
-One vocabulary, two fields. A role's name goes in `--assignee` when it owns a ticket and in `--author` when it speaks on one.
+The pass table's owner can be an assignee; a specialist only speaks. One vocabulary, two fields. A role's name goes in `--assignee` when it owns a ticket and in `--author` when it speaks on one.
 
 - `--assignee <role>` — the owner: `tandem-cli ticket set --id <id> --status in-progress --assignee builder`. `--assignee self` expands to `$TANDEM_AGENT`; `--assignee human` hands a decision to the human.
-- `--author <role>` — the speaker: `tandem-cli ticket comment add --id <id> --author reviewer --body …`.
+- `--author <role>` — the speaker: `tandem-cli ticket comment add --id <id> --author reviewer --body …`. A specialist signs `--author architect`, `--author security` or `--author ux`, and is never an assignee.
 - **`--author self` writes the four letters `self`.** The CLI expands `self` for `--assignee` and `--origin` only. Write the role out; `--author self` names nobody.
 - **Omitting `--author` is the unnamed author `""`** — a gap in the record, not a style choice.
 
