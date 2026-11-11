@@ -13,7 +13,15 @@
     "paths": [
       {
         "action": "linked",
+        "path": "<home>/.agents/skills/golden-skill"
+      },
+      {
+        "action": "linked",
         "path": "<home>/.claude/skills/golden-skill"
+      },
+      {
+        "action": "linked",
+        "path": "<home>/.claude/agents/golden.md"
       },
       {
         "action": "linked",
@@ -30,16 +38,10 @@
           "state": "absent"
         },
         {
-          "expectedLinks": 1,
+          "expectedLinks": 2,
           "host": "claude",
-          "links": 1,
+          "links": 2,
           "state": "installed"
-        },
-        {
-          "expectedLinks": 1,
-          "host": "agents",
-          "links": 0,
-          "state": "absent"
         }
       ],
       "installedVersion": "0.0.0-golden",

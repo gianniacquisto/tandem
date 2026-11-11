@@ -1,4 +1,5 @@
 ---
+name: builder
 description: Builds one ticket — worktree, build, verify, open the PR, hand it to review
 mode: subagent
 color: "#6b7280"

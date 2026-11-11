@@ -1,4 +1,5 @@
 ---
+name: reviewer
 description: Reviews one PR against its ticket and the repo's rules, then merges a two-way door with low blast radius or escalates the rest
 mode: subagent
 color: "#8b5cf6"

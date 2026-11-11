@@ -263,6 +263,15 @@ fn install_writes_the_bundled_face_and_links_every_skill_and_prompt() {
             Some(f.face().join("agents").join(format!("{prompt}.md")))
         );
     }
+    for skill in &f.skills {
+        let canonical = f.home.join(".agents/skills").join(skill);
+        assert!(is_symlink(&canonical), "{skill} is canonical too");
+        assert_eq!(
+            target(&canonical),
+            Some(f.face().join("skills").join(skill)),
+            "the canonical link points into the face"
+        );
+    }
     let config = fs::read_to_string(f.opencode_config()).unwrap();
     assert!(config.contains(&setup::text(&f.face().join("AGENTS.md"))));
     assert_eq!(report.verb, "install");
@@ -464,25 +473,100 @@ fn install_refuses_an_unwritable_home_and_writes_nothing() {
 }
 
 #[test]
-fn claude_and_agents_are_written_only_when_named() {
+fn the_canonical_links_are_written_on_every_run_and_claude_only_when_named() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
     install(&f, &[Host::Opencode], false).expect("the default install");
-    assert!(!f.home.join(".claude").exists());
-    assert!(!f.home.join(".agents").exists());
-
-    let all = install(&f, &[Host::Opencode, Host::Claude, Host::Agents], false)
-        .expect("the all-host install");
-    assert!(is_symlink(&f.home.join(".claude/skills/alpha")));
+    assert!(!f.home.join(".claude").exists(), "claude is not touched");
     assert!(is_symlink(&f.home.join(".agents/skills/alpha")));
+    assert!(is_symlink(&f.home.join(".agents/skills/beta")));
+
+    let claude = install(&f, &[Host::Claude], false).expect("the claude install");
+    assert!(is_symlink(&f.home.join(".claude/skills/alpha")));
+    assert!(
+        is_symlink(&f.home.join(".claude/agents/builder.md")),
+        "a claude run links the prompts too"
+    );
     assert!(f.home.join(".claude/CLAUDE.md").exists());
-    assert_eq!(all.manifest, "used");
+    assert_eq!(claude.manifest, "used");
     let manifest = setup::manifest(&f.tandem_home).unwrap();
     let hosts: std::collections::HashSet<&str> =
         manifest.hosts.iter().map(String::as_str).collect();
-    assert_eq!(
-        hosts,
-        ["opencode", "claude", "agents"].into_iter().collect()
+    assert_eq!(hosts, ["opencode", "claude"].into_iter().collect());
+    assert!(
+        !f.home.join(".agents/AGENTS.md").exists(),
+        "the canonical root carries skills, never an instruction file"
     );
+}
+
+#[test]
+fn a_real_file_under_the_canonical_root_is_never_replaced() {
+    let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
+    let path = f.home.join(".agents/skills/alpha");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, "the human's own\n").unwrap();
+
+    let report = install(&f, &[Host::Opencode], true).expect("the install runs");
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        "the human's own\n",
+        "even --force leaves a real file alone"
+    );
+    assert_eq!(action(&report, &setup::text(&path)).unwrap().action, "skip");
+    let blocked = report
+        .state
+        .warnings
+        .iter()
+        .find(|warning| warning.code == Code::BlockedPath)
+        .expect("a blocked canonical path");
+    assert_eq!(blocked.path.as_deref(), Some(setup::text(&path).as_str()));
+    assert_eq!(blocked.severity, Severity::Warn);
+    assert!(
+        is_symlink(&f.home.join(".agents/skills/beta")),
+        "the other canonical links are still written"
+    );
+}
+
+#[test]
+fn the_manifest_records_the_canonical_links_and_merges_them_across_two_runs() {
+    let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
+    install(&f, &[Host::Opencode], false).expect("the opencode install");
+    let canonical = setup::text(&f.home.join(".agents/skills/alpha"));
+
+    let first = setup::manifest(&f.tandem_home).expect("the manifest");
+    let record = first
+        .links
+        .iter()
+        .find(|link| link.path == canonical)
+        .expect("the canonical link is recorded");
+    assert_eq!(record.host, "canonical");
+
+    install(&f, &[Host::Claude], false).expect("the claude install");
+    let second = setup::manifest(&f.tandem_home).expect("the merged manifest");
+    assert_eq!(
+        second
+            .links
+            .iter()
+            .filter(|link| link.path == canonical)
+            .count(),
+        1,
+        "one canonical record, not two"
+    );
+    assert_eq!(second.hosts, ["opencode", "claude"]);
+}
+
+#[test]
+fn a_second_install_leaves_every_canonical_link_ok() {
+    let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
+    install(&f, &[Host::Opencode], false).expect("the first install");
+    let second = install(&f, &[Host::Opencode], false).expect("the second install");
+    for skill in &f.skills {
+        let path = setup::text(&f.home.join(".agents/skills").join(skill));
+        assert_eq!(
+            action(&second, &path).map(|action| action.action.as_str()),
+            Some("ok"),
+            "{skill} is left alone by the second run"
+        );
+    }
 }
 
 /// The file list ADR 0034 names, exactly: the face, the manifest, the host
@@ -491,7 +575,7 @@ fn claude_and_agents_are_written_only_when_named() {
 #[test]
 fn install_writes_exactly_the_adr_file_list() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
-    install(&f, &[Host::Opencode, Host::Claude, Host::Agents], false).expect("the install runs");
+    install(&f, &[Host::Opencode, Host::Claude], false).expect("the install runs");
 
     let found: Vec<String> = tree(&f.home).into_keys().collect();
     let face = setup::text(&f.face());
@@ -499,6 +583,7 @@ fn install_writes_exactly_the_adr_file_list() {
         ".agents/skills/alpha".to_string(),
         ".agents/skills/beta".to_string(),
         ".claude/CLAUDE.md".to_string(),
+        ".claude/agents/builder.md".to_string(),
         ".claude/skills/alpha".to_string(),
         ".claude/skills/beta".to_string(),
         ".config/opencode/agents/builder.md".to_string(),
@@ -585,15 +670,15 @@ fn status_reports_each_state() {
     let empty = state(&f, None);
     assert!(empty.hosts.iter().all(|host| host.state == "absent"));
 
-    install(&f, &[Host::Opencode, Host::Claude, Host::Agents], false).expect("the install runs");
+    install(&f, &[Host::Opencode, Host::Claude], false).expect("the install runs");
     let checkout = f.root.join("checkout/skills/alpha");
     fs::create_dir_all(&checkout).unwrap();
     let claude = f.home.join(".claude/skills/alpha");
     setup::remove_link(&claude).unwrap();
     link(&claude, &checkout);
-    let agents = f.home.join(".agents/skills/beta");
-    setup::remove_link(&agents).unwrap();
-    fs::write(&agents, "the human's own\n").unwrap();
+    let canonical = f.home.join(".agents/skills/beta");
+    setup::remove_link(&canonical).unwrap();
+    fs::write(&canonical, "the human's own\n").unwrap();
 
     let wired = state(&f, None);
     let by_host = |host: &str| {
@@ -607,7 +692,18 @@ fn status_reports_each_state() {
     };
     assert_eq!(by_host("opencode"), "installed");
     assert_eq!(by_host("claude"), "checkout");
-    assert_eq!(by_host("agents"), "real-file");
+    assert!(
+        wired.hosts.iter().all(|host| host.host != "agents"),
+        "the canonical root is not a host"
+    );
+    assert!(
+        wired
+            .warnings
+            .iter()
+            .any(|warning| warning.code == Code::BlockedPath
+                && warning.path.as_deref() == Some(setup::text(&canonical).as_str())),
+        "a real file under the canonical root is reported"
+    );
     assert_eq!(wired.installed_version.as_deref(), Some("1.0"));
     assert_eq!(wired.bundled_version.as_deref(), Some("1.0"));
 }
@@ -622,7 +718,11 @@ fn the_manifest_records_every_link_and_edit_and_survives_the_replace() {
     let manifest = setup::manifest(&f.tandem_home).expect("the manifest");
     assert_eq!(manifest.version, "1.0");
     assert_eq!(manifest.hosts, ["opencode"]);
-    assert_eq!(manifest.links.len(), f.skills.len() + f.prompts.len());
+    assert_eq!(
+        manifest.links.len(),
+        f.skills.len() * 2 + f.prompts.len(),
+        "the opencode relay plus the canonical links every run writes"
+    );
     assert!(manifest.links.iter().all(|link| link.kind == "symlink"));
     assert!(
         manifest.links.iter().any(|link| {
@@ -686,7 +786,7 @@ fn the_manifest_merges_across_two_runs() {
 fn uninstall_removes_exactly_what_install_wrote() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
     let before = tree(&f.root);
-    install(&f, &[Host::Opencode, Host::Claude, Host::Agents], false).expect("the install runs");
+    install(&f, &[Host::Opencode, Host::Claude], false).expect("the install runs");
 
     let report =
         setup::uninstall(&f.tandem_home, &f.environment, None).expect("the uninstall runs");
@@ -700,6 +800,51 @@ fn uninstall_removes_exactly_what_install_wrote() {
     );
     assert!(!f.face().exists());
     assert!(!f.manifest().exists());
+}
+
+#[test]
+fn uninstall_removes_the_host_links_then_the_canonical_ones_and_spares_foreign_files() {
+    let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
+    install(&f, &[Host::Opencode], false).expect("the install runs");
+    let canonical = f.home.join(".agents/skills/beta");
+    setup::remove_link(&canonical).unwrap();
+    fs::write(&canonical, "the human's own\n").unwrap();
+    let foreign = f.home.join(".agents/skills/ponytail");
+    fs::write(&foreign, "another tool's skill\n").unwrap();
+
+    let report =
+        setup::uninstall(&f.tandem_home, &f.environment, None).expect("the uninstall runs");
+
+    let order: Vec<&str> = report
+        .paths
+        .iter()
+        .map(|action| action.path.as_str())
+        .collect();
+    let host = order
+        .iter()
+        .position(|path| *path == setup::text(&f.home.join(".config/opencode/skills/alpha")))
+        .expect("the host link is removed");
+    let canonical_link = order
+        .iter()
+        .position(|path| *path == setup::text(&f.home.join(".agents/skills/alpha")))
+        .expect("the canonical link is removed");
+    assert!(host < canonical_link, "the host links go first: {order:?}");
+
+    assert_eq!(
+        fs::read_to_string(&canonical).unwrap(),
+        "the human's own\n",
+        "a real file at a canonical path is left"
+    );
+    assert_eq!(
+        action(&report, &setup::text(&canonical)).unwrap().action,
+        "left"
+    );
+    assert_eq!(
+        fs::read_to_string(&foreign).unwrap(),
+        "another tool's skill\n",
+        "an unrecorded path is never deleted"
+    );
+    assert!(!f.face().exists());
 }
 
 #[test]
@@ -1125,7 +1270,7 @@ fn a_global_agents_md_beside_the_instructions_entry_warns_double_load() {
 #[test]
 fn a_host_disabled_by_an_opencode_variable_warns() {
     let f = fixture(&["alpha", "beta"], &["builder"], "1.0");
-    install(&f, &[Host::Claude, Host::Agents], false).expect("the install runs");
+    install(&f, &[Host::Claude], false).expect("the install runs");
     assert!(
         !has(&warnings(&f, None), Code::HostDisabled),
         "no variable set, no warning"
@@ -1148,9 +1293,10 @@ fn a_host_disabled_by_an_opencode_variable_warns() {
             .any(|warning| warning.code == Code::HostDisabled && warning.detail.contains("claude"))
     );
     assert!(
-        disabled
+        !disabled
             .iter()
-            .any(|warning| warning.code == Code::HostDisabled && warning.detail.contains("agents"))
+            .any(|warning| warning.code == Code::HostDisabled && warning.detail.contains("agents")),
+        "the canonical root is not a host and cannot be disabled"
     );
 }
 

@@ -10,8 +10,8 @@
     "tandem-cli setup: the agent face, installed and inspected.",
     "",
     "Usage:",
-    "  tandem-cli setup install [--host <opencode|claude|agents>] [--force]",
-    "  tandem-cli setup uninstall [--host <opencode|claude|agents>]",
+    "  tandem-cli setup install [--host <opencode|claude>] [--force]",
+    "  tandem-cli setup uninstall [--host <opencode|claude>]",
     "  tandem-cli setup status"
   ],
   "stdoutKind": "text"

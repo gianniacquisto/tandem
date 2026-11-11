@@ -1,9 +1,9 @@
 //! The host instruction files, ported from `SetupInstall`'s edit half.
 //!
 //! OpenCode takes one `instructions` entry in `opencode.json`; Claude takes a
-//! marked block in `CLAUDE.md`; `agents` has no instruction file. Both writes are
-//! textual so the human's formatting survives, and the manifest records the exact
-//! inserted text so removal is byte-exact.
+//! marked block in `CLAUDE.md`. Both writes are textual so the human's
+//! formatting survives, and the manifest records the exact inserted text so
+//! removal is byte-exact.
 //!
 //! The OpenCode config is read tolerantly: the live file is JSONC (comments and
 //! trailing commas) and the host parses it, so this reader strips them from a
@@ -34,30 +34,29 @@ fn mcp_tandem_entry() -> String {
     format!("\"tandem\": {{\"type\": \"local\", \"command\": [\"{MCP_BINARY}\", \"mcp\"]}}")
 }
 
-/// The one instruction route a host takes, or none (`agents`).
+/// The one instruction route a host takes.
 pub fn instruction_edit(host: Host, context: &Context) -> Option<InstructionEdit> {
     let agents_md = text(&context.face().join("AGENTS.md"));
-    match host {
-        Host::Opencode => Some(InstructionEdit {
+    Some(match host {
+        Host::Opencode => InstructionEdit {
             host,
             file: context.opencode_config(),
             kind: "instructions-entry",
             entry: agents_md,
-        }),
-        Host::Claude => Some(InstructionEdit {
+        },
+        Host::Claude => InstructionEdit {
             host,
             file: context.claude_md(),
             kind: "claude-block",
             entry: format!("<!-- tandem:begin -->\n@{agents_md}\n<!-- tandem:end -->"),
-        }),
-        Host::Agents => None,
-    }
+        },
+    })
 }
 
 /// The MCP server route: OpenCode's `mcp.tandem` entry in `opencode.json`,
 /// so a fresh session lists working Tandem tools with no manual config.
-/// Claude and `agents` take no JSON route here: Claude's servers are added
-/// with `claude mcp add`, and `agents` has no instruction file.
+/// Claude takes no JSON route here: its servers are added with
+/// `claude mcp add`.
 pub fn mcp_edit(context: &Context) -> Option<InstructionEdit> {
     Some(InstructionEdit {
         host: Host::Opencode,

@@ -132,9 +132,34 @@ fn setup_status_exits_zero_and_names_each_host() {
         .iter()
         .filter_map(|host| host["host"].as_str())
         .collect();
-    assert_eq!(
-        names,
-        ["opencode", "claude", "agents"].into_iter().collect()
+    assert_eq!(names, ["opencode", "claude"].into_iter().collect());
+}
+
+#[test]
+fn setup_install_refuses_the_retired_agents_host_and_writes_nothing() {
+    let sandbox = Sandbox::new("retired-agents");
+    sandbox.write_bundle("1.0");
+
+    let output = run(
+        &sandbox,
+        &["setup", "install", "--host", "agents"],
+        Some(&sandbox.bundle()),
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(text(&output), "", "no JSON on stdout");
+    assert!(stderr(&output).contains("retired"), "{}", stderr(&output));
+    assert!(stderr(&output).contains("agents"), "{}", stderr(&output));
+    assert!(
+        !sandbox.tandem_home().join("agent").exists(),
+        "nothing is written"
+    );
+    assert!(
+        !sandbox.tandem_home().join("agent-install.json").exists(),
+        "no manifest is written"
+    );
+    assert!(
+        !sandbox.user().join(".agents").exists(),
+        "no canonical link is written"
     );
 }
 

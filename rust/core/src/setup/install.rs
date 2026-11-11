@@ -1,9 +1,9 @@
 //! `setup install` and `setup uninstall`, ported from `SetupInstall`'s verbs.
 //!
-//! Install writes the face, then each host's links and instruction route, then
-//! the manifest; a pre-probe refuses before anything is written when a root is
-//! unwritable. Uninstall removes exactly what the manifest records, in order,
-//! and never a path it did not record.
+//! Install writes the face, then the canonical links and each host's links and
+//! instruction route, then the manifest; a pre-probe refuses before anything is
+//! written when a root is unwritable. Uninstall removes exactly what the manifest
+//! records, in order, and never a path it did not record.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,11 +12,16 @@ use super::config::{apply, instruction_edit, mcp_edit};
 use super::face::{install_face, version_text};
 use super::manifest::{Link, Manifest, manifest, record_link, write_manifest};
 use super::paths::{absolute_target, remove_link, resolved, text};
-use super::state::{current_state, expected_links, is_inside_face, is_inside_face_lexical, state};
-use super::{Context, Environment, Host, PathAction, Report, Result, SetupError, is_directory};
+use super::state::{
+    canonical_links, current_state, expected_links, is_inside_face, is_inside_face_lexical, state,
+};
+use super::{
+    CANONICAL_HOST, Context, Environment, Host, PathAction, Report, Result, SetupError,
+    is_directory,
+};
 
-/// `setup install`: one installed copy, the host links, the instruction edits
-/// and the manifest, in that order.
+/// `setup install`: one installed copy, the canonical links, the host links, the
+/// instruction edits and the manifest, in that order.
 pub fn install(
     home: &Path,
     environment: &Environment,
@@ -66,6 +71,19 @@ pub fn install(
     }
 
     let mut paths: Vec<PathAction> = Vec::new();
+    // The canonical root is a client of the face and not a host: it is written
+    // by every run, before the optional host relays.
+    for expected in canonical_links(bundle, &context) {
+        let action = sync_link(&expected.path, &expected.target, force, &context)?;
+        let recordable = matches!(action.action.as_str(), "linked" | "ok" | "replaced");
+        paths.push(action);
+        if recordable {
+            record_link(
+                &mut record,
+                Link::new(expected.path_text, expected.target, CANONICAL_HOST),
+            );
+        }
+    }
     for host in hosts {
         for expected in expected_links(*host, bundle, &context) {
             let action = sync_link(&expected.path, &expected.target, force, &context)?;
@@ -129,14 +147,21 @@ pub fn uninstall(home: &Path, environment: &Environment, hosts: Option<&[Host]>)
     let mut remaining = manifest.clone();
     let mut actions: Vec<PathAction> = Vec::new();
 
-    for link in &manifest.links {
-        if narrowed
-            .as_ref()
-            .is_some_and(|narrowed| !narrowed.contains(link.host.as_str()))
-        {
-            continue;
+    // The host relays go first, then the canonical links: a canonical target
+    // is the face itself, so it must be read while the face is still there.
+    for canonical in [false, true] {
+        for link in &manifest.links {
+            if (link.host == CANONICAL_HOST) != canonical {
+                continue;
+            }
+            if narrowed
+                .as_ref()
+                .is_some_and(|narrowed| !narrowed.contains(link.host.as_str()))
+            {
+                continue;
+            }
+            actions.push(remove_recorded_link(link, &context)?);
         }
-        actions.push(remove_recorded_link(link, &context)?);
     }
     // Edits undo last-first: one file can carry stacked inserts (OpenCode's
     // instructions entry and its `mcp.tandem` server), and the later insert

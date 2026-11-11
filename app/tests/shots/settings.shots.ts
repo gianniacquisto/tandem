@@ -53,20 +53,18 @@ test('the settings face, over the seeded homes', async ({ app, window }) => {
     'Bikeshed',
     'opencode',
     'claude',
-    'agents',
   ])
   await expect(facts.nth(2).locator('.settings__value')).toHaveText(
     /\/tmp\/tandem-shots\/user\/\.config\/opencode$/,
   )
   await expect(facts.nth(3).locator('.settings__value')).toHaveText(/\/tmp\/tandem-shots\/user\/\.claude$/)
-  await expect(facts.nth(4).locator('.settings__value')).toHaveText(/\/tmp\/tandem-shots\/user\/\.agents$/)
 
   // Theme lives in Preferences, not Paths, and every path copies in one click.
   await expect(preferences.locator('.settings__term')).toHaveText(['Theme'])
   await expect(preferences.locator('.settings__value')).toHaveText(
     'System: the app follows the OS appearance',
   )
-  await expect(paths.getByRole('button', { name: /Copy .* path/ })).toHaveCount(5)
+  await expect(paths.getByRole('button', { name: /Copy .* path/ })).toHaveCount(4)
 
   // The facts panel is a token card: its corner is --radius-card.
   expect(await computed(window, '.settings__facts', 'border-radius')).toBe(token('radius-card'))
