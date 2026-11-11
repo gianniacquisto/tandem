@@ -173,19 +173,23 @@ A local AI coding agent (e.g. OpenCode, Claude Code) running as the same OS user
 _Avoid_: bot, client, automation, user
 
 **Reviewer**:
-The role that gates a pull request: it reads the ticket, the diff, the checks and the repo's rules, then either merges a two-way door with low blast radius or hands the change to the human. Dispatched for one PR, it ends with a verdict.
+The role that gates a pull request: it reads the ticket, the diff, the checks and the repo's rules, then either merges a two-way door with low blast radius or hands the change to the human. It applies `code` and any lens without a specialist, and it reads the specialist findings the brief names, recording each as adopted, rebutted or not applicable. Dispatched for one PR, it ends with a verdict.
 _Avoid_: approver, critic, merge bot
 
 **Review lens**:
-One checklist the reviewer applies to a pull request, named by the ticket's brief in its `## Lenses` section: `code`, `security`, `ui-design`, `ux`, or `architecture`, one table in `skills/review-lenses/SKILL.md`. A lens is not a role and not an agent, and the gate stays one: one merge authority, one verdict line. A brief with no `## Lenses` is read with `code` alone.
+One checklist one reader applies to a pull request, named by the ticket's brief in its `## Lenses` section: `code`, `security`, `ui-design`, `ux`, or `architecture`, one table in `skills/review-lenses/SKILL.md`. A lens is not a pass and not a ceremony; it may have a specialist reader, and the gate stays one: one merge authority, one verdict line. A brief with no `## Lenses` is read with `code` alone.
 _Avoid_: reviewer type, reviewer persona, review mode, sub-reviewer
+
+**Specialist**:
+A named reader that owns one lens: `architect` owns `architecture`, `security` owns `security`, and `ux` owns `ux`. It contributes constraints at refine as a ticket comment and a conformance read at review as a PR comment, signs as `--author <name>`, owns no ticket, and never merges, pushes or sets a status. It is not a pass and not an assignee.
+_Avoid_: sub-reviewer, lens agent, second reviewer
 
 **Retro**:
 The role that reads one session and files what it finds as backlog tickets — the tickets are the output, the report is a receipt. It runs at every sprint close, on the sprint session's own transcript, and is still invocable alone on a session the human names. It never fixes what it finds, because a retro that changes the work cannot report on it honestly.
 _Avoid_: retrospective agent, postmortem, session analyst
 
 **Refiner**:
-The role that turns a backlog ticket into a brief a builder can take: it grills the decision tree, writes the spec, and splits an effort too big for one session into tickets that each fit one session. It owns no code and no design of its own — the ticket is the whole output.
+The role that turns a backlog ticket into a brief a builder can take: it grills the decision tree, writes the spec, and splits an effort too big for one session into tickets that each fit one session. It chooses the lens owners from the brief's surface and dispatches a specialist only when the lens has a target. It owns no code and no design of its own — the ticket is the whole output.
 _Avoid_: spec writer, planner, triage
 
 **CLI**:
