@@ -622,7 +622,9 @@ fn every_prompt_names_itself_for_claude() {
             .expect("a prompt has a stem")
             .to_string_lossy()
             .to_string();
-        let text = std::fs::read_to_string(&path).expect("a prompt reads");
+        let text = std::fs::read_to_string(&path)
+            .expect("a prompt reads")
+            .replace("\r\n", "\n");
         let frontmatter = text
             .strip_prefix("---\n")
             .and_then(|rest| rest.split_once("\n---"))
