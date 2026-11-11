@@ -1276,9 +1276,9 @@ pub fn verb(name: &str) -> Option<&'static str> {
             "\n",
             "",
             "\n",
-            "The roster beside the active project: the lane the faces draw, or",
+            "The roster beside the active project: the project the faces draw,",
             "\n",
-            "null when no focus is set. The same read the app makes over `rpc`.",
+            "or null when no focus is set. The same read the app makes over `rpc`.",
         ),
         "settings set" => concat!(
             "tandem-cli settings set \u{2014} the roster and the focus, one axis per flag.",

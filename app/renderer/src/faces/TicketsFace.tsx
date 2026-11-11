@@ -366,6 +366,11 @@ export function TicketsFace({
     activeProject,
     onReload,
   )
+  // A store that has not answered yet draws its message alone. Once it has, the
+  // board's columns are the workflow's stages and exist with zero tickets, so
+  // the board draws them (with their add feet) and the copy sits above: the
+  // copy names an add the human can reach, and the add shortcut has a target.
+  const firstRead = snapshot.tickets.length === 0 && snapshot.status !== 'ready'
 
   const laneFilter = (
     <select
@@ -539,8 +544,26 @@ export function TicketsFace({
           </>
         )}
 
-        {empty ?? (
-          view === 'list' ? (
+        {view === 'board' ? (
+          firstRead ? (
+            empty
+          ) : (
+            <>
+              {empty}
+              <BoardLayout
+                columns={boardCols}
+                selected={current}
+                onSelect={setSelected}
+                onOpen={onOpenTicket}
+                onLane={(lane) => setFilters((current) => ({ ...current, lane }))}
+                onDropOn={dropStatus}
+                onAdd={addCard}
+                firstAddRef={firstAdd}
+              />
+            </>
+          )
+        ) : (
+          empty ?? (
             <TicketList
               columns={columns}
               stages={stages}
@@ -549,17 +572,6 @@ export function TicketsFace({
               onToggle={toggle}
               onOpen={onOpenTicket}
               onDropOn={dropOn}
-            />
-          ) : (
-            <BoardLayout
-              columns={boardCols}
-              selected={current}
-              onSelect={setSelected}
-              onOpen={onOpenTicket}
-              onLane={(lane) => setFilters((current) => ({ ...current, lane }))}
-              onDropOn={dropStatus}
-              onAdd={addCard}
-              firstAddRef={firstAdd}
             />
           )
         )}

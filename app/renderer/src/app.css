@@ -1290,7 +1290,8 @@ body {
   white-space: nowrap;
 }
 
-.ticket-row__assignee--human {
+.ticket-row__assignee--human,
+.ticket-card__assignee--human {
   color: var(--ember-deep);
 }
 

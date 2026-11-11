@@ -706,6 +706,16 @@ describe('the board face (UI-33)', () => {
     expect(face).not.toContain('LANE_CHANGED')
   })
 
+  it('draws the board columns on an empty board, so its add and the shortcut exist', () => {
+    const face = source('faces/TicketsFace.tsx')
+    // The store's first read draws its message alone; a ready store always
+    // draws the columns, whatever they hold, and the copy sits above them.
+    expect(face).toContain('const firstRead =')
+    expect(face).toContain('firstRead ?')
+    expect(face).toContain('<BoardLayout')
+    expect(face).toContain('firstAddRef={firstAdd}')
+  })
+
   it('lists the projects, not the lanes, in the one focus control', () => {
     expect(source('faces/FocusControl.tsx')).toContain('projects.map(')
     expect(source('faces/FocusControl.tsx')).toContain('All projects')

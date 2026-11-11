@@ -1,5 +1,7 @@
 # The ticket model: status carries done, archive sets a ticket aside, and the legacy `done` outlives both
 
+> **Amended 2026-11-11 by [ADR 0043](0043-the-board-draws-one-axis.md):** the cycle lane stays the third axis, but the board no longer draws it as its rows: the board's axis is the active workflow's stages, and the lane is a chip on the card and a filter in the header. The sentence below that says the board draws the lane as its rows is overruled in its board half. The amendment's text is ADR 0043's.
+
 > **Amended 2026-10-26 by [ADR 0031](0031-one-database-the-store.md):** the comment log this record added as `<home>/comments/<ticket-id>.jsonl`, appended under the store's sidecar `flock`, is the `comments` table, and an append is one transaction. The ticket model itself — status, archive, lane, description, assignee — is unchanged. The amendment's text is ADR 0031's.
 
 > **Amended 2026-11-08 by [ADR 0041](0041-workflows-are-data.md):** statuses become the active workflow's stages; the six values named below are the default `agile` workflow's keys, and a custom stage carries its stored key as a `Custom` status. The amendment's text is ADR 0041's.
