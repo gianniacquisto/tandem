@@ -267,8 +267,8 @@ impl<'a> Ending<'a> {
     }
 }
 
-/// What `end` answers. `stamped` is the hook's gate: the stamp runs only when
-/// this call wrote it, so a second `end` (which alters nothing) writes nothing.
+/// What `end` answers. `stamped` is true only when this call wrote the stamp,
+/// so a second `end` (which alters nothing) writes nothing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stamp {
     pub session: Session,

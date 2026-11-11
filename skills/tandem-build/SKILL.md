@@ -35,7 +35,7 @@ The human in the session picks the mode before the first dispatch — **one at a
 
 A turn re-reads the whole window, so a session's bill is its turn count times its context — the same rule the terse style states (`terse/TERSE.md`, Budget). The number lives once, in `agents/builder.md` step 4: **three tool calls per turn or more**, with the batched shapes named there. This skill points at it rather than restating it, the way it points at the deploy contract.
 
-**The record is the measure, and it costs no call.** `session end --usage-from-harness` stamps `turns`, `calls` and the derived `per turn` ratio on the record, and the pass's usage faces the Usage tab's ticket row. The dispatch reads the ratio of the sprint's most recently ended child in the same message as the claim's own reads:
+**The record is the measure, and it costs no call.** `session end --usage-from-harness` stamps `turns` and `calls` on the record, and the pass's usage faces the Usage tab's ticket row; the record holds no ratio, so a reader derives it as `calls / turns`. The dispatch reads the two counts of the sprint's most recently ended child in the same message as the claim's own reads:
 
 ```sh
 tandem-cli session show --session <the last child's id>
