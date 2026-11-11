@@ -223,6 +223,11 @@ export function BikeshedBlocks({
       const selection = readSelection(target)
       if (selection === null) return
       const current = stateRef.current
+      // A caret the DOM places past the model's row is a character the input
+      // event has not read back yet. Clamping it into the model would strand
+      // the character, so the next input event brings the row in first.
+      const head = current.blocks[selection.head.block]
+      if (head !== undefined && selection.head.offset > rowText(head, selection.head.row).length) return
       if (same(selection.anchor, current.selection.anchor) && same(selection.head, current.selection.head)) {
         return
       }
@@ -1458,6 +1463,20 @@ function editableText(element: HTMLElement): string {
   return clone.textContent ?? ''
 }
 
+/** The editable text length before `node` inside a row. */
+function textOffsetBefore(row: HTMLElement, node: Node): number {
+  let length = 0
+  for (const child of Array.from(row.childNodes)) {
+    if (child === node) return length
+    if (child.nodeType === Node.TEXT_NODE) {
+      length += child.nodeValue?.length ?? 0
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      length += editableText(child as HTMLElement).length
+    }
+  }
+  return length
+}
+
 /** Read the edited text back from the DOM, leaving untouched blocks alone. */
 function readFromDom(host: HTMLElement, current: EditorState): EditorState {
   const blocks = current.blocks.map((block) => block)
@@ -1513,6 +1532,14 @@ function positionFrom(host: HTMLElement, node: Node | null, offset: number): Pos
     : (rowElement.querySelector('[data-text]') as HTMLElement | null)
   if (textElement === null) return { block, row, offset: 0 }
   if (!textElement.contains(node)) {
+    // A caret at the row boundary sits in a text node beside `[data-text]`.
+    // Its offset is measured in the row's editable content, so Enter splits
+    // where the character sits, not at the end of the item.
+    if (node.nodeType === Node.TEXT_NODE && node.parentNode === rowElement) {
+      const before = textOffsetBefore(rowElement, node)
+      const length = node.nodeValue?.length ?? 0
+      return { block, row, offset: before + Math.max(0, Math.min(offset, length)) }
+    }
     const length = textElement.textContent?.length ?? 0
     if (node === textElement.parentNode) {
       const index = Array.prototype.indexOf.call(node.childNodes, textElement)

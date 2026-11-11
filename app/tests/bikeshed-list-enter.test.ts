@@ -4,7 +4,7 @@ import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { parseDocument, type Document } from '../renderer/src/shell/blocks'
+import { parseDocument, serialiseDocument, type Document } from '../renderer/src/shell/blocks'
 import { fromDocument, rowCount, rowText } from '../renderer/src/shell/editor-ops'
 import { BikeshedBlocks } from '../renderer/src/faces/BikeshedBlocks'
 
@@ -56,12 +56,15 @@ async function type(host: HTMLElement, node: Node, text: string): Promise<void> 
   await act(async () => {
     host.querySelector('.block__row')!.dispatchEvent(new Event('input', { bubbles: true }))
   })
+  // A browser leaves the caret after the character it just typed; the
+  // harness's queued selectionchange can move it back, so restore it.
+  caretAt(node, text.length)
 }
 
 async function pressEnter(host: HTMLElement): Promise<void> {
   await act(async () => {
     host
-      .querySelector('.block__row')!
+      .querySelector('.blocks')!
       .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
   })
 }
@@ -140,6 +143,64 @@ describe('typing at a list row boundary', () => {
       expect(textNodes).toEqual([])
       expect(element.querySelector('[data-text]')).not.toBeNull()
     }
+  })
+
+  it('two Enters at the end of a list leave the caret in a paragraph below it', async () => {
+    const changes: Document[] = []
+    const target = await mount('- one', changes)
+    const text = target.querySelector('.block__row [data-text]')!
+    caretAt(text.firstChild!, 3)
+
+    await pressEnter(target)
+    await pressEnter(target)
+
+    const blocks = Array.from(target.querySelectorAll('.blocks > [data-block]')) as HTMLElement[]
+    expect(blocks).toHaveLength(2)
+    expect(blocks[0]!.querySelector('.block')!.className).toContain('block--bullet')
+    expect(blocks[0]!.querySelectorAll('.block__row')).toHaveLength(1)
+    expect(blocks[1]!.querySelector('.block')!.className).toContain('block--paragraph')
+
+    const selection = window.getSelection()!
+    const node = selection.anchorNode!
+    const anchor = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement)
+    expect(anchor!.closest('[data-block]')).toBe(blocks[1])
+    expect(selection.anchorOffset).toBe(0)
+
+    const landed = changes[changes.length - 1]
+    expect(landed).toBeDefined()
+    expect(serialiseDocument(landed!)).toBe('- one\n')
+  })
+})
+
+describe('a character at the row boundary', () => {
+  it('splits where the caret sits at the start of the row', async () => {
+    const changes: Document[] = []
+    const target = await mount('- one', changes)
+    const row = target.querySelector('.block__row')!
+    const stray = document.createTextNode('')
+    row.insertBefore(stray, row.firstChild)
+
+    await type(target, stray, 'X')
+    await pressEnter(target)
+
+    const landed = changes[changes.length - 1]
+    expect(landed).toBeDefined()
+    expect(modelRows(landed!)).toEqual(['X', 'one'])
+  })
+
+  it('splits where the caret sits at the end of the row', async () => {
+    const changes: Document[] = []
+    const target = await mount('- one', changes)
+    const row = target.querySelector('.block__row')!
+    const stray = document.createTextNode('')
+    row.append(stray)
+
+    await type(target, stray, 'X')
+    await pressEnter(target)
+
+    const landed = changes[changes.length - 1]
+    expect(landed).toBeDefined()
+    expect(modelRows(landed!)).toEqual(['oneX', ''])
   })
 })
 

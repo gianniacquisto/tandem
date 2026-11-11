@@ -77,12 +77,41 @@ describe('Enter splits a text block at the caret', () => {
     expect(value.selection.head).toEqual({ block: 0, row: 1, offset: 0 })
   })
 
-  it('an empty item ends the list', () => {
-    const value = edit(caret(state('- one'), 0, 0, 3), split)
-    const ended = edit(caret(value, 0, 1, 0), split)
-    expect(serialise(ended)).toBe('- one')
-    expect(ended.blocks).toHaveLength(1)
-    expect(ended.selection.head).toEqual({ block: 0, row: 0, offset: 3 })
+  it('an empty item returns into a paragraph below the list', () => {
+    const value = edit(caret(state('- one\n- '), 0, 1, 0), split)
+    expect(kinds(value)).toEqual(['list', 'paragraph'])
+    expect(serialise(value)).toBe('- one\n')
+    expect(value.selection.head).toEqual({ block: 1, row: 0, offset: 0 })
+  })
+
+  it('an empty item mid-list splits the list around the paragraph', () => {
+    const value = edit(caret(state('- a\n- \n- b'), 0, 1, 0), split)
+    expect(kinds(value)).toEqual(['list', 'paragraph', 'list'])
+    expect(serialise(value)).toBe('- a\n\n- b')
+    expect(value.selection.head).toEqual({ block: 1, row: 0, offset: 0 })
+  })
+
+  it('an ordered list numbers the trailing list from the emptied row', () => {
+    const value = edit(caret(state('3. a\n4. \n5. c'), 0, 1, 0), split)
+    expect(kinds(value)).toEqual(['list', 'paragraph', 'list'])
+    const tail = value.blocks[2]
+    expect(tail?.kind === 'list' ? tail.start : undefined).toBe(5)
+    expect(serialise(value)).toBe('3. a\n\n5. c')
+  })
+
+  it('a single-row list becomes a paragraph', () => {
+    const value = edit(caret(state('- '), 0, 0, 0), split)
+    expect(kinds(value)).toEqual(['paragraph'])
+    expect(serialise(value)).toBe('')
+    expect(value.selection.head).toEqual({ block: 0, row: 0, offset: 0 })
+  })
+
+  it('an empty task item returns into a paragraph below the task list', () => {
+    const value = edit(caret(state('- [x] done\n- [ ] '), 0, 1, 0), split)
+    expect(kinds(value)).toEqual(['task', 'paragraph'])
+    const above = value.blocks[0]
+    expect(above?.kind === 'task' ? above.rows[0]?.checked : undefined).toBe(true)
+    expect(serialise(value)).toBe('- [x] done\n')
   })
 
   it('a quote line yields the next line', () => {
