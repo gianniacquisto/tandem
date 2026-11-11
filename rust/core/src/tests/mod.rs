@@ -16,7 +16,8 @@
 //!   `bikeshed_conflict`, `bikeshed_crash_recovery`, `bikeshed_locking`,
 //!   `bikeshed_hidden_layer`, `bikeshed_scale`, `bikeshed_session_notes`,
 //!   `daily_note`, `scaffold_convention`; `fixture_bikeshed` reads the
-//!   committed fixture vault.
+//!   committed fixture vault. `bikeshed_prune` is not a Swift port: it pins the
+//!   port-only `note prune` sweep of the empty folders the archive move leaves.
 //!
 //! Each module is one suite, so `cargo test <suite>` runs it alone.
 
@@ -42,6 +43,7 @@ mod bikeshed_locking;
 mod bikeshed_move;
 mod bikeshed_note_ops;
 mod bikeshed_path;
+mod bikeshed_prune;
 mod bikeshed_rename;
 mod bikeshed_scale;
 mod bikeshed_search;

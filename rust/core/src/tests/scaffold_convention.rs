@@ -39,8 +39,8 @@ fn section(text: &str, heading: &str) -> String {
     }
 }
 
-/// The rows of `## The lenses`: the lens's name and the file it reads.
-fn lens_rows() -> Vec<(String, String)> {
+/// The rows of `## The lenses`: the lens's name, the file it reads and its owner.
+fn lens_rows() -> Vec<(String, String, String)> {
     let skill = file("skills/review-lenses/SKILL.md");
     let mut rows = Vec::new();
     for line in section(&skill, "## The lenses").split('\n') {
@@ -48,13 +48,14 @@ fn lens_rows() -> Vec<(String, String)> {
             continue;
         }
         let cells: Vec<&str> = line.split('|').map(str::trim).collect();
-        if cells.len() < 3 || cells[1].is_empty() || cells[1].starts_with('-') || cells[1] == "lens"
+        if cells.len() < 5 || cells[1].is_empty() || cells[1].starts_with('-') || cells[1] == "lens"
         {
             continue;
         }
         rows.push((
             cells[1].trim_matches('`').to_string(),
             cells[2].trim_matches('`').to_string(),
+            cells[3].trim_matches('`').to_string(),
         ));
     }
     rows
@@ -73,7 +74,7 @@ fn the_lens_table_and_the_directory_agree() {
             .into_iter()
             .collect()
     );
-    for (name, path) in &rows {
+    for (name, path, _) in &rows {
         assert!(
             root().join(path).exists(),
             "lens `{name}` names {path}, which does not exist"
@@ -397,6 +398,239 @@ fn the_roster_points_at_the_lens_set() {
         row.is_some_and(|row| row.contains("skills/review-lenses/")),
         "the reviewer row names the lens set it reads"
     );
+}
+
+/// TAN-326: the lens table gains an owner column. Every owner is the reviewer
+/// or an existing specialist prompt, and the mapping is the one the brief
+/// names: `code` and `ui-design` the reviewer, `security` the security reader,
+/// `architecture` the architect, `ux` the ux reader.
+#[test]
+fn the_owners_in_the_lens_table_exist() {
+    let rows = lens_rows();
+    let owners: std::collections::HashMap<&str, &str> = rows
+        .iter()
+        .map(|(name, _, owner)| (name.as_str(), owner.as_str()))
+        .collect();
+    for (lens, owner) in [
+        ("code", "reviewer"),
+        ("security", "security"),
+        ("architecture", "architect"),
+        ("ux", "ux"),
+        ("ui-design", "reviewer"),
+    ] {
+        assert_eq!(
+            owners.get(lens).copied(),
+            Some(owner),
+            "lens `{lens}` is owned by `{owner}`"
+        );
+    }
+    for (lens, _, owner) in &rows {
+        assert!(
+            owner == "reviewer" || root().join(format!("agents/{owner}.md")).exists(),
+            "lens `{lens}` names owner `{owner}`, which is neither the reviewer nor a prompt"
+        );
+    }
+}
+
+/// TAN-326: the floor is stated once, in the lens skill. The refiner and the
+/// reviewer point at it and do not restate the three-lens list.
+#[test]
+fn the_required_lens_floor_is_stated_once() {
+    let lenses = file("skills/review-lenses/SKILL.md");
+    let floor = section(&lenses, "## The floor");
+    for lens in ["`code`", "`security`", "`architecture`"] {
+        assert!(floor.contains(lens), "the floor names {lens}");
+    }
+    for path in ["agents/refiner.md", "agents/reviewer.md"] {
+        let text = file(path);
+        assert!(
+            text.contains("skills/review-lenses/"),
+            "{path} points at the lens skill"
+        );
+        assert!(
+            !text.contains("`code`, `security`, `architecture`"),
+            "{path} restates the floor instead of pointing at its one home"
+        );
+    }
+}
+
+/// TAN-326: the specialist posts the constraints as a ticket comment, and only
+/// the refiner and humans write brief prose.
+#[test]
+fn the_specialist_comments_and_the_refiner_writes_the_brief() {
+    let refiner = file("agents/refiner.md");
+    for phrase in [
+        "specialist",
+        "comment log",
+        "writes no design",
+        "brief prose",
+    ] {
+        assert!(refiner.contains(phrase), "the refiner names `{phrase}`");
+    }
+    for path in ["agents/architect.md", "agents/security.md", "agents/ux.md"] {
+        let text = file(path);
+        assert!(
+            text.contains("ticket comment"),
+            "{path} posts a ticket comment"
+        );
+        assert!(text.contains("brief prose"), "{path} writes no brief prose");
+        assert!(
+            text.contains("no questions") || text.contains("do not grill"),
+            "{path} leaves the human round to the refiner"
+        );
+    }
+}
+
+/// TAN-326: the gate records one line per specialist finding, as adopted,
+/// rebutted or not applicable, before the verdict.
+#[test]
+fn the_reviewer_records_each_specialist_finding() {
+    let reviewer = file("agents/reviewer.md");
+    for phrase in [
+        "specialist",
+        "adopted",
+        "rebutted",
+        "not applicable",
+        "## Blocks on",
+    ] {
+        assert!(reviewer.contains(phrase), "the gate names `{phrase}`");
+    }
+}
+
+/// TAN-326: a specialist is a reader, never a verdict. It posts a PR comment,
+/// never a review, and it never merges or owns a ticket.
+#[test]
+fn the_specialist_is_a_reader_not_a_verdict() {
+    for path in ["agents/architect.md", "agents/security.md", "agents/ux.md"] {
+        let text = file(path);
+        assert!(text.contains("gh pr comment"), "{path} posts a PR comment");
+        assert!(!text.contains("gh pr review"), "{path} posts no review");
+        assert!(!text.contains("VERDICT:"), "{path} carries no verdict");
+        assert!(
+            text.contains("never merges") || text.contains("never merge"),
+            "{path} never merges"
+        );
+        assert!(
+            text.contains("owns no ticket") || text.contains("own no ticket"),
+            "{path} owns no ticket"
+        );
+    }
+    assert!(
+        file("agents/reviewer.md").contains("VERDICT:"),
+        "the gate keeps the one verdict"
+    );
+}
+
+/// TAN-326: the roster names the three specialists and the lens each owns,
+/// beside the four pass owners. A specialist speaks and owns no ticket.
+#[test]
+fn the_roster_names_the_specialists_and_their_lenses() {
+    let team = file("skills/tandem-team/SKILL.md");
+    for (specialist, lens) in [
+        ("architect", "architecture"),
+        ("security", "security"),
+        ("ux", "ux"),
+    ] {
+        let prefix = format!("| `{specialist}`");
+        let row = team.split('\n').find(|line| line.starts_with(&prefix));
+        assert!(
+            row.is_some_and(|row| row.contains(&format!("`{lens}`"))),
+            "the roster names `{specialist}` and its `{lens}` lens"
+        );
+    }
+    for phrase in ["owns no ticket", "never merges", "only speaks"] {
+        assert!(team.contains(phrase), "the roster names `{phrase}`");
+    }
+    for role in ["builder", "refiner", "reviewer", "consolidator"] {
+        assert!(
+            team.contains(&format!("| `{role}`")),
+            "the pass table keeps `{role}` as a pass owner"
+        );
+    }
+}
+
+/// TAN-326: the artifact's face names every prompt, and neither README nor the
+/// setup skill carries the stale "four prompts" count now that three
+/// specialist readers join the four pass prompts.
+#[test]
+fn the_agent_face_names_every_prompt() {
+    let mut prompts: Vec<String> = std::fs::read_dir(root().join("agents"))
+        .expect("the agents directory reads")
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "md"))
+        .map(|path| {
+            path.file_stem()
+                .expect("a prompt has a stem")
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    prompts.sort();
+    assert_eq!(
+        prompts,
+        [
+            "architect",
+            "builder",
+            "consolidator",
+            "refiner",
+            "reviewer",
+            "security",
+            "ux"
+        ],
+        "the face is the four pass prompts and the three specialist readers"
+    );
+    let readme = file("README.md");
+    for prompt in &prompts {
+        assert!(
+            readme.contains(&format!("`{prompt}`")),
+            "README.md names the `{prompt}` prompt"
+        );
+    }
+    assert!(
+        !readme.contains("four prompts"),
+        "README.md carries no stale four-prompt count"
+    );
+    let setup = file("skills/tandem-setup/SKILL.md");
+    assert!(
+        !setup.contains("four prompts"),
+        "the setup skill carries no stale four-prompt count"
+    );
+    assert!(
+        setup.contains("specialist"),
+        "the setup skill names the specialist readers"
+    );
+}
+
+/// TAN-326: a specialist reads and comments, and cannot write files, ask the
+/// human, or spawn another reader. None pins a model (ADR 0026's amendment).
+#[test]
+fn the_specialist_cannot_edit_or_spawn() {
+    let mut colors = std::collections::HashSet::new();
+    for path in ["agents/architect.md", "agents/security.md", "agents/ux.md"] {
+        let text = file(path);
+        assert!(text.contains("mode: subagent"), "{path} is a subagent");
+        for action in ["edit", "question", "subagent"] {
+            assert!(
+                text.contains(&format!("action: {action}")),
+                "{path} denies `{action}`"
+            );
+        }
+        assert_eq!(
+            text.matches("effect: deny").count(),
+            3,
+            "{path} denies exactly the three actions"
+        );
+        assert!(!text.contains("model:"), "{path} pins no model");
+        let color = text
+            .split('\n')
+            .find(|line| line.starts_with("color:"))
+            .unwrap_or_else(|| panic!("{path} names a colour"));
+        assert!(
+            colors.insert(color.to_string()),
+            "{path} has a distinct colour"
+        );
+    }
 }
 
 #[test]
@@ -1299,10 +1533,11 @@ fn the_build_skill_measures_the_ratio_and_briefs_below_it() {
 /// prose_resolves` proves its MCP table against the registry).
 const CLI_REFERENCE: &str = "skills/tandem/SKILL.md";
 
-/// The exception set, fixed by the brief: the human's install pass, the
-/// CLI-only note rename, the MCP server as a config fact, and `--help` as a
-/// pointer at the CLI's own documentation.
-const TANDEM_CLI_EXCEPTIONS: [&str; 4] = ["setup", "note rename", "mcp", "--help"];
+/// The exception set: the human's install pass, the CLI-only note verbs
+/// (`note rename`, and `note prune`, which TAN-326 landed with no MCP tool
+/// beside it), the MCP server as a config fact, and `--help` as a pointer at
+/// the CLI's own documentation.
+const TANDEM_CLI_EXCEPTIONS: [&str; 5] = ["setup", "note rename", "note prune", "mcp", "--help"];
 
 /// Every verb the CLI spells, so the word after `tandem-cli` is classified as
 /// a command form or as a noun ("on PATH", a path, a version).
@@ -1362,8 +1597,11 @@ fn tandem_cli_form(line: &str) -> Option<String> {
     if !TANDEM_CLI_VERBS.contains(&first) {
         return None;
     }
-    if first == "note" && words.next() == Some("rename") {
-        return Some("note rename".to_string());
+    if first == "note"
+        && let Some(second) = words.next()
+        && (second == "rename" || second == "prune")
+    {
+        return Some(format!("note {second}"));
     }
     Some(first.to_string())
 }
@@ -1417,6 +1655,7 @@ fn no_tandem_cli_command_lines_in_agent_prose() {
     for allowed in [
         "`tandem-cli setup install`",
         "`tandem-cli note rename --from a --to b`",
+        "`tandem-cli note prune`",
         "`tandem-cli mcp`",
         "`tandem-cli --help`",
     ] {
