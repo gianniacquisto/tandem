@@ -5,8 +5,8 @@ import type { UsageReportView } from '../wire/UsageReportView'
 import type { Workflow } from '../wire/Workflow'
 
 /**
- * One project and its lanes, in render order: the mapping the board joins
- * onto its lane rows instead of growing the snapshot.
+ * One project and its lanes, in render order: the mapping the focus picker and
+ * the board's project narrowing join onto instead of growing the snapshot.
  */
 export type SnapshotProject = {
   name: string
@@ -33,7 +33,7 @@ export type SnapshotState = {
   usage: UsageReportView | null
   /** The store's roster, the names both assignee surfaces offer. */
   roster: string[]
-  /** The active project: the lane the faces draw, or null for every lane. */
+  /** The active project: the project the faces draw, or null for every project. */
   activeProject: string | null
   /**
    * The active workflow: the board's columns, the list's status filter and the

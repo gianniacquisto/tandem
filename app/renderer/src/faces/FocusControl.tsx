@@ -1,12 +1,12 @@
 export type FocusControlProps = {
-  /** The declared lanes, in render order. */
-  lanes: readonly string[]
-  /** The stored focus, or null for every lane. */
+  /** The declared projects, in render order. */
+  projects: ReadonlyArray<{ name: string }>
+  /** The stored focus, or null for every project. */
   active: string | null
-  /** Whether the face draws every lane without clearing the stored focus. */
+  /** Whether the face draws every project without clearing the stored focus. */
   showAll: boolean
-  /** Persist a new focus; null clears back to every lane. */
-  onPick: (lane: string | null) => void
+  /** Persist a new focus; null clears back to every project. */
+  onPick: (project: string | null) => void
   /** Toggle the show-all escape. */
   onToggleShowAll: () => void
 }
@@ -15,12 +15,20 @@ export type FocusControlProps = {
  * The project focus control: a picker that persists the active project and a
  * show-all escape beside it. The picker is a native select, so it is keyboard
  * reachable without the face owning any keys; the escape is a button with its
- * pressed state, so the focused face can draw every lane without clearing the
- * stored value. Both faces draw this one control, so the board and the notes
- * cannot disagree about what the focus is.
+ * pressed state, so the focused face can draw every project without clearing
+ * the stored value. Both faces draw this one control, so the board and the
+ * notes cannot disagree about what the focus is. It lists the board's projects,
+ * which is what the stored focus means (UI-33).
  */
-export function FocusControl({ lanes, active, showAll, onPick, onToggleShowAll }: FocusControlProps) {
-  const value = active !== null && lanes.includes(active) ? active : ''
+export function FocusControl({
+  projects,
+  active,
+  showAll,
+  onPick,
+  onToggleShowAll,
+}: FocusControlProps) {
+  const value =
+    active !== null && projects.some((project) => project.name === active) ? active : ''
   return (
     <div className="focus">
       <label className="focus__label" htmlFor="focus-picker">
@@ -36,9 +44,9 @@ export function FocusControl({ lanes, active, showAll, onPick, onToggleShowAll }
         }
       >
         <option value="">All projects</option>
-        {lanes.map((lane) => (
-          <option key={lane} value={lane}>
-            {lane}
+        {projects.map((project) => (
+          <option key={project.name} value={project.name}>
+            {project.name}
           </option>
         ))}
       </select>

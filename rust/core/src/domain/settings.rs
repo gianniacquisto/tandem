@@ -16,8 +16,8 @@ use super::error::DomainResult;
 /// Swift store, `TandemSettings.swift`).
 pub const ROSTER_KEY: &str = "roster";
 
-/// The active project's key: the lane the faces draw when the human works on
-/// one project at a time. The row holds the lane name as plain text (not
+/// The active project's key: the project the faces draw when the human works
+/// on one project at a time. The row holds the project name as plain text (not
 /// JSON: it is one name, not a list), or is absent for no focus.
 pub const ACTIVE_PROJECT_KEY: &str = "active_project";
 
@@ -63,39 +63,42 @@ impl Settings {
         }
     }
 
-    /// The active project: the lane the faces draw when the human works on one
-    /// project at a time.
+    /// The active project: the project the faces draw when the human works on
+    /// one project at a time.
     ///
-    /// The row holds a lane name or is absent (ADR 0031: a new key is a new
-    /// pair, never a migration). Unset, cleared, blank, or naming a lane the
-    /// board no longer declares all read as no focus, never as an empty board:
-    /// a stale focus must not hide tickets.
-    pub fn active_project(&self, declared: &[String]) -> DomainResult<Option<String>> {
+    /// The row holds a project name or is absent (ADR 0031: a new key is a new
+    /// pair, never a migration). Unset, cleared, blank, or naming a project the
+    /// board no longer carries all read as no focus, never as an empty board:
+    /// a stale focus must not hide tickets. A stored lane name is such a value:
+    /// the focus means a project now, so a row written by the lane-era build
+    /// reads as no focus without a migration.
+    pub fn active_project(&self, projects: &[String]) -> DomainResult<Option<String>> {
         let Some(stored) = self.store.setting(ACTIVE_PROJECT_KEY)? else {
             return Ok(None);
         };
         let name = stored.trim();
-        if name.is_empty() || !declared.iter().any(|lane| lane == name) {
+        if name.is_empty() || !projects.iter().any(|project| project == name) {
             return Ok(None);
         }
         Ok(Some(name.to_string()))
     }
 
-    /// Focus the faces on one declared lane, or clear the focus back to every
-    /// lane. An absent or blank project clears; a name no declared lane
-    /// carries is refused with the lanes the human may pick, and nothing is
-    /// written. The answer is the resolved focus, the same value a read gives.
+    /// Focus the faces on one declared project, or clear the focus back to
+    /// every project. An absent or blank name clears; a name no declared
+    /// project carries is refused with the projects the human may pick, and
+    /// nothing is written. The answer is the resolved focus, the same value a
+    /// read gives.
     pub fn set_active_project(
         &self,
         actor: &Actor,
         project: Option<&str>,
-        declared: &[String],
+        projects: &[String],
     ) -> DomainResult<Option<String>> {
         let name = project.map(str::trim).filter(|name| !name.is_empty());
         // A write that would store what the read already answers is no write:
         // the revision stays put, so the faces re-read nothing (`ticket.set`'s
         // same-value rule).
-        let current = self.active_project(declared)?;
+        let current = self.active_project(projects)?;
         if current.as_deref() == name {
             return Ok(current);
         }
@@ -104,10 +107,10 @@ impl Settings {
                 .write(actor, |write| write.delete_setting(ACTIVE_PROJECT_KEY))?;
             return Ok(None);
         };
-        if !declared.iter().any(|lane| lane == name) {
-            return Err(DomainError::UnknownProject {
+        if !projects.iter().any(|project| project == name) {
+            return Err(DomainError::UnknownProjectName {
                 name: name.to_string(),
-                lanes: declared.to_vec(),
+                projects: projects.to_vec(),
             });
         }
         let focused = name.to_string();
@@ -199,7 +202,7 @@ mod tests {
         }
     }
 
-    fn lanes(names: &[&str]) -> Vec<String> {
+    fn projects(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| name.to_string()).collect()
     }
 
@@ -220,7 +223,7 @@ mod tests {
         let store = sandbox.store();
 
         assert_eq!(
-            Settings::new(&store).active_project(&lanes(&["Tandem"])),
+            Settings::new(&store).active_project(&projects(&["Tandem"])),
             Ok(None),
             "a home that never stored a focus has none"
         );
@@ -232,7 +235,7 @@ mod tests {
         let store = sandbox.store();
         stored_focus(&store, "");
         assert_eq!(
-            Settings::new(&store).active_project(&lanes(&["Tandem"])),
+            Settings::new(&store).active_project(&projects(&["Tandem"])),
             Ok(None),
             "an explicitly cleared focus is no focus"
         );
@@ -241,7 +244,7 @@ mod tests {
         let store = sandbox.store();
         stored_focus(&store, "   ");
         assert_eq!(
-            Settings::new(&store).active_project(&lanes(&["Tandem"])),
+            Settings::new(&store).active_project(&projects(&["Tandem"])),
             Ok(None),
             "a whitespace-only row is no focus"
         );
@@ -254,30 +257,48 @@ mod tests {
         stored_focus(&store, "Retro");
 
         assert_eq!(
-            Settings::new(&store).active_project(&lanes(&["Tandem", "Port"])),
+            Settings::new(&store).active_project(&projects(&["Tandem", "Port"])),
             Ok(None),
-            "a focus naming a lane that no longer exists hides nothing"
+            "a focus naming a project the board no longer carries hides nothing"
+        );
+    }
+
+    /// The focus meant a lane before UI-33 and means a project now. A row the
+    /// lane-era build wrote still holds a lane name, and a lane name is not a
+    /// project name: it reads as no focus, so no migration and no empty board.
+    #[test]
+    fn a_stored_lane_reads_as_no_focus() {
+        let sandbox = Sandbox::new("stored-lane");
+        let store = sandbox.store();
+        stored_focus(&store, "ui");
+
+        assert_eq!(
+            Settings::new(&store)
+                .active_project(&projects(&["Tandem", "Port"]))
+                .expect("the read lands"),
+            None,
+            "a stored lane names no project, so it is no focus"
         );
     }
 
     #[test]
-    fn a_stored_declared_lane_round_trips() {
+    fn a_stored_declared_project_round_trips() {
         let sandbox = Sandbox::new("round-trip");
         let store = sandbox.store();
         stored_focus(&store, "Port");
 
         assert_eq!(
-            Settings::new(&store).active_project(&lanes(&["Tandem", "Port"])),
+            Settings::new(&store).active_project(&projects(&["Tandem", "Port"])),
             Ok(Some("Port".to_string()))
         );
     }
 
     #[test]
-    fn setting_a_declared_lane_persists_and_clearing_removes_it() {
+    fn setting_a_declared_project_persists_and_clearing_removes_it() {
         let sandbox = Sandbox::new("set-clear");
         let store = sandbox.store();
         let settings = Settings::new(&store);
-        let declared = lanes(&["Tandem", "Port"]);
+        let declared = projects(&["Tandem", "Port"]);
 
         assert_eq!(
             settings.set_active_project(&Actor::Human, Some("Port"), &declared),
@@ -305,7 +326,7 @@ mod tests {
         let sandbox = Sandbox::new("no-op");
         let store = sandbox.store();
         let settings = Settings::new(&store);
-        let declared = lanes(&["Tandem", "Port"]);
+        let declared = projects(&["Tandem", "Port"]);
 
         settings
             .set_active_project(&Actor::Human, Some("Port"), &declared)
@@ -339,23 +360,23 @@ mod tests {
     }
 
     #[test]
-    fn setting_an_undeclared_lane_is_refused_naming_the_declared_lanes() {
+    fn setting_an_undeclared_project_is_refused_naming_the_declared_projects() {
         let sandbox = Sandbox::new("unknown");
         let store = sandbox.store();
         let settings = Settings::new(&store);
-        let declared = lanes(&["Tandem", "Port"]);
+        let declared = projects(&["Tandem", "Port"]);
 
         let refused = settings
             .set_active_project(&Actor::Human, Some("Nope"), &declared)
-            .expect_err("an undeclared lane is refused");
+            .expect_err("an undeclared project is refused");
         let message = refused.message();
         assert!(
             message.contains("\"Nope\""),
-            "the refusal names the lane: {message}"
+            "the refusal names the project: {message}"
         );
         assert!(
             message.contains("Tandem") && message.contains("Port"),
-            "the refusal names the declared lanes: {message}"
+            "the refusal names the declared projects: {message}"
         );
         assert_eq!(
             store.setting(ACTIVE_PROJECT_KEY).expect("the row reads"),
