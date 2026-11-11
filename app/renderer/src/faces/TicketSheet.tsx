@@ -68,9 +68,13 @@ const CLAIM_CHANGED = 'The claim landed, but the comment did not.'
  * and appended to, never rewritten, and the log is read-only: the sheet's half
  * of it is the composer, which only appends.
  *
- * Order from top: title, Description, Comments, then one collapsed Details
- * disclosure holding Status, Assignee, passes, Dependencies, Lanes and
- * Sessions. Details starts closed on every opening and persists nothing.
+ * Order from top: the title with its Save, then one row of the three facts a
+ * human asks of a card (status, assignee, lane), then Description, then
+ * Comments, then one collapsed Details disclosure holding the pass requests,
+ * the dependencies, lane creation and rename, and Sessions. The title block and
+ * the metadata row share the sticky band, so the three facts stay in view while
+ * the description scrolls. Details starts closed on every opening and persists
+ * nothing.
  */
 export function TicketSheet({
   ticketId,
