@@ -74,6 +74,9 @@ npm run typecheck && npm test
   destructive git actions unless absolutely necessary. When a force push is
   unavoidable, use `--force-with-lease`, never bare `--force`.
 - Use the project's words: [GLOSSARY.md](GLOSSARY.md) is the vocabulary.
+- Scripts have two homes, chosen by the runtime that runs them: `Scripts/` for
+  the shell-side release, gate and fixture tooling, and `app/scripts/` for the
+  JS-side build steps.
 - Respect the decisions in [docs/adr/](docs/adr/), and amend the ADR in the
   same pull request when you change what it decided.
 - The tracker is the Tandem board, not GitHub issues: the tracker contract is

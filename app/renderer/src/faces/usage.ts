@@ -171,7 +171,7 @@ export function ticketArithmetic(report: UsageReportView): string | null {
   return `${head} ${recordNoun(loose.records)} carried no ticket (${money(loose.cost)}).`
 }
 
-/** A dollar figure with two decimals, the shape the usage comment carries. */
+/** A dollar figure with two decimals, the shape the usage faces carry. */
 export function money(cost: number): string {
   return `$${cost.toFixed(2)}`
 }

@@ -257,7 +257,7 @@ fn a_batch_ticket_lands_on_the_sprints_session_record() {
 }
 
 #[test]
-fn the_sprints_usage_reaches_the_tickets_it_drew() {
+fn the_sprints_usage_lands_on_the_record_and_writes_no_comment() {
     let sandbox = Sandbox::new("batch-usage");
     let first = sandbox.json(&["ticket", "add", "--title", "First"]);
     let second = sandbox.json(&["ticket", "add", "--title", "Second"]);
@@ -294,26 +294,17 @@ fn the_sprints_usage_reaches_the_tickets_it_drew() {
         "The sprint landed its batch.",
     ]);
 
-    let header = format!("Usage \u{2014} {record_id}");
+    let stamped = sandbox.json(&["session", "show", "--session", &record_id]);
+    assert_eq!(
+        stamped["tokens"]["input"], 1234,
+        "the usage is stamped on the record"
+    );
+    assert_eq!(stamped["status"], "ended");
     for id in [&first_id, &second_id] {
         let listed = sandbox.json(&["ticket", "comment", "list", "--id", id]);
-        let comments = listed["comments"].as_array().unwrap();
-        assert_eq!(
-            comments.len(),
-            1,
-            "the sprint posts one usage comment on each drawn ticket"
-        );
-        assert_eq!(comments[0]["author"], "sprint");
-        let first_line = comments[0]["body"]
-            .as_str()
-            .unwrap()
-            .lines()
-            .next()
-            .unwrap()
-            .to_string();
         assert!(
-            first_line.starts_with(&header),
-            "the usage header names the sprint's session: {first_line}"
+            listed["comments"].as_array().expect("comments").is_empty(),
+            "the sprint's end writes no comment on a drawn ticket (TAN-323)"
         );
     }
 }

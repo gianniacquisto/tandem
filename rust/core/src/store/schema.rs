@@ -14,8 +14,8 @@
 //!
 //! **A v5 file is refused, never read.** The port has no dual writer and no v5
 //! reader (docs/port.md, Migration): a file whose seam is newer than this build
-//! answers one error naming `Scripts/import-legacy.py`, the one-off import
-//! (PRT-18), and exits non-zero.
+//! answers one error pointing at the one-off import's record (PRT-18, ADR 0031,
+//! the git history), and exits non-zero.
 //!
 //! All SQL in the port lives under this module.
 
