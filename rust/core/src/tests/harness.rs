@@ -676,7 +676,7 @@ fn a_second_pass_reads_the_harness_into_a_record_of_its_own() {
         .expect("the second record stamps");
     stub.join();
 
-    assert!(stamp.stamped, "the usage comment posts once");
+    assert!(stamp.stamped, "the stamp lands once");
     assert_eq!(stamp.session.id, "ses_pass_2");
     assert_eq!(
         stamp.session.harness_session_id.as_deref(),

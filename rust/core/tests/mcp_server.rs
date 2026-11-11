@@ -758,7 +758,7 @@ fn tools_call_drives_the_sprint_record_and_a_capture() {
 }
 
 #[test]
-fn session_end_with_explicit_usage_stores_it_and_posts_the_usage_comment() {
+fn session_end_with_explicit_usage_stores_it_and_writes_no_comment() {
     let sandbox = Sandbox::new("mcp-session-usage");
     let store = sandbox.store();
 
@@ -824,14 +824,11 @@ fn session_end_with_explicit_usage_stores_it_and_posts_the_usage_comment() {
         .expect("the call answers"),
     ))
     .expect("the tool result is JSON");
-    let bodies: Vec<&str> = comments["comments"]
-        .as_array()
-        .expect("comments")
-        .iter()
-        .filter_map(|comment| comment["body"].as_str())
-        .collect();
     assert!(
-        bodies.iter().any(|body| body.contains(&id)),
-        "the stamp posts the usage comment on the carried ticket: {bodies:?}"
+        comments["comments"]
+            .as_array()
+            .expect("comments")
+            .is_empty(),
+        "the stamp writes no comment: usage is the record's (TAN-323)"
     );
 }

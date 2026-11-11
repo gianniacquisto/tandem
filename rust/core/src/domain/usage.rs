@@ -23,9 +23,8 @@
 //! **Three partitions and one overlap.** The day, model and agent rows are three
 //! views of one number: each covers every record once, and their costs sum to
 //! `cost`. A ticket row is different: every ticket a record carried gets the
-//! record's whole cost and whole tokens, exactly what the record's `usage`
-//! comment on that ticket states, so the ticket rows sum to `cost + overlap`
-//! rather than to `cost`. [`UsageReport::ticket_total`] is the sum and the face
+//! record's whole cost and whole tokens, so the ticket rows sum to
+//! `cost + overlap` rather than to `cost`. [`UsageReport::ticket_total`] is the sum and the face
 //! says the overlap once.
 //!
 //! **The bar is the report's too.** [`UsageRow::bar_percent`] is a row's cost
