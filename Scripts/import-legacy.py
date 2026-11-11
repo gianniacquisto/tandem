@@ -178,6 +178,14 @@ def table_columns(connection, table):
     return [row[1] for row in rows]
 
 
+def table_exists(connection, table):
+    row = connection.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table,),
+    ).fetchone()
+    return row[0] > 0
+
+
 def create_store(path, version, statements, schema_path, applied_at):
     """The target store: the schema's shape, stamped with its own version."""
     connection = sqlite3.connect(path)
@@ -353,9 +361,12 @@ def import_sprints(source, target):
         FROM sprints ORDER BY lane, number
         """,
     )
+    # Schema v9 renamed the table to `workflow_runs` and added `workflow`, whose
+    # default fills the row; an older target keeps `sprints`.
+    table = "workflow_runs" if table_exists(target, "workflow_runs") else "sprints"
     insert(
         target,
-        "sprints",
+        table,
         [
             "lane", "number", "session", "mode", "batch", "runs", "close", "status",
             "opened_at", "closed_at", "author",
@@ -444,9 +455,12 @@ def verify(source, target):
         rows(source, "SELECT COUNT(*) FROM sessions")[0][0],
         rows(source, "SELECT COUNT(*) FROM sprints")[0][0],
     )
+    target_sprints = (
+        "workflow_runs" if table_exists(target, "workflow_runs") else "sprints"
+    )
     new_sessions, new_sprints = (
         rows(target, "SELECT COUNT(*) FROM sessions")[0][0],
-        rows(target, "SELECT COUNT(*) FROM sprints")[0][0],
+        rows(target, f"SELECT COUNT(*) FROM {target_sprints}")[0][0],
     )
     if old_sessions != new_sessions:
         diffs.append(f"session count: {old_sessions} -> {new_sessions}")
