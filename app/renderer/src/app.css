@@ -1290,7 +1290,8 @@ body {
   white-space: nowrap;
 }
 
-.ticket-row__assignee--human {
+.ticket-row__assignee--human,
+.ticket-card__assignee--human {
   color: var(--ember-deep);
 }
 
@@ -1302,131 +1303,203 @@ body {
   white-space: nowrap;
 }
 
-/* The board: lanes are rows and the six statuses are columns, in the declared
- * workflow order. The lane title holds the left edge while the statuses
- * scroll; a column never grows past a card's readable width (PRT-35). */
+/* The board: one column per workflow stage, in declared order. Each column is
+ * its own scroll pane with a sticky head naming the stage and its card count;
+ * the board scrolls sideways when a workflow declares more stages than the
+ * window fits, and a column never grows past a card's readable width. */
 
 .board {
   display: grid;
-  /* The lane title, then one track per status: wide enough for a card, capped
-     so one or two lanes do not stretch a column to the window. */
-  grid-template-columns: minmax(120px, 160px) repeat(6, minmax(180px, 320px));
-  align-items: start;
-  gap: 8px;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(190px, 1fr);
+  align-items: stretch;
+  gap: 10px;
   padding-bottom: var(--space-lane);
   overflow-x: auto;
 }
 
-/* A lane row (and the status head) only places its children in the grid; the
-   row itself owns no box, so the title can stick to the scrolling board. */
-.board__lane {
-  display: contents;
+.tickets__bar--board .focus {
+  margin-top: 0;
 }
 
-.board__title {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  display: flex;
-  justify-content: flex-start;
-  gap: 6px;
-  margin: 0;
-  padding: 8px 4px;
-  background: var(--paper);
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
-.board__title--head {
-  padding: 0;
-}
-
-/* A project header is a quiet group label, not a lane: smaller than the lane
- * title, dim, transparent with no full-bleed paper band, so the grouped lanes
- * read as one group. It spans the whole grid so it fills its own row and every
- * lane row beneath starts in column 1. */
-.board__project {
-  display: contents;
-}
-
-.board__project-title {
-  grid-column: 1 / -1;
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  display: flex;
-  justify-content: flex-start;
-  align-items: baseline;
-  gap: 6px;
-  margin: 0;
-  padding: 4px;
-  background: transparent;
-  color: var(--ink-dim);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.board__project-count {
-  color: var(--ink-dim);
-  font-size: 11px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
-.board__status {
-  margin: 0;
-  padding: 0 4px 4px;
-  color: var(--ink-dim);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.board__cell {
+.board__column {
   display: flex;
   box-sizing: border-box;
   flex-direction: column;
-  gap: 6px;
-  min-height: 120px;
-  padding: 4px;
+  min-height: 240px;
+  max-height: calc(100vh - 190px);
+  padding: 0 4px 4px;
   border-radius: var(--radius-control);
+  overflow-y: auto;
 }
 
-.board__cell[data-targeted] {
+.board__column[data-targeted] {
   background: var(--parchment);
   outline: var(--hairline) solid var(--accent);
 }
 
-.board__cell[data-empty] {
-  border: var(--hairline) dashed var(--line);
+.board__column-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 4px;
+  background: var(--paper);
 }
 
-.board__cell[data-empty][data-targeted] {
-  border-style: solid;
-}
-
-.board__drop-hint {
+.board__column-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
   margin: 0;
-  padding: 8px 4px;
   color: var(--ink-dim);
-  font-size: 11.5px;
-  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
 }
 
-.board__count {
+.board__column-count {
   color: var(--ink-dim);
   font-size: 11px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
 
-.board__tickets {
+.board__cards {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 6px;
-  min-height: 40px;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* One card: the lane chip, the title, and the ref/assignee/blocked footer. The
+ * column is the status, so the card carries no completion checkbox, no status
+ * pill and no strikethrough. Its tone is the lane name hashed over the palette
+ * tokens, so no colour is stored and the same lane keeps its colour. */
+.ticket-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  cursor: pointer;
+  transition: background-color var(--motion-toggle) ease-in-out;
+}
+
+.ticket-card:hover,
+.ticket-card[aria-current="true"] {
+  background: var(--paper);
+}
+
+.ticket-card[aria-current="true"] {
+  outline: var(--hairline) solid var(--accent);
+}
+
+.ticket-card__lane {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 5px;
+  padding: 1px 7px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--wikilink-chip);
+  color: var(--ink);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.ticket-card__lane-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--lane-tone, var(--accent));
+}
+
+.ticket-card__lane[data-tone="moss"] {
+  --lane-tone: var(--moss);
+}
+
+.ticket-card__lane[data-tone="ember"] {
+  --lane-tone: var(--ember);
+}
+
+.ticket-card__lane[data-tone="accent"] {
+  --lane-tone: var(--accent);
+}
+
+.ticket-card__lane[data-tone="sun"] {
+  --lane-tone: var(--sun);
+}
+
+.ticket-card__lane[data-tone="skin"] {
+  --lane-tone: var(--skin);
+}
+
+.ticket-card__lane[data-tone="hill"] {
+  --lane-tone: var(--hill);
+}
+
+.ticket-card__lane[data-tone="sky"] {
+  --lane-tone: var(--sky);
+}
+
+.ticket-card__title {
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.ticket-card__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+.ticket-card__blocked {
+  color: var(--ember-deep);
+}
+
+.board__add {
+  padding: 6px 2px 0;
+}
+
+.board__add-button {
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.board__add-button:hover {
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+.board__add-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 6px;
+  border: var(--hairline) solid var(--accent);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
 }
 
 /* Empty and error states. */

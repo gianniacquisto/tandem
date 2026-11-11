@@ -96,9 +96,6 @@ pub enum DomainError {
     DuplicateLane(String),
     /// A lane name was referenced but does not exist.
     UnknownLane(String),
-    /// An active-project focus named a lane that is not declared. `lanes` is
-    /// the declared list, so the refusal can name what the human may pick.
-    UnknownProject { name: String, lanes: Vec<String> },
     /// A project name was empty or whitespace-only.
     EmptyProjectName,
     /// A project name was already in use.
@@ -352,13 +349,6 @@ impl DomainError {
                     "Unknown cycle lane \"{name}\". Create it with `lane add --name \"{name}\"`, or list lanes with `lane list`."
                 )
             }
-            Self::UnknownProject { name, lanes } if lanes.is_empty() => {
-                format!("Unknown project \"{name}\". No lanes are declared yet; create one first.")
-            }
-            Self::UnknownProject { name, lanes } => format!(
-                "Unknown project \"{name}\". The declared lanes are: {}.",
-                lanes.join(", ")
-            ),
             Self::EmptyProjectName => {
                 "Project name is empty. Provide a non-empty name and try again.".to_string()
             }

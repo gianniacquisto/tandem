@@ -52,19 +52,19 @@ export const SCENES: readonly Scene[] = [
     id: 'tickets-board',
     file: 'tickets-board.png',
     description:
-      'the same face on the same 78-ticket board home in its board layout: the lanes as rows, each named with its count and holding one cell per status, the six status columns in the declared workflow order from Backlog to Done, and the same rows set on cards in the cell of their lane and status',
+      'the same face on the same 78-ticket board home in its board layout: one column per workflow stage in stage order from Backlog to Done, each head naming the stage and the number of cards in it, each card the lane chip, the title and the ref, assignee and blocked footer, and each column\'s foot carrying its add',
   },
   {
     id: 'tickets-focus',
     file: 'tickets-focus.png',
     description:
-      'the **Tickets** face with a project focus set: the focus control naming the active lane with its show-all escape, and the board drawing that lane row alone',
+      'the **Tickets** face with a project focus set: the focus control naming the active project with its show-all escape, and the board drawing that project\'s cards across the columns',
   },
   {
     id: 'tickets-keyboard',
     file: 'tickets-keyboard.png',
     description:
-      'the keyboard-only pass over the 78-ticket board home: a row selected with the arrows, the quick-add reached with the platform modifier and N, the search with the platform modifier and F, and a ticket moved one status over, inside its own lane, with Option and the arrows',
+      'the keyboard-only pass over the 78-ticket board home: a card selected with the arrows, the first column\'s add reached with the platform modifier and N, the search with the platform modifier and F, and a ticket moved one stage over with Option and the arrows',
   },
   {
     id: 'ticket-sheet-passes',

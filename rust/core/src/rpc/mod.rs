@@ -627,12 +627,17 @@ fn execute(
             // (`domain::Settings`): a default for a home that never stored one,
             // the stored list over it, and an explicitly empty list as empty.
             // The focus answers on the same read, resolved against the declared
-            // lanes, so a stale focus is no focus. The read is rows and no
+            // projects, so a stale focus is no focus. The read is rows and no
             // lock: the store opens, answers and closes inside `Store::setting`.
             let settings = Settings::new(store);
             let roster = settings.roster().map_err(domain)?;
-            let lanes = board.lanes().map_err(domain)?;
-            let active_project = settings.active_project(&lanes).map_err(domain)?;
+            let projects: Vec<String> = board
+                .projects()
+                .map_err(domain)?
+                .into_iter()
+                .map(|project| project.name)
+                .collect();
+            let active_project = settings.active_project(&projects).map_err(domain)?;
             Ok(Reply::Settings(SettingsReply {
                 roster,
                 active_project,
@@ -651,15 +656,20 @@ fn execute(
             // never from its request's echo, and the revision moves, so the
             // faces re-read on the change event.
             let settings = Settings::new(store);
-            let lanes = board.lanes().map_err(domain)?;
+            let projects: Vec<String> = board
+                .projects()
+                .map_err(domain)?
+                .into_iter()
+                .map(|project| project.name)
+                .collect();
             let active_project = match params.project.as_deref() {
                 Some(project) => settings
-                    .set_active_project(actor, Some(project), &lanes)
+                    .set_active_project(actor, Some(project), &projects)
                     .map_err(domain)?,
                 None if params.roster.is_none() => settings
-                    .set_active_project(actor, None, &lanes)
+                    .set_active_project(actor, None, &projects)
                     .map_err(domain)?,
-                None => settings.active_project(&lanes).map_err(domain)?,
+                None => settings.active_project(&projects).map_err(domain)?,
             };
             let roster = match params.roster {
                 Some(roster) => settings.set_roster(actor, roster).map_err(domain)?,

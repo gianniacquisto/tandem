@@ -36,62 +36,73 @@ function cliJson(args: string[]): unknown {
   )
 }
 
-test('the focused tickets face draws only the active lane plus the focus control', async ({
+test('the focused tickets face draws only the active project across the columns', async ({
   app,
   window,
 }) => {
-  // One lane with open tickets, read through the CLI: whatever home the run
-  // was told to read, the face must draw that lane alone.
-  const lanes = (cliJson(['lane', 'list']) as { lanes: string[] }).lanes
-  let focus: string | null = null
-  for (const lane of lanes) {
-    const listed = cliJson(['ticket', 'list', '--lane', lane]) as { tickets: unknown[] }
-    if (listed.tickets.length > 0) {
-      focus = lane
+  // One project holding tickets, read through the CLI: whatever home the run
+  // was told to read, the face must draw that project alone.
+  const projects = (
+    cliJson(['project', 'list']) as { projects: Array<{ name: string; lanes: string[] }> }
+  ).projects
+  let focus: { name: string; lanes: string[] } | null = null
+  let focusCount = 0
+  for (const project of projects) {
+    let count = 0
+    for (const lane of project.lanes) {
+      const listed = cliJson(['ticket', 'list', '--filter', 'all', '--lane', lane]) as {
+        tickets: unknown[]
+      }
+      count += listed.tickets.length
+    }
+    if (count > 0) {
+      focus = project
+      focusCount = count
       break
     }
   }
   expect(focus).not.toBeNull()
-  cli(['settings', 'set', '--project', focus as string])
+  cli(['settings', 'set', '--project', (focus as { name: string }).name])
 
   await openTab(window, 'tickets/board')
-  await expect(window.locator('.board__cell').first()).toBeVisible()
+  await expect(window.locator('.board__column').first()).toBeVisible()
 
-  // The focus control names the stored focus...
+  // The focus control names the stored project...
   const picker = window.locator('.focus__picker')
   await expect(picker).toBeVisible()
-  await expect(picker).toHaveValue(focus as string)
+  await expect(picker).toHaveValue((focus as { name: string }).name)
 
-  // ...and the board draws that lane row alone, under its project header.
-  const rows = window.locator('.board__lane[data-lane]')
-  await expect(rows).toHaveCount(1)
-  const headers = window.locator('.board__project[data-project]')
-  await expect(headers).toHaveCount(1)
-  await expect(headers.first()).toContainText(focus as string)
-  // The header already names the lane, so the lane title is suppressed: the
-  // element holds the title track, aria-hidden and empty, and no duplicate
-  // count draws (UI-14).
-  const laneTitle = rows.first().locator('.board__title').first()
-  await expect(laneTitle).toHaveAttribute('aria-hidden', 'true')
-  await expect(laneTitle).toHaveText('')
+  // ...and the board draws that project's cards across the six columns: every
+  // lane chip names one of the project's lanes, and the cards are the store's.
+  const project = focus as { name: string; lanes: string[] }
+  const chips = await window.locator('.ticket-card__lane').allInnerTexts()
+  expect(chips.length).toBe(focusCount)
+  for (const chip of chips) expect(project.lanes).toContain(chip.trim())
+  await expect(window.locator('.board__column')).toHaveCount(6)
 
-  // The list draws the same lane alone.
+  // The list draws the same project alone, at its All scope so a done project
+  // still draws its lanes.
   await window.getByRole('tab', { name: 'List' }).click()
-  await expect(window.locator('.list__lane-title')).toHaveCount(1)
-  await expect(window.locator('.list__lane-title').first()).toContainText(focus as string)
+  await window.getByRole('tab', { name: /^All/ }).click()
+  const titles = await window.locator('.list__lane-title > span:first-child').allInnerTexts()
+  expect(titles.length).toBeGreaterThan(0)
+  for (const title of titles) expect(project.lanes).toContain(title)
 
   await window.getByRole('tab', { name: 'Board' }).click()
 
-  // The picture is the focused face: one project header, one lane row, plus the focus control.
+  // The picture is the focused face: one project across the six columns, plus
+  // the focus control.
   await capture(app, window, scene('tickets-focus'), 1330)
 
-  // The show-all escape draws every lane without clearing the stored focus.
+  // The show-all escape draws every project without clearing the stored focus.
   await window.getByRole('button', { name: 'Show all' }).click()
   await expect(window.getByRole('button', { name: 'Show focus' })).toHaveAttribute(
     'aria-pressed',
     'true',
   )
-  await expect(picker).toHaveValue(focus as string)
+  await expect(picker).toHaveValue(project.name)
+  const live = cliJson(['ticket', 'list', '--filter', 'all']) as { tickets: unknown[] }
+  await expect(window.locator('.ticket-card')).toHaveCount(live.tickets.length)
   await window.getByRole('button', { name: 'Show focus' }).click()
-  await expect(window.locator('.board__lane[data-lane]')).toHaveCount(1)
+  await expect(window.locator('.ticket-card')).toHaveCount(focusCount)
 })

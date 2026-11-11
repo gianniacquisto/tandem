@@ -9,29 +9,35 @@ import { describe, expect, it } from 'vitest'
 import { BoardLayout } from '../renderer/src/faces/BoardLayout'
 import {
   INITIAL_FILTERS,
+  LANE_TONES,
   appendIndex,
   assigneeChoices,
   assigneeLabel,
   blockLabel,
+  boardColumns,
   boardStatuses,
+  boardTickets,
   dropCalls,
   dropIndex,
   emptyBoardCopy,
   filterTickets,
   firstSelection,
+  focusLanes,
   laneColumns,
-  laneIndexOf,
   laneKeys,
   laneMembers,
-  laneRows,
+  laneTone,
   neighbourLane,
   neighbourSelection,
   scopeCounts,
-  visibleLaneKeys,
-  visibleMoveIndex,
   statusLabel,
+  stepSelection,
   titleMatches,
+  visibleMoveIndex,
+  type BoardColumn,
+  type BoardNarrowing,
   type Filters,
+  type View,
 } from '../renderer/src/shell/board'
 import type { TicketSummary } from '../renderer/src/wire/TicketSummary'
 import type { WorkflowStage } from '../renderer/src/wire/WorkflowStage'
@@ -83,7 +89,19 @@ const board: TicketSummary[] = [
   }),
 ]
 
+const projects = [
+  { name: 'Port', lanes: ['Port', 'ui'] },
+  { name: 'Tandem', lanes: ['Tandem'] },
+]
+
 const filters = (overrides: Partial<Filters>): Filters => ({ ...INITIAL_FILTERS, ...overrides })
+const narrowing = (overrides: Partial<BoardNarrowing>): BoardNarrowing => ({
+  lanes: null,
+  lane: null,
+  assignee: null,
+  text: '',
+  ...overrides,
+})
 
 describe('the board view over the snapshot', () => {
   it('starts on the open board, every axis absent and no search', () => {
@@ -96,11 +114,11 @@ describe('the board view over the snapshot', () => {
     })
   })
 
-  it('counts the scopes the way the segmented control draws them', () => {
+  it('counts the scopes the way the list draws them', () => {
     expect(scopeCounts(board)).toEqual({ open: 2, done: 1, all: 4 })
   })
 
-  it('parts open, done and all on the archive the way the app does', () => {
+  it('parts open, done and all on the archive the way the list does', () => {
     expect(filterTickets(board, filters({ scope: 'open' })).map((t) => t.id)).toEqual(['a', 'b'])
     expect(filterTickets(board, filters({ scope: 'done' })).map((t) => t.id)).toEqual(['c'])
     expect(filterTickets(board, filters({ scope: 'all' })).map((t) => t.id)).toEqual([
@@ -146,7 +164,7 @@ describe('the board view over the snapshot', () => {
     ])
   })
 
-  it('groups by lane in render order: the default area, declared lanes, then dangling names', () => {
+  it('groups the list by lane in render order: the default area, declared lanes, then dangling names', () => {
     const keys = laneKeys(['Port'], board)
     expect(keys).toEqual([null, 'Port', 'Tandem'])
 
@@ -157,114 +175,6 @@ describe('the board view over the snapshot', () => {
       ['a', 'c'],
       ['d'],
     ])
-  })
-
-  it('draws a declared lane with no tickets, so it stays a drop target', () => {
-    const columns = laneColumns(['Port', 'Empty'], board)
-    expect(columns.map((column) => column.title)).toEqual(['Uncategorized', 'Port', 'Empty', 'Tandem'])
-    expect(columns[2]?.tickets).toEqual([])
-  })
-
-  it('draws a row per lane and a cell per status, in the declared workflow order', () => {
-    expect(boardStatuses().map((status) => status.value)).toEqual([
-      'backlog',
-      'on-hold',
-      'ready',
-      'in-progress',
-      'in-review',
-      'done',
-    ])
-
-    const rows = laneRows(['Port'], board)
-    expect(rows.map((row) => row.title)).toEqual(['Uncategorized', 'Port', 'Tandem'])
-    expect(rows[1]?.cells.map((cell) => cell.status)).toEqual([
-      'backlog',
-      'on-hold',
-      'ready',
-      'in-progress',
-      'in-review',
-      'done',
-    ])
-    expect(rows[1]?.cells.map((cell) => cell.tickets.map((t) => t.id))).toEqual([
-      [],
-      [],
-      ['a'],
-      [],
-      [],
-      ['c'],
-    ])
-  })
-
-  it('draws a custom stage from the active workflow, without a code change', () => {
-    const stages: WorkflowStage[] = [
-      { key: 'backlog', label: 'Backlog', role: 'intake', binding: null },
-      { key: 'selected', label: 'Selected for development', role: 'intake', binding: null },
-      { key: 'ready', label: 'Ready', role: 'ready', binding: null },
-      { key: 'in-progress', label: 'In progress', role: 'active', binding: null },
-      { key: 'in-review', label: 'In Review', role: 'review', binding: null },
-      { key: 'done', label: 'Done', role: 'finished', binding: null },
-    ]
-    const withSelected = [
-      ...board,
-      ticket({ id: 'e', title: 'Echo', status: 'selected' }),
-    ]
-
-    expect(boardStatuses(stages).map((status) => status.value)).toEqual([
-      'backlog',
-      'selected',
-      'ready',
-      'in-progress',
-      'in-review',
-      'done',
-    ])
-    expect(statusLabel('selected', stages)).toBe('Selected for development')
-    const rows = laneRows(['Port'], withSelected, stages)
-    expect(rows[0]?.cells.map((cell) => cell.status)).toEqual([
-      'backlog',
-      'selected',
-      'ready',
-      'in-progress',
-      'in-review',
-      'done',
-    ])
-    expect(rows[0]?.cells[1]?.tickets.map((item) => item.id)).toEqual(['e'])
-    expect(
-      filterTickets(withSelected, filters({ scope: 'all', status: 'selected' })).map(
-        (item) => item.id,
-      ),
-      'the list status filter finds the custom stage',
-    ).toEqual(['e'])
-    expect(
-      filterTickets(withSelected, filters({ scope: 'open' })).map((item) => item.id),
-      'the open scope carries a custom unfinished stage',
-    ).toEqual(['a', 'b', 'e'])
-    expect(
-      laneRows(['Port'], withSelected).map((row) => row.cells[1]?.status),
-      'the default six do not carry the custom key',
-    ).toEqual(['on-hold', 'on-hold', 'on-hold'])
-  })
-
-  it('draws every status cell of a declared lane, so each stays a drop target', () => {
-    const rows = laneRows(['Port', 'Empty'], board)
-    expect(rows.map((row) => row.title)).toEqual(['Uncategorized', 'Port', 'Empty', 'Tandem'])
-    expect(rows[2]?.cells).toHaveLength(6)
-    expect(rows[2]?.cells.every((cell) => cell.tickets.length === 0)).toBe(true)
-  })
-
-  it('selects the first card of the first lane that holds one, in either direction', () => {
-    const rows = laneRows(['Port'], board)
-    expect(firstSelection(rows, 1)).toBe('b')
-    expect(firstSelection(rows, -1)).toBe('d')
-
-    // A lane with no cards is stepped over, not answered with null.
-    const sparse = laneRows([], [ticket({ id: 'z', lane: 'Port' })])
-    expect(firstSelection(sparse, 1)).toBe('z')
-  })
-
-  it('titles the default area, and keeps a dangling lane rather than hiding its tickets', () => {
-    const keys = laneKeys([], [ticket({ id: 'z', lane: 'Hand edit' })])
-    expect(keys).toEqual([null, 'Hand edit'])
-    expect(laneColumns([], [ticket({ id: 'z', lane: 'Hand edit' })])[1]?.title).toBe('Hand edit')
   })
 
   it('labels a status the way the domain spells it, and an assignee the way every face does', () => {
@@ -301,16 +211,284 @@ describe('the board view over the snapshot', () => {
   })
 })
 
-describe('the drag arithmetic', () => {
+describe('the board columns', () => {
+  it('draws one column per stage in workflow order, Done included', () => {
+    expect(boardStatuses().map((status) => status.value)).toEqual([
+      'backlog',
+      'on-hold',
+      'ready',
+      'in-progress',
+      'in-review',
+      'done',
+    ])
+    expect(boardColumns(board).map((column) => column.status)).toEqual([
+      'backlog',
+      'on-hold',
+      'ready',
+      'in-progress',
+      'in-review',
+      'done',
+    ])
+    expect(boardColumns(board).map((column) => column.label)).toEqual([
+      'Backlog',
+      'On hold',
+      'Ready',
+      'In progress',
+      'In Review',
+      'Done',
+    ])
+  })
+
+  it('holds exactly the tickets of its stage, and no ticket appears twice', () => {
+    const columns = boardColumns(board)
+    expect(columns.find((column) => column.status === 'backlog')?.tickets.map((t) => t.id)).toEqual([
+      'b',
+    ])
+    expect(columns.find((column) => column.status === 'ready')?.tickets.map((t) => t.id)).toEqual([
+      'a',
+    ])
+    expect(columns.find((column) => column.status === 'done')?.tickets.map((t) => t.id)).toEqual([
+      'c',
+      'd',
+    ])
+    const ids = columns.flatMap((column) => column.tickets.map((t) => t.id))
+    expect(ids).toHaveLength(board.length)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('keeps the store order inside a column, lane by lane', () => {
+    const ordered: TicketSummary[] = [
+      ticket({ id: 'u1', title: 'First ui', lane: 'ui', status: 'ready' }),
+      ticket({ id: 'c1', title: 'Core work', lane: 'core', status: 'ready' }),
+      ticket({ id: 'u2', title: 'Second ui', lane: 'ui', status: 'ready' }),
+      ticket({ id: 't1', title: 'Triage', lane: 'Tandem', status: 'backlog' }),
+    ]
+    const ready = boardColumns(ordered).find((column) => column.status === 'ready')
+    expect(ready?.tickets.map((t) => t.id)).toEqual(['u1', 'c1', 'u2'])
+  })
+
+  it('draws a custom stage from the active workflow, without a code change', () => {
+    const stages: WorkflowStage[] = [
+      { key: 'backlog', label: 'Backlog', role: 'intake', binding: null },
+      { key: 'selected', label: 'Selected for development', role: 'intake', binding: null },
+      { key: 'ready', label: 'Ready', role: 'ready', binding: null },
+      { key: 'in-progress', label: 'In progress', role: 'active', binding: null },
+      { key: 'in-review', label: 'In Review', role: 'review', binding: null },
+      { key: 'done', label: 'Done', role: 'finished', binding: null },
+    ]
+    const withSelected = [...board, ticket({ id: 'e', title: 'Echo', status: 'selected' })]
+
+    const columns = boardColumns(withSelected, stages)
+    expect(columns.map((column) => column.status)).toEqual([
+      'backlog',
+      'selected',
+      'ready',
+      'in-progress',
+      'in-review',
+      'done',
+    ])
+    expect(columns.find((column) => column.status === 'selected')?.label).toBe(
+      'Selected for development',
+    )
+    expect(columns.find((column) => column.status === 'selected')?.tickets.map((t) => t.id)).toEqual([
+      'e',
+    ])
+    expect(statusLabel('selected', stages)).toBe('Selected for development')
+  })
+
+  it('keeps an empty stage as a column, so every stage is a drop target', () => {
+    const columns = boardColumns(board)
+    expect(columns).toHaveLength(6)
+    expect(columns.find((column) => column.status === 'on-hold')?.tickets).toEqual([])
+  })
+
+  it('draws every non-archived ticket, and a done ticket sits in Done whatever the scope says', () => {
+    const visible = boardTickets(board, narrowing({}))
+    expect(visible.map((t) => t.id)).toEqual(['a', 'b', 'c'])
+    const columns = boardColumns(visible)
+    expect(columns.find((column) => column.status === 'done')?.tickets.map((t) => t.id)).toEqual([
+      'c',
+    ])
+    expect(columns.flatMap((column) => column.tickets.map((t) => t.id))).not.toContain('d')
+  })
+})
+
+describe('the project focus', () => {
+  it('draws the focused project\'s lanes alone', () => {
+    expect(focusLanes(projects, 'Port')).toEqual(['Port', 'ui'])
+    expect(boardTickets(board, narrowing({ lanes: focusLanes(projects, 'Port') })).map((t) => t.id))
+      .toEqual(['a', 'c'])
+  })
+
+  it('draws every lane when nothing is focused: the show-all escape', () => {
+    expect(focusLanes(projects, null)).toBeNull()
+    expect(boardTickets(board, narrowing({ lanes: focusLanes(projects, null) })).map((t) => t.id))
+      .toEqual(['a', 'b', 'c'])
+  })
+
+  it('falls back to every lane when the focus names no project, so a stale focus hides nothing', () => {
+    expect(focusLanes(projects, 'Retro')).toBeNull()
+    expect(focusLanes(projects, '')).toBeNull()
+  })
+
+  it('treats a stored lane name as no focus: the focus means a project now', () => {
+    // `ui` is a lane of Port, not a project: the stored value names no project.
+    expect(focusLanes(projects, 'ui')).toBeNull()
+    expect(boardTickets(board, narrowing({ lanes: focusLanes(projects, 'ui') })).map((t) => t.id))
+      .toEqual(['a', 'b', 'c'])
+  })
+
+  it('narrows by the lane filter, where the empty value is the default area', () => {
+    expect(boardTickets(board, narrowing({ lane: 'Port' })).map((t) => t.id)).toEqual(['a', 'c'])
+    expect(boardTickets(board, narrowing({ lane: '' })).map((t) => t.id)).toEqual(['b'])
+    expect(boardTickets(board, narrowing({ lane: 'ui' }))).toEqual([])
+  })
+})
+
+describe('a drop on a board column', () => {
+  const methods = (calls: ReturnType<typeof dropCalls>) => calls.map((call) => call.method)
+
+  it('issues one ticket.set carrying that column\'s stage', () => {
+    const calls = dropCalls(board, 'a', 'in-review')
+
+    expect(methods(calls)).toEqual(['ticket.set'])
+    expect(calls[0]).toEqual({
+      method: 'ticket.set',
+      params: { id: 'a', title: null, status: 'in-review', assignee: null, description: null },
+    })
+  })
+
+  it('writes nothing for a drop in the column the card already stands in', () => {
+    expect(dropCalls(board, 'a', 'ready')).toEqual([])
+    expect(dropCalls(board, 'c', 'done')).toEqual([])
+  })
+
+  it('writes nothing for a ticket the listing does not hold', () => {
+    expect(dropCalls(board, 'missing', 'done')).toEqual([])
+  })
+})
+
+describe('the board card', () => {
+  const columns = boardColumns(boardTickets(board, narrowing({})))
+  const html = (overrides: { selected?: string | null } = {}): string =>
+    renderToStaticMarkup(
+      createElement(BoardLayout, {
+        columns,
+        selected: overrides.selected ?? null,
+        onSelect: () => {},
+        onOpen: () => {},
+        onLane: () => {},
+        onDropOn: () => {},
+        onAdd: async () => true,
+      }),
+    )
+  const drawn = html({ selected: 'a' })
+
+  it('draws one column per stage, with data-status in stage order', () => {
+    expect(drawn.match(/class="board__column"/g)).toHaveLength(6)
+    const statuses = [...drawn.matchAll(/class="board__column" data-status="([^"]+)"/g)].map(
+      (match) => match[1],
+    )
+    expect(statuses).toEqual([
+      'backlog',
+      'on-hold',
+      'ready',
+      'in-progress',
+      'in-review',
+      'done',
+    ])
+    // The document order is the workflow's.
+    const at = (status: string): number => drawn.indexOf(`data-status="${status}"`)
+    expect(at('backlog')).toBeLessThan(at('ready'))
+    expect(at('ready')).toBeLessThan(at('done'))
+  })
+
+  it('gives each head the stage label and the number of cards in it', () => {
+    const heads = [...drawn.matchAll(/<h2 class="board__column-title">([\s\S]*?)<\/h2>/g)].map(
+      (match) => match[1] ?? '',
+    )
+    expect(heads).toHaveLength(6)
+    expect(heads[0]).toContain('Backlog')
+    expect(heads[2]).toContain('Ready')
+    expect(heads[5]).toContain('Done')
+    expect(heads[0]).toContain('<span class="board__column-count">1</span>')
+    expect(heads[1]).toContain('<span class="board__column-count">0</span>')
+    expect(heads[5]).toContain('<span class="board__column-count">1</span>')
+  })
+
+  it('draws one card per ticket, with its data-ticket and lane chip', () => {
+    expect(drawn.match(/class="ticket-card"/g)).toHaveLength(3)
+    expect(drawn).toContain('data-ticket="a"')
+    expect(drawn).toContain('data-ticket="b"')
+    expect(drawn).toContain('data-ticket="c"')
+    // a and c carry Port; b is the default area and draws no chip.
+    expect(drawn.match(/class="ticket-card__lane"/g)).toHaveLength(2)
+    expect(drawn).toContain('data-tone="')
+  })
+
+  it('carries no completion checkbox, no status pill and no lane text line', () => {
+    expect(drawn).not.toContain('ticket-row__check')
+    expect(drawn).not.toContain('ticket-row__status')
+    expect(drawn).not.toContain('ticket-row')
+    expect(drawn).not.toContain('data-done')
+  })
+
+  it('carries its add control in every column foot', () => {
+    expect(drawn.match(/class="board__add-button"/g)).toHaveLength(6)
+    expect(drawn.match(/\+ Add a card/g)).toHaveLength(6)
+  })
+
+  it('opens the sheet on one click and filters from the chip without opening it', () => {
+    const card = source('faces/BoardCard.tsx')
+    expect(card).toContain('onClick')
+    expect(card).toContain('onOpen(ticket)')
+    // The chip's own click never reaches the card.
+    expect(card).toContain('stopPropagation()')
+    expect(card).toContain('onLane(ticket.lane')
+  })
+
+  it('hashes the chip tone over the palette tokens, deterministically', () => {
+    expect(laneTone('Port')).toBe(laneTone('Port'))
+    expect(LANE_TONES).toContain(laneTone('Port'))
+    const tones = new Set(['Port', 'Tandem', 'ui', 'core', 'Retro', 'Fleet'].map(laneTone))
+    expect(tones.size).toBeGreaterThan(1)
+
+    const css = readFileSync(join(renderer, 'app.css'), 'utf8')
+    const tokens = readFileSync(join(renderer, 'tokens.css'), 'utf8')
+    for (const tone of LANE_TONES) {
+      expect(css, `the ${tone} chip has its rule`).toContain(`[data-tone="${tone}"]`)
+      expect(tokens, `--${tone} is a token`).toContain(`--${tone}:`)
+    }
+    expect(css).not.toMatch(/\.ticket-card__lane\[data-tone\][^{]*\{[^}]*#[0-9a-fA-F]{3,8}\b/)
+  })
+})
+
+describe('the board selection', () => {
+  const columns: BoardColumn[] = boardColumns(boardTickets(board, narrowing({})))
+
+  it('selects the first card of the first column that holds one, in either direction', () => {
+    expect(firstSelection(columns, 1)).toBe('b')
+    expect(firstSelection(columns, -1)).toBe('c')
+  })
+
+  it('steps across columns at the same row, and within a column up and down', () => {
+    expect(neighbourSelection(columns, null, 1)).toBe('b')
+    expect(stepSelection(columns, 'b', 'column', 1)).toBe('a')
+    expect(stepSelection(columns, 'a', 'column', 1)).toBe('c')
+    expect(stepSelection(columns, 'a', 'column', -1)).toBe('b')
+    // A column of one card has no row to step to.
+    expect(stepSelection(columns, 'b', 'row', 1)).toBeNull()
+    expect(stepSelection(columns, 'a', 'row', -1)).toBeNull()
+  })
+})
+
+describe('the list drag arithmetic', () => {
   it('lands before or after the anchor it was dropped on', () => {
-    // Drop `a` on `c`'s bottom half: after c, inside Port.
     expect(dropIndex(board, 'a', 'c', true)).toBe(1)
-    // Drop `a` on `c`'s top half: before c.
     expect(dropIndex(board, 'a', 'c', false)).toBe(0)
   })
 
   it('subtracts one when the moving ticket already sat before the drop point', () => {
-    // c is after a; dropping a on c's bottom half after removal is index 1.
     expect(dropIndex(board, 'c', 'a', true)).toBe(1)
   })
 
@@ -321,16 +499,12 @@ describe('the drag arithmetic', () => {
   it('ignores a drop on itself, and answers nothing for an unknown anchor', () => {
     expect(dropIndex(board, 'a', 'a', true)).toBeNull()
     expect(dropIndex(board, 'a', 'missing', true)).toBeNull()
-    // The moving id is the drag's own payload, so the core resolves only the
-    // anchor; an id that is not in the lane simply subtracts nothing.
     expect(dropIndex(board, 'missing', 'a', true)).toBe(1)
   })
 
-  it('appends at the end of a lane, and finds a ticket and its lane by id', () => {
+  it('appends at the end of a lane, and finds a lane\'s members', () => {
     expect(appendIndex(board, 'Port')).toBe(2)
     expect(appendIndex(board, 'Rien')).toBe(0)
-    expect(laneIndexOf(board, 'c')).toBe(1)
-    expect(laneIndexOf(board, 'missing')).toBeNull()
     expect(laneMembers(board, 'Port').map((t) => t.id)).toEqual(['a', 'c'])
   })
 
@@ -340,7 +514,6 @@ describe('the drag arithmetic', () => {
       ticket({ id: 'b', lane: 'Port' }),
       ticket({ id: 'c', lane: 'Port' }),
     ]
-    // b is hidden: moving a down lands it after c, not after b.
     const visible = [full[0], full[2]] as TicketSummary[]
     expect(visibleMoveIndex(full, visible, 'a', 1)).toBe(2)
     expect(visibleMoveIndex(full, visible, 'c', -1)).toBe(0)
@@ -376,75 +549,9 @@ describe('the drag arithmetic', () => {
       expect(dropIndex(tickets, entry.moving, entry.anchor, entry.after), entry.name).toBe(entry.index)
     }
   })
-
-  it('moves the selection down a column, then across to the next non-empty lane', () => {
-    const columns = laneColumns(['Port', 'Empty'], board)
-    expect(columns.map((column) => column.title)).toEqual(['Uncategorized', 'Port', 'Empty', 'Tandem'])
-
-    expect(neighbourSelection(columns, null, 1)).toBe('b')
-    // Across from the default area skips the empty lane to Port's first row.
-    expect(neighbourSelection(columns, 'b', 1)).toBe('a')
-    expect(neighbourSelection(columns, 'a', 1)).toBe('d')
-    expect(neighbourSelection(columns, 'd', 1)).toBe('d')
-    expect(neighbourSelection(columns, 'd', -1)).toBe('a')
-  })
-})
-
-describe('a drop on the board grid', () => {
-  const methods = (calls: ReturnType<typeof dropCalls>) => calls.map((call) => call.method)
-
-  it('issues ticket.set when only the status changes', () => {
-    const calls = dropCalls(board, 'a', { lane: 'Port', status: 'in-review', index: 0 })
-
-    expect(methods(calls)).toEqual(['ticket.set'])
-    expect(calls[0]).toEqual({
-      method: 'ticket.set',
-      params: { id: 'a', title: null, status: 'in-review', assignee: null, description: null },
-    })
-  })
-
-  it('issues ticket.move when only the lane changes', () => {
-    const calls = dropCalls(board, 'a', { lane: 'Tandem', status: 'ready', index: 3 })
-
-    expect(methods(calls)).toEqual(['ticket.move'])
-    expect(calls[0]).toEqual({
-      method: 'ticket.move',
-      params: { id: 'a', lane: 'Tandem', index: 3 },
-    })
-  })
-
-  it('issues ticket.move when neither changes, reordering inside the cell', () => {
-    const calls = dropCalls(board, 'a', { lane: 'Port', status: 'ready', index: 1 })
-
-    expect(methods(calls)).toEqual(['ticket.move'])
-    expect(calls[0]).toEqual({
-      method: 'ticket.move',
-      params: { id: 'a', lane: 'Port', index: 1 },
-    })
-  })
-
-  it('issues the lane write first, then the status write, when both change', () => {
-    const calls = dropCalls(board, 'a', { lane: 'Tandem', status: 'done', index: 2 })
-
-    expect(methods(calls)).toEqual(['ticket.move', 'ticket.set'])
-    expect(calls[0]).toEqual({
-      method: 'ticket.move',
-      params: { id: 'a', lane: 'Tandem', index: 2 },
-    })
-    expect(calls[1]).toEqual({
-      method: 'ticket.set',
-      params: { id: 'a', title: null, status: 'done', assignee: null, description: null },
-    })
-  })
-
-  it('issues nothing for a ticket the listing does not hold', () => {
-    expect(dropCalls(board, 'missing', { lane: 'Port', status: 'ready', index: 0 })).toEqual([])
-  })
 })
 
 describe('the assignee lists', () => {
-  // The Swift order (`AssigneePicker.options`, PRT-35): Unassigned, the reserved
-  // word, the roster, then the ticket's own name when the roster has dropped it.
   it('offers the picker in the Swift order: unassigned, human, roster, off-roster current', () => {
     expect(assigneeChoices(['builder', 'human', ' review '], 'review')).toEqual([
       { value: null, label: 'Unassigned', selected: false },
@@ -456,15 +563,10 @@ describe('the assignee lists', () => {
   })
 
   it('offers a stored roster name that no ticket carries', () => {
-    // PRT-38: the names come from the store's `roster` setting, so a name with
-    // no row is still a name the human can assign.
     const values = assigneeChoices(['human', 'review'], null).map((choice) => choice.value)
     expect(values).toEqual([null, 'human', 'review'])
   })
 
-  // The rule is one helper, not one per face: the sheet's picker and the
-  // board's filter draw the same names from the same list, so a name the sheet
-  // can assign is a name the filter can narrow to.
   it('draws both assignee lists from the store roster, not from the board rows', () => {
     for (const name of ['faces/TicketSheet.tsx', 'faces/TicketsFace.tsx']) {
       expect(source(name), `${name} uses the one helper`).toContain('assigneeChoices(')
@@ -477,130 +579,22 @@ describe('the assignee lists', () => {
   })
 })
 
-describe('the project focus', () => {
-  const keys = laneKeys(['Port', 'Tandem'], board)
-
-  it('draws the active lane alone', () => {
-    expect(visibleLaneKeys(keys, 'Port')).toEqual(['Port'])
-  })
-
-  it('draws every lane key in render order when nothing is focused: the show-all escape', () => {
-    expect(visibleLaneKeys(keys, null)).toEqual(keys)
-    expect(visibleLaneKeys(keys, null)).toEqual([null, 'Port', 'Tandem'])
-  })
-
-  it('falls back to every lane when the focus names no lane key, so a stale focus hides nothing', () => {
-    expect(visibleLaneKeys(keys, 'Retro')).toEqual(keys)
-    expect(visibleLaneKeys(keys, '')).toEqual(keys)
-  })
-})
-
-describe('the epic lane journey', () => {
-  const epicDeclared = ['Tandem', 'ui', 'core'] as const
-  const epicBoard: TicketSummary[] = [
-    ticket({ id: 'e1', title: 'Triage inbox', lane: 'Tandem', status: 'backlog' }),
-    ticket({ id: 'e2', title: 'Epic ui work', lane: 'ui', status: 'ready' }),
-    ticket({ id: 'e3', title: 'Epic core work', lane: 'core', status: 'in-progress' }),
-    ticket({ id: 'e4', title: 'Unfiled', lane: null, status: 'backlog' }),
-  ]
-
-  it('focuses an epic lane alone and shows all on the escape or a stale name', () => {
-    const keys = laneKeys([...epicDeclared], epicBoard)
-    expect(keys).toEqual([null, 'Tandem', 'ui', 'core'])
-    expect(keys[0]).toBeNull()
-    expect(visibleLaneKeys(keys, 'ui')).toEqual(['ui'])
-    expect(visibleLaneKeys(keys, null)).toEqual(keys)
-    expect(visibleLaneKeys(keys, 'docs')).toEqual(keys)
-    expect(visibleLaneKeys(keys, '')).toEqual(keys)
-  })
-
-  it('narrows the list to the epic lane without reordering', () => {
-    const ordered: TicketSummary[] = [
-      ticket({ id: 'u1', title: 'First ui', lane: 'ui', status: 'ready' }),
-      ticket({ id: 'c1', title: 'Core work', lane: 'core', status: 'ready' }),
-      ticket({ id: 'u2', title: 'Second ui', lane: 'ui', status: 'in-progress' }),
-      ticket({ id: 't1', title: 'Triage', lane: 'Tandem', status: 'backlog' }),
-    ]
-    const narrowed = filterTickets(ordered, filters({ scope: 'all', lane: 'ui' }))
-    expect(narrowed.map((row) => row.id)).toEqual(['u1', 'u2'])
-  })
-
-  it('keeps an empty focused epic lane as a drop target with its hint', () => {
-    const withoutUi = epicBoard.filter((row) => row.lane !== 'ui')
-    const rows = laneRows([...epicDeclared], withoutUi)
-    expect(rows.map((row) => row.key)).toEqual([null, 'Tandem', 'ui', 'core'])
-    const uiRow = rows.find((row) => row.key === 'ui')
-    expect(uiRow).toBeDefined()
-    expect(uiRow?.cells).toHaveLength(6)
-    expect(uiRow?.cells.every((cell) => cell.tickets.length === 0)).toBe(true)
-    const cell = source('faces/BoardCell.tsx')
-    expect(cell).toContain('board__drop-hint')
-    expect(cell).toContain('Drop tickets here')
-    expect(cell).toContain('data-empty')
-    expect(cell).toContain('data-targeted')
-    expect(
-      emptyBoardCopy({
-        status: 'ready',
-        ticketCount: 2,
-        error: null,
-        filters: filters({}),
-        nothingVisible: true,
-        activeProject: 'ui',
-        laneNames: [...epicDeclared],
-      }),
-    ).toMatchObject({ title: 'No tickets in ui' })
-  })
-
-  it('drops a ticket into an epic lane cell in planner order', () => {
-    const calls = dropCalls(epicBoard, 'e1', { lane: 'ui', status: 'done', index: 1 })
-    expect(calls.map((call) => call.method)).toEqual(['ticket.move', 'ticket.set'])
-    expect(calls[0]).toEqual({
-      method: 'ticket.move',
-      params: { id: 'e1', lane: 'ui', index: 1 },
-    })
-    expect(calls[1]).toEqual({
-      method: 'ticket.set',
-      params: { id: 'e1', title: null, status: 'done', assignee: null, description: null },
-    })
-    expect(appendIndex(epicBoard, 'ui')).toBe(1)
-    expect(dropIndex(epicBoard, 'e1', 'e2', true)).toBe(1)
-    const face = source('faces/TicketsFace.tsx')
-    expect(face).toContain('dropCalls(')
-    expect(face).toContain('LANE_CHANGED')
-    expect(face).toContain('snapshot.revision')
-  })
-})
-
 describe('the empty board', () => {
-  it('shows a drop target with a hint in every empty cell, highlighted on drag', () => {
-    const cell = source('faces/BoardCell.tsx')
-    expect(cell).toContain('board__drop-hint')
-    expect(cell).toContain('Drop tickets here')
-    expect(cell).toContain('data-empty')
-    // The drag highlight survives the hint: the cell still marks its target.
-    expect(cell).toContain('data-targeted')
-    const css = readFileSync(join(renderer, 'app.css'), 'utf8')
-    expect(css).toContain('board__drop-hint')
-    expect(css).toContain('board__cell[data-empty]')
-  })
-
   it('keeps the empty copy and reaches every state', () => {
-    // TAND-12 keeps the words: the helper owns them and the face draws them.
     const helper = source('shell/board.ts')
     for (const words of ['All clear', 'No matches', 'No tickets match these filters']) {
       expect(helper, `keeps "${words}"`).toContain(words)
     }
-    // The face draws its copy through the one helper, so the helper is the
-    // seam the reachability below proves.
     const face = source('faces/TicketsFace.tsx')
     expect(face).toContain('emptyBoardCopy(')
 
     const base = {
       error: null as string | null,
       filters: filters({}),
+      view: 'list' as View,
       nothingVisible: true,
       activeProject: null as string | null,
-      laneNames: ['Port'] as readonly string[],
+      projectNames: ['Port'] as readonly string[],
     }
     expect(
       emptyBoardCopy({ ...base, status: 'connecting', ticketCount: 0 }),
@@ -614,11 +608,9 @@ describe('the empty board', () => {
     expect(emptyBoardCopy({ ...base, status: 'ready', ticketCount: 0 })).toMatchObject({
       title: 'Nothing on the board',
     })
-    // A board with a visible ticket draws no empty state.
     expect(
       emptyBoardCopy({ ...base, status: 'ready', ticketCount: 2, nothingVisible: false }),
     ).toBeNull()
-    // No tickets match the search.
     expect(
       emptyBoardCopy({
         ...base,
@@ -627,7 +619,6 @@ describe('the empty board', () => {
         filters: filters({ text: 'zzz no such ticket' }),
       }),
     ).toMatchObject({ title: 'No matches' })
-    // A status, assignee or lane filter hides every ticket.
     expect(
       emptyBoardCopy({
         ...base,
@@ -636,11 +627,28 @@ describe('the empty board', () => {
         filters: filters({ status: 'done' }),
       }),
     ).toMatchObject({ title: 'No tickets match these filters' })
-    // The focused lane is empty while the store is not.
     expect(
       emptyBoardCopy({ ...base, status: 'ready', ticketCount: 2, activeProject: 'Port' }),
     ).toMatchObject({ title: 'No tickets in Port' })
-    // Nothing open: the work is done.
+    // The board's add is per column, so its copy names that route, not "above".
+    expect(
+      emptyBoardCopy({ ...base, view: 'board', status: 'ready', ticketCount: 0 }),
+    ).toMatchObject({
+      title: 'Nothing on the board',
+      subtitle: "Add a card from a column's foot, or from the CLI.",
+    })
+    expect(
+      emptyBoardCopy({
+        ...base,
+        view: 'board',
+        status: 'ready',
+        ticketCount: 2,
+        activeProject: 'Port',
+      }),
+    ).toMatchObject({
+      title: 'No tickets in Port',
+      subtitle: "Add a card from a column's foot, or show every project.",
+    })
     expect(
       emptyBoardCopy({
         ...base,
@@ -649,7 +657,6 @@ describe('the empty board', () => {
         filters: filters({ scope: 'open' }),
       }),
     ).toMatchObject({ title: 'All clear' })
-    // Nothing completed yet.
     expect(
       emptyBoardCopy({
         ...base,
@@ -658,7 +665,6 @@ describe('the empty board', () => {
         filters: filters({ scope: 'done' }),
       }),
     ).toMatchObject({ title: 'Nothing done yet' })
-    // The all scope with nothing in view still answers, so no state is bare.
     expect(
       emptyBoardCopy({
         ...base,
@@ -668,133 +674,51 @@ describe('the empty board', () => {
       }),
     ).toMatchObject({ title: 'The list is empty' })
   })
+
+  it('draws the add control in an empty column, never a dashed cell', () => {
+    const empty = boardColumns([ticket({ id: 'only', status: 'backlog' })])
+    const drawn = renderToStaticMarkup(
+      createElement(BoardLayout, {
+        columns: empty,
+        selected: null,
+        onSelect: () => {},
+        onOpen: () => {},
+        onLane: () => {},
+        onDropOn: () => {},
+        onAdd: async () => true,
+      }),
+    )
+    expect(drawn.match(/class="board__add-button"/g)).toHaveLength(6)
+    expect(drawn).not.toContain('Drop tickets here')
+    expect(drawn).not.toContain('board__cell')
+  })
 })
 
-describe('the project header (UI-9)', () => {
-  it('draws the project header with its own quiet treatment, distinct from the lane row', () => {
-    const layout = source('faces/BoardLayout.tsx')
-    // The project header keeps data-project and uses its own quiet group class.
-    expect(layout).toContain('board__project')
-    expect(layout).toContain('data-project')
-    // The header spans the grid's full width from its own CSS rule, never an
-    // inline style: one truth per fact, and the h2 stays clean.
-    const css = readFileSync(join(appRoot, 'renderer', 'src', 'app.css'), 'utf8')
-    expect(css).toMatch(/\.board__project-title\s*\{[^}]*grid-column:\s*1 \/ -1/)
-    expect(layout).not.toContain("gridColumn: '1 / -1'")
-    expect(layout).not.toMatch(/<h2 className="board__title" style/)
-    // Lane rows keep .board__title, including the column head.
-    expect(layout).toContain('board__title--head')
-    expect(layout).toMatch(/<h2 className="board__title">/)
+describe('the board face (UI-33)', () => {
+  it('draws the board from the columns and the one project focus', () => {
+    const face = source('faces/TicketsFace.tsx')
+    expect(face).toContain('boardColumns(')
+    expect(face).toContain('boardTickets(')
+    expect(face).toContain('focusLanes(')
+    expect(face).toContain('dropCalls(')
+    expect(face).toContain('firstAdd')
+    // The lane-axis drop plan is gone from the face.
+    expect(face).not.toContain('LANE_CHANGED')
   })
 
-  it('suppresses a lane title the project header already names', () => {
-    const statuses = boardStatuses()
-    const draw = (project: string, lanes: string[]): string => {
-      const tickets = lanes.map((lane) => ticket({ id: lane, lane, status: 'ready' }))
-      return renderToStaticMarkup(
-        createElement(BoardLayout, {
-          rows: laneRows(lanes, tickets).filter((row) => row.key !== null),
-          statuses,
-          projects: [{ name: project, lanes }],
-          selected: null,
-          onSelect: () => {},
-          onToggle: () => {},
-          onDropOn: () => {},
-          onDropCell: () => {},
-        }),
-      )
-    }
-    const laneTitles = (html: string): string[] =>
-      html.match(/<h2 class="board__title"(?: aria-hidden="true")?>[\s\S]*?<\/h2>/g) ?? []
-
-    // One lane, named like its project: the title track stays (the row keeps
-    // its seven items) but the header is the only visible label and count.
-    const same = laneTitles(draw('Port', ['Port']))
-    expect(same).toHaveLength(1)
-    expect(same[0]).toContain('aria-hidden="true"')
-    expect(same[0]).not.toContain('<span>')
-
-    // A project with more than one lane keeps every lane title: the header
-    // names the group, not each lane.
-    const many = laneTitles(draw('Port', ['Port', 'ui']))
-    expect(many).toHaveLength(2)
-    expect(many[0]).toContain('<span>Port</span>')
-    expect(many[1]).toContain('<span>ui</span>')
-
-    // A single lane named unlike its project stays labelled: the header
-    // cannot stand in for a name it does not carry.
-    const other = laneTitles(draw('Port', ['ui']))
-    expect(other).toHaveLength(1)
-    expect(other[0]).toContain('<span>ui</span>')
-    expect(other[0]).not.toContain('aria-hidden="true"')
+  it('draws the board columns on an empty board, so its add and the shortcut exist', () => {
+    const face = source('faces/TicketsFace.tsx')
+    // The store's first read draws its message alone; a ready store always
+    // draws the columns, whatever they hold, and the copy sits above them.
+    expect(face).toContain('const firstRead =')
+    expect(face).toContain('firstRead ?')
+    expect(face).toContain('<BoardLayout')
+    expect(face).toContain('firstAddRef={firstAdd}')
   })
 
-  it('defines the quiet project treatment without a full-bleed paper band', () => {
-    const css = readFileSync(join(appRoot, 'renderer', 'src', 'app.css'), 'utf8')
-    const tokens = readFileSync(join(appRoot, 'renderer', 'src', 'tokens.css'), 'utf8')
-    const rule = (selector: string): string => {
-      const match = css.match(new RegExp(`${selector}\\s*\\{([\\s\\S]*?)\\}`))
-      return match?.[1] ?? ''
-    }
-    const titleRule = rule('\\.board__title')
-    const projectRule = rule('\\.board__project-title')
-    const countRule = rule('\\.board__project-count')
-    expect(projectRule, 'project header has its own rule').not.toBe('')
-    // Smaller type than the lane title (12.5px).
-    expect(titleRule).toContain('12.5px')
-    const laneSize = Number(titleRule.match(/font-size:\s*([\d.]+)px/)?.[1] ?? '0')
-    const projectSize = Number(projectRule.match(/font-size:\s*([\d.]+)px/)?.[1] ?? '0')
-    expect(projectSize).toBeGreaterThan(0)
-    expect(projectSize).toBeLessThan(laneSize)
-    // Transparent with no paper band and no lane-title padding.
-    expect(projectRule).toContain('transparent')
-    expect(projectRule).not.toContain('var(--paper)')
-    expect(projectRule).not.toContain('8px 4px')
-    // Dim count treatment.
-    expect(countRule).toContain('var(--ink-dim)')
-    // Token-only values: no colour literals in the new rules.
-    for (const body of [projectRule, countRule]) {
-      expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
-      expect(body).not.toMatch(/\brgba?\(/)
-      expect(body).not.toMatch(/\bhsla?\(/)
-    }
-    // Every token the new rules name comes from tokens.css.
-    for (const body of [projectRule, countRule]) {
-      for (const match of body.matchAll(/var\((--[\w-]+)\)/g)) {
-        expect(tokens, `${match[1]} is a token`).toContain(match[1])
-      }
-    }
-  })
-
-  it('keeps grouping invariants for the same-name pair', () => {
-    const same: TicketSummary[] = [
-      ticket({ id: 't1', lane: 'Tandem', status: 'ready' }),
-      ticket({ id: 'u1', lane: null, status: 'backlog' }),
-    ]
-    const declared = ['Tandem', 'ui', 'core']
-    // The default area stays first and ungrouped, declared lanes in render order.
-    expect(laneKeys(declared, same)).toEqual([null, 'Tandem', 'ui', 'core'])
-    const rows = laneRows(declared, same)
-    expect(rows.map((row) => row.title)).toEqual(['Uncategorized', 'Tandem', 'ui', 'core'])
-    expect(rows[0]?.key).toBeNull()
-    const countOf = (key: string | null): number => {
-      const row = rows.find((candidate) => candidate.key === key)
-      return row?.cells.reduce((sum, cell) => sum + cell.tickets.length, 0) ?? 0
-    }
-    // Each lane count stays per lane while the header total is the sum over its lanes.
-    expect(countOf('Tandem')).toBe(1)
-    expect(countOf('ui')).toBe(0)
-    expect(countOf('core')).toBe(0)
-    expect(countOf('Tandem') + countOf('ui') + countOf('core')).toBe(1)
-    // Lanes no project names stay ungrouped after the grouped rows.
-    const dangling: TicketSummary[] = [
-      ...same,
-      ticket({ id: 'h1', lane: 'Hand edit', status: 'ready' }),
-    ]
-    expect(laneKeys(declared, dangling)).toEqual([null, 'Tandem', 'ui', 'core', 'Hand edit'])
-    // Empty projects stay undrawn: lanes with no rows match nothing to group.
-    const onlyTandem = laneRows(['Tandem'], same)
-    expect(onlyTandem.map((row) => row.key)).toEqual([null, 'Tandem'])
-    expect(onlyTandem.some((row) => row.key === 'ui')).toBe(false)
+  it('lists the projects, not the lanes, in the one focus control', () => {
+    expect(source('faces/FocusControl.tsx')).toContain('projects.map(')
+    expect(source('faces/FocusControl.tsx')).toContain('All projects')
+    expect(source('App.tsx')).toContain('projects={snapshot.projects}')
   })
 })

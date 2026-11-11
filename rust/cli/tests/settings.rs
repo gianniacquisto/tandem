@@ -1,10 +1,10 @@
 //! The active-project focus, end to end: the CLI sets, shows and clears the
-//! one value the faces draw, and an undeclared lane is refused with the lanes
-//! the human may pick.
+//! one value the faces draw, and an undeclared project is refused with the
+//! projects the human may pick.
 //!
 //! Every test gives the child a sandbox `HOME` and `TANDEM_HOME`, so the runs
-//! touch no real home. `lane add` declares the lanes the focus names: a
-//! project is a lane name, so there is no project object to create.
+//! touch no real home. `lane add` with no `--project` declares the project the
+//! lane is named for, so the focus names a project the board carries.
 
 use std::fs;
 use std::path::PathBuf;
@@ -127,7 +127,7 @@ fn the_cli_sets_shows_and_clears_the_active_project() {
 }
 
 #[test]
-fn setting_an_undeclared_lane_is_refused_naming_the_declared_lanes() {
+fn setting_an_undeclared_project_is_refused_naming_the_declared_projects() {
     let sandbox = Sandbox::new("unknown");
     declare(&sandbox, "Tandem");
     declare(&sandbox, "Port");
@@ -136,16 +136,52 @@ fn setting_an_undeclared_lane_is_refused_naming_the_declared_lanes() {
 
     assert!(
         !output.status.success(),
-        "an undeclared lane is refused, not stored"
+        "an undeclared project is refused, not stored"
     );
     let message = String::from_utf8_lossy(&output.stderr).to_string();
     assert!(
         message.contains("Nope"),
-        "the refusal names the lane: {message}"
+        "the refusal names the project: {message}"
     );
     assert!(
         message.contains("Tandem") && message.contains("Port"),
-        "the refusal names the declared lanes: {message}"
+        "the refusal names the declared projects: {message}"
+    );
+
+    let shown = json(&tandem(&sandbox, &["settings", "get"]));
+    assert_eq!(
+        shown["activeProject"],
+        Value::Null,
+        "the refused write left the store alone: {shown}"
+    );
+}
+
+/// The focus meant a lane before UI-33 and means a project now: a lane name
+/// is refused like any other name no project carries, and the refusal names
+/// the projects, not the lanes.
+#[test]
+fn a_lane_name_is_refused_as_a_project_focus() {
+    let sandbox = Sandbox::new("lane-not-project");
+    declare(&sandbox, "Tandem");
+    let lane = tandem(
+        &sandbox,
+        &["lane", "add", "--name", "ui", "--project", "Tandem"],
+    );
+    assert!(
+        lane.status.success(),
+        "the lane is declared inside the project: {}",
+        String::from_utf8_lossy(&lane.stderr)
+    );
+
+    let refused = tandem(&sandbox, &["settings", "set", "--project", "ui"]);
+    assert!(
+        !refused.status.success(),
+        "a lane name is not a project focus, so it is refused"
+    );
+    let message = String::from_utf8_lossy(&refused.stderr).to_string();
+    assert!(
+        message.contains("ui") && message.contains("Tandem"),
+        "the refusal names the name and the projects: {message}"
     );
 
     let shown = json(&tandem(&sandbox, &["settings", "get"]));

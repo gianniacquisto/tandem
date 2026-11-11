@@ -65,7 +65,7 @@ function face(
       return (
         <BikeshedFace
           onOpenTicket={actions.onOpenTicket}
-          lanes={snapshot.lanes}
+          projects={snapshot.projects}
           activeProject={snapshot.activeProject}
           onPickProject={actions.onPickProject}
         />

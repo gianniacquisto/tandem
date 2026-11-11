@@ -6,6 +6,7 @@ import type { NoteNodeView } from '../wire/NoteNodeView'
 import type { RecoveryView } from '../wire/RecoveryView'
 import type { Reply } from '../wire/Reply'
 import type { TicketSummary } from '../wire/TicketSummary'
+import type { SnapshotProject } from '../shell/snapshot'
 import {
   ancestorsOf,
   focusNodes,
@@ -89,15 +90,20 @@ function message(error: unknown): string {
 export type BikeshedFaceProps = {
   /** The note's ticket rows open the one sheet, over the bikeshed. */
   onOpenTicket?: (ticket: TicketSummary) => void
-  /** The declared lanes, in render order, for the focus picker. */
-  lanes: string[]
+  /** The declared projects, in render order, for the focus picker. */
+  projects: SnapshotProject[]
   /** The stored focus: the project the tree draws, or null for the vault. */
   activeProject: string | null
   /** Persist a new focus; null clears back to the whole vault. */
-  onPickProject: (lane: string | null) => void
+  onPickProject: (project: string | null) => void
 }
 
-export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject }: BikeshedFaceProps) {
+export function BikeshedFace({
+  onOpenTicket,
+  projects,
+  activeProject,
+  onPickProject,
+}: BikeshedFaceProps) {
   const [hidden, setHidden] = useState(() => window.localStorage.getItem(HIDDEN_KEY) === 'true')
   // One app-wide note size: ADR 0012's preference, applied once on the wrapper
   // the block surface sits in.
@@ -533,7 +539,7 @@ export function BikeshedFace({ onOpenTicket, lanes, activeProject, onPickProject
       <div className="bikeshed">
         <aside className="bikeshed__tree" aria-label="Bikeshed notes">
           <FocusControl
-            lanes={lanes}
+            projects={projects}
             active={activeProject}
             showAll={showAll}
             onPick={onPickProject}

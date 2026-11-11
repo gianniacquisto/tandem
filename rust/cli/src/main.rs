@@ -548,8 +548,8 @@ struct SettingsSetArgs {
     /// stored list alone.
     #[arg(long, num_args = 0..)]
     roster: Option<Vec<String>>,
-    /// The lane to focus; a spelled flag with a name focuses it, and a bare
-    /// or empty flag clears back to every lane. Unspelled leaves the focus
+    /// The project to focus; a spelled flag with a name focuses it, and a bare
+    /// or empty flag clears back to every project. Unspelled leaves the focus
     /// alone, unless no flag is spelled at all: a bare `settings set` clears
     /// the focus and leaves the roster alone.
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
@@ -1234,14 +1234,16 @@ fn settings_verb(home: &Home, command: Option<&SettingsCommand>) -> Result<(), F
 
     match command {
         SettingsCommand::Get => {
-            let lanes = board.lanes().map_err(Failure::domain)?;
+            let projects = project_names(&board)?;
             print(&SettingsReply {
                 roster: settings.roster().map_err(Failure::domain)?,
-                active_project: settings.active_project(&lanes).map_err(Failure::domain)?,
+                active_project: settings
+                    .active_project(&projects)
+                    .map_err(Failure::domain)?,
             })
         }
         SettingsCommand::Set(args) => {
-            let lanes = board.lanes().map_err(Failure::domain)?;
+            let projects = project_names(&board)?;
             let bare = args.roster.is_none() && args.project.is_none();
             let roster = match args.roster.clone() {
                 Some(roster) => settings
@@ -1251,12 +1253,14 @@ fn settings_verb(home: &Home, command: Option<&SettingsCommand>) -> Result<(), F
             };
             let active_project = match args.project.as_deref() {
                 Some(project) => settings
-                    .set_active_project(board.actor(), Some(project), &lanes)
+                    .set_active_project(board.actor(), Some(project), &projects)
                     .map_err(Failure::domain)?,
                 None if bare => settings
-                    .set_active_project(board.actor(), None, &lanes)
+                    .set_active_project(board.actor(), None, &projects)
                     .map_err(Failure::domain)?,
-                None => settings.active_project(&lanes).map_err(Failure::domain)?,
+                None => settings
+                    .active_project(&projects)
+                    .map_err(Failure::domain)?,
             };
             print(&SettingsReply {
                 roster,
@@ -1264,6 +1268,17 @@ fn settings_verb(home: &Home, command: Option<&SettingsCommand>) -> Result<(), F
             })
         }
     }
+}
+
+/// The board's project names in render order: the focus resolves against
+/// these, not against lane names (UI-33), so a stored lane reads as no focus.
+fn project_names(board: &Board) -> Result<Vec<String>, Failure> {
+    Ok(board
+        .projects()
+        .map_err(Failure::domain)?
+        .into_iter()
+        .map(|project| project.name)
+        .collect())
 }
 
 /// The workflow verbs: the stage set as data (TAN-328). `list` and `show` read;
