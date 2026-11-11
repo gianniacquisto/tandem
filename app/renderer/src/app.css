@@ -2764,11 +2764,15 @@ body {
 }
 
 /* The ticket sheet: one dialog over whichever face opened it, at the Swift
- * sheet's 580 pt width and its two heights, held inside the 760 pt floor. */
+ * sheet's 580 pt width and its two heights, held inside the 760 pt floor.
+ * The backdrop's level clears every sticky and popover layer in the face
+ * (the wikilink picker's 40 is the highest today), so the modal paints above
+ * the board's column heads and every other surface, whatever the DOM order. */
 
 .sheet-backdrop {
   position: fixed;
   inset: 0;
+  z-index: 60;
   display: flex;
   align-items: flex-start;
   justify-content: center;

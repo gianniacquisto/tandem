@@ -294,6 +294,71 @@ test('one click on a card opens the sheet inside the palette ring, in both schem
   await window.emulateMedia({ colorScheme: 'light' })
 })
 
+test("a card's sheet draws over the board's column heads, with the title and Save in sight, in both schemes", async ({
+  app,
+  window,
+}) => {
+  // The scene photographs the 78-ticket board home: the contract home's two
+  // tickets hold no Ready card to open, so the run over it skips the scene.
+  test.skip(
+    !(process.env['TANDEM_SHOTS_HOME'] ?? '').endsWith('Fixtures/port/Board'),
+    'the scene photographs the board home',
+  )
+  await openTab(window, 'tickets/board')
+  await expect(window.locator('.ticket-card').first()).toBeVisible()
+
+  // A Ready card: the dialog's sticky band then lands over the middle
+  // columns' heads, the ones the bug painted over it.
+  const card = window.locator('.ticket-card', { hasText: 'the ticket sheet and the lane surface' })
+  await expect(card).toHaveCount(1)
+  await card.click()
+
+  const sheet = window.locator('.sheet')
+  await expect(sheet).toBeVisible()
+  // The dialog takes focus once its ticket read lands, so wait for it rather
+  // than race that write with a read.
+  await expect(sheet).toBeFocused()
+
+  // The sticky band is the top surface in full: the title input answers its
+  // own click, so no column head paints over it, and the Save sits beside it.
+  const title = sheet.locator('.sheet__title')
+  await expect(title).toBeVisible()
+  await expect(title).toHaveValue('the ticket sheet and the lane surface')
+  await title.click()
+  await expect(title).toBeFocused()
+  await expect(sheet.locator('.sheet__save')).toBeVisible()
+
+  // The stacking the fix carries: the backdrop's level clears every sticky
+  // and popover layer in the face, so the sheet paints above the column heads
+  // whatever the scheme.
+  const stacking = (): Promise<{ back: string; heads: string; above: boolean } | null> =>
+    window.evaluate(() => {
+      const backdrop = document.querySelector('.sheet-backdrop')
+      const head = document.querySelector('.board__column-head')
+      if (backdrop === null || head === null) return null
+      const back = getComputedStyle(backdrop).zIndex
+      const heads = getComputedStyle(head).zIndex
+      return { back, heads, above: Number(back) > Number(heads) }
+    })
+  expect(await stacking()).toEqual({ back: '60', heads: '1', above: true })
+  expect(await computed(window, '.sheet-backdrop', 'z-index')).toBe('60')
+
+  await window.emulateMedia({ colorScheme: 'dark' })
+  expect(await stacking()).toEqual({ back: '60', heads: '1', above: true })
+  await window.emulateMedia({ colorScheme: 'light' })
+
+  // The picture is the scene: the sheet over the whole board, the dialog's
+  // own ring on it, the heads under the dim.
+  await sheet.focus()
+  await expect(sheet).toBeFocused()
+  await capture(app, window, scene('tickets-board-sheet'), 1330)
+
+  // Esc returns via the existing dismiss, back to the board that opened it.
+  await window.keyboard.press('Escape')
+  await expect(sheet).toHaveCount(0)
+  await expect(card).toBeVisible()
+})
+
 test('a quick-add lands its row and opens its sheet in the description composer, and Esc returns', async ({
   window,
 }) => {
