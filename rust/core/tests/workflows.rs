@@ -385,6 +385,41 @@ fn the_default_and_the_active_workflow_cannot_be_deleted() {
 }
 
 #[test]
+fn a_workflow_with_recorded_runs_cannot_be_deleted() {
+    let sandbox = Sandbox::new("workflow-delete-runs");
+    let store = sandbox.store();
+    let workflows = Workflows::new(&store);
+    workflows
+        .set(&Actor::Human, None, minimal("flow"))
+        .expect("the workflow writes");
+    Sprints::new(&store)
+        .open_run(
+            &Actor::Human,
+            "Tandem",
+            Some("flow"),
+            SprintMode::Serial,
+            None,
+            None,
+        )
+        .expect("a run records against flow");
+
+    match workflows.delete(&Actor::Human, "flow") {
+        Err(DomainError::WorkflowHasRuns { name, count }) => {
+            assert_eq!(name, "flow");
+            assert_eq!(count, 1);
+        }
+        other => panic!("a workflow with a recorded run must refuse deletion, got {other:?}"),
+    }
+    assert_eq!(
+        workflows
+            .get("flow")
+            .expect("the refused delete left it")
+            .name,
+        "flow"
+    );
+}
+
+#[test]
 fn complete_and_reopen_follow_the_active_workflows_roles() {
     let sandbox = Sandbox::new("workflow-complete");
     let board = sandbox.board();

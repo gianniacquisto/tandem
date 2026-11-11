@@ -24,7 +24,7 @@ use crate::bikeshed::{
     Asset, Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, Recovery, WriteRecord,
 };
 use crate::domain::session::{Session, SessionTokens};
-use crate::domain::sprint::Sprint;
+use crate::domain::sprint::{Sprint, WorkflowRun};
 use crate::domain::usage::{UsageReport, UsageRow};
 use crate::domain::{
     Comment, InlineStyle, LaneDeletion, MarkdownBlock, MarkdownInline, Ticket, TicketBlock,
@@ -309,6 +309,21 @@ pub struct SprintResult {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SprintList {
     pub sprints: Vec<Sprint>,
+}
+
+/// A workflow run write's answer: the run, with the note when nothing changed.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WorkflowRunResult {
+    #[serde(flatten)]
+    pub run: WorkflowRun,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// `workflow run list`: `{"runs": [...]}`, newest first.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WorkflowRunList {
+    pub runs: Vec<WorkflowRun>,
 }
 
 /// `note rename` / `note capture`: `{"path": ...}`, and the duplicate's note.

@@ -242,13 +242,14 @@ impl Write<'_> {
     pub fn insert_sprint(&self, sprint: NewSprint<'_>) -> Result<()> {
         self.before_mutation()?;
         self.execute(
-            "INSERT INTO sprints
-                (lane, number, session, mode, batch, runs, close, status,
+            "INSERT INTO workflow_runs
+                (lane, number, workflow, session, mode, batch, runs, close, status,
                  opened_at, closed_at, author)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 sprint.lane,
                 sprint.number,
+                sprint.workflow,
                 sprint.session,
                 sprint.mode,
                 sprint.batch,
@@ -364,16 +365,31 @@ impl Write<'_> {
         self.execute("DELETE FROM workflows WHERE id = ?1", params![id])
     }
 
-    /// Whether the sprints table carries a (lane, number). The sprints domain is
-    /// a read-modify-write in one transaction, so it asks inside the write.
+    /// Whether the workflow_runs table carries a (lane, number). The sprints
+    /// domain is a read-modify-write in one transaction, so it asks inside the
+    /// write.
     pub fn sprint_exists(&self, lane: &str, number: i64) -> Result<bool> {
         self.connection
             .query_row(
-                "SELECT COUNT(*) FROM sprints WHERE lane = ?1 AND number = ?2",
+                "SELECT COUNT(*) FROM workflow_runs WHERE lane = ?1 AND number = ?2",
                 params![lane, number],
                 |row| row.get::<_, i64>(0),
             )
             .map(|count| count > 0)
+            .map_err(|error| super::translate(error, self.connection))
+    }
+
+    /// How many runs the workflow holds: the `workflow delete` refusal's count,
+    /// read inside the delete's own transaction so a run opening first cannot
+    /// slip past it.
+    pub fn workflow_run_count(&self, workflow: &str) -> Result<usize> {
+        self.connection
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_runs WHERE workflow = ?1",
+                [workflow],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|count| count as usize)
             .map_err(|error| super::translate(error, self.connection))
     }
 
@@ -384,17 +400,19 @@ impl Write<'_> {
     pub fn update_sprint(&self, sprint: NewSprint<'_>) -> Result<()> {
         self.before_mutation()?;
         self.execute(
-            "UPDATE sprints SET
-                session = ?3, mode = ?4, batch = ?5, runs = ?6, close = ?7,
-                status = ?8, opened_at = ?9, closed_at = ?10, author = ?11
+            "UPDATE workflow_runs SET
+                workflow = ?3, session = ?4, mode = ?5, batch = ?6, runs = ?7,
+                close = ?8, status = ?9, opened_at = ?10, closed_at = ?11,
+                author = ?12
              WHERE lane = ?1 AND number = ?2
-               AND (session IS NOT ?3 OR mode IS NOT ?4 OR batch IS NOT ?5
-                    OR runs IS NOT ?6 OR close IS NOT ?7 OR status IS NOT ?8
-                    OR opened_at IS NOT ?9 OR closed_at IS NOT ?10
-                    OR author IS NOT ?11)",
+               AND (workflow IS NOT ?3 OR session IS NOT ?4 OR mode IS NOT ?5
+                    OR batch IS NOT ?6 OR runs IS NOT ?7 OR close IS NOT ?8
+                    OR status IS NOT ?9 OR opened_at IS NOT ?10
+                    OR closed_at IS NOT ?11 OR author IS NOT ?12)",
             params![
                 sprint.lane,
                 sprint.number,
+                sprint.workflow,
                 sprint.session,
                 sprint.mode,
                 sprint.batch,

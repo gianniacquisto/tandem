@@ -292,3 +292,145 @@ fn deleting_an_inactive_workflow_answers_the_remaining_list() {
         .collect();
     assert_eq!(names, vec!["agile"]);
 }
+
+#[test]
+fn workflow_run_verbs_and_sprint_aliases_round_trip_on_the_same_records() {
+    let sandbox = Sandbox::new("run-aliases");
+
+    let session = json(&sandbox.run(&[
+        "session",
+        "start",
+        "--project",
+        "tandem",
+        "--agent",
+        "sprint",
+        "--brief",
+        "The sprint session.",
+    ]));
+    let session_id = session["id"].as_str().expect("a session id").to_string();
+
+    let opened = json(&sandbox.run(&[
+        "workflow",
+        "run",
+        "open",
+        "--lane",
+        "Cycle",
+        "--session",
+        &session_id,
+    ]));
+    assert_eq!(opened["number"], 1);
+    assert_eq!(opened["status"], "open");
+    assert_eq!(
+        opened["workflow"], "00000000-0000-4000-8000-000000000001",
+        "an absent --workflow records the active one"
+    );
+
+    json(&sandbox.run(&["lane", "add", "--name", "Cycle"]));
+    let ticket = json(&sandbox.run(&[
+        "ticket",
+        "add",
+        "--title",
+        "A run ticket",
+        "--lane",
+        "Cycle",
+    ]));
+    let ticket_id = ticket["id"].as_str().expect("a ticket id");
+    let drawn = json(&sandbox.run(&["sprint", "ticket", "--lane", "Cycle", "--ticket", ticket_id]));
+    assert_eq!(
+        drawn["batch"][0], ticket_id,
+        "the sprint alias writes the batch"
+    );
+    assert!(
+        drawn.get("workflow").is_none(),
+        "the sprint door keeps the legacy ten-field shape"
+    );
+
+    let logged = json(&sandbox.run(&[
+        "workflow",
+        "run",
+        "run",
+        "--lane",
+        "Cycle",
+        "--note",
+        "The run landed.",
+    ]));
+    assert_eq!(logged["runs"].as_array().expect("runs").len(), 1);
+    assert_eq!(logged["batch"][0], ticket_id, "both doors read one record");
+
+    let current = json(&sandbox.run(&["workflow", "run", "show", "--lane", "Cycle"]));
+    assert_eq!(
+        current["number"], 1,
+        "show without a number is the current run"
+    );
+    assert_eq!(current["workflow"], opened["workflow"]);
+
+    let aliased = json(&sandbox.run(&["sprint", "show", "--lane", "Cycle", "--number", "1"]));
+    assert_eq!(aliased["number"], current["number"]);
+    assert_eq!(aliased["runs"], current["runs"]);
+
+    let closed = json(&sandbox.run(&[
+        "workflow", "run", "close", "--lane", "Cycle", "--note", "Landed.",
+    ]));
+    assert_eq!(closed["status"], "closed");
+    assert_eq!(closed["close"], "Landed.");
+
+    let history = json(&sandbox.run(&["workflow", "run", "list", "--status", "closed"]));
+    assert_eq!(history["runs"].as_array().expect("runs").len(), 1);
+    assert_eq!(history["runs"][0]["number"], 1);
+    let alias_history = json(&sandbox.run(&["sprint", "list", "--status", "closed"]));
+    assert_eq!(
+        alias_history["sprints"].as_array().expect("sprints").len(),
+        1,
+        "the sprint alias answers the same closed record"
+    );
+    assert_eq!(alias_history["sprints"][0]["number"], 1);
+}
+
+#[test]
+fn a_workflow_that_has_recorded_a_run_cannot_be_deleted() {
+    let sandbox = Sandbox::new("delete-with-runs");
+    json(&sandbox.run_stdin(&["workflow", "set"], &document("flow", false)));
+    let session = json(&sandbox.run(&[
+        "session",
+        "start",
+        "--project",
+        "tandem",
+        "--agent",
+        "sprint",
+        "--brief",
+        "The sprint session.",
+    ]));
+    let session_id = session["id"].as_str().expect("a session id");
+    json(&sandbox.run(&[
+        "workflow",
+        "run",
+        "open",
+        "--lane",
+        "Cycle",
+        "--workflow",
+        "flow",
+        "--session",
+        session_id,
+    ]));
+
+    let refused = sandbox.run(&["workflow", "delete", "--id", "flow"]);
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&refused.stderr)
+            .contains("Workflow \"flow\" has 1 recorded run(s) and cannot be deleted."),
+        "the refusal names the run count: {}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    let listed = json(&sandbox.run(&["workflow", "list"]));
+    let names: Vec<String> = listed["workflows"]
+        .as_array()
+        .expect("workflows")
+        .iter()
+        .map(|workflow| workflow["name"].as_str().unwrap_or("").to_string())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["agile", "flow"],
+        "the refused delete wrote nothing"
+    );
+}

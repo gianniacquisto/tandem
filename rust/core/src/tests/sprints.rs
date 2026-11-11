@@ -949,3 +949,97 @@ fn a_refused_batch_write_links_nothing() {
         "the rolled-back transaction left no batch entry behind"
     );
 }
+
+#[test]
+fn open_records_the_active_workflow_or_the_named_workflow_and_list_filters_by_workflow() {
+    use crate::domain::workflow::{WorkflowDraft, Workflows, default_workflow};
+    use crate::store::schema::DEFAULT_WORKFLOW_ID;
+
+    let sandbox = Sandbox::new("run-workflow");
+    let store = sandbox.store();
+    let sprints = Sprints::new(&store);
+    let actor = sandbox.actor();
+
+    let opened = sprints
+        .open(&actor, "Port", SprintMode::Serial, None, Some(&at(0)))
+        .expect("the sprint door opens the default workflow");
+    assert_eq!(opened.value.workflow, DEFAULT_WORKFLOW_ID);
+
+    let default = default_workflow();
+    let flow = Workflows::new(&store)
+        .set(
+            &crate::store::Actor::Human,
+            None,
+            WorkflowDraft {
+                name: "flow".to_string(),
+                scope: default.scope.clone(),
+                stages: default.stages.clone(),
+            },
+        )
+        .expect("the custom workflow writes");
+    let named = sprints
+        .open_run(
+            &actor,
+            "Tandem",
+            Some("flow"),
+            SprintMode::Parallel,
+            None,
+            Some(&at(5)),
+        )
+        .expect("the run names the workflow");
+    assert_eq!(
+        named.value.workflow, flow.id,
+        "the handle resolves to its id"
+    );
+    assert_eq!(named.value.lane, "Tandem");
+
+    let show = sprints.show("Tandem", 1).expect("the run reads");
+    assert_eq!(
+        show.workflow, flow.id,
+        "the stored row carries the workflow"
+    );
+
+    let flow_runs = sprints
+        .list_runs(None, Some("flow"), None)
+        .expect("the filter reads");
+    assert_eq!(flow_runs.len(), 1);
+    assert_eq!(flow_runs[0].workflow, flow.id);
+    let agile_runs = sprints
+        .list_runs(None, Some("agile"), None)
+        .expect("the default filter reads");
+    assert_eq!(agile_runs.len(), 1);
+    assert_eq!(agile_runs[0].workflow, DEFAULT_WORKFLOW_ID);
+    assert_eq!(
+        sprints.list_runs(None, Some("missing"), None).unwrap_err(),
+        DomainError::UnknownWorkflow {
+            handle: "missing".to_string(),
+            workflows: vec!["agile".to_string(), "flow".to_string()],
+        }
+    );
+}
+
+#[test]
+fn the_run_open_handle_answers_the_lane_open_run_and_its_revision() {
+    let sandbox = Sandbox::new("run-open-handle");
+    let store = sandbox.store();
+    let sprints = Sprints::new(&store);
+    let actor = sandbox.actor();
+    sprints
+        .open_run(&actor, "Port", None, SprintMode::Serial, None, Some(&at(0)))
+        .expect("the run opens");
+
+    let run = sprints
+        .open_run_in("Port")
+        .expect("the lane's open run reads");
+    assert_eq!(run.number, 1);
+    assert_eq!(run.status, SprintStatus::Open);
+    let (snapshot, revision) = sprints
+        .open_run_in_snapshot("Port")
+        .expect("the snapshot reads");
+    assert_eq!(snapshot.number, 1);
+    assert_eq!(revision, store.last_revision());
+    assert_eq!(
+        sprints.open_run_in("Fleet").unwrap_err(),
+        DomainError::NoOpenSprint("Fleet".to_string())
+    );
+}

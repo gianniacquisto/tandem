@@ -125,11 +125,13 @@ pub struct SessionRow {
     pub calls: Option<i64>,
 }
 
-/// A sprint row, read back: the pair (lane, number) is the identity, and the
-/// batch and run log stay the JSON text the record writes.
+/// A sprint row, read back: the pair (lane, number) is the identity, `workflow`
+/// the workflow the run belongs to, and the batch and run log stay the JSON text
+/// the record writes.
 pub struct SprintRow {
     pub lane: String,
     pub number: i64,
+    pub workflow: String,
     pub session: Option<String>,
     pub mode: String,
     pub batch: Option<String>,
@@ -140,11 +142,13 @@ pub struct SprintRow {
     pub closed_at: Option<String>,
 }
 
-/// One sprint: a lane and a number key it, and its batch and runs stay JSON
-/// text because they are ordered lists rather than filtered columns.
+/// One sprint: a lane and a number key it, `workflow` says which workflow the
+/// run belongs to, and its batch and runs stay JSON text because they are
+/// ordered lists rather than filtered columns.
 pub struct NewSprint<'a> {
     pub lane: &'a str,
     pub number: i64,
+    pub workflow: &'a str,
     pub session: Option<&'a str>,
     pub mode: &'a str,
     pub batch: Option<&'a str>,

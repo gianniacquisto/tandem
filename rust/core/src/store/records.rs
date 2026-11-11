@@ -87,28 +87,40 @@ pub(crate) fn session_rows(connection: &Connection) -> Result<Vec<SessionRow>> {
 }
 
 /// Every sprint row, in the order the rows were recorded.
+///
+/// **A pre-v9 home reads `sprints` and supplies the default workflow** (ADR
+/// 0031: a read never migrates). The table is the same record under its old
+/// name, and every row it holds predates the `workflow` column, so the default
+/// is the only truthful answer.
 pub(crate) fn sprint_rows(connection: &Connection) -> Result<Vec<SprintRow>> {
+    let sql = if super::schema::has_workflow_runs(connection)? {
+        "SELECT lane, number, workflow, session, mode, batch, runs, close, status,
+                opened_at, closed_at
+         FROM workflow_runs
+         ORDER BY rowid"
+    } else {
+        "SELECT lane, number, '00000000-0000-4000-8000-000000000001', session, mode,
+                batch, runs, close, status, opened_at, closed_at
+         FROM sprints
+         ORDER BY rowid"
+    };
     let mut statement = connection
-        .prepare(
-            "SELECT lane, number, session, mode, batch, runs, close, status,
-                    opened_at, closed_at
-             FROM sprints
-             ORDER BY rowid",
-        )
+        .prepare(sql)
         .map_err(|error| translate(error, connection))?;
     let rows = statement
         .query_map([], |row| {
             Ok(SprintRow {
                 lane: row.get(0)?,
                 number: row.get(1)?,
-                session: row.get(2)?,
-                mode: row.get(3)?,
-                batch: row.get(4)?,
-                runs: row.get(5)?,
-                close: row.get(6)?,
-                status: row.get(7)?,
-                opened_at: row.get(8)?,
-                closed_at: row.get(9)?,
+                workflow: row.get(2)?,
+                session: row.get(3)?,
+                mode: row.get(4)?,
+                batch: row.get(5)?,
+                runs: row.get(6)?,
+                close: row.get(7)?,
+                status: row.get(8)?,
+                opened_at: row.get(9)?,
+                closed_at: row.get(10)?,
             })
         })
         .map_err(|error| translate(error, connection))?;

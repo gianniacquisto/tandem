@@ -21,6 +21,7 @@ use ts_rs::TS;
 use super::error::{DomainError, DomainResult};
 use super::operation::Operation;
 use super::session;
+use super::workflow::Workflows;
 use crate::store::records::sprint_rows;
 use crate::store::{
     Actor, NewSprint, Result as StoreResult, SprintRow, Store, StoreError, timestamp,
@@ -93,6 +94,12 @@ impl SprintStatus {
 pub struct Sprint {
     pub lane: String,
     pub number: i64,
+    /// The workflow the run belongs to. The `sprint` door keeps the legacy
+    /// ten-field JSON the frozen goldens pin; the `workflow run` door answers a
+    /// [`WorkflowRun`], which carries this field.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub workflow: String,
     pub session: Option<String>,
     pub mode: SprintMode,
     pub batch: Vec<String>,
@@ -136,6 +143,7 @@ impl Sprint {
         Ok(Self {
             lane: row.lane,
             number: row.number,
+            workflow: row.workflow,
             session: row.session,
             mode,
             batch,
@@ -145,6 +153,61 @@ impl Sprint {
             opened_at,
             closed_at,
         })
+    }
+}
+
+/// A workflow's run, as the workflow door answers it: the sprint record plus the
+/// workflow it belongs to.
+///
+/// The sprint record keeps its legacy shape for the frozen goldens; this type is
+/// the one surface that carries `workflow`, so the `workflow run` CLI verbs and
+/// the `workflow.run.*` wire replies say which workflow ran without changing
+/// what `sprint show` has always answered.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRun {
+    pub lane: String,
+    pub number: i64,
+    pub workflow: String,
+    pub session: Option<String>,
+    pub mode: SprintMode,
+    pub batch: Vec<String>,
+    pub runs: Vec<String>,
+    pub close: Option<String>,
+    pub status: SprintStatus,
+    pub opened_at: String,
+    pub closed_at: Option<String>,
+}
+
+impl WorkflowRun {
+    /// The run's human-facing identity, for a note that says which record was
+    /// already open.
+    pub fn name(&self) -> String {
+        format!("Run {} on {}", self.number, self.lane)
+    }
+}
+
+impl From<Sprint> for WorkflowRun {
+    fn from(sprint: Sprint) -> Self {
+        Self {
+            lane: sprint.lane,
+            number: sprint.number,
+            workflow: sprint.workflow,
+            session: sprint.session,
+            mode: sprint.mode,
+            batch: sprint.batch,
+            runs: sprint.runs,
+            close: sprint.close,
+            status: sprint.status,
+            opened_at: sprint.opened_at,
+            closed_at: sprint.closed_at,
+        }
+    }
+}
+
+impl From<&Sprint> for WorkflowRun {
+    fn from(sprint: &Sprint) -> Self {
+        sprint.clone().into()
     }
 }
 
@@ -186,6 +249,9 @@ impl Sprints {
     /// cannot fork the sprint. A lane whose sprints are all closed opens a new
     /// one, numbered one more than the highest number the lane holds, open and
     /// closed alike, so a closed sprint is never renumbered over.
+    ///
+    /// **The run names a workflow** (TAN-332): the active one, recorded on the
+    /// row, so the sprint door and the workflow door read one record.
     pub fn open(
         &self,
         actor: &Actor,
@@ -194,23 +260,61 @@ impl Sprints {
         session: Option<&str>,
         at: Option<&str>,
     ) -> DomainResult<Operation<Sprint>> {
+        self.record_open(actor, lane, None, mode, session, at, false)
+    }
+
+    /// `workflow run open`: the same record, named for the workflow it belongs
+    /// to. An absent handle resolves the active workflow; an unknown one is the
+    /// workflow door's own refusal.
+    pub fn open_run(
+        &self,
+        actor: &Actor,
+        lane: &str,
+        workflow: Option<&str>,
+        mode: SprintMode,
+        session: Option<&str>,
+        at: Option<&str>,
+    ) -> DomainResult<Operation<WorkflowRun>> {
+        let opened = self.record_open(actor, lane, workflow, mode, session, at, true)?;
+        Ok(Operation {
+            value: opened.value.into(),
+            note: opened.note,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn record_open(
+        &self,
+        actor: &Actor,
+        lane: &str,
+        workflow: Option<&str>,
+        mode: SprintMode,
+        session: Option<&str>,
+        at: Option<&str>,
+        run_door: bool,
+    ) -> DomainResult<Operation<Sprint>> {
         let lane = lane_name(lane)?;
         let session = session
             .map(str::trim)
             .filter(|name| !name.is_empty())
             .map(str::to_string);
         let opened_at = stamp(at)?;
+        let workflows = Workflows::new(&self.store);
+        let workflow = match workflow {
+            Some(handle) => workflows.get(handle)?.id,
+            None => workflows.active()?.id,
+        };
         let (value, note) = self.mutate(actor, |sprints| {
             if let Some(existing) = sprints
                 .iter()
                 .find(|sprint| sprint.lane == lane && sprint.status == SprintStatus::Open)
             {
-                return Ok((
-                    existing.clone(),
-                    None,
-                    None,
-                    Some(format!("{} is already open", existing.name())),
-                ));
+                let note = if run_door {
+                    format!("{} is already open", WorkflowRun::from(existing).name())
+                } else {
+                    format!("{} is already open", existing.name())
+                };
+                return Ok((existing.clone(), None, None, Some(note)));
             }
             let number = sprints
                 .iter()
@@ -222,6 +326,7 @@ impl Sprints {
             let sprint = Sprint {
                 lane: lane.clone(),
                 number,
+                workflow: workflow.clone(),
                 session: session.clone(),
                 mode,
                 batch: Vec::new(),
@@ -402,6 +507,84 @@ impl Sprints {
         Ok((sprints, revision))
     }
 
+    /// `workflow run list`: the runs, newest `opened_at` first, filtered by the
+    /// lane, the workflow handle and the status. An absent handle lists every
+    /// workflow; a named one resolves to its id, so a name and a UUID are one
+    /// answer.
+    pub fn list_runs(
+        &self,
+        lane: Option<&str>,
+        workflow: Option<&str>,
+        status: Option<SprintStatus>,
+    ) -> DomainResult<Vec<WorkflowRun>> {
+        let lane = match lane {
+            Some(name) => Some(lane_name(name)?),
+            None => None,
+        };
+        let workflow = match workflow {
+            Some(handle) => Some(Workflows::new(&self.store).get(handle)?.id),
+            None => None,
+        };
+        let mut runs: Vec<WorkflowRun> =
+            self.records()?.into_iter().map(WorkflowRun::from).collect();
+        runs.retain(|run| lane.as_ref().is_none_or(|name| &run.lane == name));
+        runs.retain(|run| workflow.as_ref().is_none_or(|id| &run.workflow == id));
+        runs.retain(|run| status.is_none_or(|state| run.status == state));
+        newest_first_runs(&mut runs);
+        Ok(runs)
+    }
+
+    /// [`list_runs`](Self::list_runs) and the revision its rows are a snapshot
+    /// of, read in one transaction: the wire's `workflow.run.list` pairs the
+    /// runs with a number no concurrent writer split.
+    pub fn list_runs_snapshot(
+        &self,
+        lane: Option<&str>,
+        workflow: Option<&str>,
+        status: Option<SprintStatus>,
+    ) -> DomainResult<(Vec<WorkflowRun>, i64)> {
+        let lane = match lane {
+            Some(name) => Some(lane_name(name)?),
+            None => None,
+        };
+        let workflow = match workflow {
+            Some(handle) => Some(Workflows::new(&self.store).get(handle)?.id),
+            None => None,
+        };
+        let Some((rows, revision)) = self.store.sprint_snapshot()? else {
+            return Ok((Vec::new(), 0));
+        };
+        let mut runs = rows
+            .into_iter()
+            .map(Sprint::from_row)
+            .map(|row| row.map(WorkflowRun::from))
+            .collect::<StoreResult<Vec<_>>>()
+            .map_err(DomainError::from)?;
+        runs.retain(|run| lane.as_ref().is_none_or(|name| &run.lane == name));
+        runs.retain(|run| workflow.as_ref().is_none_or(|id| &run.workflow == id));
+        runs.retain(|run| status.is_none_or(|state| run.status == state));
+        newest_first_runs(&mut runs);
+        Ok((runs, revision))
+    }
+
+    /// `workflow run show --lane <name> --number <n>`: one run by its handle.
+    pub fn show_run(&self, lane: &str, number: i64) -> DomainResult<WorkflowRun> {
+        self.show(lane, number).map(WorkflowRun::from)
+    }
+
+    /// `workflow run show --lane <name>`: the lane's open run, the current run
+    /// the workflow faces draw. A lane with none is [`DomainError::NoOpenSprint`].
+    pub fn open_run_in(&self, lane: &str) -> DomainResult<WorkflowRun> {
+        self.open_in(lane).map(WorkflowRun::from)
+    }
+
+    /// [`open_run_in`](Self::open_run_in) and the revision the record is a
+    /// snapshot of, read in one transaction.
+    pub fn open_run_in_snapshot(&self, lane: &str) -> DomainResult<(WorkflowRun, i64)> {
+        let (sprint, revision) = self.open_in_snapshot(lane)?;
+        Ok((sprint.into(), revision))
+    }
+
     /// `sprint show`: one record by the (lane, number) handle, or the failure
     /// carrying the numbers the lane does hold.
     pub fn show(&self, lane: &str, number: i64) -> DomainResult<Sprint> {
@@ -537,6 +720,7 @@ impl Sprints {
                 let new = NewSprint {
                     lane: &record.lane,
                     number: record.number,
+                    workflow: &record.workflow,
                     session: record.session.as_deref(),
                     mode: record.mode.as_str(),
                     batch: Some(&batch),
@@ -639,4 +823,8 @@ fn readable(field: &str, text: &str) -> StoreResult<String> {
 /// were read in.
 fn newest_first(sprints: &mut [Sprint]) {
     sprints.sort_by(|a, b| b.opened_at.cmp(&a.opened_at));
+}
+
+fn newest_first_runs(runs: &mut [WorkflowRun]) {
+    runs.sort_by(|a, b| b.opened_at.cmp(&a.opened_at));
 }

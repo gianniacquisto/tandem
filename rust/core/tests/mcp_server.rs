@@ -4,7 +4,7 @@
 //! These are the claims the pipe test cannot isolate:
 //!
 //! - `initialize` negotiates the protocol version instead of assuming it;
-//! - `tools/list` names the 42 tools with object-rooted schemas;
+//! - `tools/list` names the 48 tools with object-rooted schemas;
 //! - `tools/call` drives the whole ticket loop through the `rpc` door, and a
 //!   domain refusal is a result with `isError`, not a JSON-RPC error;
 //! - `session.end` reads the harness by default and stamps without usage when
@@ -318,7 +318,7 @@ fn initialize_carries_a_small_health_block() {
         "the health block names the version: {health}"
     );
     assert_eq!(
-        health["tools"], 42,
+        health["tools"], 48,
         "the health block names the tool count: {health}"
     );
 }
@@ -345,7 +345,7 @@ fn session_start_carries_a_small_health_block() {
         "session_start carries a health block beside the session: {result}"
     );
     assert_eq!(
-        health["tools"], 42,
+        health["tools"], 48,
         "the health block names the tool count: {health}"
     );
 }
@@ -414,7 +414,7 @@ fn a_notification_is_answered_with_silence() {
 }
 
 #[test]
-fn tools_list_names_the_42_tools_with_object_schemas() {
+fn tools_list_names_the_48_tools_with_object_schemas() {
     let sandbox = Sandbox::new("mcp-tools-list");
     let store = sandbox.store();
 
@@ -422,7 +422,7 @@ fn tools_list_names_the_42_tools_with_object_schemas() {
     let tools = listed["result"]["tools"]
         .as_array()
         .expect("tools is an array");
-    assert_eq!(tools.len(), 42);
+    assert_eq!(tools.len(), 48);
     for tool in tools {
         assert!(
             !tool["name"].as_str().unwrap_or("").is_empty(),

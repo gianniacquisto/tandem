@@ -629,7 +629,8 @@ impl Workflows {
     }
 
     /// `workflow delete`: refuse the default, the active workflow, or one with
-    /// runs. Runs land with TAN-332; no workflow has any yet.
+    /// recorded runs (TAN-332). The runs are counted inside the delete's own
+    /// transaction, so a run that opens first cannot slip past the guard.
     pub fn delete(&self, actor: &Actor, handle: &str) -> DomainResult<Vec<Workflow>> {
         let target = self.get(handle)?;
         if target.is_default() {
@@ -638,9 +639,22 @@ impl Workflows {
         if self.active()?.id == target.id {
             return Err(DomainError::WorkflowIsActive(target.name));
         }
-        self.store
-            .write(actor, |write| write.delete_workflow(&target.id))
-            .map_err(store_error)?;
+        let mut recorded: Option<usize> = None;
+        let outcome = self.store.write(actor, |write| {
+            let count = write.workflow_run_count(&target.id)?;
+            if count > 0 {
+                recorded = Some(count);
+                return Err(StoreError::Io("the domain refused the write".to_string()));
+            }
+            write.delete_workflow(&target.id)
+        });
+        if let Some(count) = recorded {
+            return Err(DomainError::WorkflowHasRuns {
+                name: target.name,
+                count,
+            });
+        }
+        outcome.map_err(store_error)?;
         self.list()
     }
 
