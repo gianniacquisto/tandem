@@ -1653,9 +1653,14 @@ mod refusal {
             matches!(error, StoreError::Legacy { version: 5 }),
             "the refusal names the version: {error:?}"
         );
+        let message = error.to_string();
         assert!(
-            error.to_string().contains("Scripts/import-legacy.py"),
-            "the one error names the import: {error}"
+            message.contains("ADR 0031"),
+            "the one error points at the record, not a path the tree lost: {message}"
+        );
+        assert!(
+            !message.contains("Scripts/"),
+            "the one error sends no reader to a path: {message}"
         );
     }
 
