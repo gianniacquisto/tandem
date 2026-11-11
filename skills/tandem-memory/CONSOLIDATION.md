@@ -20,7 +20,7 @@ Read every pending file — the **whole** saddlebag, not a session's slice. Grou
 
 **The fold marker** — the pass's position in the daily notes, one dated line the consolidator owns in `Index.md`: `Human notes folded through 2026-10-26`. Advance it to the day of the last daily note whose content is fully folded, and only after a pass has read everything up to it — once per pass, never ahead of the fold. Nothing is written into the daily files themselves. **Discovery is the list plus the marker date, not mtime**: a touch must not re-fold a note, and an edit to a note dated before the marker is the human's to re-date.
 
-**The session records** — every ended session's summary: `tandem-cli session list --project <project> --status ended`, then `tandem-cli session show --session <id>` for the `summary` field (ADR 0027). The summary is the session's work record — what it did and where it left off; there is no floor `work` capture to read. Records are rows of the store's `sessions` table in `tandem.db` (ADR 0031), never the saddlebag: they are read, not archived.
+**The session records**, every ended session's summary: `session_list` with `project` and `status` ended, then `session_show` with `session` for the `summary` field (ADR 0027). The summary is the session's work record, what it did and where it left off; there is no floor `work` capture to read. Records are rows of the store's `sessions` table in `tandem.db` (ADR 0031), never the saddlebag: they are read, not archived.
 
 ## Write the curated notes
 
@@ -45,7 +45,7 @@ Use the one-line entries and length targets in [`WRITE-PROTOCOL.md`](WRITE-PROTO
 - **Refresh `Where left off`** from the ended sessions' summaries plus the remaining captures: current state and next move.
 - **Add `Threads` bullets** for open `thread` notes — Ticket title verbatim plus a one-clause hook — and mark resolved ones.
 - **Create the scaffold on demand** — when a project has none, this pass creates all four pages: the **Overview** (the anchor note, `Where left off` first) and the **Decisions**, **Risks**, and **Processes** pages. The anchor's concurrent create is the atomic case in [`CONCURRENCY.md`](CONCURRENCY.md); the other three pages follow it.
-- **Give the Decisions page its index duty** — every ADR in the repo and every decision recorded on the board (`tandem-cli ticket list`) that the page can reach earns a line with its link; the ADR stays in the repo, never copied into the page. A decision that flips leaves the one dated reversal line ([`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md)).
+- **Give the Decisions page its index duty**: every ADR in the repo and every decision recorded on the board (`ticket_list`) that the page can reach earns a line with its link; the ADR stays in the repo, never copied into the page. A decision that flips leaves the one dated reversal line ([`WRITE-PROTOCOL.md`](WRITE-PROTOCOL.md)).
 - **Place the note** where [`CONVENTIONS.md`](CONVENTIONS.md) puts it: the scaffold pages at the project root, `projects/<project>/<group>/<Note>.md` in a grouped project's sub-pages, `projects/<project>/<Note>.md` in a flat one, `topics/<Topic>.md` for a cross-project concept. **Grouping** a project — one level of sub-folders for its sub-pages, once the project folder holds more than 7 curated notes — is this pass's call; the notes move with it and their links do not change (`[[Name]]` resolves by basename either way, ADR 0005).
 - **`Index.md`** — re-derive each note's one-line status and rewrite it **only if the status changed**; adding to `Decisions`/`Gotchas` never churns the Index. A grouped note still gets exactly one line, naming the note and not its group.
 - **Link** — every note this pass writes wikilinks out to each existing note it names. A capture carries none; adding links is this pass's job.
@@ -56,7 +56,7 @@ Write behind the boundary ([`CONCURRENCY.md`](CONCURRENCY.md)): re-read → mini
 
 ## Dedupe threads against tickets
 
-A `thread` note usually already has a Ticket — the working agent files it the moment the thread opens. **Do not create a second one**: run `tandem-cli ticket list` first, match by title, and write the Threads bullet against the existing Ticket. Only a `thread` with no matching Ticket earns a new one (`tandem-cli ticket add`).
+A `thread` note usually already has a Ticket, the working agent files it the moment the thread opens. **Do not create a second one**: run `ticket_list` first, match by title, and write the Threads bullet against the existing Ticket. Only a `thread` with no matching Ticket earns a new one (`ticket_add`).
 
 ## Consume — archive, never delete
 

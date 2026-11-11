@@ -19,7 +19,7 @@ The human keeps daily notes at the vault root: `daily/YYYY-MM-DD.md`, one file p
 
 The fold position is a dated line the consolidator owns in `Index.md` — `Human notes folded through 2026-10-26` — advanced only after a pass has read everything up to it. Discovery is the list plus the marker date, not mtime. The full protocol is `tandem-memory/CONSOLIDATION.md`.
 
-Agent captures are unchanged: every agent still files with `tandem-cli note capture`, and the daily notes add no agent-facing write path — the absence is the enforcement.
+Agent captures are unchanged: every agent still files with `note_capture`, and the daily notes add no agent-facing write path, the absence is the enforcement.
 
 ## What to do
 

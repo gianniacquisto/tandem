@@ -1,6 +1,6 @@
 ---
 name: tandem-team
-description: "The roster — which agent fills which role, what to write in --assignee and --author, and the minutes rule for the ticket comment log. Reach it when you need to know who owns a pass, what to write as a ticket's assignee or a comment's author, or who the team is."
+description: "The roster, which agent fills which role, what to write in `assignee` and `author`, and the minutes rule for the ticket comment log. Reach it when you need to know who owns a pass, what to write as a ticket's assignee or a comment's author, or who the team is."
 ---
 
 # Tandem team
@@ -18,12 +18,12 @@ description: "The roster — which agent fills which role, what to write in --as
 
 ## The name rule
 
-One vocabulary, two fields. A role's name goes in `--assignee` when it owns a ticket and in `--author` when it speaks on one.
+One vocabulary, two fields. A role's name goes in `assignee` when it owns a ticket and in `author` when it speaks on one.
 
-- `--assignee <role>` — the owner: `tandem-cli ticket set --id <id> --status in-progress --assignee builder`. `--assignee self` expands to `$TANDEM_AGENT`; `--assignee human` hands a decision to the human.
-- `--author <role>` — the speaker: `tandem-cli ticket comment add --id <id> --author reviewer --body …`.
-- **`--author self` writes the four letters `self`.** The CLI expands `self` for `--assignee` and `--origin` only. Write the role out; `--author self` names nobody.
-- **Omitting `--author` is the unnamed author `""`** — a gap in the record, not a style choice.
+- `assignee`: the owner: `ticket_set` with `id`, `status` in-progress and `assignee` builder. `self` expands to `$TANDEM_AGENT`; `human` hands a decision to the human.
+- `author`: the speaker: `ticket_comment_add` with `id`, `author` reviewer and the words in `body`.
+- **An `author` of `self` writes the four letters `self`.** Only `assignee` and `origin` expand it. Write the role out; `self` as an author names nobody.
+- **Omitting `author` is the unnamed author `""`**: a gap in the record, not a style choice.
 
 ## The minutes
 
