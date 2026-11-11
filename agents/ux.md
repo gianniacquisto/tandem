@@ -1,4 +1,5 @@
 ---
+name: ux
 description: "Reads the ux lens at refine and review: keyboard paths, destructive acts without undo or confirmation, empty and error states, and the human's round-trips"
 mode: subagent
 color: "#06b6d4"

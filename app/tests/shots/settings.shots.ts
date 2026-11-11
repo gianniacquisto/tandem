@@ -11,7 +11,7 @@ import { computed, token } from '../../shots/tokens'
 
 /**
  * The Settings face a human reads: the machine's paths (the seeded home and
- * the seeded user home's three hosts) with one-click Copy, the Preferences
+ * the seeded user home's two agent hosts) with one-click Copy, the Preferences
  * theme rule, and the setup report's thirteen checks in four groups with their
  * state.
  *

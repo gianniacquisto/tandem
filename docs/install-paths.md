@@ -22,7 +22,7 @@ Four properties of those bytes decide most of the comparison:
 - **The bundle is ad-hoc signed, sealed, and not notarized.** `codesign -dv /Applications/Tandem.app` reads `Signature=adhoc`, `TeamIdentifier=not set`, `Sealed Resources version=2`; `check:artifact` and the release job refuse a bundle that does not verify and seal. Developer ID signing and notarization are `PRT-32`, on hold for the human.
 - **Every download is quarantined, so every path pays the strip.** Homebrew applies `com.apple.quarantine` to a cask download (observed on this Mac at 1.0.2), and until it is cleared the app is refused and the in-bundle `tandem-cli` is killed (exit 137) as well. The documented fix is one line, `xattr -dr com.apple.quarantine /Applications/Tandem.app`, once per install or upgrade, and each upgrade also warns that the signer changed ([ADR 0003](adr/0003-distribution.md)).
 
-The install is also two acts, not one, on every path: the app, then the agent face. The cask puts `Tandem.app` in `/Applications` and links the bundled `tandem-cli` into Homebrew's `bin`, and `tandem-cli setup install` (or the wizard's one press) links the skills, the four prompts and `AGENTS.md` into the host ([ADR 0034](adr/0034-agent-face-in-the-artifact.md)). Nothing in the artifact configures a host by itself.
+The install is also two acts, not one, on every path: the app, then the agent face. The cask puts `Tandem.app` in `/Applications` and links the bundled `tandem-cli` into Homebrew's `bin`, and `tandem-cli setup install` (or the wizard's one press) links the skills, the seven prompts and `AGENTS.md` into the host ([ADR 0034](adr/0034-agent-face-in-the-artifact.md)). Nothing in the artifact configures a host by itself.
 
 ## The three paths
 

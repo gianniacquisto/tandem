@@ -1,4 +1,5 @@
 ---
+name: security
 description: "Reads the security lens at refine and review: secrets and tokens, shell and SQL interpolation, input that reaches a path, store writes, and permission changes"
 mode: subagent
 color: "#ef4444"

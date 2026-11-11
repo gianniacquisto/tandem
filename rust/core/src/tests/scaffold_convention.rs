@@ -602,6 +602,49 @@ fn the_agent_face_names_every_prompt() {
     );
 }
 
+/// TAN-321: the claude prompt links serve `~/.claude/agents/<name>.md`, and
+/// Claude reads the subagent's name from the file's own frontmatter, so every
+/// prompt in the face must name itself and describe itself.
+#[test]
+fn every_prompt_names_itself_for_claude() {
+    let mut checked = 0;
+    let directory = root().join("agents");
+    let mut paths: Vec<std::path::PathBuf> = std::fs::read_dir(&directory)
+        .expect("the agents directory reads")
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "md"))
+        .collect();
+    paths.sort();
+    for path in paths {
+        let stem = path
+            .file_stem()
+            .expect("a prompt has a stem")
+            .to_string_lossy()
+            .to_string();
+        let text = std::fs::read_to_string(&path).expect("a prompt reads");
+        let frontmatter = text
+            .strip_prefix("---\n")
+            .and_then(|rest| rest.split_once("\n---"))
+            .map(|(frontmatter, _)| frontmatter)
+            .unwrap_or_else(|| panic!("agents/{stem}.md opens with a frontmatter block"));
+        assert!(
+            frontmatter
+                .lines()
+                .any(|line| line == format!("name: {stem}")),
+            "agents/{stem}.md names itself `{stem}` in its frontmatter"
+        );
+        assert!(
+            frontmatter
+                .lines()
+                .any(|line| line.starts_with("description: ")),
+            "agents/{stem}.md carries a description"
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 7, "the face carries seven prompts");
+}
+
 /// TAN-326: a specialist reads and comments, and cannot write files, ask the
 /// human, or spawn another reader. None pins a model (ADR 0026's amendment).
 #[test]
