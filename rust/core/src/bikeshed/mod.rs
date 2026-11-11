@@ -25,6 +25,7 @@ pub mod capture;
 pub mod daily;
 pub mod front;
 pub mod health;
+pub mod prune;
 pub mod session_notes;
 pub mod stats;
 pub mod wikilink;
@@ -48,6 +49,7 @@ pub use self::capture::CaptureKind;
 pub use self::daily::{DailyNote, Day};
 pub use self::front::{ProjectFront, ScaffoldPage};
 pub use self::health::{BikeshedHealth, BikeshedHealthCounts, BrokenLink};
+pub use self::prune::BikeshedPrune;
 pub use self::stats::{BikeshedProjectStats, BikeshedStats, BikeshedStatsTotals};
 pub use self::wikilink::{LinkResolution as Resolution, Wikilink};
 

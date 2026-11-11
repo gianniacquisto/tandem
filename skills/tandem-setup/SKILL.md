@@ -5,7 +5,7 @@ description: "Set up Tandem's agent face on this machine: install the bundled sk
 
 # Tandem setup
 
-The artifact carries the agent face: every skill, the four prompts and `AGENTS.md`. `tandem-cli setup` is its only writer (ADR 0034). Install copies the face once to `<TandemHome>/agent/` and points the host's paths at that copy. Nothing is copied or linked by hand.
+The artifact carries the agent face: every skill, the four pass prompts, the three specialist readers and `AGENTS.md`. `tandem-cli setup` is its only writer (ADR 0034). Install copies the face once to `<TandemHome>/agent/` and points the host's paths at that copy. Nothing is copied or linked by hand.
 
 ## Install
 
@@ -40,7 +40,7 @@ ln -s "/Applications/Tandem.app/Contents/MacOS/tandem-cli" "$(brew --prefix)/bin
 ## Verify
 
 ```sh
-opencode api agent.list   # the four prompts
+opencode api agent.list   # the four pass prompts and the three specialist readers
 opencode api skill.list   # every skill the artifact ships; the host's list is the authority
 tandem-cli doctor         # the skills row reads "opencode configured", the agent-face row counts the warnings
 ```
