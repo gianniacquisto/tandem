@@ -267,9 +267,8 @@ impl<'a> Ending<'a> {
     }
 }
 
-/// What `end` answers. `stamped` is the hook's gate: the usage comment the CLI
-/// posts on the linked tickets runs only when this call stamped, so a second
-/// `end` (which alters nothing) cannot double-post.
+/// What `end` answers. `stamped` is true only when this call wrote the stamp,
+/// so a second `end` (which alters nothing) writes nothing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stamp {
     pub session: Session,
@@ -813,62 +812,6 @@ impl Sessions {
         outcome?;
         result.ok_or_else(|| DomainError::Io("the write answered nothing".to_string()))
     }
-}
-
-/// The one `usage` comment a stamped session posts on every ticket it carried.
-///
-/// **One body for both doors.** The CLI and the RPC stamp the same record, so
-/// they post the same words: a header naming the session id and the model, then
-/// one line per reported piece. The counts ride after the cost line, and the
-/// ratio is derived here, never stored.
-pub fn usage_comment_body(session: &Session) -> String {
-    let mut lines = Vec::new();
-    let mut header = format!("Usage \u{2014} {}", session.id);
-    if let Some(model) = &session.model {
-        header.push_str(" \u{00b7} ");
-        header.push_str(model);
-    }
-    lines.push(header);
-    let mut metric = |name: &str, value: Option<i64>| {
-        if let Some(value) = value {
-            lines.push(format!("{name} {}", grouped(value)));
-        }
-    };
-    if let Some(tokens) = &session.tokens {
-        metric("input", tokens.input);
-        metric("output", tokens.output);
-        metric("cache read", tokens.cache_read);
-        metric("cache write", tokens.cache_write);
-        metric("reasoning", tokens.reasoning);
-    }
-    if let Some(cost) = session.cost {
-        lines.push(format!("cost ${cost:.2}"));
-    }
-    if let (Some(turns), Some(calls)) = (session.turns, session.calls) {
-        lines.push(format!("calls {}", grouped(calls)));
-        lines.push(format!("turns {}", grouped(turns)));
-        if turns > 0 {
-            lines.push(format!("per turn {:.2}", calls as f64 / turns as f64));
-        }
-    }
-    lines.join("\n")
-}
-
-/// Thousands grouped with commas, en_US style, so a bare count reads.
-fn grouped(value: i64) -> String {
-    let text = value.to_string();
-    let (sign, digits) = match text.strip_prefix('-') {
-        Some(digits) => ("-", digits),
-        None => ("", text.as_str()),
-    };
-    let mut out = String::new();
-    for (index, character) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(character);
-    }
-    format!("{sign}{out}")
 }
 
 /// Write one session record's mutable half through the write's own transaction:

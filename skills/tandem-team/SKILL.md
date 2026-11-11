@@ -39,4 +39,4 @@ The pass table's owner can be an assignee; a specialist only speaks. One vocabul
 
 ## The minutes
 
-The comment log on a ticket is the team's minutes — append-only, no edit, no delete; a correction is a new comment. The description is the brief: written once and appended to, never overwritten. Evidence a reader must act on goes in the description too; the comment is the conversation. The regular producer is the reviewer's verdict; any role that speaks on a ticket writes as itself. A sprint's run log is the record's, not a ticket's, and it is not part of the minutes.
+The comment log on a ticket is the team's minutes — append-only, no edit, no delete; a correction is a new comment. The description is the brief: written once and appended to, never overwritten. Evidence a reader must act on goes in the description too; the comment is the conversation. The regular producer is the reviewer's verdict; any role that speaks on a ticket writes as itself. A pass's own handoff comment carries what landed, the outcome and next status, and any issues (`AGENTS.md`, Handoff). A sprint's run log is the record's, not a ticket's, and it is not part of the minutes.

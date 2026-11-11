@@ -5,7 +5,7 @@
 use crate::domain::error::DomainError;
 use crate::domain::session::{
     Ending, HarnessSession, HarnessTransport, SessionOutcome, SessionStatus, Sessions, SkillCounts,
-    Stamp, parse_skills, usage_comment_body,
+    Stamp, parse_skills,
 };
 use crate::store::Actor;
 use crate::store::records::session_skills;
@@ -627,99 +627,6 @@ fn end_stamps_the_counts_and_a_second_end_cannot_restate_them() {
     assert!(!again.stamped);
     assert_eq!(again.session.turns, Some(7), "the first stamp is the fact");
     assert_eq!(again.session.calls, Some(3));
-}
-
-#[test]
-fn the_usage_comment_lists_the_counts_and_the_ratio() {
-    let sandbox = Sandbox::new("usage-comment");
-    let actor = sandbox.actor();
-    let sessions = Sessions::new(&sandbox.store());
-
-    // The pair with the ratio at two decimals.
-    start(&sessions, &actor, "ses_1", "One.");
-    let stamp = sessions
-        .end(
-            &actor,
-            "ses_1",
-            Ending {
-                outcome: SessionOutcome::Succeeded,
-                cost: Some(0.5),
-                turns: Some(2),
-                calls: Some(2),
-                at: Some(&at(60)),
-                ..Ending::default()
-            },
-        )
-        .unwrap();
-    let body = usage_comment_body(&stamp.session);
-    assert!(body.contains("cost $0.50"), "the cost stays: {body}");
-    assert!(body.contains("calls 2"), "the call count is named: {body}");
-    assert!(body.contains("turns 2"), "the turn count is named: {body}");
-    assert!(
-        body.contains("per turn 1.00"),
-        "the ratio is derived, two decimals: {body}"
-    );
-
-    // Zero calls is a real count, and the ratio is zero, not absent.
-    start(&sessions, &actor, "ses_2", "Two.");
-    let stamp = sessions
-        .end(
-            &actor,
-            "ses_2",
-            Ending {
-                outcome: SessionOutcome::Succeeded,
-                turns: Some(4),
-                calls: Some(0),
-                at: Some(&at(70)),
-                ..Ending::default()
-            },
-        )
-        .unwrap();
-    let body = usage_comment_body(&stamp.session);
-    assert!(body.contains("calls 0"), "a zero call count reads: {body}");
-    assert!(body.contains("per turn 0.00"), "zero calls is 0.00: {body}");
-
-    // Turns of zero omit the ratio: the arithmetic has no denominator.
-    start(&sessions, &actor, "ses_3", "Three.");
-    let stamp = sessions
-        .end(
-            &actor,
-            "ses_3",
-            Ending {
-                outcome: SessionOutcome::Succeeded,
-                turns: Some(0),
-                calls: Some(0),
-                at: Some(&at(80)),
-                ..Ending::default()
-            },
-        )
-        .unwrap();
-    let body = usage_comment_body(&stamp.session);
-    assert!(body.contains("turns 0"), "the turn count reads: {body}");
-    assert!(
-        !body.contains("per turn"),
-        "turns of zero has no ratio: {body}"
-    );
-
-    // No pair is no lines at all.
-    start(&sessions, &actor, "ses_4", "Four.");
-    let stamp = sessions
-        .end(
-            &actor,
-            "ses_4",
-            Ending {
-                outcome: SessionOutcome::Succeeded,
-                cost: Some(1.0),
-                at: Some(&at(90)),
-                ..Ending::default()
-            },
-        )
-        .unwrap();
-    let body = usage_comment_body(&stamp.session);
-    assert!(
-        !body.contains("calls ") && !body.contains("turns ") && !body.contains("per turn"),
-        "a record with no pair carries none of the three: {body}"
-    );
 }
 
 #[test]
