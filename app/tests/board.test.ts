@@ -37,6 +37,7 @@ import {
   type BoardColumn,
   type BoardNarrowing,
   type Filters,
+  type View,
 } from '../renderer/src/shell/board'
 import type { TicketSummary } from '../renderer/src/wire/TicketSummary'
 import type { WorkflowStage } from '../renderer/src/wire/WorkflowStage'
@@ -590,6 +591,7 @@ describe('the empty board', () => {
     const base = {
       error: null as string | null,
       filters: filters({}),
+      view: 'list' as View,
       nothingVisible: true,
       activeProject: null as string | null,
       projectNames: ['Port'] as readonly string[],
@@ -628,6 +630,25 @@ describe('the empty board', () => {
     expect(
       emptyBoardCopy({ ...base, status: 'ready', ticketCount: 2, activeProject: 'Port' }),
     ).toMatchObject({ title: 'No tickets in Port' })
+    // The board's add is per column, so its copy names that route, not "above".
+    expect(
+      emptyBoardCopy({ ...base, view: 'board', status: 'ready', ticketCount: 0 }),
+    ).toMatchObject({
+      title: 'Nothing on the board',
+      subtitle: "Add a card from a column's foot, or from the CLI.",
+    })
+    expect(
+      emptyBoardCopy({
+        ...base,
+        view: 'board',
+        status: 'ready',
+        ticketCount: 2,
+        activeProject: 'Port',
+      }),
+    ).toMatchObject({
+      title: 'No tickets in Port',
+      subtitle: "Add a card from a column's foot, or show every project.",
+    })
     expect(
       emptyBoardCopy({
         ...base,

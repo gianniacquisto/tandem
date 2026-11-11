@@ -548,8 +548,8 @@ struct SettingsSetArgs {
     /// stored list alone.
     #[arg(long, num_args = 0..)]
     roster: Option<Vec<String>>,
-    /// The lane to focus; a spelled flag with a name focuses it, and a bare
-    /// or empty flag clears back to every lane. Unspelled leaves the focus
+    /// The project to focus; a spelled flag with a name focuses it, and a bare
+    /// or empty flag clears back to every project. Unspelled leaves the focus
     /// alone, unless no flag is spelled at all: a bare `settings set` clears
     /// the focus and leaves the roster alone.
     #[arg(long, num_args = 0..=1, default_missing_value = "")]

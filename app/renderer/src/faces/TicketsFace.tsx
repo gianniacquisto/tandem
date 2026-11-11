@@ -361,6 +361,7 @@ export function TicketsFace({
   const empty = emptyState(
     snapshot,
     filters,
+    view,
     view === 'board' ? boardVisible.length === 0 : listVisible.length === 0,
     activeProject,
     onReload,
@@ -645,12 +646,14 @@ function receiptTicket(reply: unknown): string | null {
 function emptyState(
   snapshot: SnapshotState,
   filters: Filters,
+  view: View,
   nothingVisible: boolean,
   activeProject: string | null,
   onReload: () => void,
 ): ReactNode {
   const copy = emptyBoardCopy({
     status: snapshot.status,
+    view,
     ticketCount: snapshot.tickets.length,
     error: snapshot.error,
     filters,

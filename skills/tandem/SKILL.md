@@ -167,7 +167,7 @@ Authorship: brief prose is written only by the refiner and humans; agents discus
 
 ## Lanes
 
-A **cycle lane** is the area axis — the list groups by it, the board draws its rows; `--lane ""` (or null `lane`) is the default area:
+A **cycle lane** is the area axis: the list groups by it, and the board draws it as a chip on the card; `--lane ""` (or null `lane`) is the default area:
 
 | command | returns |
 | --- | --- |
@@ -182,7 +182,7 @@ Each lane has a **key** — the `PRB` of `PRB-1` (see "The ref" above). `lane ad
 
 ## Focus
 
-One **active project** shared by the board, the notes and the agents: the lane the Tickets face (board and list) and the Notes face draw, with a visible control to change or clear it. `settings get` answers `{"roster": [...], "activeProject": <lane>|null}`, the same read the app makes over `rpc`; `settings set --project <lane>` focuses the faces on a declared lane, and an absent or empty `--project` clears back to every lane. A lane the board never declared is a domain failure naming the declared lanes, and nothing is written. Unset, cleared or stale focus draws every lane, never an empty board. `ticket list` with no flags still lists every lane: agents opt in through the settings read, the list does not narrow for them.
+One **active project** shared by the board, the notes and the agents: the project the Tickets face (board and list) and the Notes face draw, with a visible control to change or clear it. `settings get` answers `{"roster": [...], "activeProject": <project>|null}`, the same read the app makes over `rpc`; `settings set --project <project>` focuses the faces on a declared project, and an absent or empty `--project` clears back to every project. A project the board does not carry is a domain failure naming the known projects, and nothing is written. Unset, cleared or stale focus draws every project, never an empty board. `ticket list` with no flags still lists every lane: agents opt in through the settings read, the list does not narrow for them.
 
 ## Sessions
 

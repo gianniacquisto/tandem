@@ -278,6 +278,8 @@ export type EmptyCopy = {
  */
 export function emptyBoardCopy(args: {
   status: 'connecting' | 'ready' | 'failed'
+  /** The layout drawing the copy: the board's add is per column, the list's is above. */
+  view: View
   ticketCount: number
   error: string | null
   filters: Filters
@@ -285,7 +287,8 @@ export function emptyBoardCopy(args: {
   activeProject: string | null
   projectNames: readonly string[]
 }): EmptyCopy | null {
-  const { status, ticketCount, error, filters, nothingVisible, activeProject, projectNames } = args
+  const { status, view, ticketCount, error, filters, nothingVisible, activeProject, projectNames } =
+    args
   if (status === 'connecting' && ticketCount === 0) {
     return { title: 'Reading the board', subtitle: 'The store is answering over rpc.' }
   }
@@ -295,7 +298,10 @@ export function emptyBoardCopy(args: {
   if (ticketCount === 0) {
     return {
       title: 'Nothing on the board',
-      subtitle: 'Add a ticket above, or from the CLI.',
+      subtitle:
+        view === 'board'
+          ? "Add a card from a column's foot, or from the CLI."
+          : 'Add a ticket above, or from the CLI.',
       hero: true,
     }
   }
@@ -312,16 +318,28 @@ export function emptyBoardCopy(args: {
   if (activeProject !== null && projectNames.includes(activeProject)) {
     return {
       title: `No tickets in ${activeProject}`,
-      subtitle: 'Add one above, or show every project.',
+      subtitle:
+        view === 'board'
+          ? "Add a card from a column's foot, or show every project."
+          : 'Add one above, or show every project.',
     }
   }
   if (filters.scope === 'open') {
-    return { title: 'All clear', subtitle: 'Nothing open. Add something above.', hero: true }
+    return {
+      title: 'All clear',
+      subtitle:
+        view === 'board'
+          ? "Nothing open. Add a card from a column's foot."
+          : 'Nothing open. Add something above.',
+      hero: true,
+    }
   }
   if (filters.scope === 'done') {
     return { title: 'Nothing done yet', subtitle: 'Completed tickets rest here.' }
   }
-  return { title: 'The list is empty', subtitle: 'Add your first ticket above.' }
+  return view === 'board'
+    ? { title: 'The board is empty', subtitle: "Add a card from a column's foot." }
+    : { title: 'The list is empty', subtitle: 'Add your first ticket above.' }
 }
 
 /**
