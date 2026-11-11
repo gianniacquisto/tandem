@@ -953,10 +953,7 @@ fn the_refine_pass_reads_the_nearest_ready_intake_stage() {
         "explicit ask",
         "falls back to the backlog",
     ] {
-        assert!(
-            refine.contains(phrase),
-            "the refine pass names `{phrase}`"
-        );
+        assert!(refine.contains(phrase), "the refine pass names `{phrase}`");
     }
 }
 
@@ -1017,10 +1014,7 @@ fn adr_0041_names_the_selected_stage() {
         "nearest Ready",
         "the default's seven stages",
     ] {
-        assert!(
-            adr.contains(phrase),
-            "ADR 0041 names `{phrase}`"
-        );
+        assert!(adr.contains(phrase), "ADR 0041 names `{phrase}`");
     }
 }
 

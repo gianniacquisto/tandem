@@ -1618,9 +1618,7 @@ mod schema {
     /// The default workflow's stage keys, in position order.
     fn stage_keys(connection: &Connection) -> Vec<String> {
         let mut statement = connection
-            .prepare(
-                "SELECT key FROM workflow_stages WHERE workflow_id = ?1 ORDER BY position",
-            )
+            .prepare("SELECT key FROM workflow_stages WHERE workflow_id = ?1 ORDER BY position")
             .expect("the stage read prepares");
         statement
             .query_map([super::super::schema::DEFAULT_WORKFLOW_ID], |row| {
@@ -1650,8 +1648,7 @@ mod schema {
         let sandbox = Sandbox::new("selected-migration");
         fs::create_dir_all(sandbox.home_path()).unwrap();
         let connection = Connection::open(sandbox.database()).unwrap();
-        migrate_with(&connection, &MIGRATIONS[..7], &Actor::Human)
-            .expect("the foundation applies");
+        migrate_with(&connection, &MIGRATIONS[..7], &Actor::Human).expect("the foundation applies");
 
         assert_eq!(
             stage_keys(&connection),
@@ -1695,8 +1692,7 @@ mod schema {
         let sandbox = Sandbox::new("selected-customized");
         fs::create_dir_all(sandbox.home_path()).unwrap();
         let connection = Connection::open(sandbox.database()).unwrap();
-        migrate_with(&connection, &MIGRATIONS[..7], &Actor::Human)
-            .expect("the foundation applies");
+        migrate_with(&connection, &MIGRATIONS[..7], &Actor::Human).expect("the foundation applies");
 
         connection
             .execute(
@@ -1724,8 +1720,7 @@ mod schema {
         let sandbox = Sandbox::new("selected-idempotent");
         fs::create_dir_all(sandbox.home_path()).unwrap();
         let connection = Connection::open(sandbox.database()).unwrap();
-        migrate_with(&connection, &MIGRATIONS[..7], &Actor::Human)
-            .expect("the foundation applies");
+        migrate_with(&connection, &MIGRATIONS[..7], &Actor::Human).expect("the foundation applies");
 
         connection
             .execute(

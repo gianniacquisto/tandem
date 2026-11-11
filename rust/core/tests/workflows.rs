@@ -220,9 +220,10 @@ fn workflow_set_accepts_two_intake_stages_and_refuses_zero() {
     let workflows = Workflows::new(&sandbox.store());
 
     let mut two_intakes = minimal("flow");
-    two_intakes
-        .stages
-        .insert(1, stage("selected", "Selected for development", StageRole::Intake));
+    two_intakes.stages.insert(
+        1,
+        stage("selected", "Selected for development", StageRole::Intake),
+    );
     let written = workflows
         .set(&Actor::Human, None, two_intakes)
         .expect("two intake stages are legal");
