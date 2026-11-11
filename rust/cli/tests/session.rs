@@ -415,7 +415,7 @@ fn ending_from_the_harness_stamps_the_turns_and_calls_it_counted() {
 }
 
 #[test]
-fn the_usage_comment_carries_the_counts_and_the_ratio() {
+fn a_harness_stamp_lands_on_the_record_and_writes_no_comment() {
     let sandbox = Sandbox::new("harness-comment");
     let (stub, handle) = Stub::start("harness-secret", &session_body(), &messages_body());
 
@@ -460,30 +460,17 @@ fn the_usage_comment_carries_the_counts_and_the_ratio() {
         None,
         &[("TANDEM_HARNESS_PASSWORD", "harness-secret")],
     );
-    json_of(output, &["session", "end"]);
+    let ended = json_of(output, &["session", "end"]);
+    assert_eq!(ended["turns"], 2, "two assistant messages are two turns");
+    assert_eq!(ended["calls"], 2, "their tool parts are the calls");
 
     let comments = sandbox.json(&["ticket", "comment", "list", "--id", &ticket]);
-    let bodies: Vec<&str> = comments["comments"]
-        .as_array()
-        .expect("comments")
-        .iter()
-        .filter_map(|comment| comment["body"].as_str())
-        .collect();
-    let body = bodies
-        .iter()
-        .find(|body| body.starts_with("Usage"))
-        .unwrap_or_else(|| panic!("the usage comment posts: {bodies:?}"));
     assert!(
-        body.contains("calls 2"),
-        "the comment carries the calls: {body}"
-    );
-    assert!(
-        body.contains("turns 2"),
-        "the comment carries the turns: {body}"
-    );
-    assert!(
-        body.contains("per turn 1.00"),
-        "the comment carries the derived ratio: {body}"
+        comments["comments"]
+            .as_array()
+            .expect("comments")
+            .is_empty(),
+        "the stamp writes no comment: usage is the record's (TAN-323)"
     );
     handle.join().expect("the stub ends");
 }
@@ -530,19 +517,12 @@ fn ending_with_no_harness_read_carries_no_counts() {
     );
 
     let comments = sandbox.json(&["ticket", "comment", "list", "--id", &ticket]);
-    let bodies: Vec<&str> = comments["comments"]
-        .as_array()
-        .expect("comments")
-        .iter()
-        .filter_map(|comment| comment["body"].as_str())
-        .collect();
-    let body = bodies
-        .iter()
-        .find(|body| body.starts_with("Usage"))
-        .unwrap_or_else(|| panic!("the usage comment posts: {bodies:?}"));
     assert!(
-        !body.contains("calls ") && !body.contains("turns ") && !body.contains("per turn"),
-        "no counts, no lines: {body}"
+        comments["comments"]
+            .as_array()
+            .expect("comments")
+            .is_empty(),
+        "a hand-driven stamp writes no comment: usage is the record's (TAN-323)"
     );
 }
 
@@ -1242,11 +1222,11 @@ fn ending_with_usage_from_harness_without_a_pointer_names_the_failure() {
 }
 
 /// A re-dispatched pass opens its own record under the same harness pointer
-/// (ADR 0027), so two records share one harness session's cumulative total. The
-/// second pass's `usage` comment states its own share, and the record keeps the
-/// snapshot the harness answered.
+/// (ADR 0027), so two records share one harness session's cumulative total. Each
+/// record keeps the snapshot the harness answered for it, and neither stamp
+/// writes a comment: the usage is the record's, and the report reads it there.
 #[test]
-fn a_second_pass_in_one_harness_session_posts_its_own_share() {
+fn a_second_pass_in_one_harness_session_keeps_its_own_snapshot() {
     let sandbox = Sandbox::new("shared-harness-share");
     let snapshots = vec![
         r#"{"data":{"id":"ses_harness","tokens":{"input":1500},"cost":0.5,"model":{"id":"deepseek-v4.1-flash"}}}"#.to_string(),
@@ -1315,15 +1295,16 @@ fn a_second_pass_in_one_harness_session_posts_its_own_share() {
         "the record keeps the snapshot it stamped"
     );
 
-    let comments = sandbox.json(&["ticket", "comment", "list", "--id", second_ticket]);
-    let body = comments["comments"][0]["body"]
-        .as_str()
-        .expect("the second ticket carries one usage comment");
-    assert!(
-        body.contains("input 500"),
-        "the second pass's share, not its 2,000 snapshot: {body}"
-    );
-    assert!(!body.contains("input 2,000"), "not the snapshot: {body}");
+    for ticket in [first_ticket, second_ticket] {
+        let comments = sandbox.json(&["ticket", "comment", "list", "--id", ticket]);
+        assert!(
+            comments["comments"]
+                .as_array()
+                .expect("comments")
+                .is_empty(),
+            "neither stamp writes a comment: usage is the record's (TAN-323)"
+        );
+    }
 
     let shown = sandbox.json(&["session", "show", "--session", "ses_pass_2"]);
     assert_eq!(
