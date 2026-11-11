@@ -68,9 +68,13 @@ const CLAIM_CHANGED = 'The claim landed, but the comment did not.'
  * and appended to, never rewritten, and the log is read-only: the sheet's half
  * of it is the composer, which only appends.
  *
- * Order from top: title, Description, Comments, then one collapsed Details
- * disclosure holding Status, Assignee, passes, Dependencies, Lanes and
- * Sessions. Details starts closed on every opening and persists nothing.
+ * Order from top: the title with its Save, then one row of the three facts a
+ * human asks of a card (status, assignee, lane), then Description, then
+ * Comments, then one collapsed Details disclosure holding the pass requests,
+ * the dependencies, lane creation and rename, and Sessions. The title block and
+ * the metadata row share the sticky band, so the three facts stay in view while
+ * the description scrolls. Details starts closed on every opening and persists
+ * nothing.
  */
 export function TicketSheet({
   ticketId,
@@ -421,21 +425,99 @@ export function TicketSheet({
         ) : (
           <div className="sheet__body">
             <div className="sheet__sticky">
-              <input
-                className="sheet__title"
-                value={title}
-                aria-label="Title"
-                onChange={(event) => setTitle(event.target.value)}
-              />
+              <div className="sheet__title-row">
+                <input
+                  className="sheet__title"
+                  value={title}
+                  aria-label="Title"
+                  onChange={(event) => setTitle(event.target.value)}
+                />
 
-              <button
-                type="button"
-                className="sheet__save"
-                disabled={!canSave({ title })}
-                onClick={() => void save()}
-              >
-                Save
-              </button>
+                <button
+                  type="button"
+                  className="sheet__save"
+                  disabled={!canSave({ title })}
+                  onClick={() => void save()}
+                >
+                  Save
+                </button>
+              </div>
+
+              {/* The three facts a human asks of a card they just clicked,
+                drawn under the title and inside the sticky band. Status and
+                assignee are the Save draft; the lane moves at once, and each
+                control says which, so two save semantics are legible on
+                screen without opening Details. */}
+              <div className="sheet__meta" role="group" aria-label="Ticket metadata">
+                <label className="sheet__meta-field">
+                  <span className="sheet__meta-label">
+                    <span className="sheet__fact-label">Status</span>
+                    <span className="sheet__meta-write">saves with Save</span>
+                  </span>
+                  <span className="sheet__status-row">
+                    <span
+                      className="sheet__status-dot"
+                      data-status={status}
+                      aria-hidden="true"
+                    />
+                    <select
+                      className="sheet__select"
+                      data-status={status}
+                      aria-label="Status"
+                      value={status}
+                      onChange={(event) => setStatus(event.target.value)}
+                    >
+                      {boardStatuses(stages).map((entry) => (
+                        <option key={entry.value} value={entry.value}>
+                          {entry.label}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
+                </label>
+
+                <label className="sheet__meta-field">
+                  <span className="sheet__meta-label">
+                    <span className="sheet__fact-label">Assignee</span>
+                    <span className="sheet__meta-write">saves with Save</span>
+                  </span>
+                  <select
+                    className="sheet__select"
+                    aria-label="Assignee"
+                    value={assignee ?? ''}
+                    onChange={(event) =>
+                      setAssignee(event.target.value === '' ? null : event.target.value)
+                    }
+                  >
+                    {choices.map((choice) => (
+                      <option key={choice.value ?? ''} value={choice.value ?? ''}>
+                        {choice.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="sheet__meta-field">
+                  <span className="sheet__meta-label">
+                    <span className="sheet__fact-label">Lane</span>
+                    <span className="sheet__meta-write">moves at once</span>
+                  </span>
+                  <select
+                    className="sheet__select"
+                    aria-label="Lane"
+                    value={ticket.lane ?? ''}
+                    onChange={(event) =>
+                      void moveToLane(event.target.value === '' ? null : event.target.value)
+                    }
+                  >
+                    {lanesShown.map((lane) => (
+                      <option key={lane.value ?? ''} value={lane.value ?? ''}>
+                        {lane.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </div>
 
             <section className="sheet__description" aria-label="Description">
@@ -551,50 +633,6 @@ export function TicketSheet({
               </button>
               {detailsOpen ? (
                 <div className="sheet__details-body">
-                  <div className="sheet__facts">
-                    <label className="sheet__fact">
-                      <span className="sheet__fact-label">Status</span>
-                      <span className="sheet__status-row">
-                        <span
-                          className="sheet__status-dot"
-                          data-status={status}
-                          aria-hidden="true"
-                        />
-                        <select
-                          className="sheet__select"
-                          data-status={status}
-                          aria-label="Status"
-                          value={status}
-                          onChange={(event) => setStatus(event.target.value)}
-                        >
-                          {boardStatuses(stages).map((entry) => (
-                            <option key={entry.value} value={entry.value}>
-                              {entry.label}
-                            </option>
-                          ))}
-                        </select>
-                      </span>
-                    </label>
-
-                    <label className="sheet__fact">
-                      <span className="sheet__fact-label">Assignee</span>
-                      <select
-                        className="sheet__select"
-                        aria-label="Assignee"
-                        value={assignee ?? ''}
-                        onChange={(event) =>
-                          setAssignee(event.target.value === '' ? null : event.target.value)
-                        }
-                      >
-                        {choices.map((choice) => (
-                          <option key={choice.value ?? ''} value={choice.value ?? ''}>
-                            {choice.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-
                   <section className="sheet__passes" aria-label="Agent passes">
                     <h2 className="sheet__section-title">
                       Agent passes: a request the next dispatch picks up, never a run
@@ -690,21 +728,12 @@ export function TicketSheet({
                       )}
                     </header>
                     <ul className="sheet__lane-rows">
-                      {lanesShown.map((lane) => (
+                      {lanesShown
+                        .filter((lane) => lane.value !== null && lane.renamable)
+                        .map((lane) => (
                         <li key={lane.value ?? 'default'} className="sheet__lane-row" data-lane={lane.value ?? ''}>
-                          <button
-                            type="button"
-                            className="sheet__lane"
-                            aria-pressed={lane.selected}
-                            onClick={() => void moveToLane(lane.value)}
-                          >
-                            <span className="sheet__lane-marker" aria-hidden="true" />
-                            <span className="sheet__lane-name">{lane.label}</span>
-                            {lane.selected ? (
-                              <span className="sheet__lane-current">this ticket</span>
-                            ) : null}
-                          </button>
-                          {lane.value === null ? null : renaming === lane.value || !lane.renamable ? null : (
+                          <span className="sheet__lane-name">{lane.label}</span>
+                          {renaming === lane.value ? null : (
                             <button
                               type="button"
                               className="sheet__lane-rename"
