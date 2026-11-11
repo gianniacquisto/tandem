@@ -67,6 +67,12 @@ export const SCENES: readonly Scene[] = [
       'the keyboard-only pass over the 78-ticket board home: a card selected with the arrows, the first column\'s add reached with the platform modifier and N, the search with the platform modifier and F, and a ticket moved one stage over with Option and the arrows',
   },
   {
+    id: 'tickets-board-sheet',
+    file: 'tickets-board-sheet.png',
+    description:
+      'the same face on the same 78-ticket board home with a Ready card\'s sheet open over the columns: the dialog\'s sticky band with the title input and its Save in full and the three-fact row under it, the board\'s sticky column heads and their paper bands drawn beneath the dimmed backdrop, the sheet the top surface of the face',
+  },
+  {
     id: 'ticket-sheet-passes',
     file: 'ticket-sheet-passes.png',
     description:
