@@ -19,14 +19,8 @@
           "state": "installed"
         },
         {
-          "expectedLinks": 1,
+          "expectedLinks": 2,
           "host": "claude",
-          "links": 0,
-          "state": "absent"
-        },
-        {
-          "expectedLinks": 1,
-          "host": "agents",
           "links": 0,
           "state": "absent"
         }

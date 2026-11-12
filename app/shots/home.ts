@@ -112,9 +112,10 @@ export function seedHome(source: string, target: string): string {
 }
 
 /**
- * The fixture user home: the three host roots the setup report reads, created
- * empty. They are directories and nothing more, because a picture of Settings
- * has to show a host's path without showing a host's contents.
+ * The fixture user home: the two agent hosts' roots the setup report reads and
+ * the canonical skills root, created empty. They are directories and nothing
+ * more, because a picture of Settings has to show a host's path without showing
+ * a host's contents.
  */
 export function seedUserHome(target: string): string {
   return replace(target, (staging) => {

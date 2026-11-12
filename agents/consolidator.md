@@ -1,4 +1,5 @@
 ---
+name: consolidator
 description: Folds pending raw bikeshed capture notes into the curated notes — the sole writer of the curated layer
 mode: subagent
 permissions:

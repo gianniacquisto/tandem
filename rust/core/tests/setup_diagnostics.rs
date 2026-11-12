@@ -79,12 +79,6 @@ fn agent_face(opencode: &str, warnings: Vec<Warning>) -> State {
                 links: 0,
                 expected_links: 0,
             },
-            HostState {
-                host: "agents".to_string(),
-                state: "absent".to_string(),
-                links: 0,
-                expected_links: 0,
-            },
         ],
         warnings,
     }

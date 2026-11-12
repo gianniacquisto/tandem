@@ -5,6 +5,10 @@
 //! - **One installed copy.** `<TandemHome>/agent/` is a real directory, replaced
 //!   wholesale when the bundled `VERSION` differs; the host paths are symlinks
 //!   into it, so an upgrade is one directory replace and no re-linking.
+//! - **The canonical root is a client, not a host.** Every run writes
+//!   `~/.agents/skills/<name>` for every skill, a link into the same face: the
+//!   cross-tool Agent Skills listing, with no second copy of the bytes. It is
+//!   always written, and it is not a `Host` (TAN-321).
 //! - **A link is somebody's decision.** A path that resolves into the face is the
 //!   install's and stays; a dead link is replaced (a dead link is not a
 //!   decision); a link elsewhere, a checkout included, is left and reported
@@ -38,28 +42,30 @@ pub use install::{install, status, status_with, sync_link, uninstall};
 pub use manifest::{Manifest, manifest, write_manifest};
 pub use paths::{Context, Environment, absolute_target, normalize, remove_link, resolved, text};
 pub use state::{
-    ExpectedLink, classify, expected_links, is_inside_face, is_inside_face_lexical, is_tandems,
-    ordered, state,
+    CANONICAL_HOST, ExpectedLink, canonical_links, classify, expected_links, is_inside_face,
+    is_inside_face_lexical, is_tandems, ordered, state,
 };
 
-/// A program that reads the face. `opencode` is the default; the others are
-/// written only when named, because each is a directory the human may not use.
+/// A program that reads the face. `opencode` is the default; `claude` is
+/// written only when named, because it is a directory the human may not use.
+///
+/// `agents` was a third host until TAN-321: the canonical `~/.agents/skills`
+/// links are now written by every run as a client of the face, not as an
+/// optional host, so the name is refused with a message that says so.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum Host {
     Opencode,
     Claude,
-    Agents,
 }
 
 impl Host {
-    pub const ALL: [Host; 3] = [Host::Opencode, Host::Claude, Host::Agents];
+    pub const ALL: [Host; 2] = [Host::Opencode, Host::Claude];
 
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Opencode => "opencode",
             Self::Claude => "claude",
-            Self::Agents => "agents",
         }
     }
 
@@ -67,7 +73,6 @@ impl Host {
         match raw {
             "opencode" => Some(Self::Opencode),
             "claude" => Some(Self::Claude),
-            "agents" => Some(Self::Agents),
             _ => None,
         }
     }
@@ -81,6 +86,9 @@ pub fn hosts(raw: Option<&str>) -> std::result::Result<Vec<Host>, SetupError> {
     let mut result: Vec<Host> = Vec::new();
     for name in raw.split(',') {
         let trimmed = name.trim();
+        if trimmed == "agents" {
+            return Err(SetupError::RetiredHost);
+        }
         let host =
             Host::parse(trimmed).ok_or_else(|| SetupError::UnknownHost(trimmed.to_string()))?;
         if !result.contains(&host) {
@@ -111,6 +119,8 @@ pub enum SetupError {
     InvalidBundle(String),
     /// `--host` named a host that does not exist.
     UnknownHost(String),
+    /// `--host agents` named the retired host: the canonical links are not optional.
+    RetiredHost,
 }
 
 impl fmt::Display for SetupError {
@@ -124,11 +134,12 @@ impl fmt::Display for SetupError {
                 write!(formatter, "the bundled agent face is not usable: {detail}")
             }
             Self::UnknownHost(name) => {
-                write!(
-                    formatter,
-                    "unknown host {name}; name opencode, claude or agents"
-                )
+                write!(formatter, "unknown host {name}; name opencode or claude")
             }
+            Self::RetiredHost => formatter.write_str(
+                "the agents host is retired: every install writes ~/.agents/skills, and \
+                 uninstall takes those links with the face; name opencode or claude",
+            ),
         }
     }
 }

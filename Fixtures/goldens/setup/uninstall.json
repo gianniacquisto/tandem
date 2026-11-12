@@ -19,6 +19,10 @@
       },
       {
         "action": "removed",
+        "path": "<home>/.agents/skills/golden-skill"
+      },
+      {
+        "action": "removed",
         "path": "<home>/.config/opencode/opencode.json"
       },
       {
@@ -41,12 +45,6 @@
         {
           "expectedLinks": 0,
           "host": "claude",
-          "links": 0,
-          "state": "absent"
-        },
-        {
-          "expectedLinks": 0,
-          "host": "agents",
           "links": 0,
           "state": "absent"
         }

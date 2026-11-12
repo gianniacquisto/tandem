@@ -1557,7 +1557,8 @@ pub struct SessionDetailReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct HostRoot {
-    /// `opencode`, `claude` or `agents`, the wire's host names.
+    /// `opencode` or `claude`, the wire's host names; the canonical
+    /// `~/.agents/skills` root is not a host and never appears here.
     pub host: String,
     /// The directory the host reads the face from.
     pub path: String,

@@ -16,7 +16,7 @@ tandem-cli setup status
 tandem-cli setup install
 ```
 
-A bare `setup install` writes OpenCode: `~/.config/opencode/skills/<name>` for every skill, `~/.config/opencode/agents/<name>.md` for every prompt, one `instructions` entry in `~/.config/opencode/opencode.json` naming `<TandemHome>/agent/AGENTS.md`, and the `mcp.tandem` server entry in the same file, so a fresh session lists working tools with no manual config. `--host claude` or `--host agents` names another host, and a host is written only when it is named. (Claude's servers are added with `claude mcp add tandem -- /Applications/Tandem.app/Contents/MacOS/tandem-cli mcp --scope user`.)
+A bare `setup install` writes OpenCode and the canonical root: `~/.config/opencode/skills/<name>` for every skill, `~/.config/opencode/agents/<name>.md` for every prompt, one `instructions` entry in `~/.config/opencode/opencode.json` naming `<TandemHome>/agent/AGENTS.md`, the `mcp.tandem` server entry in the same file, so a fresh session lists working tools with no manual config, and `~/.agents/skills/<name>` for every skill. The canonical root is the cross-tool Agent Skills listing: it is written on every run and names no `--host`, because it is a client of the face and not a host. `--host claude` adds `~/.claude/skills/<name>` for every skill, `~/.claude/agents/<name>.md` for every prompt and a marked block in `~/.claude/CLAUDE.md`; a host is written only when it is named. `--host agents` is retired: it exits 1 with a message and writes nothing, because the canonical links are no longer optional. (Claude's servers are added with `claude mcp add tandem -- /Applications/Tandem.app/Contents/MacOS/tandem-cli mcp --scope user`.)
 
 Report the JSON the run prints: each host's `state` (`installed`, `checkout`, `real-file` or `absent`), the `installedVersion` beside `bundledVersion`, and every warning with its `hint`. That report is the answer.
 
@@ -50,6 +50,6 @@ opencode api skill.list   # every skill the artifact ships; the host's list is t
 
 ## Done when
 
-- The host lists every agent prompt and every skill the artifact ships, `doctor_report` reads "opencode configured", and a fresh session lists the Tandem MCP tools with no manual config.
+- The host lists every agent prompt and every skill the artifact ships, `~/.agents/skills` holds one link per skill into the face, `doctor_report` reads "opencode configured", and a fresh session lists the Tandem MCP tools with no manual config.
 - Nothing in the host config points at a path that does not exist, and no file was overwritten.
 - The report says what was linked, what was skipped and why, and what is left for the human: a skip is a done setup; silence is not.

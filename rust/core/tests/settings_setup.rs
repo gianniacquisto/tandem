@@ -171,10 +171,6 @@ fn setup_status_names_the_roots_a_settings_surface_shows() {
                 "claude".to_string(),
                 setup::text(&fixture.home.join(".claude"))
             ),
-            (
-                "agents".to_string(),
-                setup::text(&fixture.home.join(".agents"))
-            ),
         ],
         "each host root is resolved from the injected environment"
     );
