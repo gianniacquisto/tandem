@@ -212,10 +212,11 @@ describe('the board view over the snapshot', () => {
 })
 
 describe('the board columns', () => {
-  it('draws one column per stage in workflow order, Done included', () => {
+  it('the_default_board_draws_selected_for_development_between_backlog_and_ready', () => {
     expect(boardStatuses().map((status) => status.value)).toEqual([
       'backlog',
       'on-hold',
+      'selected',
       'ready',
       'in-progress',
       'in-review',
@@ -224,6 +225,7 @@ describe('the board columns', () => {
     expect(boardColumns(board).map((column) => column.status)).toEqual([
       'backlog',
       'on-hold',
+      'selected',
       'ready',
       'in-progress',
       'in-review',
@@ -232,11 +234,15 @@ describe('the board columns', () => {
     expect(boardColumns(board).map((column) => column.label)).toEqual([
       'Backlog',
       'On hold',
+      'Selected for development',
       'Ready',
       'In progress',
       'In Review',
       'Done',
     ])
+    const statuses = boardColumns(board).map((column) => column.status)
+    expect(statuses.indexOf('selected')).toBe(statuses.indexOf('backlog') + 2)
+    expect(statuses.indexOf('selected')).toBe(statuses.indexOf('ready') - 1)
   })
 
   it('holds exactly the tickets of its stage, and no ticket appears twice', () => {
@@ -298,8 +304,19 @@ describe('the board columns', () => {
 
   it('keeps an empty stage as a column, so every stage is a drop target', () => {
     const columns = boardColumns(board)
-    expect(columns).toHaveLength(6)
+    expect(columns).toHaveLength(7)
     expect(columns.find((column) => column.status === 'on-hold')?.tickets).toEqual([])
+  })
+
+  it('an_empty_selected_cell_is_a_drop_target', () => {
+    const columns = boardColumns(board)
+    expect(columns.find((column) => column.status === 'selected')?.tickets).toEqual([])
+    expect(dropCalls(board, 'b', 'selected')).toEqual([
+      {
+        method: 'ticket.set',
+        params: { id: 'b', title: null, status: 'selected', assignee: null, description: null },
+      },
+    ])
   })
 
   it('draws every non-archived ticket, and a done ticket sits in Done whatever the scope says', () => {
@@ -385,13 +402,14 @@ describe('the board card', () => {
   const drawn = html({ selected: 'a' })
 
   it('draws one column per stage, with data-status in stage order', () => {
-    expect(drawn.match(/class="board__column"/g)).toHaveLength(6)
+    expect(drawn.match(/class="board__column"/g)).toHaveLength(7)
     const statuses = [...drawn.matchAll(/class="board__column" data-status="([^"]+)"/g)].map(
       (match) => match[1],
     )
     expect(statuses).toEqual([
       'backlog',
       'on-hold',
+      'selected',
       'ready',
       'in-progress',
       'in-review',
@@ -399,7 +417,8 @@ describe('the board card', () => {
     ])
     // The document order is the workflow's.
     const at = (status: string): number => drawn.indexOf(`data-status="${status}"`)
-    expect(at('backlog')).toBeLessThan(at('ready'))
+    expect(at('backlog')).toBeLessThan(at('selected'))
+    expect(at('selected')).toBeLessThan(at('ready'))
     expect(at('ready')).toBeLessThan(at('done'))
   })
 
@@ -407,13 +426,15 @@ describe('the board card', () => {
     const heads = [...drawn.matchAll(/<h2 class="board__column-title">([\s\S]*?)<\/h2>/g)].map(
       (match) => match[1] ?? '',
     )
-    expect(heads).toHaveLength(6)
+    expect(heads).toHaveLength(7)
     expect(heads[0]).toContain('Backlog')
-    expect(heads[2]).toContain('Ready')
-    expect(heads[5]).toContain('Done')
+    expect(heads[2]).toContain('Selected for development')
+    expect(heads[3]).toContain('Ready')
+    expect(heads[6]).toContain('Done')
     expect(heads[0]).toContain('<span class="board__column-count">1</span>')
     expect(heads[1]).toContain('<span class="board__column-count">0</span>')
-    expect(heads[5]).toContain('<span class="board__column-count">1</span>')
+    expect(heads[2]).toContain('<span class="board__column-count">0</span>')
+    expect(heads[6]).toContain('<span class="board__column-count">1</span>')
   })
 
   it('draws one card per ticket, with its data-ticket and lane chip', () => {
@@ -434,8 +455,8 @@ describe('the board card', () => {
   })
 
   it('carries its add control in every column foot', () => {
-    expect(drawn.match(/class="board__add-button"/g)).toHaveLength(6)
-    expect(drawn.match(/\+ Add a card/g)).toHaveLength(6)
+    expect(drawn.match(/class="board__add-button"/g)).toHaveLength(7)
+    expect(drawn.match(/\+ Add a card/g)).toHaveLength(7)
   })
 
   it('opens the sheet on one click and filters from the chip without opening it', () => {
@@ -479,6 +500,15 @@ describe('the board selection', () => {
     // A column of one card has no row to step to.
     expect(stepSelection(columns, 'b', 'row', 1)).toBeNull()
     expect(stepSelection(columns, 'a', 'row', -1)).toBeNull()
+  })
+
+  it('a right move from Backlog lands in Selected when it holds a card', () => {
+    const withSelected = boardColumns([
+      ...board,
+      ticket({ id: 'e', title: 'Echo', status: 'selected' }),
+    ])
+    expect(stepSelection(withSelected, 'b', 'column', 1)).toBe('e')
+    expect(stepSelection(withSelected, 'e', 'column', -1)).toBe('b')
   })
 })
 
@@ -688,7 +718,7 @@ describe('the empty board', () => {
         onAdd: async () => true,
       }),
     )
-    expect(drawn.match(/class="board__add-button"/g)).toHaveLength(6)
+    expect(drawn.match(/class="board__add-button"/g)).toHaveLength(7)
     expect(drawn).not.toContain('Drop tickets here')
     expect(drawn).not.toContain('board__cell')
   })

@@ -25,7 +25,7 @@ use super::{Actor, Result, StoreError, timestamp, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 9;
+pub const CURRENT_VERSION: i64 = 10;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -78,9 +78,14 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         apply: version_eight,
     },
     Migration {
+        version: SELECTED_VERSION,
+        name: "the selected intake stage",
+        apply: version_nine,
+    },
+    Migration {
         version: WORKFLOW_RUNS_VERSION,
         name: "the workflow runs and the orphan-open sweep",
-        apply: version_nine,
+        apply: version_ten,
     },
 ];
 
@@ -277,6 +282,7 @@ pub(crate) const DEFAULT_WORKFLOW_CREATED: &str = "2026-11-08T00:00:00Z";
 /// One stage of the default `agile` workflow, as the v7 seed writes it and the
 /// in-memory fallback builds it: key, label, role, and an optional binding
 /// (roster role, pass).
+#[derive(Clone, Copy)]
 pub(crate) struct DefaultStage {
     pub key: &'static str,
     pub label: &'static str,
@@ -284,11 +290,11 @@ pub(crate) struct DefaultStage {
     pub binding: Option<(&'static str, &'static str)>,
 }
 
-/// **The default's one truth.** The v7 seed and [`default_workflow`] both read
-/// this list, so a fresh home and the in-memory fallback cannot disagree. A
-/// later default lands as its own migration, not an edit here (append only).
-///
-/// [`default_workflow`]: crate::domain::workflow::default_workflow
+/// The v7 seed's six stages. **A shipped migration's data never changes**
+/// (append only), so this list stays the foundation's six and the seventh
+/// default stage lands in [`SELECTED_STAGE`] and the migration that adds it.
+/// [`current_default_stages`] is the default today, and the in-memory fallback
+/// reads it, so a fresh home and the fallback cannot disagree.
 pub(crate) const DEFAULT_STAGES: [DefaultStage; 6] = [
     DefaultStage {
         key: "backlog",
@@ -327,6 +333,32 @@ pub(crate) const DEFAULT_STAGES: [DefaultStage; 6] = [
         binding: None,
     },
 ];
+
+/// The default's second intake stage (TAN-327): between the pool and Ready, so
+/// the human can promote the tickets the next refine pass should drain. It
+/// carries no binding: refine reads the active workflow's intake stages by
+/// role and order, never a second pass binding.
+pub(crate) const SELECTED_STAGE: DefaultStage = DefaultStage {
+    key: "selected",
+    label: "Selected for development",
+    role: "intake",
+    binding: None,
+};
+
+/// The default `agile` workflow as this build reads it: the v7 six with
+/// [`SELECTED_STAGE`] immediately before `ready`. A fresh home walks the v7
+/// seed and then the selected-stage migration, so it ends here; the in-memory
+/// fallback builds the same list, so a store with no workflow rows draws the
+/// same default.
+pub(crate) fn current_default_stages() -> Vec<DefaultStage> {
+    let mut stages = DEFAULT_STAGES.to_vec();
+    let at = stages
+        .iter()
+        .position(|stage| stage.key == "ready")
+        .unwrap_or(stages.len());
+    stages.insert(at, SELECTED_STAGE);
+    stages
+}
 
 /// Version 7: the workflow entity, its ordered stages, and the nullable
 /// `projects.workflow` hook for the later per-project adoption.
@@ -402,10 +434,76 @@ fn version_eight(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_EIGHT)
 }
 
-/// The version that turns `sprints` into `workflow_runs` (TAN-332).
-pub(crate) const WORKFLOW_RUNS_VERSION: i64 = 9;
+/// The version that adds the default's second intake stage (TAN-327).
+pub(crate) const SELECTED_VERSION: i64 = 9;
 
-/// Version 9: the sprint record becomes the workflow's run record (TAN-332).
+/// Version 9: `selected` into the default `agile` workflow, immediately before
+/// `ready`.
+///
+/// **Only the untouched default is migrated.** The insert runs when the default
+/// workflow's stage key set is exactly the six the v7 seed wrote and no
+/// `selected` key exists; labels and positions do not block it, a different key
+/// set does. A default that already carries `selected` is left alone, so the
+/// migration is idempotent and a customized workflow is the human's, never
+/// rewritten. The position shift and the insert share the migration's one
+/// transaction.
+fn version_nine(connection: &Connection) -> rusqlite::Result<()> {
+    let mut statement = connection.prepare(
+        "SELECT key, position FROM workflow_stages WHERE workflow_id = ?1 ORDER BY position",
+    )?;
+    let rows = statement
+        .query_map([DEFAULT_WORKFLOW_ID], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let mut keys: Vec<&str> = rows.iter().map(|(key, _)| key.as_str()).collect();
+    keys.sort_unstable();
+    let mut seeded: Vec<&str> = DEFAULT_STAGES.iter().map(|stage| stage.key).collect();
+    seeded.sort_unstable();
+    if keys.contains(&SELECTED_STAGE.key) || keys != seeded {
+        return Ok(());
+    }
+
+    let position = rows
+        .iter()
+        .find(|(key, _)| key == "ready")
+        .map(|(_, position)| *position)
+        .or_else(|| {
+            rows.iter()
+                .find(|(key, _)| key == "backlog")
+                .map(|(_, position)| position + 1)
+        })
+        .unwrap_or(rows.len() as i64);
+
+    connection.execute(
+        "UPDATE workflow_stages SET position = position + 1
+         WHERE workflow_id = ?1 AND position >= ?2",
+        params![DEFAULT_WORKFLOW_ID, position],
+    )?;
+    connection.execute(
+        "INSERT INTO workflow_stages
+            (workflow_id, position, key, label, role, binding_role, binding_pass)
+         VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL)",
+        params![
+            DEFAULT_WORKFLOW_ID,
+            position,
+            SELECTED_STAGE.key,
+            SELECTED_STAGE.label,
+            SELECTED_STAGE.role
+        ],
+    )?;
+    Ok(())
+}
+
+/// The version that turns `sprints` into `workflow_runs` (TAN-332).
+pub(crate) const WORKFLOW_RUNS_VERSION: i64 = 10;
+
+/// Version 10: the sprint record becomes the workflow's run record (TAN-332).
 ///
 /// **The rename is in place.** A run keeps its `(lane, number)` identity and
 /// every field, and gains the workflow it belongs to: the default `agile` id,
@@ -416,21 +514,21 @@ pub(crate) const WORKFLOW_RUNS_VERSION: i64 = 9;
 /// without a pass, so nothing will ever close it; it closes at its own opening
 /// stamp with the provenance below. An open run carrying a session, a ticket or
 /// a run entry stays open.
-const VERSION_NINE: &str = "
+const VERSION_TEN: &str = "
 ALTER TABLE sprints RENAME TO workflow_runs;
 ALTER TABLE workflow_runs ADD COLUMN workflow TEXT NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001';
 UPDATE workflow_runs
    SET status = 'closed',
        closed_at = opened_at,
-       close = 'Closed by schema v9 migration: empty run opened with no session.'
+       close = 'Closed by schema v10 migration: empty run opened with no session.'
  WHERE status = 'open'
    AND session IS NULL
    AND (batch IS NULL OR batch = '[]')
    AND (runs IS NULL OR runs = '[]');
 ";
 
-fn version_nine(connection: &Connection) -> rusqlite::Result<()> {
-    connection.execute_batch(VERSION_NINE)
+fn version_ten(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(VERSION_TEN)
 }
 
 fn version_seven(connection: &Connection) -> rusqlite::Result<()> {
@@ -626,9 +724,9 @@ pub(crate) fn has_turns(connection: &Connection) -> Result<bool> {
     Ok(version(connection)?.unwrap_or(0) >= TURNS_VERSION)
 }
 
-/// Whether the file carries the workflow's run table (v9).
+/// Whether the file carries the workflow's run table (v10).
 ///
-/// A read asks this rather than migrating (ADR 0031): a pre-v9 home answers its
+/// A read asks this rather than migrating (ADR 0031): a pre-v10 home answers its
 /// run rows from `sprints`, with the default workflow supplied, and nothing is
 /// written.
 pub(crate) fn has_workflow_runs(connection: &Connection) -> Result<bool> {

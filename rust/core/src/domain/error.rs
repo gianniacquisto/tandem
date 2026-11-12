@@ -46,7 +46,7 @@ pub enum DomainError {
     StandardInputNotUtf8,
     /// `list` was given a filter that is not `open`, `done` or `all`.
     InvalidFilter(String),
-    /// A status value that is empty, or not one of the six default keys.
+    /// A status value that is empty, or the retired `refined` spelling.
     InvalidStatus(String),
     /// A status value the active workflow does not declare. `stages` is the
     /// valid stage-key list, so the refusal names what the caller may pick.

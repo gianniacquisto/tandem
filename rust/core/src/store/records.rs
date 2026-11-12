@@ -88,7 +88,7 @@ pub(crate) fn session_rows(connection: &Connection) -> Result<Vec<SessionRow>> {
 
 /// Every sprint row, in the order the rows were recorded.
 ///
-/// **A pre-v9 home reads `sprints` and supplies the default workflow** (ADR
+/// **A pre-v10 home reads `sprints` and supplies the default workflow** (ADR
 /// 0031: a read never migrates). The table is the same record under its old
 /// name, and every row it holds predates the `workflow` column, so the default
 /// is the only truthful answer.

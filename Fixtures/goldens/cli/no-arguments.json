@@ -77,7 +77,7 @@
     "  tandem-cli --help | -h",
     "",
     "Values:",
-    "  status    backlog | on-hold | ready | in-progress | in-review | done",
+    "  status    backlog | on-hold | selected | ready | in-progress | in-review | done",
     "            running | ended \u2014 a session's status, on `session list`",
     "            open | closed \u2014 a sprint's status, on `sprint list`",
     "  mode      serial | parallel \u2014 how a sprint's batch was built",

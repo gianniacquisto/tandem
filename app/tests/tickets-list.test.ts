@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { boardStatuses } from '../renderer/src/shell/board'
+
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
 const css = readFileSync(`${appRoot}renderer/src/app.css`, 'utf8')
 const tokens = readFileSync(`${appRoot}renderer/src/tokens.css`, 'utf8')
@@ -124,6 +126,26 @@ describe('the tickets list hierarchy and state colour (TAND-11)', () => {
     expect(face, 'the status filter maps over those stages').toMatch(
       /\{statuses\.map\(\(status\) => \(/,
     )
+  })
+
+  it('the_list_status_filter_carries_selected_for_development', () => {
+    const selected = boardStatuses().find((status) => status.value === 'selected')
+    expect(selected, 'the default stage list carries selected').toBeDefined()
+    expect(selected?.label).toBe('Selected for development')
+    expect(
+      boardStatuses().map((status) => status.value),
+      'selected sits after backlog and before ready',
+    ).toEqual(['backlog', 'on-hold', 'selected', 'ready', 'in-progress', 'in-review', 'done'])
+  })
+
+  it('the_selected_status_pill_uses_the_neutral_fallback', () => {
+    // Only backlog stays pill-less; a selected ticket draws the label.
+    expect(row).toContain("ticket.status === 'backlog' ? null")
+    expect(row).toContain('statusLabel(ticket.status, stages)')
+    expect(row).not.toContain("ticket.status !== 'selected'")
+    // The chip has no selected rule, so it falls through to the neutral ink.
+    expect(rule('.ticket-row__status[data-status="selected"]')).toBeNull()
+    expect(css).toContain('background: var(--chip, var(--ink-dim))')
   })
 
   it('leaves the board layout alone: this pass is list rows only', () => {

@@ -8,7 +8,7 @@ The **Bikeshed** — `~/.tandem/bikeshed/` — is a plain folder of `.md` notes.
 
 ## Three areas
 
-- **saddlebag** — small create-only notes, one file each, at `projects/<project>/.raw/<session>/<utc>-<kind>-<slug>.md`. Hidden, **create-only** (never edited), **no wikilinks**. Filed by *every* agent through `tandem-cli note capture`; the verb owns the kinds, body shape, and naming (`skills/tandem/SKILL.md`). Read only by the consolidation pass, which archives what it consumes to `projects/<project>/.raw/.done/<session>/`.
+- **saddlebag**: small create-only notes, one file each, at `projects/<project>/.raw/<session>/<utc>-<kind>-<slug>.md`. Hidden, **create-only** (never edited), **no wikilinks**. Filed by *every* agent through `note_capture`; the verb owns the kinds, body shape, and naming (`skills/tandem/SKILL.md`). Read only by the consolidation pass, which archives what it consumes to `projects/<project>/.raw/.done/<session>/`.
 - **daily notes** — the human's own folders: **human-owned**, and **read-only to the consolidator** — it folds what they hold and **never edits, moves or archives** a source file; the human keeps and edits them. The harvest list is `["daily"]` today: `daily/YYYY-MM-DD.md`, one file per day at the vault root, written by the human in the app (⌘K or **File → Today's Note**; app-only, and no CLI write path). A second folder joins by being declared in the same list, with the same contract.
 - **curated** — the human- and agent-readable notes under `projects/<project>/` and `topics/`. A working agent **never** edits them; the consolidation pass is the sole writer ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
 
@@ -84,7 +84,7 @@ Capture filenames are the exception: they are the verb's `<utc>-<kind>-<slug>`, 
 
 ## Threads
 
-Active work lives in the Tandem's open tickets (`tandem-cli ticket list`). A project's Overview `Threads` section names the threads that belong to it.
+Active work lives in the Tandem's open tickets (`ticket_list`). A project's Overview `Threads` section names the threads that belong to it.
 ```
 
 Two tiers below it: the **Overview** (`Where left off` at the top) → the project's pages and sub-pages via wikilinks. The app's **Backlinks** panel is the one-hop neighbourhood, derived and maintained by nobody.

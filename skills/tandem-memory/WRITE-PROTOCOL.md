@@ -6,13 +6,11 @@ The repo's prose rules live in [`AGENTS.md`](../../AGENTS.md), including no em d
 
 ## The record — the session summary; a capture for one real re-derivation cost
 
-The work record is the **session summary**: at session end (or when context nears exhaustion), `tandem-cli session end --summary -` records what was done and where the session left off (ADR 0027) — a sub-agent's minimum deliverable before it returns, too. The consolidation pass reads the ended session records' summaries ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
+The work record is the **session summary**: at session end (or when context nears exhaustion), `session_end` with the summary in `summary` records what was done and where the session left off (ADR 0027), a sub-agent's minimum deliverable before it returns, too. The consolidation pass reads the ended session records' summaries ([`CONSOLIDATION.md`](CONSOLIDATION.md)).
 
 A **capture** is for one thing only: a decision, gotcha or fact whose **cost of re-derivation is real**, and which is not already in a session record, a ticket, an ADR or the code. A session that ends with its summary and no capture is compliant.
 
-```
-printf '# <short title>\n\n<1-3 lines>\n' | tandem-cli note capture --kind <kind> --project <project>
-```
+File it with `note_capture`, carrying `kind`, `project`, and the `# <short title>` block and its one to three lines as `body`.
 
 What earns one:
 
@@ -22,7 +20,7 @@ What earns one:
 
 The verb owns the kinds, the body shape (`# <short title>` then 1–3 lines), and the naming — its contract is `skills/tandem/SKILL.md`. Captures are **create-only** and carry **no `[[wikilinks]]`**; the consolidation pass adds those when it promotes a note.
 
-**Threads stay immediate**: `tandem-cli ticket add --title "…"` runs the moment a thread opens — the ticket list is the authoritative live list. Closing one: `tandem-cli ticket complete --id <id>`, plus a `thread` capture only for the context a title cannot carry.
+**Threads stay immediate**: `ticket_add` with the title runs the moment a thread opens, the ticket list is the authoritative live list. Closing one: `ticket_complete` with `id`, plus a `thread` capture only for the context a title cannot carry.
 
 ## What fails the cost test
 
@@ -34,7 +32,7 @@ The re-derivation test is what decides, and it rides on the capture, not on prom
 
 ## The closing pass
 
-At session end (or when context nears exhaustion), end the session record — `session end --summary -`; the summary is the work record. The captures simply keep — consolidation is deliberate, never automatic. When the human asks (or the root was told to close out), **hand the saddlebag to the consolidation agent** ([`CONSOLIDATION.md`](CONSOLIDATION.md)) — a fresh agent, never a recording sub-agent, that folds this session's captures into the curated notes and refreshes the Index. The human can run the same pass on demand. The working session does not consolidate itself.
+At session end (or when context nears exhaustion), end the session record: `session_end` with the summary in `summary`; the summary is the work record. The captures simply keep, consolidation is deliberate, never automatic. When the human asks (or the root was told to close out), **hand the saddlebag to the consolidation agent** ([`CONSOLIDATION.md`](CONSOLIDATION.md)), a fresh agent, never a recording sub-agent, that folds this session's captures into the curated notes and refreshes the Index. The human can run the same pass on demand. The working session does not consolidate itself.
 
 ## The curated shape — what the consolidation pass writes
 

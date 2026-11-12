@@ -28,7 +28,7 @@
     "  tandem-cli ticket comment list --id <id>",
     "",
     "Values:",
-    "  status    backlog | on-hold | ready | in-progress | in-review | done",
+    "  status    backlog | on-hold | selected | ready | in-progress | in-review | done",
     "  filter    open (default) | done | all",
     "  assignee  a name, `self` ($TANDEM_AGENT), or \"\" for the unassigned",
     "  origin    a name, `self` ($TANDEM_AGENT), or human when omitted; who filed it",
