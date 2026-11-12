@@ -27,6 +27,8 @@ use super::rpc::{
     TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply,
     TicketMoveParams, TicketReply, TicketSetParams, TicketUnblockParams, UsageReportParams,
     UsageReportReply, WireError, WorkflowIdParams, WorkflowListReply, WorkflowReply,
+    WorkflowRunCloseParams, WorkflowRunListParams, WorkflowRunListReply, WorkflowRunOpenParams,
+    WorkflowRunReply, WorkflowRunRunParams, WorkflowRunShowParams, WorkflowRunTicketParams,
     WorkflowSetParams, WorkflowShowParams,
 };
 use super::views::{
@@ -41,7 +43,7 @@ use crate::domain::harness::{TranscriptBlock, TranscriptEntry, TranscriptPage};
 use crate::domain::session::{
     HarnessTransport, Session, SessionOutcome, SessionStatus, SessionTokens,
 };
-use crate::domain::sprint::{Sprint, SprintMode, SprintStatus};
+use crate::domain::sprint::{Sprint, SprintMode, SprintStatus, WorkflowRun};
 use crate::domain::usage::UsageWindow;
 use crate::domain::workflow::{Pass, StageBinding, StageRole, Workflow, WorkflowStage};
 use crate::setup;
@@ -226,6 +228,39 @@ pub fn files() -> Vec<(&'static str, String)> {
             "SprintCloseParams.ts",
             SprintCloseParams::export_to_string(&cfg),
         ),
+        render(
+            "WorkflowRunOpenParams.ts",
+            WorkflowRunOpenParams::export_to_string(&cfg),
+        ),
+        render(
+            "WorkflowRunTicketParams.ts",
+            WorkflowRunTicketParams::export_to_string(&cfg),
+        ),
+        render(
+            "WorkflowRunRunParams.ts",
+            WorkflowRunRunParams::export_to_string(&cfg),
+        ),
+        render(
+            "WorkflowRunCloseParams.ts",
+            WorkflowRunCloseParams::export_to_string(&cfg),
+        ),
+        render(
+            "WorkflowRunListParams.ts",
+            WorkflowRunListParams::export_to_string(&cfg),
+        ),
+        render(
+            "WorkflowRunShowParams.ts",
+            WorkflowRunShowParams::export_to_string(&cfg),
+        ),
+        render(
+            "WorkflowRunListReply.ts",
+            WorkflowRunListReply::export_to_string(&cfg),
+        ),
+        render(
+            "WorkflowRunReply.ts",
+            WorkflowRunReply::export_to_string(&cfg),
+        ),
+        render("WorkflowRun.ts", WorkflowRun::export_to_string(&cfg)),
         render(
             "NoteCaptureParams.ts",
             NoteCaptureParams::export_to_string(&cfg),

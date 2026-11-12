@@ -9,7 +9,7 @@ The Tandem MCP tools are the agent interface on this Mac, served by the binary t
 
 ## MCP tools
 
-The Tandem MCP tools are this host's agent path on this Mac: `tandem-cli mcp` serves the agent face as an MCP server over stdio (the binary the app bundles, `/Applications/Tandem.app/Contents/MacOS/tandem-cli`, stable across upgrades), so an agent reads and writes the same list and notes a human uses in the app. The tools below are its 42 verbs, one per CLI verb, typed end to end. A tool call runs the CLI verb's own domain call, so the two doors cannot disagree. Agents use these tools only: when they are missing, fail loudly and ask for `tandem-cli setup install` instead of falling back to the shell. The CLI stays documented below as the human's and the scripts' door; where the two spellings differ, the tool's description says how.
+The Tandem MCP tools are this host's agent path on this Mac: `tandem-cli mcp` serves the agent face as an MCP server over stdio (the binary the app bundles, `/Applications/Tandem.app/Contents/MacOS/tandem-cli`, stable across upgrades), so an agent reads and writes the same list and notes a human uses in the app. The tools below are its 48 verbs, one per CLI verb, typed end to end. A tool call runs the CLI verb's own domain call, so the two doors cannot disagree. Agents use these tools only: when they are missing, fail loudly and ask for `tandem-cli setup install` instead of falling back to the shell. The CLI stays documented below as the human's and the scripts' door; where the two spellings differ, the tool's description says how.
 
 `setup install` wires the server, so no manual MCP config is needed:
 
@@ -68,6 +68,12 @@ The server inherits the host's environment: the Tandem home resolves the way `rp
 | `workflow_set` | `workflow set` |
 | `workflow_use` | `workflow use` |
 | `workflow_delete` | `workflow delete` |
+| `workflow_run_open` | `workflow run open` |
+| `workflow_run_ticket` | `workflow run ticket` |
+| `workflow_run_run` | `workflow run run` |
+| `workflow_run_close` | `workflow run close` |
+| `workflow_run_list` | `workflow run list` |
+| `workflow_run_show` | `workflow run show` |
 
 Four things the tools spell differently from the flags:
 

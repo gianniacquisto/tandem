@@ -25,7 +25,7 @@ use super::{Actor, Result, StoreError, timestamp, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 9;
+pub const CURRENT_VERSION: i64 = 10;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -81,6 +81,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: SELECTED_VERSION,
         name: "the selected intake stage",
         apply: version_nine,
+    },
+    Migration {
+        version: WORKFLOW_RUNS_VERSION,
+        name: "the workflow runs and the orphan-open sweep",
+        apply: version_ten,
     },
 ];
 
@@ -495,6 +500,44 @@ fn version_nine(connection: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// The version that turns `sprints` into `workflow_runs` (TAN-332).
+pub(crate) const WORKFLOW_RUNS_VERSION: i64 = 10;
+
+/// Version 10: the sprint record becomes the workflow's run record (TAN-332).
+///
+/// **The rename is in place.** A run keeps its `(lane, number)` identity and
+/// every field, and gains the workflow it belongs to: the default `agile` id,
+/// so every closed sprint on a real home migrates as a run of the default.
+///
+/// **The orphan sweep closes only what has no session behind it.** An open run
+/// with `session IS NULL`, an empty batch and an empty run log was opened
+/// without a pass, so nothing will ever close it; it closes at its own opening
+/// stamp with the provenance below. An open run carrying a session, a ticket or
+/// a run entry stays open.
+const VERSION_TEN: &str = "
+ALTER TABLE sprints RENAME TO workflow_runs;
+ALTER TABLE workflow_runs ADD COLUMN workflow TEXT NOT NULL DEFAULT '{DEFAULT_WORKFLOW_ID}';
+UPDATE workflow_runs
+   SET status = 'closed',
+       closed_at = opened_at,
+       close = 'Closed by schema v10 migration: empty run opened with no session.'
+ WHERE status = 'open'
+   AND session IS NULL
+   AND (batch IS NULL OR batch = '[]')
+   AND (runs IS NULL OR runs = '[]');
+";
+
+/// [`VERSION_TEN`] with the default workflow's id filled in. A column default
+/// cannot be bound as a parameter, so the one literal the DDL needs comes from
+/// the constant rather than a second copy of the UUID.
+fn version_ten_sql() -> String {
+    VERSION_TEN.replace("{DEFAULT_WORKFLOW_ID}", DEFAULT_WORKFLOW_ID)
+}
+
+fn version_ten(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(&version_ten_sql())
+}
+
 fn version_seven(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_SEVEN)?;
     connection.execute(
@@ -686,6 +729,15 @@ pub(crate) fn has_harness(connection: &Connection) -> Result<bool> {
 /// NULL, and nothing is written (ADR 0031).
 pub(crate) fn has_turns(connection: &Connection) -> Result<bool> {
     Ok(version(connection)?.unwrap_or(0) >= TURNS_VERSION)
+}
+
+/// Whether the file carries the workflow's run table (v10).
+///
+/// A read asks this rather than migrating (ADR 0031): a pre-v10 home answers its
+/// run rows from `sprints`, with the default workflow supplied, and nothing is
+/// written.
+pub(crate) fn has_workflow_runs(connection: &Connection) -> Result<bool> {
+    Ok(version(connection)?.unwrap_or(0) >= WORKFLOW_RUNS_VERSION)
 }
 
 /// Whether a store is behind the version this build writes.

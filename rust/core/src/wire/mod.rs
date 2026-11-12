@@ -31,7 +31,7 @@ pub use views::{
     NoteMoveView, NoteNodeView, NotePathView, NoteWriteView, ProjectList, ProjectView,
     RecoveryView, SessionDetailView, SessionList, SessionResult, SprintList, SprintResult,
     TicketBlockView, TicketDetail, TicketList, TicketSummary, UsageReportView, UsageRowView,
-    UsageSessionView, UsageTokensView,
+    UsageSessionView, UsageTokensView, WorkflowRunList, WorkflowRunResult,
 };
 
 /// What `doctor` answers: ADR 0014's shape, `{"ok": bool, "checks": [...]}`.

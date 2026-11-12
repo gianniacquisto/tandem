@@ -35,8 +35,9 @@ use crate::wire::rpc::{
     SessionStartParams, SettingsSetParams, SprintCloseParams, SprintListParams, SprintOpenParams,
     SprintRunParams, SprintShowParams, SprintTicketParams, TicketAddFromNoteParams,
     TicketAddParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
-    TicketMoveParams, TicketSetParams, TicketUnblockParams, WorkflowIdParams, WorkflowSetParams,
-    WorkflowShowParams,
+    TicketMoveParams, TicketSetParams, TicketUnblockParams, WorkflowIdParams,
+    WorkflowRunCloseParams, WorkflowRunListParams, WorkflowRunOpenParams, WorkflowRunRunParams,
+    WorkflowRunShowParams, WorkflowRunTicketParams, WorkflowSetParams, WorkflowShowParams,
 };
 
 /// The server name the `initialize` answer carries.
@@ -410,7 +411,7 @@ impl Tool {
     }
 }
 
-/// The 42 tools: one per covered wire method. The schema beside each entry is
+/// The 48 tools: one per covered wire method. The schema beside each entry is
 /// the params struct's own derivation, so the list cannot drift from the wire
 /// without the registry test failing.
 pub fn tools() -> Vec<Tool> {
@@ -638,6 +639,48 @@ pub fn tools() -> Vec<Tool> {
             description: "Read the lane's open sprint record.",
             input_schema: SprintShowParams::schema(),
             method: Method::SprintShow(SprintShowParams::default()),
+        },
+        Tool {
+            name: "workflow_run_open",
+            method_tag: "workflow.run.open",
+            description: "Open the lane's workflow run, once per lane; a second open keeps the first.",
+            input_schema: WorkflowRunOpenParams::schema(),
+            method: Method::WorkflowRunOpen(WorkflowRunOpenParams::default()),
+        },
+        Tool {
+            name: "workflow_run_ticket",
+            method_tag: "workflow.run.ticket",
+            description: "Draw one ticket into the lane's open workflow run, in stored order.",
+            input_schema: WorkflowRunTicketParams::schema(),
+            method: Method::WorkflowRunTicket(WorkflowRunTicketParams::default()),
+        },
+        Tool {
+            name: "workflow_run_run",
+            method_tag: "workflow.run.run",
+            description: "Append one dated entry to the lane's open workflow run log.",
+            input_schema: WorkflowRunRunParams::schema(),
+            method: Method::WorkflowRunRun(WorkflowRunRunParams::default()),
+        },
+        Tool {
+            name: "workflow_run_close",
+            method_tag: "workflow.run.close",
+            description: "Close the lane's workflow run, once, with what landed.",
+            input_schema: WorkflowRunCloseParams::schema(),
+            method: Method::WorkflowRunClose(WorkflowRunCloseParams::default()),
+        },
+        Tool {
+            name: "workflow_run_list",
+            method_tag: "workflow.run.list",
+            description: "List the workflow's runs, newest opened first.",
+            input_schema: WorkflowRunListParams::schema(),
+            method: Method::WorkflowRunList(WorkflowRunListParams::default()),
+        },
+        Tool {
+            name: "workflow_run_show",
+            method_tag: "workflow.run.show",
+            description: "Read the lane's open workflow run, or the run number named.",
+            input_schema: WorkflowRunShowParams::schema(),
+            method: Method::WorkflowRunShow(WorkflowRunShowParams::default()),
         },
         Tool {
             name: "note_capture",

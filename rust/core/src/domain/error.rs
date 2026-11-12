@@ -90,6 +90,9 @@ pub enum DomainError {
     WorkflowIsDefault(String),
     /// The active workflow cannot be deleted.
     WorkflowIsActive(String),
+    /// A workflow with recorded runs cannot be deleted. `count` is the number of
+    /// runs the store holds for it, so the refusal says why.
+    WorkflowHasRuns { name: String, count: usize },
     /// A cycle lane name was empty or whitespace-only.
     EmptyLaneName,
     /// A cycle lane name was already in use.
@@ -337,6 +340,9 @@ impl DomainError {
             }
             Self::WorkflowIsActive(handle) => {
                 format!("Workflow \"{handle}\" is active. Activate another one before deleting it.")
+            }
+            Self::WorkflowHasRuns { name, count } => {
+                format!("Workflow \"{name}\" has {count} recorded run(s) and cannot be deleted.")
             }
             Self::EmptyLaneName => {
                 "Cycle lane name is empty. Provide a non-empty name and try again.".to_string()

@@ -60,6 +60,7 @@ use crate::wire::rpc::{
     ProjectEntry, ProjectListReply, Reply, Request, Response, SessionDetailReply, SessionListReply,
     SessionReply, SessionTranscriptReply, SettingsReply, SetupReply, SprintListReply, SprintReply,
     TicketListReply, TicketReply, UsageReportReply, WireError, WorkflowListReply, WorkflowReply,
+    WorkflowRunListReply, WorkflowRunReply,
 };
 use crate::wire::{
     BacklinkView, CommentView, MarkdownBlockView, NoteAssetView, NoteContentView, NoteMoveView,
@@ -1253,6 +1254,126 @@ fn execute(
                 sprint: result.value,
                 note: result.note,
             }))
+        }
+        Method::WorkflowRunOpen(params) => {
+            // The workflow door's own default: the active workflow when the
+            // handle is absent, and an unknown handle is the workflow refusal.
+            let mode = match params.mode.as_deref() {
+                None => SprintMode::Serial,
+                Some(raw) => SprintMode::parse(raw)
+                    .ok_or_else(|| domain(DomainError::InvalidSprintMode(raw.to_string())))?,
+            };
+            let sessions = Sessions::new(store);
+            let session = match params.session.as_deref() {
+                Some(_) => Some(resolve_session(
+                    &sessions,
+                    params.session.as_deref(),
+                    environment,
+                )?),
+                None => resolve_session(&sessions, None, environment).ok(),
+            };
+            let opened = Sprints::new(store)
+                .open_run(
+                    actor,
+                    named(&params.lane),
+                    params.workflow.as_deref(),
+                    mode,
+                    session.as_deref(),
+                    None,
+                )
+                .map_err(domain)?;
+            Ok(Reply::WorkflowRun(WorkflowRunReply {
+                revision: store.last_revision(),
+                run: opened.value,
+                note: opened.note,
+            }))
+        }
+        Method::WorkflowRunTicket(params) => {
+            let lane = named(&params.lane);
+            let ticket = board.ticket(named(&params.ticket)).map_err(domain)?;
+            let number = Sprints::new(store)
+                .open_run_in(lane)
+                .map_err(domain)?
+                .number;
+            let result = Sprints::new(store)
+                .ticket(actor, lane, number, &ticket.id.to_string())
+                .map_err(domain)?;
+            Ok(Reply::WorkflowRun(WorkflowRunReply {
+                revision: store.last_revision(),
+                run: result.value.into(),
+                note: result.note,
+            }))
+        }
+        Method::WorkflowRunRun(params) => {
+            let lane = named(&params.lane);
+            let note = params.note.as_deref().unwrap_or("");
+            let number = Sprints::new(store)
+                .open_run_in(lane)
+                .map_err(domain)?
+                .number;
+            let result = Sprints::new(store)
+                .run(actor, lane, number, note, None)
+                .map_err(domain)?;
+            Ok(Reply::WorkflowRun(WorkflowRunReply {
+                revision: store.last_revision(),
+                run: result.value.into(),
+                note: result.note,
+            }))
+        }
+        Method::WorkflowRunClose(params) => {
+            let lane = named(&params.lane);
+            let number = match params.number {
+                Some(number) => number,
+                None => Sprints::new(store).close_in(lane).map_err(domain)?.number,
+            };
+            let note = params.note.as_deref().map(str::to_string);
+            let result = Sprints::new(store)
+                .close(actor, lane, number, note.as_deref(), None)
+                .map_err(domain)?;
+            Ok(Reply::WorkflowRun(WorkflowRunReply {
+                revision: store.last_revision(),
+                run: result.value.into(),
+                note: result.note,
+            }))
+        }
+        Method::WorkflowRunList(params) => {
+            let status = match params.status.as_deref() {
+                Some(raw) => Some(
+                    SprintStatus::parse(raw)
+                        .ok_or_else(|| domain(DomainError::InvalidSprintStatus(raw.to_string())))?,
+                ),
+                None => None,
+            };
+            let (runs, revision) = Sprints::new(store)
+                .list_runs_snapshot(params.lane.as_deref(), params.workflow.as_deref(), status)
+                .map_err(domain)?;
+            Ok(Reply::WorkflowRunList(WorkflowRunListReply {
+                revision,
+                runs,
+            }))
+        }
+        Method::WorkflowRunShow(params) => {
+            let lane = named(&params.lane);
+            match params.number {
+                Some(number) => {
+                    let run = Sprints::new(store).show_run(lane, number).map_err(domain)?;
+                    Ok(Reply::WorkflowRun(WorkflowRunReply {
+                        revision: store.last_revision(),
+                        run,
+                        note: None,
+                    }))
+                }
+                None => {
+                    let (run, revision) = Sprints::new(store)
+                        .open_run_in_snapshot(lane)
+                        .map_err(domain)?;
+                    Ok(Reply::WorkflowRun(WorkflowRunReply {
+                        revision,
+                        run,
+                        note: None,
+                    }))
+                }
+            }
         }
         Method::NoteCapture(params) => {
             store.home().ensure().map_err(|error| {

@@ -1947,15 +1947,15 @@ fn no_tandem_cli_command_lines_in_agent_prose() {
     );
 }
 
-/// TAN-325: prose and the 42-tool surface are one truth. Every tool name the
+/// TAN-325: prose and the 48-tool surface are one truth. Every tool name the
 /// prose writes as a tool call resolves against `tandem_core::mcp::tools()`,
-/// and the CLI reference's MCP table lists the same 42 names, so a renamed or
+/// and the CLI reference's MCP table lists the same 48 names, so a renamed or
 /// retired tool fails here the way it fails the registry.
 #[test]
 fn every_mcp_tool_name_in_prose_resolves() {
     let tools = crate::mcp::tools();
     let names: std::collections::HashSet<&str> = tools.iter().map(|tool| tool.name).collect();
-    assert_eq!(names.len(), 42, "the registry is the 42-tool surface");
+    assert_eq!(names.len(), 48, "the registry is the 48-tool surface");
 
     let reference = file(CLI_REFERENCE);
     let table = section(&reference, "## MCP tools");
@@ -1972,7 +1972,7 @@ fn every_mcp_tool_name_in_prose_resolves() {
             }
         })
         .collect();
-    assert_eq!(rows.len(), 42, "the MCP table lists one row per tool");
+    assert_eq!(rows.len(), 48, "the MCP table lists one row per tool");
     for name in &names {
         assert!(
             rows.iter().any(|row| row == name),

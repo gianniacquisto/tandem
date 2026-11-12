@@ -30,7 +30,7 @@ use ts_rs::TS;
 
 use crate::bikeshed::health::BikeshedHealth;
 use crate::domain::harness::TranscriptEntry;
-use crate::domain::sprint::Sprint;
+use crate::domain::sprint::{Sprint, WorkflowRun};
 use crate::domain::usage::UsageWindow;
 use crate::domain::workflow::{Workflow, WorkflowStage};
 use crate::wire::views::{
@@ -145,6 +145,15 @@ methods! {
     SprintTicket: "sprint.ticket", SprintTicketParams, "sprint ticket";
     SprintRun: "sprint.run", SprintRunParams, "sprint run";
     SprintClose: "sprint.close", SprintCloseParams, "sprint close";
+    // The workflow's current run and its history (TAN-332). The sprint verbs
+    // above stay as live aliases for one release; these are the same records
+    // under the workflow's name, and every reply carries the run's workflow.
+    WorkflowRunOpen: "workflow.run.open", WorkflowRunOpenParams, "workflow run open";
+    WorkflowRunTicket: "workflow.run.ticket", WorkflowRunTicketParams, "workflow run ticket";
+    WorkflowRunRun: "workflow.run.run", WorkflowRunRunParams, "workflow run run";
+    WorkflowRunClose: "workflow.run.close", WorkflowRunCloseParams, "workflow run close";
+    WorkflowRunList: "workflow.run.list", WorkflowRunListParams, "workflow run list";
+    WorkflowRunShow: "workflow.run.show", WorkflowRunShowParams, "workflow run show";
     NoteCapture: "note.capture", NoteCaptureParams, "note capture";
     // The Bikeshed face's reads. The CLI spells no verb for them today, and
     // they write nothing, so no UI-only write hides behind an empty verb. The
@@ -589,6 +598,63 @@ pub struct SprintCloseParams {
     pub lane: Option<String>,
     pub number: Option<i64>,
     pub note: Option<String>,
+}
+
+/// `workflow.run.open`: the lane, the workflow, the mode and the session the
+/// run names. An absent workflow is the active one, as the verb resolves it; an
+/// absent mode is `serial`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkflowRunOpenParams {
+    pub lane: Option<String>,
+    pub workflow: Option<String>,
+    pub mode: Option<String>,
+    pub session: Option<String>,
+}
+
+/// `workflow.run.ticket`: the current run's batch takes one ticket.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkflowRunTicketParams {
+    pub lane: Option<String>,
+    pub ticket: Option<String>,
+}
+
+/// `workflow.run.run`: one dated entry on the current run's log.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkflowRunRunParams {
+    pub lane: Option<String>,
+    pub note: Option<String>,
+}
+
+/// `workflow.run.close`: the run the close stamps. An absent number closes the
+/// lane's open run, or its newest when every run has closed.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkflowRunCloseParams {
+    pub lane: Option<String>,
+    pub number: Option<i64>,
+    pub note: Option<String>,
+}
+
+/// `workflow.run.list`: the lane, the workflow handle and the status, each
+/// optional as the verb's flags are.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkflowRunListParams {
+    pub lane: Option<String>,
+    pub workflow: Option<String>,
+    pub status: Option<String>,
+}
+
+/// `workflow.run.show`: the lane and, optionally, the run number. An absent
+/// number answers the lane's open run.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkflowRunShowParams {
+    pub lane: Option<String>,
+    pub number: Option<i64>,
 }
 
 /// `note.capture`: one raw memory note. The body rides a JSON string, as the
@@ -1095,6 +1161,88 @@ impl SprintCloseParams {
     }
 }
 
+impl WorkflowRunOpenParams {
+    /// The tool input for `workflow.run.open`.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[
+            ("lane", string("the cycle lane; required")),
+            (
+                "workflow",
+                string("the workflow's UUID or name; omit for the active workflow"),
+            ),
+            ("mode", string("serial (default) or parallel")),
+            (
+                "session",
+                string("the session record the run names; omit for $OPENCODE_SESSION_ID"),
+            ),
+        ])
+    }
+}
+
+impl WorkflowRunTicketParams {
+    /// The tool input for `workflow.run.ticket`.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[
+            ("lane", string("the cycle lane")),
+            ("ticket", string("the ticket id or ref the batch takes")),
+        ])
+    }
+}
+
+impl WorkflowRunRunParams {
+    /// The tool input for `workflow.run.run`.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[
+            ("lane", string("the cycle lane")),
+            ("note", string("the dated entry; an empty note is refused")),
+        ])
+    }
+}
+
+impl WorkflowRunCloseParams {
+    /// The tool input for `workflow.run.close`.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[
+            ("lane", string("the cycle lane")),
+            (
+                "number",
+                integer("the run number; omit for the lane's open run"),
+            ),
+            (
+                "note",
+                string("the close text; omit to close without words"),
+            ),
+        ])
+    }
+}
+
+impl WorkflowRunListParams {
+    /// The tool input for `workflow.run.list`.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[
+            ("lane", string("the cycle lane; omit for every lane")),
+            (
+                "workflow",
+                string("the workflow's UUID or name; omit for every workflow"),
+            ),
+            ("status", string("open or closed; omit for both states")),
+        ])
+    }
+}
+
+impl WorkflowRunShowParams {
+    /// The tool input for `workflow.run.show`.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[
+            ("lane", string("the cycle lane")),
+            (
+                "number",
+                integer("the run number; omit for the lane's open run"),
+            ),
+        ])
+    }
+}
+
 impl NoteCaptureParams {
     /// The tool input for `note.capture`.
     pub fn schema() -> serde_json::Value {
@@ -1241,6 +1389,8 @@ pub enum Reply {
     Archived(ArchivedReply),
     SprintList(SprintListReply),
     Sprint(SprintReply),
+    WorkflowRunList(WorkflowRunListReply),
+    WorkflowRun(WorkflowRunReply),
     Session(SessionReply),
     SessionList(SessionListReply),
     SessionDetail(SessionDetailReply),
@@ -1514,6 +1664,26 @@ pub struct SprintListReply {
 pub struct SprintReply {
     pub revision: i64,
     pub sprint: Sprint,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// `workflow.run.list`: the runs, newest opened first, at the revision they are
+/// a snapshot of.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRunListReply {
+    pub revision: i64,
+    pub runs: Vec<WorkflowRun>,
+}
+
+/// `workflow.run.show` and the run writes: one run at its revision, with the
+/// note when the call changed nothing.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRunReply {
+    pub revision: i64,
+    pub run: WorkflowRun,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }

@@ -126,7 +126,7 @@ const AUTHORED_TABLES: [&str; 8] = [
     "ticket_dependencies",
     "comments",
     "sessions",
-    "sprints",
+    "workflow_runs",
     "lanes",
     "settings",
     "schema_migrations",
@@ -745,7 +745,10 @@ mod gate {
 // MARK: - The SQLite seam (schema, migrations, backup, contention)
 
 mod schema {
-    use super::super::schema::{CURRENT_VERSION, MIGRATIONS, Migration, migrate_with, version};
+    use super::super::schema::{
+        CURRENT_VERSION, DEFAULT_WORKFLOW_ID, MIGRATIONS, Migration, has_table, migrate_with,
+        version,
+    };
     use super::*;
 
     fn good(connection: &Connection) -> rusqlite::Result<()> {
@@ -886,7 +889,7 @@ mod schema {
             "ticket_dependencies",
             "comments",
             "sessions",
-            "sprints",
+            "workflow_runs",
             "lanes",
             "settings",
         ] {
@@ -1145,8 +1148,13 @@ mod schema {
         );
         assert_eq!(
             CURRENT_VERSION,
-            super::super::schema::SELECTED_VERSION,
+            super::super::schema::WORKFLOW_RUNS_VERSION,
             "the build writes the current schema"
+        );
+        assert_eq!(
+            super::super::schema::SELECTED_VERSION,
+            9,
+            "TAN-327's selected stage keeps its shipped version"
         );
         let mut projects: Vec<(String, i64)> = connection
             .prepare("SELECT name, position FROM projects ORDER BY position, rowid")
@@ -1325,10 +1333,10 @@ mod schema {
             })
             .unwrap();
         assert_eq!(workflow, None, "projects.workflow starts unset");
-        let sprint_count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM sprints", [], |row| row.get(0))
+        let run_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM workflow_runs", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(sprint_count, 0, "the sprints table is untouched by v7");
+        assert_eq!(run_count, 0, "the run table is untouched by the upgrade");
     }
 
     #[test]
@@ -1375,10 +1383,214 @@ mod schema {
             )
             .unwrap();
         assert_eq!(stage, 1, "every existing status is a default stage");
-        let sprint: String = connection
-            .query_row("SELECT status FROM sprints", [], |row| row.get(0))
+        let run: String = connection
+            .query_row("SELECT status FROM workflow_runs", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(sprint, "closed", "the sprint row is untouched");
+        assert_eq!(run, "closed", "the run row is untouched");
+    }
+
+    #[test]
+    #[allow(clippy::type_complexity)]
+    fn a_v8_file_upgrades_to_v10_renaming_sprints_to_workflow_runs_with_the_default_workflow() {
+        let sandbox = Sandbox::new("upgrade-v10");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..8], &Actor::Human).expect("v8 applies");
+        connection
+            .execute(
+                "INSERT INTO sprints
+                    (lane, number, session, mode, batch, runs, close, status, opened_at,
+                     closed_at, author)
+                 VALUES ('Tandem', 1, 'ses_closed', 'parallel', '[\"a\"]', '[\"note\"]',
+                         'Landed.', 'closed', '2026-10-30T00:00:00Z',
+                         '2026-10-31T00:00:00Z', 'human')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sprints
+                    (lane, number, session, mode, batch, runs, close, status, opened_at,
+                     closed_at, author)
+                 VALUES ('Tandem', 2, 'ses_open', 'serial', '[]', '[]', NULL, 'open',
+                         '2026-11-01T00:00:00Z', NULL, 'human')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        setting(&sandbox.store(), &Actor::Human, "k", "v");
+
+        let connection = sandbox.connection();
+        assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
+        assert!(
+            !has_table(&connection, "sprints").unwrap(),
+            "the v8 table is renamed in place, not copied"
+        );
+        let rows: Vec<(
+            String,
+            i64,
+            String,
+            Option<String>,
+            String,
+            String,
+            String,
+            String,
+            String,
+        )> = connection
+            .prepare(
+                "SELECT lane, number, workflow, session, mode, batch, runs, status, author
+                     FROM workflow_runs ORDER BY number",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                ))
+            })
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    "Tandem".to_string(),
+                    1,
+                    DEFAULT_WORKFLOW_ID.to_string(),
+                    Some("ses_closed".to_string()),
+                    "parallel".to_string(),
+                    "[\"a\"]".to_string(),
+                    "[\"note\"]".to_string(),
+                    "closed".to_string(),
+                    "human".to_string(),
+                ),
+                (
+                    "Tandem".to_string(),
+                    2,
+                    DEFAULT_WORKFLOW_ID.to_string(),
+                    Some("ses_open".to_string()),
+                    "serial".to_string(),
+                    "[]".to_string(),
+                    "[]".to_string(),
+                    "open".to_string(),
+                    "human".to_string(),
+                ),
+            ],
+            "both rows keep their key and every field, and gain the default workflow"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::type_complexity)]
+    fn the_v10_migration_closes_empty_null_session_orphan_runs_and_keeps_active_open_runs() {
+        let sandbox = Sandbox::new("upgrade-v10-orphans");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..8], &Actor::Human).expect("v8 applies");
+        for (lane, number, session, batch, opened_at) in [
+            ("Hosting", 1, None::<&str>, "[]", "2026-11-04T00:17:44Z"),
+            ("Retro", 2, None, "[]", "2026-11-04T00:17:02Z"),
+            ("Tandem", 1, Some("ses_live"), "[]", "2026-11-04T00:18:00Z"),
+            ("Tandem", 2, None, "[\"TAN-1\"]", "2026-11-04T00:19:00Z"),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO sprints
+                        (lane, number, session, mode, batch, runs, close, status, opened_at,
+                         closed_at, author)
+                     VALUES (?1, ?2, ?3, 'serial', ?4, '[]', NULL, 'open', ?5, NULL, 'human')",
+                    rusqlite::params![lane, number, session, batch, opened_at],
+                )
+                .unwrap();
+        }
+        drop(connection);
+
+        setting(&sandbox.store(), &Actor::Human, "k", "v");
+
+        let connection = sandbox.connection();
+        let rows: Vec<(String, i64, String, Option<String>, Option<String>)> = connection
+            .prepare("SELECT lane, number, status, closed_at, close FROM workflow_runs ORDER BY lane, number")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+        assert_eq!(
+            rows[0],
+            (
+                "Hosting".to_string(),
+                1,
+                "closed".to_string(),
+                Some("2026-11-04T00:17:44Z".to_string()),
+                Some(
+                    "Closed by schema v10 migration: empty run opened with no session.".to_string()
+                ),
+            ),
+            "an empty null-session open run closes with its provenance"
+        );
+        assert_eq!(rows[1].2, "closed", "the second orphan closes too");
+        assert_eq!(
+            rows[2],
+            ("Tandem".to_string(), 1, "open".to_string(), None, None,),
+            "an open run carrying a session stays open"
+        );
+        assert_eq!(rows[3].2, "open", "an open run carrying a batch stays open");
+    }
+
+    #[test]
+    fn a_v8_file_reads_sprints_as_workflow_runs_without_migrating() {
+        use crate::domain::sprint::Sprints;
+
+        let sandbox = Sandbox::new("read-v8");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..8], &Actor::Human).expect("v8 applies");
+        connection
+            .execute(
+                "INSERT INTO sprints
+                    (lane, number, session, mode, batch, runs, close, status, opened_at,
+                     closed_at, author)
+                 VALUES ('Hosting', 1, NULL, 'serial', '[]', '[]', NULL, 'open',
+                         '2026-11-04T00:17:44Z', NULL, 'human')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let store = sandbox.store();
+        let runs = Sprints::new(&store)
+            .list(None, None)
+            .expect("the read answers");
+        assert_eq!(runs.len(), 1, "the plain sprints table answers");
+        assert_eq!(runs[0].workflow, DEFAULT_WORKFLOW_ID);
+
+        let connection = sandbox.connection();
+        assert_eq!(
+            version(&connection).unwrap(),
+            Some(8),
+            "a read never migrates"
+        );
+        assert!(
+            has_table(&connection, "sprints").unwrap(),
+            "the old table is still the one on disk"
+        );
     }
 
     #[test]
@@ -1924,6 +2136,7 @@ mod actor {
                 write.insert_sprint(NewSprint {
                     lane: "Port",
                     number: 1,
+                    workflow: crate::store::schema::DEFAULT_WORKFLOW_ID,
                     session: Some("ses_e73388dd8ffd"),
                     mode: "serial",
                     batch: Some("[]"),
