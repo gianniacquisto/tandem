@@ -26,7 +26,7 @@ Report the JSON the run prints: each host's `state` (`installed`, `checkout`, `r
 
 ## The checkout route
 
-On a machine working on Tandem itself, the host's links already resolve into the checkout. Install leaves them and reports each as `foreign-link` (`info`): that is the normal state there, and `tandem-cli doctor` stays green. `tandem-cli setup install --force` replaces them with the installed copy, and only when the human asks.
+On a machine working on Tandem itself, the host's links already resolve into the checkout. Install leaves them and reports each as `foreign-link` (`info`): that is the normal state there, and `doctor_report` stays green. `tandem-cli setup install --force` replaces them with the installed copy, and only when the human asks.
 
 ## tandem-cli on PATH
 
@@ -42,13 +42,14 @@ ln -s "/Applications/Tandem.app/Contents/MacOS/tandem-cli" "$(brew --prefix)/bin
 ```sh
 opencode api agent.list   # the four pass prompts and the three specialist readers
 opencode api skill.list   # every skill the artifact ships; the host's list is the authority
-tandem-cli doctor         # the skills row reads "opencode configured", the agent-face row counts the warnings
 ```
+
+`doctor_report` answers the rest: its `skills` row reads "opencode configured", and its `agent-face` row counts the warnings.
 
 `opencode api skill.list` is the authority for the set: it lists what the host actually read, so a skill added to the artifact appears there without this file changing. A change to a skill or to `AGENTS.md` is picked up by a new session. An agent prompt is read when the server starts, so it is live only after a host restart: compare `opencode api agent.list` with `<TandemHome>/agent/agents/` to tell which is live.
 
 ## Done when
 
-- The host lists every agent prompt and every skill the artifact ships, `~/.agents/skills` holds one link per skill into the face, `tandem-cli doctor` reads "opencode configured", and a fresh session lists the Tandem MCP tools with no manual config.
+- The host lists every agent prompt and every skill the artifact ships, `~/.agents/skills` holds one link per skill into the face, `doctor_report` reads "opencode configured", and a fresh session lists the Tandem MCP tools with no manual config.
 - Nothing in the host config points at a path that does not exist, and no file was overwritten.
 - The report says what was linked, what was skipped and why, and what is left for the human: a skip is a done setup; silence is not.

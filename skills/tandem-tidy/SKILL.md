@@ -11,8 +11,8 @@ A maintenance pass over the board, not the SDLC kickoff: it opens no sprint and 
 
 Start the session record (`AGENTS.md`), then read in one round:
 
-- the open board — `tandem-cli ticket list --filter open` — every lane; the rows carry each lane's stored spelling;
-- the live sessions — `tandem-cli session list --status running` — a ticket's claim is live while its claiming session runs;
+- the open board, `ticket_list` with `filter` open, every lane; the rows carry each lane's stored spelling;
+- the live sessions, `session_list` with `status` running: a ticket's claim is live while its claiming session runs;
 - the memory protocol (`skills/tandem-memory/SKILL.md`) — `Index.md`, the project's **Overview**.
 
 The sweep is board-wide: a repo fact behind another project's ticket is verified in that project's checkout — the board is shared, the evidence is local.
@@ -28,13 +28,13 @@ This is the same rule invoked on demand, not a second rule with its own verdict:
 For every open ticket with no live claim — `backlog` excepted, a ticket still missing its brief being triage's input, not tidy's — check the ticket against work that already landed. The evidence sources, in the order they settle most tickets:
 
 - the project's git log — commits and merged PRs carrying the ticket's subject;
-- the board's done tickets — `--text` searches descriptions, and a done sibling often did the work;
+- the board's done tickets: `text` searches descriptions, and a done sibling often did the work;
 - the repo, the app and the CLI themselves — a file that exists, a flag that is gone, a version that shipped;
 - the ticket's own description — its blockers name the gates; a gate unmet means the ticket waits.
 
 Three verdicts:
 
-- **Resolved** — the landed work satisfies the ticket's done-when. `ticket complete --id`, after a dated, signed comment naming the commit, PR, done ticket or repo fact that settles it.
+- **Resolved**: the landed work satisfies the ticket's done-when. `ticket_complete` with `id`, after a dated, signed comment naming the commit, PR, done ticket or repo fact that settles it.
 - **Moot** — the ticket's subject is gone: retired, superseded, answered another way. Same write, the comment carrying the reason instead of the evidence.
 - **Unproven** — the ticket stays exactly as it is. Only what you can point at moves; a hunch completes nothing.
 
@@ -44,7 +44,7 @@ A ticket assigned `human` whose question the world has since answered is resolve
 
 ## 3. Done housekeeping
 
-After the sweep, `tandem-cli ticket archive` — every done ticket leaves the default views. Nothing is deleted: the archive is one flag away, and the reply names how many went.
+After the sweep, `ticket_archive` with no `id`: every done ticket leaves the default views. Nothing is deleted: the archive is one flag away, and the reply names how many went.
 
 ## 4. The oddities
 
@@ -54,7 +54,7 @@ Report-only, each named in the reply for the human to rule on:
 - **A session-titled ticket** — `Session — …` on the open board violates ADR 0027 (a session is a record, never a ticket); report it, complete it only when its status is already `done`.
 - **The unowned live ticket** — `in-progress` with no assignee and no session behind it; treat as a dead claim (§1) when no record claims it.
 - **The gate that landed** — a ticket whose named blocker is now done or merged; it is ripe to draw and the reply says so, its status untouched.
-- **A lifted block**: a ticket whose `blockedBy` names an edge whose blocker is `done` (the derived `blocked` is already false, so the draw takes it; the edge reads as history). Report it and lift it with `ticket unblock --id <id> --on <blocker>` so the face stops naming a wait that is over. Never lift one whose blocker is still open: that is a block, not an oddity.
+- **A lifted block**: a ticket whose `blockedBy` names an edge whose blocker is `done` (the derived `blocked` is already false, so the draw takes it; the edge reads as history). Report it and lift it with `ticket_unblock` carrying `id` and `on` the blocker, so the face stops naming a wait that is over. Never lift one whose blocker is still open: that is a block, not an oddity.
 
 ## 5. The report
 
