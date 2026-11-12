@@ -630,30 +630,38 @@ impl Workflows {
     }
 
     /// `workflow delete`: refuse the default, the active workflow, or one with
-    /// recorded runs (TAN-332). The runs are counted inside the delete's own
-    /// transaction, so a run that opens first cannot slip past the guard.
+    /// recorded runs (TAN-332). The target's row, the active setting and the
+    /// run count are all read inside the delete's own transaction, so a switch
+    /// or a run that lands first cannot slip past the guard.
     pub fn delete(&self, actor: &Actor, handle: &str) -> DomainResult<Vec<Workflow>> {
         let target = self.get(handle)?;
-        if target.is_default() {
-            return Err(DomainError::WorkflowIsDefault(target.name));
-        }
-        if self.active()?.id == target.id {
-            return Err(DomainError::WorkflowIsActive(target.name));
-        }
-        let mut recorded: Option<usize> = None;
+        let mut refusal: Option<DomainError> = None;
         let outcome = self.store.write(actor, |write| {
+            if target.is_default() {
+                refusal = Some(DomainError::WorkflowIsDefault(target.name.clone()));
+                return Err(StoreError::Io("the domain refused the write".to_string()));
+            }
+            let active = write.setting(ACTIVE_WORKFLOW_KEY)?;
+            let active = active
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            if active == Some(target.id.as_str()) || active == Some(target.name.as_str()) {
+                refusal = Some(DomainError::WorkflowIsActive(target.name.clone()));
+                return Err(StoreError::Io("the domain refused the write".to_string()));
+            }
             let count = write.workflow_run_count(&target.id)?;
             if count > 0 {
-                recorded = Some(count);
+                refusal = Some(DomainError::WorkflowHasRuns {
+                    name: target.name.clone(),
+                    count,
+                });
                 return Err(StoreError::Io("the domain refused the write".to_string()));
             }
             write.delete_workflow(&target.id)
         });
-        if let Some(count) = recorded {
-            return Err(DomainError::WorkflowHasRuns {
-                name: target.name,
-                count,
-            });
+        if let Some(refusal) = refusal {
+            return Err(refusal);
         }
         outcome.map_err(store_error)?;
         self.list()

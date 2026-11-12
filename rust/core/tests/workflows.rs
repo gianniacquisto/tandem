@@ -8,7 +8,7 @@
 mod support;
 
 use support::Sandbox;
-use tandem_core::domain::sprint::{SprintMode, Sprints};
+use tandem_core::domain::sprint::{SprintMode, SprintStatus, Sprints};
 use tandem_core::domain::workflow::{
     Pass, StageBinding, StageRole, WorkflowDraft, WorkflowStage, Workflows, default_workflow,
 };
@@ -524,6 +524,102 @@ fn a_workflow_with_recorded_runs_cannot_be_deleted() {
             .expect("the refused delete left it")
             .name,
         "flow"
+    );
+}
+
+/// The ticket's reason for closing the orphans, tested end to end: a home that
+/// carries the two empty null-session runs is refused `workflow use` while they
+/// are open, and the v10 upgrade is what unblocks it.
+///
+/// The pre-v10 shape is rebuilt from a migrated file because the migration seam
+/// is crate-private: `sprints` back, no `workflow` column, and the two runs the
+/// real home carried since 2026-11-04. The replay runs v9 and v10, and v9 is
+/// idempotent on a default that already carries `selected`.
+#[test]
+fn closing_empty_orphan_runs_in_v10_unblocks_workflow_use() {
+    let sandbox = Sandbox::new("workflow-use-unblocked");
+    {
+        let store = sandbox.store();
+        Workflows::new(&store)
+            .set(&Actor::Human, None, minimal("flow"))
+            .expect("the workflow writes");
+    }
+    {
+        let connection = rusqlite::Connection::open(sandbox.database())
+            .expect("the store opens for the rewrite");
+        connection
+            .execute_batch(
+                "ALTER TABLE workflow_runs RENAME TO sprints;
+                 ALTER TABLE sprints DROP COLUMN workflow;
+                 DELETE FROM schema_migrations WHERE version >= 9;",
+            )
+            .expect("the pre-v10 shape is rebuilt");
+        for (lane, number, opened_at) in [
+            ("Hosting", 1, "2026-11-04T00:17:44Z"),
+            ("Retro", 2, "2026-11-04T00:17:02Z"),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO sprints
+                        (lane, number, session, mode, batch, runs, close, status, opened_at,
+                         closed_at, author)
+                     VALUES (?1, ?2, NULL, 'serial', '[]', '[]', NULL, 'open', ?3, NULL, 'human')",
+                    rusqlite::params![lane, number, opened_at],
+                )
+                .expect("the orphan run records");
+        }
+    }
+
+    let store = sandbox.store();
+    let workflows = Workflows::new(&store);
+    match workflows.use_workflow(&Actor::Human, "flow") {
+        Err(DomainError::WorkflowHasOpenSprint { lanes }) => assert_eq!(
+            lanes,
+            vec!["Hosting".to_string(), "Retro".to_string()],
+            "the two empty null-session runs hold the home closed"
+        ),
+        other => panic!("a pre-v10 home refuses the switch, got {other:?}"),
+    }
+    assert_eq!(
+        store.schema_version().expect("the version reads"),
+        Some(8),
+        "the refusal read the old table without migrating"
+    );
+
+    store
+        .write(&Actor::Human, |write| {
+            write.upsert_setting(NewSetting {
+                key: "probe",
+                value: "v10",
+            })
+        })
+        .expect("the first write migrates the home");
+
+    assert_eq!(
+        store.schema_version().expect("the version reads"),
+        Some(tandem_core::store::CURRENT_VERSION),
+        "the write landed the current version"
+    );
+    let closed = Sprints::new(&store)
+        .list(None, Some(SprintStatus::Closed))
+        .expect("the runs read");
+    assert_eq!(closed.len(), 2, "the sweep closed exactly the two orphans");
+    for run in &closed {
+        assert_eq!(run.closed_at.as_deref(), Some(run.opened_at.as_str()));
+        assert_eq!(
+            run.close.as_deref(),
+            Some("Closed by schema v10 migration: empty run opened with no session.")
+        );
+    }
+
+    let active = workflows
+        .use_workflow(&Actor::Human, "flow")
+        .expect("the upgrade unblocks the switch");
+    assert_eq!(active.name, "flow");
+    assert_eq!(
+        workflows.active().expect("the active reads").name,
+        "flow",
+        "the switch sticks"
     );
 }
 

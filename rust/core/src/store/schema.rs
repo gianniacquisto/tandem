@@ -516,7 +516,7 @@ pub(crate) const WORKFLOW_RUNS_VERSION: i64 = 10;
 /// a run entry stays open.
 const VERSION_TEN: &str = "
 ALTER TABLE sprints RENAME TO workflow_runs;
-ALTER TABLE workflow_runs ADD COLUMN workflow TEXT NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001';
+ALTER TABLE workflow_runs ADD COLUMN workflow TEXT NOT NULL DEFAULT '{DEFAULT_WORKFLOW_ID}';
 UPDATE workflow_runs
    SET status = 'closed',
        closed_at = opened_at,
@@ -527,8 +527,15 @@ UPDATE workflow_runs
    AND (runs IS NULL OR runs = '[]');
 ";
 
+/// [`VERSION_TEN`] with the default workflow's id filled in. A column default
+/// cannot be bound as a parameter, so the one literal the DDL needs comes from
+/// the constant rather than a second copy of the UUID.
+fn version_ten_sql() -> String {
+    VERSION_TEN.replace("{DEFAULT_WORKFLOW_ID}", DEFAULT_WORKFLOW_ID)
+}
+
 fn version_ten(connection: &Connection) -> rusqlite::Result<()> {
-    connection.execute_batch(VERSION_TEN)
+    connection.execute_batch(&version_ten_sql())
 }
 
 fn version_seven(connection: &Connection) -> rusqlite::Result<()> {

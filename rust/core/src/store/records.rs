@@ -93,22 +93,25 @@ pub(crate) fn session_rows(connection: &Connection) -> Result<Vec<SessionRow>> {
 /// name, and every row it holds predates the `workflow` column, so the default
 /// is the only truthful answer.
 pub(crate) fn sprint_rows(connection: &Connection) -> Result<Vec<SprintRow>> {
-    let sql = if super::schema::has_workflow_runs(connection)? {
+    let current = super::schema::has_workflow_runs(connection)?;
+    let sql = if current {
         "SELECT lane, number, workflow, session, mode, batch, runs, close, status,
                 opened_at, closed_at
          FROM workflow_runs
          ORDER BY rowid"
     } else {
-        "SELECT lane, number, '00000000-0000-4000-8000-000000000001', session, mode,
-                batch, runs, close, status, opened_at, closed_at
+        "SELECT lane, number, ?1, session, mode, batch, runs, close, status,
+                opened_at, closed_at
          FROM sprints
          ORDER BY rowid"
     };
+    let default: [&dyn rusqlite::ToSql; 1] = [&super::schema::DEFAULT_WORKFLOW_ID];
+    let values: &[&dyn rusqlite::ToSql] = if current { &[] } else { &default };
     let mut statement = connection
         .prepare(sql)
         .map_err(|error| translate(error, connection))?;
     let rows = statement
-        .query_map([], |row| {
+        .query_map(values, |row| {
             Ok(SprintRow {
                 lane: row.get(0)?,
                 number: row.get(1)?,

@@ -379,6 +379,12 @@ impl Write<'_> {
             .map_err(|error| super::translate(error, self.connection))
     }
 
+    /// One setting's value inside this transaction: the row as it stands now,
+    /// not as it read before the write began.
+    pub fn setting(&self, key: &str) -> Result<Option<String>> {
+        super::records::setting(self.connection, key)
+    }
+
     /// How many runs the workflow holds: the `workflow delete` refusal's count,
     /// read inside the delete's own transaction so a run opening first cannot
     /// slip past it.
