@@ -57,7 +57,7 @@ A ticket sitting in the active workflow's finished stage. The default `agile` wo
 _Avoid_: closed, finished (as a second flag), complete (as a noun)
 
 **Status**:
-A ticket's position in the workflow: the key of one of the active workflow's ordered stages. The default `agile` workflow's six are `backlog` (intake), `on-hold` (parked), `ready`, `in-progress`, `in-review` and `done` (finished); `workflow set` writes others. The set is data, not code, so a custom stage appears without a build and an unknown stored key from an older build reads as `backlog`.
+A ticket's position in the workflow: the key of one of the active workflow's ordered stages. The default `agile` workflow's seven stages are `backlog` (intake), `on-hold` (parked), `selected` (intake), `ready`, `in-progress`, `in-review` and `done` (finished); `workflow set` writes others. The set is data, not code, so a custom stage appears without a build and an unknown stored key from an older build reads as `backlog`.
 _Avoid_: state, step, column
 
 **Stage**:

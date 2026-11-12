@@ -117,10 +117,11 @@ test('the tickets face shows one board two ways: the list and the board over one
   // ticket the store holds.
   await window.getByRole('tab', { name: 'Board' }).click()
   await expect(window.locator('.board')).toBeVisible()
-  await expect(window.locator('.board__column')).toHaveCount(6)
+  await expect(window.locator('.board__column')).toHaveCount(7)
   expect(await window.locator('.board__column-label').allInnerTexts()).toEqual([
     'Backlog',
     'On hold',
+    'Selected for development',
     'Ready',
     'In progress',
     'In Review',
@@ -194,7 +195,15 @@ test('a drag moves a ticket across columns and leaves its lane alone, and the mo
 
   // A column with a different stage: the drop is one status write, no lane
   // write and no follow-up.
-  const targetStatus = ['backlog', 'on-hold', 'ready', 'in-progress', 'in-review', 'done'].find(
+  const targetStatus = [
+    'backlog',
+    'on-hold',
+    'selected',
+    'ready',
+    'in-progress',
+    'in-review',
+    'done',
+  ].find(
     (status) => status !== sourceStatus,
   )
   expect(targetStatus).not.toBeUndefined()
@@ -244,7 +253,15 @@ test('the keyboard set reaches the fields and moves a ticket, and a second write
   expect(ticket).not.toBeNull()
 
   const beforeStatus = await columnOf(window, ticket as string)
-  const statuses = ['backlog', 'on-hold', 'ready', 'in-progress', 'in-review', 'done']
+  const statuses = [
+    'backlog',
+    'on-hold',
+    'selected',
+    'ready',
+    'in-progress',
+    'in-review',
+    'done',
+  ]
   const atStatus = statuses.indexOf(beforeStatus ?? '')
   expect(atStatus).toBeGreaterThanOrEqual(0)
   // Step away from whichever end the ticket sits at, so there is a column to land in.

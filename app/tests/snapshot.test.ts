@@ -143,12 +143,17 @@ describe('the shell snapshot', () => {
       updatedAt: '2026-11-08T00:00:00Z',
       stages: [
         { key: 'backlog', label: 'Backlog', role: 'intake', binding: null },
-        { key: 'selected', label: 'Selected', role: 'intake', binding: null },
+        { key: 'on-hold', label: 'On hold', role: 'parked', binding: null },
+        { key: 'selected', label: 'Selected for development', role: 'intake', binding: null },
+        { key: 'ready', label: 'Ready', role: 'ready', binding: null },
+        { key: 'in-progress', label: 'In progress', role: 'active', binding: null },
+        { key: 'in-review', label: 'In Review', role: 'review', binding: null },
         { key: 'done', label: 'Done', role: 'finished', binding: null },
       ],
     }
     const next = snapshotReducer(initialSnapshot, { type: 'workflow', workflow })
     expect(next.workflow).toBe(workflow)
+    expect(next.workflow?.stages).toHaveLength(7)
 
     // A failed read keeps the stages the face already draws.
     const failed = snapshotReducer(next, { type: 'failed', message: 'no store' })

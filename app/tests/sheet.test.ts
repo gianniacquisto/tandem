@@ -26,6 +26,7 @@ import {
   shortcutHint,
   ticketHandle,
 } from '../renderer/src/shell/sheet'
+import { boardStatuses } from '../renderer/src/shell/board'
 import type { TicketDetail } from '../renderer/src/wire/TicketDetail'
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
@@ -522,6 +523,13 @@ describe('the sheet metadata row (UI-34)', () => {
     expect(stickyAt).toBeGreaterThan(bodyAt)
     expect(metaAt).toBeGreaterThan(stickyAt)
     expect(descriptionAt).toBeGreaterThan(metaAt)
+  })
+
+  it('the_sheet_status_menu_carries_selected_for_development', () => {
+    const sheet = source('faces/TicketSheet.tsx')
+    expect(sheet).toContain('boardStatuses(stages).map((entry) => (')
+    const selected = boardStatuses().find((status) => status.value === 'selected')
+    expect(selected?.label).toBe('Selected for development')
   })
 
   it('reuses the three option helpers, with no second option list beside them', () => {
