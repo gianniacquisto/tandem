@@ -161,6 +161,41 @@ fn workflow_show_reports_the_seven_stage_default() {
     assert_eq!(selected["binding"], Value::Null, "no binding on selected");
 }
 
+/// The help's status line is a static string, so it drifts the moment the
+/// default workflow gains a stage. Pin it to the default a fresh home declares:
+/// the same keys, in the same order, or the contract lies to the caller.
+#[test]
+fn the_help_status_line_names_every_default_stage_in_workflow_order() {
+    let sandbox = Sandbox::new("help-status");
+    let shown = json(&sandbox.run(&["workflow", "show", "--id", "agile"]));
+    let keys = shown["workflow"]["stages"]
+        .as_array()
+        .expect("stages")
+        .iter()
+        .map(|stage| stage["key"].as_str().unwrap_or("").to_string())
+        .collect::<Vec<_>>();
+
+    let help = sandbox.run(&["--help"]);
+    assert!(help.status.success(), "`--help` answers");
+    let text = String::from_utf8(help.stdout).expect("the help is UTF-8");
+    let line = text
+        .lines()
+        .find(|line| line.trim_start().starts_with("status    "))
+        .expect("the help prints a status line");
+    let named = line
+        .split_once("status    ")
+        .expect("the status label")
+        .1
+        .split(" | ")
+        .map(str::trim)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        named, keys,
+        "`--help`'s status line names the default workflow's stages, in its order"
+    );
+}
+
 #[test]
 fn workflow_set_round_trips_a_second_intake_stage() {
     let sandbox = Sandbox::new("custom");
