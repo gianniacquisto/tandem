@@ -1,4 +1,5 @@
 ---
+name: refiner
 description: Turns a backlog ticket into a buildable brief — grills the human on the decisions, writes the spec, files the tickets that implement it
 mode: subagent
 color: "#10b981"

@@ -1,4 +1,5 @@
 ---
+name: architect
 description: "Reads the architecture lens at refine and review: layering, one truth per fact, schema and migration discipline, and the ADRs a change touches"
 mode: subagent
 color: "#f59e0b"

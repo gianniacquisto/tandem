@@ -5,7 +5,8 @@
  */
 export type HostRoot = { 
 /**
- * `opencode`, `claude` or `agents`, the wire's host names.
+ * `opencode` or `claude`, the wire's host names; the canonical
+ * `~/.agents/skills` root is not a host and never appears here.
  */
 host: string, 
 /**

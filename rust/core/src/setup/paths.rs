@@ -87,11 +87,18 @@ impl Context {
         self.user_home().join(".claude").join("skills")
     }
 
+    /// `~/.claude/agents/<name>.md`: Claude's subagent prompt route.
+    pub fn claude_agents(&self) -> PathBuf {
+        self.user_home().join(".claude").join("agents")
+    }
+
     pub fn claude_md(&self) -> PathBuf {
         self.user_home().join(".claude").join("CLAUDE.md")
     }
 
-    pub fn agents_skills(&self) -> PathBuf {
+    /// `~/.agents/skills`: the cross-tool canonical listing every install
+    /// writes. Not a host root: no `--host` names it and no run leaves it out.
+    pub fn canonical_skills(&self) -> PathBuf {
         self.user_home().join(".agents").join("skills")
     }
 
@@ -103,17 +110,18 @@ impl Context {
         match host {
             super::Host::Opencode => self.config_home().join("opencode"),
             super::Host::Claude => self.user_home().join(".claude"),
-            super::Host::Agents => self.user_home().join(".agents"),
         }
     }
 
-    /// The four host directories the scan reads and the writability probe walks.
-    pub fn host_directories(&self) -> [PathBuf; 4] {
+    /// The host directories the scan reads and the writability probe walks,
+    /// plus the canonical root, which is scanned the same way.
+    pub fn host_directories(&self) -> [PathBuf; 5] {
         [
             self.opencode_skills(),
             self.opencode_agents(),
             self.claude_skills(),
-            self.agents_skills(),
+            self.claude_agents(),
+            self.canonical_skills(),
         ]
     }
 }

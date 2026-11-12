@@ -17,6 +17,10 @@ use super::{
     is_directory,
 };
 
+/// The manifest value and scan key for the canonical root: not a host, so it
+/// never appears in `manifest.hosts`, and it is always targeted.
+pub const CANONICAL_HOST: &str = "canonical";
+
 /// One host path the install expects, and the face path it should point at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedLink {
@@ -125,10 +129,13 @@ pub fn state(
         }
     }
 
-    let targeted: HashSet<String> = manifest
+    let mut targeted: HashSet<String> = manifest
         .as_ref()
         .map(|manifest| manifest.hosts.iter().cloned().collect())
         .unwrap_or_default();
+    // The canonical links are written by every run, so their paths are always
+    // reported when a real file or a foreign link sits there.
+    targeted.insert(CANONICAL_HOST.to_string());
     let mut expected: Vec<(Host, Vec<ExpectedLink>)> = Vec::new();
     for host in Host::ALL {
         let links = bundle
@@ -148,6 +155,13 @@ pub fn state(
         .iter()
         .flat_map(|(_, links)| links.iter().map(|link| link.path.clone()))
         .collect();
+    if let Some(bundle) = bundle {
+        candidates.extend(
+            canonical_links(bundle, &context)
+                .into_iter()
+                .map(|link| link.path),
+        );
+    }
     for directory in context.host_directories() {
         let Ok(entries) = fs::read_dir(&directory) else {
             continue;
@@ -189,21 +203,11 @@ pub fn state(
 
     // host-disabled: a host is installed and OpenCode will not read it.
     let installed_hosts = installed_host_set(manifest.as_ref(), &expected, &context);
-    for host in [Host::Claude, Host::Agents] {
-        if !installed_hosts.contains(&host) {
-            continue;
-        }
-        let names: [&str; 2] = if host == Host::Claude {
-            [
-                "OPENCODE_DISABLE_CLAUDE_CODE",
-                "OPENCODE_DISABLE_CLAUDE_CODE_SKILLS",
-            ]
-        } else {
-            [
-                "OPENCODE_DISABLE_EXTERNAL_SKILLS",
-                "OPENCODE_DISABLE_CLAUDE_CODE_SKILLS",
-            ]
-        };
+    if installed_hosts.contains(&Host::Claude) {
+        let names = [
+            "OPENCODE_DISABLE_CLAUDE_CODE",
+            "OPENCODE_DISABLE_CLAUDE_CODE_SKILLS",
+        ];
         if let Some(name) = names
             .iter()
             .find(|name| truthy(environment.get(**name).map(String::as_str)))
@@ -212,11 +216,8 @@ pub fn state(
                 Code::HostDisabled,
                 Severity::Warn,
                 None,
-                format!("{} is installed, {name} is set", host.as_str()),
-                format!(
-                    "unset it, or tandem-cli setup uninstall --host {}",
-                    host.as_str()
-                ),
+                format!("claude is installed, {name} is set"),
+                "unset it, or tandem-cli setup uninstall --host claude".to_string(),
             ));
         }
     }
@@ -328,13 +329,12 @@ pub fn state(
     }
 }
 
-/// The links one host gets: every skill, plus the prompts on OpenCode only.
+/// The links one host gets: every skill, plus every prompt.
 pub fn expected_links(host: Host, bundle: &Path, context: &Context) -> Vec<ExpectedLink> {
     let face = context.face();
-    let directory = match host {
-        Host::Opencode => context.opencode_skills(),
-        Host::Claude => context.claude_skills(),
-        Host::Agents => context.agents_skills(),
+    let (directory, prompts_directory) = match host {
+        Host::Opencode => (context.opencode_skills(), context.opencode_agents()),
+        Host::Claude => (context.claude_skills(), context.claude_agents()),
     };
     let mut links: Vec<ExpectedLink> = skills(bundle)
         .into_iter()
@@ -347,17 +347,33 @@ pub fn expected_links(host: Host, bundle: &Path, context: &Context) -> Vec<Expec
             }
         })
         .collect();
-    if host == Host::Opencode {
-        for prompt in prompts(bundle) {
-            let path = context.opencode_agents().join(&prompt);
-            links.push(ExpectedLink {
-                path_text: text(&path),
-                path,
-                target: text(&face.join("agents").join(&prompt)),
-            });
-        }
+    for prompt in prompts(bundle) {
+        let path = prompts_directory.join(&prompt);
+        links.push(ExpectedLink {
+            path_text: text(&path),
+            path,
+            target: text(&face.join("agents").join(&prompt)),
+        });
     }
     links
+}
+
+/// The canonical `~/.agents/skills/<name>` links: one per bundled skill, into
+/// the same face, written by every install. A client of the face, not a host.
+pub fn canonical_links(bundle: &Path, context: &Context) -> Vec<ExpectedLink> {
+    let face = context.face();
+    let directory = context.canonical_skills();
+    skills(bundle)
+        .into_iter()
+        .map(|skill| {
+            let path = directory.join(&skill);
+            ExpectedLink {
+                path_text: text(&path),
+                path,
+                target: text(&face.join("skills").join(&skill)),
+            }
+        })
+        .collect()
 }
 
 /// The first match wins, one record for the path (ADR 0034's table).
@@ -373,7 +389,7 @@ pub fn classify(
 
     if !metadata.file_type().is_symlink() {
         let host = host_of(path, context)?;
-        if !targeted.contains(host.as_str()) {
+        if !targeted.contains(host) {
             return None;
         }
         return Some(Warning::new(
@@ -546,15 +562,15 @@ fn truthy(value: Option<&str>) -> bool {
     }
 }
 
-fn host_of(path: &Path, context: &Context) -> Option<Host> {
+fn host_of(path: &Path, context: &Context) -> Option<&'static str> {
     if path.starts_with(context.opencode_skills()) || path.starts_with(context.opencode_agents()) {
-        return Some(Host::Opencode);
+        return Some(Host::Opencode.as_str());
     }
-    if path.starts_with(context.claude_skills()) {
-        return Some(Host::Claude);
+    if path.starts_with(context.claude_skills()) || path.starts_with(context.claude_agents()) {
+        return Some(Host::Claude.as_str());
     }
-    if path.starts_with(context.agents_skills()) {
-        return Some(Host::Agents);
+    if path.starts_with(context.canonical_skills()) {
+        return Some(CANONICAL_HOST);
     }
     None
 }
