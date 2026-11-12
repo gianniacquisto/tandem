@@ -72,13 +72,13 @@ test('the focused tickets face draws only the active project across the columns'
   await expect(picker).toBeVisible()
   await expect(picker).toHaveValue((focus as { name: string }).name)
 
-  // ...and the board draws that project's cards across the six columns: every
+  // ...and the board draws that project's cards across the seven columns: every
   // lane chip names one of the project's lanes, and the cards are the store's.
   const project = focus as { name: string; lanes: string[] }
   const chips = await window.locator('.ticket-card__lane').allInnerTexts()
   expect(chips.length).toBe(focusCount)
   for (const chip of chips) expect(project.lanes).toContain(chip.trim())
-  await expect(window.locator('.board__column')).toHaveCount(6)
+  await expect(window.locator('.board__column')).toHaveCount(7)
 
   // The list draws the same project alone, at its All scope so a done project
   // still draws its lanes.
@@ -90,7 +90,7 @@ test('the focused tickets face draws only the active project across the columns'
 
   await window.getByRole('tab', { name: 'Board' }).click()
 
-  // The picture is the focused face: one project across the six columns, plus
+  // The picture is the focused face: one project across the seven columns, plus
   // the focus control.
   await capture(app, window, scene('tickets-focus'), 1330)
 

@@ -9,8 +9,8 @@
 //!
 //! **The stage set is data, not code.** The board, the list filter and the
 //! ticket status validation read the active workflow's stages, so a custom stage
-//! appears without a second build. The default's stages are the six keys the
-//! board drew before this model, in UI-15's order.
+//! appears without a second build. The default's stages are the seven keys the
+//! board draws after TAN-327, in UI-15's order with `selected` before `ready`.
 
 use std::collections::{BTreeMap, HashSet};
 
@@ -19,7 +19,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::store::records::sprint_rows;
-use crate::store::schema::{DEFAULT_STAGES, DEFAULT_WORKFLOW_CREATED, DEFAULT_WORKFLOW_ID};
+use crate::store::schema::{DEFAULT_WORKFLOW_CREATED, DEFAULT_WORKFLOW_ID, current_default_stages};
 use crate::store::workflows::{StageRow, WorkflowRow, workflow_rows};
 use crate::store::{
     Actor, NewSetting, NewWorkflow, NewWorkflowStage, Store, StoreError, timestamp,
@@ -245,8 +245,9 @@ impl WorkflowDraft {
 }
 
 /// The default `agile` workflow, in memory: the fallback when the store has no
-/// workflow rows, and the shape the v7 seed writes. Both read
-/// [`DEFAULT_STAGES`], so the seed and this value are one truth.
+/// workflow rows, and the shape a fresh home ends with. It reads
+/// [`current_default_stages`], the v7 six plus `selected` before `ready`, so
+/// the migrated store and this fallback cannot disagree.
 pub fn default_workflow() -> Workflow {
     Workflow {
         id: DEFAULT_WORKFLOW_ID.to_string(),
@@ -255,7 +256,7 @@ pub fn default_workflow() -> Workflow {
         author: "human".to_string(),
         created_at: DEFAULT_WORKFLOW_CREATED.to_string(),
         updated_at: DEFAULT_WORKFLOW_CREATED.to_string(),
-        stages: DEFAULT_STAGES
+        stages: current_default_stages()
             .iter()
             .map(|stage| WorkflowStage {
                 key: stage.key.to_string(),

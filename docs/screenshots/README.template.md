@@ -115,7 +115,7 @@ asserts each scene and never diffs the committed pictures.
 
 A face taller than the window is laid out at its own height (the scroll
 constraint lifted, the width kept) and shot whole, so a picture of a table is
-the whole table; a board is laid out at the width its six status columns need,
+the whole table; a board is laid out at the width its seven status columns need,
 so the picture is the whole board rather than a column and a half of it. The
 scratch home is seeded again before every test, so a spec that writes (a drag, a
 save, the CLI as a second writer) cannot change the next spec's picture or its

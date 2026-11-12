@@ -1145,7 +1145,7 @@ mod schema {
         );
         assert_eq!(
             CURRENT_VERSION,
-            super::super::schema::TURNS_VERSION,
+            super::super::schema::SELECTED_VERSION,
             "the build writes the current schema"
         );
         let mut projects: Vec<(String, i64)> = connection
@@ -1292,6 +1292,11 @@ mod schema {
                     "parked".to_string()
                 ),
                 (
+                    "selected".to_string(),
+                    "Selected for development".to_string(),
+                    "intake".to_string()
+                ),
+                (
                     "ready".to_string(),
                     "Ready".to_string(),
                     "ready".to_string()
@@ -1312,7 +1317,7 @@ mod schema {
                     "finished".to_string()
                 ),
             ],
-            "the seed carries the six keys every existing ticket already uses"
+            "the default carries every existing key plus the selected stage"
         );
         let workflow: Option<String> = connection
             .query_row("SELECT workflow FROM projects LIMIT 1", [], |row| {
@@ -1608,6 +1613,132 @@ mod schema {
             .query_row("SELECT COUNT(*) FROM settings", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 1, "the timed-out write wrote nothing");
+    }
+
+    /// The default workflow's stage keys, in position order.
+    fn stage_keys(connection: &Connection) -> Vec<String> {
+        let mut statement = connection
+            .prepare("SELECT key FROM workflow_stages WHERE workflow_id = ?1 ORDER BY position")
+            .expect("the stage read prepares");
+        statement
+            .query_map([super::super::schema::DEFAULT_WORKFLOW_ID], |row| {
+                row.get::<_, String>(0)
+            })
+            .expect("the stage read runs")
+            .map(|row| row.expect("a stage key"))
+            .collect()
+    }
+
+    /// The six the v7 seed writes, in the foundation's order.
+    const FOUNDATION_STAGES: [&str; 6] = [
+        "backlog",
+        "on-hold",
+        "ready",
+        "in-progress",
+        "in-review",
+        "done",
+    ];
+
+    /// TAN-327: the foundation's seeded default gains `selected` immediately
+    /// before `ready`. The v7 seed stays the six, and the new migration is the
+    /// only thing that adds the seventh, so a home that applied v7 keeps its
+    /// history and an existing home at v7 upgrades with its tickets untouched.
+    #[test]
+    fn the_migration_inserts_selected_before_ready_on_a_foundation_home() {
+        let sandbox = Sandbox::new("selected-migration");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..7], &Actor::Human).expect("the foundation applies");
+
+        assert_eq!(
+            stage_keys(&connection),
+            FOUNDATION_STAGES.to_vec(),
+            "the v7 seed stays six stages"
+        );
+
+        migrate_with(&connection, MIGRATIONS, &Actor::Human).expect("the rest applies");
+
+        assert_eq!(
+            stage_keys(&connection),
+            vec![
+                "backlog",
+                "on-hold",
+                "selected",
+                "ready",
+                "in-progress",
+                "in-review",
+                "done"
+            ],
+            "selected lands immediately before ready, and every other stage stays put"
+        );
+        let (position, label, role, binding): (i64, String, String, Option<String>) = connection
+            .query_row(
+                "SELECT position, label, role, binding_role FROM workflow_stages
+                 WHERE workflow_id = ?1 AND key = 'selected'",
+                [super::super::schema::DEFAULT_WORKFLOW_ID],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("the new stage reads");
+        assert_eq!(position, 2, "it sits between on-hold and ready");
+        assert_eq!(label, "Selected for development");
+        assert_eq!(role, "intake");
+        assert_eq!(binding, None, "the new stage carries no binding");
+    }
+
+    /// TAN-327: a customized default is the human's, never rewritten. A key set
+    /// that is not exactly the six seeded keys blocks the insert.
+    #[test]
+    fn the_migration_leaves_a_customized_workflow_untouched() {
+        let sandbox = Sandbox::new("selected-customized");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..7], &Actor::Human).expect("the foundation applies");
+
+        connection
+            .execute(
+                "UPDATE workflow_stages SET key = 'parked'
+                 WHERE workflow_id = ?1 AND key = 'on-hold'",
+                [super::super::schema::DEFAULT_WORKFLOW_ID],
+            )
+            .expect("the default is customized");
+
+        migrate_with(&connection, MIGRATIONS, &Actor::Human).expect("the rest applies");
+
+        let keys = stage_keys(&connection);
+        assert!(
+            !keys.contains(&"selected".to_string()),
+            "a customized key set is never migrated: {keys:?}"
+        );
+        assert!(keys.contains(&"parked".to_string()), "{keys:?}");
+    }
+
+    /// TAN-327: a default that already carries `selected` is left alone, so a
+    /// home that applied the migration twice (or carried the stage before it)
+    /// ends with one `selected`, never two.
+    #[test]
+    fn the_migration_is_idempotent_when_selected_exists() {
+        let sandbox = Sandbox::new("selected-idempotent");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..7], &Actor::Human).expect("the foundation applies");
+
+        connection
+            .execute(
+                "INSERT INTO workflow_stages
+                    (workflow_id, position, key, label, role, binding_role, binding_pass)
+                 VALUES (?1, 1, 'selected', 'Selected for development', 'intake', NULL, NULL)",
+                [super::super::schema::DEFAULT_WORKFLOW_ID],
+            )
+            .expect("the stage pre-exists");
+
+        migrate_with(&connection, MIGRATIONS, &Actor::Human).expect("the rest applies");
+
+        let keys = stage_keys(&connection);
+        assert_eq!(
+            keys.iter().filter(|key| *key == "selected").count(),
+            1,
+            "the insert is idempotent: {keys:?}"
+        );
     }
 }
 

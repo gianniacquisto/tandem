@@ -74,13 +74,14 @@ export const INITIAL_FILTERS: Filters = {
 export type StatusChoice = { value: string; label: string }
 
 /**
- * The six default stages in workflow order, with the words every face draws.
+ * The seven default stages in workflow order, with the words every face draws.
  * This is the fallback the faces use before the active workflow's read lands, so
  * a first frame draws the board's familiar columns and never an empty one.
  */
 export const STATUSES: ReadonlyArray<StatusChoice> = [
   { value: 'backlog', label: 'Backlog' },
   { value: 'on-hold', label: 'On hold' },
+  { value: 'selected', label: 'Selected for development' },
   { value: 'ready', label: 'Ready' },
   { value: 'in-progress', label: 'In progress' },
   { value: 'in-review', label: 'In Review' },
@@ -91,7 +92,7 @@ export const UNCATEGORIZED = 'Uncategorized'
 
 /**
  * The stages a face draws, from the active workflow's ordered list. Null or
- * absent is the default, which reproduces today's six exactly.
+ * absent is the default, which reproduces today's seven exactly.
  */
 export function stageChoices(
   stages?: readonly WorkflowStage[] | null,
@@ -110,7 +111,7 @@ export function statusLabel(
 /**
  * The board's columns: the active workflow's stages in order, so the board
  * reads left to right as the store declares it. A custom stage appears here
- * without a code change; the default reproduces the six.
+ * without a code change; the default reproduces the seven.
  */
 export function boardStatuses(
   stages?: readonly WorkflowStage[] | null,

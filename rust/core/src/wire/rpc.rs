@@ -693,7 +693,9 @@ impl TicketAddParams {
             ("title", string("one line, trimmed; required")),
             (
                 "status",
-                string("backlog (default), on-hold, ready, in-progress, in-review or done"),
+                string(
+                    "backlog (default), on-hold, selected, ready, in-progress, in-review or done",
+                ),
             ),
             (
                 "assignee",
@@ -723,7 +725,9 @@ impl TicketAddFromNoteParams {
             ("text", string("the selection to file as a ticket")),
             (
                 "status",
-                string("backlog (default), on-hold, ready, in-progress, in-review or done"),
+                string(
+                    "backlog (default), on-hold, selected, ready, in-progress, in-review or done",
+                ),
             ),
             (
                 "assignee",
@@ -750,7 +754,7 @@ impl TicketSetParams {
             ),
             (
                 "status",
-                string("backlog, on-hold, ready, in-progress, in-review or done"),
+                string("backlog, on-hold, selected, ready, in-progress, in-review or done"),
             ),
             (
                 "assignee",
