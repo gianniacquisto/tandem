@@ -610,11 +610,10 @@ fn a_usage_report_attributes_before_the_window_narrows() {
     );
 }
 
-/// The RPC end door posts the same share the derivation would report: the
-/// second pass in one harness session gets a `usage` comment stating the
-/// difference, while the record keeps the harness's snapshot.
+/// The RPC end door stamps the record and writes nothing to the comment log:
+/// usage is the record's, and the report reads it there.
 #[test]
-fn the_rpc_door_posts_the_second_passes_share() {
+fn the_rpc_door_stamps_the_record_and_writes_no_comment() {
     let sandbox = Sandbox::new("rpc-usage-door");
     let store = sandbox.store();
     let board = sandbox.board();
@@ -667,21 +666,9 @@ fn the_rpc_door_posts_the_second_passes_share() {
     }
 
     let comments = board.comments(&ticket_id).expect("the comments read");
-    let usage: Vec<&str> = comments
-        .iter()
-        .filter(|comment| comment.author == "builder")
-        .map(|comment| comment.body.as_str())
-        .collect();
-    assert_eq!(usage.len(), 2, "each stamp posted one usage comment");
     assert!(
-        usage[0].contains("input 1,500"),
-        "the first pass's share: {}",
-        usage[0]
-    );
-    assert!(
-        usage[1].contains("input 500"),
-        "the second pass's share, not its 2,000 snapshot: {}",
-        usage[1]
+        comments.is_empty(),
+        "neither stamp writes a comment: usage is the record's (TAN-323)"
     );
 }
 

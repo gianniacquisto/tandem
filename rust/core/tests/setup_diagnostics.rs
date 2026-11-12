@@ -148,7 +148,8 @@ fn a_v5_file_is_named_as_the_import_not_as_corruption() {
     let store = check(&report, "store");
     assert!(!store.ok);
     assert!(store.detail.contains("schema v5"));
-    assert!(store.detail.contains("Scripts/import-legacy.py"));
+    assert!(store.detail.contains("ADR 0031"));
+    assert!(!store.detail.contains("Scripts/"));
     assert!(!store.detail.contains("corrupt"));
 }
 

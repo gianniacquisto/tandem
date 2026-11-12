@@ -92,7 +92,7 @@ Not built: a hosted service for several humans (a deployment shape later, not a 
 
 ## Migration
 
-One script, run once, kept in `Scripts/` and deleted after use. Tickets, refs, timestamps, comments, dependency edges, sessions, sprints, usage and settings seed the new store by SQL from the old `tandem.db`; the bikeshed is copied as files. Not through the CLIs: `ticket set` writes none of `number`/`ref`, `createdAt`, `completedAt`, `origin`, `lane`, `archived` or edges, and a `session end` replay stamps "now", which falsifies the dates the Usage tab rolls up.
+One script, run once, and retired after use (PRT-18): the import ran onto the real home, and the script left the tree with TAN-320, its record in [ADR 0031](adr/0031-one-database-the-store.md) and the git history. Tickets, refs, timestamps, comments, dependency edges, sessions, sprints, usage and settings seed the new store by SQL from the old `tandem.db`; the bikeshed is copied as files. Not through the CLIs: `ticket set` writes none of `number`/`ref`, `createdAt`, `completedAt`, `origin`, `lane`, `archived` or edges, and a `session end` replay stamps "now", which falsifies the dates the Usage tab rolls up.
 
 The old home is copied to `legacy.db` and kept. The Swift app stays installed and runnable until the import has been accepted, so the comparison is a diff and not a memory test.
 

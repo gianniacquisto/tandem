@@ -10,8 +10,9 @@
 //!
 //! - **Schema v1, written once** (the `schema` module). The tables mirror today's v5
 //!   tables as they are used. `schema_migrations` is the seam; a v5 file is
-//!   refused with one error naming `Scripts/import-legacy.py` (PRT-18), because
-//!   the port has no v5 reader and no dual writer.
+//!   refused with one error pointing at the one-off import's record (PRT-18,
+//!   ADR 0031, the git history), because the port has no v5 reader and no dual
+//!   writer.
 //! - **An actor on every write** ([`Actor`], [`Write`]). Every mutation row
 //!   carries an `author` column, and no listing infers authorship from a
 //!   session row.
@@ -216,7 +217,7 @@ impl fmt::Display for StoreError {
             Self::Legacy { version } => write!(
                 formatter,
                 "this home's tandem.db is schema v{version}, which this build does not read; \
-                 import it once with Scripts/import-legacy.py (PRT-18)"
+                 the one-off import of a v5 home is recorded in ADR 0031 and the git history (PRT-18)"
             ),
         }
     }

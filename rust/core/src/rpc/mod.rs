@@ -1190,13 +1190,6 @@ fn execute(
                     },
                 )
                 .map_err(domain)?;
-            if stamp.stamped && stamp.session.carries_usage() {
-                // The comment states the record's attributed share, the same
-                // row the report counts (TAN-352), while the record keeps the
-                // harness's snapshot.
-                let share = attributed_share(store, &stamp.session).map_err(domain)?;
-                post_usage_comments(store, &share, actor).map_err(domain)?;
-            }
             let stamp_note = stamp.note.or(note);
             Ok(Reply::Session(SessionReply {
                 revision: store.last_revision(),
@@ -1704,42 +1697,6 @@ fn is_absent_harness(error: &DomainError) -> bool {
             | DomainError::NoHarnessServer { .. }
             | DomainError::UnknownHarnessSession { .. }
     )
-}
-
-/// The stamped record's attributed share: the one derivation over the records
-/// the store holds, so the `usage` comment a stamp posts states what the report
-/// would count (TAN-352). A record the read cannot find falls back to its own
-/// stamp, which is the whole of a lone record's usage anyway.
-fn attributed_share(
-    store: &Store,
-    session: &crate::domain::session::Session,
-) -> Result<crate::domain::session::Session, DomainError> {
-    let sessions = Sessions::new(store).list(None, None)?;
-    let attributed = attribute_harness_usage(&sessions);
-    Ok(attributed
-        .into_iter()
-        .find(|row| row.id == session.id)
-        .unwrap_or_else(|| session.clone()))
-}
-
-/// The one `usage` comment a stamped session posts on every ticket it carried,
-/// in the words the CLI posts: a header naming the session id and the model,
-/// then one line per reported metric.
-fn post_usage_comments(
-    store: &Store,
-    session: &crate::domain::session::Session,
-    actor: &Actor,
-) -> Result<(), DomainError> {
-    if session.tickets.is_empty() {
-        return Ok(());
-    }
-    let board = Board::with_actor(store.clone(), actor.clone());
-    let author = session.agent.clone().unwrap_or_else(|| "usage".to_string());
-    let body = crate::domain::session::usage_comment_body(session);
-    for ticket in &session.tickets {
-        board.append_comment(ticket, &author, &body)?;
-    }
-    Ok(())
 }
 
 /// The working directory's last component: the project a capture or session

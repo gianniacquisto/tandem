@@ -61,14 +61,17 @@ jobs:
       - name: "Gate: cargo test"
         run: cargo test
 
-      - name: "Gate: the legacy import verifies a v5 home"
-        # Parity item 4's forward path. The cutover deletes the Swift tree that
-        # wrote the v5 home, and the tree carries no committed v5 file, so the
-        # test builds the smallest one the import reads and asserts the script's
-        # own verification (ticket refs, counts and usage totals) is zero diffs.
+      - name: "Gate: the installer and stager suites"
+        # TAN-253 wrote the suite and nothing ran it in CI, so a change to
+        # either released script waited for a tag to show. install.sh is the
+        # documented download path (README.md, docs/install-paths.md) and
+        # stage-release-assets.sh is the release job's staging step; TAN-320
+        # wired this gate. The suite builds a fixture release over file:// and
+        # drives both through their documented test seams, touching neither
+        # /Applications nor the network.
         if: runner.os != 'Windows'
         working-directory: ${{ github.workspace }}
-        run: python3 Scripts/test_import_legacy.py
+        run: bash Scripts/test_install.sh
 
       - name: "Gate: the contention cases, ten times (Windows)"
         # These are the cases that flaked on this runner: run 41080330208
