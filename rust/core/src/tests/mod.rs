@@ -9,13 +9,13 @@
 //!   `SprintMigrationTests`, `SprintVerbTests`: `sprints`
 //! - `UsageReportTests`: `usage_report`
 //! - the harness read (`session end --usage-from-harness`): `harness`
-//! - the bikeshed's nineteen Swift suites, one Rust module each:
+//! - the bikeshed's eighteen Swift suites, one Rust module each:
 //!   `bikeshed_path`, `bikeshed_wikilink`, `bikeshed_backlink`, `bikeshed_front`,
 //!   `bikeshed_health`, `bikeshed_stats`, `bikeshed_search`, `bikeshed_move`,
 //!   `bikeshed_rename`, `bikeshed_note_ops`, `bikeshed_capture`,
 //!   `bikeshed_conflict`, `bikeshed_crash_recovery`, `bikeshed_locking`,
 //!   `bikeshed_hidden_layer`, `bikeshed_scale`, `bikeshed_session_notes`,
-//!   `daily_note`, `scaffold_convention`; `fixture_bikeshed` reads the
+//!   `daily_note`; `fixture_bikeshed` reads the
 //!   committed fixture vault. `bikeshed_prune` is not a Swift port: it pins the
 //!   port-only `note prune` sweep of the empty folders the archive move leaves.
 //!
@@ -24,7 +24,6 @@
 mod harness;
 mod preflight;
 mod runner;
-mod scaffold_convention;
 mod sessions;
 mod sprints;
 mod support;

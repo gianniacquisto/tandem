@@ -177,7 +177,7 @@ The role that gates a pull request: it reads the ticket, the diff, the checks an
 _Avoid_: approver, critic, merge bot
 
 **Review lens**:
-One checklist one reader applies to a pull request, named by the ticket's brief in its `## Lenses` section: `code`, `security`, `ui-design`, `ux`, or `architecture`, one table in `skills/review-lenses/SKILL.md`. A lens is not a pass and not a ceremony; it may have a specialist reader, and the gate stays one: one merge authority, one verdict line. A brief with no `## Lenses` is read with `code` alone.
+One checklist one reader applies to a pull request, named by the ticket's brief in its `## Lenses` section: `code`, `security`, `ui-design`, `ux`, or `architecture`, one table in `examples/skills/review-lenses/SKILL.md`. A lens is not a pass and not a ceremony; it may have a specialist reader, and the gate stays one: one merge authority, one verdict line. A brief with no `## Lenses` is read with `code` alone.
 _Avoid_: reviewer type, reviewer persona, review mode, sub-reviewer
 
 **Specialist**:

@@ -84,8 +84,8 @@ that name out of `SHA256SUMS`. `.github/workflows/app.yml` runs the same on the
 three hosted runners and uploads one artifact per platform.
 
 The artifact carries the core it runs: `scripts/prepare-binary.mjs` builds
-`tandem` in release configuration, stages the agent face (`AGENTS.md`, `skills/`,
-`agents/` and a `VERSION` marker) beside it, and electron-builder copies both
+`tandem` in release configuration, stages the agent face (`AGENTS.md`, `examples/skills/`,
+`examples/agents/` and a `VERSION` marker) beside it, and electron-builder copies both
 into the app's resources, so an installed app spawns nothing from a checkout. On
 macOS an `afterPack` hook adds `Contents/MacOS/tandem-cli` as a symlink to the
 core, the name the cask links and the skills call. The macOS arm64 dmg is about

@@ -98,8 +98,8 @@ function repoMarkdown(): string[] {
     path.join(repo, 'README.md'),
     path.join(repo, 'GLOSSARY.md'),
     path.join(repo, 'AGENTS.md'),
-    ...walkMarkdown(path.join(repo, 'skills')),
-    ...walkMarkdown(path.join(repo, 'agents')),
+    ...walkMarkdown(path.join(repo, 'examples', 'skills')),
+    ...walkMarkdown(path.join(repo, 'examples', 'agents')),
   ]
 }
 
