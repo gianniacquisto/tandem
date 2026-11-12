@@ -376,8 +376,8 @@ fn the_close_sweep_names_the_refine_hold() {
         "refine's hold no longer closes via the retired verb"
     );
     assert!(
-        close.contains("comment plus `ticket set`"),
-        "refine's hold closes via a comment plus `ticket set`"
+        close.contains("comment plus `ticket_set`"),
+        "refine's hold closes via a comment plus `ticket_set`"
     );
 }
 
@@ -672,11 +672,11 @@ fn the_capture_cadence_retires_the_floor_work_note() {
     let write = file("skills/tandem-memory/WRITE-PROTOCOL.md");
     assert!(!write.contains("Floor: one `work` note"));
     assert!(!write.contains("significant unit of work finished"));
-    assert!(write.contains("session end --summary"));
+    assert!(write.contains("`session_end`"));
     let consolidation = file("skills/tandem-memory/CONSOLIDATION.md");
     assert!(!consolidation.contains("| `work` |"));
-    assert!(consolidation.contains("--status ended"));
-    assert!(consolidation.contains("session show"));
+    assert!(consolidation.contains("`status` ended"));
+    assert!(consolidation.contains("`session_show`"));
     for path in [
         "AGENTS.md",
         "skills/tandem-memory/SKILL.md",
@@ -742,7 +742,7 @@ fn the_per_event_capture_cadence_is_retired() {
         assert!(c.contains("session record") || c.contains("session end"));
     }
     let write = file("skills/tandem-memory/WRITE-PROTOCOL.md");
-    assert!(write.contains("session end --summary"));
+    assert!(write.contains("`session_end`"));
     let build = file("skills/tandem-build/SKILL.md");
     assert!(build.contains("session record"));
     let retro = file("skills/retro/SKILL.md");
@@ -812,7 +812,7 @@ fn the_daily_notes_contract_is_stated() {
     let consolidation = file("skills/tandem-memory/CONSOLIDATION.md");
     assert!(consolidation.contains("not mtime"));
     let consolidate = file("skills/tandem-consolidate/SKILL.md");
-    assert!(consolidate.contains("tandem-cli note capture"));
+    assert!(consolidate.contains("`note_capture`"));
 }
 
 #[test]
@@ -944,8 +944,8 @@ fn the_questions_exit_is_a_comment_plus_a_set() {
         "AGENTS.md carries no Answer-block debt rule"
     );
     assert!(
-        agents.contains("ticket set"),
-        "the pair moves via `ticket set`"
+        agents.contains("`ticket_set`"),
+        "the pair moves via `ticket_set`"
     );
     let sprint = file("skills/tandem-sprint/SKILL.md");
     assert!(
@@ -957,8 +957,8 @@ fn the_questions_exit_is_a_comment_plus_a_set() {
         "the sprint names no retired verb"
     );
     assert!(
-        sprint.contains("comment plus `ticket set`") || sprint.contains("comment plus `set`"),
-        "the sprint closes holds via comment plus set"
+        sprint.contains("comment plus `ticket_set`"),
+        "the sprint closes holds via comment plus `ticket_set`"
     );
     let interview = file("skills/tandem-interview/SKILL.md");
     assert!(
@@ -1011,7 +1011,7 @@ fn the_retro_files_into_the_projects_lane() {
         "`Retro` keeps the findings that belong to no project"
     );
     assert!(
-        retro.contains("`--origin retro`"),
+        retro.contains("`origin` is `retro`"),
         "the origin survives the lane move"
     );
     for path in [
@@ -1281,7 +1281,7 @@ fn the_refiner_grills_the_human_per_ticket() {
         "with no human reachable the refiner writes no brief"
     );
     assert!(
-        refiner.contains("--assignee human"),
+        refiner.contains("`assignee` human"),
         "with no human reachable the ticket parks on the human"
     );
     let refine = file("skills/tandem-refine/SKILL.md");
@@ -1422,10 +1422,11 @@ fn the_build_names_the_fix_pass_dispatch() {
         "fix pass",
         "fresh subagent session",
         "names no `sessionID`",
-        "`tandem-cli session start --agent builder",
-        "`tandem-cli session link --ticket",
-        "--status in-progress --assignee builder",
-        "--status in-review",
+        "`session_start`",
+        "`session_link`",
+        "`ticket_set`",
+        "`status` in-progress",
+        "`status` in-review",
         "green head bound to the new sha",
         "PR's branch",
     ] {
@@ -1588,8 +1589,8 @@ fn the_build_skill_measures_the_ratio_and_briefs_below_it() {
         "the number's one home is the builder contract"
     );
     assert!(
-        budget.contains("session show"),
-        "the record's ratio is read with `session show`"
+        budget.contains("`session_show`"),
+        "the record's ratio is read with `session_show`"
     );
     assert!(
         budget.contains("Below"),
@@ -1602,5 +1603,370 @@ fn the_build_skill_measures_the_ratio_and_briefs_below_it() {
     assert!(
         budget.contains("batch shape"),
         "the dispatch names the shape it briefed"
+    );
+}
+
+/// The one file that documents the human's and the scripts' door: its CLI
+/// verb tables and examples are the reference a human reads, and the brief
+/// keeps them. A pass's act is never a CLI spelling, so the scan leaves this
+/// file's documentation and pins its shape instead (`every_mcp_tool_name_in_
+/// prose_resolves` proves its MCP table against the registry).
+const CLI_REFERENCE: &str = "skills/tandem/SKILL.md";
+
+/// The exception set: the human's install pass, the two CLI-only note verbs
+/// (`note rename`, which no tool covers, and `note prune`, which TAN-322 landed
+/// under PR #413 with no tool beside it; TAN-364 files that gap), the MCP
+/// server as a config fact, and `--help` as a pointer at the CLI's own
+/// documentation.
+const TANDEM_CLI_EXCEPTIONS: [&str; 5] = ["setup", "note rename", "note prune", "mcp", "--help"];
+
+/// Every top-level verb the CLI's clap enum spells (`rust/cli/src/main.rs`), so
+/// the word after `tandem-cli` is classified as a command form or as a noun
+/// ("on PATH", a path, a version). `rpc` is a verb like the rest; there is no
+/// `usage` verb.
+const TANDEM_CLI_VERBS: [&str; 12] = [
+    "ticket", "lane", "project", "settings", "note", "session", "sprint", "doctor", "setup", "rpc",
+    "mcp", "workflow",
+];
+
+/// Every subcommand each top-level verb spells, so a bare `verb subcommand`
+/// span in agent prose classifies as the CLI command form it is. A lone verb
+/// word is a noun ("the ticket surface"), and a tool name (`ticket_set`) is the
+/// tool's spelling, so the bare scan needs both words to read a command.
+const TANDEM_CLI_SUBCOMMANDS: [(&str, &[&str]); 9] = [
+    (
+        "ticket",
+        &[
+            "list", "show", "add", "file", "set", "move", "block", "unblock", "complete",
+            "archive", "comment",
+        ],
+    ),
+    ("lane", &["list", "add", "rename", "delete", "move"]),
+    ("project", &["list", "add", "rename", "delete"]),
+    (
+        "note",
+        &[
+            "rename",
+            "capture",
+            "stats",
+            "prune",
+            "links",
+            "write",
+            "move",
+            "create",
+            "create-folder",
+            "daily",
+        ],
+    ),
+    ("session", &["start", "end", "link", "list", "show"]),
+    (
+        "sprint",
+        &["open", "ticket", "run", "close", "list", "show"],
+    ),
+    ("workflow", &["list", "show", "set", "use", "delete"]),
+    ("setup", &["install", "uninstall", "status"]),
+    ("settings", &["get", "set"]),
+];
+
+/// Every markdown file the host serves as the agent face (ADR 0034), in a
+/// stable order: the prompts, `AGENTS.md`, and every skill file, nested ones
+/// included.
+fn agent_face_files() -> Vec<String> {
+    fn collect(directory: &Path, prefix: &str, files: &mut Vec<String>) {
+        let mut entries: Vec<PathBuf> = std::fs::read_dir(directory)
+            .unwrap_or_else(|_| panic!("missing {prefix}"))
+            .flatten()
+            .map(|entry| entry.path())
+            .collect();
+        entries.sort();
+        for path in entries {
+            let name = path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if path.is_dir() {
+                collect(&path, &format!("{prefix}/{name}"), files);
+            } else if name.ends_with(".md") {
+                files.push(format!("{prefix}/{name}"));
+            }
+        }
+    }
+    let mut files = Vec::new();
+    collect(&root().join("skills"), "skills", &mut files);
+    collect(&root().join("agents"), "agents", &mut files);
+    files.push("AGENTS.md".to_string());
+    files
+}
+
+/// Whether a classified form is one the exception set admits. Prefixed forms
+/// classify as the verb (`setup`), bare spans as verb and subcommand
+/// (`setup install`), so the verb half is read too; `note rename` and
+/// `note prune` stay the two verbs whose own name is the exception.
+fn is_cli_exception(form: &str) -> bool {
+    TANDEM_CLI_EXCEPTIONS.contains(&form)
+        || form
+            .split_whitespace()
+            .next()
+            .is_some_and(|verb| TANDEM_CLI_EXCEPTIONS.contains(&verb))
+}
+/// that token is a CLI verb. A `tandem-cli` followed by anything else is a noun
+/// (the binary on PATH, a path, a version) and is no act.
+fn classify_tandem_cli_rest(rest: &str) -> Option<String> {
+    let rest = rest.trim_start_matches(|character: char| {
+        matches!(character, '`' | '$' | '"' | ',' | ';' | ':')
+    });
+    let mut words = rest
+        .split(|character: char| {
+            !character.is_ascii_alphanumeric() && character != '-' && character != '_'
+        })
+        .filter(|word| !word.is_empty());
+    let first = words.next()?;
+    if first == "--help" {
+        return Some("--help".to_string());
+    }
+    if !TANDEM_CLI_VERBS.contains(&first) {
+        return None;
+    }
+    if first == "note"
+        && let Some(second) = words.next()
+        && (second == "rename" || second == "prune")
+    {
+        return Some(format!("note {second}"));
+    }
+    Some(first.to_string())
+}
+
+/// Every command form a line writes, one per `tandem-cli` occurrence: the
+/// token after each, classified as a command form or as a noun. A line may
+/// write more than one, so all occurrences are read, never only the first.
+fn tandem_cli_forms(line: &str) -> Vec<String> {
+    line.match_indices("tandem-cli")
+        .filter_map(|(start, _)| classify_tandem_cli_rest(&line[start + "tandem-cli".len()..]))
+        .collect()
+}
+
+/// The bare command form a line writes in a code span: a backticked span whose
+/// first word is a CLI verb and whose second is one of that verb's
+/// subcommands. A single verb word is a noun, and a tool name (`ticket_set`) is
+/// the tool's spelling, so neither reads as a CLI act.
+fn bare_cli_form(line: &str) -> Option<String> {
+    for span in line.split('`').skip(1).step_by(2) {
+        let mut words = span.split_whitespace();
+        let Some(verb) = words.next() else {
+            continue;
+        };
+        let Some(second) = words.next() else {
+            continue;
+        };
+        let subcommand = second.trim_end_matches(|character: char| {
+            !character.is_ascii_alphanumeric() && character != '-'
+        });
+        let spells_it = TANDEM_CLI_SUBCOMMANDS
+            .iter()
+            .any(|(name, subcommands)| *name == verb && subcommands.contains(&subcommand));
+        if spells_it {
+            return Some(format!("{verb} {subcommand}"));
+        }
+    }
+    None
+}
+
+/// The inline code spans on one line that are a single identifier, the shape
+/// the prose writes a tool call in.
+fn backticked_tokens(line: &str) -> Vec<&str> {
+    line.split('`')
+        .enumerate()
+        .filter_map(|(index, part)| {
+            let identifier = index % 2 == 1
+                && !part.is_empty()
+                && part
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '_');
+            identifier.then_some(part)
+        })
+        .collect()
+}
+
+/// TAN-325: a pass's spoken command is a tool call. The face carried the CLI's
+/// shell spellings beside every verb, and a pass that followed them paid a
+/// shell round trip the tools exist to avoid (and the CLI's stdin and flag
+/// shapes have no meaning over a tool call). The scan reads both spellings the
+/// face can carry: `tandem-cli`-prefixed forms, every occurrence on a line, and
+/// bare `verb subcommand` forms in a code span. The exception set is the
+/// human's install pass, the two CLI-only note verbs (`note rename`, and
+/// `note prune` from TAN-322's PR #413 with its tool gap filed as TAN-364),
+/// the MCP server as a config fact and `--help` as a documentation pointer; the
+/// allowlist names it exactly, and the classifier assertions below prove which
+/// forms each side admits, so the exceptions and the prose cannot drift apart
+/// in either direction.
+#[test]
+fn no_tandem_cli_command_lines_in_agent_prose() {
+    let files = agent_face_files();
+    let mut offenders = Vec::new();
+    for path in &files {
+        if path == CLI_REFERENCE {
+            continue;
+        }
+        for (index, line) in file(path).lines().enumerate() {
+            let mut forms = tandem_cli_forms(line);
+            forms.extend(bare_cli_form(line));
+            for form in forms {
+                if !is_cli_exception(&form) {
+                    offenders.push(format!("{path}:{}: command form `{form}`", index + 1));
+                }
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "agent prose names the CLI as the act; write the tool call instead:\n{}",
+        offenders.join("\n")
+    );
+
+    for allowed in [
+        "`tandem-cli setup install`",
+        "`tandem-cli note rename --from a --to b`",
+        "`tandem-cli note prune`",
+        "`tandem-cli mcp`",
+        "`tandem-cli --help`",
+    ] {
+        let form = tandem_cli_forms(allowed)
+            .into_iter()
+            .next()
+            .expect("the exception is a command form");
+        assert!(
+            is_cli_exception(&form),
+            "`{allowed}` classifies as `{form}`, which the allowlist must name"
+        );
+    }
+    for flagged in [
+        "`tandem-cli ticket list`",
+        "`tandem-cli note capture`",
+        "`tandem-cli session end`",
+        "`tandem-cli doctor`",
+        "`tandem-cli rpc`",
+    ] {
+        let form = tandem_cli_forms(flagged)
+            .into_iter()
+            .next()
+            .expect("the form is a command");
+        assert!(
+            !is_cli_exception(&form),
+            "`{flagged}` classifies as `{form}`, which the allowlist must not admit"
+        );
+    }
+    assert_eq!(
+        tandem_cli_forms("`tandem-cli ticket list` then `tandem-cli session end`"),
+        vec!["ticket".to_string(), "session".to_string()],
+        "a line's every `tandem-cli` occurrence is read, not only the first"
+    );
+    assert!(
+        tandem_cli_forms("`tandem-cli` is on PATH").is_empty(),
+        "a bare `tandem-cli` is a noun, not an act"
+    );
+    assert!(
+        tandem_cli_forms("`command -v tandem-cli`").is_empty(),
+        "the binary in a lookup is a noun, not an act"
+    );
+
+    assert_eq!(
+        bare_cli_form("so the pass completes it: `ticket complete --id <id>`"),
+        Some("ticket complete".to_string()),
+        "a bare `verb subcommand` span is a command form"
+    );
+    assert!(
+        !is_cli_exception(&bare_cli_form("`ticket complete`").unwrap()),
+        "a bare build or review command is not an exception"
+    );
+    assert_eq!(
+        bare_cli_form("`note prune` is the one CLI step"),
+        Some("note prune".to_string())
+    );
+    assert!(
+        bare_cli_form("the `session record` is a row").is_none(),
+        "a verb plus a plain noun is prose, not a command"
+    );
+    assert!(
+        bare_cli_form("`ticket_set` with `status` in-review").is_none(),
+        "a tool name is the tool's spelling, not the CLI's"
+    );
+
+    let reference = file(CLI_REFERENCE);
+    assert!(
+        reference.contains("the CLI is the human's and the scripts' door"),
+        "the one file left with CLI forms states whose door it documents"
+    );
+    assert!(
+        reference.contains("tandem-cli --help"),
+        "the reference keeps `--help` as the pointer at the CLI's own documentation"
+    );
+}
+
+/// TAN-325: prose and the 42-tool surface are one truth. Every tool name the
+/// prose writes as a tool call resolves against `tandem_core::mcp::tools()`,
+/// and the CLI reference's MCP table lists the same 42 names, so a renamed or
+/// retired tool fails here the way it fails the registry.
+#[test]
+fn every_mcp_tool_name_in_prose_resolves() {
+    let tools = crate::mcp::tools();
+    let names: std::collections::HashSet<&str> = tools.iter().map(|tool| tool.name).collect();
+    assert_eq!(names.len(), 42, "the registry is the 42-tool surface");
+
+    let reference = file(CLI_REFERENCE);
+    let table = section(&reference, "## MCP tools");
+    let rows: Vec<String> = table
+        .lines()
+        .filter(|line| line.starts_with('|'))
+        .filter_map(|line| {
+            let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+            let cell = *cells.get(1)?;
+            if cell.starts_with('`') && cell.ends_with('`') && cell.len() > 2 {
+                Some(cell.trim_matches('`').to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(rows.len(), 42, "the MCP table lists one row per tool");
+    for name in &names {
+        assert!(
+            rows.iter().any(|row| row == name),
+            "the MCP table omits `{name}`"
+        );
+    }
+    for row in &rows {
+        assert!(
+            names.contains(row.as_str()),
+            "the MCP table names `{row}`, which the registry does not serve"
+        );
+    }
+
+    let prefixes: std::collections::HashSet<&str> = names
+        .iter()
+        .filter_map(|name| name.split('_').next())
+        .collect();
+    let mut offenders = Vec::new();
+    for path in agent_face_files() {
+        if path == CLI_REFERENCE {
+            continue;
+        }
+        for (index, line) in file(&path).lines().enumerate() {
+            for token in backticked_tokens(line) {
+                let Some(prefix) = token.split('_').next() else {
+                    continue;
+                };
+                if !token.contains('_') || !prefixes.contains(prefix) {
+                    continue;
+                }
+                if !names.contains(token) {
+                    offenders.push(format!("{path}:{}: `{token}` is not a tool", index + 1));
+                }
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "prose writes tool names the registry does not serve:\n{}",
+        offenders.join("\n")
     );
 }

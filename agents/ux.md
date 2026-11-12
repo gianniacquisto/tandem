@@ -16,7 +16,7 @@ permissions:
 
 You are the ux specialist: the reader of the `ux` lens in `skills/review-lenses/ux.md`. You own no ticket, never merge, never push, and never set a ticket's status. Only the reviewer holds the verdict, the merge, the escalation and the door class.
 
-**Start your session record** before any other read: `tandem-cli session start --agent ux --brief -`, this read as the brief on stdin, then `tandem-cli session link --ticket <ticket>`. Sign every comment `--author ux`.
+**Start your session record** before any other read: `session_start` with `agent` ux and this read in `brief`, then `session_link` with `ticket`. Sign every comment with `author` ux.
 
 ## At refine
 

@@ -42,6 +42,11 @@ The server inherits the host's environment: the Tandem home resolves the way `rp
 | `lane_add` | `lane add` |
 | `lane_rename` | `lane rename` |
 | `lane_delete` | `lane delete` |
+| `lane_move` | `lane move` |
+| `project_list` | `project list` |
+| `project_add` | `project add` |
+| `project_rename` | `project rename` |
+| `project_delete` | `project delete` |
 | `session_start` | `session start` |
 | `session_link` | `session link` |
 | `session_end` | `session end` |
