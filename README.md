@@ -237,7 +237,7 @@ Not a ticket: `session start` opens a record of one agent session's run — the 
 | `tandem-tidy` | the board hygiene pass: sweeps open tickets against landed work, completes the done or moot with evidence, archives, reports the oddities | unreleased |
 | `review-lenses` | the checklists the reviewer applies to a PR, named by the brief's `## Lenses`: `code`, `security`, `ui-design`, `ux`, `architecture` | unreleased |
 
-`skills/grilling/`, `skills/tdd/` and `skills/writing-for-agents/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), so a clone of this repo is the whole workflow; `skills/retro/` is adapted from the same collection, its output filed as tickets on the board.
+`examples/skills/grilling/`, `examples/skills/tdd/` and `examples/skills/writing-for-agents/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), so a clone of this repo is the whole workflow; `examples/skills/retro/` is adapted from the same collection, its output filed as tickets on the board.
 
 ### Setting a host up
 
@@ -289,7 +289,7 @@ Tandem's store was `tickets.json` until v0.27.0, with the comments, sessions, sp
 
 ## How to contribute
 
-The tracker is the **Tandem board**, not GitHub issues — the tracker contract is the `tandem` skill (`skills/tandem/SKILL.md`).
+The tracker is the **Tandem board**, not GitHub issues. The tracker contract is the `tandem` skill (`examples/skills/tandem/SKILL.md`).
 
 The full on-ramp is [CONTRIBUTING.md](CONTRIBUTING.md): prerequisites, setup, and the gate commands to run before you push.
 
@@ -297,7 +297,7 @@ The full on-ramp is [CONTRIBUTING.md](CONTRIBUTING.md): prerequisites, setup, an
 - **Merge, don't rewrite.** Prefer merge commits over rebases, and avoid force pushes and other destructive git actions unless absolutely necessary — when a force push is unavoidable, `--force-with-lease`, never bare `--force`.
 - **Run the gates.** `cargo test`, `cargo fmt --all --check` and `cargo clippy --all-targets -- -D warnings` in `rust/`; `npm run typecheck && npm test` in `app/`.
 - **Use the project's words.** [GLOSSARY.md](GLOSSARY.md) is the vocabulary; the ADRs are the decisions. Respect the ADRs in the area your change touches, and amend one in the same pull request when you change what it decided.
-- **Keep the ticket whole.** A ticket's description is written once as the brief and appended to with the outcome, never overwritten. The shape of that brief is the refiner's: `agents/refiner.md`.
+- **Keep the ticket whole.** A ticket's description is written once as the brief and appended to with the outcome, never overwritten. The shape of that brief is the refiner's: `examples/agents/refiner.md`.
 
 ## Releasing
 

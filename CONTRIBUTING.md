@@ -80,10 +80,10 @@ npm run typecheck && npm test
 - Respect the decisions in [docs/adr/](docs/adr/), and amend the ADR in the
   same pull request when you change what it decided.
 - The tracker is the Tandem board, not GitHub issues: the tracker contract is
-  the `tandem` skill ([skills/tandem/SKILL.md](skills/tandem/SKILL.md)). A
+  the `tandem` skill ([examples/skills/tandem/SKILL.md](examples/skills/tandem/SKILL.md)). A
   ticket's description is written once as the brief and appended to with the
   outcome, never overwritten; the brief's shape is the refiner's
-  ([agents/refiner.md](agents/refiner.md)).
+  ([examples/agents/refiner.md](examples/agents/refiner.md)).
 
 ## Releases
 

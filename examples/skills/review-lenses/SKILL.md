@@ -41,4 +41,4 @@ A lens whose file cannot be read is named in the review body, and the gate falls
 
 ## Adding a lens
 
-One file and one row with its owner, in the same PR, under the three headings above. A file with no row, a row with no file, and an owner with no prompt are all drift, and the pins in `rust/core/src/tests/scaffold_convention.rs` fail on any of them.
+One file and one row with its owner, in the same PR, under the three headings above. A file with no row, a row with no file, and an owner with no prompt are all drift, and a reviewer checks them against this table.
