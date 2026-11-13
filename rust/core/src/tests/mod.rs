@@ -2,11 +2,7 @@
 //!
 //! Ported, not rewritten (`docs/port.md`, Parity): the behaviours the Swift
 //! suites encode are the behaviours these assert, in Rust, against the store the
-//! port writes. The Swift names and the suite each behaviour came from:
-//!
-//! - `SprintsTests`, `SprintGroupingTests`, `SprintDocumentsTests`,
-//!   `SprintMigrationTests`, `SprintVerbTests`: `sprints`
-//! - the bikeshed's eighteen Swift suites, one Rust module each:
+//! port writes. The bikeshed's eighteen Swift suites, one Rust module each:
 //!   `bikeshed_path`, `bikeshed_wikilink`, `bikeshed_backlink`, `bikeshed_front`,
 //!   `bikeshed_health`, `bikeshed_stats`, `bikeshed_search`, `bikeshed_move`,
 //!   `bikeshed_rename`, `bikeshed_note_ops`, `bikeshed_capture`,
@@ -17,11 +13,6 @@
 //!   folders the archive move leaves.
 //!
 //! Each module is one suite, so `cargo test <suite>` runs it alone.
-
-mod preflight;
-mod runner;
-mod sprints;
-mod support;
 
 mod bikeshed_backlink;
 mod bikeshed_capture;

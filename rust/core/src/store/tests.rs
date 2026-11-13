@@ -121,11 +121,10 @@ fn has_index(connection: &Connection, name: &str) -> bool {
 
 /// Every table whose inserts carry the actor, and its author column. The seam's
 /// own table is in the list: a migration is a write too.
-const AUTHORED_TABLES: [&str; 7] = [
+const AUTHORED_TABLES: [&str; 6] = [
     "tickets",
     "ticket_dependencies",
     "comments",
-    "workflow_runs",
     "lanes",
     "settings",
     "schema_migrations",
@@ -1554,45 +1553,6 @@ mod schema {
     }
 
     #[test]
-    fn a_v8_file_reads_sprints_as_workflow_runs_without_migrating() {
-        use crate::domain::sprint::Sprints;
-
-        let sandbox = Sandbox::new("read-v8");
-        fs::create_dir_all(sandbox.home_path()).unwrap();
-        let connection = Connection::open(sandbox.database()).unwrap();
-        migrate_with(&connection, &MIGRATIONS[..8], &Actor::Human).expect("v8 applies");
-        connection
-            .execute(
-                "INSERT INTO sprints
-                    (lane, number, session, mode, batch, runs, close, status, opened_at,
-                     closed_at, author)
-                 VALUES ('Hosting', 1, NULL, 'serial', '[]', '[]', NULL, 'open',
-                         '2026-11-04T00:17:44Z', NULL, 'human')",
-                [],
-            )
-            .unwrap();
-        drop(connection);
-
-        let store = sandbox.store();
-        let runs = Sprints::new(&store)
-            .list(None, None)
-            .expect("the read answers");
-        assert_eq!(runs.len(), 1, "the plain sprints table answers");
-        assert_eq!(runs[0].workflow, DEFAULT_WORKFLOW_ID);
-
-        let connection = sandbox.connection();
-        assert_eq!(
-            version(&connection).unwrap(),
-            Some(8),
-            "a read never migrates"
-        );
-        assert!(
-            has_table(&connection, "sprints").unwrap(),
-            "the old table is still the one on disk"
-        );
-    }
-
-    #[test]
     fn a_v6_file_reads_the_default_workflow_and_the_first_write_migrates_it() {
         use crate::domain::workflow::Workflows;
         use crate::domain::{AddTicket, Board, Status};
@@ -2106,19 +2066,6 @@ mod actor {
                     ticket_id: "00000000-0000-0000-0000-000000000004",
                     at: "2026-10-30T00:00:01Z",
                     body: "a comment",
-                })?;
-                write.insert_sprint(NewSprint {
-                    lane: "Port",
-                    number: 1,
-                    workflow: crate::store::schema::DEFAULT_WORKFLOW_ID,
-                    session: Some("ses_e73388dd8ffd"),
-                    mode: "serial",
-                    batch: Some("[]"),
-                    runs: Some("[]"),
-                    close: None,
-                    status: "open",
-                    opened_at: "2026-10-30T00:00:00Z",
-                    closed_at: None,
                 })?;
                 write.insert_setting(NewSetting {
                     key: "defaultLane",

@@ -18,7 +18,6 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::store::records::sprint_rows;
 use crate::store::schema::{DEFAULT_WORKFLOW_CREATED, DEFAULT_WORKFLOW_ID, current_default_stages};
 use crate::store::workflows::{StageRow, WorkflowRow, workflow_rows};
 use crate::store::{
@@ -29,7 +28,6 @@ pub use crate::store::schema::DEFAULT_WORKFLOW_NAME;
 
 use super::error::{DomainError, DomainResult};
 use super::settings::Settings;
-use super::sprint::SprintStatus;
 use super::ticket::Status;
 
 /// The settings key that names the active workflow.
@@ -591,16 +589,10 @@ impl Workflows {
 
     /// `workflow use`: activate a workflow.
     ///
-    /// Refused while a sprint is open, and when a ticket sits in a stage the
-    /// target lacks, naming the stages and their counts. A workflow missing the
-    /// ready, active or review role activates on the board; the runner refuses
-    /// it later.
+    /// Refused when a ticket sits in a stage the target lacks, naming the
+    /// stages and their counts.
     pub fn use_workflow(&self, actor: &Actor, handle: &str) -> DomainResult<Workflow> {
         let target = self.get(handle)?;
-        let open_lanes = self.open_sprint_lanes()?;
-        if !open_lanes.is_empty() {
-            return Err(DomainError::WorkflowHasOpenSprint { lanes: open_lanes });
-        }
         let target_keys: HashSet<&str> = target
             .stages
             .iter()
@@ -629,10 +621,9 @@ impl Workflows {
         Ok(target)
     }
 
-    /// `workflow delete`: refuse the default, the active workflow, or one with
-    /// recorded runs (TAN-332). The target's row, the active setting and the
-    /// run count are all read inside the delete's own transaction, so a switch
-    /// or a run that lands first cannot slip past the guard.
+    /// `workflow delete`: refuse the default or the active workflow. The
+    /// target's row and the active setting are read inside the delete's own
+    /// transaction, so a switch that lands first cannot slip past the guard.
     pub fn delete(&self, actor: &Actor, handle: &str) -> DomainResult<Vec<Workflow>> {
         let target = self.get(handle)?;
         let mut refusal: Option<DomainError> = None;
@@ -648,14 +639,6 @@ impl Workflows {
                 .filter(|value| !value.is_empty());
             if active == Some(target.id.as_str()) || active == Some(target.name.as_str()) {
                 refusal = Some(DomainError::WorkflowIsActive(target.name.clone()));
-                return Err(StoreError::Io("the domain refused the write".to_string()));
-            }
-            let count = write.workflow_run_count(&target.id)?;
-            if count > 0 {
-                refusal = Some(DomainError::WorkflowHasRuns {
-                    name: target.name.clone(),
-                    count,
-                });
                 return Err(StoreError::Io("the domain refused the write".to_string()));
             }
             write.delete_workflow(&target.id)
@@ -683,17 +666,6 @@ impl Workflows {
             })
             .collect::<DomainResult<Vec<_>>>()?;
         Ok(Some((workflows, revision)))
-    }
-
-    fn open_sprint_lanes(&self) -> DomainResult<Vec<String>> {
-        let Some((rows, _)) = self.store.read_snapshot(sprint_rows).map_err(store_error)? else {
-            return Ok(Vec::new());
-        };
-        Ok(rows
-            .into_iter()
-            .filter(|sprint| sprint.status == SprintStatus::Open.as_str())
-            .map(|sprint| sprint.lane)
-            .collect())
     }
 
     fn ticket_stage_counts(&self) -> DomainResult<BTreeMap<String, usize>> {

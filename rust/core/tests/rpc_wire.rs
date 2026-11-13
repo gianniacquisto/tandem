@@ -41,6 +41,23 @@ fn every_method_round_trips_through_its_wire_tag() {
     }
 }
 
+/// The sprint record and the workflow's run history left the application
+/// (ADR 0045): the wire speaks neither family, so an app or an agent can no
+/// longer reach a record the store no longer keeps.
+#[test]
+fn the_sprint_and_workflow_run_methods_are_gone() {
+    let leftovers: Vec<&str> = METHODS
+        .iter()
+        .map(|(tag, _)| *tag)
+        .filter(|tag| tag.starts_with("sprint.") || tag.starts_with("workflow.run."))
+        .collect();
+    assert_eq!(
+        leftovers,
+        Vec::<&str>::new(),
+        "sprint.* and workflow.run.* left the wire"
+    );
+}
+
 /// The contract is "no UI-only write": a write names a CLI verb, and a read may
 /// name none. The list is spelled out so a new read is a decision a reviewer
 /// reads, not a verb someone forgot.
@@ -1071,100 +1088,5 @@ fn lane_move_reorders_the_declared_lanes_over_the_wire() {
     assert!(
         message.contains("lane add") && message.contains("lane list"),
         "the refusal names the fix: {refused}"
-    );
-}
-
-#[test]
-fn the_workflow_run_methods_round_trip_and_the_sprint_aliases_agree() {
-    let sandbox = Sandbox::new("run-wire");
-    let store = sandbox.store();
-
-    let opened = handle(
-        &store,
-        &frame(1, "workflow.run.open", json!({"lane": "Cycle"})),
-    );
-    assert_eq!(opened["result"]["run"]["number"], 1);
-    assert_eq!(opened["result"]["run"]["status"], "open");
-    assert_eq!(
-        opened["result"]["run"]["workflow"], "00000000-0000-4000-8000-000000000001",
-        "an absent workflow is the active one"
-    );
-
-    let added = handle(
-        &store,
-        &frame(2, "ticket.add", json!({"title": "A run ticket"})),
-    );
-    let ticket = added["result"]["ticket"]["id"]
-        .as_str()
-        .expect("a ticket id")
-        .to_string();
-    let drawn = handle(
-        &store,
-        &frame(
-            3,
-            "workflow.run.ticket",
-            json!({"lane": "Cycle", "ticket": ticket}),
-        ),
-    );
-    assert_eq!(drawn["result"]["run"]["batch"][0], ticket);
-
-    let logged = handle(
-        &store,
-        &frame(
-            4,
-            "workflow.run.run",
-            json!({"lane": "Cycle", "note": "The run landed."}),
-        ),
-    );
-    assert_eq!(logged["result"]["run"]["runs"].as_array().unwrap().len(), 1);
-
-    let listed = handle(
-        &store,
-        &frame(5, "workflow.run.list", json!({"status": "open"})),
-    );
-    assert_eq!(listed["result"]["runs"].as_array().unwrap().len(), 1);
-    assert_eq!(listed["result"]["runs"][0]["number"], 1);
-
-    let shown = handle(
-        &store,
-        &frame(6, "workflow.run.show", json!({"lane": "Cycle"})),
-    );
-    assert_eq!(
-        shown["result"]["run"]["number"], 1,
-        "show is the current run"
-    );
-
-    let alias = handle(&store, &frame(7, "sprint.show", json!({"lane": "Cycle"})));
-    assert_eq!(alias["result"]["sprint"]["number"], 1);
-    assert_eq!(
-        alias["result"]["sprint"]["runs"],
-        shown["result"]["run"]["runs"]
-    );
-    assert!(
-        alias["result"]["sprint"].get("workflow").is_none(),
-        "the sprint alias keeps the legacy shape"
-    );
-
-    handle(
-        &store,
-        &frame(
-            8,
-            "workflow.run.close",
-            json!({"lane": "Cycle", "note": "Landed."}),
-        ),
-    );
-    let history = handle(
-        &store,
-        &frame(9, "workflow.run.list", json!({"status": "closed"})),
-    );
-    assert_eq!(history["result"]["runs"].as_array().unwrap().len(), 1);
-    assert_eq!(history["result"]["runs"][0]["close"], "Landed.");
-    let alias_history = handle(
-        &store,
-        &frame(10, "sprint.list", json!({"status": "closed"})),
-    );
-    assert_eq!(
-        alias_history["result"]["sprints"].as_array().unwrap().len(),
-        1
     );
 }

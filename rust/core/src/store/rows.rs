@@ -58,40 +58,6 @@ pub struct NewComment<'a> {
     pub body: &'a str,
 }
 
-/// A sprint row, read back: the pair (lane, number) is the identity, `workflow`
-/// the workflow the run belongs to, and the batch and run log stay the JSON text
-/// the record writes.
-pub struct SprintRow {
-    pub lane: String,
-    pub number: i64,
-    pub workflow: String,
-    pub session: Option<String>,
-    pub mode: String,
-    pub batch: Option<String>,
-    pub runs: Option<String>,
-    pub close: Option<String>,
-    pub status: String,
-    pub opened_at: String,
-    pub closed_at: Option<String>,
-}
-
-/// One sprint: a lane and a number key it, `workflow` says which workflow the
-/// run belongs to, and its batch and runs stay JSON text because they are
-/// ordered lists rather than filtered columns.
-pub struct NewSprint<'a> {
-    pub lane: &'a str,
-    pub number: i64,
-    pub workflow: &'a str,
-    pub session: Option<&'a str>,
-    pub mode: &'a str,
-    pub batch: Option<&'a str>,
-    pub runs: Option<&'a str>,
-    pub close: Option<&'a str>,
-    pub status: &'a str,
-    pub opened_at: &'a str,
-    pub closed_at: Option<&'a str>,
-}
-
 /// One setting: a key and its value, the JSON-encoded value the Swift store
 /// keeps.
 pub struct NewSetting<'a> {

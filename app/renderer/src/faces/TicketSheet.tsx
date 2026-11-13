@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { Method } from '../../../src/shared/bridge'
 import { assigneeChoices, boardStatuses, statusLabel } from '../shell/board'
-import { passButtons, type PassKind } from '../shell/pass'
 import {
   EMPTY_COMMENT_REFUSAL,
   appendPlan,
@@ -50,7 +49,6 @@ export type TicketSheetProps = {
   initialFocus?: 'description' | null
 }
 
-const CLAIM_CHANGED = 'The claim landed, but the comment did not.'
 
 /**
  * The ticket sheet: one dialog over whichever face opened it, drawn once for
@@ -286,31 +284,6 @@ export function TicketSheet({
     setCommentError(null)
     const written = await write({ method: 'ticket.comment.add', params })
     if (written) setCommentDraft('')
-  }
-
-  /**
-   * One pass request's writes, in the helper's order. A second write is a
-   * follow-up: the first one moved the listing, so it is exempt from the
-   * revision guard and its refusal says that the claim already landed.
-   */
-  async function requestPass(kind: PassKind): Promise<void> {
-    if (ticket === null) return
-    const button = passButtons(
-      { id: ticket.id, status: ticket.status, blocked: ticket.blocked, assignee: ticket.assignee },
-      comments.map((comment) => comment.body),
-    ).find((entry) => entry.kind === kind)
-    if (button === undefined || !button.enabled) return
-    for (const [at, call] of button.calls.entries()) {
-      const written = await write(
-        call,
-        // The claim edits the ticket the sheet read, so it pins to that read;
-        // the comment follows the claim and is exempt from the guard.
-        call.method === 'ticket.set' ? (sheetRevision ?? revision) : null,
-        at === 0 ? undefined : CLAIM_CHANGED,
-      )
-      if (!written) return
-    }
-    setNotice(null)
   }
 
   async function moveToLane(lane: string | null): Promise<void> {
@@ -629,37 +602,6 @@ export function TicketSheet({
               </button>
               {detailsOpen ? (
                 <div className="sheet__details-body">
-                  <section className="sheet__passes" aria-label="Agent passes">
-                    <h2 className="sheet__section-title">
-                      Agent passes: a request the next dispatch picks up, never a run
-                    </h2>
-                    <ul className="sheet__pass-rows">
-                      {passButtons(
-                        {
-                          id: ticket.id,
-                          status: ticket.status,
-                          blocked: ticket.blocked,
-                          assignee: ticket.assignee,
-                        },
-                        comments.map((comment) => comment.body),
-                      ).map((button) => (
-                        <li key={button.kind} className="sheet__pass-row">
-                          <button
-                            type="button"
-                            className="sheet__button"
-                            disabled={!button.enabled}
-                            onClick={() => void requestPass(button.kind)}
-                          >
-                            {button.label}
-                          </button>
-                          {button.reason === null ? null : (
-                            <span className="sheet__pass-reason">{button.reason}</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-
                   <section className="sheet__dependencies" aria-label="Dependencies">
                     {ticket.blockedBy.length === 0 && ticket.blocks.length === 0 ? null : (
                       <>

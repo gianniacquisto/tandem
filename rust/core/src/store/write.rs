@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{Connection, params};
 
 use super::rows::{
-    NewComment, NewDependency, NewLane, NewProject, NewSetting, NewSprint, NewTicket, NewWorkflow,
+    NewComment, NewDependency, NewLane, NewProject, NewSetting, NewTicket, NewWorkflow,
     NewWorkflowStage,
 };
 use super::{Actor, Result};
@@ -134,30 +134,6 @@ impl Write<'_> {
         )
     }
 
-    pub fn insert_sprint(&self, sprint: NewSprint<'_>) -> Result<()> {
-        self.before_mutation()?;
-        self.execute(
-            "INSERT INTO workflow_runs
-                (lane, number, workflow, session, mode, batch, runs, close, status,
-                 opened_at, closed_at, author)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            params![
-                sprint.lane,
-                sprint.number,
-                sprint.workflow,
-                sprint.session,
-                sprint.mode,
-                sprint.batch,
-                sprint.runs,
-                sprint.close,
-                sprint.status,
-                sprint.opened_at,
-                sprint.closed_at,
-                self.actor.as_str(),
-            ],
-        )
-    }
-
     pub fn insert_setting(&self, setting: NewSetting<'_>) -> Result<()> {
         self.before_mutation()?;
         self.execute(
@@ -260,71 +236,10 @@ impl Write<'_> {
         self.execute("DELETE FROM workflows WHERE id = ?1", params![id])
     }
 
-    /// Whether the workflow_runs table carries a (lane, number). The sprints
-    /// domain is a read-modify-write in one transaction, so it asks inside the
-    /// write.
-    pub fn sprint_exists(&self, lane: &str, number: i64) -> Result<bool> {
-        self.connection
-            .query_row(
-                "SELECT COUNT(*) FROM workflow_runs WHERE lane = ?1 AND number = ?2",
-                params![lane, number],
-                |row| row.get::<_, i64>(0),
-            )
-            .map(|count| count > 0)
-            .map_err(|error| super::translate(error, self.connection))
-    }
-
     /// One setting's value inside this transaction: the row as it stands now,
     /// not as it read before the write began.
     pub fn setting(&self, key: &str) -> Result<Option<String>> {
-        super::records::setting(self.connection, key)
-    }
-
-    /// How many runs the workflow holds: the `workflow delete` refusal's count,
-    /// read inside the delete's own transaction so a run opening first cannot
-    /// slip past it.
-    pub fn workflow_run_count(&self, workflow: &str) -> Result<usize> {
-        self.connection
-            .query_row(
-                "SELECT COUNT(*) FROM workflow_runs WHERE workflow = ?1",
-                [workflow],
-                |row| row.get::<_, i64>(0),
-            )
-            .map(|count| count as usize)
-            .map_err(|error| super::translate(error, self.connection))
-    }
-
-    /// Replace a sprint row: `open` creates it, and `ticket`, `run` and
-    /// `close` each write the whole record back, because a sprint's batch and
-    /// run log are ordered lists that a column update cannot append to
-    /// truthfully.
-    pub fn update_sprint(&self, sprint: NewSprint<'_>) -> Result<()> {
-        self.before_mutation()?;
-        self.execute(
-            "UPDATE workflow_runs SET
-                workflow = ?3, session = ?4, mode = ?5, batch = ?6, runs = ?7,
-                close = ?8, status = ?9, opened_at = ?10, closed_at = ?11,
-                author = ?12
-             WHERE lane = ?1 AND number = ?2
-               AND (workflow IS NOT ?3 OR session IS NOT ?4 OR mode IS NOT ?5
-                    OR batch IS NOT ?6 OR runs IS NOT ?7 OR close IS NOT ?8
-                    OR status IS NOT ?9 OR opened_at IS NOT ?10
-                    OR closed_at IS NOT ?11 OR author IS NOT ?12)",
-            params![
-                sprint.lane,
-                sprint.number,
-                sprint.workflow,
-                sprint.session,
-                sprint.mode,
-                sprint.batch,
-                sprint.runs,
-                sprint.close,
-                sprint.status,
-                sprint.opened_at,
-                sprint.closed_at,
-                self.actor.as_str(),
-            ],
-        )
+        super::setting(self.connection, key)
     }
 
     /// The pre-write state, copied once, before this transaction modifies a

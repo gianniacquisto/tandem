@@ -706,15 +706,6 @@ pub(crate) fn behind(connection: &Connection) -> Result<bool> {
     }
 }
 
-/// Whether the file carries the workflow's run table (v10).
-///
-/// A read asks this rather than migrating (ADR 0031): a pre-v10 home answers its
-/// run rows from `sprints`, with the default workflow supplied, and nothing is
-/// written.
-pub(crate) fn has_workflow_runs(connection: &Connection) -> Result<bool> {
-    Ok(version(connection)?.unwrap_or(0) >= WORKFLOW_RUNS_VERSION)
-}
-
 /// Whether a store is behind the version this build writes.
 fn needs_migration(connection: &Connection) -> Result<bool> {
     if !has_table(connection, "schema_migrations")? {

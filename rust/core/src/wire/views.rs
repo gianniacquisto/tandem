@@ -12,7 +12,7 @@
 //!   drops `blockedReason` (also body text). `ticket show` and the write verbs'
 //!   receipts carry the whole ticket.
 //! - **`note` is a top-level key, present only when the write changed nothing.**
-//!   A re-run of `sprint open` or `lane add` is a success that says so, and the
+//!   A re-run of `lane add` is a success that says so, and the
 //!   note is how it says it.
 
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -23,7 +23,7 @@ use ts_rs::TS;
 use crate::bikeshed::{
     Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, Recovery, WriteRecord,
 };
-use crate::domain::sprint::{Sprint, WorkflowRun};
+
 use crate::domain::{
     Comment, InlineStyle, LaneDeletion, MarkdownBlock, MarkdownInline, Ticket, TicketBlock,
 };
@@ -266,36 +266,6 @@ impl ProjectList {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ArchivedView {
     pub archived: usize,
-}
-
-/// A sprint write's answer: the record, and the note when nothing changed.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SprintResult {
-    #[serde(flatten)]
-    pub sprint: Sprint,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub note: Option<String>,
-}
-
-/// `sprint list`: `{"sprints": [...]}`, newest first.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SprintList {
-    pub sprints: Vec<Sprint>,
-}
-
-/// A workflow run write's answer: the run, with the note when nothing changed.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct WorkflowRunResult {
-    #[serde(flatten)]
-    pub run: WorkflowRun,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub note: Option<String>,
-}
-
-/// `workflow run list`: `{"runs": [...]}`, newest first.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct WorkflowRunList {
-    pub runs: Vec<WorkflowRun>,
 }
 
 /// `note rename` / `note capture`: `{"path": ...}`, and the duplicate's note.

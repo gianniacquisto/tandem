@@ -19,14 +19,10 @@ use super::rpc::{
     NoteReadReply, NoteRecoveriesReply, NoteTreeParams, NoteTreeReply, NoteWriteParams,
     NoteWriteReply, Outcome, ProjectAddParams, ProjectDeleteParams, ProjectEntry, ProjectListReply,
     ProjectRenameParams, Reply, Request, Response, SettingsReply, SettingsSetParams,
-    SprintCloseParams, SprintListParams, SprintListReply, SprintOpenParams, SprintReply,
-    SprintRunParams, SprintShowParams, SprintTicketParams, TicketAddFromNoteParams,
-    TicketAddParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
-    TicketListReply, TicketMoveParams, TicketReply, TicketSetParams, TicketUnblockParams,
-    WireError, WorkflowIdParams, WorkflowListReply, WorkflowReply, WorkflowRunCloseParams,
-    WorkflowRunListParams, WorkflowRunListReply, WorkflowRunOpenParams, WorkflowRunReply,
-    WorkflowRunRunParams, WorkflowRunShowParams, WorkflowRunTicketParams, WorkflowSetParams,
-    WorkflowShowParams,
+    TicketAddFromNoteParams, TicketAddParams, TicketArchiveParams, TicketBlockParams,
+    TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams, TicketReply,
+    TicketSetParams, TicketUnblockParams, WireError, WorkflowIdParams, WorkflowListReply,
+    WorkflowReply, WorkflowSetParams, WorkflowShowParams,
 };
 use super::views::{
     BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
@@ -35,7 +31,6 @@ use super::views::{
 };
 use super::{DoctorCheck, DoctorReport};
 use crate::bikeshed::{BikeshedHealth, BikeshedHealthCounts, BrokenLink};
-use crate::domain::sprint::{Sprint, SprintMode, SprintStatus, WorkflowRun};
 use crate::domain::workflow::{Pass, StageBinding, StageRole, Workflow, WorkflowStage};
 
 /// Every generated file, by name, in a stable order.
@@ -162,71 +157,6 @@ pub fn files() -> Vec<(&'static str, String)> {
             LaneDeletionReply::export_to_string(&cfg),
         ),
         render("ArchivedReply.ts", ArchivedReply::export_to_string(&cfg)),
-        render(
-            "SprintListParams.ts",
-            SprintListParams::export_to_string(&cfg),
-        ),
-        render(
-            "SprintShowParams.ts",
-            SprintShowParams::export_to_string(&cfg),
-        ),
-        render(
-            "SprintOpenParams.ts",
-            SprintOpenParams::export_to_string(&cfg),
-        ),
-        render(
-            "SprintListReply.ts",
-            SprintListReply::export_to_string(&cfg),
-        ),
-        render("SprintReply.ts", SprintReply::export_to_string(&cfg)),
-        render("Sprint.ts", Sprint::export_to_string(&cfg)),
-        render("SprintMode.ts", SprintMode::export_to_string(&cfg)),
-        render("SprintStatus.ts", SprintStatus::export_to_string(&cfg)),
-        render(
-            "SprintTicketParams.ts",
-            SprintTicketParams::export_to_string(&cfg),
-        ),
-        render(
-            "SprintRunParams.ts",
-            SprintRunParams::export_to_string(&cfg),
-        ),
-        render(
-            "SprintCloseParams.ts",
-            SprintCloseParams::export_to_string(&cfg),
-        ),
-        render(
-            "WorkflowRunOpenParams.ts",
-            WorkflowRunOpenParams::export_to_string(&cfg),
-        ),
-        render(
-            "WorkflowRunTicketParams.ts",
-            WorkflowRunTicketParams::export_to_string(&cfg),
-        ),
-        render(
-            "WorkflowRunRunParams.ts",
-            WorkflowRunRunParams::export_to_string(&cfg),
-        ),
-        render(
-            "WorkflowRunCloseParams.ts",
-            WorkflowRunCloseParams::export_to_string(&cfg),
-        ),
-        render(
-            "WorkflowRunListParams.ts",
-            WorkflowRunListParams::export_to_string(&cfg),
-        ),
-        render(
-            "WorkflowRunShowParams.ts",
-            WorkflowRunShowParams::export_to_string(&cfg),
-        ),
-        render(
-            "WorkflowRunListReply.ts",
-            WorkflowRunListReply::export_to_string(&cfg),
-        ),
-        render(
-            "WorkflowRunReply.ts",
-            WorkflowRunReply::export_to_string(&cfg),
-        ),
-        render("WorkflowRun.ts", WorkflowRun::export_to_string(&cfg)),
         render(
             "NoteCaptureParams.ts",
             NoteCaptureParams::export_to_string(&cfg),
