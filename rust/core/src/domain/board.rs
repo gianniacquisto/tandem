@@ -18,8 +18,8 @@ use std::collections::{HashMap, HashSet};
 
 use uuid::Uuid;
 
-use crate::store::timestamp;
 use crate::store::{Actor, NewComment, Store};
+use crate::store::{decode, encode, unix_now};
 
 use super::comment::{Comment, CommentRead};
 use super::contents::Contents;
@@ -524,7 +524,7 @@ impl Board {
         let description = description::normalize(fields.description);
         self.mutate(|contents| {
             contents.validate_lane(fields.lane)?;
-            let now = timestamp::unix_now();
+            let now = unix_now();
             let mut ticket = Ticket::new(title);
             ticket.description = description.clone();
             ticket.assignee = assignee.clone();
@@ -572,7 +572,7 @@ impl Board {
             contents.validate_lane(lane)?;
             let before = contents.tickets.clone();
             let mut moved = contents.tickets.remove(from);
-            moved.set_status(status, timestamp::unix_now());
+            moved.set_status(status, unix_now());
             insert(&mut moved, lane, contents, at);
             let changed = contents.tickets != before;
             Ok((moved, changed))
@@ -588,7 +588,7 @@ impl Board {
             let index = contents.require_ticket(handle)?.1;
             let mut changed = false;
             if !contents.tickets[index].done() {
-                contents.tickets[index].set_status(Status::Done, timestamp::unix_now());
+                contents.tickets[index].set_status(Status::Done, unix_now());
                 changed = true;
             }
             Ok((contents.tickets[index].clone(), changed))
@@ -602,7 +602,7 @@ impl Board {
             let index = contents.require_ticket(handle)?.1;
             let mut changed = false;
             if contents.tickets[index].done() {
-                contents.tickets[index].set_status(Status::Backlog, timestamp::unix_now());
+                contents.tickets[index].set_status(Status::Backlog, unix_now());
                 changed = true;
             }
             Ok((contents.tickets[index].clone(), changed))
@@ -655,7 +655,7 @@ impl Board {
             if let Edit::Set(new_status) = fields.status
                 && ticket.status != new_status
             {
-                ticket.set_status(new_status, timestamp::unix_now());
+                ticket.set_status(new_status, unix_now());
                 changed = true;
             }
             if let Some(new_assignee) = &new_assignee
@@ -854,7 +854,7 @@ impl Board {
         }
         let comment = Comment {
             author: author.trim().to_string(),
-            at: timestamp::unix_now(),
+            at: unix_now(),
             body: text.to_string(),
         };
         let handle = handle.to_string();
@@ -887,7 +887,7 @@ impl Board {
                 &record.author,
                 NewComment {
                     ticket_id: &ticket_id,
-                    at: &timestamp::encode(record.at),
+                    at: &encode(record.at),
                     body: &record.body,
                 },
             )
@@ -979,7 +979,7 @@ fn map_store_error(error: crate::store::StoreError) -> DomainError {
 /// One comment row as the domain reads it: its stamp decoded or the row named
 /// as unreadable. The read path and the snapshot path share this conversion.
 fn comment_from_row(row: crate::store::board_rows::CommentRow) -> Result<Comment, DomainError> {
-    let at = timestamp::decode(&row.at).ok_or_else(|| {
+    let at = decode(&row.at).ok_or_else(|| {
         DomainError::Io(format!(
             "a comment row carries an unreadable timestamp \"{}\"",
             row.at

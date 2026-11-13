@@ -806,7 +806,7 @@ mod tests {
     /// case that uses it.
     #[cfg(unix)]
     fn store_without_a_revision(name: &str) -> (std::path::PathBuf, Store) {
-        use crate::store::{Home, NewSetting};
+        use crate::store::{Home, NewProject};
 
         let root =
             std::env::temp_dir().join(format!("tandem-rpc-watch-{name}-{}", std::process::id()));
@@ -815,9 +815,9 @@ mod tests {
         let store = Store::new(home);
         store
             .write(&Actor::Human, |write| {
-                write.insert_setting(NewSetting {
-                    key: "k",
-                    value: "v",
+                write.insert_project(NewProject {
+                    name: "probe",
+                    position: 0,
                 })
             })
             .expect("the first write creates the schema");
@@ -872,7 +872,7 @@ mod tests {
 
     /// A home with one write, so the watch can attach and read a revision.
     fn store_with_a_revision(name: &str) -> (std::path::PathBuf, Store) {
-        use crate::store::{Home, NewSetting};
+        use crate::store::{Home, NewProject};
 
         let root =
             std::env::temp_dir().join(format!("tandem-rpc-watch-{name}-{}", std::process::id()));
@@ -881,9 +881,9 @@ mod tests {
         let store = Store::new(home);
         store
             .write(&Actor::Human, |write| {
-                write.insert_setting(NewSetting {
-                    key: "k",
-                    value: "v",
+                write.insert_project(NewProject {
+                    name: "probe",
+                    position: 0,
                 })
             })
             .expect("the first write creates the schema");
@@ -970,7 +970,7 @@ mod tests {
     // to two seconds so scheduling jitter cannot flake it.
     #[test]
     fn a_write_from_another_store_reports_changed_quickly() {
-        use crate::store::NewSetting;
+        use crate::store::NewProject;
 
         let (root, store) = store_with_a_revision("latency");
         let store = Arc::new(store);
@@ -1002,9 +1002,9 @@ mod tests {
         let started = std::time::Instant::now();
         store
             .write(&Actor::Human, |write| {
-                write.insert_setting(NewSetting {
-                    key: "k2",
-                    value: "v2",
+                write.insert_project(NewProject {
+                    name: "probe2",
+                    position: 0,
                 })
             })
             .expect("the other writer writes");

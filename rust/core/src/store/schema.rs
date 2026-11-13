@@ -21,11 +21,11 @@
 
 use rusqlite::{Connection, params};
 
-use super::{Actor, Result, StoreError, timestamp, translate};
+use super::{Actor, Result, StoreError, now, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 10;
+pub const CURRENT_VERSION: i64 = 11;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -86,6 +86,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: WORKFLOW_RUNS_VERSION,
         name: "the workflow runs and the orphan-open sweep",
         apply: version_ten,
+    },
+    Migration {
+        version: DEAD_TABLES_VERSION,
+        name: "the dead tables",
+        apply: version_eleven,
     },
 ];
 
@@ -521,6 +526,35 @@ fn version_ten(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(&version_ten_sql())
 }
 
+/// The version that drops the tables the cut retired (CUT-9).
+pub(crate) const DEAD_TABLES_VERSION: i64 = 11;
+
+/// Version 11: the five dead tables leave the store, fresh home and migrated
+/// home alike.
+///
+/// The cut retired sessions, sprints, workflows and settings from the domain
+/// (CUT-4, CUT-5, CUT-6), so the tables that held them are drops, not history a
+/// reader still needs. The seven live tables stay: `tickets`,
+/// `ticket_dependencies`, `comments`, `lanes`, `projects`, `store_meta` and
+/// `schema_migrations`. A fresh home walks every migration and lands on the
+/// same seven; a home at v10 loses only the rows of tables nothing reads.
+///
+/// `workflow_runs` is the name v10 gave `sprints`, and `sprints` is dropped too
+/// so a file that somehow reached this version without the rename cannot keep
+/// the table alive.
+const VERSION_ELEVEN: &str = "
+DROP TABLE IF EXISTS workflow_stages;
+DROP TABLE IF EXISTS workflows;
+DROP TABLE IF EXISTS workflow_runs;
+DROP TABLE IF EXISTS sprints;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS settings;
+";
+
+fn version_eleven(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(VERSION_ELEVEN)
+}
+
 fn version_seven(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_SEVEN)?;
     connection.execute(
@@ -624,7 +658,7 @@ pub(crate) fn migrate_with(
                 .execute(
                     "INSERT INTO schema_migrations (version, applied_at, author)
                      VALUES (?1, ?2, ?3)",
-                    params![migration.version, timestamp::now(), actor.as_str()],
+                    params![migration.version, now(), actor.as_str()],
                 )
                 .map_err(|error| translate(error, connection))?;
             Ok(())

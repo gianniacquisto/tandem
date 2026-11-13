@@ -21,6 +21,7 @@
 //! file set; there is no stored index.
 
 pub mod health;
+pub(crate) mod locked;
 pub mod stats;
 pub mod wikilink;
 
@@ -34,7 +35,8 @@ use sha2::{Digest, Sha256};
 use crate::domain::error::{DomainError, DomainResult};
 use crate::domain::operation::Operation;
 use crate::store::StoreError;
-use crate::store::locked::LockedDirectory;
+
+use self::locked::LockedDirectory;
 
 use self::wikilink::{LinkOccurrence, LinkResolution, NoteIndex, link_occurrences, rewrite_links};
 
@@ -929,7 +931,7 @@ fn collect_recoveries(directory: &Path, relative: &str, found: &mut Vec<Recovery
             collect_recoveries(&path, &child, found);
             continue;
         }
-        if name.starts_with(crate::store::locked::BIKESHED_TEMP_PREFIX) && name.ends_with(".tmp") {
+        if name.starts_with(locked::BIKESHED_TEMP_PREFIX) && name.ends_with(".tmp") {
             found.push(Recovery {
                 file: child,
                 bytes: metadata.len(),

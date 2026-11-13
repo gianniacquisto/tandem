@@ -219,5 +219,5 @@ fn the_json_keeps_both_queue_age_keys_present_as_null() {
 fn the_planted_stamp_matches_the_suites_instant() {
     // The planted filenames above are only the suite's own words if the stamp
     // spells the instant the fixture names.
-    assert_eq!(crate::store::timestamp::encode(INSTANT), INSTANT_ISO);
+    assert_eq!(crate::store::encode(INSTANT), INSTANT_ISO);
 }

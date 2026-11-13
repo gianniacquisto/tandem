@@ -16,7 +16,7 @@
 //! - [`bikeshed`]: the notes vault (PRT-7), a plain folder of markdown files
 //!   rather than rows: the tree, the note operations, the wikilink scanner, the
 //!   derived readers (search, backlinks, health, front page, stats) and the
-//!   capture layer. It shares the store's locked-write mechanics and no SQL.
+//!   capture layer. It carries its own locked-write mechanics and no SQL.
 //!
 //! - [`env`]: the run's environment as one injectable value, so a test names a
 //!   throwaway home and a fixture instead of the process's own.
