@@ -1582,20 +1582,6 @@ export function toggleTask(state: EditorState, block: number, row: number): Edit
   return replaceBlockState(state, block, { ...surface, rows })
 }
 
-/** The text Mod+Shift+T files: the selection, or the caret's task line. */
-export function candidateText(state: EditorState): string {
-  const selected = selectedText(state)
-  if (selected !== '') return selected
-  const position = state.selection.head
-  const surface = state.blocks[position.block]
-  if (surface === undefined) return ''
-  if (surface.kind === 'task' && surface.rows[position.row]?.checked === true) {
-    return `- [x] ${rowText(surface, position.row)}`
-  }
-  if (surface.kind === 'task') return `- [ ] ${rowText(surface, position.row)}`
-  return ''
-}
-
 /* ---------------------------------------------------------------- history */
 
 /** Snapshot the state before an edit; a typing run joins the previous step. */

@@ -9,6 +9,7 @@ import {
   boardColumns,
   boardStatuses,
   boardTickets,
+  boardAssignees,
   dropCalls,
   dropIndex,
   emptyBoardCopy,
@@ -38,8 +39,6 @@ import { TicketList } from './TicketList'
 export type TicketsFaceProps = {
   snapshot: SnapshotState
   view: View
-  /** The store's roster: the names the assignee filter offers (`settings.get`). */
-  roster: string[]
   /** The stored focus: the project the face draws, or null for every project. */
   activeProject: string | null
   /** Persist a new focus; null clears back to every project. */
@@ -70,14 +69,13 @@ const SCOPES: ReadonlyArray<{ value: Scope; label: string }> = [
  * `ticket.move`), and a write aimed at a revision the listing no longer shows is
  * refused by the shell's guard rather than landing on top of somebody else's.
  *
- * The board draws one column per workflow stage and ignores the Open/Done/All
+ * The board draws one column per fixed status and ignores the Open/Done/All
  * scope: the columns are the statuses. The list keeps its scopes, its status
- * filter and its quick-add. Both follow the one stored project focus.
+ * filter and its quick-add. Both follow the one project focus.
  */
 export function TicketsFace({
   snapshot,
   view,
-  roster,
   activeProject,
   onPickProject,
   onReload,
@@ -116,8 +114,7 @@ export function TicketsFace({
   const columns = laneColumns(snapshot.lanes, listVisible).filter((column) =>
     focus === null ? true : column.key !== null && focus.includes(column.key),
   )
-  const stages = snapshot.workflow?.stages ?? null
-  const statuses = boardStatuses(stages)
+  const statuses = boardStatuses()
   // The board's set: every non-archived ticket, narrowed by the focus and the
   // header filters. The scope and the status filter are the list's.
   const boardVisible = boardTickets(snapshot.tickets, {
@@ -126,14 +123,16 @@ export function TicketsFace({
     assignee: filters.assignee,
     text: filters.text,
   })
-  const boardCols = boardColumns(boardVisible, stages)
+  const boardCols = boardColumns(boardVisible)
   const order = columns.flatMap((column) => column.tickets)
 
-  // The one helper the sheet's picker draws: Unassigned, `human`, the store's
-  // roster, then the name this filter is narrowing to when it is off-roster
-  // (PRT-38). The rows are not the source: a stored name with no ticket has no
-  // row to be derived from.
-  const assignees = assigneeChoices(roster, filters.assignee === '' ? null : filters.assignee)
+  // The one helper the sheet's picker draws: Unassigned, `human`, the names
+  // the board's rows carry, then the name this filter is narrowing to when it
+  // is off-board. A stale filter value still answers its own option.
+  const assignees = assigneeChoices(
+    boardAssignees(snapshot.tickets),
+    filters.assignee === '' ? null : filters.assignee,
+  )
 
   function scopeCount(scope: Scope): number {
     return scope === 'open' ? counts.open : scope === 'done' ? counts.done : counts.all
@@ -367,7 +366,7 @@ export function TicketsFace({
     onReload,
   )
   // A store that has not answered yet draws its message alone. Once it has, the
-  // board's columns are the workflow's stages and exist with zero tickets, so
+  // board's columns are the fixed statuses and exist with zero tickets, so
   // the board draws them (with their add feet) and the copy sits above: the
   // copy names an add the human can reach, and the add shortcut has a target.
   const firstRead = snapshot.tickets.length === 0 && snapshot.status !== 'ready'
@@ -566,7 +565,6 @@ export function TicketsFace({
           empty ?? (
             <TicketList
               columns={columns}
-              stages={stages}
               selected={current}
               onSelect={setSelected}
               onToggle={toggle}

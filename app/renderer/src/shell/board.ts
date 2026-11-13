@@ -1,6 +1,5 @@
 import type { Method } from '../../../src/shared/bridge'
 import type { TicketSummary } from '../wire/TicketSummary'
-import type { WorkflowStage } from '../wire/WorkflowStage'
 
 /**
  * The Tickets face's geometry: which tickets are in view, how the board's
@@ -13,8 +12,8 @@ import type { WorkflowStage } from '../wire/WorkflowStage'
  * narrows it locally: the snapshot is the whole store, so the stored order the
  * list's drop arithmetic needs is always the same array the rows came from.
  *
- * The board's axis is the workflow stage: `boardColumns` draws one column per
- * stage and `dropCalls` answers the one `ticket.set` a drop makes. A lane is a
+ * The board's axis is the fixed status: `boardColumns` draws one column per
+ * status and `dropCalls` answers the one `ticket.set` a drop makes. A lane is a
  * label on the card and a filter, never a row. The list keeps the lane axis:
  * `laneColumns` groups its rows and `dropIndex` orders inside a lane.
  */
@@ -74,14 +73,13 @@ export const INITIAL_FILTERS: Filters = {
 export type StatusChoice = { value: string; label: string }
 
 /**
- * The seven default stages in workflow order, with the words every face draws.
- * This is the fallback the faces use before the active workflow's read lands, so
- * a first frame draws the board's familiar columns and never an empty one.
+ * The six fixed statuses in workflow order, with the words every face draws.
+ * The list is the domain's (`Status::WORKFLOW`), restated here because the
+ * renderer holds no core call for it.
  */
 export const STATUSES: ReadonlyArray<StatusChoice> = [
   { value: 'backlog', label: 'Backlog' },
   { value: 'on-hold', label: 'On hold' },
-  { value: 'selected', label: 'Selected for development' },
   { value: 'ready', label: 'Ready' },
   { value: 'in-progress', label: 'In progress' },
   { value: 'in-review', label: 'In Review' },
@@ -90,33 +88,17 @@ export const STATUSES: ReadonlyArray<StatusChoice> = [
 
 export const UNCATEGORIZED = 'Uncategorized'
 
-/**
- * The stages a face draws, from the active workflow's ordered list. Null or
- * absent is the default, which reproduces today's seven exactly.
- */
-export function stageChoices(
-  stages?: readonly WorkflowStage[] | null,
-): ReadonlyArray<StatusChoice> {
-  if (stages === undefined || stages === null || stages.length === 0) return STATUSES
-  return stages.map((stage) => ({ value: stage.key, label: stage.label }))
-}
-
-export function statusLabel(
-  status: string,
-  stages?: readonly WorkflowStage[] | null,
-): string {
-  return stageChoices(stages).find((entry) => entry.value === status)?.label ?? status
+/** The phrase one status draws, or its key when a stored row names an unknown one. */
+export function statusLabel(status: string): string {
+  return STATUSES.find((entry) => entry.value === status)?.label ?? status
 }
 
 /**
- * The board's columns: the active workflow's stages in order, so the board
- * reads left to right as the store declares it. A custom stage appears here
- * without a code change; the default reproduces the seven.
+ * The board's columns: the six fixed statuses in order. The store validates
+ * every write against the same six, so a column never needs a workflow read.
  */
-export function boardStatuses(
-  stages?: readonly WorkflowStage[] | null,
-): ReadonlyArray<StatusChoice> {
-  return stageChoices(stages)
+export function boardStatuses(): ReadonlyArray<StatusChoice> {
+  return STATUSES
 }
 
 /** The reserved assignee: the human, spelled the same in every face. */
@@ -163,6 +145,24 @@ export function assigneeChoices(
     label: value === null ? 'Unassigned' : (assigneeLabel(value) ?? value),
     selected: value === current,
   }))
+}
+
+/**
+ * The assignee names the board's rows carry, in first-appearance order: the
+ * filter's choices, derived from the tickets present because the store holds
+ * no roster any more.
+ */
+export function boardAssignees(tickets: readonly TicketSummary[]): string[] {
+  const seen = new Set<string>()
+  const names: string[] = []
+  for (const ticket of tickets) {
+    if (ticket.assignee === null) continue
+    const name = ticket.assignee.trim()
+    if (name === '' || seen.has(name)) continue
+    seen.add(name)
+    names.push(name)
+  }
+  return names
 }
 
 /**
@@ -416,17 +416,14 @@ export function boardTickets(
 }
 
 /**
- * The board's columns: one per stage of the active workflow, in stage order,
- * Done included. Each holds exactly the tickets standing at that status, in the
- * order the store gave them (the store's array is lane-grouped, so a column
- * reads lane by lane and then in each lane's own order), and no ticket appears
- * twice. Empty columns stay, so every stage is a drop target.
+ * The board's columns: one per fixed status, in order, Done included. Each
+ * holds exactly the tickets standing at that status, in the order the store
+ * gave them (the store's array is lane-grouped, so a column reads lane by lane
+ * and then in each lane's own order), and no ticket appears twice. Empty
+ * columns stay, so every status is a drop target.
  */
-export function boardColumns(
-  tickets: readonly TicketSummary[],
-  stages?: readonly WorkflowStage[] | null,
-): BoardColumn[] {
-  return boardStatuses(stages).map((status) => ({
+export function boardColumns(tickets: readonly TicketSummary[]): BoardColumn[] {
+  return boardStatuses().map((status) => ({
     status: status.value,
     label: status.label,
     tickets: tickets.filter((ticket) => ticket.status === status.value),

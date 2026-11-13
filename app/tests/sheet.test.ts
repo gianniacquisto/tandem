@@ -523,17 +523,22 @@ describe('the sheet metadata row (UI-34)', () => {
     expect(descriptionAt).toBeGreaterThan(metaAt)
   })
 
-  it('the_sheet_status_menu_carries_selected_for_development', () => {
+  it('the_sheet_status_menu_carries_the_six_fixed_statuses', () => {
     const sheet = source('faces/TicketSheet.tsx')
-    expect(sheet).toContain('boardStatuses(stages).map((entry) => (')
-    const selected = boardStatuses().find((status) => status.value === 'selected')
-    expect(selected?.label).toBe('Selected for development')
+    expect(sheet).toContain('boardStatuses().map((entry) => (')
+    expect(boardStatuses().map((status) => status.value)).toEqual([
+      'backlog',
+      'on-hold',
+      'ready',
+      'in-progress',
+      'in-review',
+      'done',
+    ])
   })
 
-  it('reuses the three option helpers, with no second option list beside them', () => {
+  it('reuses the sheet helpers, with no second option list beside them', () => {
     const sheet = source('faces/TicketSheet.tsx')
     expect(sheet.match(/boardStatuses\(/g)?.length).toBe(1)
-    expect(sheet.match(/assigneeChoices\(/g)?.length).toBe(1)
     expect(sheet.match(/laneChoices\(/g)?.length).toBe(1)
     expect(sheet).toContain('moveToLane')
     expect(sheet).toContain("method: 'ticket.move'")

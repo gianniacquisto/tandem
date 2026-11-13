@@ -5,7 +5,7 @@ import type { TicketSummary } from '../wire/TicketSummary'
 import { BoardCard } from './BoardCard'
 
 export type BoardLayoutProps = {
-  /** One column per workflow stage, in stage order. */
+  /** One column per fixed status, in status order. */
   columns: BoardColumn[]
   selected: string | null
   onSelect: (id: string) => void
@@ -21,8 +21,7 @@ export type BoardLayoutProps = {
 }
 
 /**
- * The board: one column per stage of the active workflow, in stage order, Done
- * included. Each column is its own scroll pane with a sticky head naming the
+ * The board: one column per fixed status, in status order, Done included. Each column is its own scroll pane with a sticky head naming the
  * stage and the number of cards in it, and its foot carries the column's add.
  *
  * A card is the lane chip, the title and its footer. A drop on a column is one

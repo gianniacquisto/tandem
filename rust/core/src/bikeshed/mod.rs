@@ -38,7 +38,6 @@ use sha2::{Digest, Sha256};
 
 use crate::domain::error::{DomainError, DomainResult};
 use crate::domain::operation::Operation;
-use crate::domain::ticket_to_note::Notes;
 use crate::store::StoreError;
 use crate::store::locked::LockedDirectory;
 
@@ -878,38 +877,6 @@ impl Bikeshed {
     }
 }
 
-impl Notes for Bikeshed {
-    fn write_new(&self, path: &str, text: &str) -> Result<String, String> {
-        self.validate_new_name(path)
-            .map_err(|error| error.message())?;
-        self.locked(|| {
-            // A folder that is really a file blocks every candidate: the path is
-            // uncreatable.
-            if let Some(taken) = self.file_collision(path, false) {
-                return Err(DomainError::NoteAlreadyExists(taken));
-            }
-            let mut candidate = path.to_string();
-            let mut suffix = 2;
-            while self.file_url(&candidate).is_some_and(|url| url.exists()) {
-                candidate = variant(path, suffix);
-                suffix += 1;
-            }
-            let Some(url) = self.file_url(&candidate) else {
-                return Err(DomainError::InvalidName(candidate));
-            };
-            self.atomic_write(text.as_bytes(), &url)?;
-            Ok(candidate)
-        })
-        .map_err(|error| error.message())
-    }
-
-    fn delete(&self, path: &str) -> Result<(), String> {
-        self.delete(path)
-            .map(|_| ())
-            .map_err(|error| error.message())
-    }
-}
-
 // MARK: - Shared helpers
 
 fn translate_store(error: StoreError) -> DomainError {
@@ -1068,14 +1035,6 @@ fn canonical_link_target(new_path: &str, post_move: &HashSet<String>) -> String 
         bare.to_string()
     } else {
         strip_md(new_path).to_string()
-    }
-}
-
-/// A `path` with `-<suffix>` before its `.md`, for `write_new`'s free variant.
-fn variant(path: &str, suffix: u32) -> String {
-    match path.strip_suffix(".md") {
-        Some(stem) => format!("{stem}-{suffix}.md"),
-        None => format!("{path}-{suffix}"),
     }
 }
 

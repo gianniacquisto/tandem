@@ -90,7 +90,6 @@ function sheetProps(extra?: Partial<Parameters<typeof TicketSheet>[0]>): Paramet
   return {
     ticketId: ticket.id,
     lanes: ['Tandem', 'Retro'],
-    roster: ['builder', 'human'],
     revision: 7,
     onWrite: async () => ({ ok: true }),
     onDismiss: vi.fn(),
@@ -282,19 +281,24 @@ describe('the sheet boundary (TAN-312)', () => {
 })
 
 /** The sheet's three metadata controls, by the label the human reads. */
-function control(host: HTMLElement, label: string): HTMLSelectElement {
-  const found = host.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`)
+function control(host: HTMLElement, label: string): HTMLInputElement | HTMLSelectElement {
+  const found = host.querySelector<HTMLInputElement | HTMLSelectElement>(
+    `[aria-label="${label}"]`,
+  )
   if (found === null) throw new Error(`the sheet draws no ${label} control`)
   return found
 }
 
 /** A pick through the control's own event, as a keyboard or a click makes it. */
 function pick(host: HTMLElement, label: string, value: string): void {
-  const select = control(host, label)
+  const element = control(host, label)
   // The native setter, so React's tracked value sees the change: assigning
-  // `select.value` directly leaves the tracker holding the old value.
-  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, value)
-  select.dispatchEvent(new window.Event('change', { bubbles: true }))
+  // `element.value` directly leaves the tracker holding the old value.
+  const prototype =
+    element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype
+  Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(element, value)
+  element.dispatchEvent(new window.Event('input', { bubbles: true }))
+  element.dispatchEvent(new window.Event('change', { bubbles: true }))
 }
 
 async function press(host: HTMLElement, selector: string): Promise<void> {
@@ -320,7 +324,7 @@ describe('the sheet metadata row (UI-34)', () => {
       expect(row).not.toBeNull()
       // The three facts, in the row and out of the collapsed Details.
       expect(row?.querySelector('select[aria-label="Status"]')).not.toBeNull()
-      expect(row?.querySelector('select[aria-label="Assignee"]')).not.toBeNull()
+      expect(row?.querySelector('input[aria-label="Assignee"]')).not.toBeNull()
       expect(row?.querySelector('select[aria-label="Lane"]')).not.toBeNull()
       // The status dot rides beside its select, so the colour reads with it.
       expect(row?.querySelector('.sheet__status-dot')).not.toBeNull()

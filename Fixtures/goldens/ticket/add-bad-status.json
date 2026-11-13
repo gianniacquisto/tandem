@@ -9,7 +9,7 @@
   ],
   "exit": 1,
   "stderr": [
-    "Unknown stage \"nope\". The active workflow's stages are: backlog, on-hold, selected, ready, in-progress, in-review, done."
+    "status must be one of backlog, on-hold, ready, in-progress, in-review, done (got \"nope\")."
   ],
   "stdin": "",
   "stdout": [],

@@ -16,7 +16,6 @@ import {
   applyCommand,
   applyShortcut,
   backspace,
-  candidateText,
   commitBlockSource,
   deleteForward,
   deleteSelection,
@@ -63,7 +62,6 @@ export type BikeshedBlocksProps = {
   /** Changes when the note is opened or adopted, so the host takes focus. */
   focusToken: number
   onChange: (next: Document) => void
-  onSendToTodos: (text: string) => void
   /** Every note path in the face's index, for chips and the `[[` picker. */
   noteIndex?: string[]
   /** Open a resolved note; the chip and a bikeshed link call it. */
@@ -118,7 +116,6 @@ export function BikeshedBlocks({
   document: doc,
   focusToken,
   onChange,
-  onSendToTodos,
   noteIndex = [],
   onOpenNote,
   readOnly = false,
@@ -549,16 +546,6 @@ export function BikeshedBlocks({
       pending.current = result.state.selection
       lastText.current = serialiseDocument(toDocument(result.state))
       onChange(toDocument(result.state))
-      return
-    }
-    if (mod && event.shiftKey && key === 't') {
-      event.preventDefault()
-      const current = readSelection(target)
-      const selected =
-        current === null
-          ? stateRef.current
-          : withSelection(stateRef.current, current.anchor, current.head)
-      onSendToTodos(candidateText(selected))
       return
     }
     if (mod && !event.shiftKey && key === 'a') {

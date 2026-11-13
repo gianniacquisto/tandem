@@ -37,10 +37,9 @@ use std::time::{Duration, Instant};
 
 use crate::bikeshed::{Bikeshed, CaptureKind};
 use crate::diagnostics;
-use crate::domain::workflow::{WorkflowDraft, Workflows};
 use crate::domain::{
-    AddTicket, Board, DescriptionBody, DomainError, Edit, Settings, Status, TicketQuery,
-    resolve_assignee, resolve_origin,
+    AddTicket, Board, DescriptionBody, DomainError, Edit, Status, TicketQuery, resolve_assignee,
+    resolve_origin,
 };
 use crate::env::Environment;
 use crate::store::{Actor, Store};
@@ -48,8 +47,7 @@ use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, LaneDeletionReply,
     LaneListReply, MarkdownReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply,
     NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, ProjectEntry,
-    ProjectListReply, Reply, Request, Response, SettingsReply, TicketListReply, TicketReply,
-    WireError, WorkflowListReply, WorkflowReply,
+    ProjectListReply, Reply, Request, Response, TicketListReply, TicketReply, WireError,
 };
 use crate::wire::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
@@ -418,11 +416,6 @@ fn execute(
                 params.blocked,
             )
             .map_err(domain)?;
-            if params.status.is_some() {
-                for status in &query.statuses {
-                    board.validate_status(status).map_err(domain)?;
-                }
-            }
             let (tickets, revision) = board.list_snapshot(&query).map_err(domain)?;
             Ok(Reply::TicketList(TicketListReply {
                 revision,
@@ -439,7 +432,7 @@ fn execute(
         Method::TicketAdd(params) => {
             let status = match params.status.as_deref() {
                 Some(raw) => Status::parse(raw).map_err(domain)?,
-                None => board.landing_status().map_err(domain)?,
+                None => Status::Backlog,
             };
             let assignee = resolve_assignee(params.assignee.as_deref(), actor).map_err(domain)?;
             let origin = resolve_origin(params.origin.as_deref(), actor).map_err(domain)?;
@@ -455,28 +448,6 @@ fn execute(
                         status,
                         assignee: assignee.as_deref(),
                         description: description.as_deref(),
-                        origin: &origin,
-                    },
-                )
-                .map_err(domain)?;
-            Ok(ticket_receipt(&ticket, store))
-        }
-        Method::TicketAddFromNote(params) => {
-            let status = match params.status.as_deref() {
-                Some(raw) => Status::parse(raw).map_err(domain)?,
-                None => board.landing_status().map_err(domain)?,
-            };
-            let assignee = resolve_assignee(params.assignee.as_deref(), actor).map_err(domain)?;
-            let origin = resolve_origin(params.origin.as_deref(), actor).map_err(domain)?;
-            let ticket = board
-                .add_from_note(
-                    params.text.as_deref().unwrap_or(""),
-                    named(&params.note),
-                    AddTicket {
-                        lane: params.lane.as_deref(),
-                        status,
-                        assignee: assignee.as_deref(),
-                        description: None,
                         origin: &origin,
                     },
                 )
@@ -574,64 +545,6 @@ fn execute(
             Ok(Reply::CommentList(CommentListReply {
                 revision,
                 comments: comments.iter().map(CommentView::new).collect(),
-            }))
-        }
-        Method::SettingsGet(_) => {
-            // The roster is a `settings` row, and the picking is the domain's
-            // (`domain::Settings`): a default for a home that never stored one,
-            // the stored list over it, and an explicitly empty list as empty.
-            // The focus answers on the same read, resolved against the declared
-            // projects, so a stale focus is no focus. The read is rows and no
-            // lock: the store opens, answers and closes inside `Store::setting`.
-            let settings = Settings::new(store);
-            let roster = settings.roster().map_err(domain)?;
-            let projects: Vec<String> = board
-                .projects()
-                .map_err(domain)?
-                .into_iter()
-                .map(|project| project.name)
-                .collect();
-            let active_project = settings.active_project(&projects).map_err(domain)?;
-            Ok(Reply::Settings(SettingsReply {
-                roster,
-                active_project,
-            }))
-        }
-        Method::SettingsSet(params) => {
-            // One write, two axes: each is applied only when its key is
-            // present, so a roster Save leaves the focus alone and a focus
-            // pick leaves the roster alone. The focus resolves first, so a
-            // refused lane writes nothing, not even the spelled roster. A
-            // frame that spells neither key is the legacy bare write: it
-            // clears the focus and leaves the roster alone, because on the
-            // wire an explicit null reads as absent, and clearing the focus
-            // must never empty the roster. The receipt is what the store
-            // holds after both axes, so the face redraws from this reply,
-            // never from its request's echo, and the revision moves, so the
-            // faces re-read on the change event.
-            let settings = Settings::new(store);
-            let projects: Vec<String> = board
-                .projects()
-                .map_err(domain)?
-                .into_iter()
-                .map(|project| project.name)
-                .collect();
-            let active_project = match params.project.as_deref() {
-                Some(project) => settings
-                    .set_active_project(actor, Some(project), &projects)
-                    .map_err(domain)?,
-                None if params.roster.is_none() => settings
-                    .set_active_project(actor, None, &projects)
-                    .map_err(domain)?,
-                None => settings.active_project(&projects).map_err(domain)?,
-            };
-            let roster = match params.roster {
-                Some(roster) => settings.set_roster(actor, roster).map_err(domain)?,
-                None => settings.roster().map_err(domain)?,
-            };
-            Ok(Reply::Settings(SettingsReply {
-                roster,
-                active_project,
             }))
         }
         Method::MarkdownBlocks(params) => {
@@ -759,63 +672,6 @@ fn execute(
                         lanes: entry.lanes,
                     })
                     .collect(),
-            }))
-        }
-        Method::WorkflowList(_) => {
-            let workflows = Workflows::new(store);
-            let (list, revision) = workflows.list_snapshot().map_err(domain)?;
-            let active = Workflows::new(store).active().map_err(domain)?.id;
-            Ok(Reply::WorkflowList(WorkflowListReply {
-                revision,
-                workflows: list,
-                active,
-            }))
-        }
-        Method::WorkflowShow(params) => {
-            let workflows = Workflows::new(store);
-            let (workflow, revision) = match params
-                .id
-                .as_deref()
-                .map(str::trim)
-                .filter(|id| !id.is_empty())
-            {
-                Some(id) => workflows.get_snapshot(id).map_err(domain)?,
-                None => workflows.active_snapshot().map_err(domain)?,
-            };
-            Ok(Reply::Workflow(WorkflowReply { revision, workflow }))
-        }
-        Method::WorkflowSet(params) => {
-            let draft = WorkflowDraft {
-                name: params.name.clone().unwrap_or_default(),
-                scope: params.scope.clone().unwrap_or_else(|| "home".to_string()),
-                stages: params.stages.clone(),
-            };
-            let workflow = Workflows::new(store)
-                .set(actor, params.id.as_deref(), draft)
-                .map_err(domain)?;
-            Ok(Reply::Workflow(WorkflowReply {
-                revision: store.last_revision(),
-                workflow,
-            }))
-        }
-        Method::WorkflowUse(params) => {
-            let workflow = Workflows::new(store)
-                .use_workflow(actor, params.id.as_deref().unwrap_or(""))
-                .map_err(domain)?;
-            Ok(Reply::Workflow(WorkflowReply {
-                revision: store.last_revision(),
-                workflow,
-            }))
-        }
-        Method::WorkflowDelete(params) => {
-            let workflows = Workflows::new(store)
-                .delete(actor, params.id.as_deref().unwrap_or(""))
-                .map_err(domain)?;
-            let active = Workflows::new(store).active().map_err(domain)?.id;
-            Ok(Reply::WorkflowList(WorkflowListReply {
-                revision: store.last_revision(),
-                workflows,
-                active,
             }))
         }
         Method::DoctorReport(_) => Ok(Reply::Doctor(DoctorReply {

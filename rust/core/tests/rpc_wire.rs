@@ -14,7 +14,7 @@ mod support;
 use serde_json::{Value, json};
 use support::Sandbox;
 use tandem_core::domain::DomainError;
-use tandem_core::store::{Actor, NewSetting};
+use tandem_core::store::Actor;
 use tandem_core::wire::rpc::{METHODS, Request};
 
 fn frame(id: u64, method: &str, params: Value) -> String {
@@ -75,241 +75,31 @@ fn the_read_methods_without_a_cli_verb_are_named_here() {
             "note.read",
             "note.backlinks",
             "note.recoveries",
-            "settings.get",
             "markdown.blocks",
         ],
         "a read with no CLI verb joins this list deliberately"
     );
 }
 
-/// The sheet's assignee picker and the board's filter read the store's roster,
-/// not the board's rows (PRT-38): a roster name with no ticket has no row to be
-/// derived from, and a fresh home has no rows at all. The read answers the
-/// stored list, its default when the human never edited one, and empty when the
-/// human emptied it.
+/// The workflow's stage set, the settings face and the note-to-ticket write
+/// left the application (ADR 0045): the wire speaks none of them, so an app or
+/// an agent can no longer reach a surface the domain no longer keeps.
 #[test]
-fn a_settings_read_answers_the_stores_roster() {
-    let roster = |home: &str, stored: Option<&str>| -> Value {
-        let sandbox = Sandbox::new(home);
-        let store = sandbox.store();
-        if let Some(value) = stored {
-            store
-                .write(&Actor::Human, |write| {
-                    write.insert_setting(NewSetting {
-                        key: "roster",
-                        value,
-                    })
-                })
-                .expect("the roster is stored");
-        }
-        let answer = handle(&store, &frame(1, "settings.get", json!({})));
-        assert_eq!(answer["id"], 1, "the frame echoes its id");
-        answer["result"]["roster"].clone()
-    };
-
-    let default = json!([
-        "human",
-        "builder",
-        "refiner",
-        "reviewer",
-        "consolidator",
-        "sprint"
-    ]);
-    assert_eq!(
-        roster("rpc-settings-fresh", None),
-        default,
-        "a roster that was never stored reads as the default"
-    );
-
-    // Stored names replace the default whole: `review` has no ticket, and the
-    // picker must still offer it.
-    assert_eq!(
-        roster("rpc-settings-stored", Some(r#"["human", "review"]"#)),
-        json!(["human", "review"])
-    );
-
-    // A list the human emptied stays empty: absent means "never edited", and
-    // the default is not a floor the picker is stuck above.
-    assert_eq!(roster("rpc-settings-empty", Some("[]")), json!([]));
-
-    // A value this build cannot read is the default too: a broken row must not
-    // shrink the picker, and it must not panic the stream either.
-    assert_eq!(
-        roster("rpc-settings-broken", Some("not json")),
-        default,
-        "a malformed roster reads as the default"
-    );
-}
-
-/// The faces share one focus: the Tickets face and the Notes face draw the
-/// active lane, and the CLI writes it. `settings.get` answers the resolved
-/// focus beside the roster: absent when no focus was ever stored, when it was
-/// cleared, and when the stored lane is no longer declared, so a stale focus
-/// never hides tickets.
-#[test]
-fn a_settings_read_answers_the_active_project() {
-    use tandem_core::domain::Board;
-
-    let sandbox = Sandbox::new("rpc-focus-read");
-    let store = sandbox.store();
-    Board::new(store.clone())
-        .add_lane("Tandem", None, None)
-        .expect("the lane is declared");
-
-    let fresh = handle(&store, &frame(1, "settings.get", json!({})));
-    assert_eq!(fresh["id"], 1);
-    assert_eq!(
-        fresh["result"]["activeProject"],
-        Value::Null,
-        "a home that never stored a focus has none: {fresh}"
-    );
-
-    let focused = handle(
-        &store,
-        &frame(2, "settings.set", json!({"project": "Tandem"})),
-    );
-    assert_eq!(focused["result"]["activeProject"], json!("Tandem"));
-
-    let read = handle(&store, &frame(3, "settings.get", json!({})));
-    assert_eq!(
-        read["result"]["activeProject"],
-        json!("Tandem"),
-        "the read answers the stored focus: {read}"
-    );
-    assert!(
-        read["result"]["roster"].is_array(),
-        "the roster still answers beside the focus: {read}"
-    );
-
-    // A stored lane the board no longer declares reads as no focus.
-    store
-        .write(&Actor::Human, |write| {
-            write.upsert_setting(NewSetting {
-                key: "active_project",
-                value: "Retro",
-            })
+fn the_workflow_settings_and_add_from_note_methods_are_gone() {
+    let leftovers: Vec<&str> = METHODS
+        .iter()
+        .map(|(tag, _)| *tag)
+        .filter(|tag| {
+            tag.starts_with("workflow.")
+                || tag.starts_with("settings.")
+                || *tag == "ticket.addFromNote"
         })
-        .expect("the stale row is stored");
-    let stale = handle(&store, &frame(4, "settings.get", json!({})));
+        .collect();
     assert_eq!(
-        stale["result"]["activeProject"],
-        Value::Null,
-        "a stale focus hides nothing: {stale}"
+        leftovers,
+        Vec::<&str>::new(),
+        "workflow.*, settings.* and ticket.addFromNote left the wire"
     );
-}
-
-/// The focus write refuses a lane the board never declared, naming the lanes
-/// the human may pick (`lane.rename`'s `UnknownLane` precedent), and the
-/// refused write leaves the store alone.
-#[test]
-fn a_settings_write_to_an_undeclared_lane_is_refused() {
-    use tandem_core::domain::Board;
-
-    let sandbox = Sandbox::new("rpc-focus-refusal");
-    let store = sandbox.store();
-    Board::new(store.clone())
-        .add_lane("Tandem", None, None)
-        .expect("the lane is declared");
-
-    let refused = handle(
-        &store,
-        &frame(1, "settings.set", json!({"project": "Nope"})),
-    );
-    assert_eq!(refused["error"]["code"], "domain");
-    let message = refused["error"]["message"].as_str().unwrap_or("");
-    assert!(
-        message.contains("Nope"),
-        "the refusal names the lane: {refused}"
-    );
-    assert!(
-        message.contains("Tandem"),
-        "the refusal names the declared lanes: {refused}"
-    );
-
-    let read = handle(&store, &frame(2, "settings.get", json!({})));
-    assert_eq!(
-        read["result"]["activeProject"],
-        Value::Null,
-        "the refused write left the store alone: {read}"
-    );
-}
-
-/// Clearing the focus restores no focus: an absent project clears, and the
-/// read answers null again.
-#[test]
-fn clearing_the_focus_restores_no_focus() {
-    use tandem_core::domain::Board;
-
-    let sandbox = Sandbox::new("rpc-focus-clear");
-    let store = sandbox.store();
-    Board::new(store.clone())
-        .add_lane("Tandem", None, None)
-        .expect("the lane is declared");
-    handle(
-        &store,
-        &frame(1, "settings.set", json!({"project": "Tandem"})),
-    );
-
-    let cleared = handle(&store, &frame(2, "settings.set", json!({})));
-    assert_eq!(
-        cleared["result"]["activeProject"],
-        Value::Null,
-        "an absent project clears: {cleared}"
-    );
-
-    let read = handle(&store, &frame(3, "settings.get", json!({})));
-    assert_eq!(read["result"]["activeProject"], Value::Null);
-}
-
-/// The write beside the read: `settings.set` stores the whole roster, and the
-/// receipt it answers is the cleaned list `settings.get` reads back. Cleaning
-/// is the domain's, so padding, empties and repeats never reach the store; an
-/// explicitly emptied list reads back empty, not the default.
-#[test]
-fn a_settings_write_stores_the_roster_a_read_answers_back() {
-    let sandbox = Sandbox::new("rpc-settings-write");
-    let store = sandbox.store();
-
-    let written = handle(
-        &store,
-        &frame(1, "settings.set", json!({"roster": ["human", "review"]})),
-    );
-    assert_eq!(written["id"], 1, "the frame echoes its id");
-    assert_eq!(
-        written["result"]["roster"],
-        json!(["human", "review"]),
-        "the receipt carries the stored roster"
-    );
-    let read = handle(&store, &frame(2, "settings.get", json!({})));
-    assert_eq!(
-        read["result"]["roster"],
-        json!(["human", "review"]),
-        "the read answers what the write stored"
-    );
-
-    // The second write replaces the first whole, and entries with
-    // padding, empties and repeats come back cleaned.
-    let cleaned = handle(
-        &store,
-        &frame(
-            3,
-            "settings.set",
-            json!({"roster": ["  alpha  ", "", "   ", "beta", "alpha", "beta "]}),
-        ),
-    );
-    assert_eq!(cleaned["result"]["roster"], json!(["alpha", "beta"]));
-    let reread = handle(&store, &frame(4, "settings.get", json!({})));
-    assert_eq!(
-        reread["result"]["roster"],
-        json!(["alpha", "beta"]),
-        "the read answers the cleaned list, not the request's echo"
-    );
-
-    // An emptied list stays empty: the receipt and the re-read agree.
-    let emptied = handle(&store, &frame(5, "settings.set", json!({"roster": []})));
-    assert_eq!(emptied["result"]["roster"], json!([]));
-    let empty = handle(&store, &frame(6, "settings.get", json!({})));
-    assert_eq!(empty["result"]["roster"], json!([]));
 }
 
 /// The ticket sheet draws a body as markdown (`TicketMarkdown`, TAN-219). The
@@ -859,44 +649,6 @@ fn the_daily_note_refuses_when_a_folder_sits_at_todays_path() {
     assert!(
         bikeshed.join(&path).is_dir(),
         "nothing is created over the folder"
-    );
-}
-
-#[test]
-fn a_ticket_filed_from_a_note_links_to_it() {
-    let sandbox = Sandbox::new("rpc-ticket-from-note");
-    let store = sandbox.store();
-    let bikeshed = sandbox.root().join("home").join("bikeshed");
-    std::fs::create_dir_all(&bikeshed).expect("the vault is creatable");
-    std::fs::write(bikeshed.join("note.md"), "the note the ticket came from")
-        .expect("the note is written");
-
-    let added = handle(
-        &store,
-        &frame(
-            1,
-            "ticket.addFromNote",
-            json!({"note": "note.md", "text": "- [ ] File me"}),
-        ),
-    );
-    assert_eq!(added["result"]["ticket"]["title"], "File me");
-    assert_eq!(added["result"]["ticket"]["link"], "note.md");
-    assert_eq!(added["result"]["ticket"]["description"], "- [ ] File me");
-
-    let listed = handle(&store, &frame(2, "ticket.list", json!({})));
-    assert_eq!(listed["result"]["tickets"][0]["link"], "note.md");
-
-    let empty = handle(
-        &store,
-        &frame(3, "ticket.addFromNote", json!({"note": "note.md"})),
-    );
-    assert_eq!(empty["error"]["code"], "domain");
-    assert!(
-        empty["error"]["message"]
-            .as_str()
-            .unwrap_or("")
-            .contains("Select text"),
-        "the domain's own empty-selection refusal: {empty}"
     );
 }
 

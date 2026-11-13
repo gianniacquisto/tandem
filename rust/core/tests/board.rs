@@ -86,7 +86,7 @@ fn a_row_draws_every_ticket_in_its_own_column_and_the_header_count_matches_the_c
     );
     let drawn: usize = Status::WORKFLOW
         .iter()
-        .map(|status| row.tickets(status.clone()).len())
+        .map(|status| row.tickets(*status).len())
         .sum();
     assert_eq!(
         drawn,

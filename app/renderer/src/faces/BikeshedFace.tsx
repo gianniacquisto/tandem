@@ -320,31 +320,6 @@ export function BikeshedFace({
     }
   }
 
-  async function fileTicket(text: string): Promise<void> {
-    const current = openRef.current
-    if (current === null) {
-      setError('Open a note first: a ticket needs the note it came from.')
-      return
-    }
-    const answer = await window.tandem.call({
-      method: 'ticket.addFromNote',
-      params: {
-        note: current.path,
-        text,
-        status: null,
-        assignee: null,
-        lane: null,
-        origin: null,
-      },
-    })
-    if ('error' in answer) {
-      setError(answer.error.message)
-      return
-    }
-    setNotice('Filed a ticket from this note.')
-    void refreshNote(current.path)
-  }
-
   async function loadNote(path: string): Promise<void> {
     const answer = await window.tandem.call({ method: 'note.read', params: { path } })
     if ('error' in answer) {
@@ -615,9 +590,6 @@ export function BikeshedFace({
                 document={open.document}
                 focusToken={token}
                 onChange={(document) => setOpen((current) => applyEditor(current, document))}
-                onSendToTodos={(text) => {
-                  if (text !== '') void fileTicket(text)
-                }}
                 noteIndex={noteIndex}
                 onOpenNote={(path) => void openNote(path)}
               />

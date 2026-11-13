@@ -118,33 +118,31 @@ describe('the tickets list hierarchy and state colour (TAND-11)', () => {
     ).toBeGreaterThanOrEqual(4.5)
   })
 
-  it('draws the status filter from the active workflow, so a custom stage is offered', () => {
-    expect(
-      face,
-      'the filter options come from the workflow, not a fixed status list',
-    ).toContain('const statuses = boardStatuses(stages)')
-    expect(face, 'the status filter maps over those stages').toMatch(
+  it('draws the status filter from the fixed six statuses', () => {
+    expect(face, 'the filter options come from the fixed status list').toContain(
+      'const statuses = boardStatuses()',
+    )
+    expect(face, 'the status filter maps over those statuses').toMatch(
       /\{statuses\.map\(\(status\) => \(/,
     )
   })
 
-  it('the_list_status_filter_carries_selected_for_development', () => {
-    const selected = boardStatuses().find((status) => status.value === 'selected')
-    expect(selected, 'the default stage list carries selected').toBeDefined()
-    expect(selected?.label).toBe('Selected for development')
+  it('the_list_status_filter_carries_the_six_fixed_statuses', () => {
     expect(
       boardStatuses().map((status) => status.value),
-      'selected sits after backlog and before ready',
-    ).toEqual(['backlog', 'on-hold', 'selected', 'ready', 'in-progress', 'in-review', 'done'])
+      'the six statuses in order',
+    ).toEqual(['backlog', 'on-hold', 'ready', 'in-progress', 'in-review', 'done'])
+    const ready = boardStatuses().find((status) => status.value === 'ready')
+    expect(ready?.label).toBe('Ready')
   })
 
-  it('the_selected_status_pill_uses_the_neutral_fallback', () => {
-    // Only backlog stays pill-less; a selected ticket draws the label.
+  it('gives every non-backlog status its own pill rule', () => {
+    // Backlog draws no pill; the other five carry a colour rule each.
     expect(row).toContain("ticket.status === 'backlog' ? null")
-    expect(row).toContain('statusLabel(ticket.status, stages)')
-    expect(row).not.toContain("ticket.status !== 'selected'")
-    // The chip has no selected rule, so it falls through to the neutral ink.
-    expect(rule('.ticket-row__status[data-status="selected"]')).toBeNull()
+    expect(row).toContain('statusLabel(ticket.status)')
+    for (const status of ['on-hold', 'ready', 'in-progress', 'in-review', 'done']) {
+      expect(rule(`.ticket-row__status[data-status="${status}"]`), status).not.toBeNull()
+    }
     expect(css).toContain('background: var(--chip, var(--ink-dim))')
   })
 
