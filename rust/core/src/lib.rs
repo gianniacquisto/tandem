@@ -30,6 +30,7 @@ pub mod domain;
 pub mod env;
 pub mod mcp;
 pub mod rpc;
+pub mod serve;
 pub mod store;
 pub mod wire;
 
