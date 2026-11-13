@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -10,7 +10,6 @@ import { BoardLayout } from '../renderer/src/faces/BoardLayout'
 import {
   INITIAL_FILTERS,
   LANE_TONES,
-  appendIndex,
   assigneeChoices,
   assigneeLabel,
   blockLabel,
@@ -18,26 +17,17 @@ import {
   boardStatuses,
   boardTickets,
   dropCalls,
-  dropIndex,
   emptyBoardCopy,
-  filterTickets,
   firstSelection,
   focusLanes,
-  laneColumns,
   laneKeys,
-  laneMembers,
   laneTone,
-  neighbourLane,
   neighbourSelection,
-  scopeCounts,
   statusLabel,
-  stepSelection,
   titleMatches,
-  visibleMoveIndex,
   type BoardColumn,
   type BoardNarrowing,
   type Filters,
-  type View,
 } from '../renderer/src/shell/board'
 import type { TicketSummary } from '../renderer/src/wire/TicketSummary'
 
@@ -103,44 +93,38 @@ const narrowing = (overrides: Partial<BoardNarrowing>): BoardNarrowing => ({
 })
 
 describe('the board view over the snapshot', () => {
-  it('starts on the open board, every axis absent and no search', () => {
+  it('starts with every header axis absent and no search', () => {
     expect(INITIAL_FILTERS).toEqual({
-      scope: 'open',
-      status: null,
       assignee: null,
       lane: null,
       text: '',
     })
   })
 
-  it('counts the scopes the way the list draws them', () => {
-    expect(scopeCounts(board)).toEqual({ open: 2, done: 1, all: 4 })
+  it('keeps no list geometry: the layout switch, the scopes and the list ordering are gone', () => {
+    const helper = source('shell/board.ts')
+    for (const symbol of [
+      'type Scope',
+      'type View',
+      'scopeCounts',
+      'filterTickets',
+      'laneColumns',
+      'appendIndex',
+      'dropIndex',
+      'visibleMoveIndex',
+      'stepSelection',
+      'neighbourLane',
+    ]) {
+      expect(helper, `board.ts still carries ${symbol}`).not.toContain(symbol)
+    }
   })
 
-  it('parts open, done and all on the archive the way the list does', () => {
-    expect(filterTickets(board, filters({ scope: 'open' })).map((t) => t.id)).toEqual(['a', 'b'])
-    expect(filterTickets(board, filters({ scope: 'done' })).map((t) => t.id)).toEqual(['c'])
-    expect(filterTickets(board, filters({ scope: 'all' })).map((t) => t.id)).toEqual([
+  it('narrows by lane and assignee, with the empty value naming the empty field', () => {
+    expect(boardTickets(board, narrowing({ lane: 'Port' })).map((t) => t.id)).toEqual(['a', 'c'])
+    expect(boardTickets(board, narrowing({ lane: '' })).map((t) => t.id)).toEqual(['b'])
+    expect(boardTickets(board, narrowing({ assignee: '' })).map((t) => t.id)).toEqual([
       'a',
       'b',
-      'c',
-      'd',
-    ])
-  })
-
-  it('narrows by status, assignee and lane, with the empty value naming the empty field', () => {
-    expect(filterTickets(board, filters({ scope: 'all', status: 'ready' })).map((t) => t.id)).toEqual([
-      'a',
-    ])
-    expect(filterTickets(board, filters({ scope: 'all', assignee: '' })).map((t) => t.id)).toEqual([
-      'a',
-      'b',
-      'c',
-      'd',
-    ])
-    expect(filterTickets(board, filters({ scope: 'all', lane: '' })).map((t) => t.id)).toEqual(['b'])
-    expect(filterTickets(board, filters({ scope: 'all', lane: 'Port' })).map((t) => t.id)).toEqual([
-      'a',
       'c',
     ])
   })
@@ -150,30 +134,16 @@ describe('the board view over the snapshot', () => {
 
     expect(titleMatches('creme', 'Crème brûlée')).toBe(true)
     expect(titleMatches('CREME', 'creme')).toBe(true)
-    expect(filterTickets(accented, filters({ text: '  crème ' })).map((t) => t.id)).toEqual([
+    expect(boardTickets(accented, narrowing({ text: '  crème ' })).map((t) => t.id)).toEqual([
       'x',
       'y',
     ])
-    expect(filterTickets(accented, filters({ text: 'brulee' })).map((t) => t.id)).toEqual(['x'])
-    expect(filterTickets(board, filters({ scope: 'all', text: 'a' })).map((t) => t.id)).toEqual([
-      'a',
-      'b',
-      'c',
-      'd',
-    ])
+    expect(boardTickets(accented, narrowing({ text: 'brulee' })).map((t) => t.id)).toEqual(['x'])
+    expect(boardTickets(board, narrowing({ text: 'a' })).map((t) => t.id)).toEqual(['a', 'b', 'c'])
   })
 
-  it('groups the list by lane in render order: the default area, declared lanes, then dangling names', () => {
-    const keys = laneKeys(['Port'], board)
-    expect(keys).toEqual([null, 'Port', 'Tandem'])
-
-    const columns = laneColumns(['Port'], board)
-    expect(columns.map((column) => column.title)).toEqual(['Uncategorized', 'Port', 'Tandem'])
-    expect(columns.map((column) => column.tickets.map((t) => t.id))).toEqual([
-      ['b'],
-      ['a', 'c'],
-      ['d'],
-    ])
+  it('lists the lane keys in render order: the default area, declared lanes, then dangling names', () => {
+    expect(laneKeys(['Port'], board)).toEqual([null, 'Port', 'Tandem'])
   })
 
   it('labels a status the way the domain spells it, and an assignee the way every face does', () => {
@@ -283,7 +253,7 @@ describe('the board columns', () => {
     ])
   })
 
-  it('draws every non-archived ticket, and a done ticket sits in Done whatever the scope says', () => {
+  it('draws every non-archived ticket, and a done ticket sits in Done', () => {
     const visible = boardTickets(board, narrowing({}))
     expect(visible.map((t) => t.id)).toEqual(['a', 'b', 'c'])
     const columns = boardColumns(visible)
@@ -455,14 +425,13 @@ describe('the board selection', () => {
     expect(firstSelection(columns, -1)).toBe('c')
   })
 
-  it('steps across columns at the same row, and within a column up and down', () => {
+  it('steps across columns at the same row, and stays when no column holds one', () => {
     expect(neighbourSelection(columns, null, 1)).toBe('b')
-    expect(stepSelection(columns, 'b', 'column', 1)).toBe('a')
-    expect(stepSelection(columns, 'a', 'column', 1)).toBe('c')
-    expect(stepSelection(columns, 'a', 'column', -1)).toBe('b')
-    // A column of one card has no row to step to.
-    expect(stepSelection(columns, 'b', 'row', 1)).toBeNull()
-    expect(stepSelection(columns, 'a', 'row', -1)).toBeNull()
+    expect(neighbourSelection(columns, 'b', 1)).toBe('a')
+    expect(neighbourSelection(columns, 'a', 1)).toBe('c')
+    expect(neighbourSelection(columns, 'a', -1)).toBe('b')
+    // Backlog is the first column: there is nowhere left to step.
+    expect(neighbourSelection(columns, 'b', -1)).toBe('b')
   })
 
   it('a right move from Backlog lands in On hold when it holds a card', () => {
@@ -470,77 +439,8 @@ describe('the board selection', () => {
       ...board,
       ticket({ id: 'e', title: 'Echo', status: 'on-hold' }),
     ])
-    expect(stepSelection(withOnHold, 'b', 'column', 1)).toBe('e')
-    expect(stepSelection(withOnHold, 'e', 'column', -1)).toBe('b')
-  })
-})
-
-describe('the list drag arithmetic', () => {
-  it('lands before or after the anchor it was dropped on', () => {
-    expect(dropIndex(board, 'a', 'c', true)).toBe(1)
-    expect(dropIndex(board, 'a', 'c', false)).toBe(0)
-  })
-
-  it('subtracts one when the moving ticket already sat before the drop point', () => {
-    expect(dropIndex(board, 'c', 'a', true)).toBe(1)
-  })
-
-  it('answers the anchor lane, even when the moving ticket came from another lane', () => {
-    expect(dropIndex(board, 'b', 'c', true)).toBe(2)
-  })
-
-  it('ignores a drop on itself, and answers nothing for an unknown anchor', () => {
-    expect(dropIndex(board, 'a', 'a', true)).toBeNull()
-    expect(dropIndex(board, 'a', 'missing', true)).toBeNull()
-    expect(dropIndex(board, 'missing', 'a', true)).toBe(1)
-  })
-
-  it('appends at the end of a lane, and finds a lane\'s members', () => {
-    expect(appendIndex(board, 'Port')).toBe(2)
-    expect(appendIndex(board, 'Rien')).toBe(0)
-    expect(laneMembers(board, 'Port').map((t) => t.id)).toEqual(['a', 'c'])
-  })
-
-  it('moves one visible row at a time, stepping over the rows a filter hides', () => {
-    const full = [
-      ticket({ id: 'a', lane: 'Port' }),
-      ticket({ id: 'b', lane: 'Port' }),
-      ticket({ id: 'c', lane: 'Port' }),
-    ]
-    const visible = [full[0], full[2]] as TicketSummary[]
-    expect(visibleMoveIndex(full, visible, 'a', 1)).toBe(2)
-    expect(visibleMoveIndex(full, visible, 'c', -1)).toBe(0)
-    expect(visibleMoveIndex(full, visible, 'a', -1)).toBeNull()
-    expect(visibleMoveIndex(full, visible, 'c', 1)).toBeNull()
-    expect(visibleMoveIndex(full, visible, 'b', 1)).toBeNull()
-  })
-
-  it('walks the lane order, where null is a real key and undefined is past the end', () => {
-    const keys = laneKeys(['Port'], board)
-    expect(neighbourLane(keys, 'Port', 1)).toBe('Tandem')
-    expect(neighbourLane(keys, 'Port', -1)).toBeNull()
-    expect(neighbourLane(keys, null, 1)).toBe('Port')
-    expect(neighbourLane(keys, 'Tandem', 1)).toBeUndefined()
-  })
-
-  it('is the shared golden both implementations run (Fixtures/port/ordering.json)', () => {
-    type Case = {
-      name: string
-      tickets: Array<{ id: string; lane: string | null }>
-      moving: string
-      anchor: string
-      after: boolean
-      index: number | null
-    }
-    const golden = JSON.parse(
-      readFileSync(fileURLToPath(new URL('../../Fixtures/port/ordering.json', import.meta.url)), 'utf8'),
-    ) as { cases: Case[] }
-
-    expect(golden.cases.length).toBeGreaterThan(0)
-    for (const entry of golden.cases) {
-      const tickets = entry.tickets.map((one) => ticket({ id: one.id, lane: one.lane }))
-      expect(dropIndex(tickets, entry.moving, entry.anchor, entry.after), entry.name).toBe(entry.index)
-    }
+    expect(neighbourSelection(withOnHold, 'b', 1)).toBe('e')
+    expect(neighbourSelection(withOnHold, 'e', -1)).toBe('b')
   })
 })
 
@@ -573,7 +473,7 @@ describe('the assignee lists', () => {
 describe('the empty board', () => {
   it('keeps the empty copy and reaches every state', () => {
     const helper = source('shell/board.ts')
-    for (const words of ['All clear', 'No matches', 'No tickets match these filters']) {
+    for (const words of ['Nothing on the board', 'No matches', 'No tickets match these filters']) {
       expect(helper, `keeps "${words}"`).toContain(words)
     }
     const face = source('faces/TicketsFace.tsx')
@@ -582,7 +482,6 @@ describe('the empty board', () => {
     const base = {
       error: null as string | null,
       filters: filters({}),
-      view: 'list' as View,
       nothingVisible: true,
       activeProject: null as string | null,
       projectNames: ['Port'] as readonly string[],
@@ -598,6 +497,7 @@ describe('the empty board', () => {
     ).toMatchObject({ title: 'The board could not be read' })
     expect(emptyBoardCopy({ ...base, status: 'ready', ticketCount: 0 })).toMatchObject({
       title: 'Nothing on the board',
+      subtitle: "Add a card from a column's foot, or from the CLI.",
     })
     expect(
       emptyBoardCopy({ ...base, status: 'ready', ticketCount: 2, nothingVisible: false }),
@@ -615,55 +515,20 @@ describe('the empty board', () => {
         ...base,
         status: 'ready',
         ticketCount: 2,
-        filters: filters({ status: 'done' }),
+        filters: filters({ assignee: 'human' }),
       }),
     ).toMatchObject({ title: 'No tickets match these filters' })
     expect(
       emptyBoardCopy({ ...base, status: 'ready', ticketCount: 2, activeProject: 'Port' }),
-    ).toMatchObject({ title: 'No tickets in Port' })
-    // The board's add is per column, so its copy names that route, not "above".
-    expect(
-      emptyBoardCopy({ ...base, view: 'board', status: 'ready', ticketCount: 0 }),
-    ).toMatchObject({
-      title: 'Nothing on the board',
-      subtitle: "Add a card from a column's foot, or from the CLI.",
-    })
-    expect(
-      emptyBoardCopy({
-        ...base,
-        view: 'board',
-        status: 'ready',
-        ticketCount: 2,
-        activeProject: 'Port',
-      }),
     ).toMatchObject({
       title: 'No tickets in Port',
       subtitle: "Add a card from a column's foot, or show every project.",
     })
+    // Nothing visible with no filter, no search and no focus: the store holds
+    // only archived tickets, so the board is empty.
     expect(
-      emptyBoardCopy({
-        ...base,
-        status: 'ready',
-        ticketCount: 2,
-        filters: filters({ scope: 'open' }),
-      }),
-    ).toMatchObject({ title: 'All clear' })
-    expect(
-      emptyBoardCopy({
-        ...base,
-        status: 'ready',
-        ticketCount: 2,
-        filters: filters({ scope: 'done' }),
-      }),
-    ).toMatchObject({ title: 'Nothing done yet' })
-    expect(
-      emptyBoardCopy({
-        ...base,
-        status: 'ready',
-        ticketCount: 2,
-        filters: filters({ scope: 'all' }),
-      }),
-    ).toMatchObject({ title: 'The list is empty' })
+      emptyBoardCopy({ ...base, status: 'ready', ticketCount: 2 }),
+    ).toMatchObject({ title: 'The board is empty' })
   })
 
   it('draws the add control in an empty column, never a dashed cell', () => {
@@ -685,16 +550,26 @@ describe('the empty board', () => {
   })
 })
 
-describe('the board face (UI-33)', () => {
-  it('draws the board from the columns and the one project focus', () => {
+describe('the one-axis board face (CUT-8)', () => {
+  it('renders the board and its filter bar, with no list layout or switch', () => {
     const face = source('faces/TicketsFace.tsx')
-    expect(face).toContain('boardColumns(')
-    expect(face).toContain('boardTickets(')
-    expect(face).toContain('focusLanes(')
-    expect(face).toContain('dropCalls(')
-    expect(face).toContain('firstAdd')
-    // The lane-axis drop plan is gone from the face.
-    expect(face).not.toContain('LANE_CHANGED')
+    expect(face).toContain('<BoardLayout')
+    expect(face).toContain('tickets__bar--board')
+    for (const gone of ['TicketList', 'TicketRow', 'ViewSwitch', 'SCOPES', 'quick-add']) {
+      expect(face, `the face still carries ${gone}`).not.toContain(gone)
+    }
+    expect(face).not.toContain("view === 'board'")
+  })
+
+  it('deletes the list face and its row, and nothing in the renderer imports them', () => {
+    expect(existsSync(join(renderer, 'faces/TicketList.tsx'))).toBe(false)
+    expect(existsSync(join(renderer, 'faces/TicketRow.tsx'))).toBe(false)
+    expect(existsSync(join(appRoot, 'tests/tickets-list.test.ts'))).toBe(false)
+    for (const name of filesUnder(renderer, ['.ts', '.tsx'])) {
+      const text = readFileSync(name, 'utf8')
+      expect(text, `${name} imports the list face`).not.toContain("from './TicketList'")
+      expect(text, `${name} imports the list row`).not.toContain("from './TicketRow'")
+    }
   })
 
   it('draws the board columns on an empty board, so its add and the shortcut exist', () => {
@@ -713,3 +588,11 @@ describe('the board face (UI-33)', () => {
     expect(source('App.tsx')).toContain('projects={snapshot.projects}')
   })
 })
+
+function filesUnder(directory: string, extensions: string[]): string[] {
+  return readdirSync(directory).flatMap((entry) => {
+    const path = join(directory, entry)
+    if (statSync(path).isDirectory()) return filesUnder(path, extensions)
+    return extensions.some((extension) => path.endsWith(extension)) ? [path] : []
+  })
+}

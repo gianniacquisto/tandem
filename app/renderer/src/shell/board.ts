@@ -3,43 +3,25 @@ import type { TicketSummary } from '../wire/TicketSummary'
 
 /**
  * The Tickets face's geometry: which tickets are in view, how the board's
- * columns group them, and the index a list drop hands `ticket.move`.
+ * columns group them, and the write a drop makes.
  *
- * It is pure and it is the face's only arithmetic, so the list and the board
- * cannot disagree about what the store holds, and the drag is provable without
- * a window. The rules are the core's (`domain/query.rs`, `domain/layout.rs`,
- * `domain/ordering.rs`), restated here because the renderer gets one listing and
- * narrows it locally: the snapshot is the whole store, so the stored order the
- * list's drop arithmetic needs is always the same array the rows came from.
+ * It is pure and it is the face's only arithmetic, so the board's columns and
+ * the filter bar cannot disagree about what the store holds. The rules are the
+ * core's (`domain/query.rs`, `domain/layout.rs`), restated here because the
+ * renderer gets one listing and narrows it locally.
  *
  * The board's axis is the fixed status: `boardColumns` draws one column per
  * status and `dropCalls` answers the one `ticket.set` a drop makes. A lane is a
- * label on the card and a filter, never a row. The list keeps the lane axis:
- * `laneColumns` groups its rows and `dropIndex` orders inside a lane.
+ * label on the card and a filter, never a row (ADR 0043).
  */
 
-export type Scope = 'open' | 'done' | 'all'
-export type View = 'list' | 'board'
-
 export type Filters = {
-  scope: Scope
-  /** A stored status, or null for any. */
-  status: string | null
   /** A stored name, `''` for the unassigned, or null for any. */
   assignee: string | null
   /** A lane name, `''` for the default area, or null for any. */
   lane: string | null
   /** Free text over the title; the summary carries no body. */
   text: string
-}
-
-export type Counts = { open: number; done: number; all: number }
-
-export type LaneColumn = {
-  /** `null` is the default (ungrouped) area. */
-  key: string | null
-  title: string
-  tickets: TicketSummary[]
 }
 
 /** One column of the board: a workflow stage and the tickets standing in it. */
@@ -62,8 +44,6 @@ export type BoardNarrowing = {
 }
 
 export const INITIAL_FILTERS: Filters = {
-  scope: 'open',
-  status: null,
   assignee: null,
   lane: null,
   text: '',
@@ -86,6 +66,7 @@ export const STATUSES: ReadonlyArray<StatusChoice> = [
   { value: 'done', label: 'Done' },
 ]
 
+/** The default area's label: the key a ticket with no lane draws under. */
 export const UNCATEGORIZED = 'Uncategorized'
 
 /** The phrase one status draws, or its key when a stored row names an unknown one. */
@@ -228,42 +209,6 @@ export function titleMatches(needle: string, title: string): boolean {
   return fold(title).includes(fold(trimmed))
 }
 
-/**
- * The three scopes, parted on the archive the way the app's are (`Filter.swift`):
- * open and done hide it, all includes it.
- */
-export function scopeCounts(tickets: readonly TicketSummary[]): Counts {
-  let open = 0
-  let done = 0
-  for (const ticket of tickets) {
-    if (ticket.archived) continue
-    if (ticket.done) done += 1
-    else open += 1
-  }
-  return { open, done, all: tickets.length }
-}
-
-export function filterTickets(
-  tickets: readonly TicketSummary[],
-  filters: Filters,
-): TicketSummary[] {
-  return tickets.filter((ticket) => {
-    if (filters.scope === 'open' && (ticket.archived || ticket.done)) return false
-    if (filters.scope === 'done' && (ticket.archived || !ticket.done)) return false
-    if (filters.status !== null && ticket.status !== filters.status) return false
-    if (filters.assignee !== null) {
-      const wanted = filters.assignee === '' ? null : filters.assignee
-      if (ticket.assignee !== wanted) return false
-    }
-    if (filters.lane !== null) {
-      const wanted = filters.lane === '' ? null : filters.lane
-      if (ticket.lane !== wanted) return false
-    }
-    if (!titleMatches(filters.text, ticket.title)) return false
-    return true
-  })
-}
-
 /** One empty message the Tickets face draws, without the widget around it. */
 export type EmptyCopy = {
   title: string
@@ -274,13 +219,11 @@ export type EmptyCopy = {
 
 /**
  * The one message the Tickets face draws when there is nothing to draw, or a
- * read that failed. Pure so the board test proves every state answers: the
- * face only wraps the copy in its widget (the failed read adds its retry).
+ * read that failed. Pure so the board test proves every state answers: the face
+ * only wraps the copy in its widget (the failed read adds its retry).
  */
 export function emptyBoardCopy(args: {
   status: 'connecting' | 'ready' | 'failed'
-  /** The layout drawing the copy: the board's add is per column, the list's is above. */
-  view: View
   ticketCount: number
   error: string | null
   filters: Filters
@@ -288,8 +231,7 @@ export function emptyBoardCopy(args: {
   activeProject: string | null
   projectNames: readonly string[]
 }): EmptyCopy | null {
-  const { status, view, ticketCount, error, filters, nothingVisible, activeProject, projectNames } =
-    args
+  const { status, ticketCount, error, filters, nothingVisible, activeProject, projectNames } = args
   if (status === 'connecting' && ticketCount === 0) {
     return { title: 'Reading the board', subtitle: 'The store is answering over rpc.' }
   }
@@ -299,10 +241,7 @@ export function emptyBoardCopy(args: {
   if (ticketCount === 0) {
     return {
       title: 'Nothing on the board',
-      subtitle:
-        view === 'board'
-          ? "Add a card from a column's foot, or from the CLI."
-          : 'Add a ticket above, or from the CLI.',
+      subtitle: "Add a card from a column's foot, or from the CLI.",
       hero: true,
     }
   }
@@ -310,7 +249,7 @@ export function emptyBoardCopy(args: {
   if (filters.text.trim() !== '') {
     return { title: 'No matches', subtitle: 'No ticket title matches your search.' }
   }
-  if (filters.status !== null || filters.assignee !== null || filters.lane !== null) {
+  if (filters.assignee !== null || filters.lane !== null) {
     return {
       title: 'No tickets match these filters',
       subtitle: 'Clear a filter to see more.',
@@ -319,28 +258,10 @@ export function emptyBoardCopy(args: {
   if (activeProject !== null && projectNames.includes(activeProject)) {
     return {
       title: `No tickets in ${activeProject}`,
-      subtitle:
-        view === 'board'
-          ? "Add a card from a column's foot, or show every project."
-          : 'Add one above, or show every project.',
+      subtitle: "Add a card from a column's foot, or show every project.",
     }
   }
-  if (filters.scope === 'open') {
-    return {
-      title: 'All clear',
-      subtitle:
-        view === 'board'
-          ? "Nothing open. Add a card from a column's foot."
-          : 'Nothing open. Add something above.',
-      hero: true,
-    }
-  }
-  if (filters.scope === 'done') {
-    return { title: 'Nothing done yet', subtitle: 'Completed tickets rest here.' }
-  }
-  return view === 'board'
-    ? { title: 'The board is empty', subtitle: "Add a card from a column's foot." }
-    : { title: 'The list is empty', subtitle: 'Add your first ticket above.' }
+  return { title: 'The board is empty', subtitle: "Add a card from a column's foot." }
 }
 
 /**
@@ -361,18 +282,6 @@ export function laneKeys(
   return keys
 }
 
-/** The board's columns: one per lane key, in render order, empty ones included. */
-export function laneColumns(
-  declared: readonly string[],
-  tickets: readonly TicketSummary[],
-): LaneColumn[] {
-  return laneKeys(declared, tickets).map((key) => ({
-    key,
-    title: key ?? UNCATEGORIZED,
-    tickets: tickets.filter((ticket) => ticket.lane === key),
-  }))
-}
-
 /**
  * The lanes a project focus draws: the focused project's lanes in render order,
  * or null for every lane. No focus, a blank one, or a name no project carries
@@ -390,9 +299,8 @@ export function focusLanes(
 
 /**
  * The board's set: every ticket not archived, narrowed by the project focus,
- * the lane filter, the assignee filter and the search. The Open/Done/All scope
- * and the status filter are the list's: the board's columns are the statuses,
- * so a done ticket stands in Done whatever the scope says.
+ * the lane filter, the assignee filter and the search. The board's columns are
+ * the statuses, so a done ticket stands in Done.
  */
 export function boardTickets(
   tickets: readonly TicketSummary[],
@@ -446,34 +354,6 @@ export function laneTone(name: string): string {
   return LANE_TONES[hash % LANE_TONES.length] ?? 'accent'
 }
 
-export function laneMembers(
-  tickets: readonly TicketSummary[],
-  lane: string | null,
-): TicketSummary[] {
-  return tickets.filter((ticket) => ticket.lane === lane)
-}
-
-/** Where a drop at the end of a lane lands: the end of that lane (the list's append). */
-export function appendIndex(tickets: readonly TicketSummary[], lane: string | null): number {
-  return laneMembers(tickets, lane).length
-}
-
-/**
- * The lane `delta` steps from `lane` in the list's lane order. `undefined` is
- * past an end; `null` is the default area, which is a real key.
- */
-export function neighbourLane(
-  keys: readonly (string | null)[],
-  lane: string | null,
-  delta: -1 | 1,
-): string | null | undefined {
-  const at = keys.indexOf(lane)
-  if (at < 0) return undefined
-  const next = at + delta
-  if (next < 0 || next >= keys.length) return undefined
-  return keys[next]
-}
-
 /**
  * The one write a drop on a column makes: `ticket.set` carrying that column's
  * stage. A drop in the column the card already stands in writes nothing,
@@ -503,56 +383,6 @@ export function dropCalls(
 }
 
 /**
- * The index to hand `ticket.move` so `moving` lands immediately before
- * (`after === false`) or after the anchor, within the anchor's lane (`ordering.rs`).
- *
- * The anchor is resolved by id, never by a position in a filtered list, so a
- * narrowing cannot land the drop somewhere else; and one is subtracted when the
- * moving ticket already sat before the drop point, because move removes before
- * it inserts.
- */
-export function dropIndex(
-  tickets: readonly TicketSummary[],
-  moving: string,
-  anchor: string,
-  after: boolean,
-): number | null {
-  if (moving === anchor) return null
-  const anchorTicket = tickets.find((ticket) => ticket.id === anchor)
-  if (anchorTicket === undefined) return null
-
-  const members = laneMembers(tickets, anchorTicket.lane)
-  const anchorIndex = members.findIndex((ticket) => ticket.id === anchor)
-  if (anchorIndex < 0) return null
-
-  let index = anchorIndex + (after ? 1 : 0)
-  const movingIndex = members.findIndex((ticket) => ticket.id === moving)
-  if (movingIndex >= 0 && movingIndex < index) index -= 1
-  return index
-}
-
-/**
- * The index a keyboard move of one *visible* row hands `ticket.move`.
- *
- * The arrows move what the human sees, so the neighbour is the next visible row
- * in the same lane, and the index is resolved against the whole lane through
- * `dropIndex` (hidden rows are stepped over, never counted as a move). `null`
- * when the moving row is not in view or the move would leave the lane.
- */
-export function visibleMoveIndex(
-  tickets: readonly TicketSummary[],
-  visible: readonly TicketSummary[],
-  moving: string,
-  delta: -1 | 1,
-): number | null {
-  const at = visible.findIndex((ticket) => ticket.id === moving)
-  if (at < 0) return null
-  const neighbour = visible[at + delta]
-  if (neighbour === undefined) return null
-  return dropIndex(tickets, moving, neighbour.id, delta > 0)
-}
-
-/**
  * The card a plain arrow selects when the face has none: the first card (in
  * `delta` order) of the first column that holds one.
  */
@@ -561,27 +391,6 @@ export function firstSelection(
   delta: -1 | 1,
 ): string | null {
   return neighbourSelection(columns, null, delta)
-}
-
-/**
- * The card a plain arrow selects when one is already selected. Left and right
- * step to the neighbouring column at the same row; up and down step within the
- * column, and a step past the column's end answers null, so the selection stays.
- */
-export function stepSelection(
-  columns: readonly BoardColumn[],
-  selected: string | null,
-  axis: 'row' | 'column',
-  delta: -1 | 1,
-): string | null {
-  if (selected === null) return firstSelection(columns, delta)
-  if (axis === 'column') return neighbourSelection(columns, selected, delta)
-  const column = columns.find((candidate) =>
-    candidate.tickets.some((ticket) => ticket.id === selected),
-  )
-  if (column === undefined) return null
-  const at = column.tickets.findIndex((ticket) => ticket.id === selected)
-  return column.tickets[at + delta]?.id ?? null
 }
 
 /**

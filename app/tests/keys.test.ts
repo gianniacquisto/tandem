@@ -13,18 +13,17 @@ const key = (overrides: Partial<KeyInput>): KeyInput => ({
 })
 
 describe('the face keyboard', () => {
-  it('focuses quick-add and search on the platform modifier', () => {
-    expect(keyIntent(key({ key: 'n', metaKey: true }))).toEqual({ type: 'focus-quick-add' })
-    expect(keyIntent(key({ key: 'n', ctrlKey: true }))).toEqual({ type: 'focus-quick-add' })
+  it('focuses the column add and search on the platform modifier', () => {
+    expect(keyIntent(key({ key: 'n', metaKey: true }))).toEqual({ type: 'focus-add' })
+    expect(keyIntent(key({ key: 'n', ctrlKey: true }))).toEqual({ type: 'focus-add' })
     expect(keyIntent(key({ key: 'f', metaKey: true }))).toEqual({ type: 'focus-search' })
     expect(keyIntent(key({ key: 'f', ctrlKey: true }))).toEqual({ type: 'focus-search' })
   })
 
-  it('switches the three scopes on the number keys the Swift face kept', () => {
-    expect(keyIntent(key({ key: '1', metaKey: true }))).toEqual({ type: 'scope', scope: 'open' })
-    expect(keyIntent(key({ key: '2', metaKey: true }))).toEqual({ type: 'scope', scope: 'done' })
-    expect(keyIntent(key({ key: '3', metaKey: true }))).toEqual({ type: 'scope', scope: 'all' })
-    expect(keyIntent(key({ key: '4', metaKey: true }))).toBeNull()
+  it('binds nothing to the number keys now that the scope switch is gone', () => {
+    expect(keyIntent(key({ key: '1', metaKey: true }))).toBeNull()
+    expect(keyIntent(key({ key: '2', metaKey: true }))).toBeNull()
+    expect(keyIntent(key({ key: '3', metaKey: true }))).toBeNull()
   })
 
   it('moves the selection with the arrows and opens with Return', () => {
@@ -43,15 +42,7 @@ describe('the face keyboard', () => {
     expect(keyIntent(key({ key: 'Enter' }))).toEqual({ type: 'open' })
   })
 
-  it('moves the selected ticket in its lane and across lanes with Option', () => {
-    expect(keyIntent(key({ key: 'ArrowDown', altKey: true }))).toEqual({
-      type: 'move-in-lane',
-      delta: 1,
-    })
-    expect(keyIntent(key({ key: 'ArrowUp', altKey: true }))).toEqual({
-      type: 'move-in-lane',
-      delta: -1,
-    })
+  it('moves the selected card across statuses with Option, and nowhere in its lane', () => {
     expect(keyIntent(key({ key: 'ArrowRight', altKey: true }))).toEqual({
       type: 'move-across',
       delta: 1,
@@ -60,6 +51,9 @@ describe('the face keyboard', () => {
       type: 'move-across',
       delta: -1,
     })
+    // The lane is a label, not an axis: Option+Up/Down binds nothing.
+    expect(keyIntent(key({ key: 'ArrowDown', altKey: true }))).toBeNull()
+    expect(keyIntent(key({ key: 'ArrowUp', altKey: true }))).toBeNull()
   })
 
   it('clears a search on Escape and dismisses a banner off a field', () => {
@@ -82,12 +76,9 @@ describe('the face keyboard', () => {
       type: 'focus-search',
     })
     expect(keyIntent(key({ key: 'n', ctrlKey: true, editable: true }))).toEqual({
-      type: 'focus-quick-add',
+      type: 'focus-add',
     })
-    expect(keyIntent(key({ key: '2', metaKey: true, editable: true }))).toEqual({
-      type: 'scope',
-      scope: 'done',
-    })
+    expect(keyIntent(key({ key: '2', metaKey: true, editable: true }))).toBeNull()
   })
 
   it('answers nothing for a key it does not own', () => {

@@ -38,11 +38,7 @@ describe('the shell chrome (TAND-16)', () => {
     }
   })
 
-  it('reads the Tickets list and Settings as a centred 780px column', () => {
-    const list = rule('.tickets--list')
-    expect(list, '.tickets--list constrains the list to a column').toContain('780px')
-    expect(list, '.tickets--list centres the column').toMatch(/margin:\s*0\s+auto/)
-
+  it('reads Settings as a centred 780px column', () => {
     const settingsColumn = rule('.settings')
     expect(settingsColumn, '.settings centres the face as a column').toContain('780px')
     expect(settingsColumn, '.settings centres the face as a column').toMatch(
