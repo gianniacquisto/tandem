@@ -19,7 +19,7 @@
     "number": 1,
     "openedAt": "<timestamp>",
     "runs": [],
-    "session": "<id>",
+    "session": "golden-session",
     "status": "closed"
   },
   "stdoutKind": "json"

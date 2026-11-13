@@ -17,16 +17,7 @@ fn a_non_utf8_stdin_body_answers_its_own_error_and_exit_one() {
     let mut child = Command::new(BINARY)
         .arg("--home")
         .arg(root.join("Home"))
-        .args([
-            "session",
-            "start",
-            "--session",
-            "ses_stdin",
-            "--agent",
-            "builder",
-            "--brief",
-            "-",
-        ])
+        .args(["ticket", "add", "--title", "A ticket", "--description", "-"])
         .env("HOME", &root)
         .env("USERPROFILE", &root)
         .env_remove("TANDEM_HOME")

@@ -176,18 +176,6 @@ tandem-cli note rename --from <path> --to <path>
 tandem-cli note capture --kind <decision|gotcha|fact|thread> [--project <name>] [--session <id>]
 tandem-cli note stats [--project <name>]
 tandem-cli note links
-tandem-cli session start [--project <name>] [--agent <name>] [--session <id>]
-                         [--harness-session <id>] [--harness-transport <value>]
-                         [--brief <string|->]
-tandem-cli session end [--session <id>] [--outcome <value>] [--summary <string|->]
-                       [--tokens-input <n>] [--tokens-output <n>]
-                       [--tokens-reasoning <n>] [--tokens-cache-read <n>]
-                       [--tokens-cache-write <n>] [--cost <dollars>] [--model <name>]
-                       [--skills <name=count[,name=count]>]
-                       [--usage-from-harness] [--harness-url <url>]
-tandem-cli session link --ticket <id> [--session <id>]
-tandem-cli session list [--project <name>] [--status <value>]
-tandem-cli session show [--session <id>]
 tandem-cli sprint open --lane <name> [--mode serial|parallel] [--session <id>]
 tandem-cli sprint ticket --lane <name> --ticket <id>
 tandem-cli sprint run --lane <name> --note <string|->
@@ -210,7 +198,7 @@ tandem-cli settings set [--roster <name>]...
 tandem-cli doctor
 ```
 
-The Statuses are `backlog`, `on-hold`, `selected`, `ready`, `in-progress`, `in-review` and `done` (`on-hold` is the parked slot: a blocker, a human decision pending); a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A ticket in a lane carries a **ref** — the lane's key and a per-lane number, `TAN-42` — and every `--id` (or `--ticket`) accepts it beside the full UUID; the default area's tickets have none, and a lane's key is frozen once its tickets carry numbers. A session keeps its own vocabulary — `running` and `ended`, and an outcome of `succeeded`, `failed`, `interrupted` or `unknown` — and never borrows the board's Status. A sprint keeps its own vocabulary too — `open` and `closed`, with a batch built `serial` or `parallel` — and never borrows the board's Status either.
+The Statuses are `backlog`, `on-hold`, `selected`, `ready`, `in-progress`, `in-review` and `done` (`on-hold` is the parked slot: a blocker, a human decision pending); a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A ticket in a lane carries a **ref** — the lane's key and a per-lane number, `TAN-42` — and every `--id` (or `--ticket`) accepts it beside the full UUID; the default area's tickets have none, and a lane's key is frozen once its tickets carry numbers. A sprint keeps its own vocabulary too — `open` and `closed`, with a batch built `serial` or `parallel` — and never borrows the board's Status either.
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 

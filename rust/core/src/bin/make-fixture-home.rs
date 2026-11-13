@@ -1,8 +1,8 @@
 //! `make-fixture-home`: writes `Fixtures/port/Home/tandem.db` from the checked-in
 //! seed (`Fixtures/port/tandem.seed.json`).
 //!
-//! **No clock, no random id.** Every session id, ticket id and timestamp is in
-//! the seed, so the same seed writes the same bytes on every machine. The one
+//! **No clock, no random id.** Every ticket id and timestamp is in the seed, so
+//! the same seed writes the same bytes on every machine. The one
 //! value the store writes from the clock is `schema_migrations.applied_at`; it
 //! is restated from the seed after the write, and the file is vacuumed and left
 //! in rollback-journal mode so a read of the committed home needs no `-wal` or
@@ -20,9 +20,7 @@ use std::process::ExitCode;
 
 use rusqlite::Connection;
 use serde::Deserialize;
-use tandem_core::store::{
-    Actor, Home, NewDependency, NewLane, NewProject, NewSession, NewTicket, Store,
-};
+use tandem_core::store::{Actor, Home, NewDependency, NewLane, NewProject, NewTicket, Store};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -34,7 +32,6 @@ struct Seed {
     /// them. Absent on a seed that carries no edges.
     #[serde(default)]
     edges: Vec<Edge>,
-    sessions: Vec<Session>,
 }
 
 /// One dependency edge: the waiting ticket and the ticket it waits on.
@@ -78,42 +75,6 @@ struct Ticket {
     completed_at: Option<String>,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Session {
-    id: String,
-    project: String,
-    agent: Option<String>,
-    brief: String,
-    summary: Option<String>,
-    status: String,
-    outcome: Option<String>,
-    /// The board tickets the record carried, by id.
-    tickets: Vec<String>,
-    started_at: String,
-    ended_at: Option<String>,
-    /// Absent on a record written before the usage fields existed.
-    tokens: Option<Tokens>,
-    cost: Option<f64>,
-    model: Option<String>,
-    seconds: Option<f64>,
-    skills: Option<String>,
-    /// The turn budget pair (TAN-348). Absent on a record written before the
-    /// columns existed, and stamped together or not at all.
-    turns: Option<i64>,
-    calls: Option<i64>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Tokens {
-    input: Option<i64>,
-    output: Option<i64>,
-    reasoning: Option<i64>,
-    cache_read: Option<i64>,
-    cache_write: Option<i64>,
-}
-
 fn main() -> ExitCode {
     let mut arguments = std::env::args_os().skip(1);
     let (Some(seed), Some(target)) = (arguments.next(), arguments.next()) else {
@@ -146,12 +107,6 @@ fn write(seed_path: &Path, target: &Path) -> Result<(), String> {
 
     // One write, one transaction: the first write also applies the migrations,
     // so the file is exactly what this build writes for a fresh home.
-    let ticket_lists: Vec<String> = seed
-        .sessions
-        .iter()
-        .map(|session| serde_json::to_string(&session.tickets))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| format!("could not serialize a ticket list: {error}"))?;
     store
         .write(&Actor::Human, |write| {
             for lane in &seed.lanes {
@@ -198,36 +153,6 @@ fn write(seed_path: &Path, target: &Path) -> Result<(), String> {
                 write.insert_dependency(NewDependency {
                     ticket_id: &edge.ticket,
                     depends_on_id: &edge.on,
-                })?;
-            }
-            for (session, tickets) in seed.sessions.iter().zip(&ticket_lists) {
-                let tokens = session.tokens.as_ref();
-                write.insert_session(NewSession {
-                    id: &session.id,
-                    // The fixture records predate the harness pointer: the seed
-                    // has none, and the columns read NULL (PRT-29).
-                    harness_session_id: None,
-                    harness_transport: None,
-                    project: &session.project,
-                    agent: session.agent.as_deref(),
-                    brief: &session.brief,
-                    status: &session.status,
-                    outcome: session.outcome.as_deref(),
-                    summary: session.summary.as_deref(),
-                    started_at: &session.started_at,
-                    ended_at: session.ended_at.as_deref(),
-                    tickets: Some(tickets.as_str()),
-                    model: session.model.as_deref(),
-                    tokens_input: tokens.and_then(|tokens| tokens.input),
-                    tokens_output: tokens.and_then(|tokens| tokens.output),
-                    tokens_reasoning: tokens.and_then(|tokens| tokens.reasoning),
-                    tokens_cache_read: tokens.and_then(|tokens| tokens.cache_read),
-                    tokens_cache_write: tokens.and_then(|tokens| tokens.cache_write),
-                    seconds: session.seconds,
-                    cost: session.cost,
-                    skills: session.skills.as_deref(),
-                    turns: session.turns,
-                    calls: session.calls,
                 })?;
             }
             Ok(())

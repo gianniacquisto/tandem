@@ -138,22 +138,6 @@ pub enum DomainError {
     TicketBlockerArchived { reference: String },
     /// A ticket that already links to a note cannot be promoted again.
     AlreadyLinked { path: String },
-    /// `start` was given an empty or whitespace-only brief.
-    EmptySessionBrief,
-    /// `--brief` named a regular file: the flag never read it, so the path would
-    /// be filed as the brief, and a session start has no repair.
-    BriefNamesAFile(String),
-    /// A session id was empty or whitespace-only.
-    EmptySessionId,
-    /// No session id was given and the environment names none: an invented
-    /// handle is a record nothing can look up again.
-    SessionIdUnset,
-    /// A `--summary -` body was empty or whitespace-only: an empty pipe, not a
-    /// session that ended without saying anything.
-    EmptySessionSummary,
-    /// `end`/`link`/`show` named a session id the store does not carry. `known`
-    /// is the ids it does carry, so the caller recovers in one turn.
-    UnknownSession { id: String, known: Vec<String> },
     /// `run`/`close` was given an empty note; `close` with no note is `None`.
     EmptySprintNote,
     /// `sprint ticket` named an id the board does not carry.
@@ -167,21 +151,12 @@ pub enum DomainError {
     },
     /// A lane-only sprint handle resolved to no open record.
     NoOpenSprint(String),
-    /// A `--skills` value that is not comma-separated `name=count` pairs.
-    InvalidSkills(String),
-    /// A usage flag (`--tokens-input`, `--cost`, …) was given a value that is not
-    /// a non-negative number.
-    InvalidUsageFlag { flag: String, value: String },
     /// `sprint show` was given a number that is not a whole number.
     InvalidSprintNumber(String),
     /// `sprint open` was given a mode that is not `serial` or `parallel`.
     InvalidSprintMode(String),
     /// `sprint list` was given a status that is not `open` or `closed`.
     InvalidSprintStatus(String),
-    /// `session end` was given an outcome that is not one of the four.
-    InvalidSessionOutcome(String),
-    /// `session list` was given a status that is not `running` or `ended`.
-    InvalidSessionStatus(String),
     /// `ticket move` was given a position that is not a whole number.
     InvalidIndex(String),
     /// `--assignee self` / `--origin self` was used and `TANDEM_AGENT` names no
@@ -190,26 +165,6 @@ pub enum DomainError {
     /// A caller-supplied timestamp is not the store's own ISO-8601 UTC form. A
     /// stamp the write cannot read is a record every later read fails on.
     InvalidStamp(String),
-    /// `--harness-session` was given an empty or whitespace-only id.
-    EmptyHarnessSessionId,
-    /// `--harness-transport` was given a value that is not one of the two.
-    InvalidHarnessTransport(String),
-    /// `session end --usage-from-harness` named a record with no harness
-    /// session: there is no foreign pointer to read usage through.
-    NoHarnessSession { id: String },
-    /// The harness database the run asked for is not a file.
-    NoHarnessDatabase { path: String },
-    /// The harness event stream the run asked for is not a file.
-    NoHarnessEvents { path: String },
-    /// The harness loopback server the run asked for is not reachable: no
-    /// server at the URL, a timeout, a refused non-loopback host, or no
-    /// rendezvous file to read the URL from. `url` names what was tried.
-    NoHarnessServer { url: String },
-    /// The harness loopback server refused the password. `url` names the server;
-    /// the password itself is never in the message.
-    HarnessUnauthorized { url: String },
-    /// The harness carries no session for the id.
-    UnknownHarnessSession { id: String },
     /// The bikeshed lock could not be acquired within its bounded retry window.
     BikeshedLocked,
     /// The bikeshed itself failed: an unreadable note, a failed rename.
@@ -411,30 +366,6 @@ impl DomainError {
                 "This ticket already links to a note (\"{path}\"). Open that note, or remove \
                  the link before promoting again."
             ),
-            Self::EmptySessionBrief => "Session brief is empty. Provide a non-empty brief, what \
-                 the session is for and what done looks like, and try again."
-                .to_string(),
-            Self::BriefNamesAFile(path) => format!(
-                "\"{path}\" is a file, not a brief. `--brief` takes the literal brief text, or \
-                 `--brief -` to read it from stdin; pipe the file instead."
-            ),
-            Self::EmptySessionId => "Session id is empty. Provide a non-empty session id, the \
-                 handle a session is known by, and try again."
-                .to_string(),
-            Self::SessionIdUnset => "Cannot resolve the session id: set OPENCODE_SESSION_ID to \
-                 this session's id, or pass --session <id>."
-                .to_string(),
-            Self::EmptySessionSummary => "Session summary is empty. Provide a non-empty summary \
-                 on stdin, or omit --summary to end the session without one."
-                .to_string(),
-            Self::UnknownSession { id, known } if known.is_empty() => {
-                format!("Unknown session id \"{id}\". No session is recorded yet.")
-            }
-            Self::UnknownSession { id, known } => format!(
-                "Unknown session id \"{id}\". Here are the recorded sessions to pick the right \
-                 one from: {}.",
-                known.join(", ")
-            ),
             Self::EmptySprintNote => {
                 "Sprint note is empty. Provide a non-empty note and try again.".to_string()
             }
@@ -467,13 +398,6 @@ impl DomainError {
                 "No sprint is open in lane \"{lane}\". Run `sprint open --lane <lane>` first, \
                  or check the lane, and try again."
             ),
-            Self::InvalidSkills(bad) => format!(
-                "--skills must be comma-separated name=count pairs, each a name and a \
-                 non-negative whole count (got \"{bad}\")."
-            ),
-            Self::InvalidUsageFlag { flag, value } => {
-                format!("--{flag} must be a non-negative number (got \"{value}\").")
-            }
             Self::InvalidSprintNumber(bad) => {
                 format!("number must be a whole number (got \"{bad}\").")
             }
@@ -482,14 +406,6 @@ impl DomainError {
             }
             Self::InvalidSprintStatus(bad) => {
                 format!("sprint status must be one of open, closed (got \"{bad}\").")
-            }
-            Self::InvalidSessionOutcome(bad) => {
-                format!(
-                    "outcome must be one of succeeded, failed, interrupted, unknown (got \"{bad}\")."
-                )
-            }
-            Self::InvalidSessionStatus(bad) => {
-                format!("session status must be one of running, ended (got \"{bad}\").")
             }
             Self::InvalidIndex(bad) => {
                 format!("index must be a whole number (got \"{bad}\").")
@@ -500,35 +416,6 @@ impl DomainError {
             Self::InvalidStamp(bad) => format!(
                 "\"{bad}\" is not a timestamp. Stamps are ISO-8601 UTC, \
                  YYYY-MM-DDTHH:MM:SSZ; omit the value to use the current time."
-            ),
-            Self::EmptyHarnessSessionId => "Harness session id is empty. Provide the harness's \
-                 own session id, or omit --harness-session, and try again."
-                .to_string(),
-            Self::InvalidHarnessTransport(bad) => {
-                format!("Harness transport \"{bad}\" is not one of event-stream, database.")
-            }
-            Self::NoHarnessSession { id } => format!(
-                "Session \"{id}\" has no harness session id, so --usage-from-harness has \
-                 nothing to read. End it with explicit usage flags, or start it again with \
-                 --harness-session."
-            ),
-            Self::NoHarnessDatabase { path } => format!(
-                "No harness database at {path}. Check the path, or let the harness run once, \
-                 and try again."
-            ),
-            Self::NoHarnessEvents { path } => format!(
-                "No harness event stream at {path}. Check the path, or let the harness run \
-                 once, and try again."
-            ),
-            Self::NoHarnessServer { url } => format!(
-                "Cannot reach the harness at {url}. Check that the harness is running, or pass --harness-url <url> or set TANDEM_HARNESS_URL, and try again."
-            ),
-            Self::HarnessUnauthorized { url } => format!(
-                "The harness at {url} refused the password. Check TANDEM_HARNESS_PASSWORD or the rendezvous file it was read from, and try again."
-            ),
-            Self::UnknownHarnessSession { id } => format!(
-                "No harness session for \"{id}\". Check the session id, or end the record \
-                 without harness usage, and try again."
             ),
             Self::BikeshedLocked => {
                 "The bikeshed is locked by another process. Please retry.".to_string()

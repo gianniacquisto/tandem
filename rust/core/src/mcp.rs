@@ -31,8 +31,7 @@ use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     CommentAddParams, EmptyParams, LaneAddParams, LaneDeleteParams, LaneMoveParams,
     LaneRenameParams, Method, NoteCaptureParams, ProjectAddParams, ProjectDeleteParams,
-    ProjectRenameParams, SessionEndParams, SessionLinkParams, SessionListParams, SessionShowParams,
-    SessionStartParams, SettingsSetParams, SprintCloseParams, SprintListParams, SprintOpenParams,
+    ProjectRenameParams, SettingsSetParams, SprintCloseParams, SprintListParams, SprintOpenParams,
     SprintRunParams, SprintShowParams, SprintTicketParams, TicketAddFromNoteParams,
     TicketAddParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
     TicketMoveParams, TicketSetParams, TicketUnblockParams, WorkflowIdParams,
@@ -214,9 +213,8 @@ pub fn server_version() -> String {
         .to_string()
 }
 
-/// A small health block for `initialize` and `session_start`: the resolved
-/// home and why, whether the store is ok, the release version and the tool
-/// count. It reads the store's lock-free health only, never the full `doctor`
+/// A small health block for `initialize`: the resolved home and why, whether
+/// the store is ok, the release version and the tool count. It reads the store's lock-free health only, never the full `doctor`
 /// report, so every call stays cheap.
 fn health_block(store: &Store) -> Value {
     let home = store.home();
@@ -238,16 +236,7 @@ fn health_block(store: &Store) -> Value {
 /// refusal is a result with `isError`, in the domain's words; only a call the
 /// door cannot route is a JSON-RPC error.
 ///
-/// The call carries its harness session beside `arguments`: the host sends
-/// `_meta: {"ai.opencode/sessionID": ...}` on every call its session makes,
-/// and the call runs with that pointer as its `$OPENCODE_SESSION_ID`, so the
-/// session verbs resolve the caller the way the CLI does. A long-lived server
-/// inherits only its spawn environment, which names no session; the call's
-/// pointer wins over that environment when both name one, because the caller
-/// is fresher than the spawn.
-///
-/// `session_start` carries the same small health block `initialize` does, so
-/// the pass that opened the record sees the wired path without a `doctor`.
+/// The server inherits its spawn environment; the call reads nothing else.
 fn call_frame(
     id: Option<Value>,
     params: Option<&Value>,
@@ -274,18 +263,6 @@ fn call_frame(
         );
     }
     let frame = json!({"id": 1, "method": tool.method_tag, "params": arguments}).to_string();
-    let overridden;
-    let environment = match call_harness_session(params) {
-        Some(id) => {
-            overridden = {
-                let mut owned = environment.clone();
-                owned.insert("OPENCODE_SESSION_ID".to_string(), id);
-                owned
-            };
-            &overridden
-        }
-        None => environment,
-    };
     let answer: Value = serde_json::from_str(&handle_in(&frame, store, actor, environment))
         .unwrap_or_else(|_| json!({"id": 1, "error": {"code": "parse", "message": "the answer is not readable"}}));
     if let Some(error) = answer.get("error") {
@@ -298,30 +275,11 @@ fn call_frame(
             json!({"content": [{"type": "text", "text": message}], "isError": true}),
         );
     }
-    let mut result = answer.get("result").cloned().unwrap_or(Value::Null);
-    if tool.method_tag == "session.start"
-        && let Some(object) = result.as_object_mut()
-    {
-        object.insert("health".to_string(), health_block(store));
-    }
+    let result = answer.get("result").cloned().unwrap_or(Value::Null);
     result_frame(
         id,
         json!({"content": [{"type": "text", "text": result.to_string()}]}),
     )
-}
-
-/// The harness session the caller runs in, as the host reports it: opencode
-/// sends `_meta: {"ai.opencode/sessionID": ...}` on every `tools/call` its
-/// session makes. An absent, non-string or blank pointer is no pointer, so the
-/// call runs on the server's own environment exactly as before.
-fn call_harness_session(params: Option<&Value>) -> Option<String> {
-    params
-        .and_then(|params| params.get("_meta"))
-        .and_then(|meta| meta.get("ai.opencode/sessionID"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|id| !id.is_empty())
-        .map(str::to_string)
 }
 
 /// A success frame.
@@ -390,7 +348,7 @@ impl Tool {
     }
 }
 
-/// The 48 tools: one per covered wire method. The schema beside each entry is
+/// The 43 tools: one per covered wire method. The schema beside each entry is
 /// the params struct's own derivation, so the list cannot drift from the wire
 /// without the registry test failing.
 pub fn tools() -> Vec<Tool> {
@@ -541,41 +499,6 @@ pub fn tools() -> Vec<Tool> {
             description: "Delete an empty project; refused while lanes belong to it.",
             input_schema: ProjectDeleteParams::schema(),
             method: Method::ProjectDelete(ProjectDeleteParams::default()),
-        },
-        Tool {
-            name: "session_start",
-            method_tag: "session.start",
-            description: "Open the session record for this pass: one record per pass, never a ticket.",
-            input_schema: SessionStartParams::schema(),
-            method: Method::SessionStart(SessionStartParams::default()),
-        },
-        Tool {
-            name: "session_link",
-            method_tag: "session.link",
-            description: "Record that this session carries a ticket, in link order.",
-            input_schema: SessionLinkParams::schema(),
-            method: Method::SessionLink(SessionLinkParams::default()),
-        },
-        Tool {
-            name: "session_end",
-            method_tag: "session.end",
-            description: "Stamp the session ended, once, with the outcome and the harness usage. Reads the harness row by default; a harness with no row stamps without usage.",
-            input_schema: SessionEndParams::schema(),
-            method: Method::SessionEnd(SessionEndParams::default()),
-        },
-        Tool {
-            name: "session_list",
-            method_tag: "session.list",
-            description: "List the session records, newest first.",
-            input_schema: SessionListParams::schema(),
-            method: Method::SessionList(SessionListParams::default()),
-        },
-        Tool {
-            name: "session_show",
-            method_tag: "session.show",
-            description: "Read one session record, with the note paths it filed.",
-            input_schema: SessionShowParams::schema(),
-            method: Method::SessionShow(SessionShowParams::default()),
         },
         Tool {
             name: "sprint_open",

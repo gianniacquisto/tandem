@@ -3,7 +3,7 @@
 //! One binary (`docs/port.md`, Target shape): the verbs agents call and the
 //! core the app trusts are the same executable, so they cannot drift. This rung
 //! carries the whole grammar the skills speak (PRT-9): `ticket`, `lane`, `note`,
-//! `session`, `sprint`, and `doctor`'s pinned report. `rpc` lands with PRT-11.
+//! `sprint`, and `doctor`'s pinned report. `rpc` lands with PRT-11.
 //!
 //! What lives here is what belongs to a process rather than to the domain:
 //! argv, the environment, the two streams and the exit code. Every verb maps to
@@ -23,10 +23,6 @@ use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
 use tandem_core::bikeshed::{Bikeshed, CaptureKind, Day};
 use tandem_core::diagnostics;
-use tandem_core::domain::harness;
-use tandem_core::domain::session::{
-    HarnessSession, HarnessTransport, SessionOutcome, SessionTokens, Sessions, parse_skills,
-};
 use tandem_core::domain::sprint::{SprintMode, Sprints};
 use tandem_core::domain::workflow::{WorkflowDraft, Workflows};
 use tandem_core::domain::{
@@ -37,9 +33,8 @@ use tandem_core::store::{self, Actor, Home, Store};
 use tandem_core::wire::rpc::{SettingsReply, WorkflowListReply, WorkflowReply, WorkflowSetParams};
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
-    NoteMoveView, NotePathView, NoteWriteView, ProjectList, SessionDetailView, SessionList,
-    SessionResult, SprintList, SprintResult, TicketDetail, TicketList, TicketSummary,
-    WorkflowRunList, WorkflowRunResult,
+    NoteMoveView, NotePathView, NoteWriteView, ProjectList, SprintList, SprintResult, TicketDetail,
+    TicketList, TicketSummary, WorkflowRunList, WorkflowRunResult,
 };
 
 // MARK: - The grammar
@@ -90,11 +85,6 @@ enum Command {
     Note {
         #[command(subcommand)]
         command: Option<NoteCommand>,
-    },
-    /// The session record.
-    Session {
-        #[command(subcommand)]
-        command: Option<SessionCommand>,
     },
     /// The sprint record.
     Sprint {
@@ -173,15 +163,6 @@ enum NoteCommand {
     Create(NoteCreateArgs),
     CreateFolder(NoteCreateFolderArgs),
     Daily,
-}
-
-#[derive(Subcommand)]
-enum SessionCommand {
-    Start(SessionStartArgs),
-    End(SessionEndArgs),
-    Link(SessionLinkArgs),
-    List(SessionListArgs),
-    Show(SessionShowArgs),
 }
 
 #[derive(Subcommand)]
@@ -527,74 +508,6 @@ struct NoteStatsArgs {
     project: Option<String>,
 }
 
-#[derive(Args)]
-struct SessionStartArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    project: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    agent: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    harness_session: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    harness_transport: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    brief: Option<String>,
-}
-
-#[derive(Args)]
-struct SessionEndArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    outcome: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    summary: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    tokens_input: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    tokens_output: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    tokens_reasoning: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    tokens_cache_read: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    tokens_cache_write: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    cost: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    model: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    skills: Option<String>,
-    #[arg(long)]
-    usage_from_harness: bool,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    harness_url: Option<String>,
-}
-
-#[derive(Args)]
-struct SessionLinkArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    ticket: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-}
-
-#[derive(Args)]
-struct SessionListArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    project: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    status: Option<String>,
-}
-
-#[derive(Args)]
-struct SessionShowArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-}
-
 #[derive(Subcommand)]
 enum SettingsCommand {
     Get,
@@ -772,10 +685,6 @@ fn help_text(cli: &Cli) -> &'static str {
             None => return usage::group("note").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
         },
-        Some(Command::Session { command }) => match command {
-            None => return usage::group("session").unwrap_or(usage::ROOT),
-            Some(command) => command.help(),
-        },
         Some(Command::Sprint { command }) => match command {
             None => return usage::group("sprint").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
@@ -856,18 +765,6 @@ impl NoteCommand {
     }
 }
 
-impl SessionCommand {
-    fn help(&self) -> &'static str {
-        match self {
-            Self::Start(_) => "session start",
-            Self::End(_) => "session end",
-            Self::Link(_) => "session link",
-            Self::List(_) => "session list",
-            Self::Show(_) => "session show",
-        }
-    }
-}
-
 impl SettingsCommand {
     fn help(&self) -> &'static str {
         match self {
@@ -932,7 +829,6 @@ fn run(cli: &Cli) -> Result<(), Failure> {
         Command::Lane { command } => lane(&home, command.as_ref()),
         Command::Project { command } => project(&home, command.as_ref()),
         Command::Note { command } => note(&home, command.as_ref()),
-        Command::Session { command } => session(&home, command.as_ref()),
         Command::Sprint { command } => sprint(&home, command.as_ref()),
         Command::Workflow { command } => workflow(&home, command.as_ref()),
         Command::Settings { command } => settings_verb(&home, command.as_ref()),
@@ -1410,21 +1306,20 @@ fn workflow(home: &Home, command: Option<&WorkflowCommand>) -> Result<(), Failur
 /// history, on the same records the `sprint` aliases write.
 fn workflow_run(store: &Store, command: &WorkflowRunCommand) -> Result<(), Failure> {
     let sprints = Sprints::new(store);
-    let sessions = Sessions::new(store);
     let actor = Actor::current();
 
     match command {
         WorkflowRunCommand::Open(args) => {
             let lane = args.lane.as_deref().unwrap_or("");
             let mode = sprint_mode(args.mode.as_deref())?;
-            let id = session_handle(&sessions, args.session.as_deref())?;
+            let session = session_pointer(args.session.as_deref());
             let result = sprints
                 .open_run(
                     &actor,
                     lane,
                     args.workflow.as_deref(),
                     mode,
-                    Some(&id),
+                    session.as_deref(),
                     None,
                 )
                 .map_err(Failure::domain)?;
@@ -1624,134 +1519,6 @@ fn capture_failure(error: DomainError) -> Failure {
     failure
 }
 
-fn session(home: &Home, command: Option<&SessionCommand>) -> Result<(), Failure> {
-    let command = command.ok_or_else(Failure::usage)?;
-    let store = if matches!(command, SessionCommand::List(_) | SessionCommand::Show(_)) {
-        Store::new(home.clone())
-    } else {
-        write_store(home)?
-    };
-    let sessions = Sessions::new(&store);
-    let actor = Actor::current();
-
-    match command {
-        SessionCommand::Start(args) => {
-            let id = started_id(args.session.as_deref());
-            let project = args.project.clone().unwrap_or_else(project_default);
-            let agent = session_agent(args.agent.clone());
-            let brief = session_brief(args.brief.as_deref())?;
-            let harness = harness_session(
-                args.harness_session.as_deref(),
-                args.harness_transport.as_deref(),
-            )?;
-            let result = match harness {
-                Some(harness) => sessions.start_with_harness(
-                    &actor,
-                    &id,
-                    &project,
-                    agent.as_deref(),
-                    &brief,
-                    harness,
-                    None,
-                ),
-                None => sessions.start(&actor, &id, &project, agent.as_deref(), &brief, None),
-            }
-            .map_err(Failure::domain)?;
-            print(&SessionResult {
-                session: result.value,
-                note: result.note,
-            })
-        }
-        SessionCommand::End(args) => {
-            let id = session_handle(&sessions, args.session.as_deref())?;
-            let outcome = session_outcome(args.outcome.as_deref())?;
-            let summary = session_summary(args.summary.as_deref())?;
-            let mut tokens = usage_tokens(args)?;
-            let mut cost = usage_cost(args.cost.as_deref())?;
-            let mut model = usage_model(args.model.as_deref());
-            let mut skills = match args.skills.as_deref() {
-                Some(raw) => parse_skills(raw).map_err(Failure::domain)?,
-                None => None,
-            };
-            let mut turns = None;
-            let mut calls = None;
-            if args.usage_from_harness {
-                let record = sessions.show(&id).map_err(Failure::domain)?;
-                let reported = harness_usage(&record, home, args.harness_url.as_deref())?;
-                tokens = reported.tokens().or(tokens);
-                cost = reported.cost.or(cost);
-                model = reported.model.or(model);
-                skills = reported.skills.or(skills);
-                turns = reported.turns.or(turns);
-                calls = reported.calls.or(calls);
-            }
-            let stamp = sessions
-                .end(
-                    &actor,
-                    &id,
-                    tandem_core::domain::session::Ending {
-                        outcome,
-                        summary: summary.as_deref(),
-                        tokens,
-                        cost,
-                        model: model.as_deref(),
-                        skills,
-                        turns,
-                        calls,
-                        at: None,
-                    },
-                )
-                .map_err(Failure::domain)?;
-            print(&SessionResult {
-                session: stamp.session,
-                note: stamp.note,
-            })
-        }
-        SessionCommand::Link(args) => {
-            let id = session_handle(&sessions, args.session.as_deref())?;
-            let ticket = Board::new(store.clone())
-                .ticket(args.ticket.as_deref().unwrap_or(""))
-                .map_err(Failure::domain)?;
-            let result = sessions
-                .link(&actor, &id, &ticket.id.to_string())
-                .map_err(Failure::domain)?;
-            print(&SessionResult {
-                session: result.value,
-                note: result.note,
-            })
-        }
-        SessionCommand::List(args) => {
-            let status = match args.status.as_deref() {
-                Some(raw) => Some(
-                    tandem_core::domain::session::SessionStatus::parse(raw).ok_or_else(|| {
-                        Failure::message(format!(
-                            "session status must be one of running, ended (got \"{raw}\")."
-                        ))
-                    })?,
-                ),
-                None => None,
-            };
-            let records = sessions
-                .list(args.project.as_deref(), status)
-                .map_err(Failure::domain)?;
-            print(&SessionList { sessions: records })
-        }
-        SessionCommand::Show(args) => {
-            let id = session_handle(&sessions, args.session.as_deref())?;
-            let record = sessions.show(&id).map_err(Failure::domain)?;
-            let notes = bikeshed(home)
-                .session_notes(&id)
-                .map_err(Failure::domain)?
-                .value;
-            print(&SessionDetailView {
-                session: record,
-                notes,
-                note: None,
-            })
-        }
-    }
-}
-
 fn sprint(home: &Home, command: Option<&SprintCommand>) -> Result<(), Failure> {
     let command = command.ok_or_else(Failure::usage)?;
     let store = if matches!(command, SprintCommand::List(_) | SprintCommand::Show(_)) {
@@ -1760,16 +1527,15 @@ fn sprint(home: &Home, command: Option<&SprintCommand>) -> Result<(), Failure> {
         write_store(home)?
     };
     let sprints = Sprints::new(&store);
-    let sessions = Sessions::new(&store);
     let actor = Actor::current();
 
     match command {
         SprintCommand::Open(args) => {
             let lane = args.lane.as_deref().unwrap_or("");
             let mode = sprint_mode(args.mode.as_deref())?;
-            let id = session_handle(&sessions, args.session.as_deref())?;
+            let session = session_pointer(args.session.as_deref());
             let result = sprints
-                .open(&actor, lane, mode, Some(&id), None)
+                .open(&actor, lane, mode, session.as_deref(), None)
                 .map_err(Failure::domain)?;
             print(&SprintResult {
                 sprint: result.value,
@@ -1922,197 +1688,6 @@ fn resolve_origin(raw: Option<&str>) -> Result<String, Failure> {
     tandem_core::domain::resolve_origin(raw, &Actor::current()).map_err(Failure::domain)
 }
 
-/// The harness session a record points at: `--harness-session`, else
-/// `$OPENCODE_SESSION_ID`; no transport flag is `database`, the external
-/// opencode this Mac dogfoods (PRT-29).
-fn harness_session(
-    raw: Option<&str>,
-    transport: Option<&str>,
-) -> Result<Option<HarnessSession>, Failure> {
-    let from_environment = || {
-        env::var("OPENCODE_SESSION_ID")
-            .map(|id| id.trim().to_string())
-            .unwrap_or_default()
-    };
-    let id = match raw {
-        Some(raw) => raw.trim().to_string(),
-        None => from_environment(),
-    };
-    if id.is_empty() {
-        if raw.is_some() {
-            return Err(Failure::domain(DomainError::EmptyHarnessSessionId));
-        }
-        if transport.is_some() {
-            return Err(Failure::message(
-                "--harness-transport names no harness session. Pass --harness-session <id> with it.",
-            ));
-        }
-        return Ok(None);
-    }
-    let transport = match transport {
-        Some(raw) => HarnessTransport::parse(raw.trim()).ok_or_else(|| {
-            Failure::domain(DomainError::InvalidHarnessTransport(raw.to_string()))
-        })?,
-        None => HarnessTransport::Database,
-    };
-    Ok(Some(HarnessSession { id, transport }))
-}
-
-/// The usage a record's harness session reported, read over the harness
-/// loopback API (TAN-276). The server is `--harness-url`, else
-/// `TANDEM_HARNESS_URL`, else the rendezvous file for the record's transport;
-/// an explicit URL always wins whatever the transport. The password is
-/// `TANDEM_HARNESS_PASSWORD` else the rendezvous file, never a flag.
-fn harness_usage(
-    record: &tandem_core::domain::session::Session,
-    home: &Home,
-    url_flag: Option<&str>,
-) -> Result<harness::HarnessUsage, Failure> {
-    let id = record.harness_session_id.clone().ok_or_else(|| {
-        Failure::domain(DomainError::NoHarnessSession {
-            id: record.id.clone(),
-        })
-    })?;
-    let (base, password) = harness_server(home, record.harness_transport, url_flag)?;
-    harness::read_api(&base, &password, &id).map_err(Failure::domain)
-}
-
-/// The loopback server and its credential: an explicit URL wins, else the
-/// rendezvous file for the transport. The transport is provenance (which
-/// harness the pass ran in), so it only selects which rendezvous file is read
-/// when no URL is given.
-fn harness_server(
-    home: &Home,
-    transport: Option<HarnessTransport>,
-    url_flag: Option<&str>,
-) -> Result<(String, String), Failure> {
-    let explicit = url_flag
-        .map(str::trim)
-        .filter(|url| !url.is_empty())
-        .map(str::to_string)
-        .or_else(|| {
-            env::var("TANDEM_HARNESS_URL")
-                .ok()
-                .map(|url| url.trim().to_string())
-                .filter(|url| !url.is_empty())
-        });
-    let rendezvous = rendezvous_path(home, transport);
-    let password_from_file = || rendezvous_password(&rendezvous).unwrap_or_default();
-    if let Some(base) = explicit {
-        let password = env::var("TANDEM_HARNESS_PASSWORD").unwrap_or_else(|_| password_from_file());
-        return Ok((base, password));
-    }
-    let (base, file_password) = rendezvous_server(&rendezvous)?;
-    let password = env::var("TANDEM_HARNESS_PASSWORD").unwrap_or(file_password);
-    Ok((base, password))
-}
-
-/// Which rendezvous file names the server when no URL is given: the embedded
-/// harness's `state/opencode/service.json` under the Tandem home for
-/// `event-stream` records, else the external state dir the binary mirrors
-/// (`XDG_STATE_HOME/opencode/service.json`, else
-/// `~/.local/state/opencode/service.json`).
-fn rendezvous_path(home: &Home, transport: Option<HarnessTransport>) -> PathBuf {
-    if transport == Some(HarnessTransport::EventStream) {
-        return home
-            .directory()
-            .join("harness")
-            .join("state")
-            .join("opencode")
-            .join("service.json");
-    }
-    if let Some(state) = env::var_os("XDG_STATE_HOME")
-        && !state.is_empty()
-    {
-        return PathBuf::from(state).join("opencode").join("service.json");
-    }
-    let home_dir = env::var_os("HOME")
-        .or_else(|| env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    home_dir
-        .join(".local")
-        .join("state")
-        .join("opencode")
-        .join("service.json")
-}
-
-/// The server the rendezvous file names, with its password. Extra keys are
-/// ignored; the file is service-written, mode 0600.
-fn rendezvous_server(path: &Path) -> Result<(String, String), Failure> {
-    let text = std::fs::read_to_string(path).map_err(|_| {
-        Failure::domain(DomainError::NoHarnessServer {
-            url: path.display().to_string(),
-        })
-    })?;
-    let value: serde_json::Value = serde_json::from_str(&text).map_err(|_| {
-        Failure::domain(DomainError::NoHarnessServer {
-            url: path.display().to_string(),
-        })
-    })?;
-    let base = value
-        .get("url")
-        .and_then(|url| url.as_str())
-        .map(str::trim)
-        .filter(|url| !url.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| {
-            Failure::domain(DomainError::NoHarnessServer {
-                url: path.display().to_string(),
-            })
-        })?;
-    let password = value
-        .get("password")
-        .and_then(|password| password.as_str())
-        .unwrap_or_default()
-        .to_string();
-    Ok((base, password))
-}
-
-/// The password the rendezvous file holds, or empty when it holds none.
-fn rendezvous_password(path: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(path).ok()?;
-    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
-    Some(
-        value
-            .get("password")
-            .and_then(|password| password.as_str())
-            .unwrap_or_default()
-            .to_string(),
-    )
-}
-
-/// A session record's handle when the verb opens one: `--session`, else a
-/// minted id. Tandem owns the record (PRT-29); the harness session is a column
-/// beside it, never the key, so a second pass in one harness session opens a
-/// record of its own instead of finding the first one "already recorded".
-fn started_id(raw: Option<&str>) -> String {
-    match raw {
-        Some(raw) => raw.to_string(),
-        None => uuid::Uuid::new_v4().to_string(),
-    }
-}
-
-/// A session record's handle when the verb reads or stamps one: `--session`,
-/// else `$OPENCODE_SESSION_ID`, resolved to the record (an exact id first, then
-/// the harness pointer the older caller speaks).
-fn session_handle(sessions: &Sessions, raw: Option<&str>) -> Result<String, Failure> {
-    let handle = match raw {
-        Some(raw) => raw.to_string(),
-        None => match env::var("OPENCODE_SESSION_ID") {
-            Ok(id) if !id.trim().is_empty() => id,
-            _ => return Err(Failure::domain(DomainError::SessionIdUnset)),
-        },
-    };
-    sessions.resolve(&handle).map_err(Failure::domain)
-}
-
-/// A session's agent: `--agent`, else `$TANDEM_AGENT`; nobody when the
-/// environment names no agent. The core trims the name.
-fn session_agent(raw: Option<String>) -> Option<String> {
-    raw.or_else(|| env::var("TANDEM_AGENT").ok())
-}
-
 /// `--description` on `ticket set`: the flag's own value, or stdin when it is
 /// `-`. A stdin body must carry text; `--description ""` is the deliberate clear.
 fn description_body(flag: &str) -> Result<String, Failure> {
@@ -2157,132 +1732,18 @@ fn add_description_body(flag: Option<&str>) -> Result<Option<String>, Failure> {
     }
 }
 
-/// A session's brief: the flag's value, or stdin when it is `-`. A value naming
-/// an existing regular file is refused: the flag never read the file, so the
-/// path would be filed as the brief.
-fn session_brief(raw: Option<&str>) -> Result<String, Failure> {
-    let raw = raw.unwrap_or("");
-    if raw != "-" {
-        let expanded = expand_tilde(raw);
-        if expanded.is_file() {
-            return Err(Failure::domain(DomainError::BriefNamesAFile(
-                raw.to_string(),
-            )));
-        }
-        return Ok(raw.to_string());
-    }
-    let body = read_standard_input()?;
-    if body.trim().is_empty() {
-        return Err(Failure::domain(DomainError::EmptySessionBrief));
-    }
-    Ok(body)
-}
-
-/// `~` is the shell's to expand, and no shell runs between the caller and the
-/// flag.
-fn expand_tilde(raw: &str) -> PathBuf {
-    if (raw == "~" || raw.starts_with("~/"))
-        && let Some(home) = env::var_os("HOME")
-    {
-        let rest = raw.trim_start_matches('~').trim_start_matches('/');
-        return PathBuf::from(home).join(rest);
-    }
-    PathBuf::from(raw)
-}
-
-/// A session's summary: absent is none, and a `--summary -` body with no text is
-/// a failed write, not a deliberate silence.
-fn session_summary(raw: Option<&str>) -> Result<Option<String>, Failure> {
-    match raw {
-        None => Ok(None),
-        Some("-") => {
-            let body = read_standard_input()?;
-            if body.trim().is_empty() {
-                return Err(Failure::domain(DomainError::EmptySessionSummary));
-            }
-            Ok(Some(body))
-        }
-        Some(text) => Ok(Some(text.to_string())),
-    }
-}
-
-/// How a session ended: absent is `unknown`, the honest answer.
-fn session_outcome(raw: Option<&str>) -> Result<SessionOutcome, Failure> {
-    match raw {
-        None => Ok(SessionOutcome::Unknown),
-        Some(raw) => SessionOutcome::parse(raw).ok_or_else(|| {
-            Failure::message(format!(
-                "outcome must be one of succeeded, failed, interrupted, unknown (got \"{raw}\")."
-            ))
-        }),
-    }
-}
-
-/// The token counts the usage flags report; absent is absent on the record, and
-/// a value that is not a non-negative whole number names the flag.
-fn usage_tokens(args: &SessionEndArgs) -> Result<Option<SessionTokens>, Failure> {
-    fn count(flag: &str, raw: Option<&str>) -> Result<Option<i64>, Failure> {
-        match raw {
-            None => Ok(None),
-            Some(raw) => raw
-                .parse::<i64>()
-                .ok()
-                .filter(|value| *value >= 0)
-                .map(Some)
-                .ok_or_else(|| {
-                    Failure::domain(DomainError::InvalidUsageFlag {
-                        flag: flag.to_string(),
-                        value: raw.to_string(),
-                    })
-                }),
-        }
-    }
-    let input = count("tokens-input", args.tokens_input.as_deref())?;
-    let output = count("tokens-output", args.tokens_output.as_deref())?;
-    let reasoning = count("tokens-reasoning", args.tokens_reasoning.as_deref())?;
-    let cache_read = count("tokens-cache-read", args.tokens_cache_read.as_deref())?;
-    let cache_write = count("tokens-cache-write", args.tokens_cache_write.as_deref())?;
-    if input.is_none()
-        && output.is_none()
-        && reasoning.is_none()
-        && cache_read.is_none()
-        && cache_write.is_none()
-    {
-        return Ok(None);
-    }
-    Ok(Some(SessionTokens {
-        input,
-        output,
-        reasoning,
-        cache_read,
-        cache_write,
-    }))
-}
-
-/// The cost `--cost` reports, in dollars; a value that is not a non-negative
-/// number names the flag.
-fn usage_cost(raw: Option<&str>) -> Result<Option<f64>, Failure> {
-    match raw {
-        None => Ok(None),
-        Some(raw) => raw
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite() && *value >= 0.0)
-            .map(Some)
-            .ok_or_else(|| {
-                Failure::domain(DomainError::InvalidUsageFlag {
-                    flag: "cost".to_string(),
-                    value: raw.to_string(),
-                })
-            }),
-    }
-}
-
-/// `--model`: absent is absent; an empty value is no model.
-fn usage_model(raw: Option<&str>) -> Option<String> {
+/// A sprint's session pointer: the caller's value, else
+/// `$OPENCODE_SESSION_ID`; a blank value is no pointer.
+fn session_pointer(raw: Option<&str>) -> Option<String> {
     raw.map(str::trim)
-        .filter(|model| !model.is_empty())
+        .filter(|session| !session.is_empty())
         .map(str::to_string)
+        .or_else(|| {
+            env::var("OPENCODE_SESSION_ID")
+                .ok()
+                .map(|id| id.trim().to_string())
+                .filter(|id| !id.is_empty())
+        })
 }
 
 /// A sprint's mode: absent is `serial`.

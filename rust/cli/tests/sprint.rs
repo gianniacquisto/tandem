@@ -1,6 +1,5 @@
-//! `sprint open` names the record, not the pointer (TAN-249): the stored
-//! session is a Tandem handle, so the dead-sprint rule reads an exact record
-//! even when two passes share one harness session.
+//! The sprint record's CLI door: the session pointer it stores, the batch
+//! order it keeps and the refusal an absent record names.
 
 use std::fs;
 use std::path::PathBuf;
@@ -76,113 +75,45 @@ fn json_of(output: Output, args: &[&str]) -> Value {
 }
 
 #[test]
-fn sprint_open_without_session_stores_the_record_not_the_pointer() {
-    let sandbox = Sandbox::new("record-not-pointer");
-
-    let started = sandbox.harness_json(&[
-        "session",
-        "start",
-        "--project",
-        "tandem",
-        "--agent",
-        "sprint",
-        "--brief",
-        "The sprint session.",
-    ]);
-    let record_id = started["id"].as_str().unwrap().to_string();
-    assert_ne!(record_id, "ses_harness");
+fn sprint_open_without_a_flag_stores_the_environments_pointer() {
+    let sandbox = Sandbox::new("pointer");
 
     let opened = sandbox.harness_json(&["sprint", "open", "--lane", "Tandem"]);
-    let stored = opened["session"].as_str().unwrap().to_string();
     assert_eq!(
-        stored, record_id,
-        "the sprint names the session record, not $OPENCODE_SESSION_ID"
+        opened["session"].as_str(),
+        Some("ses_harness"),
+        "the sprint stores the pointer it opened under"
     );
 
     let shown = sandbox.json(&["sprint", "show", "--lane", "Tandem", "--number", "1"]);
-    assert_eq!(
-        shown["session"].as_str().unwrap(),
-        record_id,
-        "sprint show answers a Tandem handle, not an opencode id"
-    );
-
-    // The dead-sprint rule reads the stored handle exactly.
-    let session = sandbox.json(&["session", "show", "--session", &stored]);
-    assert_eq!(session["id"].as_str().unwrap(), record_id);
-    assert_eq!(session["status"], "running");
+    assert_eq!(shown["session"].as_str(), Some("ses_harness"));
 }
 
 #[test]
-fn two_sprints_on_one_pointer_each_reach_their_own_record() {
-    let sandbox = Sandbox::new("two-sprints-one-pointer");
+fn two_sprints_keep_their_own_session_pointers() {
+    let sandbox = Sandbox::new("two-sprints");
 
-    let first = sandbox.harness_json(&[
-        "session",
-        "start",
-        "--project",
-        "tandem",
-        "--agent",
-        "sprint",
-        "--brief",
-        "The first pass.",
-    ]);
-    let second = sandbox.harness_json(&[
-        "session",
-        "start",
-        "--project",
-        "tandem",
-        "--agent",
-        "sprint",
-        "--brief",
-        "The second pass.",
-    ]);
-    let first_id = first["id"].as_str().unwrap().to_string();
-    let second_id = second["id"].as_str().unwrap().to_string();
-    assert_ne!(first_id, second_id);
-
-    // Each sprint names its own pass's record, not the shared pointer.
-    sandbox.json(&["sprint", "open", "--lane", "Alpha", "--session", &first_id]);
-    sandbox.json(&["sprint", "open", "--lane", "Beta", "--session", &second_id]);
-
-    // One pass ends; the dead-sprint rule must still reach each record's own
-    // state through the handle the sprint stored.
     sandbox.json(&[
-        "session",
-        "end",
+        "sprint",
+        "open",
+        "--lane",
+        "Alpha",
         "--session",
-        &first_id,
-        "--outcome",
-        "succeeded",
-        "--summary",
-        "What landed.",
+        "ses_first",
+    ]);
+    sandbox.json(&[
+        "sprint",
+        "open",
+        "--lane",
+        "Beta",
+        "--session",
+        "ses_second",
     ]);
 
     let alpha = sandbox.json(&["sprint", "show", "--lane", "Alpha", "--number", "1"]);
     let beta = sandbox.json(&["sprint", "show", "--lane", "Beta", "--number", "1"]);
-    assert_eq!(alpha["session"].as_str().unwrap(), first_id);
-    assert_eq!(beta["session"].as_str().unwrap(), second_id);
-
-    let first_state = sandbox.json(&["session", "show", "--session", &first_id]);
-    let second_state = sandbox.json(&["session", "show", "--session", &second_id]);
-    assert_eq!(first_state["status"], "ended");
-    assert_eq!(second_state["status"], "running");
-
-    let via_alpha = sandbox.json(&[
-        "session",
-        "show",
-        "--session",
-        alpha["session"].as_str().unwrap(),
-    ]);
-    let via_beta = sandbox.json(&[
-        "session",
-        "show",
-        "--session",
-        beta["session"].as_str().unwrap(),
-    ]);
-    assert_eq!(via_alpha["id"].as_str().unwrap(), first_id);
-    assert_eq!(via_alpha["status"], "ended");
-    assert_eq!(via_beta["id"].as_str().unwrap(), second_id);
-    assert_eq!(via_beta["status"], "running");
+    assert_eq!(alpha["session"].as_str(), Some("ses_first"));
+    assert_eq!(beta["session"].as_str(), Some("ses_second"));
 }
 
 #[test]
@@ -209,102 +140,25 @@ fn sprint_show_on_an_epic_lane_with_no_record_names_the_lane() {
 }
 
 #[test]
-fn a_batch_ticket_lands_on_the_sprints_session_record() {
-    let sandbox = Sandbox::new("batch-links-session");
+fn a_batch_ticket_lands_in_drawn_order() {
+    let sandbox = Sandbox::new("batch-order");
     let first = sandbox.json(&["ticket", "add", "--title", "First"]);
     let second = sandbox.json(&["ticket", "add", "--title", "Second"]);
     let first_id = first["id"].as_str().unwrap().to_string();
     let second_id = second["id"].as_str().unwrap().to_string();
 
-    let started = sandbox.harness_json(&[
-        "session",
-        "start",
-        "--project",
-        "tandem",
-        "--agent",
-        "sprint",
-        "--brief",
-        "The sprint session.",
-    ]);
-    let record_id = started["id"].as_str().unwrap().to_string();
-    let opened = sandbox.harness_json(&["sprint", "open", "--lane", "Tandem"]);
-    assert_eq!(
-        opened["session"].as_str().unwrap(),
-        record_id,
-        "the sprint names the session record it opened from"
-    );
-
-    sandbox.harness_json(&[
+    sandbox.json(&["sprint", "open", "--lane", "Tandem"]);
+    sandbox.json(&[
         "sprint", "ticket", "--lane", "Tandem", "--ticket", &first_id,
     ]);
-    sandbox.harness_json(&[
+    sandbox.json(&[
         "sprint", "ticket", "--lane", "Tandem", "--ticket", &second_id,
     ]);
 
-    let expected = serde_json::json!([first_id, second_id]);
-    let via_pointer = sandbox.harness_json(&["session", "show"]);
-    assert_eq!(via_pointer["id"].as_str().unwrap(), record_id);
+    let shown = sandbox.json(&["sprint", "show", "--lane", "Tandem", "--number", "1"]);
     assert_eq!(
-        via_pointer["tickets"], expected,
-        "the sprint's record carries the batch in batch order"
+        shown["batch"],
+        serde_json::json!([first_id, second_id]),
+        "the batch keeps the order the tickets were drawn"
     );
-
-    let via_handle = sandbox.json(&["session", "show", "--session", &record_id]);
-    assert_eq!(
-        via_handle["tickets"], expected,
-        "the stored handle reaches the same record"
-    );
-}
-
-#[test]
-fn the_sprints_usage_lands_on_the_record_and_writes_no_comment() {
-    let sandbox = Sandbox::new("batch-usage");
-    let first = sandbox.json(&["ticket", "add", "--title", "First"]);
-    let second = sandbox.json(&["ticket", "add", "--title", "Second"]);
-    let first_id = first["id"].as_str().unwrap().to_string();
-    let second_id = second["id"].as_str().unwrap().to_string();
-
-    let started = sandbox.harness_json(&[
-        "session",
-        "start",
-        "--project",
-        "tandem",
-        "--agent",
-        "sprint",
-        "--brief",
-        "The sprint session.",
-    ]);
-    let record_id = started["id"].as_str().unwrap().to_string();
-    sandbox.harness_json(&["sprint", "open", "--lane", "Tandem"]);
-    sandbox.harness_json(&[
-        "sprint", "ticket", "--lane", "Tandem", "--ticket", &first_id,
-    ]);
-    sandbox.harness_json(&[
-        "sprint", "ticket", "--lane", "Tandem", "--ticket", &second_id,
-    ]);
-
-    sandbox.harness_json(&[
-        "session",
-        "end",
-        "--outcome",
-        "succeeded",
-        "--tokens-input",
-        "1234",
-        "--summary",
-        "The sprint landed its batch.",
-    ]);
-
-    let stamped = sandbox.json(&["session", "show", "--session", &record_id]);
-    assert_eq!(
-        stamped["tokens"]["input"], 1234,
-        "the usage is stamped on the record"
-    );
-    assert_eq!(stamped["status"], "ended");
-    for id in [&first_id, &second_id] {
-        let listed = sandbox.json(&["ticket", "comment", "list", "--id", id]);
-        assert!(
-            listed["comments"].as_array().expect("comments").is_empty(),
-            "the sprint's end writes no comment on a drawn ticket (TAN-323)"
-        );
-    }
 }

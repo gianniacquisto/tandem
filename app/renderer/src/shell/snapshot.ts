@@ -1,7 +1,6 @@
 import type { ProjectListReply } from '../wire/ProjectListReply'
 import type { TicketListReply } from '../wire/TicketListReply'
 import type { TicketSummary } from '../wire/TicketSummary'
-import type { UsageReportView } from '../wire/UsageReportView'
 import type { Workflow } from '../wire/Workflow'
 
 /**
@@ -15,8 +14,7 @@ export type SnapshotProject = {
 
 /**
  * What the shell knows about the store: the last listing's revision, its rows,
- * the lanes they are grouped into, the usage report the Usage face draws, and
- * whether the last read landed.
+ * the lanes they are grouped into, and whether the last read landed.
  *
  * One listing is the whole store (`filter: all, archived: true`); the face
  * narrows it locally, so the stored order the drag arithmetic needs is always
@@ -30,7 +28,6 @@ export type SnapshotState = {
   lanes: string[]
   /** Every project with its lanes, in render order: the board's grouping. */
   projects: SnapshotProject[]
-  usage: UsageReportView | null
   /** The store's roster, the names both assignee surfaces offer. */
   roster: string[]
   /** The active project: the project the faces draw, or null for every project. */
@@ -50,7 +47,6 @@ export type SnapshotState = {
 
 export type SnapshotAction =
   | { type: 'loaded'; reply: TicketListReply; lanes: string[]; projects: SnapshotProject[] }
-  | { type: 'usage'; report: UsageReportView }
   | { type: 'settings'; roster: string[]; activeProject: string | null }
   | { type: 'workflow'; workflow: Workflow }
   | { type: 'failed'; message: string }
@@ -64,7 +60,6 @@ export const initialSnapshot: SnapshotState = {
   tickets: [],
   lanes: [],
   projects: [],
-  usage: null,
   roster: [],
   activeProject: null,
   workflow: null,
@@ -85,9 +80,6 @@ export function snapshotReducer(state: SnapshotState, action: SnapshotAction): S
       error: null,
       stale: false,
     }
-  }
-  if (action.type === 'usage') {
-    return { ...state, usage: action.report }
   }
   if (action.type === 'settings') {
     return { ...state, roster: action.roster, activeProject: action.activeProject }

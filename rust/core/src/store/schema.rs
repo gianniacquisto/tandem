@@ -706,31 +706,6 @@ pub(crate) fn behind(connection: &Connection) -> Result<bool> {
     }
 }
 
-/// Whether the file carries the session record's skill column.
-///
-/// **A read asks this instead of migrating**, because a read never writes
-/// (ADR 0031): a home the previous build wrote answers its records with the
-/// additive column NULL, rather than failing on a column it does not have.
-pub(crate) fn has_skills(connection: &Connection) -> Result<bool> {
-    Ok(version(connection)?.unwrap_or(0) >= SKILLS_VERSION)
-}
-
-/// Whether the file carries the session record's harness columns (v5).
-///
-/// A read asks this rather than migrating: an older home answers both columns
-/// NULL, and nothing is written (ADR 0031).
-pub(crate) fn has_harness(connection: &Connection) -> Result<bool> {
-    Ok(version(connection)?.unwrap_or(0) >= HARNESS_VERSION)
-}
-
-/// Whether the file carries the session record's turn and call columns (v8).
-///
-/// A read asks this rather than migrating: an older home answers both columns
-/// NULL, and nothing is written (ADR 0031).
-pub(crate) fn has_turns(connection: &Connection) -> Result<bool> {
-    Ok(version(connection)?.unwrap_or(0) >= TURNS_VERSION)
-}
-
 /// Whether the file carries the workflow's run table (v10).
 ///
 /// A read asks this rather than migrating (ADR 0031): a pre-v10 home answers its

@@ -1,13 +1,11 @@
-//! Part 3 preflight and record: per-ticket gate facts, the rebase symbol check,
-//! and the close sweep.
+//! Part 3 preflight: per-ticket gate facts and the rebase symbol check.
 //!
 //! The loop in `skills/tandem-build/SKILL.md` step 3 and `skills/tandem-sprint/SKILL.md`
 //! section 7 is prose an agent reads: rev-list counts, head-sha-bound checks,
-//! update-branch, the union read, dated run entries, the close sweep. This module
-//! owns the decisions and leaves the effects to the caller. The core holds the
-//! checks because it is headless and testable; main owns spawn, the harness
-//! lifetime and every effect the machine emits (ADR 0037: transport is a seam,
-//! the core never touches it).
+//! update-branch and the union read. This module owns the decisions and leaves
+//! the effects to the caller. The core holds the checks because it is headless
+//! and testable; main owns spawn and every effect the machine emits (ADR 0037:
+//! transport is a seam, the core never touches it).
 //!
 //! Three rules hold everywhere below:
 //!
@@ -20,17 +18,8 @@
 //!   A block becomes [`PassResult::Failed`] with `pass: Review`, and the step
 //!   halts with [`Effect::Fail`] (status back to ready, owner cleared, a dated
 //!   entry). No new status, no new record field (the brief's Decided against).
-//! - **The record is the truth (ADR 0032), the board rows are the truth (ADR
-//!   0035).** [`release_dead_claims`] reads the session rows and the ticket rows
-//!   it settles; it keeps no copy of either. Run entries stay dated by the core
-//!   through `sprint run`, which already exists.
 
-use super::board::{Board, SetFields};
-use super::edit::Edit;
-use super::query::{HUMAN, TicketQuery};
 use super::runner::{PassKind, PassResult};
-use super::session::{SessionStatus, Sessions};
-use super::ticket::Status;
 
 /// One head check: the name the run shows and whether it is green.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,80 +167,4 @@ pub fn find_stale_symbol(diff: &str, symbols: &[&str]) -> Option<String> {
         }
     }
     None
-}
-
-/// One released claim: the ticket and the ended session that held it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReleasedClaim {
-    /// The ticket's id, released back to ready.
-    pub ticket: String,
-    /// The ended session that held the claim, named in the signed comment.
-    pub session: String,
-}
-
-/// The close sweep: release every dead claim.
-///
-/// A claim whose session has ended goes back to `ready` with its owner cleared,
-/// dated and signed in a comment naming the ended session, so the next triage
-/// reads status, not prose. A claim whose session still runs is left alone (a
-/// claim is not a stall); `human` is left alone whatever the session says (a
-/// parked question stays with the human until a comment plus `set` moves it); anything that is
-/// not `in-progress` is not a claim. One comment per ticket the sweep moves,
-/// none where nothing moved.
-pub fn release_dead_claims(board: &Board, sessions: &Sessions, author: &str) -> Vec<ReleasedClaim> {
-    let tickets = match board.list(&TicketQuery::default()) {
-        Ok(tickets) => tickets,
-        Err(_) => return Vec::new(),
-    };
-    let mut released = Vec::new();
-    for ticket in tickets
-        .iter()
-        .filter(|ticket| ticket.status == Status::InProgress)
-        .filter(|ticket| ticket.assignee.is_some())
-        .filter(|ticket| ticket.assignee.as_deref() != Some(HUMAN))
-    {
-        let id = ticket.id.to_string();
-        let carried = match sessions.for_ticket(&id) {
-            Ok(carried) => carried,
-            Err(_) => continue,
-        };
-        if carried.is_empty() {
-            continue;
-        }
-        if carried
-            .iter()
-            .any(|session| session.status == SessionStatus::Running)
-        {
-            continue;
-        }
-        let Some(ended) = carried
-            .iter()
-            .find(|session| session.status == SessionStatus::Ended)
-        else {
-            continue;
-        };
-        let session_id = ended.id.clone();
-        let patched = board.set(
-            &id,
-            SetFields {
-                status: Edit::Set(Status::Ready),
-                assignee: Edit::Set(None),
-                ..SetFields::default()
-            },
-        );
-        if patched.is_err() {
-            continue;
-        }
-        let body = format!(
-            "Released the dead claim: session {session_id} ended before the ticket landed. Ready for triage."
-        );
-        if board.append_comment(&id, author, &body).is_err() {
-            continue;
-        }
-        released.push(ReleasedClaim {
-            ticket: id,
-            session: session_id,
-        });
-    }
-    released
 }

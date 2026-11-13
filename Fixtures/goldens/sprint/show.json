@@ -21,7 +21,7 @@
     "runs": [
       "<timestamp> — The first run."
     ],
-    "session": "<id>",
+    "session": "golden-session",
     "status": "open"
   },
   "stdoutKind": "json"

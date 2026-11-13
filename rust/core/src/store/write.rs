@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 use rusqlite::{Connection, params};
 
 use super::rows::{
-    NewComment, NewDependency, NewLane, NewProject, NewSession, NewSetting, NewSprint, NewTicket,
-    NewWorkflow, NewWorkflowStage,
+    NewComment, NewDependency, NewLane, NewProject, NewSetting, NewSprint, NewTicket, NewWorkflow,
+    NewWorkflowStage,
 };
 use super::{Actor, Result};
 
@@ -130,111 +130,6 @@ impl Write<'_> {
                 self.actor.as_str(),
                 comment.at,
                 comment.body
-            ],
-        )
-    }
-
-    pub fn insert_session(&self, session: NewSession<'_>) -> Result<()> {
-        self.before_mutation()?;
-        self.execute(
-            "INSERT INTO sessions
-                (id, project, agent, brief, status, outcome, summary, started_at,
-                 ended_at, tokens_input, tokens_output, tokens_reasoning,
-                 tokens_cache_read, tokens_cache_write, seconds, cost, model,
-                 tickets, skills, harness_session_id, harness_transport, turns,
-                 calls, author)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-                     ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
-            params![
-                session.id,
-                session.project,
-                session.agent,
-                session.brief,
-                session.status,
-                session.outcome,
-                session.summary,
-                session.started_at,
-                session.ended_at,
-                session.tokens_input,
-                session.tokens_output,
-                session.tokens_reasoning,
-                session.tokens_cache_read,
-                session.tokens_cache_write,
-                session.seconds,
-                session.cost,
-                session.model,
-                session.tickets,
-                session.skills,
-                session.harness_session_id,
-                session.harness_transport,
-                session.turns,
-                session.calls,
-                self.actor.as_str(),
-            ],
-        )
-    }
-
-    /// Whether the sessions table carries an id. The records domain is a
-    /// read-modify-write in one transaction, so it asks inside the write rather
-    /// than trusting an earlier read.
-    pub fn session_exists(&self, id: &str) -> Result<bool> {
-        self.connection
-            .query_row("SELECT COUNT(*) FROM sessions WHERE id = ?1", [id], |row| {
-                row.get::<_, i64>(0)
-            })
-            .map(|count| count > 0)
-            .map_err(|error| super::translate(error, self.connection))
-    }
-
-    /// Replace a session row's mutable half: a record is created once, linked
-    /// to and stamped once, so every write after `start` is this one. The
-    /// author moves with the row: the last write's actor is the row's author.
-    pub fn update_session(&self, session: NewSession<'_>) -> Result<()> {
-        self.before_mutation()?;
-        self.execute(
-            "UPDATE sessions SET
-                project = ?2, agent = ?3, brief = ?4, status = ?5, outcome = ?6,
-                summary = ?7, started_at = ?8, ended_at = ?9, tokens_input = ?10,
-                tokens_output = ?11, tokens_reasoning = ?12, tokens_cache_read = ?13,
-                tokens_cache_write = ?14, seconds = ?15, cost = ?16, model = ?17,
-                tickets = ?18, skills = ?19, harness_session_id = ?20,
-                harness_transport = ?21, turns = ?22, calls = ?23, author = ?24
-             WHERE id = ?1
-               AND (project IS NOT ?2 OR agent IS NOT ?3 OR brief IS NOT ?4
-                    OR status IS NOT ?5 OR outcome IS NOT ?6 OR summary IS NOT ?7
-                    OR started_at IS NOT ?8 OR ended_at IS NOT ?9
-                    OR tokens_input IS NOT ?10 OR tokens_output IS NOT ?11
-                    OR tokens_reasoning IS NOT ?12 OR tokens_cache_read IS NOT ?13
-                    OR tokens_cache_write IS NOT ?14 OR seconds IS NOT ?15
-                    OR cost IS NOT ?16 OR model IS NOT ?17 OR tickets IS NOT ?18
-                    OR skills IS NOT ?19 OR harness_session_id IS NOT ?20
-                    OR harness_transport IS NOT ?21 OR turns IS NOT ?22
-                    OR calls IS NOT ?23 OR author IS NOT ?24)",
-            params![
-                session.id,
-                session.project,
-                session.agent,
-                session.brief,
-                session.status,
-                session.outcome,
-                session.summary,
-                session.started_at,
-                session.ended_at,
-                session.tokens_input,
-                session.tokens_output,
-                session.tokens_reasoning,
-                session.tokens_cache_read,
-                session.tokens_cache_write,
-                session.seconds,
-                session.cost,
-                session.model,
-                session.tickets,
-                session.skills,
-                session.harness_session_id,
-                session.harness_transport,
-                session.turns,
-                session.calls,
-                self.actor.as_str(),
             ],
         )
     }

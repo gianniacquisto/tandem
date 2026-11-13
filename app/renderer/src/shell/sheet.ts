@@ -131,9 +131,9 @@ export function appendDescription(
 
 /**
  * Whether the sheet's Details disclosure starts open: it does not. The section
- * holds the pass requests, the dependencies, lane creation and rename, and
- * Sessions behind one collapsed disclosure, and the disclosure remembers
- * nothing across openings: every opening draws it closed, with no persistence.
+ * holds the pass requests, the dependencies, and lane creation and rename
+ * behind one collapsed disclosure, and the disclosure remembers nothing across
+ * openings: every opening draws it closed, with no persistence.
  */
 export function detailsInitiallyOpen(): boolean {
   return false

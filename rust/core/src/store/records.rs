@@ -1,90 +1,17 @@
 //! The records' rows: the reads and the two questions the records domain asks
 //! the rest of the store.
 //!
-//! The sessions and the sprints are their own tables (ADR 0031), and their SQL
-//! lives here for the same reason the board's does: no module outside the
-//! adapter writes a query, and no table shape leaks into the domain or the
-//! wire (`docs/port.md`, Store). The rows come back as the store holds them;
-//! the domain parses them (a timestamp it cannot read, a status word this build
-//! does not know), because a reader that guesses is a reader that hides a
-//! corrupt row.
+//! The sprints are their own table (ADR 0031), and their SQL lives here for the
+//! same reason the board's does: no module outside the adapter writes a query,
+//! and no table shape leaks into the domain or the wire (`docs/port.md`,
+//! Store). The rows come back as the store holds them; the domain parses them
+//! (a timestamp it cannot read, a status word this build does not know),
+//! because a reader that guesses is a reader that hides a corrupt row.
 
-#[cfg(test)]
-use rusqlite::params;
 use rusqlite::{Connection, OpenFlags};
 
-use super::rows::{SessionRow, SprintRow};
+use super::rows::SprintRow;
 use super::{Result, Store, StoreError, translate};
-
-/// The session columns every version carries, in read order.
-const SESSION_COLUMNS: &str = "id, project, agent, brief, status, outcome, summary,
-                    started_at, ended_at, tokens_input, tokens_output,
-                    tokens_reasoning, tokens_cache_read, tokens_cache_write,
-                    seconds, cost, model, tickets";
-
-/// Every session row, in the order the rows were recorded.
-///
-/// **An additive column is read only from a file that has it.** `skills`
-/// arrived with v3 and the harness pointer with v5; a read never writes, so an
-/// older home answers those columns NULL rather than an engine error. The
-/// fragments are literals; nothing here is a caller's string.
-pub(crate) fn session_rows(connection: &Connection) -> Result<Vec<SessionRow>> {
-    let sql = if super::schema::has_turns(connection)? {
-        format!(
-            "SELECT {SESSION_COLUMNS}, skills, harness_session_id, harness_transport, \
-             turns, calls FROM sessions ORDER BY rowid"
-        )
-    } else if super::schema::has_harness(connection)? {
-        format!(
-            "SELECT {SESSION_COLUMNS}, skills, harness_session_id, harness_transport, \
-             NULL, NULL FROM sessions ORDER BY rowid"
-        )
-    } else if super::schema::has_skills(connection)? {
-        format!(
-            "SELECT {SESSION_COLUMNS}, skills, NULL, NULL, NULL, NULL \
-             FROM sessions ORDER BY rowid"
-        )
-    } else {
-        format!(
-            "SELECT {SESSION_COLUMNS}, NULL, NULL, NULL, NULL, NULL \
-             FROM sessions ORDER BY rowid"
-        )
-    };
-    let mut statement = connection
-        .prepare(&sql)
-        .map_err(|error| translate(error, connection))?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok(SessionRow {
-                id: row.get(0)?,
-                project: row.get(1)?,
-                agent: row.get(2)?,
-                brief: row.get(3)?,
-                status: row.get(4)?,
-                outcome: row.get(5)?,
-                summary: row.get(6)?,
-                started_at: row.get(7)?,
-                ended_at: row.get(8)?,
-                tokens_input: row.get(9)?,
-                tokens_output: row.get(10)?,
-                tokens_reasoning: row.get(11)?,
-                tokens_cache_read: row.get(12)?,
-                tokens_cache_write: row.get(13)?,
-                seconds: row.get(14)?,
-                cost: row.get(15)?,
-                model: row.get(16)?,
-                tickets: row.get(17)?,
-                skills: row.get(18)?,
-                harness_session_id: row.get(19)?,
-                harness_transport: row.get(20)?,
-                turns: row.get(21)?,
-                calls: row.get(22)?,
-            })
-        })
-        .map_err(|error| translate(error, connection))?;
-    rows.collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|error| translate(error, connection))
-}
 
 /// Every sprint row, in the order the rows were recorded.
 ///
@@ -196,17 +123,4 @@ fn calendar_connection() -> Result<Connection> {
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(|error| StoreError::Io(format!("could not open the calendar: {error}")))
-}
-
-/// Read one session's `skills` text back, for the records suite: the column is
-/// additive, and a row written without it reads NULL.
-#[cfg(test)]
-pub(crate) fn session_skills(connection: &Connection, id: &str) -> Result<Option<String>> {
-    connection
-        .query_row(
-            "SELECT skills FROM sessions WHERE id = ?1",
-            params![id],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .map_err(|error| translate(error, connection))
 }

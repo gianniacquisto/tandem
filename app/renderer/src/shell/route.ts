@@ -8,14 +8,11 @@ import { TABS, type TabId } from './tabs'
  *
  * A ticket in the query (`#/tickets?ticket=<id>`) is the sheet's subject: the
  * note rail's ticket row is an anchor, so opening the sheet from a note must
- * survive a reload, a new window and a message to somebody else. A session in
- * the query (`&session=<sid>`) is the Sessions section's expanded row: the
- * Tandem record id, so a kept link reopens the sheet on the pass it names. The
- * sheet is a dialog over the face that carried it, so the tab and the layout
- * stay.
+ * survive a reload, a new window and a message to somebody else. The sheet is
+ * a dialog over the face that carried it, so the tab and the layout stay.
  */
 export type View = 'list' | 'board'
-export type Route = { tab: TabId; view: View; ticket: string | null; session: string | null }
+export type Route = { tab: TabId; view: View; ticket: string | null }
 
 export function tabHref(tab: TabId): string {
   return `#/${tab}`
@@ -40,7 +37,7 @@ export function parseRoute(hash: string): Route {
   const match = TABS.find((tab) => tab.id === first)
   const tab = match === undefined ? 'tickets' : match.id
   const view = tab === 'tickets' && second === 'board' ? 'board' : 'list'
-  return { tab, view, ticket: queryParam(query, 'ticket'), session: queryParam(query, 'session') }
+  return { tab, view, ticket: queryParam(query, 'ticket') }
 }
 
 /**

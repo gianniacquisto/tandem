@@ -15,7 +15,7 @@
 //!   writer.
 //! - **An actor on every write** ([`Actor`], [`Write`]). Every mutation row
 //!   carries an `author` column, and no listing infers authorship from a
-//!   session row.
+//!   record.
 //! - **One write, one transaction.** WAL, a ~2 s busy window that surfaces as
 //!   [`StoreError::Locked`], and a rolling backup of the pre-write state
 //!   (ADR 0018). Reads open read-only and never write.
@@ -65,8 +65,8 @@ pub use diagnostics::{BackupHealth, CommentsHealth, CommentsState, Health, comme
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
 pub use records::local_day;
 pub use rows::{
-    NewComment, NewDependency, NewLane, NewProject, NewSession, NewSetting, NewSprint, NewTicket,
-    NewWorkflow, NewWorkflowStage, SessionRow, SprintRow,
+    NewComment, NewDependency, NewLane, NewProject, NewSetting, NewSprint, NewTicket, NewWorkflow,
+    NewWorkflowStage, SprintRow,
 };
 pub use schema::CURRENT_VERSION;
 pub use write::Write;
@@ -502,13 +502,6 @@ impl Store {
                 Err(error)
             }
         }
-    }
-
-    /// Every session row, in stored order. An empty result is a successful
-    /// empty list, and a home with no database yet reads empty rather than
-    /// failing: the first write creates the store.
-    pub fn sessions(&self) -> Result<Vec<SessionRow>> {
-        Ok(self.read(records::session_rows)?.unwrap_or_default())
     }
 
     /// Every sprint row, in stored order.

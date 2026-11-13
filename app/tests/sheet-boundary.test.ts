@@ -61,8 +61,6 @@ function stubBackend(override?: (method: string, params: unknown) => unknown): v
           if (params.text === null || params.text === undefined) return { reply: { blocks: [] } }
           if (params.text === ticket.description) return { reply: { blocks: descriptionBlocks } }
           return { reply: { blocks: commentBlocks.get(params.text) ?? paragraphOf(params.text).blocks } }
-        case 'session.list':
-          return { reply: { sessions: [], revision: 7 } }
         default:
           throw new Error(`unexpected call ${message.method}`)
       }
@@ -91,7 +89,6 @@ async function mountSheet(node: React.ReactElement): Promise<{ host: HTMLElement
 function sheetProps(extra?: Partial<Parameters<typeof TicketSheet>[0]>): Parameters<typeof TicketSheet>[0] {
   return {
     ticketId: ticket.id,
-    expandedSession: null,
     lanes: ['Tandem', 'Retro'],
     roster: ['builder', 'human'],
     revision: 7,

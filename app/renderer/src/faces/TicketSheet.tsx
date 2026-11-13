@@ -28,13 +28,10 @@ import type { MarkdownBlockView } from '../wire/MarkdownBlockView'
 import type { TicketDetail } from '../wire/TicketDetail'
 import type { WorkflowStage } from '../wire/WorkflowStage'
 import { MarkdownDocument } from './MarkdownDocument'
-import { SessionsSection } from './SessionsSection'
 
 export type TicketSheetProps = {
   /** The sheet's subject: the one selection every entry point sets. */
   ticketId: string
-  /** The deep-linked Tandem record id, or null when the link names none. */
-  expandedSession: string | null
   /** The board's declared lanes, in render order. */
   lanes: string[]
   /** The names the assignee picker offers, off-roster names aside. */
@@ -71,14 +68,13 @@ const CLAIM_CHANGED = 'The claim landed, but the comment did not.'
  * Order from top: the title with its Save, then one row of the three facts a
  * human asks of a card (status, assignee, lane), then Description, then
  * Comments, then one collapsed Details disclosure holding the pass requests,
- * the dependencies, lane creation and rename, and Sessions. The title block and
- * the metadata row share the sticky band, so the three facts stay in view while
- * the description scrolls. Details starts closed on every opening and persists
+ * the dependencies, and lane creation and rename. The title block and the
+ * metadata row share the sticky band, so the three facts stay in view while the
+ * description scrolls. Details starts closed on every opening and persists
  * nothing.
  */
 export function TicketSheet({
   ticketId,
-  expandedSession,
   lanes,
   roster,
   stages,
@@ -820,12 +816,6 @@ export function TicketSheet({
                       )
                     ) : null}
                   </section>
-
-                  <SessionsSection
-                    ticketId={ticket.id}
-                    revision={revision}
-                    expandedSession={expandedSession}
-                  />
                 </div>
               ) : null}
             </section>

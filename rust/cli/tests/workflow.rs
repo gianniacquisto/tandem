@@ -389,17 +389,7 @@ fn deleting_an_inactive_workflow_answers_the_remaining_list() {
 fn workflow_run_verbs_and_sprint_aliases_round_trip_on_the_same_records() {
     let sandbox = Sandbox::new("run-aliases");
 
-    let session = json(&sandbox.run(&[
-        "session",
-        "start",
-        "--project",
-        "tandem",
-        "--agent",
-        "sprint",
-        "--brief",
-        "The sprint session.",
-    ]));
-    let session_id = session["id"].as_str().expect("a session id").to_string();
+    let session_id = "ses_test".to_string();
 
     let opened = json(&sandbox.run(&[
         "workflow",
@@ -482,17 +472,7 @@ fn workflow_run_verbs_and_sprint_aliases_round_trip_on_the_same_records() {
 fn a_workflow_that_has_recorded_a_run_cannot_be_deleted() {
     let sandbox = Sandbox::new("delete-with-runs");
     json(&sandbox.run_stdin(&["workflow", "set"], &document("flow", false)));
-    let session = json(&sandbox.run(&[
-        "session",
-        "start",
-        "--project",
-        "tandem",
-        "--agent",
-        "sprint",
-        "--brief",
-        "The sprint session.",
-    ]));
-    let session_id = session["id"].as_str().expect("a session id");
+    let session_id = "ses_test";
     json(&sandbox.run(&[
         "workflow",
         "run",
