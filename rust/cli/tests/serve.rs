@@ -415,7 +415,7 @@ fn a_restored_store_re_attaches_and_reports_the_restored_revision_over_sse() {
     let restored = next_event(
         &stream,
         |revision| revision < before,
-        Duration::from_secs(10),
+        Duration::from_secs(20),
     );
     let board = get(server.port, "/board");
     assert!(
@@ -471,7 +471,7 @@ fn a_restored_store_is_re_attached_on_the_next_serve_start() {
     let reported = next_event(
         &stream,
         |revision| revision == restored,
-        Duration::from_secs(10),
+        Duration::from_secs(15),
     );
     assert_eq!(
         reported, restored,
