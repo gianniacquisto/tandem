@@ -8,7 +8,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli note stats — the memory-health readout.",
+    "tandem-cli note stats — the notes-health readout.",
     "",
     "Usage:",
     "  tandem-cli note stats [--project <name>]",

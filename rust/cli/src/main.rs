@@ -1,10 +1,10 @@
-//! The tandem binary: the agent face, and later the `rpc` the app holds.
+//! The tandem binary: the agent face and the board's HTTP server.
 //!
-//! One binary (`docs/port.md`, Target shape): the verbs agents call and the
-//! core the app trusts are the same executable, so they cannot drift. This rung
-//! carries the whole grammar the skills speak (PRT-9): `ticket`, `lane`, `note`,
-//! `session`, `sprint`, and `doctor`'s pinned report. `setup` and the seven other
-//! doctor checks land with PRT-10, and `rpc` with PRT-11.
+//! One binary (`docs/port.md`, Target shape): the verbs agents call, the MCP
+//! server's stream and the board the human reads are the same executable, so
+//! they cannot drift. This rung carries the whole grammar the skills speak
+//! (PRT-9): `ticket`, `lane`, `note`, `doctor`'s pinned report, `mcp`'s stream
+//! and `serve`'s loopback server (ADR 0046).
 //!
 //! What lives here is what belongs to a process rather than to the domain:
 //! argv, the environment, the two streams and the exit code. Every verb maps to
@@ -15,32 +15,23 @@
 mod usage;
 
 use std::env;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::SystemTime;
 
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
-use tandem_core::bikeshed::{Bikeshed, CaptureKind, Day};
+use tandem_core::bikeshed::Bikeshed;
 use tandem_core::diagnostics;
-use tandem_core::domain::harness;
-use tandem_core::domain::session::{
-    HarnessSession, HarnessTransport, SessionOutcome, SessionTokens, Sessions, parse_skills,
-};
-use tandem_core::domain::sprint::{SprintMode, Sprints};
-use tandem_core::domain::workflow::{WorkflowDraft, Workflows};
 use tandem_core::domain::{
-    AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Settings, Status, TicketQuery,
+    AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Status, TicketQuery,
 };
-use tandem_core::setup::{self, Environment};
+use tandem_core::env::Environment;
 use tandem_core::store::{self, Actor, Home, Store};
-use tandem_core::wire::rpc::{SettingsReply, WorkflowListReply, WorkflowReply, WorkflowSetParams};
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
-    NoteMoveView, NotePathView, NoteWriteView, ProjectList, SessionDetailView, SessionList,
-    SessionResult, SprintList, SprintResult, TicketDetail, TicketList, TicketSummary,
-    WorkflowRunList, WorkflowRunResult,
+    NoteMoveView, NotePathView, NoteWriteView, ProjectList, TicketDetail, TicketList,
+    TicketSummary,
 };
 
 // MARK: - The grammar
@@ -52,7 +43,7 @@ use tandem_core::wire::{
 #[derive(Parser)]
 #[command(
     name = "tandem",
-    version,
+    version = tandem_core::release_version(),
     about = "Tandem: the board, the bikeshed and the records",
     disable_help_flag = true,
     disable_help_subcommand = true
@@ -68,6 +59,22 @@ struct Cli {
 
     #[command(subcommand)]
     command: Option<Command>,
+}
+
+#[derive(Args)]
+struct ServeArgs {
+    /// The address to bind (default 127.0.0.1).
+    #[arg(long, default_value = "127.0.0.1", value_name = "IP")]
+    host: String,
+    /// The port to bind; 0 asks the OS for a free one.
+    #[arg(long, default_value_t = 7700, value_name = "PORT")]
+    port: u16,
+    /// Open the board in the system browser after binding.
+    #[arg(long)]
+    open: bool,
+    /// Serve a non-loopback address without the refusal.
+    #[arg(long)]
+    allow_unauthenticated: bool,
 }
 
 #[derive(Subcommand)]
@@ -92,38 +99,12 @@ enum Command {
         #[command(subcommand)]
         command: Option<NoteCommand>,
     },
-    /// The session record.
-    Session {
-        #[command(subcommand)]
-        command: Option<SessionCommand>,
-    },
-    /// The sprint record.
-    Sprint {
-        #[command(subcommand)]
-        command: Option<SprintCommand>,
-    },
-    /// The workflow: the stage set the board reads (TAN-328).
-    Workflow {
-        #[command(subcommand)]
-        command: Option<WorkflowCommand>,
-    },
-    /// The agent face: install, uninstall and inspect it (ADR 0034).
-    Setup {
-        #[command(subcommand)]
-        command: Option<SetupCommand>,
-    },
-    /// The store's settings: the roster the pickers offer and the shared focus
-    /// the faces draw (TAN-258).
-    Settings {
-        #[command(subcommand)]
-        command: Option<SettingsCommand>,
-    },
-    /// Report whether this machine's Tandem setup is sound (ADR 0014).
+    /// Report whether this machine's store and notes are sound (ADR 0014).
     Doctor,
-    /// Speak the app's JSON protocol on stdin and stdout (PRT-11).
-    Rpc,
     /// Serve the agent face as an MCP server over stdio (TAN-274).
     Mcp,
+    /// Serve the board on loopback over HTTP (ADR 0046).
+    Serve(ServeArgs),
 }
 
 #[derive(Subcommand)]
@@ -131,7 +112,6 @@ enum TicketCommand {
     List(ListArgs),
     Show(ShowArgs),
     Add(AddArgs),
-    File(FileArgs),
     Set(SetArgs),
     Move(MoveArgs),
     Block(BlockArgs),
@@ -170,134 +150,12 @@ enum ProjectCommand {
 #[derive(Subcommand)]
 enum NoteCommand {
     Rename(NoteRenameArgs),
-    Capture(NoteCaptureArgs),
     Stats(NoteStatsArgs),
-    Prune,
     Links,
     Write(NoteWriteArgs),
     Move(NoteMoveArgs),
     Create(NoteCreateArgs),
     CreateFolder(NoteCreateFolderArgs),
-    Daily,
-}
-
-#[derive(Subcommand)]
-enum SessionCommand {
-    Start(SessionStartArgs),
-    End(SessionEndArgs),
-    Link(SessionLinkArgs),
-    List(SessionListArgs),
-    Show(SessionShowArgs),
-}
-
-#[derive(Subcommand)]
-enum SprintCommand {
-    Open(SprintOpenArgs),
-    Ticket(SprintTicketArgs),
-    Run(SprintRunArgs),
-    Close(SprintCloseArgs),
-    List(SprintListArgs),
-    Show(SprintShowArgs),
-}
-
-#[derive(Subcommand)]
-enum WorkflowCommand {
-    List,
-    Show(WorkflowShowArgs),
-    Set(WorkflowSetArgs),
-    Use(WorkflowIdArgs),
-    Delete(WorkflowIdArgs),
-    /// The workflow's current run and its run history (TAN-332).
-    Run {
-        #[command(subcommand)]
-        command: Option<WorkflowRunCommand>,
-    },
-}
-
-#[derive(Subcommand)]
-enum WorkflowRunCommand {
-    Open(WorkflowRunOpenArgs),
-    Ticket(WorkflowRunTicketArgs),
-    Run(WorkflowRunRunArgs),
-    Close(WorkflowRunCloseArgs),
-    List(WorkflowRunListArgs),
-    Show(WorkflowRunShowArgs),
-}
-
-#[derive(Args)]
-struct WorkflowRunOpenArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    workflow: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    mode: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowRunTicketArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    ticket: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowRunRunArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    note: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowRunCloseArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    number: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    note: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowRunListArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    workflow: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    status: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowRunShowArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    number: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowShowArgs {
-    /// The workflow's UUID or its name; omitted reads the active one.
-    #[arg(long)]
-    id: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowSetArgs {
-    /// The workflow to update; omitted creates one.
-    #[arg(long)]
-    id: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowIdArgs {
-    #[arg(long)]
-    id: Option<String>,
 }
 
 #[derive(Args)]
@@ -318,24 +176,6 @@ struct ListArgs {
     /// Only tickets waiting on an open blocker.
     #[arg(long)]
     blocked: bool,
-}
-
-#[derive(Args)]
-struct FileArgs {
-    /// The note the text came from (bikeshed-root-relative).
-    #[arg(long = "from-note", num_args = 0..=1, default_missing_value = "")]
-    from_note: Option<String>,
-    /// The selection; `-` or an absent flag reads stdin.
-    #[arg(long, num_args = 0..=1, default_missing_value = "", allow_hyphen_values = true)]
-    text: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    status: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    assignee: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    origin: Option<String>,
 }
 
 #[derive(Args)]
@@ -518,184 +358,9 @@ struct NoteCreateFolderArgs {
 }
 
 #[derive(Args)]
-struct NoteCaptureArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    kind: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    project: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-}
-
-#[derive(Args)]
 struct NoteStatsArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     project: Option<String>,
-}
-
-#[derive(Args)]
-struct SessionStartArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    project: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    agent: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    harness_session: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    harness_transport: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    brief: Option<String>,
-}
-
-#[derive(Args)]
-struct SessionEndArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    outcome: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    summary: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    tokens_input: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    tokens_output: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    tokens_reasoning: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    tokens_cache_read: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    tokens_cache_write: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    cost: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    model: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    skills: Option<String>,
-    #[arg(long)]
-    usage_from_harness: bool,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    harness_url: Option<String>,
-}
-
-#[derive(Args)]
-struct SessionLinkArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    ticket: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-}
-
-#[derive(Args)]
-struct SessionListArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    project: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    status: Option<String>,
-}
-
-#[derive(Args)]
-struct SessionShowArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-}
-
-#[derive(Subcommand)]
-enum SetupCommand {
-    Install(SetupInstallArgs),
-    Uninstall(SetupUninstallArgs),
-    Status,
-}
-
-#[derive(Subcommand)]
-enum SettingsCommand {
-    Get,
-    Set(SettingsSetArgs),
-}
-
-#[derive(Args)]
-struct SettingsSetArgs {
-    /// One roster name per flag; the spelled flags replace the stored list
-    /// whole, and a bare flag stores the empty list. Unspelled leaves the
-    /// stored list alone.
-    #[arg(long, num_args = 0..)]
-    roster: Option<Vec<String>>,
-    /// The project to focus; a spelled flag with a name focuses it, and a bare
-    /// or empty flag clears back to every project. Unspelled leaves the focus
-    /// alone, unless no flag is spelled at all: a bare `settings set` clears
-    /// the focus and leaves the roster alone.
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    project: Option<String>,
-}
-
-#[derive(Args)]
-struct SetupInstallArgs {
-    /// A host name, or a comma-separated list (default: opencode).
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    host: Option<String>,
-    /// Replace a link that points elsewhere, a checkout included.
-    #[arg(long)]
-    force: bool,
-}
-
-#[derive(Args)]
-struct SetupUninstallArgs {
-    /// A host name, or a comma-separated list (default: every host).
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    host: Option<String>,
-}
-
-#[derive(Args)]
-struct SprintOpenArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    mode: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-}
-
-#[derive(Args)]
-struct SprintTicketArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    ticket: Option<String>,
-}
-
-#[derive(Args)]
-struct SprintRunArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    note: Option<String>,
-}
-
-#[derive(Args)]
-struct SprintCloseArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    number: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    note: Option<String>,
-}
-
-#[derive(Args)]
-struct SprintListArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    status: Option<String>,
-}
-
-#[derive(Args)]
-struct SprintShowArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    number: Option<String>,
 }
 
 // MARK: - The process
@@ -755,15 +420,6 @@ impl Failure {
             exit: 1,
         }
     }
-
-    /// Exit with a code and no message: the verb already printed its report,
-    /// and the report is the diagnosis.
-    fn silent(exit: u8) -> Self {
-        Self {
-            message: String::new(),
-            exit,
-        }
-    }
 }
 
 /// The text a domain failure prints. An unknown id appends the open list in the
@@ -786,8 +442,8 @@ fn help_text(cli: &Cli) -> &'static str {
     let name = match &cli.command {
         None => return usage::ROOT,
         Some(Command::Doctor) => return usage::verb("doctor").unwrap_or(usage::ROOT),
-        Some(Command::Rpc) => return usage::RPC,
         Some(Command::Mcp) => return usage::MCP,
+        Some(Command::Serve(_)) => return usage::SERVE,
         Some(Command::Ticket { command }) => match command {
             None => return usage::group("ticket").unwrap_or(usage::ROOT),
             Some(TicketCommand::Comment { command: None }) => "ticket comment",
@@ -811,32 +467,6 @@ fn help_text(cli: &Cli) -> &'static str {
             None => return usage::group("note").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
         },
-        Some(Command::Session { command }) => match command {
-            None => return usage::group("session").unwrap_or(usage::ROOT),
-            Some(command) => command.help(),
-        },
-        Some(Command::Sprint { command }) => match command {
-            None => return usage::group("sprint").unwrap_or(usage::ROOT),
-            Some(command) => command.help(),
-        },
-        Some(Command::Workflow {
-            command: Some(WorkflowCommand::Run { command }),
-        }) => match command {
-            None => return usage::group("workflow run").unwrap_or(usage::ROOT),
-            Some(command) => command.help(),
-        },
-        Some(Command::Workflow { command }) => match command {
-            None => return usage::group("workflow").unwrap_or(usage::ROOT),
-            Some(command) => command.help(),
-        },
-        Some(Command::Setup { command }) => match command {
-            None => return usage::group("setup").unwrap_or(usage::ROOT),
-            Some(command) => command.help(),
-        },
-        Some(Command::Settings { command }) => match command {
-            None => return usage::group("settings").unwrap_or(usage::ROOT),
-            Some(command) => command.help(),
-        },
     };
     usage::verb(name).unwrap_or(usage::ROOT)
 }
@@ -847,7 +477,6 @@ impl TicketCommand {
             Self::List(_) => "ticket list",
             Self::Show(_) => "ticket show",
             Self::Add(_) => "ticket add",
-            Self::File(_) => "ticket file",
             Self::Set(_) => "ticket set",
             Self::Move(_) => "ticket move",
             Self::Block(_) => "ticket block",
@@ -886,85 +515,12 @@ impl NoteCommand {
     fn help(&self) -> &'static str {
         match self {
             Self::Rename(_) => "note rename",
-            Self::Capture(_) => "note capture",
             Self::Stats(_) => "note stats",
-            Self::Prune => "note prune",
             Self::Links => "note links",
             Self::Write(_) => "note write",
             Self::Move(_) => "note move",
             Self::Create(_) => "note create",
             Self::CreateFolder(_) => "note create-folder",
-            Self::Daily => "note daily",
-        }
-    }
-}
-
-impl SessionCommand {
-    fn help(&self) -> &'static str {
-        match self {
-            Self::Start(_) => "session start",
-            Self::End(_) => "session end",
-            Self::Link(_) => "session link",
-            Self::List(_) => "session list",
-            Self::Show(_) => "session show",
-        }
-    }
-}
-
-impl SetupCommand {
-    fn help(&self) -> &'static str {
-        match self {
-            Self::Install(_) => "setup install",
-            Self::Uninstall(_) => "setup uninstall",
-            Self::Status => "setup status",
-        }
-    }
-}
-
-impl SettingsCommand {
-    fn help(&self) -> &'static str {
-        match self {
-            Self::Get => "settings get",
-            Self::Set(_) => "settings set",
-        }
-    }
-}
-
-impl SprintCommand {
-    fn help(&self) -> &'static str {
-        match self {
-            Self::Open(_) => "sprint open",
-            Self::Ticket(_) => "sprint ticket",
-            Self::Run(_) => "sprint run",
-            Self::Close(_) => "sprint close",
-            Self::List(_) => "sprint list",
-            Self::Show(_) => "sprint show",
-        }
-    }
-}
-
-impl WorkflowCommand {
-    fn help(&self) -> &'static str {
-        match self {
-            Self::List => "workflow list",
-            Self::Show(_) => "workflow show",
-            Self::Set(_) => "workflow set",
-            Self::Use(_) => "workflow use",
-            Self::Delete(_) => "workflow delete",
-            Self::Run { .. } => "workflow run",
-        }
-    }
-}
-
-impl WorkflowRunCommand {
-    fn help(&self) -> &'static str {
-        match self {
-            Self::Open(_) => "workflow run open",
-            Self::Ticket(_) => "workflow run ticket",
-            Self::Run(_) => "workflow run run",
-            Self::Close(_) => "workflow run close",
-            Self::List(_) => "workflow run list",
-            Self::Show(_) => "workflow run show",
         }
     }
 }
@@ -979,17 +535,12 @@ fn run(cli: &Cli) -> Result<(), Failure> {
 
     match command {
         Command::Doctor => doctor(&home),
-        Command::Rpc => rpc(&home),
         Command::Mcp => mcp(&home),
+        Command::Serve(args) => serve(&home, args),
         Command::Ticket { command } => ticket(&home, command.as_ref()),
         Command::Lane { command } => lane(&home, command.as_ref()),
         Command::Project { command } => project(&home, command.as_ref()),
         Command::Note { command } => note(&home, command.as_ref()),
-        Command::Session { command } => session(&home, command.as_ref()),
-        Command::Sprint { command } => sprint(&home, command.as_ref()),
-        Command::Workflow { command } => workflow(&home, command.as_ref()),
-        Command::Setup { command } => setup_command(&home, command.as_ref()),
-        Command::Settings { command } => settings_verb(&home, command.as_ref()),
     }
 }
 
@@ -1022,11 +573,6 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                 args.blocked,
             )
             .map_err(Failure::domain)?;
-            if args.status.is_some() {
-                for status in &query.statuses {
-                    board.validate_status(status).map_err(Failure::domain)?;
-                }
-            }
             let tickets = board.list(&query).map_err(Failure::domain)?;
             print(&TicketList {
                 tickets: tickets.iter().map(TicketSummary::new).collect(),
@@ -1041,7 +587,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
         TicketCommand::Add(args) => {
             let status = match args.status.as_deref() {
                 Some(raw) => Status::parse(raw).map_err(Failure::domain)?,
-                None => board.landing_status().map_err(Failure::domain)?,
+                None => Status::Backlog,
             };
             let assignee = resolve_assignee(args.assignee.as_deref())?;
             let origin = resolve_origin(args.origin.as_deref())?;
@@ -1054,32 +600,6 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                         status,
                         assignee: assignee.as_deref(),
                         description: description.as_deref(),
-                        origin: &origin,
-                    },
-                )
-                .map_err(Failure::domain)?;
-            print(&TicketDetail::new(&ticket))
-        }
-        TicketCommand::File(args) => {
-            let text = match args.text.as_deref() {
-                None | Some("-") => read_standard_input()?,
-                Some(text) => text.to_string(),
-            };
-            let status = match args.status.as_deref() {
-                Some(raw) => Status::parse(raw).map_err(Failure::domain)?,
-                None => board.landing_status().map_err(Failure::domain)?,
-            };
-            let assignee = resolve_assignee(args.assignee.as_deref())?;
-            let origin = resolve_origin(args.origin.as_deref())?;
-            let ticket = board
-                .add_from_note(
-                    &text,
-                    args.from_note.as_deref().unwrap_or(""),
-                    AddTicket {
-                        lane: args.lane.as_deref(),
-                        status,
-                        assignee: assignee.as_deref(),
-                        description: None,
                         origin: &origin,
                     },
                 )
@@ -1310,253 +830,6 @@ fn project(home: &Home, command: Option<&ProjectCommand>) -> Result<(), Failure>
     }
 }
 
-/// The store's settings: the roster the pickers offer and the shared focus
-/// the faces draw (TAN-258). `get` is the read the app makes over `rpc`;
-/// `set` is its write, beside `settings.get` in the method table, so agents
-/// read and write the same values the faces do. Each `set` flag spells one
-/// axis: an unspelled axis is left alone, except a bare `settings set`, which
-/// clears the focus and leaves the roster alone.
-fn settings_verb(home: &Home, command: Option<&SettingsCommand>) -> Result<(), Failure> {
-    let command = command.ok_or_else(Failure::usage)?;
-    let store = if matches!(command, SettingsCommand::Get) {
-        Store::new(home.clone())
-    } else {
-        write_store(home)?
-    };
-    let settings = Settings::new(&store);
-    let board = Board::new(store);
-
-    match command {
-        SettingsCommand::Get => {
-            let projects = project_names(&board)?;
-            print(&SettingsReply {
-                roster: settings.roster().map_err(Failure::domain)?,
-                active_project: settings
-                    .active_project(&projects)
-                    .map_err(Failure::domain)?,
-            })
-        }
-        SettingsCommand::Set(args) => {
-            let projects = project_names(&board)?;
-            let bare = args.roster.is_none() && args.project.is_none();
-            let roster = match args.roster.clone() {
-                Some(roster) => settings
-                    .set_roster(board.actor(), roster)
-                    .map_err(Failure::domain)?,
-                None => settings.roster().map_err(Failure::domain)?,
-            };
-            let active_project = match args.project.as_deref() {
-                Some(project) => settings
-                    .set_active_project(board.actor(), Some(project), &projects)
-                    .map_err(Failure::domain)?,
-                None if bare => settings
-                    .set_active_project(board.actor(), None, &projects)
-                    .map_err(Failure::domain)?,
-                None => settings
-                    .active_project(&projects)
-                    .map_err(Failure::domain)?,
-            };
-            print(&SettingsReply {
-                roster,
-                active_project,
-            })
-        }
-    }
-}
-
-/// The board's project names in render order: the focus resolves against
-/// these, not against lane names (UI-33), so a stored lane reads as no focus.
-fn project_names(board: &Board) -> Result<Vec<String>, Failure> {
-    Ok(board
-        .projects()
-        .map_err(Failure::domain)?
-        .into_iter()
-        .map(|project| project.name)
-        .collect())
-}
-
-/// The workflow verbs: the stage set as data (TAN-328). `list` and `show` read;
-/// `set` writes a whole document from stdin, atomically; `use` activates one;
-/// `delete` removes a workflow no ticket or sprint is using.
-fn workflow(home: &Home, command: Option<&WorkflowCommand>) -> Result<(), Failure> {
-    let command = command.ok_or_else(Failure::usage)?;
-    let read_only = match command {
-        WorkflowCommand::List | WorkflowCommand::Show(_) => true,
-        WorkflowCommand::Run { command } => matches!(
-            command,
-            None | Some(WorkflowRunCommand::List(_)) | Some(WorkflowRunCommand::Show(_))
-        ),
-        _ => false,
-    };
-    let store = if read_only {
-        Store::new(home.clone())
-    } else {
-        write_store(home)?
-    };
-    let workflows = Workflows::new(&store);
-    let actor = Actor::current();
-    let revision = || store.last_revision();
-
-    match command {
-        WorkflowCommand::List => {
-            let (list, revision) = workflows.list_snapshot().map_err(Failure::domain)?;
-            let active = Workflows::new(&store).active().map_err(Failure::domain)?.id;
-            print(&WorkflowListReply {
-                revision,
-                workflows: list,
-                active,
-            })
-        }
-        WorkflowCommand::Run { command } => {
-            let command = command.as_ref().ok_or_else(Failure::usage)?;
-            workflow_run(&store, command)
-        }
-        WorkflowCommand::Show(args) => {
-            let (workflow, revision) = match args.id.as_deref() {
-                Some(id) => workflows.get_snapshot(id).map_err(Failure::domain)?,
-                None => workflows.active_snapshot().map_err(Failure::domain)?,
-            };
-            print(&WorkflowReply { revision, workflow })
-        }
-        WorkflowCommand::Set(args) => {
-            let text = read_standard_input()?;
-            let parsed: WorkflowSetParams = serde_json::from_str(&text).map_err(|error| {
-                Failure::message(format!("The workflow document is not JSON: {error}."))
-            })?;
-            let draft = WorkflowDraft {
-                name: parsed.name.unwrap_or_default(),
-                scope: parsed.scope.unwrap_or_else(|| "home".to_string()),
-                stages: parsed.stages,
-            };
-            let target = args.id.as_deref().or(parsed.id.as_deref());
-            let workflow = workflows
-                .set(&actor, target, draft)
-                .map_err(Failure::domain)?;
-            print(&WorkflowReply {
-                revision: revision(),
-                workflow,
-            })
-        }
-        WorkflowCommand::Use(args) => {
-            let workflow = workflows
-                .use_workflow(&actor, args.id.as_deref().unwrap_or(""))
-                .map_err(Failure::domain)?;
-            print(&WorkflowReply {
-                revision: revision(),
-                workflow,
-            })
-        }
-        WorkflowCommand::Delete(args) => {
-            let workflows = workflows
-                .delete(&actor, args.id.as_deref().unwrap_or(""))
-                .map_err(Failure::domain)?;
-            let active = Workflows::new(&store).active().map_err(Failure::domain)?.id;
-            print(&WorkflowListReply {
-                revision: revision(),
-                workflows,
-                active,
-            })
-        }
-    }
-}
-
-/// The workflow run verbs (TAN-332): the workflow's current run and its
-/// history, on the same records the `sprint` aliases write.
-fn workflow_run(store: &Store, command: &WorkflowRunCommand) -> Result<(), Failure> {
-    let sprints = Sprints::new(store);
-    let sessions = Sessions::new(store);
-    let actor = Actor::current();
-
-    match command {
-        WorkflowRunCommand::Open(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let mode = sprint_mode(args.mode.as_deref())?;
-            let id = session_handle(&sessions, args.session.as_deref())?;
-            let result = sprints
-                .open_run(
-                    &actor,
-                    lane,
-                    args.workflow.as_deref(),
-                    mode,
-                    Some(&id),
-                    None,
-                )
-                .map_err(Failure::domain)?;
-            print(&WorkflowRunResult {
-                run: result.value,
-                note: result.note,
-            })
-        }
-        WorkflowRunCommand::Ticket(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let ticket = Board::new(store.clone())
-                .ticket(args.ticket.as_deref().unwrap_or(""))
-                .map_err(Failure::domain)?;
-            let number = sprints.open_run_in(lane).map_err(Failure::domain)?.number;
-            let result = sprints
-                .ticket(&actor, lane, number, &ticket.id.to_string())
-                .map_err(Failure::domain)?;
-            print(&WorkflowRunResult {
-                run: result.value.into(),
-                note: result.note,
-            })
-        }
-        WorkflowRunCommand::Run(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let note = sprint_note(args.note.as_deref().unwrap_or(""))?;
-            let number = sprints.open_run_in(lane).map_err(Failure::domain)?.number;
-            let result = sprints
-                .run(&actor, lane, number, &note, None)
-                .map_err(Failure::domain)?;
-            print(&WorkflowRunResult {
-                run: result.value.into(),
-                note: result.note,
-            })
-        }
-        WorkflowRunCommand::Close(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let note = match args.note.as_deref() {
-                Some(raw) => Some(sprint_note(raw)?),
-                None => None,
-            };
-            let number = match args.number.as_deref() {
-                Some(raw) => sprint_number(raw)?,
-                None => sprints.close_in(lane).map_err(Failure::domain)?.number,
-            };
-            let result = sprints
-                .close(&actor, lane, number, note.as_deref(), None)
-                .map_err(Failure::domain)?;
-            print(&WorkflowRunResult {
-                run: result.value.into(),
-                note: result.note,
-            })
-        }
-        WorkflowRunCommand::List(args) => {
-            let status = match args.status.as_deref() {
-                Some(raw) => Some(
-                    tandem_core::domain::sprint::SprintStatus::parse(raw).ok_or_else(|| {
-                        Failure::domain(DomainError::InvalidSprintStatus(raw.to_string()))
-                    })?,
-                ),
-                None => None,
-            };
-            let runs = sprints
-                .list_runs(args.lane.as_deref(), args.workflow.as_deref(), status)
-                .map_err(Failure::domain)?;
-            print(&WorkflowRunList { runs })
-        }
-        WorkflowRunCommand::Show(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let run = match args.number.as_deref() {
-                Some(raw) => sprints.show_run(lane, sprint_number(raw)?),
-                None => sprints.open_run_in(lane),
-            }
-            .map_err(Failure::domain)?;
-            print(&WorkflowRunResult { run, note: None })
-        }
-    }
-}
-
 fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
     let command = command.ok_or_else(Failure::usage)?;
     let vault = bikeshed(home);
@@ -1576,31 +849,11 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
                 note: result.note,
             })
         }
-        NoteCommand::Capture(args) => {
-            home.ensure()
-                .map_err(|error| home_failure(home.directory(), error))?;
-            let kind =
-                CaptureKind::parse(args.kind.as_deref().unwrap_or("")).map_err(capture_failure)?;
-            let project = args.project.clone().unwrap_or_else(project_default);
-            let session = args.session.clone().unwrap_or_else(capture_session_default);
-            let body = read_standard_input()?;
-            match vault.capture(&project, kind, &body, &session, SystemTime::now()) {
-                Ok(result) => print(&NotePathView {
-                    path: result.value,
-                    note: result.note,
-                }),
-                Err(error) => Err(capture_failure(error)),
-            }
-        }
         NoteCommand::Stats(args) => {
             let stats = vault
                 .stats(args.project.as_deref())
                 .map_err(Failure::domain)?;
             print(&stats.value)
-        }
-        NoteCommand::Prune => {
-            let pruned = vault.prune().map_err(Failure::domain)?;
-            print(&pruned.value)
         }
         NoteCommand::Links => {
             let health = vault.health().map_err(Failure::domain)?;
@@ -1650,256 +903,6 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
                 note: result.note,
             })
         }
-        NoteCommand::Daily => {
-            home.ensure()
-                .map_err(|error| home_failure(home.directory(), error))?;
-            let result = vault
-                .open_daily_note(Day::today())
-                .map_err(Failure::domain)?;
-            print(&NotePathView {
-                path: result.value,
-                note: result.note,
-            })
-        }
-    }
-}
-
-/// A refused capture is the caller's own text to fix, not a retryable domain
-/// failure: an empty body or a slug with no words exits 2, the usage code.
-fn capture_failure(error: DomainError) -> Failure {
-    let refused = matches!(
-        error,
-        DomainError::EmptyCaptureBody | DomainError::EmptyCaptureSlug(_)
-    );
-    let mut failure = Failure::domain(error);
-    if refused {
-        failure.exit = 2;
-    }
-    failure
-}
-
-fn session(home: &Home, command: Option<&SessionCommand>) -> Result<(), Failure> {
-    let command = command.ok_or_else(Failure::usage)?;
-    let store = if matches!(command, SessionCommand::List(_) | SessionCommand::Show(_)) {
-        Store::new(home.clone())
-    } else {
-        write_store(home)?
-    };
-    let sessions = Sessions::new(&store);
-    let actor = Actor::current();
-
-    match command {
-        SessionCommand::Start(args) => {
-            let id = started_id(args.session.as_deref());
-            let project = args.project.clone().unwrap_or_else(project_default);
-            let agent = session_agent(args.agent.clone());
-            let brief = session_brief(args.brief.as_deref())?;
-            let harness = harness_session(
-                args.harness_session.as_deref(),
-                args.harness_transport.as_deref(),
-            )?;
-            let result = match harness {
-                Some(harness) => sessions.start_with_harness(
-                    &actor,
-                    &id,
-                    &project,
-                    agent.as_deref(),
-                    &brief,
-                    harness,
-                    None,
-                ),
-                None => sessions.start(&actor, &id, &project, agent.as_deref(), &brief, None),
-            }
-            .map_err(Failure::domain)?;
-            print(&SessionResult {
-                session: result.value,
-                note: result.note,
-            })
-        }
-        SessionCommand::End(args) => {
-            let id = session_handle(&sessions, args.session.as_deref())?;
-            let outcome = session_outcome(args.outcome.as_deref())?;
-            let summary = session_summary(args.summary.as_deref())?;
-            let mut tokens = usage_tokens(args)?;
-            let mut cost = usage_cost(args.cost.as_deref())?;
-            let mut model = usage_model(args.model.as_deref());
-            let mut skills = match args.skills.as_deref() {
-                Some(raw) => parse_skills(raw).map_err(Failure::domain)?,
-                None => None,
-            };
-            let mut turns = None;
-            let mut calls = None;
-            if args.usage_from_harness {
-                let record = sessions.show(&id).map_err(Failure::domain)?;
-                let reported = harness_usage(&record, home, args.harness_url.as_deref())?;
-                tokens = reported.tokens().or(tokens);
-                cost = reported.cost.or(cost);
-                model = reported.model.or(model);
-                skills = reported.skills.or(skills);
-                turns = reported.turns.or(turns);
-                calls = reported.calls.or(calls);
-            }
-            let stamp = sessions
-                .end(
-                    &actor,
-                    &id,
-                    tandem_core::domain::session::Ending {
-                        outcome,
-                        summary: summary.as_deref(),
-                        tokens,
-                        cost,
-                        model: model.as_deref(),
-                        skills,
-                        turns,
-                        calls,
-                        at: None,
-                    },
-                )
-                .map_err(Failure::domain)?;
-            print(&SessionResult {
-                session: stamp.session,
-                note: stamp.note,
-            })
-        }
-        SessionCommand::Link(args) => {
-            let id = session_handle(&sessions, args.session.as_deref())?;
-            let ticket = Board::new(store.clone())
-                .ticket(args.ticket.as_deref().unwrap_or(""))
-                .map_err(Failure::domain)?;
-            let result = sessions
-                .link(&actor, &id, &ticket.id.to_string())
-                .map_err(Failure::domain)?;
-            print(&SessionResult {
-                session: result.value,
-                note: result.note,
-            })
-        }
-        SessionCommand::List(args) => {
-            let status = match args.status.as_deref() {
-                Some(raw) => Some(
-                    tandem_core::domain::session::SessionStatus::parse(raw).ok_or_else(|| {
-                        Failure::message(format!(
-                            "session status must be one of running, ended (got \"{raw}\")."
-                        ))
-                    })?,
-                ),
-                None => None,
-            };
-            let records = sessions
-                .list(args.project.as_deref(), status)
-                .map_err(Failure::domain)?;
-            print(&SessionList { sessions: records })
-        }
-        SessionCommand::Show(args) => {
-            let id = session_handle(&sessions, args.session.as_deref())?;
-            let record = sessions.show(&id).map_err(Failure::domain)?;
-            let notes = bikeshed(home)
-                .session_notes(&id)
-                .map_err(Failure::domain)?
-                .value;
-            print(&SessionDetailView {
-                session: record,
-                notes,
-                note: None,
-            })
-        }
-    }
-}
-
-fn sprint(home: &Home, command: Option<&SprintCommand>) -> Result<(), Failure> {
-    let command = command.ok_or_else(Failure::usage)?;
-    let store = if matches!(command, SprintCommand::List(_) | SprintCommand::Show(_)) {
-        Store::new(home.clone())
-    } else {
-        write_store(home)?
-    };
-    let sprints = Sprints::new(&store);
-    let sessions = Sessions::new(&store);
-    let actor = Actor::current();
-
-    match command {
-        SprintCommand::Open(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let mode = sprint_mode(args.mode.as_deref())?;
-            let id = session_handle(&sessions, args.session.as_deref())?;
-            let result = sprints
-                .open(&actor, lane, mode, Some(&id), None)
-                .map_err(Failure::domain)?;
-            print(&SprintResult {
-                sprint: result.value,
-                note: result.note,
-            })
-        }
-        SprintCommand::Ticket(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let ticket = Board::new(store.clone())
-                .ticket(args.ticket.as_deref().unwrap_or(""))
-                .map_err(Failure::domain)?;
-            let number = sprints.open_in(lane).map_err(Failure::domain)?.number;
-            let result = sprints
-                .ticket(&actor, lane, number, &ticket.id.to_string())
-                .map_err(Failure::domain)?;
-            print(&SprintResult {
-                sprint: result.value,
-                note: result.note,
-            })
-        }
-        SprintCommand::Run(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let note = sprint_note(args.note.as_deref().unwrap_or(""))?;
-            let number = sprints.open_in(lane).map_err(Failure::domain)?.number;
-            let result = sprints
-                .run(&actor, lane, number, &note, None)
-                .map_err(Failure::domain)?;
-            print(&SprintResult {
-                sprint: result.value,
-                note: result.note,
-            })
-        }
-        SprintCommand::Close(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let note = match args.note.as_deref() {
-                Some(raw) => Some(sprint_note(raw)?),
-                None => None,
-            };
-            let number = match args.number.as_deref() {
-                Some(raw) => sprint_number(raw)?,
-                None => sprints.close_in(lane).map_err(Failure::domain)?.number,
-            };
-            let result = sprints
-                .close(&actor, lane, number, note.as_deref(), None)
-                .map_err(Failure::domain)?;
-            print(&SprintResult {
-                sprint: result.value,
-                note: result.note,
-            })
-        }
-        SprintCommand::List(args) => {
-            let status = match args.status.as_deref() {
-                Some(raw) => Some(
-                    tandem_core::domain::sprint::SprintStatus::parse(raw).ok_or_else(|| {
-                        Failure::domain(DomainError::InvalidSprintStatus(raw.to_string()))
-                    })?,
-                ),
-                None => None,
-            };
-            let records = sprints
-                .list(args.lane.as_deref(), status)
-                .map_err(Failure::domain)?;
-            print(&SprintList { sprints: records })
-        }
-        SprintCommand::Show(args) => {
-            let record = sprints
-                .show(
-                    args.lane.as_deref().unwrap_or(""),
-                    sprint_number(args.number.as_deref().unwrap_or(""))?,
-                )
-                .map_err(Failure::domain)?;
-            print(&SprintResult {
-                sprint: record,
-                note: None,
-            })
-        }
     }
 }
 
@@ -1939,29 +942,6 @@ fn read_standard_input() -> Result<String, Failure> {
     String::from_utf8(bytes).map_err(|_| Failure::domain(DomainError::StandardInputNotUtf8))
 }
 
-/// The working directory's last component: the project a capture or session
-/// defaults to (ADR 0016).
-fn project_default() -> String {
-    env::current_dir()
-        .ok()
-        .and_then(|directory| {
-            directory
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-        })
-        .unwrap_or_default()
-}
-
-/// A capture's session default: `$OPENCODE_SESSION_ID`, else a short generated
-/// token for hosts that export none (ADR 0016). A note is filed by path, so an
-/// invented folder is fine here; a session record's handle is not.
-fn capture_session_default() -> String {
-    env::var("OPENCODE_SESSION_ID")
-        .ok()
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()[..8].to_string())
-}
-
 /// `--assignee self` is the agent running this command: the core's rule, shared
 /// with the wire's `ticket.list` and `ticket.add`, so the same value cannot mean
 /// two things. Any other value passes through, including `""`, which selects the
@@ -1974,197 +954,6 @@ fn resolve_assignee(raw: Option<&str>) -> Result<Option<String>, Failure> {
 /// rule, the same one the wire calls.
 fn resolve_origin(raw: Option<&str>) -> Result<String, Failure> {
     tandem_core::domain::resolve_origin(raw, &Actor::current()).map_err(Failure::domain)
-}
-
-/// The harness session a record points at: `--harness-session`, else
-/// `$OPENCODE_SESSION_ID`; no transport flag is `database`, the external
-/// opencode this Mac dogfoods (PRT-29).
-fn harness_session(
-    raw: Option<&str>,
-    transport: Option<&str>,
-) -> Result<Option<HarnessSession>, Failure> {
-    let from_environment = || {
-        env::var("OPENCODE_SESSION_ID")
-            .map(|id| id.trim().to_string())
-            .unwrap_or_default()
-    };
-    let id = match raw {
-        Some(raw) => raw.trim().to_string(),
-        None => from_environment(),
-    };
-    if id.is_empty() {
-        if raw.is_some() {
-            return Err(Failure::domain(DomainError::EmptyHarnessSessionId));
-        }
-        if transport.is_some() {
-            return Err(Failure::message(
-                "--harness-transport names no harness session. Pass --harness-session <id> with it.",
-            ));
-        }
-        return Ok(None);
-    }
-    let transport = match transport {
-        Some(raw) => HarnessTransport::parse(raw.trim()).ok_or_else(|| {
-            Failure::domain(DomainError::InvalidHarnessTransport(raw.to_string()))
-        })?,
-        None => HarnessTransport::Database,
-    };
-    Ok(Some(HarnessSession { id, transport }))
-}
-
-/// The usage a record's harness session reported, read over the harness
-/// loopback API (TAN-276). The server is `--harness-url`, else
-/// `TANDEM_HARNESS_URL`, else the rendezvous file for the record's transport;
-/// an explicit URL always wins whatever the transport. The password is
-/// `TANDEM_HARNESS_PASSWORD` else the rendezvous file, never a flag.
-fn harness_usage(
-    record: &tandem_core::domain::session::Session,
-    home: &Home,
-    url_flag: Option<&str>,
-) -> Result<harness::HarnessUsage, Failure> {
-    let id = record.harness_session_id.clone().ok_or_else(|| {
-        Failure::domain(DomainError::NoHarnessSession {
-            id: record.id.clone(),
-        })
-    })?;
-    let (base, password) = harness_server(home, record.harness_transport, url_flag)?;
-    harness::read_api(&base, &password, &id).map_err(Failure::domain)
-}
-
-/// The loopback server and its credential: an explicit URL wins, else the
-/// rendezvous file for the transport. The transport is provenance (which
-/// harness the pass ran in), so it only selects which rendezvous file is read
-/// when no URL is given.
-fn harness_server(
-    home: &Home,
-    transport: Option<HarnessTransport>,
-    url_flag: Option<&str>,
-) -> Result<(String, String), Failure> {
-    let explicit = url_flag
-        .map(str::trim)
-        .filter(|url| !url.is_empty())
-        .map(str::to_string)
-        .or_else(|| {
-            env::var("TANDEM_HARNESS_URL")
-                .ok()
-                .map(|url| url.trim().to_string())
-                .filter(|url| !url.is_empty())
-        });
-    let rendezvous = rendezvous_path(home, transport);
-    let password_from_file = || rendezvous_password(&rendezvous).unwrap_or_default();
-    if let Some(base) = explicit {
-        let password = env::var("TANDEM_HARNESS_PASSWORD").unwrap_or_else(|_| password_from_file());
-        return Ok((base, password));
-    }
-    let (base, file_password) = rendezvous_server(&rendezvous)?;
-    let password = env::var("TANDEM_HARNESS_PASSWORD").unwrap_or(file_password);
-    Ok((base, password))
-}
-
-/// Which rendezvous file names the server when no URL is given: the embedded
-/// harness's `state/opencode/service.json` under the Tandem home for
-/// `event-stream` records, else the external state dir the binary mirrors
-/// (`XDG_STATE_HOME/opencode/service.json`, else
-/// `~/.local/state/opencode/service.json`).
-fn rendezvous_path(home: &Home, transport: Option<HarnessTransport>) -> PathBuf {
-    if transport == Some(HarnessTransport::EventStream) {
-        return home
-            .directory()
-            .join("harness")
-            .join("state")
-            .join("opencode")
-            .join("service.json");
-    }
-    if let Some(state) = env::var_os("XDG_STATE_HOME")
-        && !state.is_empty()
-    {
-        return PathBuf::from(state).join("opencode").join("service.json");
-    }
-    let home_dir = env::var_os("HOME")
-        .or_else(|| env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    home_dir
-        .join(".local")
-        .join("state")
-        .join("opencode")
-        .join("service.json")
-}
-
-/// The server the rendezvous file names, with its password. Extra keys are
-/// ignored; the file is service-written, mode 0600.
-fn rendezvous_server(path: &Path) -> Result<(String, String), Failure> {
-    let text = std::fs::read_to_string(path).map_err(|_| {
-        Failure::domain(DomainError::NoHarnessServer {
-            url: path.display().to_string(),
-        })
-    })?;
-    let value: serde_json::Value = serde_json::from_str(&text).map_err(|_| {
-        Failure::domain(DomainError::NoHarnessServer {
-            url: path.display().to_string(),
-        })
-    })?;
-    let base = value
-        .get("url")
-        .and_then(|url| url.as_str())
-        .map(str::trim)
-        .filter(|url| !url.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| {
-            Failure::domain(DomainError::NoHarnessServer {
-                url: path.display().to_string(),
-            })
-        })?;
-    let password = value
-        .get("password")
-        .and_then(|password| password.as_str())
-        .unwrap_or_default()
-        .to_string();
-    Ok((base, password))
-}
-
-/// The password the rendezvous file holds, or empty when it holds none.
-fn rendezvous_password(path: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(path).ok()?;
-    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
-    Some(
-        value
-            .get("password")
-            .and_then(|password| password.as_str())
-            .unwrap_or_default()
-            .to_string(),
-    )
-}
-
-/// A session record's handle when the verb opens one: `--session`, else a
-/// minted id. Tandem owns the record (PRT-29); the harness session is a column
-/// beside it, never the key, so a second pass in one harness session opens a
-/// record of its own instead of finding the first one "already recorded".
-fn started_id(raw: Option<&str>) -> String {
-    match raw {
-        Some(raw) => raw.to_string(),
-        None => uuid::Uuid::new_v4().to_string(),
-    }
-}
-
-/// A session record's handle when the verb reads or stamps one: `--session`,
-/// else `$OPENCODE_SESSION_ID`, resolved to the record (an exact id first, then
-/// the harness pointer the older caller speaks).
-fn session_handle(sessions: &Sessions, raw: Option<&str>) -> Result<String, Failure> {
-    let handle = match raw {
-        Some(raw) => raw.to_string(),
-        None => match env::var("OPENCODE_SESSION_ID") {
-            Ok(id) if !id.trim().is_empty() => id,
-            _ => return Err(Failure::domain(DomainError::SessionIdUnset)),
-        },
-    };
-    sessions.resolve(&handle).map_err(Failure::domain)
-}
-
-/// A session's agent: `--agent`, else `$TANDEM_AGENT`; nobody when the
-/// environment names no agent. The core trims the name.
-fn session_agent(raw: Option<String>) -> Option<String> {
-    raw.or_else(|| env::var("TANDEM_AGENT").ok())
 }
 
 /// `--description` on `ticket set`: the flag's own value, or stdin when it is
@@ -2211,170 +1000,117 @@ fn add_description_body(flag: Option<&str>) -> Result<Option<String>, Failure> {
     }
 }
 
-/// A session's brief: the flag's value, or stdin when it is `-`. A value naming
-/// an existing regular file is refused: the flag never read the file, so the
-/// path would be filed as the brief.
-fn session_brief(raw: Option<&str>) -> Result<String, Failure> {
-    let raw = raw.unwrap_or("");
-    if raw != "-" {
-        let expanded = expand_tilde(raw);
-        if expanded.is_file() {
-            return Err(Failure::domain(DomainError::BriefNamesAFile(
-                raw.to_string(),
-            )));
-        }
-        return Ok(raw.to_string());
-    }
-    let body = read_standard_input()?;
-    if body.trim().is_empty() {
-        return Err(Failure::domain(DomainError::EmptySessionBrief));
-    }
-    Ok(body)
-}
+// MARK: - serve
 
-/// `~` is the shell's to expand, and no shell runs between the caller and the
-/// flag.
-fn expand_tilde(raw: &str) -> PathBuf {
-    if (raw == "~" || raw.starts_with("~/"))
-        && let Some(home) = env::var_os("HOME")
-    {
-        let rest = raw.trim_start_matches('~').trim_start_matches('/');
-        return PathBuf::from(home).join(rest);
+/// The board's loopback door: a non-loopback address is refused before binding
+/// unless the human opted in, the listener prints the address it actually
+/// bound (so `--port 0` is usable), and SIGINT or SIGTERM ends the run.
+fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
+    let host: std::net::IpAddr = args.host.parse().map_err(|_| Failure {
+        message: format!(
+            "tandem serve: --host must be an IP address, got \"{}\".",
+            args.host
+        ),
+        exit: 2,
+    })?;
+    if !host.is_loopback() && !args.allow_unauthenticated {
+        return Err(Failure {
+            message: format!(
+                "tandem serve: {host} is not a loopback address. Pass --allow-unauthenticated to serve beyond this machine."
+            ),
+            exit: 2,
+        });
     }
-    PathBuf::from(raw)
-}
-
-/// A session's summary: absent is none, and a `--summary -` body with no text is
-/// a failed write, not a deliberate silence.
-fn session_summary(raw: Option<&str>) -> Result<Option<String>, Failure> {
-    match raw {
-        None => Ok(None),
-        Some("-") => {
-            let body = read_standard_input()?;
-            if body.trim().is_empty() {
-                return Err(Failure::domain(DomainError::EmptySessionSummary));
-            }
-            Ok(Some(body))
-        }
-        Some(text) => Ok(Some(text.to_string())),
-    }
-}
-
-/// How a session ended: absent is `unknown`, the honest answer.
-fn session_outcome(raw: Option<&str>) -> Result<SessionOutcome, Failure> {
-    match raw {
-        None => Ok(SessionOutcome::Unknown),
-        Some(raw) => SessionOutcome::parse(raw).ok_or_else(|| {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| {
             Failure::message(format!(
-                "outcome must be one of succeeded, failed, interrupted, unknown (got \"{raw}\")."
+                "tandem serve: the runtime could not start: {error}."
             ))
-        }),
-    }
+        })?;
+    runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind((host, args.port))
+            .await
+            .map_err(|error| {
+                Failure::message(format!(
+                    "tandem serve: could not bind {host}:{}: {error}.",
+                    args.port
+                ))
+            })?;
+        let address = listener.local_addr().map_err(|error| {
+            Failure::message(format!(
+                "tandem serve: the bound address is unreadable: {error}."
+            ))
+        })?;
+        println!("tandem serve: listening on http://{address}");
+        let _ = io::stdout().flush();
+        if args.open {
+            open_browser(&format!("http://{address}"));
+        }
+        let context = tandem_core::serve::SessionContext {
+            store: Store::new(home.clone()),
+            actor: Actor::current(),
+            environment: environment(),
+        };
+        let (changes, _) = tokio::sync::broadcast::channel(64);
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let watcher =
+            tandem_core::serve::watch(context.store.clone(), changes.clone(), stop.clone());
+        let app = tandem_core::serve::router_with(context, changes);
+        let outcome = tokio::select! {
+            result = axum::serve(listener, app) => result.map_err(|error| {
+                Failure::message(format!("tandem serve: the server stopped: {error}."))
+            }),
+            _ = shutdown_signal() => Ok(()),
+        };
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        // The watcher notices the stop on its next tick and exits; the process
+        // is ending, so the handle is dropped rather than joined.
+        drop(watcher);
+        outcome
+    })
 }
 
-/// The token counts the usage flags report; absent is absent on the record, and
-/// a value that is not a non-negative whole number names the flag.
-fn usage_tokens(args: &SessionEndArgs) -> Result<Option<SessionTokens>, Failure> {
-    fn count(flag: &str, raw: Option<&str>) -> Result<Option<i64>, Failure> {
-        match raw {
-            None => Ok(None),
-            Some(raw) => raw
-                .parse::<i64>()
-                .ok()
-                .filter(|value| *value >= 0)
-                .map(Some)
-                .ok_or_else(|| {
-                    Failure::domain(DomainError::InvalidUsageFlag {
-                        flag: flag.to_string(),
-                        value: raw.to_string(),
-                    })
-                }),
+/// SIGINT, or SIGTERM on unix. The serve future is dropped on either, which
+/// closes the listener and the open streams.
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut terminate = match signal(SignalKind::terminate()) {
+            Ok(signal) => signal,
+            Err(_) => {
+                let _ = tokio::signal::ctrl_c().await;
+                return;
+            }
+        };
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = terminate.recv() => {}
         }
     }
-    let input = count("tokens-input", args.tokens_input.as_deref())?;
-    let output = count("tokens-output", args.tokens_output.as_deref())?;
-    let reasoning = count("tokens-reasoning", args.tokens_reasoning.as_deref())?;
-    let cache_read = count("tokens-cache-read", args.tokens_cache_read.as_deref())?;
-    let cache_write = count("tokens-cache-write", args.tokens_cache_write.as_deref())?;
-    if input.is_none()
-        && output.is_none()
-        && reasoning.is_none()
-        && cache_read.is_none()
-        && cache_write.is_none()
+    #[cfg(not(unix))]
     {
-        return Ok(None);
-    }
-    Ok(Some(SessionTokens {
-        input,
-        output,
-        reasoning,
-        cache_read,
-        cache_write,
-    }))
-}
-
-/// The cost `--cost` reports, in dollars; a value that is not a non-negative
-/// number names the flag.
-fn usage_cost(raw: Option<&str>) -> Result<Option<f64>, Failure> {
-    match raw {
-        None => Ok(None),
-        Some(raw) => raw
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite() && *value >= 0.0)
-            .map(Some)
-            .ok_or_else(|| {
-                Failure::domain(DomainError::InvalidUsageFlag {
-                    flag: "cost".to_string(),
-                    value: raw.to_string(),
-                })
-            }),
+        let _ = tokio::signal::ctrl_c().await;
     }
 }
 
-/// `--model`: absent is absent; an empty value is no model.
-fn usage_model(raw: Option<&str>) -> Option<String> {
-    raw.map(str::trim)
-        .filter(|model| !model.is_empty())
-        .map(str::to_string)
-}
-
-/// A sprint's mode: absent is `serial`.
-fn sprint_mode(raw: Option<&str>) -> Result<SprintMode, Failure> {
-    match raw {
-        None => Ok(SprintMode::Serial),
-        Some(raw) => SprintMode::parse(raw)
-            .ok_or_else(|| Failure::domain(DomainError::InvalidSprintMode(raw.to_string()))),
-    }
-}
-
-/// A sprint note: the flag's value, or stdin when it is `-`. The empty body is
-/// the core's own refusal.
-fn sprint_note(raw: &str) -> Result<String, Failure> {
-    if raw == "-" {
-        read_standard_input()
+/// `--open`: the system browser, after the listener has a real port. A browser
+/// that cannot start is not a server failure; the address is already printed.
+fn open_browser(url: &str) {
+    let program = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(windows) {
+        "cmd"
     } else {
-        Ok(raw.to_string())
+        "xdg-open"
+    };
+    let mut command = std::process::Command::new(program);
+    if cfg!(windows) {
+        command.args(["/C", "start", ""]);
     }
-}
-
-fn sprint_number(raw: &str) -> Result<i64, Failure> {
-    raw.parse::<i64>()
-        .map_err(|_| Failure::domain(DomainError::InvalidSprintNumber(raw.to_string())))
-}
-
-// MARK: - rpc
-
-/// The app's door: frames on stdin, frames on stdout, and an exit on a closed
-/// stdin. The protocol lives in the core (`tandem_core::rpc`); this arm is only
-/// the process that owns the two streams.
-fn rpc(home: &Home) -> Result<(), Failure> {
-    tandem_core::rpc::serve(
-        tandem_core::rpc::StdioStream::new(),
-        Store::new(home.clone()),
-        Actor::current(),
-    )
-    .map_err(|error| Failure::message(format!("The rpc stream failed: {error}. Try again.")))
+    let _ = command.arg(url).spawn();
 }
 
 // MARK: - mcp
@@ -2395,13 +1131,13 @@ fn mcp(home: &Home) -> Result<(), Failure> {
 
 // MARK: - doctor
 
-/// `doctor` (ADR 0014): a setup report is not a domain call, so it does not go
+/// `doctor` (ADR 0014): a diagnostic report is not a domain call, so it does not go
 /// through `run`. It always prints the report JSON to stdout, the report is the
 /// success value even when a check fails, and exits 0 when every
 /// failing-capable check passed, 1 otherwise, echoing each failing check's next
 /// step to stderr. A read-only verb: it never creates the home it reports.
 fn doctor(home: &Home) -> Result<(), Failure> {
-    let report = diagnostics::run(home, &environment());
+    let report = diagnostics::run(home);
     print(&report)?;
     if report.ok {
         return Ok(());
@@ -2418,64 +1154,13 @@ fn doctor(home: &Home) -> Result<(), Failure> {
     })
 }
 
-// MARK: - setup
+// MARK: - the run's environment
 
-/// `setup install|uninstall|status` (ADR 0034): one JSON report on stdout
-/// whatever the exit code, because the report is the diagnosis. `install` and
-/// `uninstall` exit 1 when a warning is an error; `status` exits 0 always. A
-/// thrown failure keeps the other verbs' contract: message on stderr, exit 1,
-/// no JSON on stdout.
-fn setup_command(home: &Home, command: Option<&SetupCommand>) -> Result<(), Failure> {
-    let command = command.ok_or_else(Failure::usage)?;
-    let environment = environment();
-    match command {
-        SetupCommand::Install(args) => {
-            let hosts = setup::hosts(args.host.as_deref()).map_err(setup_failure)?;
-            let bundle = setup::bundled_face(&environment);
-            let report = setup::install(
-                home.directory(),
-                &environment,
-                bundle.as_deref(),
-                args.force,
-                &hosts,
-            )
-            .map_err(setup_failure)?;
-            print(&report)?;
-            if report.state.has_error() {
-                return Err(Failure::silent(1));
-            }
-            Ok(())
-        }
-        SetupCommand::Uninstall(args) => {
-            let hosts = setup::uninstall_hosts(args.host.as_deref()).map_err(setup_failure)?;
-            let report = setup::uninstall(home.directory(), &environment, hosts.as_deref())
-                .map_err(setup_failure)?;
-            print(&report)?;
-            if report.state.has_error() {
-                return Err(Failure::silent(1));
-            }
-            Ok(())
-        }
-        SetupCommand::Status => {
-            let report = setup::status(home.directory(), &environment);
-            print(&report)
-        }
-    }
-}
-
-/// A setup failure is a message an agent or human can act on, exit 1, and no
-/// JSON: the report is only for a run that got far enough to build one.
-fn setup_failure(error: impl std::fmt::Display) -> Failure {
-    Failure::message(error.to_string())
-}
-
-/// The process's environment as the setup and doctor code reads it: `HOME`,
-/// `XDG_CONFIG_HOME`, `TANDEM_AGENT_BUNDLE` and the four host flags. A value
-/// that is not UTF-8 is not one of those names and is dropped.
+/// The process's environment as the MCP door reads it: `TANDEM_HOME`,
+/// `TANDEM_AGENT` and the harness session pointer. A value that is not UTF-8 is
+/// not one of those names and is dropped.
 fn environment() -> Environment {
-    std::env::vars_os()
-        .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
-        .collect()
+    tandem_core::env::process()
 }
 
 // MARK: - The wire's parity gate
@@ -2484,6 +1169,23 @@ fn environment() -> Environment {
 /// speaks names a CLI verb, and the grammar answers it. A mutation message
 /// without a verb is a UI-only write, which the contract forbids. A read may name
 /// no verb: it writes nothing, and `usage.report` is the one such method.
+#[cfg(test)]
+mod version_flag {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// The release build stamps `TANDEM_VERSION`, and the smoke test on every
+    /// platform reads it back from `tandem --version`. A dev build falls back to
+    /// the crate version, so this pins the wiring rather than one value.
+    #[test]
+    fn the_version_flag_names_the_release_stamp() {
+        assert_eq!(
+            Cli::command().get_version(),
+            Some(tandem_core::release_version())
+        );
+    }
+}
+
 #[cfg(test)]
 mod wire_parity {
     use super::*;

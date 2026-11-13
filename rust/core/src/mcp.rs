@@ -25,19 +25,15 @@ use std::io;
 
 use serde_json::{Value, json};
 
+use crate::env::Environment;
 use crate::rpc::{Stream, handle_in};
-use crate::setup::Environment;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     CommentAddParams, EmptyParams, LaneAddParams, LaneDeleteParams, LaneMoveParams,
-    LaneRenameParams, Method, NoteCaptureParams, ProjectAddParams, ProjectDeleteParams,
-    ProjectRenameParams, SessionEndParams, SessionLinkParams, SessionListParams, SessionShowParams,
-    SessionStartParams, SettingsSetParams, SprintCloseParams, SprintListParams, SprintOpenParams,
-    SprintRunParams, SprintShowParams, SprintTicketParams, TicketAddFromNoteParams,
-    TicketAddParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
-    TicketMoveParams, TicketSetParams, TicketUnblockParams, WorkflowIdParams,
-    WorkflowRunCloseParams, WorkflowRunListParams, WorkflowRunOpenParams, WorkflowRunRunParams,
-    WorkflowRunShowParams, WorkflowRunTicketParams, WorkflowSetParams, WorkflowShowParams,
+    LaneRenameParams, Method, NoteMoveParams, NotePathParams, NoteWriteParams, ProjectAddParams,
+    ProjectDeleteParams, ProjectRenameParams, TicketAddParams, TicketArchiveParams,
+    TicketBlockParams, TicketIdParams, TicketListParams, TicketMoveParams, TicketSetParams,
+    TicketUnblockParams,
 };
 
 /// The server name the `initialize` answer carries.
@@ -133,12 +129,7 @@ pub fn handle_mcp(
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
     let id = id_of(&value);
     match method {
-        "initialize" => Some(initialize_frame(
-            id,
-            request.get("params"),
-            store,
-            environment,
-        )),
+        "initialize" => Some(initialize_frame(id, request.get("params"), store)),
         "notifications/initialized" => {
             let id = id?;
             Some(result_frame(Some(id), json!({})))
@@ -185,12 +176,7 @@ pub fn handle_mcp(
 /// A small `health` block rides beside them (the resolved home and why, the
 /// store's ok, the version and the tool count), so a fresh session can see the
 /// default path is wired without running a full `doctor`.
-fn initialize_frame(
-    id: Option<Value>,
-    params: Option<&Value>,
-    store: &Store,
-    environment: &crate::setup::Environment,
-) -> String {
+fn initialize_frame(id: Option<Value>, params: Option<&Value>, store: &Store) -> String {
     let asked = params
         .and_then(|params| params.get("protocolVersion"))
         .and_then(Value::as_str)
@@ -205,41 +191,30 @@ fn initialize_frame(
         json!({
             "protocolVersion": negotiated,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": SERVER_NAME, "version": server_version(store, environment)},
-            "health": health_block(store, environment),
+            "serverInfo": {"name": SERVER_NAME, "version": server_version()},
+            "health": health_block(store),
         }),
     )
 }
 
 /// The release version the `initialize` answer carries: the stamped build
-/// version when the release stamped one, else the agent face `VERSION` marker
-/// beside the binary (or the installed copy), else the crate version. The
-/// workspace sits at 0.1.0 and never moves with releases, so the binary's own
-/// version is the last resort, never the answer on an installed app.
-pub fn server_version(store: &Store, environment: &crate::setup::Environment) -> String {
-    if let Some(stamped) = option_env!("TANDEM_VERSION")
-        .map(str::trim)
-        .filter(|version| !version.is_empty())
-    {
-        return stamped.to_string();
+/// version when the release stamped one, else the crate version. The workspace
+/// sits at 0.1.0 and never moves with releases, so the binary's own version is
+/// the last resort. A dev build answers the crate version and no more (ADR
+/// 0045 retired the bundled `VERSION` marker).
+pub fn server_version() -> String {
+    let version = crate::release_version().trim();
+    if version.is_empty() {
+        env!("CARGO_PKG_VERSION").to_string()
+    } else {
+        version.to_string()
     }
-    if let Some(bundle) = crate::setup::bundled_face(environment)
-        && let Some(version) = crate::setup::version_text(&bundle)
-    {
-        return version;
-    }
-    let face = crate::setup::Context::new(store.home().directory(), environment).face();
-    if let Some(version) = crate::setup::version_text(&face) {
-        return version;
-    }
-    env!("CARGO_PKG_VERSION").to_string()
 }
 
-/// A small health block for `initialize` and `session_start`: the resolved
-/// home and why, whether the store is ok, the release version and the tool
-/// count. It reads the store's lock-free health only, never the full `doctor`
+/// A small health block for `initialize`: the resolved home and why, whether
+/// the store is ok, the release version and the tool count. It reads the store's lock-free health only, never the full `doctor`
 /// report, so every call stays cheap.
-fn health_block(store: &Store, environment: &crate::setup::Environment) -> Value {
+fn health_block(store: &Store) -> Value {
     let home = store.home();
     let store_ok = matches!(
         store.health(),
@@ -249,7 +224,7 @@ fn health_block(store: &Store, environment: &crate::setup::Environment) -> Value
         "home": crate::wire::slashed_path(home.directory()),
         "homeSource": home.source().as_str(),
         "storeOk": store_ok,
-        "version": server_version(store, environment),
+        "version": server_version(),
         "tools": tools().len(),
     })
 }
@@ -259,16 +234,7 @@ fn health_block(store: &Store, environment: &crate::setup::Environment) -> Value
 /// refusal is a result with `isError`, in the domain's words; only a call the
 /// door cannot route is a JSON-RPC error.
 ///
-/// The call carries its harness session beside `arguments`: the host sends
-/// `_meta: {"ai.opencode/sessionID": ...}` on every call its session makes,
-/// and the call runs with that pointer as its `$OPENCODE_SESSION_ID`, so the
-/// session verbs resolve the caller the way the CLI does. A long-lived server
-/// inherits only its spawn environment, which names no session; the call's
-/// pointer wins over that environment when both name one, because the caller
-/// is fresher than the spawn.
-///
-/// `session_start` carries the same small health block `initialize` does, so
-/// the pass that opened the record sees the wired path without a `doctor`.
+/// The server inherits its spawn environment; the call reads nothing else.
 fn call_frame(
     id: Option<Value>,
     params: Option<&Value>,
@@ -295,18 +261,6 @@ fn call_frame(
         );
     }
     let frame = json!({"id": 1, "method": tool.method_tag, "params": arguments}).to_string();
-    let overridden;
-    let environment = match call_harness_session(params) {
-        Some(id) => {
-            overridden = {
-                let mut owned = environment.clone();
-                owned.insert("OPENCODE_SESSION_ID".to_string(), id);
-                owned
-            };
-            &overridden
-        }
-        None => environment,
-    };
     let answer: Value = serde_json::from_str(&handle_in(&frame, store, actor, environment))
         .unwrap_or_else(|_| json!({"id": 1, "error": {"code": "parse", "message": "the answer is not readable"}}));
     if let Some(error) = answer.get("error") {
@@ -319,30 +273,11 @@ fn call_frame(
             json!({"content": [{"type": "text", "text": message}], "isError": true}),
         );
     }
-    let mut result = answer.get("result").cloned().unwrap_or(Value::Null);
-    if tool.method_tag == "session.start"
-        && let Some(object) = result.as_object_mut()
-    {
-        object.insert("health".to_string(), health_block(store, environment));
-    }
+    let result = answer.get("result").cloned().unwrap_or(Value::Null);
     result_frame(
         id,
         json!({"content": [{"type": "text", "text": result.to_string()}]}),
     )
-}
-
-/// The harness session the caller runs in, as the host reports it: opencode
-/// sends `_meta: {"ai.opencode/sessionID": ...}` on every `tools/call` its
-/// session makes. An absent, non-string or blank pointer is no pointer, so the
-/// call runs on the server's own environment exactly as before.
-fn call_harness_session(params: Option<&Value>) -> Option<String> {
-    params
-        .and_then(|params| params.get("_meta"))
-        .and_then(|meta| meta.get("ai.opencode/sessionID"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|id| !id.is_empty())
-        .map(str::to_string)
 }
 
 /// A success frame.
@@ -377,8 +312,7 @@ fn id_of(value: &Value) -> Option<Value> {
 /// One tool: the covered method it calls, under its snake-case name, with the
 /// documentation the agent reads and the schema the params struct derives.
 pub struct Tool {
-    /// The tool's name: the method tag in snake case, except `ticket_file`,
-    /// which is the CLI verb the method shares.
+    /// The tool's name: the method tag in snake case.
     pub name: &'static str,
     /// The wire method the call feeds to the `rpc` door.
     pub method_tag: &'static str,
@@ -411,7 +345,7 @@ impl Tool {
     }
 }
 
-/// The 48 tools: one per covered wire method. The schema beside each entry is
+/// The tools: one per covered wire method. The schema beside each entry is
 /// the params struct's own derivation, so the list cannot drift from the wire
 /// without the registry test failing.
 pub fn tools() -> Vec<Tool> {
@@ -436,13 +370,6 @@ pub fn tools() -> Vec<Tool> {
             description: "File a ticket. A title alone lands backlog, unowned, on top of the default area.",
             input_schema: TicketAddParams::schema(),
             method: Method::TicketAdd(TicketAddParams::default()),
-        },
-        Tool {
-            name: "ticket_file",
-            method_tag: "ticket.addFromNote",
-            description: "File a note's selection as a ticket, linked to the note it came from.",
-            input_schema: TicketAddFromNoteParams::schema(),
-            method: Method::TicketAddFromNote(TicketAddFromNoteParams::default()),
         },
         Tool {
             name: "ticket_set",
@@ -564,132 +491,6 @@ pub fn tools() -> Vec<Tool> {
             method: Method::ProjectDelete(ProjectDeleteParams::default()),
         },
         Tool {
-            name: "session_start",
-            method_tag: "session.start",
-            description: "Open the session record for this pass: one record per pass, never a ticket.",
-            input_schema: SessionStartParams::schema(),
-            method: Method::SessionStart(SessionStartParams::default()),
-        },
-        Tool {
-            name: "session_link",
-            method_tag: "session.link",
-            description: "Record that this session carries a ticket, in link order.",
-            input_schema: SessionLinkParams::schema(),
-            method: Method::SessionLink(SessionLinkParams::default()),
-        },
-        Tool {
-            name: "session_end",
-            method_tag: "session.end",
-            description: "Stamp the session ended, once, with the outcome and the harness usage. Reads the harness row by default; a harness with no row stamps without usage.",
-            input_schema: SessionEndParams::schema(),
-            method: Method::SessionEnd(SessionEndParams::default()),
-        },
-        Tool {
-            name: "session_list",
-            method_tag: "session.list",
-            description: "List the session records, newest first.",
-            input_schema: SessionListParams::schema(),
-            method: Method::SessionList(SessionListParams::default()),
-        },
-        Tool {
-            name: "session_show",
-            method_tag: "session.show",
-            description: "Read one session record, with the note paths it filed.",
-            input_schema: SessionShowParams::schema(),
-            method: Method::SessionShow(SessionShowParams::default()),
-        },
-        Tool {
-            name: "sprint_open",
-            method_tag: "sprint.open",
-            description: "Open the lane's sprint record, once per lane; a second open keeps the first.",
-            input_schema: SprintOpenParams::schema(),
-            method: Method::SprintOpen(SprintOpenParams::default()),
-        },
-        Tool {
-            name: "sprint_ticket",
-            method_tag: "sprint.ticket",
-            description: "Draw one ticket into the lane's open sprint batch, in stored order.",
-            input_schema: SprintTicketParams::schema(),
-            method: Method::SprintTicket(SprintTicketParams::default()),
-        },
-        Tool {
-            name: "sprint_run",
-            method_tag: "sprint.run",
-            description: "Append one dated entry to the lane's open sprint run log.",
-            input_schema: SprintRunParams::schema(),
-            method: Method::SprintRun(SprintRunParams::default()),
-        },
-        Tool {
-            name: "sprint_close",
-            method_tag: "sprint.close",
-            description: "Close the lane's sprint record, once, with what landed.",
-            input_schema: SprintCloseParams::schema(),
-            method: Method::SprintClose(SprintCloseParams::default()),
-        },
-        Tool {
-            name: "sprint_list",
-            method_tag: "sprint.list",
-            description: "List the lane's sprint records, newest opened first.",
-            input_schema: SprintListParams::schema(),
-            method: Method::SprintList(SprintListParams::default()),
-        },
-        Tool {
-            name: "sprint_show",
-            method_tag: "sprint.show",
-            description: "Read the lane's open sprint record.",
-            input_schema: SprintShowParams::schema(),
-            method: Method::SprintShow(SprintShowParams::default()),
-        },
-        Tool {
-            name: "workflow_run_open",
-            method_tag: "workflow.run.open",
-            description: "Open the lane's workflow run, once per lane; a second open keeps the first.",
-            input_schema: WorkflowRunOpenParams::schema(),
-            method: Method::WorkflowRunOpen(WorkflowRunOpenParams::default()),
-        },
-        Tool {
-            name: "workflow_run_ticket",
-            method_tag: "workflow.run.ticket",
-            description: "Draw one ticket into the lane's open workflow run, in stored order.",
-            input_schema: WorkflowRunTicketParams::schema(),
-            method: Method::WorkflowRunTicket(WorkflowRunTicketParams::default()),
-        },
-        Tool {
-            name: "workflow_run_run",
-            method_tag: "workflow.run.run",
-            description: "Append one dated entry to the lane's open workflow run log.",
-            input_schema: WorkflowRunRunParams::schema(),
-            method: Method::WorkflowRunRun(WorkflowRunRunParams::default()),
-        },
-        Tool {
-            name: "workflow_run_close",
-            method_tag: "workflow.run.close",
-            description: "Close the lane's workflow run, once, with what landed.",
-            input_schema: WorkflowRunCloseParams::schema(),
-            method: Method::WorkflowRunClose(WorkflowRunCloseParams::default()),
-        },
-        Tool {
-            name: "workflow_run_list",
-            method_tag: "workflow.run.list",
-            description: "List the workflow's runs, newest opened first.",
-            input_schema: WorkflowRunListParams::schema(),
-            method: Method::WorkflowRunList(WorkflowRunListParams::default()),
-        },
-        Tool {
-            name: "workflow_run_show",
-            method_tag: "workflow.run.show",
-            description: "Read the lane's open workflow run, or the run number named.",
-            input_schema: WorkflowRunShowParams::schema(),
-            method: Method::WorkflowRunShow(WorkflowRunShowParams::default()),
-        },
-        Tool {
-            name: "note_capture",
-            method_tag: "note.capture",
-            description: "File one capture: a decision, gotcha, fact or thread the next session would otherwise re-derive.",
-            input_schema: NoteCaptureParams::schema(),
-            method: Method::NoteCapture(NoteCaptureParams::default()),
-        },
-        Tool {
             name: "doctor_report",
             method_tag: "doctor.report",
             description: "Report where this machine's Tandem state lives and whether it is healthy.",
@@ -697,18 +498,46 @@ pub fn tools() -> Vec<Tool> {
             method: Method::DoctorReport(EmptyParams {}),
         },
         Tool {
-            name: "settings_get",
-            method_tag: "settings.get",
-            description: "Read the faces' settings: the roster the pickers offer and the active project focus.",
+            name: "note_tree",
+            method_tag: "note.tree",
+            description: "Read the vault's folder tree: folders first, notes after, hidden entries skipped.",
             input_schema: EmptyParams::schema(),
-            method: Method::SettingsGet(EmptyParams {}),
+            method: Method::NoteTree(EmptyParams {}),
         },
         Tool {
-            name: "settings_set",
-            method_tag: "settings.set",
-            description: "Focus the faces on a declared lane, or clear back to every lane; optionally replace the roster.",
-            input_schema: SettingsSetParams::schema(),
-            method: Method::SettingsSet(SettingsSetParams::default()),
+            name: "note_read",
+            method_tag: "note.read",
+            description: "Read one note: its whole text, the content hash a save compares and its mtime.",
+            input_schema: NotePathParams::schema(),
+            method: Method::NoteRead(NotePathParams::default()),
+        },
+        Tool {
+            name: "note_write",
+            method_tag: "note.write",
+            description: "Write a note's whole text, atomically, under the vault lock. A missing text is refused.",
+            input_schema: NoteWriteParams::schema(),
+            method: Method::NoteWrite(NoteWriteParams::default()),
+        },
+        Tool {
+            name: "note_create",
+            method_tag: "note.create",
+            description: "Create an empty note. A taken path is refused, never overwritten.",
+            input_schema: NotePathParams::schema(),
+            method: Method::NoteCreate(NotePathParams::default()),
+        },
+        Tool {
+            name: "note_create_folder",
+            method_tag: "note.createFolder",
+            description: "Create a folder, with no note in it.",
+            input_schema: NotePathParams::schema(),
+            method: Method::NoteCreateFolder(NotePathParams::default()),
+        },
+        Tool {
+            name: "note_move",
+            method_tag: "note.move",
+            description: "Move a note or folder into another folder, rewriting every wikilink that resolves to it.",
+            input_schema: NoteMoveParams::schema(),
+            method: Method::NoteMove(NoteMoveParams::default()),
         },
         Tool {
             name: "note_health",
@@ -716,41 +545,6 @@ pub fn tools() -> Vec<Tool> {
             description: "Check the vault's link graph: broken links, orphans and counts, the same report note links prints.",
             input_schema: EmptyParams::schema(),
             method: Method::NoteHealth(EmptyParams {}),
-        },
-        Tool {
-            name: "workflow_list",
-            method_tag: "workflow.list",
-            description: "List every workflow and the active one's id.",
-            input_schema: EmptyParams::schema(),
-            method: Method::WorkflowList(EmptyParams {}),
-        },
-        Tool {
-            name: "workflow_show",
-            method_tag: "workflow.show",
-            description: "Read one workflow whole. Omit the id for the active workflow.",
-            input_schema: WorkflowShowParams::schema(),
-            method: Method::WorkflowShow(WorkflowShowParams::default()),
-        },
-        Tool {
-            name: "workflow_set",
-            method_tag: "workflow.set",
-            description: "Write a workflow's whole document atomically. Omit the id to create one.",
-            input_schema: WorkflowSetParams::schema(),
-            method: Method::WorkflowSet(WorkflowSetParams::default()),
-        },
-        Tool {
-            name: "workflow_use",
-            method_tag: "workflow.use",
-            description: "Activate a workflow. Refused while a sprint is open or tickets sit in stages it lacks.",
-            input_schema: WorkflowIdParams::schema(),
-            method: Method::WorkflowUse(WorkflowIdParams::default()),
-        },
-        Tool {
-            name: "workflow_delete",
-            method_tag: "workflow.delete",
-            description: "Delete a non-default, inactive workflow; refused for the default or the active one.",
-            input_schema: WorkflowIdParams::schema(),
-            method: Method::WorkflowDelete(WorkflowIdParams::default()),
         },
     ]
 }

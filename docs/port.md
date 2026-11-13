@@ -1,6 +1,6 @@
 # The port: one binary, one app, three platforms
 
-**Status**: decided 2026-10-30. The epic is `PRT-1` on the board; the decision record is [ADR 0037](adr/0037-one-stack-rust-core-electron-ui.md). This file is the spec: what the target looks like, what is deliberately not built, and what "done" means. The epic mirrors it and carries the work.
+**Status**: historical, decided 2026-10-30 and superseded 2026-11-13. The port landed, then [ADR 0046](adr/0046-tandem-serve-and-single-binary-distribution.md) retired the Electron shell and the React renderer for `tandem serve`: one binary serving the board as HTML. The target and the stack below are the decision as it stood; [install-paths.md](install-paths.md) and [ADR 0046](adr/0046-tandem-serve-and-single-binary-distribution.md) describe what ships today.
 
 Tandem was a macOS-only product by construction when the port was decided: the Swift package targeted `.macOS(.v27)`, the GUI was 8,934 lines of SwiftUI and AppKit, and nothing in the domain needed the Mac. The core was 11,377 lines with no AppKit or SwiftUI import, the CLI 1,995 lines of Foundation over it, the store SQLite behind a version seam, and the agent face spoke JSON. Only the presentation layer was Mac-bound, so only the presentation layer was rewritten.
 
@@ -33,8 +33,8 @@ The app holds no domain logic. The binary the agents call and the core the app t
 | wire | `serde`, `serde_json` | the JSON the skills already parse |
 | hashing | `sha2` | note content hashes |
 | shell | Electron, electron-vite, electron-builder | one Chromium on all three platforms |
-| renderer | React + TypeScript | agent throughput and ecosystem depth; `app/CONVENTIONS.md` pins the idioms |
-| message types | `ts-rs` | generated from the Rust structs, so a shape cannot drift without a compile error on both sides |
+| renderer | React + TypeScript | agent throughput and ecosystem depth; the renderer's conventions file pins the idioms |
+| message types | the Rust structs in `rust/core/src/wire/` | one shape the CLI, the MCP tools and the served faces all read |
 | UI screenshots | Playwright against the real app | a spec in CI, replacing the lldb shot script; answers `TAN-210`, unblocks `TAN-217` |
 
 No ORM and no async runtime: the store is one writer on one file.
@@ -86,7 +86,7 @@ Not built: a hosted service for several humans (a deployment shape later, not a 
 
 ## How the work lands
 
-- **Landed additively on `main`**: new directories `rust/` and `app/` arrived first, and the Swift targets kept building and the release kept shipping the Swift app until the cutover commit deleted them. No long-lived port branch: the repo retired `dev` on 2026-10-29 for this shape ([ADR 0019](adr/0019-integration-branch.md)), and every agent contract branches from `main`.
+- **Landed additively on `main`**: the `rust/` tree and the renderer arrived first, and the Swift targets kept building and the release kept shipping the Swift app until the cutover commit deleted them. No long-lived port branch: the repo retired `dev` on 2026-10-29 for this shape ([ADR 0019](adr/0019-integration-branch.md)), and every agent contract branches from `main`.
 - **Fixture homes until cutover**: the Rust binary runs against `Fixtures/` homes and never touches `~/.tandem` while the Swift app owns it.
 - **Merges, not rebases**, per the repo's git rule.
 

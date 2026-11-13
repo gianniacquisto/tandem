@@ -31,10 +31,6 @@ pub enum DomainError {
     Unreadable(String),
     /// `add` was called with an empty or whitespace-only title.
     EmptyTitle,
-    /// `add_from_note` was given no text to title a ticket from.
-    EmptySelection,
-    /// `add_from_note` was given a path that is not bikeshed-relative.
-    InvalidNotePath(String),
     /// A comment body was empty after trimming.
     EmptyCommentBody,
     /// A stdin description body was empty after trimming.
@@ -46,53 +42,9 @@ pub enum DomainError {
     StandardInputNotUtf8,
     /// `list` was given a filter that is not `open`, `done` or `all`.
     InvalidFilter(String),
-    /// A status value that is empty, or the retired `refined` spelling.
+    /// A status value that is empty, the retired `refined` spelling, or a word
+    /// this build does not name.
     InvalidStatus(String),
-    /// A status value the active workflow does not declare. `stages` is the
-    /// valid stage-key list, so the refusal names what the caller may pick.
-    InvalidStage { value: String, stages: Vec<String> },
-    /// A workflow handle (id or name) named nothing. `workflows` is every
-    /// declared name, so the refusal lets the caller recover in one turn.
-    UnknownWorkflow {
-        handle: String,
-        workflows: Vec<String>,
-    },
-    /// A workflow name was empty or whitespace-only.
-    EmptyWorkflowName,
-    /// A workflow name another workflow already holds.
-    DuplicateWorkflowName(String),
-    /// A workflow scope other than `home`; per-project adoption is later.
-    InvalidWorkflowScope(String),
-    /// A workflow document carries no stages.
-    EmptyWorkflowStages,
-    /// Two stages share a key.
-    DuplicateStageKey(String),
-    /// A stage key was empty or whitespace-only.
-    EmptyStageKey,
-    /// A stage label was empty or whitespace-only.
-    EmptyStageLabel(String),
-    /// A stage role appears a cardinality the model refuses.
-    StageRoleCount {
-        role: String,
-        count: usize,
-        expected: String,
-    },
-    /// A binding names a roster role the store does not carry.
-    UnknownBindingRole { role: String, roster: Vec<String> },
-    /// A stage a workflow set would delete still holds tickets.
-    StageOccupied { key: String, count: usize },
-    /// `workflow use` was refused because a sprint is open.
-    WorkflowHasOpenSprint { lanes: Vec<String> },
-    /// `workflow use` was refused because tickets sit in stages the target
-    /// lacks. Each pair is the stage key and how many tickets sit in it.
-    WorkflowMissingStages { stages: Vec<(String, usize)> },
-    /// The default workflow cannot be deleted.
-    WorkflowIsDefault(String),
-    /// The active workflow cannot be deleted.
-    WorkflowIsActive(String),
-    /// A workflow with recorded runs cannot be deleted. `count` is the number of
-    /// runs the store holds for it, so the refusal says why.
-    WorkflowHasRuns { name: String, count: usize },
     /// A cycle lane name was empty or whitespace-only.
     EmptyLaneName,
     /// A cycle lane name was already in use.
@@ -104,8 +56,7 @@ pub enum DomainError {
     /// A project name was already in use.
     DuplicateProject(String),
     /// A `--project` named a project the store does not carry. `projects` is
-    /// the declared list, so the refusal names what the caller may pick, the
-    /// way an unknown sprint names its lane's numbers.
+    /// the declared list, so the refusal names what the caller may pick.
     UnknownProjectName { name: String, projects: Vec<String> },
     /// A project delete named a project that still holds lanes. `lanes` names
     /// them, so the caller re-parents first and deletes after: a delete never
@@ -136,80 +87,11 @@ pub enum DomainError {
     TicketBlockerDone { reference: String },
     /// `block` named a blocker that is archived.
     TicketBlockerArchived { reference: String },
-    /// A ticket that already links to a note cannot be promoted again.
-    AlreadyLinked { path: String },
-    /// `start` was given an empty or whitespace-only brief.
-    EmptySessionBrief,
-    /// `--brief` named a regular file: the flag never read it, so the path would
-    /// be filed as the brief, and a session start has no repair.
-    BriefNamesAFile(String),
-    /// A session id was empty or whitespace-only.
-    EmptySessionId,
-    /// No session id was given and the environment names none: an invented
-    /// handle is a record nothing can look up again.
-    SessionIdUnset,
-    /// A `--summary -` body was empty or whitespace-only: an empty pipe, not a
-    /// session that ended without saying anything.
-    EmptySessionSummary,
-    /// `end`/`link`/`show` named a session id the store does not carry. `known`
-    /// is the ids it does carry, so the caller recovers in one turn.
-    UnknownSession { id: String, known: Vec<String> },
-    /// `run`/`close` was given an empty note; `close` with no note is `None`.
-    EmptySprintNote,
-    /// `sprint ticket` named an id the board does not carry.
-    UnknownTicketId(String),
-    /// A (lane, number) the store does not carry. `known` is the numbers the
-    /// lane does hold.
-    UnknownSprint {
-        lane: String,
-        number: i64,
-        known: Vec<i64>,
-    },
-    /// A lane-only sprint handle resolved to no open record.
-    NoOpenSprint(String),
-    /// A `--skills` value that is not comma-separated `name=count` pairs.
-    InvalidSkills(String),
-    /// A usage flag (`--tokens-input`, `--cost`, …) was given a value that is not
-    /// a non-negative number.
-    InvalidUsageFlag { flag: String, value: String },
-    /// `sprint show` was given a number that is not a whole number.
-    InvalidSprintNumber(String),
-    /// `sprint open` was given a mode that is not `serial` or `parallel`.
-    InvalidSprintMode(String),
-    /// `sprint list` was given a status that is not `open` or `closed`.
-    InvalidSprintStatus(String),
-    /// `session end` was given an outcome that is not one of the four.
-    InvalidSessionOutcome(String),
-    /// `session list` was given a status that is not `running` or `ended`.
-    InvalidSessionStatus(String),
     /// `ticket move` was given a position that is not a whole number.
     InvalidIndex(String),
     /// `--assignee self` / `--origin self` was used and `TANDEM_AGENT` names no
     /// agent.
     AgentNameUnset,
-    /// A caller-supplied timestamp is not the store's own ISO-8601 UTC form. A
-    /// stamp the write cannot read is a record every later read fails on.
-    InvalidStamp(String),
-    /// `--harness-session` was given an empty or whitespace-only id.
-    EmptyHarnessSessionId,
-    /// `--harness-transport` was given a value that is not one of the two.
-    InvalidHarnessTransport(String),
-    /// `session end --usage-from-harness` named a record with no harness
-    /// session: there is no foreign pointer to read usage through.
-    NoHarnessSession { id: String },
-    /// The harness database the run asked for is not a file.
-    NoHarnessDatabase { path: String },
-    /// The harness event stream the run asked for is not a file.
-    NoHarnessEvents { path: String },
-    /// The harness loopback server the run asked for is not reachable: no
-    /// server at the URL, a timeout, a refused non-loopback host, or no
-    /// rendezvous file to read the URL from. `url` names what was tried.
-    NoHarnessServer { url: String },
-    /// The harness loopback server refused the password. `url` names the server;
-    /// the password itself is never in the message.
-    HarnessUnauthorized { url: String },
-    /// The harness carries no session for the id.
-    UnknownHarnessSession { id: String },
     /// The bikeshed lock could not be acquired within its bounded retry window.
     BikeshedLocked,
     /// The bikeshed itself failed: an unreadable note, a failed rename.
@@ -224,17 +106,6 @@ pub enum DomainError {
     NoteAlreadyExists(String),
     /// A name the bikeshed's create/rename rule refuses.
     InvalidName(String),
-    /// A capture `project` or `session` that is not one visible folder name.
-    InvalidCaptureName(String),
-    /// A capture kind that is not one of the four.
-    InvalidCaptureKind(String),
-    /// The retired `work` capture kind: the session summary is the work record.
-    RetiredCaptureKind(String),
-    /// A capture body that is empty or whitespace-only.
-    EmptyCaptureBody,
-    /// A capture body whose first non-empty line carries no words, so the
-    /// filename would fall back to the kind's own name.
-    EmptyCaptureSlug(String),
     /// A folder moved into itself or one of its own descendants.
     MoveCycle { path: String, into: String },
 }
@@ -256,12 +127,6 @@ impl DomainError {
             Self::EmptyTitle => {
                 "Title is empty. Provide a non-empty ticket title and try again.".to_string()
             }
-            Self::EmptySelection => "Nothing to send. Select text in the note, or put the caret \
-                 on a checkbox line, and try again."
-                .to_string(),
-            Self::InvalidNotePath(bad) => format!(
-                "Note path \"{bad}\" is not a bikeshed-relative path (e.g. projects/App.md)."
-            ),
             Self::EmptyCommentBody => {
                 "Comment body is empty. Provide a non-empty body and try again.".to_string()
             }
@@ -279,71 +144,6 @@ impl DomainError {
                 "status must be one of {} (got \"{bad}\").",
                 super::ticket::Status::WIRE_VALUES.join(", ")
             ),
-            Self::InvalidStage { value, stages } => format!(
-                "Unknown stage \"{value}\". The active workflow's stages are: {}.",
-                stages.join(", ")
-            ),
-            Self::UnknownWorkflow { handle, workflows } if workflows.is_empty() => {
-                format!("Unknown workflow \"{handle}\". No workflows are declared yet.")
-            }
-            Self::UnknownWorkflow { handle, workflows } => format!(
-                "Unknown workflow \"{handle}\". The known workflows are: {}.",
-                workflows.join(", ")
-            ),
-            Self::EmptyWorkflowName => {
-                "Workflow name is empty. Provide a non-empty name and try again.".to_string()
-            }
-            Self::DuplicateWorkflowName(name) => {
-                format!("A workflow named \"{name}\" already exists.")
-            }
-            Self::InvalidWorkflowScope(scope) => format!(
-                "Workflow scope must be home (got \"{scope}\"). Per-project workflows land later."
-            ),
-            Self::EmptyWorkflowStages => {
-                "A workflow needs at least one stage. Add a stage and try again.".to_string()
-            }
-            Self::DuplicateStageKey(key) => {
-                format!("The stage key \"{key}\" is already in use. Pick another key.")
-            }
-            Self::EmptyStageKey => {
-                "A stage key is empty. Provide a non-empty key and try again.".to_string()
-            }
-            Self::EmptyStageLabel(key) => {
-                format!("The stage \"{key}\" has an empty label. Give it a label.")
-            }
-            Self::StageRoleCount {
-                role,
-                count,
-                expected,
-            } => format!("A workflow needs {expected} {role} stage (found {count})."),
-            Self::UnknownBindingRole { role, roster } => format!(
-                "Unknown binding role \"{role}\". The roster is: {}.",
-                roster.join(", ")
-            ),
-            Self::StageOccupied { key, count } => format!(
-                "Stage \"{key}\" still holds {count} ticket(s). Move them out before deleting it."
-            ),
-            Self::WorkflowHasOpenSprint { lanes } => format!(
-                "A sprint is open on {}. Close it before activating another workflow.",
-                lanes.join(", ")
-            ),
-            Self::WorkflowMissingStages { stages } => format!(
-                "The target workflow lacks stages tickets sit in: {}. Move them first.",
-                stages
-                    .iter()
-                    .map(|(key, count)| format!("\"{key}\" ({count})"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-            Self::WorkflowIsDefault(handle) => {
-                format!("Workflow \"{handle}\" is the default. It cannot be deleted.")
-            }
-            Self::WorkflowIsActive(handle) => {
-                format!("Workflow \"{handle}\" is active. Activate another one before deleting it.")
-            }
-            Self::WorkflowHasRuns { name, count } => {
-                format!("Workflow \"{name}\" has {count} recorded run(s) and cannot be deleted.")
-            }
             Self::EmptyLaneName => {
                 "Cycle lane name is empty. Provide a non-empty name and try again.".to_string()
             }
@@ -407,129 +207,12 @@ impl DomainError {
                 "{reference} is archived, so the block could never be seen to lift. \
                  Bring it back to the board first."
             ),
-            Self::AlreadyLinked { path } => format!(
-                "This ticket already links to a note (\"{path}\"). Open that note, or remove \
-                 the link before promoting again."
-            ),
-            Self::EmptySessionBrief => "Session brief is empty. Provide a non-empty brief, what \
-                 the session is for and what done looks like, and try again."
-                .to_string(),
-            Self::BriefNamesAFile(path) => format!(
-                "\"{path}\" is a file, not a brief. `--brief` takes the literal brief text, or \
-                 `--brief -` to read it from stdin; pipe the file instead."
-            ),
-            Self::EmptySessionId => "Session id is empty. Provide a non-empty session id, the \
-                 handle a session is known by, and try again."
-                .to_string(),
-            Self::SessionIdUnset => "Cannot resolve the session id: set OPENCODE_SESSION_ID to \
-                 this session's id, or pass --session <id>."
-                .to_string(),
-            Self::EmptySessionSummary => "Session summary is empty. Provide a non-empty summary \
-                 on stdin, or omit --summary to end the session without one."
-                .to_string(),
-            Self::UnknownSession { id, known } if known.is_empty() => {
-                format!("Unknown session id \"{id}\". No session is recorded yet.")
-            }
-            Self::UnknownSession { id, known } => format!(
-                "Unknown session id \"{id}\". Here are the recorded sessions to pick the right \
-                 one from: {}.",
-                known.join(", ")
-            ),
-            Self::EmptySprintNote => {
-                "Sprint note is empty. Provide a non-empty note and try again.".to_string()
-            }
-            Self::UnknownTicketId(id) => format!(
-                "Unknown ticket id \"{id}\", it is not on the board. Add the ticket to the \
-                 board first, or check the id, and try again."
-            ),
-            Self::UnknownSprint {
-                lane,
-                number,
-                known,
-            } if known.is_empty() => format!(
-                "Unknown sprint \"Sprint {number} — {lane}\". No sprint is recorded in lane \
-                 \"{lane}\" yet."
-            ),
-            Self::UnknownSprint {
-                lane,
-                number,
-                known,
-            } => format!(
-                "Unknown sprint \"Sprint {number} — {lane}\". Here are the sprints lane \
-                 \"{lane}\" holds: {}.",
-                known
-                    .iter()
-                    .map(i64::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-            Self::NoOpenSprint(lane) => format!(
-                "No sprint is open in lane \"{lane}\". Run `sprint open --lane <lane>` first, \
-                 or check the lane, and try again."
-            ),
-            Self::InvalidSkills(bad) => format!(
-                "--skills must be comma-separated name=count pairs, each a name and a \
-                 non-negative whole count (got \"{bad}\")."
-            ),
-            Self::InvalidUsageFlag { flag, value } => {
-                format!("--{flag} must be a non-negative number (got \"{value}\").")
-            }
-            Self::InvalidSprintNumber(bad) => {
-                format!("number must be a whole number (got \"{bad}\").")
-            }
-            Self::InvalidSprintMode(bad) => {
-                format!("mode must be one of serial, parallel (got \"{bad}\").")
-            }
-            Self::InvalidSprintStatus(bad) => {
-                format!("sprint status must be one of open, closed (got \"{bad}\").")
-            }
-            Self::InvalidSessionOutcome(bad) => {
-                format!(
-                    "outcome must be one of succeeded, failed, interrupted, unknown (got \"{bad}\")."
-                )
-            }
-            Self::InvalidSessionStatus(bad) => {
-                format!("session status must be one of running, ended (got \"{bad}\").")
-            }
             Self::InvalidIndex(bad) => {
                 format!("index must be a whole number (got \"{bad}\").")
             }
             Self::AgentNameUnset => "Cannot resolve self: set TANDEM_AGENT to this agent's \
                  name, or pass a name instead of self."
                 .to_string(),
-            Self::InvalidStamp(bad) => format!(
-                "\"{bad}\" is not a timestamp. Stamps are ISO-8601 UTC, \
-                 YYYY-MM-DDTHH:MM:SSZ; omit the value to use the current time."
-            ),
-            Self::EmptyHarnessSessionId => "Harness session id is empty. Provide the harness's \
-                 own session id, or omit --harness-session, and try again."
-                .to_string(),
-            Self::InvalidHarnessTransport(bad) => {
-                format!("Harness transport \"{bad}\" is not one of event-stream, database.")
-            }
-            Self::NoHarnessSession { id } => format!(
-                "Session \"{id}\" has no harness session id, so --usage-from-harness has \
-                 nothing to read. End it with explicit usage flags, or start it again with \
-                 --harness-session."
-            ),
-            Self::NoHarnessDatabase { path } => format!(
-                "No harness database at {path}. Check the path, or let the harness run once, \
-                 and try again."
-            ),
-            Self::NoHarnessEvents { path } => format!(
-                "No harness event stream at {path}. Check the path, or let the harness run \
-                 once, and try again."
-            ),
-            Self::NoHarnessServer { url } => format!(
-                "Cannot reach the harness at {url}. Check that the harness is running, or pass --harness-url <url> or set TANDEM_HARNESS_URL, and try again."
-            ),
-            Self::HarnessUnauthorized { url } => format!(
-                "The harness at {url} refused the password. Check TANDEM_HARNESS_PASSWORD or the rendezvous file it was read from, and try again."
-            ),
-            Self::UnknownHarnessSession { id } => format!(
-                "No harness session for \"{id}\". Check the session id, or end the record \
-                 without harness usage, and try again."
-            ),
             Self::BikeshedLocked => {
                 "The bikeshed is locked by another process. Please retry.".to_string()
             }
@@ -547,27 +230,6 @@ impl DomainError {
             Self::InvalidName(name) => format!(
                 "Name \"{name}\" is not allowed: note names cannot contain # or |, and must \
                  end in .md. Choose a different name."
-            ),
-            Self::InvalidCaptureName(name) => format!(
-                "Capture name \"{name}\" is not allowed: project and session must each be one \
-                 folder name with no /, #, |, or leading dot. Choose a different name."
-            ),
-            Self::InvalidCaptureKind(kind) => format!(
-                "Unknown capture kind \"{kind}\". Use one of: {}.",
-                crate::bikeshed::CaptureKind::WIRE_VALUES.join(", ")
-            ),
-            Self::RetiredCaptureKind(kind) => format!(
-                "The capture kind \"{kind}\" is retired. The summary at `session end \
-                 --summary` is the work record (ADR 0027). Use one of: {}.",
-                crate::bikeshed::CaptureKind::WIRE_VALUES.join(", ")
-            ),
-            Self::EmptyCaptureBody => "Capture body is empty. Provide a non-empty body on \
-                 stdin and try again."
-                .to_string(),
-            Self::EmptyCaptureSlug(kind) => format!(
-                "Capture \"{kind}\" has no usable slug: the body's first non-empty line \
-                 carries no words. Start the body with a short title line (e.g. \"# Caret not \
-                 placed\") and try again."
             ),
             Self::MoveCycle { path, into } => {
                 let destination = if into.is_empty() {

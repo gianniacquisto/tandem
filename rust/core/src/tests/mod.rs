@@ -2,56 +2,32 @@
 //!
 //! Ported, not rewritten (`docs/port.md`, Parity): the behaviours the Swift
 //! suites encode are the behaviours these assert, in Rust, against the store the
-//! port writes. The Swift names and the suite each behaviour came from:
-//!
-//! - `SessionsTests`, `SessionVerbTests`, `UsageWrapperTests`: `sessions`
-//! - `SprintsTests`, `SprintGroupingTests`, `SprintDocumentsTests`,
-//!   `SprintMigrationTests`, `SprintVerbTests`: `sprints`
-//! - `UsageReportTests`: `usage_report`
-//! - the harness read (`session end --usage-from-harness`): `harness`
-//! - the bikeshed's nineteen Swift suites, one Rust module each:
-//!   `bikeshed_path`, `bikeshed_wikilink`, `bikeshed_backlink`, `bikeshed_front`,
-//!   `bikeshed_health`, `bikeshed_stats`, `bikeshed_search`, `bikeshed_move`,
-//!   `bikeshed_rename`, `bikeshed_note_ops`, `bikeshed_capture`,
-//!   `bikeshed_conflict`, `bikeshed_crash_recovery`, `bikeshed_locking`,
-//!   `bikeshed_hidden_layer`, `bikeshed_scale`, `bikeshed_session_notes`,
-//!   `daily_note`, `scaffold_convention`; `fixture_bikeshed` reads the
-//!   committed fixture vault. `bikeshed_prune` is not a Swift port: it pins the
-//!   port-only `note prune` sweep of the empty folders the archive move leaves.
+//! port writes. The bikeshed's Swift suites, one Rust module each:
+//!   `bikeshed_path`, `bikeshed_wikilink`, `bikeshed_backlink`, `bikeshed_health`,
+//!   `bikeshed_stats`, `bikeshed_search`, `bikeshed_move`, `bikeshed_rename`,
+//!   `bikeshed_note_ops`, `bikeshed_conflict`, `bikeshed_crash_recovery`,
+//!   `bikeshed_locking`, `bikeshed_scale`; `fixture_bikeshed` reads the
+//!   committed fixture vault. The memory workflow's suites (`bikeshed_capture`,
+//!   `bikeshed_front`, `bikeshed_hidden_layer`, `bikeshed_prune`, `daily_note`)
+//!   left with the layer they tested (CUT-7).
 //!
 //! Each module is one suite, so `cargo test <suite>` runs it alone.
 
-mod harness;
-mod preflight;
-mod runner;
-mod scaffold_convention;
-mod sessions;
-mod sprints;
-mod support;
-mod transcript;
-mod usage_report;
-
-mod bikeshed_asset;
 mod bikeshed_backlink;
-mod bikeshed_capture;
 mod bikeshed_conflict;
 mod bikeshed_crash_recovery;
-mod bikeshed_front;
 mod bikeshed_health;
-mod bikeshed_hidden_layer;
+mod bikeshed_locked;
 mod bikeshed_locking;
 mod bikeshed_move;
 mod bikeshed_note_ops;
 mod bikeshed_path;
-mod bikeshed_prune;
 mod bikeshed_rename;
 mod bikeshed_scale;
 mod bikeshed_search;
-mod bikeshed_session_notes;
 mod bikeshed_stats;
 mod bikeshed_support;
 mod bikeshed_wikilink;
-mod daily_note;
 mod fixture_bikeshed;
 
 #[cfg(test)]

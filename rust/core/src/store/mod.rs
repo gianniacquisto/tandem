@@ -15,7 +15,7 @@
 //!   writer.
 //! - **An actor on every write** ([`Actor`], [`Write`]). Every mutation row
 //!   carries an `author` column, and no listing infers authorship from a
-//!   session row.
+//!   record.
 //! - **One write, one transaction.** WAL, a ~2 s busy window that surfaces as
 //!   [`StoreError::Locked`], and a rolling backup of the pre-write state
 //!   (ADR 0018). Reads open read-only and never write.
@@ -30,49 +30,187 @@
 //!   gate (one mutex per canonical home, no file), and a thread that cannot
 //!   enter it in the same ~2 s window answers "locked", so in-process
 //!   contention is bounded exactly as the engine bounds it across processes.
-//!   The `locked` module keeps the sidecar for the bikeshed; the store borrows
-//!   the same-directory temp, the commit, the directory sync and the orphan
-//!   sweep, which clears a backup temp a killed writer left behind.
+//!   The atomic file helper here (temp naming, commit, directory sync, orphan
+//!   sweep) is shared by the rolling backup and by the bikeshed's locked
+//!   writes; the bikeshed's sidecar lock lives in [`crate::bikeshed`].
 
-mod actor;
 pub(crate) mod board_rows;
 mod diagnostics;
 mod home;
-pub(crate) mod locked;
-pub(crate) mod records;
-mod rows;
-pub(crate) mod workflows;
-// Reachable from the records suite, which builds a v2 home to prove a read of
+// Reachable from the schema suite, which builds a v2 home to prove a read of
 // an older file never fails on a column a later migration adds.
 pub(crate) mod schema;
 #[cfg(test)]
 mod tests;
-pub(crate) mod timestamp;
 mod write;
 
 use std::collections::HashMap;
+use std::env;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 
-pub use actor::{Actor, ENVIRONMENT as ACTOR_ENVIRONMENT};
 pub use diagnostics::{BackupHealth, CommentsHealth, CommentsState, Health, comments_state};
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
-pub use records::local_day;
-pub use rows::{
-    NewComment, NewDependency, NewLane, NewProject, NewSession, NewSetting, NewSprint, NewTicket,
-    NewWorkflow, NewWorkflowStage, SessionRow, SprintRow,
-};
 pub use schema::CURRENT_VERSION;
-pub use write::Write;
+pub use write::{NewComment, NewDependency, NewLane, NewProject, NewTicket, Write};
 
-use locked::LockedDirectory;
 use write::BackupState;
+
+/// The environment variable that names the actor of an agent-run write.
+pub const ACTOR_ENVIRONMENT: &str = "TANDEM_AGENT";
+
+/// Who is making a write. `human` is the app's face and an agent's unset
+/// environment; a pass name (`builder`, `reviewer`, …) is the agent's.
+///
+/// The value comes from the place the harness already sets: `TANDEM_AGENT` is
+/// the pass's name when an agent runs a verb, and unset (or blank) means the
+/// human. One truth, so every verb takes the same variable and no verb grows an
+/// `--actor` flag (PRT-4, Decided against).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Actor {
+    /// The human, written as `human`.
+    Human,
+    /// An agent pass, written as the pass's name.
+    Agent(String),
+}
+
+impl Actor {
+    /// The pure precedence rule, so it can be tested without setting a
+    /// process's environment: a non-blank value is the pass, anything else the
+    /// human. Surrounding whitespace is not part of a name.
+    pub fn parse(value: Option<&str>) -> Self {
+        match value.map(str::trim).filter(|name| !name.is_empty()) {
+            Some(name) => Self::Agent(name.to_string()),
+            None => Self::Human,
+        }
+    }
+
+    /// The actor a process runs as: [`Actor::parse`] over `TANDEM_AGENT`.
+    /// The CLI's write verbs call this once per run and hand it to
+    /// [`Store::write`]; no verb grows an `--actor` flag.
+    pub fn current() -> Self {
+        Self::parse(env::var(ACTOR_ENVIRONMENT).ok().as_deref())
+    }
+
+    /// The word a mutation row records.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Human => "human",
+            Self::Agent(name) => name,
+        }
+    }
+}
+
+impl fmt::Display for Actor {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+// Timestamps on the wire and in the store: ISO-8601 UTC, whole seconds. The
+// Swift store writes `2026-10-30T12:27:28Z` and reads it back
+// (`Timestamp.swift`), and the port keeps the same text because the schema
+// mirrors the tables as they are used. No date library: the store needs an
+// encoder for "now" and a decoder for the rows it reads, and both are the
+// civil-date arithmetic below.
+
+/// The current instant, whole seconds, as the store writes it.
+pub(crate) fn now() -> String {
+    encode(unix_now())
+}
+
+/// The current instant as whole seconds since the Unix epoch.
+pub(crate) fn unix_now() -> i64 {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(elapsed) => elapsed.as_secs() as i64,
+        Err(_) => 0,
+    }
+}
+
+/// `seconds` since the Unix epoch as `YYYY-MM-DDTHH:MM:SSZ`.
+pub(crate) fn encode(seconds: i64) -> String {
+    let days = seconds.div_euclid(86_400);
+    let of_day = seconds.rem_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        of_day / 3_600,
+        (of_day % 3_600) / 60,
+        of_day % 60
+    )
+}
+
+/// The instant `text` names, or `None` when it is not `YYYY-MM-DDTHH:MM:SSZ`.
+/// A row the store cannot read is an error at its reader, never a silent zero.
+///
+/// The read side is the domain's: the record aggregates decode a row's stamps
+/// and derive the span between them (PRT-6), so a row the store cannot read
+/// fails at its reader rather than at a later render.
+pub(crate) fn decode(text: &str) -> Option<i64> {
+    let bytes = text.as_bytes();
+    if bytes.len() != 20
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b'T'
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+        || bytes[19] != b'Z'
+    {
+        return None;
+    }
+    let year: i64 = text[0..4].parse().ok()?;
+    let month: u32 = text[5..7].parse().ok()?;
+    let day: u32 = text[8..10].parse().ok()?;
+    let hour: i64 = text[11..13].parse().ok()?;
+    let minute: i64 = text[14..16].parse().ok()?;
+    let second: i64 = text[17..19].parse().ok()?;
+    if !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 60
+    {
+        return None;
+    }
+    Some(days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second)
+}
+
+/// The civil date `days` since the epoch names (Howard Hinnant's algorithm).
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let shifted = days + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let of_era = shifted - era * 146_097;
+    let year_of_era = (of_era - of_era / 1_460 + of_era / 36_524 - of_era / 146_096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = (day_of_year - (153 * month_prime + 2) / 5 + 1) as u32;
+    let month = if month_prime < 10 {
+        month_prime + 3
+    } else {
+        month_prime - 9
+    } as u32;
+    let year = if month <= 2 { year + 1 } else { year };
+    (year, month, day)
+}
+
+/// The day count `year-month-day` names since the epoch, the inverse of
+/// [`civil_from_days`].
+fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let year_of_era = year - era * 400;
+    let month_prime = if month > 2 { month - 3 } else { month + 9 } as i64;
+    let day_of_year = (153 * month_prime + 2) / 5 + day as i64 - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
 
 /// The contention window the store's protocol promised (ADR 0001): a writer
 /// waits ~2 s for another process's transaction, then the write fails as
@@ -448,7 +586,7 @@ impl Store {
         // A writer killed mid-backup leaves its temp beside the database, and
         // nothing renames it: the sweep under the gate clears it, the same rule
         // the bikeshed's vault applies to its notes' temps (ADR 0031).
-        LockedDirectory::for_store(self.home.directory()).sweep_orphans();
+        sweep_orphans(self.home.directory());
         let database = self.database();
         let existed = database.exists();
         let connection = open(&database)?;
@@ -502,35 +640,6 @@ impl Store {
                 Err(error)
             }
         }
-    }
-
-    /// Every session row, in stored order. An empty result is a successful
-    /// empty list, and a home with no database yet reads empty rather than
-    /// failing: the first write creates the store.
-    pub fn sessions(&self) -> Result<Vec<SessionRow>> {
-        Ok(self.read(records::session_rows)?.unwrap_or_default())
-    }
-
-    /// Every sprint row, in stored order.
-    pub fn sprints(&self) -> Result<Vec<SprintRow>> {
-        Ok(self.read(records::sprint_rows)?.unwrap_or_default())
-    }
-
-    /// One setting's stored value, the JSON text the row carries (ADR 0031: a
-    /// setting is a `key`/`value` row, never a column or a migration). A home
-    /// with no database, or no such key, reads `None`.
-    pub fn setting(&self, key: &str) -> Result<Option<String>> {
-        Ok(self
-            .read(|connection| records::setting(connection, key))?
-            .flatten())
-    }
-
-    /// Whether the board carries a ticket id, archive included. A read, never a
-    /// write: the sprint's batch check asks the store, it does not touch it.
-    pub fn carries_ticket(&self, id: &str) -> Result<bool> {
-        Ok(self
-            .read(|connection| records::ticket_carried(connection, id))?
-            .unwrap_or(false))
     }
 
     /// The applied migration version, or `None` when there is no database yet.
@@ -651,6 +760,136 @@ impl StoreFile {
     }
 }
 
+/// The store's temp prefix: its own files only, so the sweep cannot touch the
+/// bikeshed's.
+const TEMP_PREFIX: &str = ".tandem-";
+
+const TEMP_SUFFIX: &str = ".tmp";
+
+/// A temp older than this is a crash's leftover, never an in-flight write's.
+const ORPHAN_MAX_AGE: Duration = Duration::from_secs(60);
+
+/// A temp path beside `target`, unique across processes and calls.
+pub(crate) fn sibling(target: &Path, prefix: &str) -> PathBuf {
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    parent.join(format!("{prefix}{}{TEMP_SUFFIX}", stamp()))
+}
+
+/// A name no other writer in this process or another can pick at the same
+/// nanosecond: the process id, the wall clock and a counter.
+fn stamp() -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let serial = NEXT.fetch_add(1, Ordering::Relaxed);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos())
+        .unwrap_or(0);
+    format!("{}-{nanos}-{serial}", std::process::id())
+}
+
+/// Make `temp` durable, run `before_commit`, and rename it over `target`.
+///
+/// `before_commit` runs once the new bytes are on disk but **before** the
+/// rename: the seam for work that must see the file the write is about to
+/// replace (the store's rolling backup). The old file is still in place when it
+/// runs, and still in place if it throws, so neither failure can leave a
+/// half-written file. A failed commit removes its temp.
+pub(crate) fn commit_file(
+    temp: &Path,
+    target: &Path,
+    before_commit: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    let outcome = (|| {
+        // The sync handle carries write access: Windows' `FlushFileBuffers`
+        // needs `GENERIC_WRITE` and answers "Access is denied" on the read-only
+        // handle `File::open` would give, and that is every commit, on every
+        // write, since the backup rides this path.
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .open(temp)
+            .map_err(|error| {
+                StoreError::Io(format!(
+                    "could not open the temp at {}: {error}",
+                    temp.display()
+                ))
+            })?;
+        file.sync_all().map_err(|error| {
+            StoreError::Io(format!(
+                "could not fsync the temp at {}: {error}",
+                temp.display()
+            ))
+        })?;
+        before_commit()?;
+        fs::rename(temp, target).map_err(|error| {
+            StoreError::Io(format!(
+                "could not rename {} to {}: {error}",
+                temp.display(),
+                target.display()
+            ))
+        })
+    })();
+    if outcome.is_err() {
+        let _ = fs::remove_file(temp);
+    }
+    outcome
+}
+
+/// Flush the directory's entries: a rename is durable only once the entry it
+/// changed is synced. An unopenable directory is a failed guarantee, not a
+/// tolerated absence, so the caller cannot proceed unconfirmed.
+#[cfg(unix)]
+pub(crate) fn fsync_directory(root: &Path) -> Result<()> {
+    let directory = fs::File::open(root).map_err(|error| {
+        StoreError::Io(format!(
+            "could not open directory {}: {error}",
+            root.display()
+        ))
+    })?;
+    directory.sync_all().map_err(|error| {
+        StoreError::Io(format!(
+            "could not fsync directory {}: {error}",
+            root.display()
+        ))
+    })
+}
+
+/// Windows has no directory fsync; the rename is still the atomic step.
+#[cfg(not(unix))]
+pub(crate) fn fsync_directory(_root: &Path) -> Result<()> {
+    Ok(())
+}
+
+/// Remove `<prefix>*<suffix>` files older than [`ORPHAN_MAX_AGE`] from one flat
+/// directory: the store's backup temps sit beside the database.
+///
+/// The store calls this itself, under its own gate, before it opens the
+/// database: a writer killed mid-backup leaves its temp and nothing renames it,
+/// so the next write is what clears it.
+pub(crate) fn sweep_orphans(directory: &Path) {
+    let cutoff = SystemTime::now()
+        .checked_sub(ORPHAN_MAX_AGE)
+        .unwrap_or(UNIX_EPOCH);
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !name.starts_with(TEMP_PREFIX) || !name.ends_with(TEMP_SUFFIX) {
+            continue;
+        }
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        let Ok(modified) = metadata.modified() else {
+            continue;
+        };
+        if modified < cutoff {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+}
+
 /// The rolling backup: copy the last committed state into a same-directory
 /// temp through SQLite's own backup API, close it, `fsync`, and rename it over
 /// `tandem.db.bak`. A copy that cannot be taken fails the write; a copy that
@@ -663,10 +902,9 @@ fn backup_database(database: &Path, target: &Path) -> Result<()> {
             parent.display()
         ))
     })?;
-    let temp = locked::sibling(target, ".tandem-backup-");
-    let storage = LockedDirectory::for_store(parent);
+    let temp = sibling(target, ".tandem-backup-");
     let outcome = copy_into(database, &temp).and_then(|()| {
-        storage.commit(&temp, target, || Ok(())).map_err(|error| {
+        commit_file(&temp, target, || Ok(())).map_err(|error| {
             StoreError::Io(format!(
                 "could not roll the backup into place at {}: {error}",
                 target.display()
@@ -674,7 +912,7 @@ fn backup_database(database: &Path, target: &Path) -> Result<()> {
         })?;
         // The rename is durable only once the directory entry it changed is
         // synced, and the backup is the generation a restore trusts.
-        storage.fsync_directory()
+        fsync_directory(parent)
     });
     if outcome.is_err() {
         let _ = fs::remove_file(&temp);

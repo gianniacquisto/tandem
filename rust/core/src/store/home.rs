@@ -18,7 +18,7 @@ pub const ENVIRONMENT: &str = "TANDEM_HOME";
 
 /// Why a run resolved where it did. Reported verbatim, one variant per branch
 /// of the precedence rule, so a report cannot disagree with the resolution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum HomeSource {
     /// `--home` was given and wins outright.

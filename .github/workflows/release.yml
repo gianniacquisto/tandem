@@ -1,29 +1,21 @@
 name: Release
 
-# The cutover's release: a tag v* push (or a manual dispatch) packages the
-# Electron app per platform (`build-macos` on a GitHub-hosted macOS runner, the new
-# `build-linux` on an Ubuntu runner), verifies each artifact and publishes the
-# GitHub release; pull-request runs do the same build-and-verify work and upload
-# the artifacts, never publishing. The contract is this file and
-# `docs/releasing.md`; ADR 0003 owns the distribution model it serves (one
-# prebuilt cask, its artifact built by CI on each tag; AppImage-on-releases for
-# Linux, PRT-1) and ADR 0036 owns the tap bump.
+# The tag run, cargo only: three standalone `tandem` archives, verified on the
+# platform that built them, then published with `install.sh` and one
+# `SHA256SUMS`. `Scripts/install.sh` downloads an archive, verifies its digest
+# and installs the one binary; there is no Node toolchain, no Electron package
+# and no Homebrew tap in the path (CUT-16, ADR 0045).
 #
-# The gates that used to live here moved with the Swift tree: the Rust suite is
-# `rust.yml`, the shell's typecheck, tests, package and smoke gates are
-# `app.yml`, and the screenshot suite is `app.yml`'s `shots` job. This workflow
-# builds the bytes the tag publishes, so it does not run a second copy of the
-# suites that already gate the merge. What it does gate is the artifact: the
-# package names the cask downloads, the core sits where the packaged shell
-# resolves it, the zip is intact, and the checksum the tap bump reads is the
-# checksum of those bytes.
+# Pull-request runs build and verify the same three archives and never publish,
+# so a packaging change is a red check on the PR instead of a broken tag. The
+# publisher keeps the job name `release`: `main` requires a status check by that
+# name, and a required check that never reports blocks every merge. It waits for
+# all three builds, and its step turns a skipped or failed build into a red
+# `release` (a skipped job reports success to the branch protection).
 #
-# The work is split in three: `build-macos` and `build-linux` each produce and verify
-# their platform's artifact, and `release` publishes them. The publisher keeps
-# the name `release` for one reason: `main` requires a status check by that
-# name, and a required check that never reports blocks every merge. The name
-# stays, the branch protection is untouched, and the merge waits for the builds
-# because the publisher only runs when they are green.
+# The version is the tag without its `v`, or `0.0.0` on a pull request or a
+# dispatch. It is stamped into the binary as `TANDEM_VERSION`, so the archive's
+# own smoke test reads the same version back from `tandem --version`.
 
 on:
   push:
@@ -31,16 +23,14 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Least privilege by default: the build job only reads the repo. The publish and
-# tap steps need `contents: write`, and only the `release` job gets it.
+# Least privilege by default: the build jobs only read the repo. The `release`
+# job needs `contents: write` for `gh release create`, and no other job gets it.
 permissions:
   contents: read
 
 jobs:
   build-macos:
-    # The artifact. macOS runs the Electron package and arm64 is the port's one
-    # macOS target; the core is built by the same pinned toolchain `rust.yml`
-    # tests because `prepare-binary.mjs` runs the cargo proxy from `rust/`.
+    name: build-macos
     runs-on: macos-latest
     timeout-minutes: 45
     permissions:
@@ -49,114 +39,52 @@ jobs:
       - name: Check out the source
         uses: actions/checkout@v4
 
-      - name: Use Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: app/package-lock.json
-
       - name: Warm the Rust toolchain
         working-directory: rust
         run: cargo --version
 
-      - name: Install
-        working-directory: app
-        run: npm ci
-
       - name: Resolve the version
         run: |
-          # Tag runs: the version is the tag with the leading v stripped.
-          # PR / dispatch runs: a fixed dev version (never published).
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           else
             echo "version=0.0.0" >> "$GITHUB_ENV"
           fi
 
-      - name: Package the app
-        working-directory: app
-        env:
-          # electron-builder skips signing on pull-request builds unless this
-          # is set. The signature is ad-hoc and reads no secret (PRT-36).
-          CSC_FOR_PULL_REQUEST: "true"
+      - name: Build the binary
+        working-directory: rust
+        run: TANDEM_VERSION="$version" cargo build --release -p tandem
+
+      - name: Package the archive
         run: |
-          # electron-builder names the artifact from the app's version, so the
-          # tag's version is stamped before packaging. The build is ad-hoc
-          # signed (PRT-36); Developer ID signing and notarization are PRT-32.
-          npm version "$version" --no-git-tag-version --allow-same-version
-          npm run dist
+          archive="tandem-$version-darwin-arm64.tar.gz"
+          staging="$RUNNER_TEMP/package"
+          mkdir -p "$staging" dist
+          cp rust/target/release/tandem "$staging/tandem"
+          chmod +x "$staging/tandem"
+          tar -czf "dist/$archive" -C "$staging" tandem
+          tar -tzf "dist/$archive"
 
-      - name: "Verify: the artifact carries the core"
-        working-directory: app
-        run: npm run check:artifact
-
-      - name: "Verify: the cask's artifact name and archive"
+      - name: "Smoke: the extracted archive serves the board"
         run: |
-          # The tap's cask downloads
-          # `releases/download/v<version>/Tandem-<version>.zip`, and
-          # `Scripts/bump-tap.sh` reads exactly `Tandem-<version>.zip` out of
-          # SHA256SUMS. Both are checked before anything is published, so a
-          # rename in electron-builder is a red build, not a broken upgrade.
-          zip="app/dist/Tandem-$version.zip"
-          dmg="app/dist/Tandem-$version.dmg"
-          test -f "$zip"
-          test -f "$dmg"
-          mkdir "$RUNNER_TEMP/zipcheck"
-          unzip -q "$zip" -d "$RUNNER_TEMP/zipcheck"
-          bundle="$RUNNER_TEMP/zipcheck/Tandem.app"
-          test -x "$bundle/Contents/MacOS/Tandem"
-          test -x "$bundle/Contents/Resources/tandem"
-          # The cask's `binary` stanza links this path into Homebrew's bin, and
-          # every skill calls it by this name. A packaging change that drops the
-          # symlink must fail before the release is published and the tap bumped.
-          test -L "$bundle/Contents/MacOS/tandem-cli"
-          test "$(readlink "$bundle/Contents/MacOS/tandem-cli")" = "../Resources/tandem"
-          test -f "$bundle/Contents/Resources/agent/AGENTS.md"
-          test "$(cat "$bundle/Contents/Resources/agent/VERSION")" = "$version"
-          # Ad-hoc signed at package time (PRT-36). The v1.0.0 artifact kept
-          # the linker's signature with `Sealed Resources=none`, so the zip
-          # verified as an archive but macOS called the installed app damaged.
-          # The shipped bundle must verify and seal its resources.
-          codesign --verify --deep --strict "$bundle"
-          signature=$(codesign --display --verbose=2 "$bundle" 2>&1)
-          if ! printf '%s\n' "$signature" | grep -Eq 'Sealed Resources( version)?=' \
-            || printf '%s\n' "$signature" | grep -q 'Sealed Resources=none'; then
-            echo "the shipped bundle does not seal its resources:" >&2
-            printf '%s\n' "$signature" >&2
-            exit 1
-          fi
+          # Smoke the bytes the tag publishes, not the build tree: untar the
+          # archive just written and run the binary a user would get. A wrong
+          # member name, a lost executable bit or a mislaid layout fails here
+          # rather than on someone's first install.
+          smoke="$RUNNER_TEMP/smoke"
+          mkdir -p "$smoke"
+          tar -xzf "dist/tandem-$version-darwin-arm64.tar.gz" -C "$smoke"
+          test -x "$smoke/tandem"
+          bash Scripts/smoke-binary.sh "$smoke/tandem" "$version"
 
-      - name: Compute the checksum
-        run: |
-          # Stages the scripted install beside the artifact (TAN-253):
-          # install.sh stamped with the tag's version, and SHA256SUMS with one
-          # line each for the zip and the script. The bump script reads exactly
-          # the zip's line, so the second line changes nothing for the cask.
-          Scripts/stage-release-assets.sh "$version" app/dist
-          cat app/dist/SHA256SUMS
-
-      - name: "Verify: the staged installer names the tag version"
-        run: |
-          grep -q "DEFAULT_VERSION=\"$version\"" app/dist/install.sh
-
-      - name: Upload the artifact
+      - name: Upload the archive
         uses: actions/upload-artifact@v4
         with:
-          name: Tandem-${{ env.version }}
-          path: |
-            app/dist/Tandem-${{ env.version }}.zip
-            app/dist/Tandem-${{ env.version }}.dmg
-            app/dist/install.sh
-            app/dist/SHA256SUMS
+          name: tandem-macos
+          path: dist
 
   build-linux:
-    # The Linux artifact (PRT-1): the AppImage `app.yml` builds as a workflow
-    # artifact, promoted here to a release asset. Same shape as `build-macos`: the
-    # core is built by the same pinned toolchain `rust.yml` tests because
-    # `prepare-binary.mjs` runs the cargo proxy from `rust/`. Ubuntu because
-    # that is the AppImage's build platform; no signing identity exists, the
-    # Linux artifact stays unsigned (PRT-32's decided-against).
+    name: build-linux
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -165,164 +93,217 @@ jobs:
       - name: Check out the source
         uses: actions/checkout@v4
 
-      - name: Use Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: app/package-lock.json
-
       - name: Warm the Rust toolchain
         working-directory: rust
         run: cargo --version
 
-      - name: Install
-        working-directory: app
-        run: npm ci
-
       - name: Resolve the version
         run: |
-          # The same rule as `build-macos`: tag runs take the tag's version, PR /
-          # dispatch runs take a fixed dev version, and both jobs must agree
-          # on which artifact to hand over.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           else
             echo "version=0.0.0" >> "$GITHUB_ENV"
           fi
 
-      - name: Package the app
-        working-directory: app
+      - name: Build the binary
+        working-directory: rust
+        run: TANDEM_VERSION="$version" cargo build --release -p tandem
+
+      - name: Package the archive
         run: |
-          # Same as `build-macos`: electron-builder names the artifact from the app's
-          # version, so the tag's version is stamped before packaging.
-          npm version "$version" --no-git-tag-version --allow-same-version
-          npm run dist
+          archive="tandem-$version-linux-x86_64.tar.gz"
+          staging="$RUNNER_TEMP/package"
+          mkdir -p "$staging" dist
+          cp rust/target/release/tandem "$staging/tandem"
+          chmod +x "$staging/tandem"
+          tar -czf "dist/$archive" -C "$staging" tandem
+          tar -tzf "dist/$archive"
 
-      - name: "Verify: the artifact carries the core"
-        working-directory: app
-        run: npm run check:artifact
-
-      - name: "Verify: the AppImage is the named artifact and carries the core"
+      - name: "Smoke: the extracted archive serves the board"
         run: |
-          # The published name is the contract (PRT-1's done-when): the
-          # artifactName in `app/electron-builder.yml` for linux-x64.
-          appimage="app/dist/Tandem-$version-linux-x86_64.AppImage"
-          test -f "$appimage"
-          test -x "$appimage"
-          # FUSE is not available on the runner, so verify the payload by
-          # extraction instead of execution: the core and the agent face sit
-          # where the packaged shell resolves them.
-          mkdir "$RUNNER_TEMP/appimage"
-          (cd "$RUNNER_TEMP/appimage" && "$GITHUB_WORKSPACE/$appimage" --appimage-extract > /dev/null)
-          root="$RUNNER_TEMP/appimage/squashfs-root"
-          test -x "$root/resources/tandem"
-          test -f "$root/resources/agent/AGENTS.md"
-          test "$(cat "$root/resources/agent/VERSION")" = "$version"
+          # Same as `build-macos`: the smoke runs the binary the archive
+          # carries, so the Linux package is verified as shipped.
+          smoke="$RUNNER_TEMP/smoke"
+          mkdir -p "$smoke"
+          tar -xzf "dist/tandem-$version-linux-x86_64.tar.gz" -C "$smoke"
+          test -x "$smoke/tandem"
+          bash Scripts/smoke-binary.sh "$smoke/tandem" "$version"
 
-      - name: Compute the checksum
-        run: |
-          cd app/dist
-          shasum -a 256 "Tandem-$version-linux-x86_64.AppImage" > SHA256SUMS
-          cat SHA256SUMS
-
-      - name: Upload the artifact
+      - name: Upload the archive
         uses: actions/upload-artifact@v4
         with:
-          # A second artifact name, so the macOS `build-macos` and this job never
-          # overwrite one another; `release` downloads both.
-          name: Tandem-${{ env.version }}-linux
-          path: |
-            app/dist/Tandem-${{ env.version }}-linux-x86_64.AppImage
-            app/dist/SHA256SUMS
+          name: tandem-linux
+          path: dist
+
+  build-windows:
+    name: build-windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Warm the Rust toolchain
+        working-directory: rust
+        run: cargo --version
+
+      - name: Resolve the version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $version = $env:GITHUB_REF_NAME.Substring(1)
+          } else {
+            $version = '0.0.0'
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build the binary
+        working-directory: rust
+        shell: pwsh
+        run: |
+          $env:TANDEM_VERSION = $env:version
+          cargo build --release -p tandem
+
+      - name: Package the archive
+        shell: pwsh
+        run: |
+          $archive = "tandem-$env:version-windows-x86_64.zip"
+          New-Item -ItemType Directory -Force -Path dist, "$env:RUNNER_TEMP\package" | Out-Null
+          Copy-Item rust\target\release\tandem.exe "$env:RUNNER_TEMP\package\tandem.exe"
+          Compress-Archive -Path "$env:RUNNER_TEMP\package\tandem.exe" -DestinationPath "dist\$archive"
+          Get-ChildItem dist
+
+      - name: "Smoke: the extracted archive serves the board"
+        shell: pwsh
+        run: |
+          # Extract the zip first: the smoke runs the executable the archive
+          # carries, so a member-name or layout change fails the build.
+          $smoke = Join-Path $env:RUNNER_TEMP 'smoke'
+          New-Item -ItemType Directory -Force -Path $smoke | Out-Null
+          Expand-Archive -Path "dist\tandem-$($env:version)-windows-x86_64.zip" -DestinationPath $smoke -Force
+          $exe = (Resolve-Path (Join-Path $smoke 'tandem.exe')).Path
+          $printed = & $exe --version
+          if ($printed -notmatch [regex]::Escape($env:version)) {
+            throw "tandem --version did not name $env:version"
+          }
+          $smokeHome = Join-Path $env:RUNNER_TEMP 'smoke-home'
+          New-Item -ItemType Directory -Force -Path $smokeHome | Out-Null
+          $out = Join-Path $env:RUNNER_TEMP 'serve.log'
+          $err = Join-Path $env:RUNNER_TEMP 'serve.err'
+          $process = Start-Process -FilePath $exe `
+            -ArgumentList @('serve', '--port', '0', '--home', $smokeHome) `
+            -RedirectStandardOutput $out -RedirectStandardError $err -PassThru -NoNewWindow
+          $address = $null
+          for ($i = 0; $i -lt 150; $i++) {
+            Start-Sleep -Milliseconds 100
+            if (Test-Path $out) {
+              $match = Select-String -Path $out -Pattern 'http://[0-9.]+:[0-9]+' -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+              if ($match) { $address = $match.Matches[0].Value; break }
+            }
+            if ($process.HasExited) { throw "the server exited before it listened" }
+          }
+          if (-not $address) { throw "the server did not print its address" }
+          foreach ($path in @('/', '/notes')) {
+            $response = Invoke-WebRequest -Uri "$address$path" -UseBasicParsing
+            if ($response.StatusCode -ne 200) { throw "$path answered $($response.StatusCode)" }
+            if (-not $response.Headers['Content-Security-Policy']) { throw "$path carries no Content-Security-Policy" }
+          }
+          Stop-Process -Id $process.Id -Force
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: tandem-windows
+          path: dist
 
   release:
-    # The publisher, and the name the branch protection requires. It runs after
-    # the builds, so a release is published only from a run whose artifacts were
-    # verified.
-    #
-    # `!cancelled()` (GitHub's own pattern for "run me whatever the dependencies
-    # did") rather than the default `success()`: a job skipped because a
-    # dependency failed reports "Success" to the branch protection (skipped is a
-    # passing status), so the required check would read as green on a red build.
-    # This job runs instead, and the step below turns a red build into a red
-    # `release`, the check the protection watches.
-    needs: [build-macos, build-linux]
+    name: release
+    # The required check's name. It runs after the builds, so a release is
+    # published only from a run whose three archives were verified.
+    needs: [build-macos, build-linux, build-windows]
     if: ${{ !cancelled() }}
-    # macOS because the tap step runs brew (`--verify`), and the runner has it.
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: write # needed by the publish step (gh release); no other job has it
+      contents: write # `gh release create`; no other job has it
     steps:
       - name: "Verify: the builds are green"
         env:
           BUILD_MACOS_RESULT: ${{ needs['build-macos'].result }}
           BUILD_LINUX_RESULT: ${{ needs['build-linux'].result }}
+          BUILD_WINDOWS_RESULT: ${{ needs['build-windows'].result }}
         run: |
-          if [[ "$BUILD_MACOS_RESULT" != "success" ]]; then
+          if [ "$BUILD_MACOS_RESULT" != "success" ]; then
             echo "::error::the release aggregator needs the build green (build-macos: $BUILD_MACOS_RESULT)"
             exit 1
           fi
-          if [[ "$BUILD_LINUX_RESULT" != "success" ]]; then
+          if [ "$BUILD_LINUX_RESULT" != "success" ]; then
             echo "::error::the release aggregator needs the build green (build-linux: $BUILD_LINUX_RESULT)"
+            exit 1
+          fi
+          if [ "$BUILD_WINDOWS_RESULT" != "success" ]; then
+            echo "::error::the release aggregator needs the build green (build-windows: $BUILD_WINDOWS_RESULT)"
             exit 1
           fi
 
       - name: Check out the source
         uses: actions/checkout@v4
         with:
-          # The release-body generator (Scripts/release-notes.sh) walks the
-          # tags and the merge history between them; the default shallow,
-          # no-tags fetch has neither.
+          # The release-body generator (Scripts/release-notes.sh) walks the tags
+          # and the merge history between them; the default shallow, no-tags
+          # fetch has neither.
           fetch-depth: 0
 
       - name: Resolve the version
         run: |
-          # The same rule as the build jobs: the artifacts are named after the
-          # version, and all three jobs must agree on which artifacts to hand
-          # over.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           else
             echo "version=0.0.0" >> "$GITHUB_ENV"
           fi
 
-      - name: Download the artifacts
+      - name: Download the macOS archive
         uses: actions/download-artifact@v4
         with:
-          name: Tandem-${{ env.version }}
-          path: dist-mac
+          name: tandem-macos
+          path: dist
 
-      - name: Download the Linux artifact
+      - name: Download the Linux archive
         uses: actions/download-artifact@v4
         with:
-          name: Tandem-${{ env.version }}-linux
-          path: dist-linux
+          name: tandem-linux
+          path: dist
 
-      - name: "Verify: the downloaded artifacts match their SHA256SUMS"
-        run: |
-          # The handoff between the build jobs and this one is checked per
-          # platform: each checksum a build job wrote must be the checksum of
-          # the bytes the aggregator is about to publish.
-          cd dist-mac
-          shasum -a 256 -c SHA256SUMS
-          cd ../dist-linux
-          shasum -a 256 -c SHA256SUMS
+      - name: Download the Windows archive
+        uses: actions/download-artifact@v4
+        with:
+          name: tandem-windows
+          path: dist
 
-      - name: Assemble the release directory
+      - name: "Verify: the three platform archives are present"
         run: |
-          # One directory of everything the release publishes, with one merged
-          # SHA256SUMS covering every published file: the zip, the dmg,
-          # install.sh (staged by the macOS build) and the AppImage. The tap
-          # bump reads the zip's line out of that file, so the zip's entry must
-          # survive the merge (Scripts/bump-tap.sh).
-          mkdir dist
-          cp dist-mac/Tandem-$version.zip dist-mac/Tandem-$version.dmg dist-mac/install.sh dist/
-          cp dist-linux/Tandem-$version-linux-x86_64.AppImage dist/
-          cat dist-mac/SHA256SUMS dist-linux/SHA256SUMS > dist/SHA256SUMS
+          test -f "dist/tandem-$version-darwin-arm64.tar.gz"
+          test -f "dist/tandem-$version-linux-x86_64.tar.gz"
+          test -f "dist/tandem-$version-windows-x86_64.zip"
+          ls -l dist
+
+      - name: Stage install.sh and SHA256SUMS
+        run: |
+          Scripts/stage-release-assets.sh "$version" dist
+          cat dist/SHA256SUMS
+
+      - name: "Verify: the staged manifest checks out"
+        run: |
           cd dist
-          shasum -a 256 -c SHA256SUMS
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum -c SHA256SUMS
+          else
+            shasum -a 256 -c SHA256SUMS
+          fi
+          grep -q "DEFAULT_VERSION=\"$version\"" install.sh
 
       - name: Publish the GitHub release (tag runs only)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -336,26 +317,11 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
             gh release delete "$GITHUB_REF_NAME" --yes
           fi
-          # The body carries what shipped (7B005267), grouped by kind
-          # (BCE67BAE), not a fixed tag line: the generator lists the PRs
-          # merged on main since the previous tag (titles and labels via gh,
-          # the fixed install line as the lead), never writing the bikeshed —
-          # that is `--capture`, a local step this runner cannot take.
           notes=$(Scripts/release-notes.sh "$GITHUB_REF_NAME")
           gh release create "$GITHUB_REF_NAME" \
             --title "Tandem $version" \
             --notes "$notes" \
-            "dist/Tandem-$version.zip" "dist/Tandem-$version.dmg" \
-            "dist/Tandem-$version-linux-x86_64.AppImage" dist/install.sh dist/SHA256SUMS
-
-      - name: Bump the tap cask (tag runs only)
-        # The second half of the release, in the same run (ADR 0036): the tap's
-        # Casks/tandem.rb is rewritten from dist/SHA256SUMS and pushed with the
-        # TAP_TOKEN PAT, so no release waits for a human commit. Last on
-        # purpose, so a red tap step can never take a published release with it,
-        # and tag-gated so pull-request runs never touch another repo. Unset or
-        # rejected TAP_TOKEN fails here, loudly, naming the secret (TAN-224).
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
-        run: Scripts/bump-tap.sh "$GITHUB_REF_NAME" dist/SHA256SUMS --verify
+            "dist/tandem-$version-darwin-arm64.tar.gz" \
+            "dist/tandem-$version-linux-x86_64.tar.gz" \
+            "dist/tandem-$version-windows-x86_64.zip" \
+            dist/install.sh dist/SHA256SUMS

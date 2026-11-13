@@ -18,7 +18,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use tandem_core::domain::session::Sessions;
 use tandem_core::domain::{Board, Filter};
 use tandem_core::store::{Home, Store};
 
@@ -180,22 +179,12 @@ fn reading_the_fixture_home_leaves_it_untouched() {
         Path::new("/nonexistent-user-home"),
     ));
 
-    let sessions = Sessions::new(&store)
-        .list(None, None)
-        .expect("the fixture home's records read");
-    assert_eq!(
-        sessions.len(),
-        24,
-        "the frozen set is five weeks of records, twenty-four in all"
-    );
-    let seeded = sessions
-        .iter()
-        .find(|session| session.id == "ses_a")
-        .expect("the seed names ses_a");
-    assert_eq!(
-        (seeded.turns, seeded.calls),
-        (Some(12), Some(36)),
-        "the committed artifact carries the turn budget pair (TAN-348)"
+    let tickets = Board::new(store)
+        .list_filter(Filter::All)
+        .expect("the fixture home's board reads");
+    assert!(
+        !tickets.is_empty(),
+        "the committed artifact carries the board"
     );
 
     for sidecar in [

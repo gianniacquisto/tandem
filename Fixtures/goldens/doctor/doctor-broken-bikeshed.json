@@ -4,7 +4,7 @@
   ],
   "exit": 1,
   "stderr": [
-    "doctor: bikeshed — <tandem-home>/bikeshed — a file, not a folder; pick a folder"
+    "doctor: bikeshed \u2014 <tandem-home>/bikeshed \u2014 a file, not a folder; pick a folder"
   ],
   "stdin": "",
   "stdout": {
@@ -15,64 +15,14 @@
         "ok": true
       },
       {
-        "detail": "<tandem-home>/tandem.db — absent (a valid empty store); no backup yet",
+        "detail": "<tandem-home>/tandem.db \u2014 absent (a valid empty store); no backup yet",
         "name": "store",
         "ok": true
       },
       {
-        "detail": "<tandem-home>/bikeshed — a file, not a folder; pick a folder",
+        "detail": "<tandem-home>/bikeshed \u2014 a file, not a folder; pick a folder",
         "name": "bikeshed",
         "ok": false
-      },
-      {
-        "detail": "<tandem-home>/tandem.db — none yet; the first comment writes a row",
-        "name": "comments",
-        "ok": true
-      },
-      {
-        "detail": "no sessions.json in this home",
-        "name": "sessions",
-        "ok": true
-      },
-      {
-        "detail": "no settings.json in this home",
-        "name": "settings",
-        "ok": true
-      },
-      {
-        "detail": "no todos.json.* files in this home",
-        "name": "todos-json",
-        "ok": true
-      },
-      {
-        "detail": "free",
-        "name": "lock",
-        "ok": true
-      },
-      {
-        "detail": "<environment>",
-        "name": "app",
-        "ok": true
-      },
-      {
-        "detail": "<environment>",
-        "name": "skills",
-        "ok": true
-      },
-      {
-        "detail": "no warnings",
-        "name": "agent-face",
-        "ok": true
-      },
-      {
-        "detail": "not signed in; the agent runs outside the app",
-        "name": "harness-auth",
-        "ok": true
-      },
-      {
-        "detail": "tandem-mcp 0.0.0-golden: 48 tools over 48 covered wire methods",
-        "name": "mcp",
-        "ok": true
       }
     ],
     "ok": false

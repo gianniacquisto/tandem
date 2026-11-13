@@ -1,3 +1,5 @@
+> **Superseded 2026-11-13 by [ADR 0046](0046-tandem-serve-and-single-binary-distribution.md):** the tap and its tag-driven cask bump retire with the cask. The tag run publishes standalone binary archives, `SHA256SUMS` and `install.sh`; there is no second repository to write.
+
 # The tag bumps the tap: the release job rewrites the cask and pushes it
 
 Half the release act was CI and half was a human at a terminal. A `v*` tag runs [`release.yml`](../../.github/workflows/release.yml), which verifies the build, publishes the GitHub release with `Tandem-<version>.zip` and `SHA256SUMS`, and writes the body from [`Scripts/release-notes.sh`](../../Scripts/release-notes.sh). The other half was `Casks/tandem.rb` in [`gianniacquisto/homebrew-tap`](https://github.com/gianniacquisto/homebrew-tap): a human bumped its `version` and `sha256` and ran `brew style` and `brew audit --cask --strict` before pushing (`docs/releasing.md` steps 4 and 5, done by hand for every release, tap PRs #16 to #32).

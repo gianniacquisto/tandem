@@ -1,3 +1,5 @@
+> **Superseded 2026-11-13 by [ADR 0046](0046-tandem-serve-and-single-binary-distribution.md):** distribution is one standalone binary archive per platform with `SHA256SUMS` and `install.sh`. The prebuilt cask, the in-bundle MCP binary and the homebrew cask record retire; `tandem serve` carries the UI in the same binary.
+
 # Distribution: prebuilt cask, in-bundle MCP binary, no formula
 
 > **Amended 2026-10-30 by [ADR 0036](0036-the-tag-bumps-the-tap.md):** the tag run now bumps the tap's cask itself, in the same run that publishes the release, so the consequence below that has the tap's daily `autobump` opening the bump PR is retired. The one-cask distribution decision is unchanged. The amendment's text is ADR 0036's.

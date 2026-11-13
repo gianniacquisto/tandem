@@ -21,11 +21,11 @@
 
 use rusqlite::{Connection, params};
 
-use super::{Actor, Result, StoreError, timestamp, translate};
+use super::{Actor, Result, StoreError, now, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 10;
+pub const CURRENT_VERSION: i64 = 11;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -86,6 +86,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: WORKFLOW_RUNS_VERSION,
         name: "the workflow runs and the orphan-open sweep",
         apply: version_ten,
+    },
+    Migration {
+        version: DEAD_TABLES_VERSION,
+        name: "the dead tables",
+        apply: version_eleven,
     },
 ];
 
@@ -293,8 +298,6 @@ pub(crate) struct DefaultStage {
 /// The v7 seed's six stages. **A shipped migration's data never changes**
 /// (append only), so this list stays the foundation's six and the seventh
 /// default stage lands in [`SELECTED_STAGE`] and the migration that adds it.
-/// [`current_default_stages`] is the default today, and the in-memory fallback
-/// reads it, so a fresh home and the fallback cannot disagree.
 pub(crate) const DEFAULT_STAGES: [DefaultStage; 6] = [
     DefaultStage {
         key: "backlog",
@@ -344,21 +347,6 @@ pub(crate) const SELECTED_STAGE: DefaultStage = DefaultStage {
     role: "intake",
     binding: None,
 };
-
-/// The default `agile` workflow as this build reads it: the v7 six with
-/// [`SELECTED_STAGE`] immediately before `ready`. A fresh home walks the v7
-/// seed and then the selected-stage migration, so it ends here; the in-memory
-/// fallback builds the same list, so a store with no workflow rows draws the
-/// same default.
-pub(crate) fn current_default_stages() -> Vec<DefaultStage> {
-    let mut stages = DEFAULT_STAGES.to_vec();
-    let at = stages
-        .iter()
-        .position(|stage| stage.key == "ready")
-        .unwrap_or(stages.len());
-    stages.insert(at, SELECTED_STAGE);
-    stages
-}
 
 /// Version 7: the workflow entity, its ordered stages, and the nullable
 /// `projects.workflow` hook for the later per-project adoption.
@@ -538,6 +526,35 @@ fn version_ten(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(&version_ten_sql())
 }
 
+/// The version that drops the tables the cut retired (CUT-9).
+pub(crate) const DEAD_TABLES_VERSION: i64 = 11;
+
+/// Version 11: the five dead tables leave the store, fresh home and migrated
+/// home alike.
+///
+/// The cut retired sessions, sprints, workflows and settings from the domain
+/// (CUT-4, CUT-5, CUT-6), so the tables that held them are drops, not history a
+/// reader still needs. The seven live tables stay: `tickets`,
+/// `ticket_dependencies`, `comments`, `lanes`, `projects`, `store_meta` and
+/// `schema_migrations`. A fresh home walks every migration and lands on the
+/// same seven; a home at v10 loses only the rows of tables nothing reads.
+///
+/// `workflow_runs` is the name v10 gave `sprints`, and `sprints` is dropped too
+/// so a file that somehow reached this version without the rename cannot keep
+/// the table alive.
+const VERSION_ELEVEN: &str = "
+DROP TABLE IF EXISTS workflow_stages;
+DROP TABLE IF EXISTS workflows;
+DROP TABLE IF EXISTS workflow_runs;
+DROP TABLE IF EXISTS sprints;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS settings;
+";
+
+fn version_eleven(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(VERSION_ELEVEN)
+}
+
 fn version_seven(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_SEVEN)?;
     connection.execute(
@@ -641,7 +658,7 @@ pub(crate) fn migrate_with(
                 .execute(
                     "INSERT INTO schema_migrations (version, applied_at, author)
                      VALUES (?1, ?2, ?3)",
-                    params![migration.version, timestamp::now(), actor.as_str()],
+                    params![migration.version, now(), actor.as_str()],
                 )
                 .map_err(|error| translate(error, connection))?;
             Ok(())
@@ -704,40 +721,6 @@ pub(crate) fn behind(connection: &Connection) -> Result<bool> {
         Some(applied) => Ok(applied < CURRENT_VERSION),
         None => Ok(true),
     }
-}
-
-/// Whether the file carries the session record's skill column.
-///
-/// **A read asks this instead of migrating**, because a read never writes
-/// (ADR 0031): a home the previous build wrote answers its records with the
-/// additive column NULL, rather than failing on a column it does not have.
-pub(crate) fn has_skills(connection: &Connection) -> Result<bool> {
-    Ok(version(connection)?.unwrap_or(0) >= SKILLS_VERSION)
-}
-
-/// Whether the file carries the session record's harness columns (v5).
-///
-/// A read asks this rather than migrating: an older home answers both columns
-/// NULL, and nothing is written (ADR 0031).
-pub(crate) fn has_harness(connection: &Connection) -> Result<bool> {
-    Ok(version(connection)?.unwrap_or(0) >= HARNESS_VERSION)
-}
-
-/// Whether the file carries the session record's turn and call columns (v8).
-///
-/// A read asks this rather than migrating: an older home answers both columns
-/// NULL, and nothing is written (ADR 0031).
-pub(crate) fn has_turns(connection: &Connection) -> Result<bool> {
-    Ok(version(connection)?.unwrap_or(0) >= TURNS_VERSION)
-}
-
-/// Whether the file carries the workflow's run table (v10).
-///
-/// A read asks this rather than migrating (ADR 0031): a pre-v10 home answers its
-/// run rows from `sprints`, with the default workflow supplied, and nothing is
-/// written.
-pub(crate) fn has_workflow_runs(connection: &Connection) -> Result<bool> {
-    Ok(version(connection)?.unwrap_or(0) >= WORKFLOW_RUNS_VERSION)
 }
 
 /// Whether a store is behind the version this build writes.

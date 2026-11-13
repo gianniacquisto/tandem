@@ -144,15 +144,12 @@ fn on_hold_round_trips_through_the_store() {
 
 /// The writer half of the on-hold gate: the retired word leaves the domain and the
 /// wire, and a store that still spells it reads as the slot it named, never as
-/// `backlog`. A custom stage's stored key round-trips (TAN-328), because the
-/// workflow that declares it is what gives it a label and a role.
+/// `backlog`. A key the fixed six no longer name reads as backlog, the
+/// reader-first rule: the board cannot draw a stage it does not carry.
 #[test]
-fn a_stored_refined_reads_as_on_hold_and_a_custom_key_round_trips() {
+fn a_stored_refined_reads_as_on_hold_and_an_unknown_key_reads_as_backlog() {
     assert_eq!(Status::stored("refined"), Status::OnHold);
-    assert_eq!(
-        Status::stored("a word from a later build"),
-        Status::Custom("a word from a later build".to_string())
-    );
+    assert_eq!(Status::stored("a word from a later build"), Status::Backlog);
     assert_eq!(
         Status::parse("refined"),
         Err(tandem_core::domain::DomainError::InvalidStatus(

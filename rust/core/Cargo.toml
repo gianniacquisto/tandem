@@ -10,16 +10,18 @@ description = "Tandem's domain, store adapter and wire."
 name = "tandem_core"
 
 [dependencies]
+askama.workspace = true
+axum.workspace = true
 comrak.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
-# The record's two stored JSON columns (the ticket list and the skill counts)
-# and the harness read's message data: the same JSON the wire speaks, parsed in
-# the core so a corrupt column fails at its reader (PRT-6).
+# The wire's JSON and the board's stored columns, parsed in the core so
+# a corrupt column fails at its reader (PRT-6).
 serde_json.workspace = true
+serde_urlencoded.workspace = true
 sha2.workspace = true
-ts-rs.workspace = true
-ureq.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
 uuid.workspace = true
 
 [target.'cfg(unix)'.dependencies]
@@ -28,7 +30,11 @@ uuid.workspace = true
 libc.workspace = true
 
 [dev-dependencies]
+# The serve suite drives the router as a service and collects the HTML it
+# answers; both are axum's own dependencies, named where the test names them.
+http-body-util.workspace = true
 # The busy-path suite holds the database exclusively the way another process
 # would, which only the engine's own handle can do (PRT-5).
 rusqlite.workspace = true
+tower.workspace = true
 uuid.workspace = true

@@ -2,7 +2,7 @@
 //! SQLite seam (ADR 0031), the rolling backup (ADR 0018), the actor on every
 //! write, and the v5 refusal.
 //!
-//! Ported from `LockedDirectoryTests`, `RecoveryTests`, `ConcurrencyTests`,
+//! Ported from `RecoveryTests`, `ConcurrencyTests`,
 //! `StoreDocumentsTests` and `SQLiteSeamTests`: the behaviours those suites
 //! assert, not their Swift spelling. Like the Swift seam suite, this one is
 //! allowed to know the storage; everything above it talks to `Store` only.
@@ -79,10 +79,12 @@ impl Drop for Sandbox {
     }
 }
 
-fn setting(store: &Store, actor: &Actor, key: &str, value: &str) {
+/// A write that leaves one live row: a project named `name`. The write cases
+/// use it where they only need a transaction that changes something.
+fn probe(store: &Store, actor: &Actor, name: &str) {
     store
         .write(actor, |write| {
-            write.insert_setting(NewSetting { key, value })
+            write.insert_project(NewProject { name, position: 0 })
         })
         .expect("the write lands");
 }
@@ -121,427 +123,14 @@ fn has_index(connection: &Connection, name: &str) -> bool {
 
 /// Every table whose inserts carry the actor, and its author column. The seam's
 /// own table is in the list: a migration is a write too.
-const AUTHORED_TABLES: [&str; 8] = [
+const AUTHORED_TABLES: [&str; 6] = [
     "tickets",
     "ticket_dependencies",
     "comments",
-    "sessions",
-    "workflow_runs",
     "lanes",
-    "settings",
+    "projects",
     "schema_migrations",
 ];
-
-// MARK: - The write discipline (LockedDirectory)
-
-mod locked {
-    use std::fs::{self, OpenOptions};
-
-    use super::*;
-
-    fn storage(sandbox: &Sandbox) -> super::super::locked::LockedDirectory {
-        fs::create_dir_all(sandbox.root()).expect("the root is creatable");
-        super::super::locked::LockedDirectory::for_store(sandbox.root())
-    }
-
-    #[test]
-    fn atomic_write_replaces_the_file_and_leaves_no_temp() {
-        let sandbox = Sandbox::new("atomic");
-        let storage = storage(&sandbox);
-        let file = sandbox.root().join("data.txt");
-
-        storage
-            .atomic_write(b"one", &file)
-            .expect("the first write lands");
-        assert_eq!(fs::read(&file).unwrap(), b"one");
-        storage
-            .atomic_write(b"two", &file)
-            .expect("the second write lands");
-        assert_eq!(fs::read(&file).unwrap(), b"two");
-
-        let leftovers: Vec<String> = fs::read_dir(sandbox.root())
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .filter(|name| name.starts_with(".tandem-"))
-            .collect();
-        assert!(
-            leftovers.is_empty(),
-            "temp files left behind: {leftovers:?}"
-        );
-    }
-
-    #[test]
-    fn atomic_write_creates_missing_parents() {
-        let sandbox = Sandbox::new("parents");
-        let storage = storage(&sandbox);
-        let file = sandbox.root().join("a").join("b").join("c.txt");
-
-        storage
-            .atomic_write(b"deep", &file)
-            .expect("the write creates its parents");
-
-        assert_eq!(fs::read(&file).unwrap(), b"deep");
-    }
-
-    #[test]
-    fn orphan_sweep_removes_stale_temps_and_keeps_fresh_ones() {
-        let sandbox = Sandbox::new("orphans");
-        let storage = storage(&sandbox);
-        let stale = sandbox.root().join(".tandem-stale.tmp");
-        fs::write(&stale, b"stale").unwrap();
-        aged(&stale, 120);
-        let fresh = sandbox.root().join(".tandem-fresh.tmp");
-        fs::write(&fresh, b"fresh").unwrap();
-
-        let _guard = storage.lock().expect("the lock runs");
-
-        assert!(!stale.exists(), "the stale orphan was not removed");
-        assert!(fresh.exists(), "the fresh temp was wrongly removed");
-    }
-
-    #[test]
-    fn the_orphan_sweep_stays_out_of_subdirectories() {
-        let sandbox = Sandbox::new("orphans-nested");
-        let storage = storage(&sandbox);
-        let nested = sandbox.root().join("bikeshed").join(".tandem-old.tmp");
-        fs::create_dir_all(nested.parent().unwrap()).unwrap();
-        fs::write(&nested, b"stale").unwrap();
-        aged(&nested, 120);
-
-        let _guard = storage.lock().expect("the lock runs");
-
-        assert!(
-            nested.exists(),
-            "the flat sweep must not descend into the bikeshed's temps"
-        );
-    }
-
-    #[test]
-    fn lock_holds_the_exclusive_lock_for_the_guard() {
-        let sandbox = Sandbox::new("excludes");
-        let storage = storage(&sandbox);
-        let lock = sandbox.root().join("tandem.lock");
-
-        let guard = storage.lock().expect("the lock is taken");
-        let held = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&lock)
-            .expect("the lock file opens");
-        assert!(
-            matches!(held.try_lock(), Err(fs::TryLockError::WouldBlock)),
-            "a second handle took the lock while the guard held it"
-        );
-        drop(guard);
-
-        let free = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&lock)
-            .expect("the lock file opens");
-        assert!(
-            free.try_lock().is_ok(),
-            "the lock was not released after the guard"
-        );
-    }
-
-    #[test]
-    fn a_held_lock_times_out_as_locked() {
-        let sandbox = Sandbox::new("timeout");
-        let storage = storage(&sandbox);
-        let lock = sandbox.root().join("tandem.lock");
-        let held = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&lock)
-            .expect("the lock file opens");
-        held.try_lock().expect("the test takes the lock");
-
-        let started = Instant::now();
-        let outcome = storage.lock().map(|_guard| ());
-        let elapsed = started.elapsed();
-        drop(held);
-
-        assert!(
-            matches!(outcome, Err(StoreError::Locked { .. })),
-            "the bounded retry must answer locked: {outcome:?}"
-        );
-        assert!(
-            elapsed >= Duration::from_millis(1_500),
-            "the retry window is the store's ~2 s, waited {elapsed:?}"
-        );
-        assert!(
-            elapsed < Duration::from_secs(15),
-            "the retry did not wait far past the window: {elapsed:?}"
-        );
-    }
-
-    /// A nested acquisition is a body that takes the same lock file again: it
-    /// queues behind itself, so it must answer `Locked` at the window like any
-    /// other writer that cannot be served, never hang. The wait is bounded on
-    /// both halves (`Queue::take` and the `flock` retry), so this case bounds
-    /// the test at three windows instead of relying on the suite's timeout.
-    #[test]
-    fn a_nested_acquisition_answers_locked_at_the_window_instead_of_hanging() {
-        let sandbox = Sandbox::new("nested");
-        let storage = storage(&sandbox);
-        let (answered, waiting) = std::sync::mpsc::channel();
-        // Detached, not scoped: a scoped thread that hangs takes the test with
-        // it, and the point of this case is the answer.
-        std::thread::spawn({
-            let storage = storage.clone();
-            move || {
-                let started = Instant::now();
-                let outcome = storage
-                    .lock()
-                    .and_then(|_held| storage.lock().map(|_nested| ()));
-                let _ = answered.send((
-                    matches!(outcome, Err(StoreError::Locked { .. })),
-                    started.elapsed(),
-                ));
-            }
-        });
-
-        let (locked, elapsed) = waiting
-            .recv_timeout(super::super::locked::LOCK_TIMEOUT * 3)
-            .expect("a nested acquisition answers at the window, it does not hang");
-        assert!(
-            locked,
-            "a nested acquisition answers Locked, not Ok: it took {elapsed:?}"
-        );
-        assert!(
-            elapsed >= super::super::locked::LOCK_TIMEOUT,
-            "the nested acquisition answered before the window: {elapsed:?}"
-        );
-    }
-
-    /// Two spellings of one lock file are one queue, or the fairness guarantee
-    /// is lost for writers that spell their home differently (a symlink, a `.`
-    /// or `..` segment, a different case on Windows): both would take ticket 0
-    /// and race the `flock` again.
-    #[test]
-    fn two_spellings_of_one_home_share_one_queue() {
-        use std::sync::{Arc, Barrier};
-        use std::thread;
-
-        let sandbox = Sandbox::new("spellings");
-        let root = sandbox.root();
-        let plain = root.join("tandem.lock");
-        let dotted = root.join(".").join("tandem.lock");
-        assert_eq!(
-            super::super::locked::queue_key(&plain).expect("the plain spelling canonicalizes"),
-            super::super::locked::queue_key(&dotted).expect("the dotted spelling canonicalizes"),
-            "two spellings of one lock file must key one queue"
-        );
-
-        // And they exclude each other: the dotted spelling waits out a holder
-        // on the plain one instead of taking a second lock.
-        let holder =
-            super::super::locked::LockedDirectory::new(plain, ".tandem-", root.to_path_buf());
-        let waiter =
-            super::super::locked::LockedDirectory::new(dotted, ".tandem-", root.to_path_buf());
-        let holding = Arc::new(Barrier::new(2));
-        let held_for = Duration::from_millis(300);
-        thread::scope(|scope| {
-            scope.spawn(|| {
-                let _held = holder.lock().expect("the holder's body runs");
-                holding.wait();
-                thread::sleep(held_for);
-            });
-            holding.wait();
-
-            let started = Instant::now();
-            let _served = waiter
-                .lock()
-                .expect("a writer on the other spelling is served, not locked out");
-            assert!(
-                started.elapsed() >= held_for,
-                "the waiter did not wait for the holder: {:?}",
-                started.elapsed()
-            );
-        });
-    }
-
-    /// A writer that arrives while another holds the lock is served in arrival
-    /// order: two waiters queue behind the holder, and the queue hands them the
-    /// lock in the order they took their tickets. This is the property `Queue`
-    /// exists for; without it both waiters spin `try_lock` and the order is a
-    /// coin flip per release. The case waits on the queue's own ticket count,
-    /// so a bypassed `Queue::take` fails here (the count never moves) instead
-    /// of passing by luck.
-    #[test]
-    fn waiters_are_served_in_arrival_order() {
-        let sandbox = Sandbox::new("order");
-        let storage = storage(&sandbox);
-        let key = super::super::locked::queue_key(&sandbox.root().join("tandem.lock"))
-            .expect("the sandbox root canonicalizes");
-
-        let held = storage.lock().expect("the holder takes the lock");
-        // The holder's own ticket is taken; every later arrival adds one.
-        let holder_ticket = super::super::locked::queued(&key);
-        let (served, order) = std::sync::mpsc::channel();
-        let mut waiters = Vec::new();
-        for name in ["first", "second"] {
-            let storage = storage.clone();
-            let served = served.clone();
-            waiters.push(std::thread::spawn(move || {
-                let _guard = storage.lock().expect("the waiter is served");
-                let _ = served.send(name);
-            }));
-            // Wait until this waiter has taken its ticket: that is its arrival,
-            // and it is what the queue orders on. A sleep would assume the
-            // thread ran; the count is the synchronization point.
-            let deadline = Instant::now() + super::super::locked::LOCK_TIMEOUT;
-            let wanted = holder_ticket + waiters.len() as u64;
-            while super::super::locked::queued(&key) < wanted {
-                assert!(
-                    Instant::now() < deadline,
-                    "waiter {} did not take a queue ticket; the queue is bypassed",
-                    waiters.len()
-                );
-                std::thread::yield_now();
-            }
-        }
-        drop(held);
-
-        let arrivals: Vec<&str> = (0..2)
-            .map(|_| {
-                order
-                    .recv_timeout(super::super::locked::LOCK_TIMEOUT * 3)
-                    .expect("both waiters report")
-            })
-            .collect();
-        for waiter in waiters {
-            waiter.join().expect("the waiter thread joins");
-        }
-        assert_eq!(
-            arrivals,
-            ["first", "second"],
-            "waiters are served in the order they queued"
-        );
-    }
-
-    /// A lock file whose directory cannot canonicalize is refused, not keyed on
-    /// the path as spelled: the spelled path is the split this key exists to
-    /// close, and two spellings of one home would each get a queue. A missing
-    /// directory is the portable way to make `canonicalize` fail.
-    #[test]
-    fn a_directory_that_cannot_canonicalize_is_refused() {
-        let sandbox = Sandbox::new("uncanonical");
-        let missing = sandbox.root().join("missing").join("tandem.lock");
-
-        let outcome = super::super::locked::queue_key(&missing);
-
-        assert!(
-            matches!(&outcome, Err(StoreError::Io(_))),
-            "a directory that cannot canonicalize is refused: {outcome:?}"
-        );
-    }
-
-    #[test]
-    fn an_ordered_write_keeps_the_old_file_until_the_commit() {
-        let sandbox = Sandbox::new("ordered");
-        let storage = storage(&sandbox);
-        let target = sandbox.root().join("tandem.db.bak");
-        fs::write(&target, b"old").unwrap();
-        let temp = sandbox.root().join(".tandem-ordered.tmp");
-        fs::write(&temp, b"new").unwrap();
-
-        storage
-            .commit(&temp, &target, || {
-                assert_eq!(
-                    fs::read(&target).unwrap(),
-                    b"old",
-                    "the old file is still in place before the rename"
-                );
-                Ok(())
-            })
-            .expect("the commit lands");
-
-        assert_eq!(fs::read(&target).unwrap(), b"new");
-        assert!(!temp.exists(), "the commit left its temp behind");
-    }
-
-    #[test]
-    fn a_failed_commit_leaves_the_old_file_and_no_temp() {
-        let sandbox = Sandbox::new("failed-commit");
-        let storage = storage(&sandbox);
-        let target = sandbox.root().join("tandem.db.bak");
-        fs::write(&target, b"old").unwrap();
-        let temp = sandbox.root().join(".tandem-failed.tmp");
-        fs::write(&temp, b"new").unwrap();
-
-        let outcome = storage.commit(&temp, &target, || {
-            Err(StoreError::Io("the write changed its mind".to_string()))
-        });
-
-        assert!(outcome.is_err(), "a throwing commit fails");
-        assert_eq!(fs::read(&target).unwrap(), b"old", "the old file survived");
-        assert!(!temp.exists(), "the failed commit left its temp behind");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_commit_syncs_a_temp_it_cannot_open_for_reading() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let sandbox = Sandbox::new("write-only-temp");
-        let storage = storage(&sandbox);
-        let target = sandbox.root().join("tandem.db.bak");
-        fs::write(&target, b"old").unwrap();
-        let temp = sandbox.root().join(".tandem-write-only.tmp");
-        fs::write(&temp, b"new").unwrap();
-        // Windows' `FlushFileBuffers` needs a handle carrying write access, so a
-        // commit that opens its temp read-only cannot sync it there. A temp with
-        // no read permission is the same requirement, provable on unix: the
-        // commit must sync through a handle opened for writing.
-        fs::set_permissions(&temp, fs::Permissions::from_mode(0o200)).unwrap();
-
-        storage
-            .commit(&temp, &target, || Ok(()))
-            .expect("the commit syncs a write-only temp and lands");
-
-        fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
-        assert_eq!(fs::read(&target).unwrap(), b"new");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_directory_fsync_over_an_unopenable_directory_fails() {
-        let sandbox = Sandbox::new("fsync");
-        // The root sits behind a regular file, so open(2) fails with ENOTDIR.
-        let not_a_directory = sandbox.root().join("not-a-dir");
-        fs::write(&not_a_directory, b"a file").unwrap();
-        let storage = super::super::locked::LockedDirectory::new(
-            sandbox.root().join("tandem.lock"),
-            ".tandem-",
-            not_a_directory.join("sub"),
-        );
-
-        let outcome = storage.fsync_directory();
-
-        match outcome {
-            Err(StoreError::Io(message)) => {
-                assert!(
-                    message.contains("open directory"),
-                    "the failure names the open: {message}"
-                );
-            }
-            other => panic!("expected a directory open failure, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn a_directory_fsync_succeeds_over_a_real_directory() {
-        let sandbox = Sandbox::new("fsync-ok");
-        let storage = storage(&sandbox);
-        storage.fsync_directory().expect("a real directory syncs");
-    }
-}
 
 // MARK: - The in-process write gate
 
@@ -664,9 +253,9 @@ mod gate {
         let queued = thread::spawn(move || {
             let started = Instant::now();
             let outcome = store.write(&Actor::Human, |write| {
-                write.insert_setting(NewSetting {
-                    key: "blocked",
-                    value: "1",
+                write.insert_project(NewProject {
+                    name: "blocked",
+                    position: 0,
                 })
             });
             tx.send((outcome, started.elapsed()))
@@ -708,9 +297,9 @@ mod gate {
         let queued = thread::spawn(move || {
             let started = Instant::now();
             let outcome = store.write(&Actor::Human, |write| {
-                write.insert_setting(NewSetting {
-                    key: "blocked",
-                    value: "1",
+                write.insert_project(NewProject {
+                    name: "blocked",
+                    position: 0,
                 })
             });
             tx.send((outcome, started.elapsed()))
@@ -834,7 +423,7 @@ mod schema {
         let sandbox = Sandbox::new("fresh");
         let store = sandbox.store();
 
-        setting(&store, &Actor::Human, "defaultLane", "Port");
+        probe(&store, &Actor::Human, "defaultLane");
 
         assert!(
             sandbox.database().exists(),
@@ -863,7 +452,7 @@ mod schema {
             )
             .unwrap();
         assert!(
-            super::super::timestamp::decode(&applied_at).is_some(),
+            super::super::decode(&applied_at).is_some(),
             "applied_at is an ISO-8601 UTC timestamp: {applied_at}"
         );
     }
@@ -871,11 +460,11 @@ mod schema {
     #[test]
     fn the_tables_are_the_ones_the_format_names() {
         let sandbox = Sandbox::new("tables");
-        setting(&sandbox.store(), &Actor::Human, "k", "v");
+        probe(&sandbox.store(), &Actor::Human, "Tandem");
 
         let connection = sandbox.connection();
         let mut statement = connection
-            .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
             .unwrap();
         let tables: Vec<String> = statement
             .query_map([], |row| row.get(0))
@@ -883,18 +472,60 @@ mod schema {
             .map(|row| row.unwrap())
             .collect();
 
+        assert_eq!(
+            tables,
+            vec![
+                "comments",
+                "lanes",
+                "projects",
+                "schema_migrations",
+                "store_meta",
+                "ticket_dependencies",
+                "tickets",
+            ],
+            "a fresh home carries only the live tables"
+        );
+    }
+
+    /// A v10 home still carries the five tables the cut retired; its next write
+    /// drops them and keeps every live row.
+    #[test]
+    fn the_dead_tables_are_dropped_on_a_migrated_home() {
+        let sandbox = Sandbox::new("drop-dead");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..10], &Actor::Human).expect("v10 applies");
+        connection
+            .execute_batch(
+                "INSERT INTO sessions (id, project, brief, status, started_at, author)
+                   VALUES ('s1', 'tandem', 'a pass', 'running', '2026-11-01T00:00:00Z', 'human');
+                 INSERT INTO settings (key, value, author) VALUES ('k', 'v', 'human');
+                 INSERT INTO workflow_runs (lane, number, mode, status, opened_at, author)
+                   VALUES ('cut', 1, 'serial', 'closed', '2026-11-01T00:00:00Z', 'human');",
+            )
+            .expect("the v10 rows land");
+        drop(connection);
+
+        probe(&sandbox.store(), &Actor::Human, "kept");
+
+        let connection = sandbox.connection();
         for table in [
-            "schema_migrations",
-            "tickets",
-            "ticket_dependencies",
-            "comments",
             "sessions",
-            "workflow_runs",
-            "lanes",
+            "sprints",
             "settings",
+            "workflows",
+            "workflow_stages",
+            "workflow_runs",
         ] {
-            assert!(tables.iter().any(|name| name == table), "missing {table}");
+            assert!(
+                !has_table(&connection, table).unwrap(),
+                "{table} must be dropped by the migration"
+            );
         }
+        let kept: i64 = connection
+            .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(kept, 1, "the live row the write made survives the drop");
     }
 
     #[test]
@@ -948,7 +579,7 @@ mod schema {
             .unwrap()
         {
             assert!(
-                super::super::timestamp::decode(&applied_at.unwrap()).is_some(),
+                super::super::decode(&applied_at.unwrap()).is_some(),
                 "every applied migration carries an ISO-8601 UTC timestamp"
             );
         }
@@ -958,7 +589,7 @@ mod schema {
     fn a_second_migrate_applies_nothing() {
         let sandbox = Sandbox::new("migrate-twice");
         let store = sandbox.store();
-        setting(&store, &Actor::Human, "k", "v");
+        probe(&store, &Actor::Human, "k");
 
         let connection = sandbox.connection();
         migrate_with(&connection, MIGRATIONS, &Actor::Human).expect("a no-op migrate answers");
@@ -1045,7 +676,7 @@ mod schema {
             .expect("the v1 row lands");
         drop(connection);
 
-        setting(&sandbox.store(), &Actor::Human, "k", "v");
+        probe(&sandbox.store(), &Actor::Human, "kept");
 
         let connection = sandbox.connection();
         assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
@@ -1058,8 +689,8 @@ mod schema {
             "v2 adds the comment read's index"
         );
         assert!(
-            super::super::schema::has_column(&connection, "sessions", "skills").unwrap(),
-            "v3 adds the session record's skill counts"
+            !super::super::schema::has_table(&connection, "sessions").unwrap(),
+            "v11 drops the session table"
         );
         let title: String = connection
             .query_row("SELECT title FROM tickets", [], |row| row.get(0))
@@ -1081,7 +712,7 @@ mod schema {
     }
 
     #[test]
-    fn a_v5_file_upgrades_to_v7_with_projects_and_the_agile_workflow() {
+    fn a_v5_file_upgrades_to_v9_with_projects_and_the_agile_workflow() {
         let sandbox = Sandbox::new("upgrade-v6");
         fs::create_dir_all(sandbox.home_path()).unwrap();
         let connection = Connection::open(sandbox.database()).unwrap();
@@ -1138,23 +769,14 @@ mod schema {
         }
         drop(connection);
 
-        setting(&sandbox.store(), &Actor::Human, "k", "v");
+        // Stop at v9: v11 drops the workflow tables this case reads.
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..9], &Actor::Human).expect("v9 applies");
 
-        let connection = sandbox.connection();
         assert_eq!(
             version(&connection).unwrap(),
-            Some(CURRENT_VERSION),
-            "the current version"
-        );
-        assert_eq!(
-            CURRENT_VERSION,
-            super::super::schema::WORKFLOW_RUNS_VERSION,
-            "the build writes the current schema"
-        );
-        assert_eq!(
-            super::super::schema::SELECTED_VERSION,
-            9,
-            "TAN-327's selected stage keeps its shipped version"
+            Some(9),
+            "the workflow's last version"
         );
         let mut projects: Vec<(String, i64)> = connection
             .prepare("SELECT name, position FROM projects ORDER BY position, rowid")
@@ -1333,10 +955,6 @@ mod schema {
             })
             .unwrap();
         assert_eq!(workflow, None, "projects.workflow starts unset");
-        let run_count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM workflow_runs", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(run_count, 0, "the run table is untouched by the upgrade");
     }
 
     #[test]
@@ -1367,10 +985,12 @@ mod schema {
             .unwrap();
         drop(connection);
 
-        setting(&sandbox.store(), &Actor::Human, "k", "v");
-
+        // Stop at v7, the version this case names: v11 drops the workflow and
+        // run tables it reads.
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..7], &Actor::Human).expect("v7 applies");
         let connection = sandbox.connection();
-        assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
+        assert_eq!(version(&connection).unwrap(), Some(7));
         let status: String = connection
             .query_row("SELECT status FROM tickets", [], |row| row.get(0))
             .unwrap();
@@ -1384,7 +1004,7 @@ mod schema {
             .unwrap();
         assert_eq!(stage, 1, "every existing status is a default stage");
         let run: String = connection
-            .query_row("SELECT status FROM workflow_runs", [], |row| row.get(0))
+            .query_row("SELECT status FROM sprints", [], |row| row.get(0))
             .unwrap();
         assert_eq!(run, "closed", "the run row is untouched");
     }
@@ -1419,10 +1039,11 @@ mod schema {
             .unwrap();
         drop(connection);
 
-        setting(&sandbox.store(), &Actor::Human, "k", "v");
-
+        // Stop at v10, the version this case names: v11 drops the run table.
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..10], &Actor::Human).expect("v10 applies");
         let connection = sandbox.connection();
-        assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
+        assert_eq!(version(&connection).unwrap(), Some(10));
         assert!(
             !has_table(&connection, "sprints").unwrap(),
             "the v8 table is renamed in place, not copied"
@@ -1514,9 +1135,11 @@ mod schema {
         }
         drop(connection);
 
-        setting(&sandbox.store(), &Actor::Human, "k", "v");
-
+        // Stop at v10: v11 drops the run table this case reads.
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..10], &Actor::Human).expect("v10 applies");
         let connection = sandbox.connection();
+        assert_eq!(version(&connection).unwrap(), Some(10));
         let rows: Vec<(String, i64, String, Option<String>, Option<String>)> = connection
             .prepare("SELECT lane, number, status, closed_at, close FROM workflow_runs ORDER BY lane, number")
             .unwrap()
@@ -1555,48 +1178,8 @@ mod schema {
     }
 
     #[test]
-    fn a_v8_file_reads_sprints_as_workflow_runs_without_migrating() {
-        use crate::domain::sprint::Sprints;
-
-        let sandbox = Sandbox::new("read-v8");
-        fs::create_dir_all(sandbox.home_path()).unwrap();
-        let connection = Connection::open(sandbox.database()).unwrap();
-        migrate_with(&connection, &MIGRATIONS[..8], &Actor::Human).expect("v8 applies");
-        connection
-            .execute(
-                "INSERT INTO sprints
-                    (lane, number, session, mode, batch, runs, close, status, opened_at,
-                     closed_at, author)
-                 VALUES ('Hosting', 1, NULL, 'serial', '[]', '[]', NULL, 'open',
-                         '2026-11-04T00:17:44Z', NULL, 'human')",
-                [],
-            )
-            .unwrap();
-        drop(connection);
-
-        let store = sandbox.store();
-        let runs = Sprints::new(&store)
-            .list(None, None)
-            .expect("the read answers");
-        assert_eq!(runs.len(), 1, "the plain sprints table answers");
-        assert_eq!(runs[0].workflow, DEFAULT_WORKFLOW_ID);
-
-        let connection = sandbox.connection();
-        assert_eq!(
-            version(&connection).unwrap(),
-            Some(8),
-            "a read never migrates"
-        );
-        assert!(
-            has_table(&connection, "sprints").unwrap(),
-            "the old table is still the one on disk"
-        );
-    }
-
-    #[test]
-    fn a_v6_file_reads_the_default_workflow_and_the_first_write_migrates_it() {
-        use crate::domain::workflow::Workflows;
-        use crate::domain::{AddTicket, Board, Status};
+    fn a_v6_file_reads_an_empty_board_and_the_first_write_migrates_it() {
+        use crate::domain::{AddTicket, Board};
 
         let sandbox = Sandbox::new("read-v6");
         fs::create_dir_all(sandbox.home_path()).unwrap();
@@ -1605,24 +1188,14 @@ mod schema {
         drop(connection);
 
         let store = sandbox.store();
-        let workflows = Workflows::new(&store);
-        let active = workflows
-            .active()
-            .expect("a v6 home reads the default instead of failing");
-        assert_eq!(active.name, "agile");
-        assert_eq!(
-            workflows.list().expect("the list reads").len(),
-            1,
-            "the default is the list"
-        );
         let board = Board::with_actor(store, Actor::Human);
-        assert_eq!(
-            board.landing_status().expect("the landing reads"),
-            Status::Backlog
+        assert!(
+            board
+                .list(&crate::domain::TicketQuery::default())
+                .expect("the board reads")
+                .is_empty(),
+            "a v6 home reads instead of failing"
         );
-        board
-            .validate_status(&Status::Backlog)
-            .expect("the default stage validates");
         assert_eq!(
             version(&sandbox.connection()).unwrap(),
             Some(6),
@@ -1646,9 +1219,9 @@ mod schema {
         fs::write(sandbox.database(), b"this is not a database").unwrap();
 
         let outcome = sandbox.store().write(&Actor::Human, |write| {
-            write.insert_setting(NewSetting {
-                key: "k",
-                value: "v",
+            write.insert_project(NewProject {
+                name: "k",
+                position: 0,
             })
         });
 
@@ -1664,7 +1237,7 @@ mod schema {
 
         let sandbox = Sandbox::new("sidecar");
         let store = sandbox.store();
-        setting(&store, &Actor::Human, "seed", "1");
+        probe(&store, &Actor::Human, "seed");
 
         // ADR 0031 retires `tandem.lock` for the store: a write creates none,
         // and one another process holds is inert rather than a wait.
@@ -1685,7 +1258,7 @@ mod schema {
         held.try_lock().expect("the test takes the sidecar");
 
         let started = Instant::now();
-        setting(&store, &Actor::Human, "next", "2");
+        probe(&store, &Actor::Human, "next");
         let elapsed = started.elapsed();
         drop(held);
 
@@ -1727,7 +1300,7 @@ mod schema {
 
         let sandbox = Sandbox::new("other-process");
         let store = sandbox.store();
-        setting(&store, &Actor::Human, "seed", "1");
+        probe(&store, &Actor::Human, "seed");
 
         let mut child = Command::new(std::env::current_exe().expect("the test binary"))
             .args([
@@ -1757,9 +1330,9 @@ mod schema {
 
         let started = Instant::now();
         let outcome = store.write(&Actor::Human, |write| {
-            write.insert_setting(NewSetting {
-                key: "blocked",
-                value: "1",
+            write.insert_project(NewProject {
+                name: "blocked",
+                position: 0,
             })
         });
         let elapsed = started.elapsed();
@@ -1782,7 +1355,7 @@ mod schema {
         );
         let count: i64 = sandbox
             .connection()
-            .query_row("SELECT COUNT(*) FROM settings", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 1, "the timed-out write wrote nothing");
     }
@@ -1791,7 +1364,7 @@ mod schema {
     fn busy_timeout_surfaces_the_locked_error_after_the_window() {
         let sandbox = Sandbox::new("busy");
         let store = sandbox.store();
-        setting(&store, &Actor::Human, "seed", "1");
+        probe(&store, &Actor::Human, "seed");
 
         // Another connection holds the write side for longer than the store's
         // window: the engine's contention becomes the store's "locked".
@@ -1800,9 +1373,9 @@ mod schema {
 
         let started = Instant::now();
         let outcome = store.write(&Actor::Human, |write| {
-            write.insert_setting(NewSetting {
-                key: "blocked",
-                value: "1",
+            write.insert_project(NewProject {
+                name: "blocked",
+                position: 0,
             })
         });
         let elapsed = started.elapsed();
@@ -1822,7 +1395,7 @@ mod schema {
         );
         let count: i64 = sandbox
             .connection()
-            .query_row("SELECT COUNT(*) FROM settings", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 1, "the timed-out write wrote nothing");
     }
@@ -1868,7 +1441,7 @@ mod schema {
             "the v7 seed stays six stages"
         );
 
-        migrate_with(&connection, MIGRATIONS, &Actor::Human).expect("the rest applies");
+        migrate_with(&connection, &MIGRATIONS[..9], &Actor::Human).expect("the rest applies");
 
         assert_eq!(
             stage_keys(&connection),
@@ -1914,7 +1487,7 @@ mod schema {
             )
             .expect("the default is customized");
 
-        migrate_with(&connection, MIGRATIONS, &Actor::Human).expect("the rest applies");
+        migrate_with(&connection, &MIGRATIONS[..9], &Actor::Human).expect("the rest applies");
 
         let keys = stage_keys(&connection);
         assert!(
@@ -1943,7 +1516,7 @@ mod schema {
             )
             .expect("the stage pre-exists");
 
-        migrate_with(&connection, MIGRATIONS, &Actor::Human).expect("the rest applies");
+        migrate_with(&connection, &MIGRATIONS[..9], &Actor::Human).expect("the rest applies");
 
         let keys = stage_keys(&connection);
         assert_eq!(
@@ -1982,9 +1555,9 @@ mod refusal {
         v5_file(&sandbox.database());
 
         let outcome = sandbox.store().write(&Actor::Human, |write| {
-            write.insert_setting(NewSetting {
-                key: "k",
-                value: "v",
+            write.insert_project(NewProject {
+                name: "k",
+                position: 0,
             })
         });
 
@@ -2037,9 +1610,9 @@ mod refusal {
         let before = fs::read(sandbox.database()).unwrap();
 
         let _ = sandbox.store().write(&Actor::Human, |write| {
-            write.insert_setting(NewSetting {
-                key: "k",
-                value: "v",
+            write.insert_project(NewProject {
+                name: "k",
+                position: 0,
             })
         });
 
@@ -2108,47 +1681,9 @@ mod actor {
                     at: "2026-10-30T00:00:01Z",
                     body: "a comment",
                 })?;
-                write.insert_session(NewSession {
-                    id: "ses_e73388dd8ffd",
-                    harness_session_id: Some("ses_harness"),
-                    harness_transport: Some("database"),
-                    project: "tandem",
-                    agent: Some("builder"),
-                    brief: "Build the store.",
-                    status: "running",
-                    outcome: None,
-                    summary: None,
-                    started_at: "2026-10-30T00:00:00Z",
-                    ended_at: None,
-                    tickets: Some("[\"5E345FA3\"]"),
-                    model: Some("deepseek-v4.1-flash"),
-                    tokens_input: Some(10),
-                    tokens_output: Some(20),
-                    tokens_reasoning: Some(0),
-                    tokens_cache_read: Some(0),
-                    tokens_cache_write: Some(0),
-                    seconds: Some(1.5),
-                    cost: Some(0.01),
-                    skills: Some("{\"thinking\":2}"),
-                    turns: Some(4),
-                    calls: Some(9),
-                })?;
-                write.insert_sprint(NewSprint {
-                    lane: "Port",
-                    number: 1,
-                    workflow: crate::store::schema::DEFAULT_WORKFLOW_ID,
-                    session: Some("ses_e73388dd8ffd"),
-                    mode: "serial",
-                    batch: Some("[]"),
-                    runs: Some("[]"),
-                    close: None,
-                    status: "open",
-                    opened_at: "2026-10-30T00:00:00Z",
-                    closed_at: None,
-                })?;
-                write.insert_setting(NewSetting {
-                    key: "defaultLane",
-                    value: "Port",
+                write.insert_project(NewProject {
+                    name: "defaultLane",
+                    position: 0,
                 })?;
                 Ok(())
             })
@@ -2192,39 +1727,13 @@ mod actor {
         }
 
         // The next write records its own actor, not the last one's.
-        setting(&store, &Actor::Human, "other", "1");
-        let settings = author_of(&connection, "settings");
-        assert_eq!(settings, vec!["builder".to_string(), "human".to_string()]);
+        probe(&store, &Actor::Human, "other");
+        let projects = author_of(&connection, "projects");
+        assert_eq!(projects, vec!["builder".to_string(), "human".to_string()]);
         assert_eq!(
             author_of(&connection, "tickets"),
             vec!["builder".to_string()],
             "a later write does not rewrite a row it did not touch"
-        );
-    }
-
-    #[test]
-    fn a_row_does_not_infer_its_author_from_a_session() {
-        let sandbox = Sandbox::new("no-inference");
-        let store = sandbox.store();
-
-        // A session row names the pass in `agent`; a ticket written by the human
-        // must still read `human`, because the author is the column, never the
-        // session it might be linked to.
-        a_full_write(&store, &Actor::Human);
-
-        let connection = sandbox.connection();
-        let agent: Option<String> = connection
-            .query_row("SELECT agent FROM sessions", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(
-            agent.as_deref(),
-            Some("builder"),
-            "the fixture names a pass in the session row"
-        );
-        assert_eq!(
-            author_of(&connection, "tickets"),
-            vec!["human".to_string()],
-            "the ticket's author is the write's actor"
         );
     }
 }
@@ -2247,7 +1756,7 @@ mod writes {
     #[test]
     fn the_first_write_has_no_backup() {
         let sandbox = Sandbox::new("backup-first");
-        setting(&sandbox.store(), &Actor::Human, "one", "1");
+        probe(&sandbox.store(), &Actor::Human, "one");
 
         assert!(
             !sandbox.backup().exists(),
@@ -2259,14 +1768,14 @@ mod writes {
     fn the_second_writes_backup_holds_the_state_before_it() {
         let sandbox = Sandbox::new("backup-second");
         let store = sandbox.store();
-        setting(&store, &Actor::Human, "one", "1");
-        setting(&store, &Actor::Human, "two", "2");
+        probe(&store, &Actor::Human, "one");
+        probe(&store, &Actor::Human, "two");
 
         let backup =
             Connection::open_with_flags(sandbox.backup(), OpenFlags::SQLITE_OPEN_READ_ONLY)
                 .expect("the backup opens");
         let mut statement = backup
-            .prepare("SELECT key FROM settings ORDER BY rowid")
+            .prepare("SELECT name FROM projects ORDER BY rowid")
             .unwrap();
         let keys: Vec<String> = statement
             .query_map([], |row| row.get(0))
@@ -2284,7 +1793,7 @@ mod writes {
     fn a_no_op_write_rolls_no_backup() {
         let sandbox = Sandbox::new("backup-noop");
         let store = sandbox.store();
-        setting(&store, &Actor::Human, "one", "1");
+        probe(&store, &Actor::Human, "one");
 
         store
             .write(&Actor::Human, |_write| Ok(()))
@@ -2300,8 +1809,8 @@ mod writes {
     fn a_read_never_rolls_a_backup() {
         let sandbox = Sandbox::new("backup-read");
         let store = sandbox.store();
-        setting(&store, &Actor::Human, "one", "1");
-        setting(&store, &Actor::Human, "two", "2");
+        probe(&store, &Actor::Human, "one");
+        probe(&store, &Actor::Human, "two");
         let before = fs::metadata(sandbox.backup()).unwrap().modified().unwrap();
 
         for _ in 0..5 {
@@ -2317,7 +1826,7 @@ mod writes {
     fn the_next_write_sweeps_a_backup_temp_a_kill_left_behind() {
         let sandbox = Sandbox::new("backup-orphan");
         let store = sandbox.store();
-        setting(&store, &Actor::Human, "one", "1");
+        probe(&store, &Actor::Human, "one");
 
         // A writer killed mid-backup leaves its same-directory temp: nothing
         // renames it and no read removes it, so the next write sweeps it.
@@ -2329,7 +1838,7 @@ mod writes {
         let in_flight = sandbox.home_path().join(".tandem-backup-4243-2-0.tmp");
         fs::write(&in_flight, b"a copy in progress").unwrap();
 
-        setting(&store, &Actor::Human, "two", "2");
+        probe(&store, &Actor::Human, "two");
 
         assert!(
             !killed.exists(),
@@ -2347,8 +1856,8 @@ mod writes {
     fn a_backup_that_cannot_be_landed_fails_the_write_and_changes_nothing() {
         let sandbox = Sandbox::new("backup-fails");
         let store = sandbox.store();
-        setting(&store, &Actor::Human, "one", "1");
-        setting(&store, &Actor::Human, "two", "2");
+        probe(&store, &Actor::Human, "one");
+        probe(&store, &Actor::Human, "two");
 
         // The backup's destination is a directory, so the atomic rename cannot
         // land it: the write must fail whole and change nothing.
@@ -2356,9 +1865,9 @@ mod writes {
         fs::create_dir(sandbox.backup()).unwrap();
 
         let outcome = store.write(&Actor::Human, |write| {
-            write.insert_setting(NewSetting {
-                key: "three",
-                value: "3",
+            write.insert_project(NewProject {
+                name: "three",
+                position: 0,
             })
         });
 
@@ -2371,15 +1880,15 @@ mod writes {
         }
         let count: i64 = sandbox
             .connection()
-            .query_row("SELECT COUNT(*) FROM settings", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 2, "the failed write changed nothing");
 
         fs::remove_dir(sandbox.backup()).unwrap();
-        setting(&store, &Actor::Human, "three", "3");
+        probe(&store, &Actor::Human, "three");
         let count: i64 = sandbox
             .connection()
-            .query_row("SELECT COUNT(*) FROM settings", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 3, "the store answers again once the backup can land");
     }
@@ -2396,9 +1905,9 @@ mod writes {
 
         Store::new(home)
             .write(&Actor::Human, |write| {
-                write.insert_setting(NewSetting {
-                    key: "k",
-                    value: "v",
+                write.insert_project(NewProject {
+                    name: "k",
+                    position: 0,
                 })
             })
             .expect("the write lands under the environment home");
@@ -2428,7 +1937,7 @@ mod writes {
         // this case gives its own store a wider one. No ordering between the
         // threads is assumed: the count is read after the scope joins both.
         let store = sandbox.store().with_gate_timeout(SLOW_RUNNER_WINDOW);
-        setting(&store, &Actor::Human, "seed", "1");
+        probe(&store, &Actor::Human, "seed");
         thread::scope(|scope| {
             for group in ["a", "b"] {
                 let store = &store;
@@ -2438,9 +1947,9 @@ mod writes {
                         let started = Instant::now();
                         store
                             .write(&Actor::Agent(group.to_string()), |write| {
-                                write.insert_setting(NewSetting {
-                                    key: &key,
-                                    value: "1",
+                                write.insert_project(NewProject {
+                                    name: &key,
+                                    position: 0,
                                 })
                             })
                             .unwrap_or_else(|error| {
@@ -2457,7 +1966,7 @@ mod writes {
 
         let count: i64 = sandbox
             .connection()
-            .query_row("SELECT COUNT(*) FROM settings", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 21, "no concurrent writer lost a row");
     }
@@ -2466,7 +1975,7 @@ mod writes {
     fn a_lock_free_reader_sees_a_consistent_snapshot_while_a_writer_works() {
         let sandbox = Sandbox::new("snapshot");
         let store = sandbox.store();
-        setting(&store, &Actor::Human, "seed", "1");
+        probe(&store, &Actor::Human, "seed");
 
         let mut last_seen = 1;
         let mut reads = 0;
@@ -2476,9 +1985,9 @@ mod writes {
                     let key = format!("w-{index}");
                     store
                         .write(&Actor::Human, |write| {
-                            write.insert_setting(NewSetting {
-                                key: &key,
-                                value: "1",
+                            write.insert_project(NewProject {
+                                name: &key,
+                                position: 0,
                             })
                         })
                         .expect("the writer's row lands");
@@ -2494,7 +2003,7 @@ mod writes {
                 let count = store
                     .read(|connection| {
                         connection
-                            .query_row("SELECT COUNT(*) FROM settings", [], |row| {
+                            .query_row("SELECT COUNT(*) FROM projects", [], |row| {
                                 row.get::<_, i64>(0)
                             })
                             .map_err(|error| StoreError::Io(error.to_string()))
@@ -2519,7 +2028,7 @@ mod writes {
         let total = store
             .read(|connection| {
                 connection
-                    .query_row("SELECT COUNT(*) FROM settings", [], |row| {
+                    .query_row("SELECT COUNT(*) FROM projects", [], |row| {
                         row.get::<_, i64>(0)
                     })
                     .map_err(|error| StoreError::Io(error.to_string()))
@@ -2558,8 +2067,8 @@ fn bundled_sqlite_answers() {
 fn a_restored_store_is_watched_without_reopening() {
     let sandbox = Sandbox::new("watch-restore");
     let store = sandbox.store();
-    setting(&store, &Actor::Human, "one", "1");
-    setting(&store, &Actor::Human, "two", "2");
+    probe(&store, &Actor::Human, "one");
+    probe(&store, &Actor::Human, "two");
 
     let watch = store
         .watch()
@@ -2601,7 +2110,7 @@ fn a_restored_store_is_watched_without_reopening() {
 
     // The held read-only connection does not block the next write's one-time
     // switch back to WAL.
-    setting(&store, &Actor::Human, "three", "3");
+    probe(&store, &Actor::Human, "three");
     assert!(restored.revision().expect("the watch reads") > revision);
 }
 
@@ -2615,8 +2124,8 @@ fn a_restored_store_is_watched_without_reopening() {
 fn a_rollback_journal_store_answers_a_revision_to_the_watch() {
     let sandbox = Sandbox::new("watch-rollback-journal");
     let store = sandbox.store();
-    setting(&store, &Actor::Human, "one", "1");
-    setting(&store, &Actor::Human, "two", "2");
+    probe(&store, &Actor::Human, "one");
+    probe(&store, &Actor::Human, "two");
     let before = store.revision().expect("the store reads");
 
     let restored_home = sandbox.root().join("restored");
@@ -2666,6 +2175,6 @@ fn a_rollback_journal_store_answers_a_revision_to_the_watch() {
 
     // The next write switches WAL back on, and the held connection reads it:
     // a child that re-attached keeps reporting instead of going silent.
-    setting(&restored, &Actor::Human, "three", "3");
+    probe(&restored, &Actor::Human, "three");
     assert!(watch.revision().expect("the watch reads") > revision);
 }
