@@ -1492,29 +1492,92 @@ async fn a_sheet_write_reads_the_board_filter_from_its_own_fields_not_the_ticket
     );
 }
 
+/// The event names htmx reads from the board root's `hx-trigger`, one per
+/// comma-separated spec. An empty list is not "no trigger": htmx's default for
+/// a bare `hx-get` is `click`, so the caller asserts the list holds the change
+/// stream and nothing else.
+fn board_root_triggers(page: &str) -> Vec<String> {
+    let start = page
+        .find("<div id=\"board-root\"")
+        .expect("the board root draws");
+    let tag = &page[start..start + page[start..].find('>').expect("the root tag closes")];
+    let Some(at) = tag.find("hx-trigger=\"") else {
+        return Vec::new();
+    };
+    let rest = &tag[at + "hx-trigger=\"".len()..];
+    let value = &rest[..rest.find('"').expect("the attribute closes")];
+    value
+        .split(',')
+        .filter_map(|spec| {
+            let spec = spec.trim();
+            let head = &spec[..spec.find(['[', ' ']).unwrap_or(spec.len())];
+            (!head.is_empty()).then(|| head.to_owned())
+        })
+        .collect()
+}
+
 /// The open sheet is the human's, not the store's: a write from another actor
 /// must not replace the form under their cursor and clear a half-typed comment.
-/// The plain board still follows the change stream.
+/// The pause is the absent stream on the sheet's page, not an absent trigger:
+/// htmx's default for a root with no `hx-trigger` is `click`, which refetches
+/// the board on every click inside the sheet and dismisses it.
 #[tokio::test]
-async fn an_open_sheet_does_not_refetch_under_the_human_while_they_type() {
+async fn a_click_inside_the_open_sheet_does_not_refetch_the_board() {
     let sandbox = Sandbox::new("sheet-quiet");
     let store = sandbox.store();
     let board = setup_board(&store);
     let ticket = by_title(&board, "Café alpha");
     let app = router(context(store));
 
-    let (status, _, sheet) = send(&app, sheet_get(&format!("/tickets/{}", ticket.id))).await;
+    let (status, _, sheet) = send(
+        &app,
+        page_get(&format!("/tickets/{}?project=Fixture", ticket.id)),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "the sheet answers: {sheet}");
+    assert_eq!(
+        board_root_triggers(&sheet),
+        vec!["sse:changed".to_owned()],
+        "the root always carries the change stream's trigger and no trigger a \
+         click can fire, or htmx refetches the board on any click inside the \
+         sheet: {sheet}"
+    );
     assert!(
-        !sheet.contains("hx-trigger=\"sse:changed from:body\""),
+        !sheet.contains("sse-connect"),
         "an open sheet does not re-fetch on every store change: {sheet}"
     );
 
-    let (status, _, board_page) = send(&app, sheet_get("/board")).await;
+    // The sheet page the save answers with is the root fragment alone; it keeps
+    // the same trigger, so the click that follows a save is inert too.
+    let (status, _, partial) = send(&app, sheet_get(&format!("/tickets/{}", ticket.id))).await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "the sheet fragment answers: {partial}"
+    );
+    assert_eq!(
+        board_root_triggers(&partial),
+        vec!["sse:changed".to_owned()],
+        "the write's fresh root carries the same trigger: {partial}"
+    );
+
+    let (status, _, board_page) = send(&app, page_get("/board?project=Fixture")).await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        board_root_triggers(&board_page),
+        vec!["sse:changed".to_owned()],
+        "the plain board's root carries the same trigger: {board_page}"
+    );
     assert!(
-        board_page.contains("hx-trigger=\"sse:changed from:body\""),
-        "the plain board still follows the change stream: {board_page}"
+        board_page.contains("sse-connect=\"/events\""),
+        "the plain board follows the change stream: {board_page}"
+    );
+
+    let (status, _, notes) = send(&app, page_get("/notes")).await;
+    assert_eq!(status, StatusCode::OK, "the notes face answers: {notes}");
+    assert!(
+        notes.contains("sse-connect=\"/events\""),
+        "only the sheet's page pauses the stream: {notes}"
     );
 }
 

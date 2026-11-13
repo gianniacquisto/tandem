@@ -10,7 +10,10 @@
     <script src="/static/sse.js" defer></script>
     <script src="/static/tandem.js" defer></script>
   </head>
-  <body class="shell" hx-ext="sse" sse-connect="/events">
+  {#- The change stream pauses while a ticket sheet is open: the root swaps
+      itself on a store change, and a swap under the human's cursor would clear
+      a half-typed comment. -#}
+  <body class="shell" hx-ext="sse"{% if stream %} sse-connect="/events"{% endif %}>
     <header class="shell__header">
       <h1 class="shell__wordmark">Tandem</h1>
       <nav class="shell__tabs" aria-label="Faces">

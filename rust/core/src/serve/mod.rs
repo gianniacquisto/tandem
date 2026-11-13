@@ -405,6 +405,10 @@ struct PageView {
     /// The face template's own output, already HTML: the shell embeds it
     /// rather than escaping it a second time.
     body: askama::filters::Safe<String>,
+    /// Whether the page opens the change stream. A page that draws the ticket
+    /// sheet does not: the stream pauses until the sheet closes, so a store
+    /// change cannot re-draw the form under the human's cursor.
+    stream: bool,
 }
 
 #[derive(Template)]
@@ -784,6 +788,7 @@ fn board_with_sheet(
     }
     match (PageView {
         body: askama::filters::Safe(board),
+        stream: false,
     })
     .render()
     {
@@ -834,6 +839,7 @@ fn render_response(
     }
     match (PageView {
         body: askama::filters::Safe(board),
+        stream: true,
     })
     .render()
     {
@@ -1987,6 +1993,7 @@ fn notes_response(
     }
     match (PageView {
         body: askama::filters::Safe(body),
+        stream: true,
     })
     .render()
     {
