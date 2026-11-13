@@ -636,6 +636,10 @@ fn render_board(
         options
     };
 
+    // The columns are the six stages `Status` owns, and that is the whole set a
+    // ticket can hold: the workflow tables that once recorded a seventh stage
+    // retired in schema v11 (CUT-9), and a stored key outside the six reads back
+    // as Backlog (`Status::stored`). No visible ticket is left out of a column.
     let columns = Status::WORKFLOW
         .iter()
         .map(|status| ColumnView {

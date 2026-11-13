@@ -249,6 +249,43 @@ async fn get_board_renders_six_status_columns_in_order_and_empty_copy() {
     );
 }
 
+/// The workflow tables retired in schema v11 (CUT-9), so `Status`'s six stages
+/// are the whole set a ticket can hold. A home written before that still carries
+/// the `selected` stage in a ticket row; the reader maps it back to Backlog, so
+/// the card draws in a column instead of vanishing.
+#[tokio::test]
+async fn a_ticket_in_a_stage_the_board_does_not_draw_still_lands_in_a_column() {
+    let sandbox = Sandbox::new("board-retired-stage");
+    let store = sandbox.store();
+    setup_board(&store);
+    {
+        let connection = rusqlite::Connection::open(store.database()).expect("the store opens");
+        connection
+            .execute(
+                "UPDATE tickets SET status = 'selected' WHERE title = 'Loose'",
+                [],
+            )
+            .expect("the stage is written");
+    }
+    let app = router(context(store));
+
+    let (status, _, body) = get(&app, "/").await;
+    assert_eq!(status, StatusCode::OK, "the board answers: {body}");
+    let backlog = body
+        .find("data-status=\"backlog\"")
+        .expect("the backlog column draws");
+    let on_hold = body
+        .find("data-status=\"on-hold\"")
+        .expect("the on-hold column draws");
+    let card = body
+        .find("Loose")
+        .unwrap_or_else(|| panic!("the card draws: {body}"));
+    assert!(
+        backlog < card && card < on_hold,
+        "a stage the six do not name lands in Backlog: {body}"
+    );
+}
+
 #[tokio::test]
 async fn get_board_filters_by_project_focus_lane_assignee_and_accent_folded_search() {
     let sandbox = Sandbox::new("board-filters");

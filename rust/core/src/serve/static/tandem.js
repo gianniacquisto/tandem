@@ -1,12 +1,15 @@
 /*
- * The board's one act htmx does not own: a card drop writes a status move.
+ * The board's act htmx does not own: a card move writes a status. It answers
+ * both the mouse (drag and drop) and the keyboard (Alt+Left / Alt+Right on a
+ * focused card), which is the route the React board's move took.
  *
  * The card carries the ticket id on dragstart, the column carries its stage in
  * `data-status`, and the board carries the revision it was drawn from in
- * `data-revision`. The POST is the same form the server's routes read, and the
- * answer replaces `#board-root` whole, so the filter bar, the notice and the
- * new revision all land together. Listeners are delegated from the document,
- * so a swap never needs them rebound.
+ * `data-revision`. The POST is the same form the server's routes read, and it
+ * sends `HX-Request` so the answer is the `#board-root` partial rather than the
+ * whole shell. The partial replaces the root, so the filter bar, the notice and
+ * the new revision all land together, and focus returns to the moved card.
+ * Listeners are delegated from the document, so a swap never needs them rebound.
  */
 (function () {
   var dragged = null;
@@ -17,6 +20,42 @@
       element = element.parentElement;
     }
     return null;
+  }
+
+  function focusCard(id) {
+    var card = document.querySelector('.ticket-card[data-ticket="' + id + '"]');
+    if (card) card.focus();
+  }
+
+  function move(ticketId, column) {
+    var root = document.getElementById('board-root');
+    if (!root || !column || !ticketId) return;
+    var body = new URLSearchParams();
+    body.set('status', column.getAttribute('data-status') || '');
+    body.set('expected_revision', root.getAttribute('data-revision') || '0');
+    fetch('/tickets/' + encodeURIComponent(ticketId) + '/status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'HX-Request': 'true'
+      },
+      body: body.toString()
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error('the move answered ' + response.status);
+        return response.text();
+      })
+      .then(function (html) {
+        var current = document.getElementById('board-root');
+        if (!current) return;
+        current.outerHTML = html;
+        focusCard(ticketId);
+      })
+      .catch(function (error) {
+        // The card stays where the human left it; the page says nothing, so the
+        // console is the one record of the failed write.
+        console.error('the card move failed:', error);
+      });
   }
 
   document.addEventListener('dragstart', function (event) {
@@ -42,23 +81,25 @@
 
   document.addEventListener('drop', function (event) {
     var column = closest(event.target, '.board__column');
-    var root = document.getElementById('board-root');
-    if (!column || !dragged || !root) return;
+    if (!column || !dragged) return;
     event.preventDefault();
     column.removeAttribute('data-targeted');
-    var body = new URLSearchParams();
-    body.set('status', column.getAttribute('data-status') || '');
-    body.set('expected_revision', root.getAttribute('data-revision') || '0');
-    fetch('/tickets/' + encodeURIComponent(dragged) + '/status', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString()
-    })
-      .then(function (response) { return response.text(); })
-      .then(function (html) {
-        var current = document.getElementById('board-root');
-        if (current) current.outerHTML = html;
-      });
+    move(dragged, column);
     dragged = null;
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (!event.altKey || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+    var card = closest(event.target, '.ticket-card');
+    if (!card) return;
+    var column = closest(card, '.board__column');
+    var board = closest(card, '.board');
+    if (!column || !board) return;
+    var columns = board.querySelectorAll('.board__column');
+    var index = Array.prototype.indexOf.call(columns, column);
+    var target = columns[index + (event.key === 'ArrowRight' ? 1 : -1)];
+    if (!target) return;
+    event.preventDefault();
+    move(card.getAttribute('data-ticket'), target);
   });
 })();

@@ -49,6 +49,10 @@
   </div>
   {% endif %}
 
+  <p id="board-keyboard-hint" class="board__hint">
+    Focus a card and press Alt+Left or Alt+Right to move it to the previous or next column.
+  </p>
+
   <div class="board">
     {% for column in columns %}
     <section class="board__column" data-status="{{ column.status }}" aria-label="{{ column.label }}">
@@ -60,7 +64,7 @@
       </header>
       <ul class="board__cards">
         {% for card in column.cards %}
-        <li class="ticket-card" data-ticket="{{ card.id }}" draggable="true"{% if card.selected %} aria-current="true"{% endif %}>
+        <li class="ticket-card" data-ticket="{{ card.id }}" draggable="true" tabindex="0" aria-describedby="board-keyboard-hint"{% if card.selected %} aria-current="true"{% endif %}>
           {% if let Some(lane) = card.lane %}
           <button type="button" class="ticket-card__lane" data-tone="{{ lane.tone }}">
             <span class="ticket-card__lane-dot" aria-hidden="true"></span>{{ lane.name }}
