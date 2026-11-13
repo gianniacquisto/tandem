@@ -847,9 +847,8 @@ body {
   color: var(--ink-dim);
 }
 
-/* The Tickets face: the quick-add, one toolbar over the list, and the two
- * layouts over one set of rows. The board takes the window's width, a lane
- * column is a lane, while the list reads as a centred column. */
+/* The Tickets face: one toolbar over the one-axis board. The board takes the
+ * window's width. */
 
 .shell__notice {
   display: flex;
@@ -876,67 +875,8 @@ body {
   cursor: pointer;
 }
 
-.tickets {
-  max-width: 540px;
-}
-
 .tickets--board {
   max-width: none;
-}
-
-.tickets--list {
-  width: 100%;
-  max-width: 780px;
-  margin: 0 auto;
-}
-
-.quick-add {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: var(--space-control);
-  padding: 0 12px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--parchment);
-  transition:
-    background-color var(--motion-toggle) ease-in-out,
-    border-color var(--motion-toggle) ease-in-out;
-}
-
-.quick-add:focus-within {
-  border-color: var(--accent);
-  background: var(--paper);
-}
-
-.quick-add__plus {
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.quick-add__input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-}
-
-.quick-add__input::placeholder {
-  color: var(--ink-dim);
-}
-
-.quick-add__lane {
-  max-width: 140px;
-  border: 0;
-  background: transparent;
-  color: var(--ink-dim);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
 }
 
 .tickets__bar {
@@ -947,54 +887,6 @@ body {
   margin-top: 10px;
   padding-bottom: 12px;
   border-bottom: var(--hairline) solid var(--sand);
-}
-
-.segmented {
-  display: flex;
-  height: var(--space-control);
-  overflow: hidden;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--paper);
-}
-
-.segmented__item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 100%;
-  padding: 0 10px;
-  border: 0;
-  background: transparent;
-  color: var(--ink-dim);
-  font: inherit;
-  font-size: 12.5px;
-  text-decoration: none;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.segmented__item[aria-selected="true"] {
-  background: var(--parchment);
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.segmented__count {
-  color: var(--ink-dim);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.segmented--views {
-  margin-left: auto;
-}
-
-.tickets__filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
 }
 
 .filter {
@@ -1013,8 +905,8 @@ body {
 }
 
 /* The project focus: the draw's own lane picker and its show-all escape. The
- * picker wears the faces' filter sizing; the escape wears the segmented
- * control's, pressed while the face draws every lane. */
+ * picker wears the faces' filter sizing; the escape is a pressed control while
+ * the face draws every lane. */
 .focus {
   display: flex;
   align-items: center;
@@ -1107,199 +999,8 @@ body {
   cursor: pointer;
 }
 
-/* The list: the default area flat, each named lane under its own header. It
- * spans the wide face with the board, so rows read full width. */
-
-.list__lane-title {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin: var(--space-lane) 0 4px;
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
-.list__lane-title:first-child {
-  margin-top: 0;
-}
-
-.list__lane-count {
-  color: var(--ink-dim);
-  font-size: 11px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
-.list__rows {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* One row, both layouts. The list sets it flat on the paper; the board sets
- * the same row on a parchment card. */
-
-.ticket-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-height: var(--space-row);
-  padding: 7px 0;
-  border-bottom: var(--hairline) solid var(--sand);
-  transition: background-color var(--motion-toggle) ease-in-out;
-}
-
-.ticket-row:hover,
-.ticket-row[aria-current="true"] {
-  background: var(--parchment);
-}
-
-.ticket-row[aria-current="true"] {
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-
-.ticket-row--board {
-  padding: 7px 8px;
-  border: var(--hairline) solid var(--sand);
-  border-radius: var(--radius-control);
-  background: var(--paper);
-}
-
-.ticket-row--board:hover {
-  border-color: var(--line);
-}
-
-.ticket-row[data-targeted] {
-  border-color: var(--accent);
-  background: var(--parchment);
-}
-
-.ticket-row__check {
-  position: relative;
-  flex: none;
-  width: 18px;
-  height: 18px;
-  margin-top: 2px;
-  padding: 0;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-checkbox);
-  background: var(--parchment);
-  cursor: pointer;
-}
-
-.ticket-row__check[aria-checked="true"] {
-  border-color: var(--moss);
-  background: var(--moss);
-}
-
-.ticket-row__check[aria-checked="true"]::after {
-  position: absolute;
-  top: 2px;
-  left: 5px;
-  width: 5px;
-  height: 9px;
-  border-right: 2px solid var(--paper);
-  border-bottom: 2px solid var(--paper);
-  content: "";
-  transform: rotate(45deg);
-}
-
-.ticket-row__body {
-  flex: 1;
-  min-width: 0;
-}
-
-.ticket-row__line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.ticket-row__title {
-  color: var(--ink);
-  font-size: 13px;
-  line-height: 1.35;
-}
-
-.ticket-row[data-done] .ticket-row__title {
-  color: var(--ink-dim);
-  text-decoration: line-through;
-}
-
-.ticket-row__tag,
-.ticket-row__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 1px 6px;
-  border: var(--hairline) solid var(--sand);
-  border-radius: 999px;
-  color: var(--ink-dim);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-/* The status is the one axis the board exists to show, so it carries a colour
- * before its label is read: the palette's own hues, not a new one. */
-.ticket-row__status::before {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--chip, var(--ink-dim));
-  content: "";
-}
-
-.ticket-row__status[data-status="on-hold"] {
-  --chip: var(--ember-deep);
-}
-
-.ticket-row__status[data-status="ready"] {
-  --chip: var(--accent-deep);
-}
-
-.ticket-row__status[data-status="in-progress"] {
-  --chip: var(--accent);
-}
-
-.ticket-row__status[data-status="in-review"] {
-  --chip: var(--moss);
-}
-
-.ticket-row__status[data-status="done"] {
-  --chip: var(--ink-dim);
-}
-
-.ticket-row__tag--blocked {
-  border-color: var(--ember);
-  color: var(--ember-deep);
-}
-
-.ticket-row__ref {
-  color: var(--ink-dim);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.ticket-row__assignee {
-  color: var(--ink-dim);
-  font-size: 11.5px;
-  white-space: nowrap;
-}
-
-.ticket-row__assignee--human,
 .ticket-card__assignee--human {
   color: var(--ember-deep);
-}
-
-.ticket-row__lane {
-  margin-left: auto;
-  padding-left: 8px;
-  color: var(--ink-dim);
-  font-size: 11.5px;
-  white-space: nowrap;
 }
 
 /* The board: one column per workflow stage, in declared order. Each column is

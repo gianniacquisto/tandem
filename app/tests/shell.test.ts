@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { TABS } from '../renderer/src/shell/tabs'
-import { closeHref, parseRoute, tabHref, viewHref } from '../renderer/src/shell/route'
+import { closeHref, parseRoute, tabHref } from '../renderer/src/shell/route'
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
 const renderer = join(appRoot, 'renderer')
@@ -34,37 +34,22 @@ describe('the shell', () => {
     for (const tab of TABS) {
       expect(parseRoute(tabHref(tab.id))).toEqual({
         tab: tab.id,
-        view: 'list',
         ticket: null,
       })
       expect(tabHref(tab.id)).toBe(`#/${tab.id}`)
     }
-    expect(parseRoute('')).toEqual({ tab: 'tickets', view: 'list', ticket: null })
+    expect(parseRoute('')).toEqual({ tab: 'tickets', ticket: null })
     expect(parseRoute('#/nowhere')).toEqual({
       tab: 'tickets',
-      view: 'list',
       ticket: null,
     })
   })
 
-  it('routes the Tickets face two ways: the list and the board', () => {
-    expect(parseRoute(viewHref('tickets', 'list'))).toEqual({
-      tab: 'tickets',
-      view: 'list',
-      ticket: null,
-    })
-    expect(parseRoute(viewHref('tickets', 'board'))).toEqual({
-      tab: 'tickets',
-      view: 'board',
-      ticket: null,
-    })
-    expect(viewHref('tickets', 'board')).toBe('#/tickets/board')
-    // Only the Tickets face has a board; another tab's second segment is ignored.
-    expect(parseRoute('#/bikeshed/board')).toEqual({
-      tab: 'bikeshed',
-      view: 'list',
-      ticket: null,
-    })
+  it('draws the Tickets face one way: a stale layout segment opens the board', () => {
+    // The list/board switch is gone; a kept `#/tickets/board` link still opens
+    // the Tickets face, and another tab's second segment is ignored.
+    expect(parseRoute('#/tickets/board')).toEqual({ tab: 'tickets', ticket: null })
+    expect(parseRoute('#/bikeshed/board')).toEqual({ tab: 'bikeshed', ticket: null })
   })
 
   it('opens the sheet from a kept ticket link, on whatever tab carries it', () => {
@@ -72,24 +57,22 @@ describe('the shell', () => {
     // from a hash a person can keep, not from a click handler alone.
     expect(parseRoute('#/tickets?ticket=D5BAD6F7-5D45-4910-9A69-1C0409479BAD')).toEqual({
       tab: 'tickets',
-      view: 'list',
       ticket: 'D5BAD6F7-5D45-4910-9A69-1C0409479BAD',
     })
     expect(parseRoute('#/bikeshed?ticket=PRT-17')).toEqual({
       tab: 'bikeshed',
-      view: 'list',
       ticket: 'PRT-17',
     })
-    expect(parseRoute('#/tickets/board?ticket=PRT-17').view).toBe('board')
+    expect(parseRoute('#/tickets/board?ticket=PRT-17').ticket).toBe('PRT-17')
     // An empty or unnamed ticket is no ticket: the face, not an empty sheet.
     expect(parseRoute('#/tickets?ticket=').ticket).toBeNull()
     expect(parseRoute('#/tickets?view=board').ticket).toBeNull()
   })
 
-  it('closes back onto the layout that carried the sheet', () => {
-    // Esc from a sheet opened on the board is still the board: dropping the
-    // segment would land a human on the list they did not choose.
-    expect(closeHref(parseRoute('#/tickets/board?ticket=PRT-17'))).toBe('#/tickets/board')
+  it('closes back onto the tab that carried the sheet', () => {
+    // Esc from a sheet opened on the board is still the board: the face has one
+    // layout, so dropping the query lands there.
+    expect(closeHref(parseRoute('#/tickets/board?ticket=PRT-17'))).toBe('#/tickets')
     expect(closeHref(parseRoute('#/tickets?ticket=PRT-17'))).toBe('#/tickets')
     expect(closeHref(parseRoute('#/bikeshed?ticket=PRT-17'))).toBe('#/bikeshed')
   })
@@ -134,14 +117,10 @@ describe('the shell', () => {
     expect(css).toMatch(/min-width:\s*var\(--window-floor\)/)
   })
 
-  it('holds the tickets list in a centred column while the board keeps the window', () => {
-    // The board keeps the wide treatment that lifts the column cap; the list
-    // reads as a centred 780px column, and no rule caps `.list` on its own.
+  it('keeps the board on the full width', () => {
     const css = readFileSync(join(renderer, 'src', 'app.css'), 'utf8')
-    expect(css).toMatch(/\.tickets--list[^}]*780px/)
-    expect(css).toMatch(/\.tickets--list[^}]*margin:\s*0\s+auto/)
     expect(css).toMatch(/\.tickets--board[^}]*max-width:\s*none/)
-    expect(css).not.toMatch(/\.list\s*\{[^}]*max-width/)
+    expect(css).not.toMatch(/\.tickets--list/)
   })
 
   it('exposes one world key, named tandem', () => {

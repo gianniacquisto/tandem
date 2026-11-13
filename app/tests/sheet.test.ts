@@ -392,8 +392,6 @@ describe('the sheet status colour (TAND-13)', () => {
       ['done', '--ink-dim'],
     ] as const) {
       expect(css).toContain(`.sheet__status-dot[data-status="${status}"]`)
-      const listRule = new RegExp(`\\.ticket-row__status\\[data-status="${status}"\\][^}]*${token}`)
-      expect(css, `list maps ${status} to ${token}`).toMatch(listRule)
       const sheetRule = new RegExp(
         `\\.sheet__status-dot\\[data-status="${status}"\\][^}]*${token}`,
       )

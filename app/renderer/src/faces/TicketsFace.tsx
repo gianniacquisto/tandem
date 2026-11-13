@@ -4,41 +4,29 @@ import type { Method } from '../../../src/shared/bridge'
 import type { Write } from '../shell/write'
 import {
   INITIAL_FILTERS,
-  appendIndex,
   assigneeChoices,
-  boardColumns,
-  boardStatuses,
-  boardTickets,
   boardAssignees,
+  boardColumns,
+  boardTickets,
   dropCalls,
-  dropIndex,
   emptyBoardCopy,
-  filterTickets,
+  firstSelection,
   focusLanes,
   laneKeys,
-  laneColumns,
-  neighbourLane,
   neighbourSelection,
-  scopeCounts,
-  stepSelection,
-  visibleMoveIndex,
+  type BoardColumn,
   type Filters,
-  type Scope,
-  type View,
 } from '../shell/board'
 import { keyIntent } from '../shell/keys'
-import { viewHref } from '../shell/route'
 import type { SnapshotState } from '../shell/snapshot'
 import type { TicketSummary } from '../wire/TicketSummary'
 import { BoardLayout } from './BoardLayout'
 import { EmptyState } from './EmptyState'
 import { Face } from './Face'
 import { FocusControl } from './FocusControl'
-import { TicketList } from './TicketList'
 
 export type TicketsFaceProps = {
   snapshot: SnapshotState
-  view: View
   /** The stored focus: the project the face draws, or null for every project. */
   activeProject: string | null
   /** Persist a new focus; null clears back to every project. */
@@ -47,35 +35,28 @@ export type TicketsFaceProps = {
   /** A write through the shell's one door. */
   onWrite: Write
   onDismiss: () => void
-  /** The sheet's subject, whichever face opened it, so one row reads as current. */
+  /** The sheet's subject, whichever face opened it, so one card reads as current. */
   openTicket: string | null
-  /** Open the sheet for the ticket: a card, a row, or a quick-add receipt with its composer focus. */
+  /** Open the sheet for the ticket: a card or an add receipt with its composer focus. */
   onOpenTicket: (ticket: { id: string }, focus?: 'description' | null) => void
 }
 
-const SCOPES: ReadonlyArray<{ value: Scope; label: string }> = [
-  { value: 'open', label: 'Open' },
-  { value: 'done', label: 'Done' },
-  { value: 'all', label: 'All' },
-]
-
 /**
- * The Tickets face: one listing, two layouts, one row widget.
+ * The Tickets face: the one-axis board (ADR 0043) and its header filter bar.
  *
  * The shell hands it the whole store as a snapshot and re-reads it on every
- * change event; the face narrows that snapshot locally, so the scope counts and
- * the drag arithmetic are the same array the rows came from. Every write is a
- * `Call` the CLI also exposes (`ticket.add`, `ticket.complete`, `ticket.set`,
- * `ticket.move`), and a write aimed at a revision the listing no longer shows is
- * refused by the shell's guard rather than landing on top of somebody else's.
+ * change event; the face narrows that snapshot locally, so the columns and the
+ * filter bar read the same array. Every write is a `Call` the CLI also exposes
+ * (`ticket.add`, `ticket.set`, `ticket.move`), and a write aimed at a revision
+ * the listing no longer shows is refused by the shell's guard rather than
+ * landing on top of somebody else's.
  *
- * The board draws one column per fixed status and ignores the Open/Done/All
- * scope: the columns are the statuses. The list keeps its scopes, its status
- * filter and its quick-add. Both follow the one project focus.
+ * The board draws one column per fixed status; the header narrows it by project
+ * focus, lane, assignee and title search. A lane is a label on the card and a
+ * filter, never a row.
  */
 export function TicketsFace({
   snapshot,
-  view,
   activeProject,
   onPickProject,
   onReload,
@@ -93,9 +74,6 @@ export function TicketsFace({
   // The sheet's subject wins the card's mark: a ticket opened from a note is the
   // one the face is showing, and the keyboard selection is only the face's own.
   const current = openTicket ?? selected
-  const [draft, setDraft] = useState('')
-  const [addLane, setAddLane] = useState<string | null>(null)
-  const quickAdd = useRef<HTMLInputElement>(null)
   const search = useRef<HTMLInputElement>(null)
   const firstAdd = useRef<HTMLButtonElement>(null)
 
@@ -103,20 +81,8 @@ export function TicketsFace({
   // The focus draws its project's lanes alone; null is every lane (no focus,
   // the show-all escape, or a stale focus), so a stale value never hides work.
   const focus = focusLanes(snapshot.projects, showAll ? null : activeProject)
-  const focusedTickets =
-    focus === null
-      ? snapshot.tickets
-      : snapshot.tickets.filter(
-          (ticket) => ticket.lane !== null && focus.includes(ticket.lane),
-        )
-  const counts = scopeCounts(focusedTickets)
-  const listVisible = filterTickets(snapshot.tickets, filters)
-  const columns = laneColumns(snapshot.lanes, listVisible).filter((column) =>
-    focus === null ? true : column.key !== null && focus.includes(column.key),
-  )
-  const statuses = boardStatuses()
   // The board's set: every non-archived ticket, narrowed by the focus and the
-  // header filters. The scope and the status filter are the list's.
+  // header filters.
   const boardVisible = boardTickets(snapshot.tickets, {
     lanes: focus,
     lane: filters.lane,
@@ -124,7 +90,6 @@ export function TicketsFace({
     text: filters.text,
   })
   const boardCols = boardColumns(boardVisible)
-  const order = columns.flatMap((column) => column.tickets)
 
   // The one helper the sheet's picker draws: Unassigned, `human`, the names
   // the board's rows carry, then the name this filter is narrowing to when it
@@ -133,40 +98,6 @@ export function TicketsFace({
     boardAssignees(snapshot.tickets),
     filters.assignee === '' ? null : filters.assignee,
   )
-
-  function scopeCount(scope: Scope): number {
-    return scope === 'open' ? counts.open : scope === 'done' ? counts.done : counts.all
-  }
-
-  async function add(): Promise<void> {
-    const title = draft.trim()
-    if (title === '') return
-    const written = await onWrite(
-      {
-        method: 'ticket.add',
-        params: {
-          title,
-          status: null,
-          assignee: null,
-          lane: addLane,
-          origin: null,
-          description: null,
-        },
-      },
-      snapshot.revision,
-    )
-    if (!written.ok) return
-    setDraft('')
-    // A successful add opens its own sheet in the description composer: the
-    // receipt already carries the ticket, never a second list read. Esc or the
-    // close control returns via the existing dismiss.
-    const id = receiptTicket(written.reply)
-    if (id !== null) {
-      onOpenTicket({ id }, 'description')
-      return
-    }
-    quickAdd.current?.focus()
-  }
 
   /**
    * The board's per-column add: one `ticket.add` carrying the column's stage
@@ -192,34 +123,6 @@ export function TicketsFace({
     const id = receiptTicket(written.reply)
     if (id !== null) setSelected(id)
     return true
-  }
-
-  function toggle(ticket: TicketSummary): void {
-    const call: Method = ticket.done
-      ? {
-          method: 'ticket.set',
-          params: {
-            id: ticket.id,
-            title: null,
-            status: 'backlog',
-            assignee: null,
-            description: null,
-          },
-        }
-      : { method: 'ticket.complete', params: { id: ticket.id } }
-    void onWrite(call, snapshot.revision)
-  }
-
-  function move(id: string, lane: string | null, index: number): void {
-    void onWrite({ method: 'ticket.move', params: { id, lane, index } }, snapshot.revision)
-  }
-
-  /** A drop on a card in the list: the lane write and its index in that lane. */
-  function dropOn(dragged: string, anchor: string, after: boolean): void {
-    const index = dropIndex(snapshot.tickets, dragged, anchor, after)
-    const target = snapshot.tickets.find((ticket) => ticket.id === anchor)
-    if (index === null || target === undefined) return
-    move(dragged, target.lane, index)
   }
 
   /** A drop on a board column: one `ticket.set`, and nothing for the same column. */
@@ -252,20 +155,13 @@ export function TicketsFace({
       if (intent === null) return
 
       switch (intent.type) {
-        case 'focus-quick-add':
+        case 'focus-add':
           event.preventDefault()
-          if (view === 'board') firstAdd.current?.focus()
-          else quickAdd.current?.focus()
+          firstAdd.current?.focus()
           return
         case 'focus-search':
           event.preventDefault()
           search.current?.focus()
-          return
-        case 'scope':
-          // The scope switch is the list's; the board's columns are the statuses.
-          if (view === 'board') return
-          event.preventDefault()
-          setFilters((current) => ({ ...current, scope: intent.scope }))
           return
         case 'clear-search':
           if (filters.text !== '') {
@@ -292,50 +188,24 @@ export function TicketsFace({
         }
         case 'select': {
           event.preventDefault()
-          if (view === 'board') {
-            const next = stepSelection(boardCols, selected, intent.axis, intent.delta)
-            if (next !== null) setSelected(next)
-            return
-          }
-          if (intent.axis === 'column') {
-            setSelected(neighbourSelection(columns, selected, intent.delta))
-            return
-          }
-          const at = order.findIndex((ticket) => ticket.id === selected)
           const next =
-            at < 0 ? order[intent.delta > 0 ? 0 : order.length - 1] : order[at + intent.delta]
-          if (next !== undefined) setSelected(next.id)
-          return
-        }
-        case 'move-in-lane': {
-          // The lane is a label now: ordering stays the list's, so the vertical
-          // arrows do nothing on the board.
-          if (view === 'board') return
-          const ticket = snapshot.tickets.find((candidate) => candidate.id === selected)
-          if (ticket === undefined) return
-          const lane = columns.find((column) => column.key === ticket.lane)?.tickets ?? []
-          const target = visibleMoveIndex(snapshot.tickets, lane, ticket.id, intent.delta)
-          if (target === null) return
-          event.preventDefault()
-          move(ticket.id, ticket.lane, target)
+            selected === null
+              ? firstSelection(boardCols, intent.delta)
+              : intent.axis === 'column'
+                ? neighbourSelection(boardCols, selected, intent.delta)
+                : rowSelection(boardCols, selected, intent.delta)
+          if (next !== null) setSelected(next)
           return
         }
         case 'move-across': {
           const ticket = snapshot.tickets.find((candidate) => candidate.id === selected)
           if (ticket === undefined) return
-          if (view === 'board') {
-            // The status is the column, so the horizontal arrows step it.
-            const at = boardCols.findIndex((column) => column.status === ticket.status)
-            const next = boardCols[at + intent.delta]
-            if (at < 0 || next === undefined) return
-            event.preventDefault()
-            dropStatus(ticket.id, next.status)
-            return
-          }
-          const lane = neighbourLane(allKeys, ticket.lane, intent.delta)
-          if (lane === undefined) return
+          // The status is the column, so the horizontal arrows step it.
+          const at = boardCols.findIndex((column) => column.status === ticket.status)
+          const next = boardCols[at + intent.delta]
+          if (at < 0 || next === undefined) return
           event.preventDefault()
-          move(ticket.id, lane, appendIndex(snapshot.tickets, lane))
+          dropStatus(ticket.id, next.status)
           return
         }
       }
@@ -346,22 +216,18 @@ export function TicketsFace({
   }, [
     snapshot,
     filters,
-    view,
     selected,
-    columns,
     boardCols,
-    order,
-    allKeys,
     openTicket,
     onDismiss,
     onOpenTicket,
+    onWrite,
   ])
 
   const empty = emptyState(
     snapshot,
     filters,
-    view,
-    view === 'board' ? boardVisible.length === 0 : listVisible.length === 0,
+    boardVisible.length === 0,
     activeProject,
     onReload,
   )
@@ -438,147 +304,59 @@ export function TicketsFace({
 
   return (
     <Face wide label="Tickets">
-      <div className={view === 'board' ? 'tickets tickets--board' : 'tickets tickets--list'}>
-        {view === 'board' ? (
-          <div className="tickets__bar tickets__bar--board">
-            {focusControl}
-            {laneFilter}
-            {assigneeFilter}
-            <SearchField
-              value={filters.text}
-              onChange={(text) => setFilters((current) => ({ ...current, text }))}
-              onClear={() => setFilters((current) => ({ ...current, text: '' }))}
-              inputRef={search}
-            />
-            <ViewSwitch view={view} />
-          </div>
+      <div className="tickets tickets--board">
+        <div className="tickets__bar tickets__bar--board">
+          {focusControl}
+          {laneFilter}
+          {assigneeFilter}
+          <SearchField
+            value={filters.text}
+            onChange={(text) => setFilters((current) => ({ ...current, text }))}
+            onClear={() => setFilters((current) => ({ ...current, text: '' }))}
+            inputRef={search}
+          />
+        </div>
+
+        {firstRead ? (
+          empty
         ) : (
           <>
-            {focusControl}
-            <form
-              className="quick-add"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void add()
-              }}
-            >
-              <span className="quick-add__plus" aria-hidden="true">
-                +
-              </span>
-              <input
-                ref={quickAdd}
-                className="quick-add__input"
-                value={draft}
-                placeholder="Add a ticket…"
-                aria-label="Add a ticket"
-                onChange={(event) => setDraft(event.target.value)}
-              />
-              <select
-                className="quick-add__lane"
-                aria-label="Lane for a new ticket"
-                value={addLane ?? ''}
-                onChange={(event) =>
-                  setAddLane(event.target.value === '' ? null : event.target.value)
-                }
-              >
-                <option value="">No lane</option>
-                {snapshot.lanes.map((lane) => (
-                  <option key={lane} value={lane}>
-                    {lane}
-                  </option>
-                ))}
-              </select>
-            </form>
-
-            <div className="tickets__bar">
-              <div className="segmented" role="tablist" aria-label="Ticket scopes">
-                {SCOPES.map((scope) => (
-                  <button
-                    key={scope.value}
-                    type="button"
-                    role="tab"
-                    className="segmented__item"
-                    aria-selected={filters.scope === scope.value}
-                    onClick={() =>
-                      setFilters((current) => ({ ...current, scope: scope.value }))
-                    }
-                  >
-                    <span>{scope.label}</span>
-                    <span className="segmented__count">{scopeCount(scope.value)}</span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="tickets__filters">
-                <select
-                  className="filter"
-                  aria-label="Status"
-                  value={filters.status ?? ''}
-                  onChange={(event) =>
-                    setFilters((current) => ({
-                      ...current,
-                      status: event.target.value === '' ? null : event.target.value,
-                    }))
-                  }
-                >
-                  <option value="">Any status</option>
-                  {statuses.map((status) => (
-                    <option key={status.value} value={status.value}>
-                      {status.label}
-                    </option>
-                  ))}
-                </select>
-                {assigneeFilter}
-                {laneFilter}
-              </div>
-
-              <SearchField
-                value={filters.text}
-                onChange={(text) => setFilters((current) => ({ ...current, text }))}
-                onClear={() => setFilters((current) => ({ ...current, text: '' }))}
-                inputRef={search}
-              />
-              <ViewSwitch view={view} />
-            </div>
-          </>
-        )}
-
-        {view === 'board' ? (
-          firstRead ? (
-            empty
-          ) : (
-            <>
-              {empty}
-              <BoardLayout
-                columns={boardCols}
-                selected={current}
-                onSelect={setSelected}
-                onOpen={onOpenTicket}
-                onLane={(lane) => setFilters((current) => ({ ...current, lane }))}
-                onDropOn={dropStatus}
-                onAdd={addCard}
-                firstAddRef={firstAdd}
-              />
-            </>
-          )
-        ) : (
-          empty ?? (
-            <TicketList
-              columns={columns}
+            {empty}
+            <BoardLayout
+              columns={boardCols}
               selected={current}
               onSelect={setSelected}
-              onToggle={toggle}
               onOpen={onOpenTicket}
-              onDropOn={dropOn}
+              onLane={(lane) => setFilters((current) => ({ ...current, lane }))}
+              onDropOn={dropStatus}
+              onAdd={addCard}
+              firstAddRef={firstAdd}
             />
-          )
+          </>
         )}
       </div>
     </Face>
   )
 }
 
-/** The search field: one control, drawn in the board's row and the list's. */
+/**
+ * The card a plain up or down arrow selects: the neighbour inside the selected
+ * card's column, or null when the step leaves the column so the selection stays.
+ */
+function rowSelection(
+  columns: readonly BoardColumn[],
+  selected: string,
+  delta: -1 | 1,
+): string | null {
+  const column = columns.find((candidate) =>
+    candidate.tickets.some((ticket) => ticket.id === selected),
+  )
+  if (column === undefined) return null
+  const at = column.tickets.findIndex((ticket) => ticket.id === selected)
+  return column.tickets[at + delta]?.id ?? null
+}
+
+/** The search field: one control in the board's filter bar. */
 function SearchField({
   value,
   onChange,
@@ -619,30 +397,6 @@ function SearchField({
   )
 }
 
-/** The List/Board switch: one control, drawn in both rows. */
-function ViewSwitch({ view }: { view: View }) {
-  return (
-    <div className="segmented segmented--views" role="tablist" aria-label="Ticket layouts">
-      <a
-        className="segmented__item"
-        role="tab"
-        href={viewHref('tickets', 'list')}
-        aria-selected={view === 'list'}
-      >
-        List
-      </a>
-      <a
-        className="segmented__item"
-        role="tab"
-        href={viewHref('tickets', 'board')}
-        aria-selected={view === 'board'}
-      >
-        Board
-      </a>
-    </div>
-  )
-}
-
 /** The id an add's receipt carries, or null when the reply is not a ticket. */
 function receiptTicket(reply: unknown): string | null {
   if (reply === null || reply === undefined || typeof reply !== 'object') return null
@@ -656,14 +410,12 @@ function receiptTicket(reply: unknown): string | null {
 function emptyState(
   snapshot: SnapshotState,
   filters: Filters,
-  view: View,
   nothingVisible: boolean,
   activeProject: string | null,
   onReload: () => void,
 ): ReactNode {
   const copy = emptyBoardCopy({
     status: snapshot.status,
-    view,
     ticketCount: snapshot.tickets.length,
     error: snapshot.error,
     filters,

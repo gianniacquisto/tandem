@@ -46,7 +46,6 @@ function face(
       return (
         <TicketsFace
           snapshot={snapshot}
-          view={route.view}
           activeProject={actions.activeProject}
           onPickProject={actions.onPickProject}
           onReload={actions.onReload}
@@ -78,7 +77,7 @@ function face(
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash))
   // The sheet's one selection. The hash's `ticket` opens it (a link a person can
-  // keep), and a row, a card or a note's ticket row sets it without moving the
+  // keep), and a card or a note's ticket row sets it without moving the
   // tab, so Esc leaves the face that opened it exactly where it was.
   const [openTicket, setOpenTicket] = useState<string | null>(
     () => parseRoute(window.location.hash).ticket,
@@ -234,8 +233,7 @@ export function App() {
     setOpenTicket(null)
     setSheetFocus(null)
     // A sheet opened from a kept link owns the hash's query; closing drops that
-    // query and keeps the layout that carried it, so Esc from the board is the
-    // board and not the list.
+    // query and keeps the tab that carried it.
     const current = parseRoute(window.location.hash)
     if (current.ticket !== null) window.location.hash = closeHref(current)
   }, [])

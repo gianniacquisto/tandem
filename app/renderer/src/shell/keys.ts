@@ -1,5 +1,3 @@
-import type { Scope } from './board'
-
 /**
  * The keyboard set the pruned palette and the two tabs took with them
  * (`MainView.swift`, `TandemShortcuts` / `TicketsShortcuts`), as a pure reading
@@ -7,7 +5,9 @@ import type { Scope } from './board'
  *
  * The face owns no global shortcut: this answers what one event means and the
  * face decides whether it can act. A field keeps its keys: only Escape is read
- * out of one, because clearing a search is what Escape means there.
+ * out of one, because clearing a search is what Escape means there. The List
+ * face retired with its scope switch and its in-lane move, so the number keys
+ * and Option+Up/Down answer nothing.
  */
 
 export type KeyInput = {
@@ -21,17 +21,13 @@ export type KeyInput = {
 }
 
 export type KeyIntent =
-  | { type: 'focus-quick-add' }
+  | { type: 'focus-add' }
   | { type: 'focus-search' }
-  | { type: 'scope'; scope: Scope }
   | { type: 'select'; axis: 'row' | 'column'; delta: -1 | 1 }
-  | { type: 'move-in-lane'; delta: -1 | 1 }
   | { type: 'move-across'; delta: -1 | 1 }
   | { type: 'open' }
   | { type: 'clear-search' }
   | { type: 'dismiss' }
-
-const SCOPES: Record<string, Scope> = { '1': 'open', '2': 'done', '3': 'all' }
 
 /**
  * The one modifier this face treats as "mod" (`keyIntent` reads meta or ctrl as
@@ -46,9 +42,7 @@ export function modifierLabel(platform: string = navigator.platform): string {
 export function keyIntent(input: KeyInput): KeyIntent | null {
   const mod = input.metaKey || input.ctrlKey
   if (mod) {
-    const scope = SCOPES[input.key]
-    if (scope !== undefined) return { type: 'scope', scope }
-    if (input.key === 'n') return { type: 'focus-quick-add' }
+    if (input.key === 'n') return { type: 'focus-add' }
     if (input.key === 'f') return { type: 'focus-search' }
     return null
   }
@@ -61,10 +55,6 @@ export function keyIntent(input: KeyInput): KeyIntent | null {
 
   if (input.altKey) {
     switch (input.key) {
-      case 'ArrowUp':
-        return { type: 'move-in-lane', delta: -1 }
-      case 'ArrowDown':
-        return { type: 'move-in-lane', delta: 1 }
       case 'ArrowLeft':
         return { type: 'move-across', delta: -1 }
       case 'ArrowRight':
