@@ -5,6 +5,7 @@
 
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -260,22 +261,31 @@ fn two_spellings_of_one_home_share_one_queue() {
         crate::bikeshed::locked::LockedDirectory::new(dotted, ".note-", root.to_path_buf());
     let holding = Arc::new(Barrier::new(2));
     let held_for = Duration::from_millis(300);
+    // The holder stamps the moment it takes the lock, so the waiter is timed
+    // from the holder's clock rather than the main thread's, which can wake
+    // from the barrier before the holder starts sleeping.
+    let held_since = Mutex::new(None::<Instant>);
     thread::scope(|scope| {
         scope.spawn(|| {
             let _held = holder.lock().expect("the holder's body runs");
+            *held_since.lock().unwrap() = Some(Instant::now());
             holding.wait();
             thread::sleep(held_for);
         });
         holding.wait();
 
-        let started = Instant::now();
         let _served = waiter
             .lock()
             .expect("a writer on the other spelling is served, not locked out");
+        let acquired = Instant::now();
+        let held_at = held_since
+            .lock()
+            .unwrap()
+            .expect("the holder stamped when it took the lock");
         assert!(
-            started.elapsed() >= held_for,
+            acquired.duration_since(held_at) >= held_for,
             "the waiter did not wait for the holder: {:?}",
-            started.elapsed()
+            acquired.duration_since(held_at)
         );
     });
 }
