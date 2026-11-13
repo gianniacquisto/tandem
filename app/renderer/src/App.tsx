@@ -79,7 +79,7 @@ function face(
         />
       )
     case 'settings':
-      return <SettingsFace revision={snapshot.revision} />
+      return <SettingsFace />
   }
 }
 

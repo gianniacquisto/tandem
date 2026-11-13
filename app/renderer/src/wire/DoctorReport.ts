@@ -4,14 +4,13 @@ import type { DoctorCheck } from "./DoctorCheck";
 /**
  * What `doctor` answers: ADR 0014's shape, `{"ok": bool, "checks": [...]}`.
  *
- * The thirteen rows, in the pinned order, are built by
- * [`crate::diagnostics::report`]. `ok` is the AND of the rows that can fail;
- * `app`, `skills`, `harness-auth`, `mcp` and the three leftover rows are
- * informational and always pass on a current install.
+ * The three rows, in the pinned order, are built by
+ * [`crate::diagnostics::report`] (ADR 0045 cut the report to `home`, `store`
+ * and `bikeshed`). `ok` is the AND of the rows that can fail.
  */
 export type DoctorReport = { 
 /**
- * The AND of the rows that can fail. This stub's one row cannot.
+ * The AND of the rows that can fail.
  */
 ok: boolean, 
 /**

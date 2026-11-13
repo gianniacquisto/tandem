@@ -135,8 +135,7 @@ unzip -q "$tmp/Tandem-$ver.zip" -d "$tmp/unzipped"
 bundle="$tmp/unzipped/Tandem.app"
 if [ ! -x "$bundle/Contents/MacOS/Tandem" ] \
   || [ ! -f "$bundle/Contents/Resources/tandem" ] \
-  || [ ! -L "$bundle/Contents/MacOS/tandem-cli" ] \
-  || [ ! -f "$bundle/Contents/Resources/agent/AGENTS.md" ]; then
+  || [ ! -L "$bundle/Contents/MacOS/tandem-cli" ]; then
   echo "install.sh: the zip's bundle is not the expected layout; refusing." >&2
   exit 1
 fi
@@ -166,4 +165,4 @@ else
   echo "install.sh: link it with:"
   echo "install.sh:   ln -s \"$APPS_DIR/Tandem.app/Contents/MacOS/tandem-cli\" /usr/local/bin/tandem-cli"
 fi
-echo "install.sh: next: tandem-cli setup install (the agent face), then tandem-cli doctor (the health check)."
+echo "install.sh: next: tandem-cli doctor (the health check)."

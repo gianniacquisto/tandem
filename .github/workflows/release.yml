@@ -111,8 +111,6 @@ jobs:
           # symlink must fail before the release is published and the tap bumped.
           test -L "$bundle/Contents/MacOS/tandem-cli"
           test "$(readlink "$bundle/Contents/MacOS/tandem-cli")" = "../Resources/tandem"
-          test -f "$bundle/Contents/Resources/agent/AGENTS.md"
-          test "$(cat "$bundle/Contents/Resources/agent/VERSION")" = "$version"
           # Ad-hoc signed at package time (PRT-36). The v1.0.0 artifact kept
           # the linker's signature with `Sealed Resources=none`, so the zip
           # verified as an archive but macOS called the installed app damaged.
@@ -210,14 +208,12 @@ jobs:
           test -f "$appimage"
           test -x "$appimage"
           # FUSE is not available on the runner, so verify the payload by
-          # extraction instead of execution: the core and the agent face sit
-          # where the packaged shell resolves them.
+          # extraction instead of execution: the core sits where the packaged
+          # shell resolves it.
           mkdir "$RUNNER_TEMP/appimage"
           (cd "$RUNNER_TEMP/appimage" && "$GITHUB_WORKSPACE/$appimage" --appimage-extract > /dev/null)
           root="$RUNNER_TEMP/appimage/squashfs-root"
           test -x "$root/resources/tandem"
-          test -f "$root/resources/agent/AGENTS.md"
-          test "$(cat "$root/resources/agent/VERSION")" = "$version"
 
       - name: Compute the checksum
         run: |

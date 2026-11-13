@@ -2,10 +2,6 @@
 
 /**
  * One row of the report: exactly `name`, `ok` and `detail`.
- *
- * The `setup` group's report types live in [`crate::setup`] and are the wire's
- * too: the Swift binary encodes the domain structs directly, so the port keeps
- * one definition rather than a projection that can drift.
  */
 export type DoctorCheck = { 
 /**

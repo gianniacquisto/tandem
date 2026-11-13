@@ -167,8 +167,6 @@ methods! {
     NoteCreate: "note.create", NotePathParams, "note create";
     NoteCreateFolder: "note.createFolder", NotePathParams, "note create-folder";
     NoteDaily: "note.daily", EmptyParams, "note daily";
-    SetupStatus: "setup.status", EmptyParams, "setup status";
-    SetupInstall: "setup.install", SetupInstallParams, "setup install";
     DoctorReport: "doctor.report", EmptyParams, "doctor";
     // A read the CLI does not spell a verb for: the Usage face's one report. It
     // writes nothing, so no UI-only write hides behind it, and the report is the
@@ -1325,18 +1323,6 @@ impl WorkflowSetParams {
     }
 }
 
-/// `setup.install`: the CLI's `--host` and `--force`, unchanged.
-///
-/// `host` is one name or a comma-separated list, and absent means the CLI's
-/// default (`opencode`). `force` replaces a link that points elsewhere; a real
-/// file is never touched, `force` included.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct SetupInstallParams {
-    pub host: Option<String>,
-    pub force: bool,
-}
-
 // MARK: - Responses
 
 /// One answer: the request's id and exactly one of a result or an error.
@@ -1389,7 +1375,6 @@ pub enum Reply {
     SessionList(SessionListReply),
     SessionDetail(SessionDetailReply),
     NotePath(NotePathView),
-    Setup(SetupReply),
     Doctor(DoctorReply),
     NoteTree(NoteTreeReply),
     NoteRead(NoteReadReply),
@@ -1709,35 +1694,6 @@ pub struct SessionDetailReply {
     pub note: Option<String>,
 }
 
-/// One agent host's root, as the Settings surface shows it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct HostRoot {
-    /// `opencode` or `claude`, the wire's host names; the canonical
-    /// `~/.agents/skills` root is not a host and never appears here.
-    pub host: String,
-    /// The directory the host reads the face from.
-    pub path: String,
-}
-
-/// `setup.status` and `setup.install`: the report the verb prints, and the
-/// roots the Settings surface shows beside it.
-///
-/// The report is the verb's answer unchanged: `paths` is what the run wrote
-/// (empty on a read), and `state` is the face's state after it. `home`,
-/// `bikeshed` and `hosts` are the roots that report is about, resolved by the
-/// core's own path rule, so a Settings surface names no path of its own. This
-/// is not store data, so there is no revision: the answer is the machine at the
-/// moment the verb ran.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct SetupReply {
-    pub report: crate::setup::Report,
-    pub home: String,
-    pub bikeshed: String,
-    pub hosts: Vec<HostRoot>,
-}
-
 /// `doctor.report`: ADR 0014's pinned report, one row per check.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -1749,8 +1705,7 @@ pub struct DoctorReply {
 ///
 /// `parse` is a frame that is not a request; `method` is a method this build
 /// does not answer; `domain` is a refusal the domain made (an unknown id, an
-/// empty body); `store` is the store failing (a lock held past the window);
-/// `setup` is a setup verb refusing (no bundle, an unknown host).
+/// empty body); `store` is the store failing (a lock held past the window).
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 pub struct WireError {
     pub code: String,
@@ -1782,15 +1737,6 @@ impl WireError {
     pub fn store(message: impl Into<String>) -> Self {
         Self {
             code: "store".to_string(),
-            message: message.into(),
-        }
-    }
-
-    /// The setup verbs refused: a missing bundle, an unknown host, or a
-    /// filesystem failure the install could not write through.
-    pub fn setup(message: impl Into<String>) -> Self {
-        Self {
-            code: "setup".to_string(),
             message: message.into(),
         }
     }

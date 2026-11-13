@@ -31,12 +31,11 @@ make_fixture() {
   ver=$2
   tag="v$ver"
   app="$dir/src/Tandem.app"
-  mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/agent"
+  mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
   printf '#!/bin/sh\necho fixture\n' > "$app/Contents/MacOS/Tandem"
   chmod +x "$app/Contents/MacOS/Tandem"
   printf 'fixture-core' > "$app/Contents/Resources/tandem"
   ln -s "../Resources/tandem" "$app/Contents/MacOS/tandem-cli"
-  printf '# agent face\n' > "$app/Contents/Resources/agent/AGENTS.md"
   (cd "$dir/src" && zip -qry "$dir/Tandem-$ver.zip" Tandem.app)
   rel="$dir/download/$tag"
   mkdir -p "$rel"
@@ -114,7 +113,7 @@ esac
 
 # --- an existing install is left alone without --reinstall ---
 
-printf 'mine' > "$t2/apps/Tandem.app/Contents/Resources/agent/AGENTS.md"
+printf 'mine' > "$t2/apps/Tandem.app/Contents/Resources/tandem"
 out3=$(
   while IFS='=' read -r k v; do export "$k=$v"; done < <(installer_env "$t2/apps" "$t2/fix")
   sh "$installer" --version 9.9.10 >"$t2/out3.txt" 2>&1
@@ -125,7 +124,7 @@ case "$out3" in
   *"exit=0"*) ok "existing install exits zero" ;;
   *) no "existing install exits zero: $out3" ;;
 esac
-if [ "$(cat "$t2/apps/Tandem.app/Contents/Resources/agent/AGENTS.md")" = "mine" ]; then
+if [ "$(cat "$t2/apps/Tandem.app/Contents/Resources/tandem")" = "mine" ]; then
   ok "existing install is left alone"
 else
   no "existing install is left alone"
@@ -146,7 +145,7 @@ case "$out4" in
   *"exit=0"*) ok "--reinstall exits zero" ;;
   *) no "--reinstall exits zero: $out4" ;;
 esac
-if [ "$(cat "$t2/apps/Tandem.app/Contents/Resources/agent/AGENTS.md")" = "# agent face" ]; then
+if [ "$(cat "$t2/apps/Tandem.app/Contents/Resources/tandem")" = "fixture-core" ]; then
   ok "--reinstall overwrites"
 else
   no "--reinstall overwrites"

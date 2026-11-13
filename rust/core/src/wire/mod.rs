@@ -36,23 +36,18 @@ pub use views::{
 
 /// What `doctor` answers: ADR 0014's shape, `{"ok": bool, "checks": [...]}`.
 ///
-/// The thirteen rows, in the pinned order, are built by
-/// [`crate::diagnostics::report`]. `ok` is the AND of the rows that can fail;
-/// `app`, `skills`, `harness-auth`, `mcp` and the three leftover rows are
-/// informational and always pass on a current install.
+/// The three rows, in the pinned order, are built by
+/// [`crate::diagnostics::report`] (ADR 0045 cut the report to `home`, `store`
+/// and `bikeshed`). `ok` is the AND of the rows that can fail.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 pub struct DoctorReport {
-    /// The AND of the rows that can fail. This stub's one row cannot.
+    /// The AND of the rows that can fail.
     pub ok: bool,
     /// The checks that ran, in the order ADR 0014 pins for them.
     pub checks: Vec<DoctorCheck>,
 }
 
 /// One row of the report: exactly `name`, `ok` and `detail`.
-///
-/// The `setup` group's report types live in [`crate::setup`] and are the wire's
-/// too: the Swift binary encodes the domain structs directly, so the port keeps
-/// one definition rather than a projection that can drift.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 pub struct DoctorCheck {
     /// The check's stable name; renaming one is a breaking change to the wire.

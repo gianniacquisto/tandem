@@ -13,23 +13,22 @@ use ts_rs::{Config, TS};
 
 use super::rpc::{
     ArchivedReply, CommentAddParams, CommentListReply, CommentReply, DoctorReply, EmptyParams,
-    Event, HostRoot, LaneAddParams, LaneDeleteParams, LaneDeletionReply, LaneListReply,
-    LaneMoveParams, LaneRenameParams, MarkdownBlocksParams, MarkdownReply, Method,
-    NoteBacklinksReply, NoteCaptureParams, NoteHealthReply, NoteMoveParams, NoteMoveReply,
-    NotePathParams, NoteReadReply, NoteRecoveriesReply, NoteTreeParams, NoteTreeReply,
-    NoteWriteParams, NoteWriteReply, Outcome, ProjectAddParams, ProjectDeleteParams, ProjectEntry,
-    ProjectListReply, ProjectRenameParams, Reply, Request, Response, SessionDetailReply,
-    SessionEndParams, SessionLinkParams, SessionListParams, SessionListReply, SessionReply,
-    SessionShowParams, SessionStartParams, SessionTranscriptParams, SessionTranscriptReply,
-    SettingsReply, SettingsSetParams, SetupInstallParams, SetupReply, SprintCloseParams,
-    SprintListParams, SprintListReply, SprintOpenParams, SprintReply, SprintRunParams,
-    SprintShowParams, SprintTicketParams, TicketAddFromNoteParams, TicketAddParams,
-    TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply,
-    TicketMoveParams, TicketReply, TicketSetParams, TicketUnblockParams, UsageReportParams,
-    UsageReportReply, WireError, WorkflowIdParams, WorkflowListReply, WorkflowReply,
-    WorkflowRunCloseParams, WorkflowRunListParams, WorkflowRunListReply, WorkflowRunOpenParams,
-    WorkflowRunReply, WorkflowRunRunParams, WorkflowRunShowParams, WorkflowRunTicketParams,
-    WorkflowSetParams, WorkflowShowParams,
+    Event, LaneAddParams, LaneDeleteParams, LaneDeletionReply, LaneListReply, LaneMoveParams,
+    LaneRenameParams, MarkdownBlocksParams, MarkdownReply, Method, NoteBacklinksReply,
+    NoteCaptureParams, NoteHealthReply, NoteMoveParams, NoteMoveReply, NotePathParams,
+    NoteReadReply, NoteRecoveriesReply, NoteTreeParams, NoteTreeReply, NoteWriteParams,
+    NoteWriteReply, Outcome, ProjectAddParams, ProjectDeleteParams, ProjectEntry, ProjectListReply,
+    ProjectRenameParams, Reply, Request, Response, SessionDetailReply, SessionEndParams,
+    SessionLinkParams, SessionListParams, SessionListReply, SessionReply, SessionShowParams,
+    SessionStartParams, SessionTranscriptParams, SessionTranscriptReply, SettingsReply,
+    SettingsSetParams, SprintCloseParams, SprintListParams, SprintListReply, SprintOpenParams,
+    SprintReply, SprintRunParams, SprintShowParams, SprintTicketParams, TicketAddFromNoteParams,
+    TicketAddParams, TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams,
+    TicketListReply, TicketMoveParams, TicketReply, TicketSetParams, TicketUnblockParams,
+    UsageReportParams, UsageReportReply, WireError, WorkflowIdParams, WorkflowListReply,
+    WorkflowReply, WorkflowRunCloseParams, WorkflowRunListParams, WorkflowRunListReply,
+    WorkflowRunOpenParams, WorkflowRunReply, WorkflowRunRunParams, WorkflowRunShowParams,
+    WorkflowRunTicketParams, WorkflowSetParams, WorkflowShowParams,
 };
 use super::views::{
     BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
@@ -46,7 +45,6 @@ use crate::domain::session::{
 use crate::domain::sprint::{Sprint, SprintMode, SprintStatus, WorkflowRun};
 use crate::domain::usage::UsageWindow;
 use crate::domain::workflow::{Pass, StageBinding, StageRole, Workflow, WorkflowStage};
-use crate::setup;
 
 /// Every generated file, by name, in a stable order.
 ///
@@ -303,22 +301,9 @@ pub fn files() -> Vec<(&'static str, String)> {
             serde_json::Value::export_to_string(&cfg),
         ),
         render("NotePathView.ts", NotePathView::export_to_string(&cfg)),
-        render("SetupReply.ts", SetupReply::export_to_string(&cfg)),
-        render("HostRoot.ts", HostRoot::export_to_string(&cfg)),
         render("DoctorReply.ts", DoctorReply::export_to_string(&cfg)),
         render("DoctorReport.ts", DoctorReport::export_to_string(&cfg)),
         render("DoctorCheck.ts", DoctorCheck::export_to_string(&cfg)),
-        render(
-            "SetupInstallParams.ts",
-            SetupInstallParams::export_to_string(&cfg),
-        ),
-        render("Report.ts", setup::Report::export_to_string(&cfg)),
-        render("PathAction.ts", setup::PathAction::export_to_string(&cfg)),
-        render("State.ts", setup::State::export_to_string(&cfg)),
-        render("HostState.ts", setup::HostState::export_to_string(&cfg)),
-        render("Warning.ts", setup::Warning::export_to_string(&cfg)),
-        render("Code.ts", setup::Code::export_to_string(&cfg)),
-        render("Severity.ts", setup::Severity::export_to_string(&cfg)),
         render("TicketSummary.ts", TicketSummary::export_to_string(&cfg)),
         render("TicketDetail.ts", TicketDetail::export_to_string(&cfg)),
         render(

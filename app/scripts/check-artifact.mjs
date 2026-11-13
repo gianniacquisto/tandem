@@ -8,9 +8,10 @@ import { findPackagedApp } from './packaged.mjs'
 /**
  * The artifact-side half of the app's package gate: the platform's unpacked
  * app exists under `dist/`, carries the core where `src/main/binary.ts`
- * resolves it, and carries the agent face ADR 0034 installs from. On macOS it
- * also carries the `tandem-cli` symlink the cask links into Homebrew's `bin`,
- * so a packaging change that drops it fails here rather than at install time.
+ * resolves it, and carries the third-party notice. The agent face retired with
+ * ADR 0045 and is staged nowhere. On macOS the app also carries the
+ * `tandem-cli` symlink the cask links into Homebrew's `bin`, so a packaging
+ * change that drops it fails here rather than at install time.
  *
  * The smoke launch (`smoke-packaged.mjs`) adds the runtime proof on macOS and
  * Linux; this check is the one every platform can run.
@@ -24,13 +25,6 @@ import { findPackagedApp } from './packaged.mjs'
  */
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
 const app = findPackagedApp(join(appRoot, 'dist'), process.platform)
-const face = join(app.resources, 'agent')
-for (const file of ['AGENTS.md', 'VERSION', join('skills', 'tandem', 'SKILL.md')]) {
-  if (!existsSync(join(face, file))) {
-    console.error(`the packaged app carries no agent face at ${join(face, file)}`)
-    process.exit(1)
-  }
-}
 
 // The packages whose code the renderer carries, with their licence texts
 // (UI-22). It is one generated record, staged beside the core.
@@ -82,4 +76,4 @@ if (process.platform === 'darwin') {
   }
 }
 
-console.log(`the packaged app carries the core at ${app.binary}, the face at ${face}, and the tandem-cli link`)
+console.log(`the packaged app carries the core at ${app.binary} and the tandem-cli link`)
