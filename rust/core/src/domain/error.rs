@@ -81,8 +81,6 @@ pub enum DomainError {
     UnknownBindingRole { role: String, roster: Vec<String> },
     /// A stage a workflow set would delete still holds tickets.
     StageOccupied { key: String, count: usize },
-    /// `workflow use` was refused because a sprint is open.
-    WorkflowHasOpenSprint { lanes: Vec<String> },
     /// `workflow use` was refused because tickets sit in stages the target
     /// lacks. Each pair is the stage key and how many tickets sit in it.
     WorkflowMissingStages { stages: Vec<(String, usize)> },
@@ -90,9 +88,6 @@ pub enum DomainError {
     WorkflowIsDefault(String),
     /// The active workflow cannot be deleted.
     WorkflowIsActive(String),
-    /// A workflow with recorded runs cannot be deleted. `count` is the number of
-    /// runs the store holds for it, so the refusal says why.
-    WorkflowHasRuns { name: String, count: usize },
     /// A cycle lane name was empty or whitespace-only.
     EmptyLaneName,
     /// A cycle lane name was already in use.
@@ -104,8 +99,7 @@ pub enum DomainError {
     /// A project name was already in use.
     DuplicateProject(String),
     /// A `--project` named a project the store does not carry. `projects` is
-    /// the declared list, so the refusal names what the caller may pick, the
-    /// way an unknown sprint names its lane's numbers.
+    /// the declared list, so the refusal names what the caller may pick.
     UnknownProjectName { name: String, projects: Vec<String> },
     /// A project delete named a project that still holds lanes. `lanes` names
     /// them, so the caller re-parents first and deletes after: a delete never
@@ -138,25 +132,6 @@ pub enum DomainError {
     TicketBlockerArchived { reference: String },
     /// A ticket that already links to a note cannot be promoted again.
     AlreadyLinked { path: String },
-    /// `run`/`close` was given an empty note; `close` with no note is `None`.
-    EmptySprintNote,
-    /// `sprint ticket` named an id the board does not carry.
-    UnknownTicketId(String),
-    /// A (lane, number) the store does not carry. `known` is the numbers the
-    /// lane does hold.
-    UnknownSprint {
-        lane: String,
-        number: i64,
-        known: Vec<i64>,
-    },
-    /// A lane-only sprint handle resolved to no open record.
-    NoOpenSprint(String),
-    /// `sprint show` was given a number that is not a whole number.
-    InvalidSprintNumber(String),
-    /// `sprint open` was given a mode that is not `serial` or `parallel`.
-    InvalidSprintMode(String),
-    /// `sprint list` was given a status that is not `open` or `closed`.
-    InvalidSprintStatus(String),
     /// `ticket move` was given a position that is not a whole number.
     InvalidIndex(String),
     /// `--assignee self` / `--origin self` was used and `TANDEM_AGENT` names no
@@ -278,10 +253,6 @@ impl DomainError {
             Self::StageOccupied { key, count } => format!(
                 "Stage \"{key}\" still holds {count} ticket(s). Move them out before deleting it."
             ),
-            Self::WorkflowHasOpenSprint { lanes } => format!(
-                "A sprint is open on {}. Close it before activating another workflow.",
-                lanes.join(", ")
-            ),
             Self::WorkflowMissingStages { stages } => format!(
                 "The target workflow lacks stages tickets sit in: {}. Move them first.",
                 stages
@@ -295,9 +266,6 @@ impl DomainError {
             }
             Self::WorkflowIsActive(handle) => {
                 format!("Workflow \"{handle}\" is active. Activate another one before deleting it.")
-            }
-            Self::WorkflowHasRuns { name, count } => {
-                format!("Workflow \"{name}\" has {count} recorded run(s) and cannot be deleted.")
             }
             Self::EmptyLaneName => {
                 "Cycle lane name is empty. Provide a non-empty name and try again.".to_string()
@@ -366,47 +334,6 @@ impl DomainError {
                 "This ticket already links to a note (\"{path}\"). Open that note, or remove \
                  the link before promoting again."
             ),
-            Self::EmptySprintNote => {
-                "Sprint note is empty. Provide a non-empty note and try again.".to_string()
-            }
-            Self::UnknownTicketId(id) => format!(
-                "Unknown ticket id \"{id}\", it is not on the board. Add the ticket to the \
-                 board first, or check the id, and try again."
-            ),
-            Self::UnknownSprint {
-                lane,
-                number,
-                known,
-            } if known.is_empty() => format!(
-                "Unknown sprint \"Sprint {number} — {lane}\". No sprint is recorded in lane \
-                 \"{lane}\" yet."
-            ),
-            Self::UnknownSprint {
-                lane,
-                number,
-                known,
-            } => format!(
-                "Unknown sprint \"Sprint {number} — {lane}\". Here are the sprints lane \
-                 \"{lane}\" holds: {}.",
-                known
-                    .iter()
-                    .map(i64::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-            Self::NoOpenSprint(lane) => format!(
-                "No sprint is open in lane \"{lane}\". Run `sprint open --lane <lane>` first, \
-                 or check the lane, and try again."
-            ),
-            Self::InvalidSprintNumber(bad) => {
-                format!("number must be a whole number (got \"{bad}\").")
-            }
-            Self::InvalidSprintMode(bad) => {
-                format!("mode must be one of serial, parallel (got \"{bad}\").")
-            }
-            Self::InvalidSprintStatus(bad) => {
-                format!("sprint status must be one of open, closed (got \"{bad}\").")
-            }
             Self::InvalidIndex(bad) => {
                 format!("index must be a whole number (got \"{bad}\").")
             }

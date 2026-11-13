@@ -39,10 +39,9 @@ pub(crate) mod board_rows;
 mod diagnostics;
 mod home;
 pub(crate) mod locked;
-pub(crate) mod records;
 mod rows;
 pub(crate) mod workflows;
-// Reachable from the records suite, which builds a v2 home to prove a read of
+// Reachable from the schema suite, which builds a v2 home to prove a read of
 // an older file never fails on a column a later migration adds.
 pub(crate) mod schema;
 #[cfg(test)]
@@ -63,12 +62,12 @@ use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 pub use actor::{Actor, ENVIRONMENT as ACTOR_ENVIRONMENT};
 pub use diagnostics::{BackupHealth, CommentsHealth, CommentsState, Health, comments_state};
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
-pub use records::local_day;
 pub use rows::{
-    NewComment, NewDependency, NewLane, NewProject, NewSetting, NewSprint, NewTicket, NewWorkflow,
-    NewWorkflowStage, SprintRow,
+    NewComment, NewDependency, NewLane, NewProject, NewSetting, NewTicket, NewWorkflow,
+    NewWorkflowStage,
 };
 pub use schema::CURRENT_VERSION;
+pub use timestamp::local_day;
 pub use write::Write;
 
 use locked::LockedDirectory;
@@ -504,26 +503,11 @@ impl Store {
         }
     }
 
-    /// Every sprint row, in stored order.
-    pub fn sprints(&self) -> Result<Vec<SprintRow>> {
-        Ok(self.read(records::sprint_rows)?.unwrap_or_default())
-    }
-
     /// One setting's stored value, the JSON text the row carries (ADR 0031: a
     /// setting is a `key`/`value` row, never a column or a migration). A home
     /// with no database, or no such key, reads `None`.
     pub fn setting(&self, key: &str) -> Result<Option<String>> {
-        Ok(self
-            .read(|connection| records::setting(connection, key))?
-            .flatten())
-    }
-
-    /// Whether the board carries a ticket id, archive included. A read, never a
-    /// write: the sprint's batch check asks the store, it does not touch it.
-    pub fn carries_ticket(&self, id: &str) -> Result<bool> {
-        Ok(self
-            .read(|connection| records::ticket_carried(connection, id))?
-            .unwrap_or(false))
+        Ok(self.read(|connection| setting(connection, key))?.flatten())
     }
 
     /// The applied migration version, or `None` when there is no database yet.
@@ -806,6 +790,21 @@ fn commit(connection: &Connection) -> Result<()> {
     connection
         .execute_batch("COMMIT")
         .map_err(|error| translate(error, connection))
+}
+
+/// One setting's value, as the row carries it: the JSON text the Swift store
+/// wrote. An absent key is `None`, never an empty string, so a caller can tell
+/// "never edited" from "edited to nothing".
+pub(crate) fn setting(connection: &Connection, key: &str) -> Result<Option<String>> {
+    connection
+        .query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+            row.get::<_, String>(0)
+        })
+        .map(Some)
+        .or_else(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(translate(other, connection)),
+        })
 }
 
 /// The engine's contention becomes the store's "locked"; every other failure

@@ -8,6 +8,10 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use rusqlite::{Connection, OpenFlags};
+
+use super::{Result, StoreError};
+
 /// The current instant, whole seconds, as the store writes it.
 pub fn now() -> String {
     encode(unix_now())
@@ -67,6 +71,34 @@ pub fn decode(text: &str) -> Option<i64> {
         return None;
     }
     Some(days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second)
+}
+
+/// The local calendar day `started_at` names, as a zero-padded `YYYY-MM-DD`
+/// key.
+///
+/// **The zone is the machine's, resolved per instant by the engine's own
+/// `localtime`**, so a report spanning a daylight-saving change puts each
+/// record on the date its reader lived through, exactly as `Calendar` did in
+/// the Swift derivation (TAN-208). The engine is opened in memory: this is a
+/// calendar question, not a store read, and it touches no file.
+pub fn local_day(started_at: &str) -> Result<String> {
+    let calendar = calendar_connection()?;
+    calendar
+        .query_row("SELECT date(?1, 'localtime')", [started_at], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|error| super::translate(error, &calendar))
+}
+
+/// The in-memory engine the calendar questions run on. Bundled SQLite, no file,
+/// no sidecar: `localtime` is the C library's zone, the same one the Swift
+/// `Calendar` read.
+fn calendar_connection() -> Result<Connection> {
+    Connection::open_with_flags(
+        ":memory:",
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| StoreError::Io(format!("could not open the calendar: {error}")))
 }
 
 /// The civil date `days` since the epoch names (Howard Hinnant's algorithm).

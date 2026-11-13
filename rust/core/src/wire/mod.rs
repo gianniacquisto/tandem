@@ -28,9 +28,8 @@ pub fn slashed_path(path: &Path) -> String {
 pub use views::{
     ArchivedView, BacklinkView, CommentList, CommentResult, CommentView, LaneDeletionView,
     LaneList, MarkdownBlockView, MarkdownInlineView, MovedNoteView, NoteContentView, NoteMoveView,
-    NoteNodeView, NotePathView, NoteWriteView, ProjectList, ProjectView, RecoveryView, SprintList,
-    SprintResult, TicketBlockView, TicketDetail, TicketList, TicketSummary, WorkflowRunList,
-    WorkflowRunResult,
+    NoteNodeView, NotePathView, NoteWriteView, ProjectList, ProjectView, RecoveryView,
+    TicketBlockView, TicketDetail, TicketList, TicketSummary,
 };
 
 /// What `doctor` answers: ADR 0014's shape, `{"ok": bool, "checks": [...]}`.

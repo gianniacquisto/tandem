@@ -9,8 +9,8 @@
 //!   TypeScript declarations are generated from the same types (`ts-rs`).
 //!
 //! - [`domain`]: the aggregates, pure over the adapter: the board's tickets,
-//!   lanes, comments, order and the dependency edge (PRT-5), and the sprint
-//!   record. Every failure the domain raises is [`domain::error::DomainError`],
+//!   lanes, comments, order and the dependency edge (PRT-5). Every failure the
+//!   domain raises is [`domain::error::DomainError`],
 //!   one shape for the CLI to print.
 //!
 //! - [`bikeshed`]: the notes vault (PRT-7), a plain folder of markdown files

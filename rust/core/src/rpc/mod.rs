@@ -37,7 +37,6 @@ use std::time::{Duration, Instant};
 
 use crate::bikeshed::{Bikeshed, CaptureKind};
 use crate::diagnostics;
-use crate::domain::sprint::{SprintMode, SprintStatus, Sprints};
 use crate::domain::workflow::{WorkflowDraft, Workflows};
 use crate::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, Settings, Status, TicketQuery,
@@ -49,9 +48,8 @@ use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, LaneDeletionReply,
     LaneListReply, MarkdownReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply,
     NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, ProjectEntry,
-    ProjectListReply, Reply, Request, Response, SettingsReply, SprintListReply, SprintReply,
-    TicketListReply, TicketReply, WireError, WorkflowListReply, WorkflowReply,
-    WorkflowRunListReply, WorkflowRunReply,
+    ProjectListReply, Reply, Request, Response, SettingsReply, TicketListReply, TicketReply,
+    WireError, WorkflowListReply, WorkflowReply,
 };
 use crate::wire::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
@@ -820,65 +818,6 @@ fn execute(
                 active,
             }))
         }
-        Method::SprintList(params) => {
-            // The status words are the verb's own: an unknown one is refused
-            // in the CLI's words, so both doors say one thing.
-            let status = match params.status.as_deref() {
-                Some(raw) => Some(
-                    SprintStatus::parse(raw)
-                        .ok_or_else(|| domain(DomainError::InvalidSprintStatus(raw.to_string())))?,
-                ),
-                None => None,
-            };
-            let (sprints, revision) = Sprints::new(store)
-                .list_snapshot(params.lane.as_deref(), status)
-                .map_err(domain)?;
-            Ok(Reply::SprintList(SprintListReply { revision, sprints }))
-        }
-        Method::SprintShow(params) => {
-            let (sprint, revision) = Sprints::new(store)
-                .open_in_snapshot(named(&params.lane))
-                .map_err(domain)?;
-            Ok(Reply::Sprint(SprintReply {
-                revision,
-                sprint,
-                note: None,
-            }))
-        }
-        Method::SprintOpen(params) => {
-            // The mode defaults and validates as the CLI's `sprint open`
-            // does: absent is serial, and an unknown word is the CLI's own
-            // refusal. A lane with an open sprint answers it unchanged, with
-            // the note the CLI prints on a second open.
-            let mode = match params.mode.as_deref() {
-                None => SprintMode::Serial,
-                Some(raw) => SprintMode::parse(raw)
-                    .ok_or_else(|| domain(DomainError::InvalidSprintMode(raw.to_string())))?,
-            };
-            // The opener's session is the caller's own handle, else the
-            // environment's pointer at open time; an absent one stays absent,
-            // so the app's null-session open keeps recording null.
-            let session = params
-                .session
-                .as_deref()
-                .map(str::trim)
-                .filter(|session| !session.is_empty())
-                .map(str::to_string)
-                .or_else(|| {
-                    environment
-                        .get("OPENCODE_SESSION_ID")
-                        .map(|id| id.trim().to_string())
-                        .filter(|id| !id.is_empty())
-                });
-            let opened = Sprints::new(store)
-                .open(actor, named(&params.lane), mode, session.as_deref(), None)
-                .map_err(domain)?;
-            Ok(Reply::Sprint(SprintReply {
-                revision: store.last_revision(),
-                sprint: opened.value,
-                note: opened.note,
-            }))
-        }
         Method::DoctorReport(_) => Ok(Reply::Doctor(DoctorReply {
             report: diagnostics::run(store.home()),
         })),
@@ -967,171 +906,6 @@ fn execute(
                 .map(RecoveryView::new)
                 .collect(),
         })),
-        Method::SprintTicket(params) => {
-            let lane = named(&params.lane);
-            let ticket = board.ticket(named(&params.ticket)).map_err(domain)?;
-            let number = Sprints::new(store).open_in(lane).map_err(domain)?.number;
-            let result = Sprints::new(store)
-                .ticket(actor, lane, number, &ticket.id.to_string())
-                .map_err(domain)?;
-            Ok(Reply::Sprint(SprintReply {
-                revision: store.last_revision(),
-                sprint: result.value,
-                note: result.note,
-            }))
-        }
-        Method::SprintRun(params) => {
-            let lane = named(&params.lane);
-            let note = params.note.as_deref().unwrap_or("");
-            let number = Sprints::new(store).open_in(lane).map_err(domain)?.number;
-            let result = Sprints::new(store)
-                .run(actor, lane, number, note, None)
-                .map_err(domain)?;
-            Ok(Reply::Sprint(SprintReply {
-                revision: store.last_revision(),
-                sprint: result.value,
-                note: result.note,
-            }))
-        }
-        Method::SprintClose(params) => {
-            let lane = named(&params.lane);
-            let number = match params.number {
-                Some(number) => number,
-                None => Sprints::new(store).close_in(lane).map_err(domain)?.number,
-            };
-            let note = params.note.as_deref().map(str::to_string);
-            let result = Sprints::new(store)
-                .close(actor, lane, number, note.as_deref(), None)
-                .map_err(domain)?;
-            Ok(Reply::Sprint(SprintReply {
-                revision: store.last_revision(),
-                sprint: result.value,
-                note: result.note,
-            }))
-        }
-        Method::WorkflowRunOpen(params) => {
-            // The workflow door's own default: the active workflow when the
-            // handle is absent, and an unknown handle is the workflow refusal.
-            let mode = match params.mode.as_deref() {
-                None => SprintMode::Serial,
-                Some(raw) => SprintMode::parse(raw)
-                    .ok_or_else(|| domain(DomainError::InvalidSprintMode(raw.to_string())))?,
-            };
-            let session = params
-                .session
-                .as_deref()
-                .map(str::trim)
-                .filter(|session| !session.is_empty())
-                .map(str::to_string)
-                .or_else(|| {
-                    environment
-                        .get("OPENCODE_SESSION_ID")
-                        .map(|id| id.trim().to_string())
-                        .filter(|id| !id.is_empty())
-                });
-            let opened = Sprints::new(store)
-                .open_run(
-                    actor,
-                    named(&params.lane),
-                    params.workflow.as_deref(),
-                    mode,
-                    session.as_deref(),
-                    None,
-                )
-                .map_err(domain)?;
-            Ok(Reply::WorkflowRun(WorkflowRunReply {
-                revision: store.last_revision(),
-                run: opened.value,
-                note: opened.note,
-            }))
-        }
-        Method::WorkflowRunTicket(params) => {
-            let lane = named(&params.lane);
-            let ticket = board.ticket(named(&params.ticket)).map_err(domain)?;
-            let number = Sprints::new(store)
-                .open_run_in(lane)
-                .map_err(domain)?
-                .number;
-            let result = Sprints::new(store)
-                .ticket(actor, lane, number, &ticket.id.to_string())
-                .map_err(domain)?;
-            Ok(Reply::WorkflowRun(WorkflowRunReply {
-                revision: store.last_revision(),
-                run: result.value.into(),
-                note: result.note,
-            }))
-        }
-        Method::WorkflowRunRun(params) => {
-            let lane = named(&params.lane);
-            let note = params.note.as_deref().unwrap_or("");
-            let number = Sprints::new(store)
-                .open_run_in(lane)
-                .map_err(domain)?
-                .number;
-            let result = Sprints::new(store)
-                .run(actor, lane, number, note, None)
-                .map_err(domain)?;
-            Ok(Reply::WorkflowRun(WorkflowRunReply {
-                revision: store.last_revision(),
-                run: result.value.into(),
-                note: result.note,
-            }))
-        }
-        Method::WorkflowRunClose(params) => {
-            let lane = named(&params.lane);
-            let number = match params.number {
-                Some(number) => number,
-                None => Sprints::new(store).close_in(lane).map_err(domain)?.number,
-            };
-            let note = params.note.as_deref().map(str::to_string);
-            let result = Sprints::new(store)
-                .close(actor, lane, number, note.as_deref(), None)
-                .map_err(domain)?;
-            Ok(Reply::WorkflowRun(WorkflowRunReply {
-                revision: store.last_revision(),
-                run: result.value.into(),
-                note: result.note,
-            }))
-        }
-        Method::WorkflowRunList(params) => {
-            let status = match params.status.as_deref() {
-                Some(raw) => Some(
-                    SprintStatus::parse(raw)
-                        .ok_or_else(|| domain(DomainError::InvalidSprintStatus(raw.to_string())))?,
-                ),
-                None => None,
-            };
-            let (runs, revision) = Sprints::new(store)
-                .list_runs_snapshot(params.lane.as_deref(), params.workflow.as_deref(), status)
-                .map_err(domain)?;
-            Ok(Reply::WorkflowRunList(WorkflowRunListReply {
-                revision,
-                runs,
-            }))
-        }
-        Method::WorkflowRunShow(params) => {
-            let lane = named(&params.lane);
-            match params.number {
-                Some(number) => {
-                    let run = Sprints::new(store).show_run(lane, number).map_err(domain)?;
-                    Ok(Reply::WorkflowRun(WorkflowRunReply {
-                        revision: store.last_revision(),
-                        run,
-                        note: None,
-                    }))
-                }
-                None => {
-                    let (run, revision) = Sprints::new(store)
-                        .open_run_in_snapshot(lane)
-                        .map_err(domain)?;
-                    Ok(Reply::WorkflowRun(WorkflowRunReply {
-                        revision,
-                        run,
-                        note: None,
-                    }))
-                }
-            }
-        }
         Method::NoteCapture(params) => {
             store.home().ensure().map_err(|error| {
                 WireError::store(format!(

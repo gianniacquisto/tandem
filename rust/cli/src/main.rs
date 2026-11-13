@@ -3,7 +3,7 @@
 //! One binary (`docs/port.md`, Target shape): the verbs agents call and the
 //! core the app trusts are the same executable, so they cannot drift. This rung
 //! carries the whole grammar the skills speak (PRT-9): `ticket`, `lane`, `note`,
-//! `sprint`, and `doctor`'s pinned report. `rpc` lands with PRT-11.
+//! and `doctor`'s pinned report. `rpc` lands with PRT-11.
 //!
 //! What lives here is what belongs to a process rather than to the domain:
 //! argv, the environment, the two streams and the exit code. Every verb maps to
@@ -23,7 +23,6 @@ use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
 use tandem_core::bikeshed::{Bikeshed, CaptureKind, Day};
 use tandem_core::diagnostics;
-use tandem_core::domain::sprint::{SprintMode, Sprints};
 use tandem_core::domain::workflow::{WorkflowDraft, Workflows};
 use tandem_core::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Settings, Status, TicketQuery,
@@ -33,8 +32,8 @@ use tandem_core::store::{self, Actor, Home, Store};
 use tandem_core::wire::rpc::{SettingsReply, WorkflowListReply, WorkflowReply, WorkflowSetParams};
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
-    NoteMoveView, NotePathView, NoteWriteView, ProjectList, SprintList, SprintResult, TicketDetail,
-    TicketList, TicketSummary, WorkflowRunList, WorkflowRunResult,
+    NoteMoveView, NotePathView, NoteWriteView, ProjectList, TicketDetail, TicketList,
+    TicketSummary,
 };
 
 // MARK: - The grammar
@@ -85,11 +84,6 @@ enum Command {
     Note {
         #[command(subcommand)]
         command: Option<NoteCommand>,
-    },
-    /// The sprint record.
-    Sprint {
-        #[command(subcommand)]
-        command: Option<SprintCommand>,
     },
     /// The workflow: the stage set the board reads (TAN-328).
     Workflow {
@@ -166,93 +160,12 @@ enum NoteCommand {
 }
 
 #[derive(Subcommand)]
-enum SprintCommand {
-    Open(SprintOpenArgs),
-    Ticket(SprintTicketArgs),
-    Run(SprintRunArgs),
-    Close(SprintCloseArgs),
-    List(SprintListArgs),
-    Show(SprintShowArgs),
-}
-
-#[derive(Subcommand)]
 enum WorkflowCommand {
     List,
     Show(WorkflowShowArgs),
     Set(WorkflowSetArgs),
     Use(WorkflowIdArgs),
     Delete(WorkflowIdArgs),
-    /// The workflow's current run and its run history (TAN-332).
-    Run {
-        #[command(subcommand)]
-        command: Option<WorkflowRunCommand>,
-    },
-}
-
-#[derive(Subcommand)]
-enum WorkflowRunCommand {
-    Open(WorkflowRunOpenArgs),
-    Ticket(WorkflowRunTicketArgs),
-    Run(WorkflowRunRunArgs),
-    Close(WorkflowRunCloseArgs),
-    List(WorkflowRunListArgs),
-    Show(WorkflowRunShowArgs),
-}
-
-#[derive(Args)]
-struct WorkflowRunOpenArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    workflow: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    mode: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowRunTicketArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    ticket: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowRunRunArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    note: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowRunCloseArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    number: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    note: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowRunListArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    workflow: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    status: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowRunShowArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    number: Option<String>,
 }
 
 #[derive(Args)]
@@ -529,58 +442,6 @@ struct SettingsSetArgs {
     project: Option<String>,
 }
 
-#[derive(Args)]
-struct SprintOpenArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    mode: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-}
-
-#[derive(Args)]
-struct SprintTicketArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    ticket: Option<String>,
-}
-
-#[derive(Args)]
-struct SprintRunArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    note: Option<String>,
-}
-
-#[derive(Args)]
-struct SprintCloseArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    number: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    note: Option<String>,
-}
-
-#[derive(Args)]
-struct SprintListArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    status: Option<String>,
-}
-
-#[derive(Args)]
-struct SprintShowArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    number: Option<String>,
-}
-
 // MARK: - The process
 
 fn main() -> ExitCode {
@@ -685,16 +546,6 @@ fn help_text(cli: &Cli) -> &'static str {
             None => return usage::group("note").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
         },
-        Some(Command::Sprint { command }) => match command {
-            None => return usage::group("sprint").unwrap_or(usage::ROOT),
-            Some(command) => command.help(),
-        },
-        Some(Command::Workflow {
-            command: Some(WorkflowCommand::Run { command }),
-        }) => match command {
-            None => return usage::group("workflow run").unwrap_or(usage::ROOT),
-            Some(command) => command.help(),
-        },
         Some(Command::Workflow { command }) => match command {
             None => return usage::group("workflow").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
@@ -774,19 +625,6 @@ impl SettingsCommand {
     }
 }
 
-impl SprintCommand {
-    fn help(&self) -> &'static str {
-        match self {
-            Self::Open(_) => "sprint open",
-            Self::Ticket(_) => "sprint ticket",
-            Self::Run(_) => "sprint run",
-            Self::Close(_) => "sprint close",
-            Self::List(_) => "sprint list",
-            Self::Show(_) => "sprint show",
-        }
-    }
-}
-
 impl WorkflowCommand {
     fn help(&self) -> &'static str {
         match self {
@@ -795,20 +633,6 @@ impl WorkflowCommand {
             Self::Set(_) => "workflow set",
             Self::Use(_) => "workflow use",
             Self::Delete(_) => "workflow delete",
-            Self::Run { .. } => "workflow run",
-        }
-    }
-}
-
-impl WorkflowRunCommand {
-    fn help(&self) -> &'static str {
-        match self {
-            Self::Open(_) => "workflow run open",
-            Self::Ticket(_) => "workflow run ticket",
-            Self::Run(_) => "workflow run run",
-            Self::Close(_) => "workflow run close",
-            Self::List(_) => "workflow run list",
-            Self::Show(_) => "workflow run show",
         }
     }
 }
@@ -829,7 +653,6 @@ fn run(cli: &Cli) -> Result<(), Failure> {
         Command::Lane { command } => lane(&home, command.as_ref()),
         Command::Project { command } => project(&home, command.as_ref()),
         Command::Note { command } => note(&home, command.as_ref()),
-        Command::Sprint { command } => sprint(&home, command.as_ref()),
         Command::Workflow { command } => workflow(&home, command.as_ref()),
         Command::Settings { command } => settings_verb(&home, command.as_ref()),
     }
@@ -1219,17 +1042,10 @@ fn project_names(board: &Board) -> Result<Vec<String>, Failure> {
 
 /// The workflow verbs: the stage set as data (TAN-328). `list` and `show` read;
 /// `set` writes a whole document from stdin, atomically; `use` activates one;
-/// `delete` removes a workflow no ticket or sprint is using.
+/// `delete` removes a workflow no ticket is using.
 fn workflow(home: &Home, command: Option<&WorkflowCommand>) -> Result<(), Failure> {
     let command = command.ok_or_else(Failure::usage)?;
-    let read_only = match command {
-        WorkflowCommand::List | WorkflowCommand::Show(_) => true,
-        WorkflowCommand::Run { command } => matches!(
-            command,
-            None | Some(WorkflowRunCommand::List(_)) | Some(WorkflowRunCommand::Show(_))
-        ),
-        _ => false,
-    };
+    let read_only = matches!(command, WorkflowCommand::List | WorkflowCommand::Show(_));
     let store = if read_only {
         Store::new(home.clone())
     } else {
@@ -1248,10 +1064,6 @@ fn workflow(home: &Home, command: Option<&WorkflowCommand>) -> Result<(), Failur
                 workflows: list,
                 active,
             })
-        }
-        WorkflowCommand::Run { command } => {
-            let command = command.as_ref().ok_or_else(Failure::usage)?;
-            workflow_run(&store, command)
         }
         WorkflowCommand::Show(args) => {
             let (workflow, revision) = match args.id.as_deref() {
@@ -1298,102 +1110,6 @@ fn workflow(home: &Home, command: Option<&WorkflowCommand>) -> Result<(), Failur
                 workflows,
                 active,
             })
-        }
-    }
-}
-
-/// The workflow run verbs (TAN-332): the workflow's current run and its
-/// history, on the same records the `sprint` aliases write.
-fn workflow_run(store: &Store, command: &WorkflowRunCommand) -> Result<(), Failure> {
-    let sprints = Sprints::new(store);
-    let actor = Actor::current();
-
-    match command {
-        WorkflowRunCommand::Open(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let mode = sprint_mode(args.mode.as_deref())?;
-            let session = session_pointer(args.session.as_deref());
-            let result = sprints
-                .open_run(
-                    &actor,
-                    lane,
-                    args.workflow.as_deref(),
-                    mode,
-                    session.as_deref(),
-                    None,
-                )
-                .map_err(Failure::domain)?;
-            print(&WorkflowRunResult {
-                run: result.value,
-                note: result.note,
-            })
-        }
-        WorkflowRunCommand::Ticket(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let ticket = Board::new(store.clone())
-                .ticket(args.ticket.as_deref().unwrap_or(""))
-                .map_err(Failure::domain)?;
-            let number = sprints.open_run_in(lane).map_err(Failure::domain)?.number;
-            let result = sprints
-                .ticket(&actor, lane, number, &ticket.id.to_string())
-                .map_err(Failure::domain)?;
-            print(&WorkflowRunResult {
-                run: result.value.into(),
-                note: result.note,
-            })
-        }
-        WorkflowRunCommand::Run(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let note = sprint_note(args.note.as_deref().unwrap_or(""))?;
-            let number = sprints.open_run_in(lane).map_err(Failure::domain)?.number;
-            let result = sprints
-                .run(&actor, lane, number, &note, None)
-                .map_err(Failure::domain)?;
-            print(&WorkflowRunResult {
-                run: result.value.into(),
-                note: result.note,
-            })
-        }
-        WorkflowRunCommand::Close(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let note = match args.note.as_deref() {
-                Some(raw) => Some(sprint_note(raw)?),
-                None => None,
-            };
-            let number = match args.number.as_deref() {
-                Some(raw) => sprint_number(raw)?,
-                None => sprints.close_in(lane).map_err(Failure::domain)?.number,
-            };
-            let result = sprints
-                .close(&actor, lane, number, note.as_deref(), None)
-                .map_err(Failure::domain)?;
-            print(&WorkflowRunResult {
-                run: result.value.into(),
-                note: result.note,
-            })
-        }
-        WorkflowRunCommand::List(args) => {
-            let status = match args.status.as_deref() {
-                Some(raw) => Some(
-                    tandem_core::domain::sprint::SprintStatus::parse(raw).ok_or_else(|| {
-                        Failure::domain(DomainError::InvalidSprintStatus(raw.to_string()))
-                    })?,
-                ),
-                None => None,
-            };
-            let runs = sprints
-                .list_runs(args.lane.as_deref(), args.workflow.as_deref(), status)
-                .map_err(Failure::domain)?;
-            print(&WorkflowRunList { runs })
-        }
-        WorkflowRunCommand::Show(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let run = match args.number.as_deref() {
-                Some(raw) => sprints.show_run(lane, sprint_number(raw)?),
-                None => sprints.open_run_in(lane),
-            }
-            .map_err(Failure::domain)?;
-            print(&WorkflowRunResult { run, note: None })
         }
     }
 }
@@ -1519,102 +1235,6 @@ fn capture_failure(error: DomainError) -> Failure {
     failure
 }
 
-fn sprint(home: &Home, command: Option<&SprintCommand>) -> Result<(), Failure> {
-    let command = command.ok_or_else(Failure::usage)?;
-    let store = if matches!(command, SprintCommand::List(_) | SprintCommand::Show(_)) {
-        Store::new(home.clone())
-    } else {
-        write_store(home)?
-    };
-    let sprints = Sprints::new(&store);
-    let actor = Actor::current();
-
-    match command {
-        SprintCommand::Open(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let mode = sprint_mode(args.mode.as_deref())?;
-            let session = session_pointer(args.session.as_deref());
-            let result = sprints
-                .open(&actor, lane, mode, session.as_deref(), None)
-                .map_err(Failure::domain)?;
-            print(&SprintResult {
-                sprint: result.value,
-                note: result.note,
-            })
-        }
-        SprintCommand::Ticket(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let ticket = Board::new(store.clone())
-                .ticket(args.ticket.as_deref().unwrap_or(""))
-                .map_err(Failure::domain)?;
-            let number = sprints.open_in(lane).map_err(Failure::domain)?.number;
-            let result = sprints
-                .ticket(&actor, lane, number, &ticket.id.to_string())
-                .map_err(Failure::domain)?;
-            print(&SprintResult {
-                sprint: result.value,
-                note: result.note,
-            })
-        }
-        SprintCommand::Run(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let note = sprint_note(args.note.as_deref().unwrap_or(""))?;
-            let number = sprints.open_in(lane).map_err(Failure::domain)?.number;
-            let result = sprints
-                .run(&actor, lane, number, &note, None)
-                .map_err(Failure::domain)?;
-            print(&SprintResult {
-                sprint: result.value,
-                note: result.note,
-            })
-        }
-        SprintCommand::Close(args) => {
-            let lane = args.lane.as_deref().unwrap_or("");
-            let note = match args.note.as_deref() {
-                Some(raw) => Some(sprint_note(raw)?),
-                None => None,
-            };
-            let number = match args.number.as_deref() {
-                Some(raw) => sprint_number(raw)?,
-                None => sprints.close_in(lane).map_err(Failure::domain)?.number,
-            };
-            let result = sprints
-                .close(&actor, lane, number, note.as_deref(), None)
-                .map_err(Failure::domain)?;
-            print(&SprintResult {
-                sprint: result.value,
-                note: result.note,
-            })
-        }
-        SprintCommand::List(args) => {
-            let status = match args.status.as_deref() {
-                Some(raw) => Some(
-                    tandem_core::domain::sprint::SprintStatus::parse(raw).ok_or_else(|| {
-                        Failure::domain(DomainError::InvalidSprintStatus(raw.to_string()))
-                    })?,
-                ),
-                None => None,
-            };
-            let records = sprints
-                .list(args.lane.as_deref(), status)
-                .map_err(Failure::domain)?;
-            print(&SprintList { sprints: records })
-        }
-        SprintCommand::Show(args) => {
-            let record = sprints
-                .show(
-                    args.lane.as_deref().unwrap_or(""),
-                    sprint_number(args.number.as_deref().unwrap_or(""))?,
-                )
-                .map_err(Failure::domain)?;
-            print(&SprintResult {
-                sprint: record,
-                note: None,
-            })
-        }
-    }
-}
-
 // MARK: - Plumbing
 
 fn print<T: serde::Serialize>(value: &T) -> Result<(), Failure> {
@@ -1730,44 +1350,6 @@ fn add_description_body(flag: Option<&str>) -> Result<Option<String>, Failure> {
             DescriptionBody::required(body).map_err(Failure::domain)?,
         )),
     }
-}
-
-/// A sprint's session pointer: the caller's value, else
-/// `$OPENCODE_SESSION_ID`; a blank value is no pointer.
-fn session_pointer(raw: Option<&str>) -> Option<String> {
-    raw.map(str::trim)
-        .filter(|session| !session.is_empty())
-        .map(str::to_string)
-        .or_else(|| {
-            env::var("OPENCODE_SESSION_ID")
-                .ok()
-                .map(|id| id.trim().to_string())
-                .filter(|id| !id.is_empty())
-        })
-}
-
-/// A sprint's mode: absent is `serial`.
-fn sprint_mode(raw: Option<&str>) -> Result<SprintMode, Failure> {
-    match raw {
-        None => Ok(SprintMode::Serial),
-        Some(raw) => SprintMode::parse(raw)
-            .ok_or_else(|| Failure::domain(DomainError::InvalidSprintMode(raw.to_string()))),
-    }
-}
-
-/// A sprint note: the flag's value, or stdin when it is `-`. The empty body is
-/// the core's own refusal.
-fn sprint_note(raw: &str) -> Result<String, Failure> {
-    if raw == "-" {
-        read_standard_input()
-    } else {
-        Ok(raw.to_string())
-    }
-}
-
-fn sprint_number(raw: &str) -> Result<i64, Failure> {
-    raw.parse::<i64>()
-        .map_err(|_| Failure::domain(DomainError::InvalidSprintNumber(raw.to_string())))
 }
 
 // MARK: - rpc
