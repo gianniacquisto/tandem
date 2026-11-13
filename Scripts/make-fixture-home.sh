@@ -5,9 +5,9 @@
 # contract home both implementations read) and `Fixtures/port/Board` (the
 # 78-ticket board the Tickets face's pictures are shot on). Each `tandem.db` is
 # committed and no run writes into it. This script is their one writer, and the
-# seed beside each home is the source: every session id, ticket id and timestamp
-# is in the file and the generator reads no clock, so the output is byte for
-# byte the same on every machine.
+# seed beside each home is the source: every ticket id and timestamp is in the
+# file and the generator reads no clock, so the output is byte for byte the same
+# on every machine.
 #
 # `rust/core/tests/fixture_db.rs` runs the same generator into a temp path and
 # fails when either committed file disagrees, which is what proves the artifacts

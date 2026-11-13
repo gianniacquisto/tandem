@@ -121,11 +121,10 @@ fn has_index(connection: &Connection, name: &str) -> bool {
 
 /// Every table whose inserts carry the actor, and its author column. The seam's
 /// own table is in the list: a migration is a write too.
-const AUTHORED_TABLES: [&str; 8] = [
+const AUTHORED_TABLES: [&str; 7] = [
     "tickets",
     "ticket_dependencies",
     "comments",
-    "sessions",
     "workflow_runs",
     "lanes",
     "settings",
@@ -2108,31 +2107,6 @@ mod actor {
                     at: "2026-10-30T00:00:01Z",
                     body: "a comment",
                 })?;
-                write.insert_session(NewSession {
-                    id: "ses_e73388dd8ffd",
-                    harness_session_id: Some("ses_harness"),
-                    harness_transport: Some("database"),
-                    project: "tandem",
-                    agent: Some("builder"),
-                    brief: "Build the store.",
-                    status: "running",
-                    outcome: None,
-                    summary: None,
-                    started_at: "2026-10-30T00:00:00Z",
-                    ended_at: None,
-                    tickets: Some("[\"5E345FA3\"]"),
-                    model: Some("deepseek-v4.1-flash"),
-                    tokens_input: Some(10),
-                    tokens_output: Some(20),
-                    tokens_reasoning: Some(0),
-                    tokens_cache_read: Some(0),
-                    tokens_cache_write: Some(0),
-                    seconds: Some(1.5),
-                    cost: Some(0.01),
-                    skills: Some("{\"thinking\":2}"),
-                    turns: Some(4),
-                    calls: Some(9),
-                })?;
                 write.insert_sprint(NewSprint {
                     lane: "Port",
                     number: 1,
@@ -2199,32 +2173,6 @@ mod actor {
             author_of(&connection, "tickets"),
             vec!["builder".to_string()],
             "a later write does not rewrite a row it did not touch"
-        );
-    }
-
-    #[test]
-    fn a_row_does_not_infer_its_author_from_a_session() {
-        let sandbox = Sandbox::new("no-inference");
-        let store = sandbox.store();
-
-        // A session row names the pass in `agent`; a ticket written by the human
-        // must still read `human`, because the author is the column, never the
-        // session it might be linked to.
-        a_full_write(&store, &Actor::Human);
-
-        let connection = sandbox.connection();
-        let agent: Option<String> = connection
-            .query_row("SELECT agent FROM sessions", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(
-            agent.as_deref(),
-            Some("builder"),
-            "the fixture names a pass in the session row"
-        );
-        assert_eq!(
-            author_of(&connection, "tickets"),
-            vec!["human".to_string()],
-            "the ticket's author is the write's actor"
         );
     }
 }

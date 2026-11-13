@@ -1,8 +1,7 @@
 //! The domain's aggregates, ported from `Sources/TandemCore/`: the board's
-//! tickets, lanes, comments, order and dependency edge (PRT-5), and the records'
-//! sessions, sprints, usage derivation and harness read (PRT-6). The bikeshed is
-//! the vault over files, so it lives beside the domain in [`crate::bikeshed`] and
-//! reaches this one through the `Notes` seam.
+//! tickets, lanes, comments, order and dependency edge (PRT-5), and the sprint
+//! record. The bikeshed is the vault over files, so it lives beside the domain
+//! in [`crate::bikeshed`] and reaches this one through the `Notes` seam.
 //!
 //! The domain is pure over the store adapter: no argv, no JSON, no file I/O. It
 //! reads one [`Contents`], changes it, and hands the difference to
@@ -31,7 +30,6 @@ pub mod contents;
 pub mod description;
 pub mod edit;
 pub mod error;
-pub mod harness;
 pub mod label;
 pub mod lane;
 pub mod layout;
@@ -41,14 +39,12 @@ pub mod ordering;
 pub mod preflight;
 pub mod query;
 pub mod runner;
-pub mod session;
 pub mod settings;
 pub mod sprint;
 pub mod text;
 pub mod ticket;
 pub mod ticket_to_note;
 pub mod undo;
-pub mod usage;
 pub mod workflow;
 
 pub use board::{AddTicket, Board, SetFields, resolve_assignee, resolve_origin};

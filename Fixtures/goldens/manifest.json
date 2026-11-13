@@ -1639,431 +1639,6 @@
       ]
     },
     {
-      "group": "session",
-      "case": "help",
-      "argv": [
-        "session",
-        "--help"
-      ]
-    },
-    {
-      "group": "session",
-      "case": "start",
-      "argv": [
-        "session",
-        "start",
-        "--project",
-        "fixture",
-        "--agent",
-        "builder",
-        "--brief",
-        "A brief the golden keeps."
-      ]
-    },
-    {
-      "group": "session",
-      "case": "start-id",
-      "argv": [
-        "session",
-        "start",
-        "--session",
-        "golden-other",
-        "--project",
-        "fixture",
-        "--agent",
-        "builder",
-        "--brief",
-        "A brief the golden keeps."
-      ]
-    },
-    {
-      "group": "session",
-      "case": "start-brief-stdin",
-      "stdin": "A brief from stdin.\n",
-      "argv": [
-        "session",
-        "start",
-        "--session",
-        "golden-other",
-        "--brief",
-        "-"
-      ]
-    },
-    {
-      "group": "session",
-      "case": "start-no-id",
-      "env": {
-        "OPENCODE_SESSION_ID": null
-      },
-      "argv": [
-        "session",
-        "start",
-        "--project",
-        "fixture",
-        "--agent",
-        "builder",
-        "--brief",
-        "A brief the golden keeps."
-      ]
-    },
-    {
-      "group": "session",
-      "case": "link",
-      "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
-        {
-          "argv": [
-            "lane",
-            "add",
-            "--name",
-            "Tandem",
-            "--abbr",
-            "TAN"
-          ]
-        },
-        {
-          "argv": [
-            "ticket",
-            "add",
-            "--title",
-            "Fixture ticket",
-            "--lane",
-            "Tandem"
-          ]
-        }
-      ],
-      "argv": [
-        "session",
-        "link",
-        "--ticket",
-        "TAN-1"
-      ]
-    },
-    {
-      "group": "session",
-      "case": "link-unknown-ticket",
-      "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        }
-      ],
-      "argv": [
-        "session",
-        "link",
-        "--ticket",
-        "TAN-1"
-      ],
-      "exit": 1
-    },
-    {
-      "group": "session",
-      "case": "list",
-      "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
-        {
-          "argv": [
-            "lane",
-            "add",
-            "--name",
-            "Tandem",
-            "--abbr",
-            "TAN"
-          ]
-        },
-        {
-          "argv": [
-            "ticket",
-            "add",
-            "--title",
-            "Fixture ticket",
-            "--lane",
-            "Tandem"
-          ]
-        },
-        {
-          "argv": [
-            "session",
-            "link",
-            "--ticket",
-            "TAN-1"
-          ]
-        }
-      ],
-      "argv": [
-        "session",
-        "list"
-      ]
-    },
-    {
-      "group": "session",
-      "case": "list-project",
-      "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
-        {
-          "argv": [
-            "session",
-            "start",
-            "--session",
-            "golden-other",
-            "--project",
-            "other",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        }
-      ],
-      "argv": [
-        "session",
-        "list",
-        "--project",
-        "fixture"
-      ]
-    },
-    {
-      "group": "session",
-      "case": "show",
-      "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
-        {
-          "argv": [
-            "lane",
-            "add",
-            "--name",
-            "Tandem",
-            "--abbr",
-            "TAN"
-          ]
-        },
-        {
-          "argv": [
-            "ticket",
-            "add",
-            "--title",
-            "Fixture ticket",
-            "--lane",
-            "Tandem"
-          ]
-        },
-        {
-          "argv": [
-            "session",
-            "link",
-            "--ticket",
-            "TAN-1"
-          ]
-        }
-      ],
-      "argv": [
-        "session",
-        "show"
-      ]
-    },
-    {
-      "group": "session",
-      "case": "show-unknown",
-      "argv": [
-        "session",
-        "show",
-        "--session",
-        "golden-other"
-      ],
-      "exit": 1
-    },
-    {
-      "group": "session",
-      "case": "end",
-      "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        }
-      ],
-      "argv": [
-        "session",
-        "end",
-        "--outcome",
-        "succeeded",
-        "--summary",
-        "What landed."
-      ]
-    },
-    {
-      "group": "session",
-      "case": "end-usage",
-      "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        }
-      ],
-      "argv": [
-        "session",
-        "end",
-        "--outcome",
-        "succeeded",
-        "--summary",
-        "What landed.",
-        "--tokens-input",
-        "10",
-        "--tokens-output",
-        "20",
-        "--tokens-reasoning",
-        "5",
-        "--tokens-cache-read",
-        "3",
-        "--tokens-cache-write",
-        "1",
-        "--cost",
-        "0.5",
-        "--model",
-        "golden-model"
-      ]
-    },
-    {
-      "group": "session",
-      "case": "end-skills",
-      "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        }
-      ],
-      "argv": [
-        "session",
-        "end",
-        "--outcome",
-        "succeeded",
-        "--summary",
-        "What landed.",
-        "--skills",
-        "grilling=2,tandem-memory=1"
-      ]
-    },
-    {
-      "group": "session",
-      "case": "start-help",
-      "argv": [
-        "session",
-        "start",
-        "--help"
-      ]
-    },
-    {
-      "group": "session",
-      "case": "end-help",
-      "argv": [
-        "session",
-        "end",
-        "--help"
-      ]
-    },
-    {
-      "group": "session",
-      "case": "link-help",
-      "argv": [
-        "session",
-        "link",
-        "--help"
-      ]
-    },
-    {
-      "group": "session",
-      "case": "list-help",
-      "argv": [
-        "session",
-        "list",
-        "--help"
-      ]
-    },
-    {
-      "group": "session",
-      "case": "show-help",
-      "argv": [
-        "session",
-        "show",
-        "--help"
-      ]
-    },
-    {
       "group": "sprint",
       "case": "help",
       "argv": [
@@ -2075,18 +1650,6 @@
       "group": "sprint",
       "case": "open",
       "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
         {
           "argv": [
             "lane",
@@ -2111,18 +1674,6 @@
       "setup": [
         {
           "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
-        {
-          "argv": [
             "lane",
             "add",
             "--name",
@@ -2145,18 +1696,6 @@
       "group": "sprint",
       "case": "open-twice",
       "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
         {
           "argv": [
             "lane",
@@ -2200,18 +1739,6 @@
       "setup": [
         {
           "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
-        {
-          "argv": [
             "lane",
             "add",
             "--name",
@@ -2252,18 +1779,6 @@
       "group": "sprint",
       "case": "run",
       "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
         {
           "argv": [
             "lane",
@@ -2319,18 +1834,6 @@
       "setup": [
         {
           "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
-        {
-          "argv": [
             "lane",
             "add",
             "--name",
@@ -2361,18 +1864,6 @@
       "group": "sprint",
       "case": "close",
       "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
         {
           "argv": [
             "lane",
@@ -2407,18 +1898,6 @@
       "setup": [
         {
           "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
-        {
-          "argv": [
             "lane",
             "add",
             "--name",
@@ -2445,18 +1924,6 @@
       "group": "sprint",
       "case": "list-closed",
       "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
         {
           "argv": [
             "lane",
@@ -2495,18 +1962,6 @@
       "group": "sprint",
       "case": "show",
       "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
         {
           "argv": [
             "lane",
@@ -2549,18 +2004,6 @@
       "group": "sprint",
       "case": "show-unknown-number",
       "setup": [
-        {
-          "argv": [
-            "session",
-            "start",
-            "--project",
-            "fixture",
-            "--agent",
-            "builder",
-            "--brief",
-            "A brief the golden keeps."
-          ]
-        },
         {
           "argv": [
             "lane",

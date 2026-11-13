@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { initialSnapshot, snapshotReducer, type SnapshotState } from '../renderer/src/shell/snapshot'
 import { refusalBanner, writeBlocked } from '../renderer/src/shell/write'
 import type { TicketSummary } from '../renderer/src/wire/TicketSummary'
-import type { UsageReportView } from '../renderer/src/wire/UsageReportView'
 import type { Workflow } from '../renderer/src/wire/Workflow'
 
 const ticket: TicketSummary = {
@@ -26,19 +25,6 @@ const ticket: TicketSummary = {
   title: 'a ticket',
 }
 
-const report: UsageReportView = {
-  records: 4,
-  reported: 3,
-  cost: 2.5,
-  tokens: { input: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null },
-  day: [],
-  model: [],
-  agent: [],
-  ticket: [],
-  overlap: 0.75,
-  ticketTotal: 3.25,
-}
-
 function ready(): SnapshotState {
   return snapshotReducer(initialSnapshot, {
     type: 'loaded',
@@ -56,7 +42,6 @@ describe('the shell snapshot', () => {
       tickets: [],
       lanes: [],
       projects: [],
-      usage: null,
       roster: [],
       activeProject: null,
       workflow: null,
@@ -158,20 +143,6 @@ describe('the shell snapshot', () => {
     // A failed read keeps the stages the face already draws.
     const failed = snapshotReducer(next, { type: 'failed', message: 'no store' })
     expect(failed.workflow).toBe(workflow)
-  })
-
-  it('carries the one usage report the Usage face draws', () => {
-    const next = snapshotReducer(initialSnapshot, { type: 'usage', report })
-
-    expect(next.usage).toBe(report)
-    expect(next.revision).toBeNull()
-  })
-
-  it('keeps the last report when the next read fails', () => {
-    const loaded = snapshotReducer(initialSnapshot, { type: 'usage', report })
-    const failed = snapshotReducer(loaded, { type: 'failed', message: 'no store' })
-
-    expect(failed.usage).toBe(report)
   })
 
   it('shows a conflict until it is dismissed, and a load does not wipe it', () => {

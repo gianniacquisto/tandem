@@ -26,7 +26,6 @@ pub mod daily;
 pub mod front;
 pub mod health;
 pub mod prune;
-pub mod session_notes;
 pub mod stats;
 pub mod wikilink;
 

@@ -413,7 +413,7 @@ describe('the sheet\'s methods', () => {
 
     const calls = [
       ...new Set(
-        ['faces/TicketSheet.tsx', 'faces/SessionsSection.tsx']
+        ['faces/TicketSheet.tsx']
           .flatMap((name) => [...source(name).matchAll(/method: '([^']+)'/g)])
           .flatMap((match) => (match[1] === undefined ? [] : [match[1]])),
       ),
@@ -423,8 +423,6 @@ describe('the sheet\'s methods', () => {
       'lane.add',
       'lane.rename',
       'markdown.blocks',
-      'session.list',
-      'session.transcript',
       'ticket.comment.add',
       'ticket.comment.list',
       'ticket.move',

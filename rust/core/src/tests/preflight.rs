@@ -1,22 +1,17 @@
-//! Part 3 preflight and record: per-ticket gate facts, the rebase symbol check,
-//! and the close sweep over a worked store.
+//! Part 3 preflight and record: per-ticket gate facts and the rebase symbol
+//! check.
 //!
 //! The git/gh boundaries are stubbed: counts and check lists in, verdicts out.
 //! No network, no real repo. Verdicts report into the part 1 vocabulary
 //! (`runner::PassResult` and `runner::Effect`), never an invented status.
 
-use crate::domain::board::{Board, SetFields};
-use crate::domain::edit::Edit;
 use crate::domain::preflight::{
     Check, CheckState, PreflightAction, TicketPreflight, find_stale_symbol, preflight,
-    release_dead_claims,
 };
-use crate::domain::query::HUMAN;
 use crate::domain::runner::{Driver, Effect, PassKind, PassResult, Phase, SprintHandle};
-use crate::domain::session::{Ending, SessionOutcome, SessionStatus, Sessions};
 use crate::domain::ticket::Status;
 
-use super::support::{Sandbox, TICKET_ONE, TICKET_THREE, TICKET_TWO, at};
+use super::support::{TICKET_ONE, TICKET_TWO, at};
 
 fn green(name: &str) -> Check {
     Check {
@@ -194,151 +189,6 @@ fn red_or_pending_head_blocks_naming_sha_and_check() {
             other => panic!("a failed review carries a ticket patch, got {other:?}"),
         }
     }
-}
-
-#[test]
-fn the_close_sweep_releases_dead_claims_with_a_signed_comment() {
-    let sandbox = Sandbox::new("preflight-sweep");
-    sandbox.ticket(TICKET_ONE);
-    sandbox.ticket(TICKET_TWO);
-    sandbox.ticket(TICKET_THREE);
-    let store = sandbox.store();
-    let actor = sandbox.actor();
-    let board = Board::with_actor(store.clone(), actor.clone());
-    let sessions = Sessions::new(&store);
-
-    // The dead claim: in-progress under a session that has ended.
-    board
-        .set(
-            TICKET_ONE,
-            SetFields {
-                status: Edit::Set(Status::InProgress),
-                assignee: Edit::Set(Some("builder")),
-                ..SetFields::default()
-            },
-        )
-        .unwrap();
-    sessions
-        .start(
-            &actor,
-            "ses_dead",
-            "tandem",
-            Some("builder"),
-            "Build the dead claim.",
-            Some(&at(0)),
-        )
-        .unwrap();
-    sessions.link(&actor, "ses_dead", TICKET_ONE).unwrap();
-    sessions
-        .end(
-            &actor,
-            "ses_dead",
-            Ending {
-                outcome: SessionOutcome::Succeeded,
-                summary: Some("Landed nothing."),
-                at: Some(&at(10)),
-                ..Ending::new(SessionOutcome::Succeeded)
-            },
-        )
-        .unwrap();
-    assert_eq!(
-        sessions.show("ses_dead").unwrap().status,
-        SessionStatus::Ended
-    );
-
-    // The live claim: the same shape, but the session still runs.
-    board
-        .set(
-            TICKET_TWO,
-            SetFields {
-                status: Edit::Set(Status::InProgress),
-                assignee: Edit::Set(Some("builder")),
-                ..SetFields::default()
-            },
-        )
-        .unwrap();
-    sessions
-        .start(
-            &actor,
-            "ses_live",
-            "tandem",
-            Some("builder"),
-            "Build the live claim.",
-            Some(&at(20)),
-        )
-        .unwrap();
-    sessions.link(&actor, "ses_live", TICKET_TWO).unwrap();
-
-    // The human hold: ended, but the grill's park is never cleared by a set.
-    board
-        .set(
-            TICKET_THREE,
-            SetFields {
-                status: Edit::Set(Status::OnHold),
-                assignee: Edit::Set(Some(HUMAN)),
-                ..SetFields::default()
-            },
-        )
-        .unwrap();
-    sessions
-        .start(
-            &actor,
-            "ses_hold",
-            "tandem",
-            Some("reviewer"),
-            "Grill the hold.",
-            Some(&at(30)),
-        )
-        .unwrap();
-    sessions.link(&actor, "ses_hold", TICKET_THREE).unwrap();
-    sessions
-        .end(
-            &actor,
-            "ses_hold",
-            Ending {
-                outcome: SessionOutcome::Succeeded,
-                summary: Some("Parked."),
-                at: Some(&at(40)),
-                ..Ending::new(SessionOutcome::Succeeded)
-            },
-        )
-        .unwrap();
-
-    let released = release_dead_claims(&board, &sessions, "sprint");
-    assert_eq!(released.len(), 1, "only the dead claim moves");
-    assert_eq!(released[0].ticket, TICKET_ONE);
-    assert_eq!(released[0].session, "ses_dead");
-
-    let ticket = board.ticket(TICKET_ONE).unwrap();
-    assert_eq!(ticket.status, Status::Ready, "the claim goes back to ready");
-    assert_eq!(ticket.assignee, None, "the owner is cleared");
-    let comments = board.comments(TICKET_ONE).unwrap();
-    let last = comments.last().expect("the sweep signs its move");
-    assert_eq!(last.author, "sprint", "the sweep signs as sprint");
-    assert!(
-        last.body.contains("ses_dead"),
-        "the comment names the ended session: {}",
-        last.body
-    );
-
-    let live = board.ticket(TICKET_TWO).unwrap();
-    assert_eq!(
-        live.status,
-        Status::InProgress,
-        "a live claim is not a stall"
-    );
-    assert_eq!(live.assignee.as_deref(), Some("builder"));
-    assert!(
-        board.comments(TICKET_TWO).unwrap().is_empty(),
-        "nothing moved, so no comment"
-    );
-
-    let hold = board.ticket(TICKET_THREE).unwrap();
-    assert_eq!(hold.assignee.as_deref(), Some(HUMAN));
-    assert!(
-        board.comments(TICKET_THREE).unwrap().is_empty(),
-        "the grill's park closes with an answer, never a set"
-    );
 }
 
 #[test]

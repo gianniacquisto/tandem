@@ -23,19 +23,17 @@
 //!   grammar (`ticket.add` is `ticket add`), and [`METHODS`] is the table the
 //!   parity test walks: every write names a CLI verb, so no UI-only write can
 //!   appear without the CLI growing the same act. A read is the one method that
-//!   may name no verb (`usage.report`), and the table says so with an empty one.
+//!   may name no verb, and the table says so with an empty one.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::bikeshed::health::BikeshedHealth;
-use crate::domain::harness::TranscriptEntry;
 use crate::domain::sprint::{Sprint, WorkflowRun};
-use crate::domain::usage::UsageWindow;
 use crate::domain::workflow::{Workflow, WorkflowStage};
 use crate::wire::views::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
-    NotePathView, NoteWriteView, RecoveryView, TicketDetail, TicketSummary, UsageReportView,
+    NotePathView, NoteWriteView, RecoveryView, TicketDetail, TicketSummary,
 };
 
 // MARK: - Requests
@@ -133,14 +131,9 @@ methods! {
     SprintList: "sprint.list", SprintListParams, "sprint list";
     SprintShow: "sprint.show", SprintShowParams, "sprint show";
     SprintOpen: "sprint.open", SprintOpenParams, "sprint open";
-    // The session record's verbs and the rest of the sprint record, on the wire
-    // for the MCP door (TAN-274). Every row names the CLI verb that does the
-    // same work, so the parity test holds both doors to the grammar.
-    SessionStart: "session.start", SessionStartParams, "session start";
-    SessionLink: "session.link", SessionLinkParams, "session link";
-    SessionEnd: "session.end", SessionEndParams, "session end";
-    SessionList: "session.list", SessionListParams, "session list";
-    SessionShow: "session.show", SessionShowParams, "session show";
+    // The rest of the sprint record, on the wire for the MCP door (TAN-274).
+    // Every row names the CLI verb that does the same work, so the parity test
+    // holds both doors to the grammar.
     SprintTicket: "sprint.ticket", SprintTicketParams, "sprint ticket";
     SprintRun: "sprint.run", SprintRunParams, "sprint run";
     SprintClose: "sprint.close", SprintCloseParams, "sprint close";
@@ -168,11 +161,6 @@ methods! {
     NoteCreateFolder: "note.createFolder", NotePathParams, "note create-folder";
     NoteDaily: "note.daily", EmptyParams, "note daily";
     DoctorReport: "doctor.report", EmptyParams, "doctor";
-    // A read the CLI does not spell a verb for: the Usage face's one report. It
-    // writes nothing, so no UI-only write hides behind it, and the report is the
-    // derivation `usage_report` already froze (PRT-15). An empty verb is how the
-    // table says so; `the_read_methods_without_a_cli_verb_are_named_here` names it.
-    UsageReport: "usage.report", UsageReportParams, "";
     // The settings the faces read, in one message: the sheet's assignee picker
     // and the board's filter both offer the store's roster, and the board
     // draws the active project beside it. Both are `settings` rows; the read
@@ -191,15 +179,6 @@ methods! {
     // is the core's (`TicketMarkdown`), so the app and the CLI cannot read one
     // dialect two ways, and the message writes nothing: an empty verb.
     MarkdownBlocks: "markdown.blocks", MarkdownBlocksParams, "";
-    // The ticket sheet's Sessions section (TAN-264). `session.transcript`
-    // answers one record's harness transcript, resolving the Tandem id (or the
-    // raw harness id) to the newest record naming the pointer, per
-    // `Sessions::resolve`. A record the harness no longer holds answers with
-    // an unavailable reason, never a refusal, so the section still renders.
-    // `session.list` also serves the sheet: a ticket the caller names answers
-    // the records that carried it, newest first. The row above carries the
-    // CLI verb because the MCP door (TAN-274) shares the same method.
-    SessionTranscript: "session.transcript", SessionTranscriptParams, "";
 }
 
 /// `markdown.blocks`: the text to parse. Absent is no body, which draws nothing.
@@ -209,47 +188,10 @@ pub struct MarkdownBlocksParams {
     pub text: Option<String>,
 }
 
-/// `session.list`: the records, newest first. Every axis is optional, as the
-/// verb's flags are: an absent project answers every project, an absent ticket
-/// answers records that carried nothing in particular, and an absent status
-/// answers both states. A ticket the caller names answers the records that
-/// carried it, newest first (the sheet's Sessions section, TAN-264); a blank
-/// ticket is no filter, the way an absent filter is none on `ticket.list`.
-/// When both name a filter, the ticket narrows the project listing to the
-/// records that carried it.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct SessionListParams {
-    pub project: Option<String>,
-    pub ticket: Option<String>,
-    pub status: Option<String>,
-}
-
-/// `session.transcript`: the record whose harness transcript the sheet draws,
-/// the Tandem id or the raw harness id, and the page. `cursor` is the last
-/// position the caller holds; absent reads from the start. `limit` caps the
-/// page: below one reads one, past two hundred reads two hundred, absent reads
-/// fifty.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct SessionTranscriptParams {
-    pub id: Option<String>,
-    pub cursor: Option<i64>,
-    pub limit: Option<i64>,
-}
-
 /// A method that takes nothing. The frame still carries `"params": {}`, so a
 /// client always sends the same three keys.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 pub struct EmptyParams {}
-
-/// `usage.report`: the window the Usage face draws. Absent is All time, so a
-/// frame that spells no window reads today's behavior: every record ever read.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct UsageReportParams {
-    pub window: Option<UsageWindow>,
-}
 
 /// `note.tree`: whether the hidden layer is drawn. The flag reaches the tree
 /// walk only; the linkable graph is always the curated layer.
@@ -504,66 +446,6 @@ pub struct SprintOpenParams {
     pub session: Option<String>,
 }
 
-/// `session.start`: the record the pass opens. Every field is optional at
-/// parse, as the verb's flags are: an absent id is a minted one, an absent
-/// project is the working directory's last component, an absent agent is
-/// `$TANDEM_AGENT`, an absent harness session is `$OPENCODE_SESSION_ID`, and
-/// an absent brief is the domain's own refusal.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct SessionStartParams {
-    pub project: Option<String>,
-    pub agent: Option<String>,
-    pub session: Option<String>,
-    pub harness_session: Option<String>,
-    pub harness_transport: Option<String>,
-    pub brief: Option<String>,
-}
-
-/// `session.link`: the ticket a record carries, and the record. An absent
-/// session is `$OPENCODE_SESSION_ID`, resolved to the record, as the verb
-/// resolves it.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct SessionLinkParams {
-    pub ticket: Option<String>,
-    pub session: Option<String>,
-}
-
-/// `session.end`: the stamp a record carries, and the usage the harness
-/// reported. Absent usage is absent on the record, never an invented zero.
-/// `usage_from_harness` absent is true on this door: the host that spawns the
-/// server is the harness the CLI flag reads, over the loopback API (TAN-276).
-/// A harness with no row for the record stamps without usage and says so in
-/// the note, never a failure. `harness_url` is the explicit server URL, as the
-/// CLI's `--harness-url` is; absent reads `TANDEM_HARNESS_URL`, else the
-/// rendezvous file for the record's transport.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct SessionEndParams {
-    pub session: Option<String>,
-    pub outcome: Option<String>,
-    pub summary: Option<String>,
-    pub tokens_input: Option<i64>,
-    pub tokens_output: Option<i64>,
-    pub tokens_reasoning: Option<i64>,
-    pub tokens_cache_read: Option<i64>,
-    pub tokens_cache_write: Option<i64>,
-    pub cost: Option<f64>,
-    pub model: Option<String>,
-    pub skills: Option<String>,
-    pub usage_from_harness: Option<bool>,
-    pub harness_url: Option<String>,
-}
-
-/// `session.show`: one record, resolved as the verb resolves it: an exact id
-/// first, then `$OPENCODE_SESSION_ID` and the harness pointer.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct SessionShowParams {
-    pub session: Option<String>,
-}
-
 /// `sprint.ticket`: the batch takes one ticket, in stored order.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
@@ -689,11 +571,6 @@ fn string(description: &str) -> serde_json::Value {
 /// A whole-number field.
 fn integer(description: &str) -> serde_json::Value {
     serde_json::json!({"type": "integer", "description": description})
-}
-
-/// A decimal field.
-fn number(description: &str) -> serde_json::Value {
-    serde_json::json!({"type": "number", "description": description})
 }
 
 /// A true-or-false field.
@@ -1003,119 +880,6 @@ impl SprintOpenParams {
     }
 }
 
-impl SessionStartParams {
-    /// The tool input for `session.start`.
-    pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            (
-                "project",
-                string("the project; omit for the working directory's last component"),
-            ),
-            ("agent", string("the pass name; omit for $TANDEM_AGENT")),
-            ("session", string("the record id; omit to mint one")),
-            (
-                "harnessSession",
-                string("the harness session pointer; omit for $OPENCODE_SESSION_ID"),
-            ),
-            (
-                "harnessTransport",
-                string("event-stream or database (default)"),
-            ),
-            ("brief", string("what the pass is for; required")),
-        ])
-    }
-}
-
-impl SessionLinkParams {
-    /// The tool input for `session.link`.
-    pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("ticket", string("the ticket id or ref the record carries")),
-            (
-                "session",
-                string("the record id; omit for $OPENCODE_SESSION_ID"),
-            ),
-        ])
-    }
-}
-
-impl SessionEndParams {
-    /// The tool input for `session.end`. Absent usage is absent on the record,
-    /// never an invented zero.
-    pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            (
-                "session",
-                string("the record id; omit for $OPENCODE_SESSION_ID"),
-            ),
-            (
-                "outcome",
-                string("succeeded, failed, interrupted or unknown (default)"),
-            ),
-            ("summary", string("what landed; omit to leave it unset")),
-            (
-                "tokensInput",
-                integer("the input tokens the harness reported"),
-            ),
-            (
-                "tokensOutput",
-                integer("the output tokens the harness reported"),
-            ),
-            (
-                "tokensReasoning",
-                integer("the reasoning tokens the harness reported"),
-            ),
-            (
-                "tokensCacheRead",
-                integer("the cache-read tokens the harness reported"),
-            ),
-            (
-                "tokensCacheWrite",
-                integer("the cache-write tokens the harness reported"),
-            ),
-            ("cost", number("what the session cost, in dollars")),
-            ("model", string("the model that spent the tokens")),
-            ("skills", string("the skill counts, as name=count pairs")),
-            (
-                "usageFromHarness",
-                boolean(
-                    "read the harness over the loopback API (default true); a harness with no row stamps without usage",
-                ),
-            ),
-            (
-                "harnessUrl",
-                string(
-                    "the explicit harness server URL; omit for TANDEM_HARNESS_URL, else the rendezvous file",
-                ),
-            ),
-        ])
-    }
-}
-
-impl SessionListParams {
-    /// The tool input for `session.list`.
-    pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("project", string("the project; omit for every project")),
-            (
-                "ticket",
-                string("the ticket id; omit for records that carried nothing in particular"),
-            ),
-            ("status", string("running or ended; omit for both states")),
-        ])
-    }
-}
-
-impl SessionShowParams {
-    /// The tool input for `session.show`.
-    pub fn schema() -> serde_json::Value {
-        object_schema(&[(
-            "session",
-            string("the record id; omit for $OPENCODE_SESSION_ID"),
-        )])
-    }
-}
-
 impl SprintTicketParams {
     /// The tool input for `sprint.ticket`.
     pub fn schema() -> serde_json::Value {
@@ -1356,7 +1120,6 @@ pub enum Outcome {
 #[allow(clippy::large_enum_variant)]
 pub enum Reply {
     TicketList(TicketListReply),
-    UsageReport(UsageReportReply),
     Settings(SettingsReply),
     Ticket(TicketReply),
     Comment(CommentReply),
@@ -1371,9 +1134,6 @@ pub enum Reply {
     Sprint(SprintReply),
     WorkflowRunList(WorkflowRunListReply),
     WorkflowRun(WorkflowRunReply),
-    Session(SessionReply),
-    SessionList(SessionListReply),
-    SessionDetail(SessionDetailReply),
     NotePath(NotePathView),
     Doctor(DoctorReply),
     NoteTree(NoteTreeReply),
@@ -1384,7 +1144,6 @@ pub enum Reply {
     NoteBacklinks(NoteBacklinksReply),
     NoteRecoveries(NoteRecoveriesReply),
     Markdown(MarkdownReply),
-    SessionTranscript(SessionTranscriptReply),
 }
 
 /// `markdown.blocks`: the document's blocks, top level first.
@@ -1392,20 +1151,6 @@ pub enum Reply {
 #[serde(rename_all = "camelCase")]
 pub struct MarkdownReply {
     pub blocks: Vec<MarkdownBlockView>,
-}
-
-/// `session.transcript`: one page of the record's harness transcript, oldest
-/// first.
-///
-/// `unavailable` names why the harness holds nothing to read: a record with no
-/// pointer, a database that is not there, a row the harness pruned. A page
-/// that reads answers null beside its entries, so the row still draws.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionTranscriptReply {
-    pub entries: Vec<TranscriptEntry>,
-    pub next_cursor: Option<i64>,
-    pub unavailable: Option<String>,
 }
 
 /// `note.tree`: the folder and note rows, folders first as the core walks them.
@@ -1456,20 +1201,6 @@ pub struct NoteBacklinksReply {
 #[serde(rename_all = "camelCase")]
 pub struct NoteRecoveriesReply {
     pub recoveries: Vec<RecoveryView>,
-}
-
-/// `usage.report`: the reported usage, rolled up over every session record and
-/// labelled from the board.
-///
-/// One message, because the face draws every number from it: the partitions, the
-/// ticket arithmetic, each row's records and each row's bar width (PRT-15). It
-/// carries no revision: the rows are the records and the board as read, the
-/// shell's displayed revision is the listing's, and a change event is what makes
-/// the face read this again.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageReportReply {
-    pub report: UsageReportView,
 }
 
 /// `settings.get`: the settings a face reads, and `settings.set`'s receipt.
@@ -1655,41 +1386,6 @@ pub struct WorkflowRunListReply {
 pub struct WorkflowRunReply {
     pub revision: i64,
     pub run: WorkflowRun,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub note: Option<String>,
-}
-
-/// `session.start`, `session.link` and `session.end`: the record at the
-/// revision the write produced, with the note when the call changed nothing
-/// (a second `start` or `end` keeps the first stamp) or when the harness had
-/// no usage to report.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionReply {
-    pub revision: i64,
-    pub session: crate::domain::session::Session,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub note: Option<String>,
-}
-
-/// `session.list`: the records, newest first, at the revision they are a
-/// snapshot of.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionListReply {
-    pub revision: i64,
-    pub sessions: Vec<crate::domain::session::Session>,
-}
-
-/// `session.show`: one record at its revision, with the note paths the
-/// session filed and the note when the call changed nothing.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionDetailReply {
-    pub revision: i64,
-    pub session: crate::domain::session::Session,
-    /// Derived from the capture files, never stored (ADR 0016).
-    pub notes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }

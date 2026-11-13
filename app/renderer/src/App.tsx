@@ -6,8 +6,6 @@ import { SettingsFace } from './faces/SettingsFace'
 import { SheetBoundary } from './faces/SheetBoundary'
 import { TicketSheet } from './faces/TicketSheet'
 import { TicketsFace } from './faces/TicketsFace'
-import { UsageFace } from './faces/UsageFace'
-import { DEFAULT_WINDOW, type UsageWindow } from './faces/usage'
 import { closeHref, parseRoute, tabHref, type Route } from './shell/route'
 import { initialSnapshot, snapshotReducer, type SnapshotState } from './shell/snapshot'
 import { refusalBanner, writeBlocked, type WriteCaller, type WriteOutcome } from './shell/write'
@@ -41,8 +39,6 @@ function face(
     openTicket: string | null
     onOpenTicket: (ticket: { id: string }, focus?: 'description' | null) => void
     onPickProject: (lane: string | null) => void
-    usageWindow: UsageWindow
-    onUsageWindow: (window: UsageWindow) => void
   },
 ) {
   switch (route.tab) {
@@ -68,14 +64,6 @@ function face(
           projects={snapshot.projects}
           activeProject={snapshot.activeProject}
           onPickProject={actions.onPickProject}
-        />
-      )
-    case 'usage':
-      return (
-        <UsageFace
-          report={snapshot.usage}
-          window={actions.usageWindow}
-          onWindowChange={actions.onUsageWindow}
         />
       )
     case 'settings':
@@ -106,11 +94,6 @@ export function App() {
   const state = useRef(snapshot)
   state.current = snapshot
   const mounted = useRef(true)
-  // The Usage window: per visit, reset on reload like the face's dimension and
-  // mode. The shell owns it so one narrowed report feeds the face's header,
-  // tables and graph; the face only picks it.
-  const [usageWindow, setUsageWindow] = useState<UsageWindow>(DEFAULT_WINDOW)
-
   useEffect(() => {
     mounted.current = true
     return () => {
@@ -121,19 +104,15 @@ export function App() {
   const load = useCallback(async (): Promise<void> => {
     try {
       // The whole board, the lanes it is grouped into, the projects those
-      // lanes belong to, the one usage report, and the settings both assignee
-      // surfaces read, in one pass: the report is the derivation's
-      // (`usage.report`), so the Usage face sums nothing, and the roster is
-      // the store's (`settings.get`), so neither surface derives its names
-      // from the rows. The board snapshot stays lane-keyed; the renderer joins
-      // `project.list` for the mapping instead of growing the snapshot.
-      // The usage report carries the window: absent would read All time, but
-      // the face always names its pick, so header, tables and graph agree.
-      const [board, lanes, projects, usage, settings, workflow] = await Promise.all([
+      // lanes belong to, and the settings both assignee surfaces read, in one
+      // pass: the roster is the store's (`settings.get`), so neither surface
+      // derives its names from the rows. The board snapshot stays lane-keyed;
+      // the renderer joins `project.list` for the mapping instead of growing
+      // the snapshot.
+      const [board, lanes, projects, settings, workflow] = await Promise.all([
         window.tandem.call({ method: 'ticket.list', params: WHOLE_BOARD }),
         window.tandem.call({ method: 'lane.list', params: {} }),
         window.tandem.call({ method: 'project.list', params: {} }),
-        window.tandem.call({ method: 'usage.report', params: { window: usageWindow } }),
         window.tandem.call({ method: 'settings.get', params: {} }),
         window.tandem.call({ method: 'workflow.show', params: { id: null } }),
       ])
@@ -158,13 +137,6 @@ export function App() {
           : []
       if ('error' in projects) {
         dispatch({ type: 'notice', message: projects.error.message })
-      }
-      if ('error' in usage) {
-        // A refused report leaves the Usage face waiting; it does not take the
-        // board down with it.
-        dispatch({ type: 'notice', message: usage.error.message })
-      } else if ('report' in usage.reply && 'ticketTotal' in usage.reply.report) {
-        dispatch({ type: 'usage', report: usage.reply.report })
       }
       if ('error' in settings) {
         // A refused settings read leaves both assignee surfaces on the names
@@ -196,7 +168,7 @@ export function App() {
         dispatch({ type: 'failed', message: 'The store could not be read.' })
       }
     }
-  }, [usageWindow])
+  }, [])
 
   useEffect(() => {
     void load()
@@ -338,14 +310,11 @@ export function App() {
           openTicket,
           onOpenTicket: open,
           onPickProject: pickProject,
-          usageWindow,
-          onUsageWindow: setUsageWindow,
         })}
         {openTicket === null ? null : (
           <SheetBoundary key={openTicket} onDismiss={closeSheet}>
             <TicketSheet
               ticketId={openTicket}
-              expandedSession={route.ticket === openTicket ? route.session : null}
               lanes={snapshot.lanes}
               roster={snapshot.roster}
               stages={snapshot.workflow?.stages ?? null}

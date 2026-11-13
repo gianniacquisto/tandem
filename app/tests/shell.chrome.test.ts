@@ -31,12 +31,7 @@ describe('the shell chrome (TAND-16)', () => {
   it('repeats no tab as a face heading', () => {
     expect(face).not.toContain('<h1')
     expect(face).not.toContain('face__title')
-    for (const name of [
-      'TicketsFace.tsx',
-      'UsageFace.tsx',
-      'SettingsFace.tsx',
-      'BikeshedFace.tsx',
-    ]) {
+    for (const name of ['TicketsFace.tsx', 'SettingsFace.tsx', 'BikeshedFace.tsx']) {
       const source = faceSource(name)
       expect(source, `${name} repeats its tab as a heading`).not.toContain('face__title')
       expect(source, `${name} repeats its tab as a heading`).not.toContain('<h1')
@@ -55,7 +50,7 @@ describe('the shell chrome (TAND-16)', () => {
     )
   })
 
-  it('keeps the board, Bikeshed and Usage on the full width', () => {
+  it('keeps the board and Bikeshed on the full width', () => {
     const board = rule('.tickets--board')
     expect(board, '.tickets--board keeps the wide rule').toContain('max-width: none')
 
@@ -63,7 +58,6 @@ describe('the shell chrome (TAND-16)', () => {
     expect(wide, '.face--wide stays uncapped').toContain('max-width: none')
 
     expect(faceSource('BikeshedFace.tsx')).toContain('face--wide')
-    expect(faceSource('UsageFace.tsx')).toMatch(/wide/)
   })
 
   it('reuses the TicketsFace wide rule in app.css instead of a new token', () => {
