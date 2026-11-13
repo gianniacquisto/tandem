@@ -585,6 +585,105 @@ async fn post_routes_reject_missing_form_content_type_and_cross_origin_header() 
     assert!(page.contains("Guarded"), "the guarded add landed");
 }
 
+// MARK: - The write guard as a layer, and the request's context
+
+/// A write route added to the table without a guard call of its own: the layer
+/// must refuse it all the same.
+async fn unguarded_write() -> Response {
+    html_response("written".to_string(), StatusCode::OK)
+}
+
+/// A route that reads the context its request resolved, to name the seam.
+async fn resolved_context(context: Context) -> Response {
+    html_response(
+        format!(
+            "{}|{}",
+            context.actor.as_str(),
+            context.store.home().directory().display()
+        ),
+        StatusCode::OK,
+    )
+}
+
+fn extra_router(extra: Router<Arc<SessionContext>>, store: Store) -> Router {
+    let (changes, _) = broadcast::channel(64);
+    layered(extra, changes).with_state(Arc::new(context(store)))
+}
+
+#[tokio::test]
+async fn write_guard_is_a_layer_so_a_route_cannot_skip_it_by_omission() {
+    let sandbox = Sandbox::new("guard-layer");
+    let app = extra_router(
+        routes().route("/unguarded", post(unguarded_write)),
+        sandbox.store(),
+    );
+
+    let missing = Request::builder()
+        .method("POST")
+        .uri("/unguarded")
+        .header(header::HOST, "127.0.0.1:7700")
+        .body(Body::from("x=1"))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, missing).await;
+    assert_eq!(
+        status,
+        StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        "the guard is a layer, not a call a handler can forget"
+    );
+
+    let cross = Request::builder()
+        .method("POST")
+        .uri("/unguarded")
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::ORIGIN, "http://evil.example")
+        .body(Body::from("x=1"))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, cross).await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "a cross-origin write is refused"
+    );
+
+    let same = Request::builder()
+        .method("POST")
+        .uri("/unguarded")
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::ORIGIN, "http://127.0.0.1:7700")
+        .body(Body::from("x=1"))
+        .expect("the request builds");
+    let (status, _, body) = send(&app, same).await;
+    assert_eq!(status, StatusCode::OK, "a same-origin form write lands");
+    assert_eq!(body, "written", "the route itself never touched the guard");
+}
+
+#[tokio::test]
+async fn the_context_resolves_per_request_to_local_modes_one_context() {
+    let sandbox = Sandbox::new("context-extractor");
+    let store = sandbox.store();
+    let expected = format!(
+        "{}|{}",
+        Actor::Human.as_str(),
+        store.home().directory().display()
+    );
+    let app = extra_router(
+        routes().route("/context", axum::routing::get(resolved_context)),
+        store,
+    );
+
+    let (status, _, first) = get(&app, "/context").await;
+    assert_eq!(status, StatusCode::OK, "the route answers: {first}");
+    assert_eq!(first, expected, "the route read the router's context");
+
+    let (_, _, second) = get(&app, "/context").await;
+    assert_eq!(
+        second, first,
+        "local mode resolves every request to the same single context"
+    );
+}
+
 #[tokio::test]
 async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
     let sandbox = Sandbox::new("board-static");
