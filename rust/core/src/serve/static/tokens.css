@@ -3,7 +3,7 @@
  *
  * One file, one palette pair: the day panel is the light scheme and the night
  * panel the dark one, and the app follows the system appearance. Components
- * read these variables and never a raw colour. The test in `tests/tokens.test.ts`
+ * read these variables and never a raw colour. The test in `rust/core/tests/tokens_css.rs`
  * pins every palette value, so a drift is a red test. TAND-11 darkened the day
  * `--ink-dim` so quiet text meets AA on paper and parchment.
  */

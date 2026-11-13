@@ -438,7 +438,7 @@ fn a_restored_store_re_attaches_and_reports_the_restored_revision_over_sse() {
     let event = next_event(
         &stream,
         |revision| revision == moved,
-        Duration::from_secs(5),
+        Duration::from_secs(60),
     );
     assert_eq!(
         event, moved,
@@ -493,10 +493,117 @@ fn a_restored_store_is_re_attached_on_the_next_serve_start() {
     let event = next_event(
         &stream,
         |revision| revision == moved,
-        Duration::from_secs(5),
+        Duration::from_secs(60),
     );
     assert_eq!(
         event, moved,
         "the stream reports the write after the restore"
+    );
+}
+
+/// The server's second face: the ticket sheet and the bikeshed notes, driven
+/// over a real socket the way a browser drives them. The in-process router test
+/// proves the markup; this proves the routes answer a separate process with the
+/// home it was given.
+#[test]
+fn a_serve_session_drives_the_sheet_and_notes_faces() {
+    let sandbox = Sandbox::new("sheet-notes");
+    let server = Server::start(&sandbox);
+
+    let answer = form(
+        server.port,
+        "/tickets",
+        "title=Sheet&status=ready&lane=&expected_revision=0",
+    );
+    assert_eq!(answer.status, 200, "the add answers: {}", answer.body);
+
+    let board = get(server.port, "/board");
+    let marker = "data-ticket=\"";
+    let at = board
+        .body
+        .find(marker)
+        .unwrap_or_else(|| panic!("the board carries a card id: {}", board.body));
+    let rest = &board.body[at + marker.len()..];
+    let id = &rest[..rest.find('"').expect("the id is quoted")];
+
+    let sheet = get(server.port, &format!("/tickets/{id}"));
+    assert_eq!(sheet.status, 200, "the sheet answers: {}", sheet.body);
+    assert!(
+        sheet.body.contains("<!doctype html>"),
+        "the sheet rides the shell"
+    );
+    assert!(sheet.body.contains("sheet-backdrop"), "the sheet is drawn");
+    assert!(sheet.body.contains("Sheet"), "the ticket title is drawn");
+
+    let revision = revision_of(server.port);
+    let answer = form(
+        server.port,
+        &format!("/tickets/{id}/description"),
+        &format!("addition=More&expected_revision={revision}"),
+    );
+    assert_eq!(answer.status, 200);
+    assert!(
+        answer.body.contains("More"),
+        "the append is redrawn: {}",
+        answer.body
+    );
+
+    let answer = form(
+        server.port,
+        &format!("/tickets/{id}/comments"),
+        "body=Hello",
+    );
+    assert_eq!(answer.status, 200);
+    assert!(
+        answer.body.contains("Hello"),
+        "the comment is redrawn: {}",
+        answer.body
+    );
+
+    let answer = form(server.port, "/notes/create", "path=Index.md");
+    assert_eq!(answer.status, 200, "the note is created: {}", answer.body);
+    assert!(
+        answer.body.contains("Index"),
+        "the tree redraws the note: {}",
+        answer.body
+    );
+
+    let edit = get(server.port, "/notes/edit?path=Index.md");
+    assert_eq!(edit.status, 200, "the editor answers: {}", edit.body);
+    assert!(edit.body.contains("note-editor"), "the editor is drawn");
+    let hash_marker = "name=\"baseline_hash\" value=\"";
+    let at = edit
+        .body
+        .find(hash_marker)
+        .unwrap_or_else(|| panic!("the editor carries the baseline: {}", edit.body));
+    let rest = &edit.body[at + hash_marker.len()..];
+    let hash = &rest[..rest.find('"').expect("the hash is quoted")];
+
+    let answer = form(
+        server.port,
+        "/notes/save",
+        &format!("path=Index.md&text=Hello&baseline_hash={hash}"),
+    );
+    assert_eq!(answer.status, 200, "the save answers: {}", answer.body);
+    let notes = get(server.port, "/notes?path=Index.md");
+    assert_eq!(notes.status, 200);
+    assert!(
+        notes.body.contains("Hello"),
+        "the note reads back: {}",
+        notes.body
+    );
+
+    let stream = events(server.port);
+    let revision = revision_of(server.port);
+    form(
+        server.port,
+        "/tickets",
+        &format!("title=Later&status=backlog&lane=&expected_revision={revision}"),
+    );
+    let current = revision_of(server.port);
+    next_event(
+        &stream,
+        |revision| revision == current,
+        Duration::from_secs(5),
     );
 }

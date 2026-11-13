@@ -64,24 +64,28 @@
       </header>
       <ul class="board__cards">
         {% for card in column.cards %}
-        <li class="ticket-card" data-ticket="{{ card.id }}" draggable="true" tabindex="0" aria-describedby="board-keyboard-hint"{% if card.selected %} aria-current="true"{% endif %}>
-          {% if let Some(lane) = card.lane %}
-          <button type="button" class="ticket-card__lane" data-tone="{{ lane.tone }}">
-            <span class="ticket-card__lane-dot" aria-hidden="true"></span>{{ lane.name }}
-          </button>
-          {% endif %}
-          <span class="ticket-card__title">{{ card.title }}</span>
-          <span class="ticket-card__footer">
-            {% if let Some(reference) = card.reference %}
-            <span class="ticket-card__ref">{{ reference }}</span>
+        <li role="none">
+          <a class="ticket-card" href="/tickets/{{ card.id }}" hx-get="/tickets/{{ card.id }}"
+             hx-target="#board-root" hx-swap="outerHTML" data-ticket="{{ card.id }}"
+             draggable="true" tabindex="0" aria-describedby="board-keyboard-hint"{% if card.selected %} aria-current="true"{% endif %}>
+            {% if let Some(lane) = card.lane %}
+            <button type="button" class="ticket-card__lane" data-tone="{{ lane.tone }}">
+              <span class="ticket-card__lane-dot" aria-hidden="true"></span>{{ lane.name }}
+            </button>
             {% endif %}
-            {% if let Some(assignee) = card.assignee %}
-            <span class="ticket-card__assignee{% if assignee.human %} ticket-card__assignee--human{% endif %}">{{ assignee.label }}</span>
-            {% endif %}
-            {% if let Some(blocked) = card.blocked %}
-            <span class="ticket-card__blocked">{{ blocked }}</span>
-            {% endif %}
-          </span>
+            <span class="ticket-card__title">{{ card.title }}</span>
+            <span class="ticket-card__footer">
+              {% if let Some(reference) = card.reference %}
+              <span class="ticket-card__ref">{{ reference }}</span>
+              {% endif %}
+              {% if let Some(assignee) = card.assignee %}
+              <span class="ticket-card__assignee{% if assignee.human %} ticket-card__assignee--human{% endif %}">{{ assignee.label }}</span>
+              {% endif %}
+              {% if let Some(blocked) = card.blocked %}
+              <span class="ticket-card__blocked">{{ blocked }}</span>
+              {% endif %}
+            </span>
+          </a>
         </li>
         {% endfor %}
       </ul>
@@ -101,4 +105,7 @@
     </section>
     {% endfor %}
   </div>
+  {% if let Some(sheet) = sheet %}
+  {{ sheet }}
+  {% endif %}
 </div>

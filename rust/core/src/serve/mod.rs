@@ -29,12 +29,16 @@ use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
+use crate::bikeshed::{Bikeshed, BikeshedNode, NodeKind};
+use crate::domain::markdown::{MarkdownBlock, TicketMarkdown};
 use crate::domain::text::TextMatch;
 use crate::domain::{
     AddTicket, AssigneeAxis, Board, Edit, LaneAxis, SetFields, Status, Ticket, TicketQuery,
 };
 use crate::env::Environment;
 use crate::store::{Actor, RevisionWatch, Store};
+
+mod markdown;
 
 /// How often the watch stats the store's files. Short enough that a face
 /// updates before a human notices, and cheap because a tick stats twice and
@@ -84,6 +88,12 @@ impl SessionContext {
     fn revision(&self) -> i64 {
         self.store.revision().unwrap_or(0)
     }
+
+    /// The vault beside the store's home: one rule, the same one `diagnostics`
+    /// and the CLI use, so the server reads the bikeshed the human edits.
+    fn bikeshed(&self) -> Bikeshed {
+        Bikeshed::new(self.store.home().directory().join("bikeshed"))
+    }
 }
 
 /// The in-process HTTP seam: the board routes over `context`.
@@ -101,7 +111,21 @@ pub fn router_with(context: SessionContext, changes: broadcast::Sender<i64>) -> 
         .route("/events", get(events))
         .route("/static/{*path}", get(static_asset))
         .route("/tickets", post(add_ticket))
+        .route("/tickets/{id}", get(ticket_page).post(save_ticket))
         .route("/tickets/{id}/status", post(move_ticket))
+        .route("/tickets/{id}/description", post(append_description))
+        .route("/tickets/{id}/comments", post(add_comment))
+        .route("/tickets/{id}/lane", post(move_to_lane))
+        .route("/lanes", post(add_lane))
+        .route("/lanes/{name}/rename", post(rename_lane))
+        .route("/notes", get(notes_page))
+        .route("/notes/view", get(note_view))
+        .route("/notes/edit", get(note_edit))
+        .route("/notes/preview", post(note_preview))
+        .route("/notes/save", post(note_save))
+        .route("/notes/create", post(note_create))
+        .route("/notes/create-folder", post(note_create_folder))
+        .route("/notes/move", post(note_move))
         .layer(DefaultBodyLimit::max(crate::rpc::MAX_FRAME))
         .layer(Extension(changes))
         .with_state(Arc::new(context))
@@ -280,6 +304,12 @@ impl Filters {
     }
 }
 
+impl Default for Filters {
+    fn default() -> Self {
+        Self::parse(&HashMap::new())
+    }
+}
+
 fn field<'a>(params: &'a HashMap<String, String>, key: &str) -> &'a str {
     params.get(key).map(String::as_str).unwrap_or("")
 }
@@ -354,9 +384,9 @@ fn visible<'a>(
 #[derive(Template)]
 #[template(path = "shell.html")]
 struct PageView {
-    /// The board template's own output, already HTML: the shell embeds it
+    /// The face template's own output, already HTML: the shell embeds it
     /// rather than escaping it a second time.
-    board: askama::filters::Safe<String>,
+    body: askama::filters::Safe<String>,
 }
 
 #[derive(Template)]
@@ -373,6 +403,9 @@ struct BoardView {
     show_all: bool,
     empty: Option<EmptyView>,
     columns: Vec<ColumnView>,
+    /// The ticket sheet, drawn inside the board root so an htmx swap of the
+    /// root carries both. `None` on the plain board.
+    sheet: Option<askama::filters::Safe<String>>,
 }
 
 struct FiltersView {
@@ -688,7 +721,57 @@ fn render_board(
         show_all: filters.show_all,
         empty,
         columns,
+        sheet: None,
     })
+}
+
+/// The board with a sheet drawn inside its root, so one htmx swap carries both.
+fn board_with_sheet(
+    context: &SessionContext,
+    filters: &Filters,
+    sheet: String,
+    self_url: String,
+    headers: &HeaderMap,
+    status: StatusCode,
+) -> Response {
+    let view = match render_board(context, filters, None) {
+        Ok(view) => view,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("the board could not be read: {error}\n"),
+            )
+                .into_response();
+        }
+    };
+    let mut view = view;
+    view.self_url = self_url;
+    view.sheet = Some(askama::filters::Safe(sheet));
+    let board = match view.render() {
+        Ok(board) => board,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("the board could not be drawn: {error}\n"),
+            )
+                .into_response();
+        }
+    };
+    if is_partial(headers) {
+        return html_response(board, status);
+    }
+    match (PageView {
+        body: askama::filters::Safe(board),
+    })
+    .render()
+    {
+        Ok(html) => html_response(html, status),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("the shell could not be drawn: {error}\n"),
+        )
+            .into_response(),
+    }
 }
 
 // MARK: - Routes
@@ -728,7 +811,7 @@ fn render_response(
         return html_response(board, status);
     }
     match (PageView {
-        board: askama::filters::Safe(board),
+        body: askama::filters::Safe(board),
     })
     .render()
     {
@@ -921,6 +1004,1067 @@ async fn move_ticket(
         return bad_request(&error.message());
     }
     render_response(&context, &filters, None, &headers, StatusCode::OK)
+}
+
+// MARK: - The ticket sheet
+
+/// One status choice in the sheet's metadata row.
+struct SheetStatusOption {
+    value: &'static str,
+    label: &'static str,
+    selected: bool,
+}
+
+/// One lane the sheet may rename.
+struct LaneRow {
+    name: String,
+    encoded: String,
+}
+
+/// One comment, its markdown already drawn.
+struct SheetComment {
+    author: String,
+    time: String,
+    html: askama::filters::Safe<String>,
+}
+
+/// One dependency edge, drawn as a link to the other ticket.
+struct EdgeView {
+    id: String,
+    reference: String,
+    title: String,
+    status: &'static str,
+}
+
+#[derive(Template)]
+#[template(path = "sheet.html")]
+struct SheetView {
+    revision: i64,
+    id: String,
+    handle: String,
+    origin: String,
+    link: Option<String>,
+    title: String,
+    status: &'static str,
+    assignee: String,
+    status_options: Vec<SheetStatusOption>,
+    lane_options: Vec<LaneOption>,
+    lane_rows: Vec<LaneRow>,
+    description_empty: bool,
+    description_html: askama::filters::Safe<String>,
+    description_source: String,
+    description_refusal: Option<String>,
+    comment_refusal: Option<String>,
+    notice: Option<String>,
+    comments: Vec<SheetComment>,
+    blocked_by: Vec<EdgeView>,
+    blocks: Vec<EdgeView>,
+    blocked_reason: Option<String>,
+}
+
+/// The UTC stamp a comment header draws: whole seconds since the epoch, as the
+/// date and minute the store wrote, never an invented zone.
+fn utc_stamp(seconds: i64) -> String {
+    let days = seconds.div_euclid(86_400);
+    let rest = seconds.rem_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    format!(
+        "{year:04}-{month:02}-{day:02} {:02}:{:02}",
+        rest / 3_600,
+        (rest % 3_600) / 60
+    )
+}
+
+/// Howard Hinnant's `civil_from_days`: the date a day count from 1970-01-01
+/// names, proleptic Gregorian.
+fn civil_from_days(days: i64) -> (i64, i64, i64) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+fn comment_author(author: &str) -> String {
+    let author = author.trim();
+    if author.is_empty() {
+        "anonymous".to_string()
+    } else if author == "human" {
+        "human".to_string()
+    } else {
+        format!("@{author}")
+    }
+}
+
+fn edge_view(edge: &crate::domain::TicketBlock) -> EdgeView {
+    EdgeView {
+        id: edge.id.to_string(),
+        reference: edge
+            .reference
+            .clone()
+            .unwrap_or_else(|| "no ref".to_string()),
+        title: edge.title.clone(),
+        status: edge.status.display_name(),
+    }
+}
+
+fn sheet_handle(ticket: &Ticket) -> String {
+    if let Some(reference) = &ticket.reference {
+        return reference.clone();
+    }
+    match ticket.number {
+        Some(number) => format!("#{number}"),
+        None => "#?".to_string(),
+    }
+}
+
+fn sheet_lane_options(ticket: &Ticket, lanes: &[String]) -> Vec<LaneOption> {
+    let current = ticket.lane.as_deref();
+    let mut options = vec![LaneOption {
+        value: String::new(),
+        label: "No lane".to_string(),
+        selected: current.is_none(),
+    }];
+    for lane in lanes {
+        options.push(LaneOption {
+            value: lane.clone(),
+            label: lane.clone(),
+            selected: current == Some(lane.as_str()),
+        });
+    }
+    if let Some(current) = current
+        && !lanes.iter().any(|lane| lane == current)
+    {
+        options.push(LaneOption {
+            value: current.to_string(),
+            label: current.to_string(),
+            selected: true,
+        });
+    }
+    options
+}
+
+fn render_sheet(
+    context: &SessionContext,
+    id: &str,
+    notice: Option<String>,
+    description_refusal: Option<String>,
+    comment_refusal: Option<String>,
+) -> Result<SheetView, String> {
+    let board = context.board();
+    let (ticket, revision) = board.ticket_snapshot(id).map_err(|error| error.message())?;
+    let (comments, _) = board
+        .comments_snapshot(id)
+        .map_err(|error| error.message())?;
+    let (lanes, _) = board.lanes_snapshot().map_err(|error| error.message())?;
+
+    let description_source = ticket.description.clone().unwrap_or_default();
+    let description_blocks = TicketMarkdown::blocks(ticket.description.as_deref());
+    let description_html = markdown::document(&description_blocks);
+
+    let comments = comments
+        .into_iter()
+        .map(|comment| SheetComment {
+            author: comment_author(&comment.author),
+            time: utc_stamp(comment.at),
+            html: askama::filters::Safe(markdown::document(&TicketMarkdown::blocks(Some(
+                &comment.body,
+            )))),
+        })
+        .collect();
+
+    let status_options = Status::WORKFLOW
+        .iter()
+        .map(|status| SheetStatusOption {
+            value: status.as_str(),
+            label: status.display_name(),
+            selected: *status == ticket.status,
+        })
+        .collect();
+
+    Ok(SheetView {
+        revision,
+        id: ticket.id.to_string(),
+        handle: sheet_handle(&ticket),
+        origin: ticket.origin.clone(),
+        link: ticket.link.clone(),
+        title: ticket.title.clone(),
+        status: ticket.status.as_str(),
+        assignee: ticket.assignee.clone().unwrap_or_default(),
+        status_options,
+        lane_options: sheet_lane_options(&ticket, &lanes),
+        lane_rows: lanes
+            .iter()
+            .map(|lane| LaneRow {
+                name: lane.clone(),
+                encoded: encode_component(lane),
+            })
+            .collect(),
+        description_empty: description_blocks.is_empty(),
+        description_html: askama::filters::Safe(description_html),
+        description_source,
+        description_refusal,
+        comment_refusal,
+        notice,
+        comments,
+        blocked_by: ticket.blocked_by.iter().map(edge_view).collect(),
+        blocks: ticket.blocks.iter().map(edge_view).collect(),
+        blocked_reason: ticket.blocked_reason(),
+    })
+}
+
+/// The sheet as an htmx partial or as a full page: the board is always behind
+/// it, so the human can dismiss back to the face they came from.
+fn sheet_response(
+    context: &SessionContext,
+    id: &str,
+    notice: Option<String>,
+    description_refusal: Option<String>,
+    comment_refusal: Option<String>,
+    headers: &HeaderMap,
+) -> Response {
+    let view = match render_sheet(context, id, notice, description_refusal, comment_refusal) {
+        Ok(view) => view,
+        Err(error) => return bad_request(&error),
+    };
+    let html = match view.render() {
+        Ok(html) => html,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("the sheet could not be drawn: {error}\n"),
+            )
+                .into_response();
+        }
+    };
+    board_with_sheet(
+        context,
+        &Filters::default(),
+        html,
+        format!("/tickets/{id}"),
+        headers,
+        StatusCode::OK,
+    )
+}
+
+/// One percent-encoded path segment, for a lane name in a route.
+fn encode_component(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
+fn form_params(
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Option<HashMap<String, String>> {
+    match form {
+        Ok(Form(params)) => Some(params),
+        Err(_) => None,
+    }
+}
+
+async fn ticket_page(
+    State(context): State<Arc<SessionContext>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    sheet_response(&context, &id, None, None, None, &headers)
+}
+
+async fn save_ticket(
+    State(context): State<Arc<SessionContext>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    if let Some(denied) = guard(&headers) {
+        return denied;
+    }
+    let Some(params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let expected = match expected_revision(&params) {
+        Ok(revision) => revision,
+        Err(message) => return bad_request(&message),
+    };
+    if expected != context.revision() {
+        return sheet_response(
+            &context,
+            &id,
+            Some(CONFLICT_NOTICE.to_string()),
+            None,
+            None,
+            &headers,
+        );
+    }
+    let title = field(&params, "title");
+    if title.trim().is_empty() {
+        return sheet_response(
+            &context,
+            &id,
+            Some(crate::domain::DomainError::EmptyTitle.message()),
+            None,
+            None,
+            &headers,
+        );
+    }
+    let status = match Status::parse(field(&params, "status")) {
+        Ok(status) => status,
+        Err(error) => {
+            return sheet_response(&context, &id, Some(error.message()), None, None, &headers);
+        }
+    };
+    let assignee = field(&params, "assignee");
+    let outcome = context.board().set(
+        &id,
+        SetFields {
+            title: Edit::Set(title),
+            status: Edit::Set(status),
+            assignee: Edit::Set(Some(assignee)),
+            ..SetFields::default()
+        },
+    );
+    match outcome {
+        Ok(_) => sheet_response(&context, &id, None, None, None, &headers),
+        Err(error) => sheet_response(&context, &id, Some(error.message()), None, None, &headers),
+    }
+}
+
+async fn append_description(
+    State(context): State<Arc<SessionContext>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    if let Some(denied) = guard(&headers) {
+        return denied;
+    }
+    let Some(params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let expected = match expected_revision(&params) {
+        Ok(revision) => revision,
+        Err(message) => return bad_request(&message),
+    };
+    if expected != context.revision() {
+        return sheet_response(
+            &context,
+            &id,
+            Some(CONFLICT_NOTICE.to_string()),
+            None,
+            None,
+            &headers,
+        );
+    }
+    let addition = field(&params, "addition");
+    if addition.trim().is_empty() {
+        return sheet_response(
+            &context,
+            &id,
+            None,
+            Some(crate::domain::DomainError::EmptyDescriptionBody.message()),
+            None,
+            &headers,
+        );
+    }
+    match context.board().set(
+        &id,
+        SetFields {
+            append_description: Edit::Set(addition),
+            ..SetFields::default()
+        },
+    ) {
+        Ok(_) => sheet_response(&context, &id, None, None, None, &headers),
+        Err(error) => sheet_response(&context, &id, None, Some(error.message()), None, &headers),
+    }
+}
+
+async fn add_comment(
+    State(context): State<Arc<SessionContext>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    if let Some(denied) = guard(&headers) {
+        return denied;
+    }
+    let Some(params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let body = field(&params, "body");
+    if body.trim().is_empty() {
+        return sheet_response(
+            &context,
+            &id,
+            None,
+            None,
+            Some(crate::domain::DomainError::EmptyCommentBody.message()),
+            &headers,
+        );
+    }
+    match context.board().comment_write(&id, body) {
+        Ok(_) => sheet_response(&context, &id, None, None, None, &headers),
+        Err(error) => sheet_response(&context, &id, Some(error.message()), None, None, &headers),
+    }
+}
+
+async fn move_to_lane(
+    State(context): State<Arc<SessionContext>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    if let Some(denied) = guard(&headers) {
+        return denied;
+    }
+    let Some(params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let expected = match expected_revision(&params) {
+        Ok(revision) => revision,
+        Err(message) => return bad_request(&message),
+    };
+    if expected != context.revision() {
+        return sheet_response(
+            &context,
+            &id,
+            Some(CONFLICT_NOTICE.to_string()),
+            None,
+            None,
+            &headers,
+        );
+    }
+    let lane = field(&params, "lane");
+    let lane = if lane.trim().is_empty() {
+        None
+    } else {
+        Some(lane.to_string())
+    };
+    match context
+        .board()
+        .move_ticket(&id, lane.as_deref(), usize::MAX)
+    {
+        Ok(_) => sheet_response(&context, &id, None, None, None, &headers),
+        Err(error) => sheet_response(&context, &id, Some(error.message()), None, None, &headers),
+    }
+}
+
+/// The ticket a lane write re-draws; a form without one has no sheet to answer.
+fn lane_ticket(params: &HashMap<String, String>) -> String {
+    field(params, "ticket").trim().to_string()
+}
+
+async fn add_lane(
+    State(context): State<Arc<SessionContext>>,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    if let Some(denied) = guard(&headers) {
+        return denied;
+    }
+    let Some(params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let id = lane_ticket(&params);
+    if id.is_empty() {
+        return bad_request("a lane write names the ticket it was drawn from");
+    }
+    let abbr = field(&params, "abbr").trim();
+    let key = if abbr.is_empty() { None } else { Some(abbr) };
+    let outcome = context.board().add_lane(field(&params, "name"), key, None);
+    match outcome {
+        Ok(_) => sheet_response(&context, &id, None, None, None, &headers),
+        Err(error) => sheet_response(&context, &id, Some(error.message()), None, None, &headers),
+    }
+}
+
+async fn rename_lane(
+    State(context): State<Arc<SessionContext>>,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    if let Some(denied) = guard(&headers) {
+        return denied;
+    }
+    let Some(params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let id = lane_ticket(&params);
+    if id.is_empty() {
+        return bad_request("a lane write names the ticket it was drawn from");
+    }
+    let abbr = field(&params, "abbr").trim();
+    let key = if abbr.is_empty() { None } else { Some(abbr) };
+    let outcome = context
+        .board()
+        .rename_lane(&name, field(&params, "to"), key, None);
+    match outcome {
+        Ok(_) => sheet_response(&context, &id, None, None, None, &headers),
+        Err(error) => sheet_response(&context, &id, Some(error.message()), None, None, &headers),
+    }
+}
+
+// MARK: - The bikeshed notes
+
+/// The `markdown.html` partial on its own: the notes preview's answer.
+#[derive(Template)]
+#[template(path = "markdown.html")]
+struct MarkdownView {
+    body: askama::filters::Safe<String>,
+}
+
+fn markdown_view(blocks: &[MarkdownBlock]) -> MarkdownView {
+    MarkdownView {
+        body: askama::filters::Safe(markdown::blocks(blocks)),
+    }
+}
+
+struct TreeRowView {
+    name: String,
+    path: String,
+    href: String,
+    kind: &'static str,
+    level: usize,
+    indent: usize,
+    folder: bool,
+    selected: bool,
+}
+
+struct Crumb {
+    label: String,
+    current: bool,
+    first: bool,
+}
+
+struct NotePane {
+    path: String,
+    text: String,
+    baseline_hash: String,
+    html: askama::filters::Safe<String>,
+}
+
+struct BacklinkRow {
+    name: String,
+    line: String,
+    href: String,
+}
+
+struct LinkedTicket {
+    reference: String,
+    title: String,
+    href: String,
+}
+
+struct ConflictView {
+    path: String,
+    mine: String,
+    theirs: String,
+    baseline_hash: String,
+}
+
+#[derive(Template)]
+#[template(path = "notes.html")]
+struct NotesView {
+    rows: Vec<TreeRowView>,
+    project_options: Vec<ProjectOption>,
+    active_project: String,
+    show_all: bool,
+    path: Option<String>,
+    crumbs: Vec<Crumb>,
+    mode: &'static str,
+    note: Option<NotePane>,
+    backlinks: Vec<BacklinkRow>,
+    backlink_count: usize,
+    linked: Vec<LinkedTicket>,
+    linked_count: usize,
+    recoveries: Vec<String>,
+    recovery_count: usize,
+    notice: Option<String>,
+    error: Option<String>,
+    conflict: Option<ConflictView>,
+    focus_url: String,
+    edit_href: String,
+    read_href: String,
+}
+
+/// The notes view's own URL: the focus, the show-all escape and one note.
+fn notes_href(project: &str, show_all: bool, path: Option<&str>, mode: Option<&str>) -> String {
+    let mut pairs: Vec<(&str, String)> = vec![("project", project.to_string())];
+    if show_all {
+        pairs.push(("show_all", "1".to_string()));
+    }
+    if let Some(path) = path {
+        pairs.push(("path", path.to_string()));
+    }
+    if let Some(mode) = mode {
+        pairs.push(("mode", mode.to_string()));
+    }
+    match serde_urlencoded::to_string(&pairs) {
+        Ok(query) => format!("/notes?{query}"),
+        Err(_) => "/notes".to_string(),
+    }
+}
+
+/// The tree the focus draws: the `projects` folder narrowed to the one project
+/// folder its name answers, case-insensitively. No focus, no matching folder
+/// (ambiguous, renamed or absent) draws the whole vault, so a focus never hides
+/// notes.
+fn focus_nodes(nodes: Vec<BikeshedNode>, active: Option<&str>) -> Vec<BikeshedNode> {
+    let Some(active) = active.filter(|active| !active.trim().is_empty()) else {
+        return nodes;
+    };
+    let wanted = active.trim().to_lowercase();
+    let mut out = nodes;
+    for node in &mut out {
+        if node.kind != NodeKind::Folder || node.path != "projects" {
+            continue;
+        }
+        let narrowed: Vec<BikeshedNode> = node
+            .children
+            .iter()
+            .filter(|child| child.kind == NodeKind::Folder && child.name.to_lowercase() == wanted)
+            .cloned()
+            .collect();
+        if narrowed.len() == 1 {
+            node.children = narrowed;
+        }
+    }
+    out
+}
+
+fn note_name(path: &str) -> String {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    name.strip_suffix(".md").unwrap_or(name).to_string()
+}
+
+fn flatten_tree(nodes: &[BikeshedNode], depth: usize, rows: &mut Vec<TreeRowView>) {
+    for node in nodes {
+        let folder = node.kind == NodeKind::Folder;
+        rows.push(TreeRowView {
+            name: note_name(&node.path),
+            path: node.path.clone(),
+            href: String::new(),
+            kind: if folder { "folder" } else { "note" },
+            level: depth + 1,
+            indent: 8 + depth * 14,
+            folder,
+            selected: false,
+        });
+        if folder {
+            flatten_tree(&node.children, depth + 1, rows);
+        }
+    }
+}
+
+fn recoverable_label(recovery: &crate::bikeshed::Recovery) -> String {
+    match recovery.file.rsplit_once('/') {
+        Some((folder, _)) if !folder.is_empty() => {
+            format!("Unsaved draft kept from an interrupted save in {folder}")
+        }
+        _ => "Unsaved draft kept from an interrupted save".to_string(),
+    }
+}
+
+fn render_notes(
+    context: &SessionContext,
+    params: &HashMap<String, String>,
+    notice: Option<String>,
+    error: Option<String>,
+    conflict: Option<ConflictView>,
+) -> Result<NotesView, String> {
+    let project = field(params, "project").trim().to_string();
+    let show_all = !matches!(field(params, "show_all"), "" | "0" | "false");
+    let path = params
+        .get("path")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let mode = if field(params, "mode") == "edit" {
+        "edit"
+    } else {
+        "read"
+    };
+
+    let board = context.board();
+    let (projects, _) = board.projects_snapshot().map_err(|error| error.message())?;
+    let project_options = {
+        let mut options = vec![ProjectOption {
+            value: String::new(),
+            label: "All projects".to_string(),
+            selected: project.is_empty(),
+        }];
+        for project in &projects {
+            options.push(ProjectOption {
+                value: project.name.clone(),
+                label: project.name.clone(),
+                selected: project.name == field(params, "project"),
+            });
+        }
+        options
+    };
+
+    let vault = context.bikeshed();
+    let tree = vault.tree();
+    let focused = focus_nodes(tree, if show_all { None } else { Some(&project) });
+    let mut rows = Vec::new();
+    flatten_tree(&focused, 0, &mut rows);
+    for row in &mut rows {
+        if row.folder {
+            continue;
+        }
+        row.href = notes_href(&project, show_all, Some(&row.path), None);
+        row.selected = path.as_deref() == Some(row.path.as_str());
+    }
+
+    let mut note = None;
+    let mut crumbs = Vec::new();
+    let mut backlinks = Vec::new();
+    let mut linked = Vec::new();
+    let mut render_error = error;
+
+    if let Some(note_path) = &path {
+        match vault.read(note_path) {
+            Ok(read) => {
+                let content = read.value;
+                let folder = note_path
+                    .rsplit_once('/')
+                    .map(|(folder, _)| folder)
+                    .unwrap_or("");
+                let mut labels: Vec<String> = if folder.is_empty() {
+                    Vec::new()
+                } else {
+                    folder.split('/').map(str::to_string).collect()
+                };
+                labels.push(note_name(note_path));
+                let mut crumbs_out = vec![Crumb {
+                    label: "Bikeshed".to_string(),
+                    current: labels.is_empty(),
+                    first: true,
+                }];
+                for (index, label) in labels.iter().enumerate() {
+                    crumbs_out.push(Crumb {
+                        label: label.clone(),
+                        current: index + 1 == labels.len(),
+                        first: false,
+                    });
+                }
+                crumbs = crumbs_out;
+                note = Some(NotePane {
+                    path: note_path.clone(),
+                    text: content.text.clone(),
+                    baseline_hash: content.hash,
+                    html: askama::filters::Safe(markdown::document(&TicketMarkdown::blocks(Some(
+                        &content.text,
+                    )))),
+                });
+                match vault.backlinks(note_path) {
+                    Ok(read) => {
+                        backlinks = read
+                            .value
+                            .into_iter()
+                            .map(|backlink| BacklinkRow {
+                                name: note_name(&backlink.path),
+                                href: notes_href(&project, show_all, Some(&backlink.path), None),
+                                line: backlink.line,
+                            })
+                            .collect();
+                    }
+                    Err(error) => {
+                        render_error.get_or_insert(error.message());
+                    }
+                }
+                match board.list_snapshot(&TicketQuery::default()) {
+                    Ok((tickets, _)) => {
+                        linked = tickets
+                            .into_iter()
+                            .filter(|ticket| {
+                                !ticket.archived
+                                    && ticket.link.as_deref() == Some(note_path.as_str())
+                            })
+                            .map(|ticket| LinkedTicket {
+                                reference: sheet_handle(&ticket),
+                                title: ticket.title,
+                                href: format!("/tickets/{}", ticket.id),
+                            })
+                            .collect();
+                    }
+                    Err(error) => {
+                        render_error.get_or_insert(error.message());
+                    }
+                }
+            }
+            Err(error) => {
+                render_error.get_or_insert(error.message());
+            }
+        }
+    }
+
+    let recoveries: Vec<String> = vault.recoveries().iter().map(recoverable_label).collect();
+
+    Ok(NotesView {
+        rows,
+        project_options,
+        active_project: field(params, "project").to_string(),
+        show_all,
+        path: path.clone(),
+        crumbs,
+        mode,
+        note,
+        backlink_count: backlinks.len(),
+        backlinks,
+        linked_count: linked.len(),
+        linked,
+        recovery_count: recoveries.len(),
+        recoveries,
+        notice,
+        error: render_error,
+        conflict,
+        focus_url: notes_href(&project, show_all, path.as_deref(), None),
+        edit_href: notes_href(&project, show_all, path.as_deref(), Some("edit")),
+        read_href: notes_href(&project, show_all, path.as_deref(), None),
+    })
+}
+
+fn notes_response(
+    context: &SessionContext,
+    params: &HashMap<String, String>,
+    notice: Option<String>,
+    error: Option<String>,
+    conflict: Option<ConflictView>,
+    headers: &HeaderMap,
+) -> Response {
+    let view = match render_notes(context, params, notice, error, conflict) {
+        Ok(view) => view,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("the notes could not be read: {error}\n"),
+            )
+                .into_response();
+        }
+    };
+    let body = match view.render() {
+        Ok(body) => body,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("the notes could not be drawn: {error}\n"),
+            )
+                .into_response();
+        }
+    };
+    if is_partial(headers) {
+        return html_response(body, StatusCode::OK);
+    }
+    match (PageView {
+        body: askama::filters::Safe(body),
+    })
+    .render()
+    {
+        Ok(html) => html_response(html, StatusCode::OK),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("the shell could not be drawn: {error}\n"),
+        )
+            .into_response(),
+    }
+}
+
+async fn notes_page(
+    State(context): State<Arc<SessionContext>>,
+    Query(params): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    notes_response(&context, &params, None, None, None, &headers)
+}
+
+async fn note_view(
+    State(context): State<Arc<SessionContext>>,
+    Query(mut params): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    params.remove("mode");
+    notes_response(&context, &params, None, None, None, &headers)
+}
+
+async fn note_edit(
+    State(context): State<Arc<SessionContext>>,
+    Query(mut params): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    params.insert("mode".to_string(), "edit".to_string());
+    notes_response(&context, &params, None, None, None, &headers)
+}
+
+async fn note_preview(
+    State(_context): State<Arc<SessionContext>>,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    let Some(params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let blocks = TicketMarkdown::blocks(Some(field(&params, "text")));
+    match markdown_view(&blocks).render() {
+        Ok(html) => html_response(html, StatusCode::OK),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("the preview could not be drawn: {error}\n"),
+        )
+            .into_response(),
+    }
+}
+
+async fn note_save(
+    State(context): State<Arc<SessionContext>>,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    if let Some(denied) = guard(&headers) {
+        return denied;
+    }
+    let Some(params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let path = field(&params, "path").to_string();
+    let text = field(&params, "text");
+    let baseline = field(&params, "baseline_hash");
+    let resolution = field(&params, "resolution");
+    let vault = context.bikeshed();
+
+    let disk = match vault.read(&path) {
+        Ok(read) => read.value,
+        Err(error) => {
+            return notes_response(
+                &context,
+                &params,
+                None,
+                Some(error.message()),
+                None,
+                &headers,
+            );
+        }
+    };
+    if disk.hash != baseline && resolution != "keep_mine" {
+        if resolution == "take_theirs" {
+            return notes_response(&context, &params, None, None, None, &headers);
+        }
+        let conflict = ConflictView {
+            path: path.clone(),
+            mine: text.to_string(),
+            theirs: disk.text.clone(),
+            baseline_hash: disk.hash.clone(),
+        };
+        return notes_response(&context, &params, None, None, Some(conflict), &headers);
+    }
+    match vault.write(&path, text) {
+        Ok(_) => notes_response(&context, &params, None, None, None, &headers),
+        Err(error) => notes_response(
+            &context,
+            &params,
+            None,
+            Some(error.message()),
+            None,
+            &headers,
+        ),
+    }
+}
+
+async fn note_create(
+    State(context): State<Arc<SessionContext>>,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    note_create_thing(&context, headers, form, false).await
+}
+
+async fn note_create_folder(
+    State(context): State<Arc<SessionContext>>,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    note_create_thing(&context, headers, form, true).await
+}
+
+async fn note_create_thing(
+    context: &SessionContext,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+    folder: bool,
+) -> Response {
+    if let Some(denied) = guard(&headers) {
+        return denied;
+    }
+    let Some(mut params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let path = field(&params, "path").to_string();
+    let vault = context.bikeshed();
+    let outcome = if folder {
+        vault.create_folder(&path)
+    } else {
+        vault.create(&path)
+    };
+    match outcome {
+        Ok(read) => {
+            if !folder {
+                params.insert("path".to_string(), read.value);
+            }
+            notes_response(context, &params, None, None, None, &headers)
+        }
+        Err(error) => notes_response(
+            context,
+            &params,
+            None,
+            Some(error.message()),
+            None,
+            &headers,
+        ),
+    }
+}
+
+async fn note_move(
+    State(context): State<Arc<SessionContext>>,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    if let Some(denied) = guard(&headers) {
+        return denied;
+    }
+    let Some(mut params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let path = field(&params, "path").to_string();
+    let into = field(&params, "into").to_string();
+    let vault = context.bikeshed();
+    match vault.move_into(&path, &into) {
+        Ok(read) => {
+            if !read.value.is_folder {
+                params.insert("path".to_string(), read.value.path);
+            } else {
+                params.remove("path");
+            }
+            notes_response(&context, &params, None, None, None, &headers)
+        }
+        Err(error) => notes_response(
+            &context,
+            &params,
+            None,
+            Some(error.message()),
+            None,
+            &headers,
+        ),
+    }
 }
 
 async fn events(

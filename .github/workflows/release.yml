@@ -3,19 +3,24 @@ name: Release
 # The cutover's release: a tag v* push (or a manual dispatch) packages the
 # Electron app per platform (`build-macos` on a GitHub-hosted macOS runner, the new
 # `build-linux` on an Ubuntu runner), verifies each artifact and publishes the
-# GitHub release; pull-request runs do the same build-and-verify work and upload
-# the artifacts, never publishing. The contract is this file and
+# GitHub release. Pull-request runs carried the same build-and-verify work until
+# CUT-15 deleted the Electron tree; CUT-16 restores them over the standalone
+# binary. The contract is this file and
 # `docs/releasing.md`; ADR 0003 owns the distribution model it serves (one
 # prebuilt cask, its artifact built by CI on each tag; AppImage-on-releases for
 # Linux, PRT-1) and ADR 0036 owns the tap bump.
 #
 # The gates that used to live here moved with the Swift tree: the Rust suite is
 # `rust.yml`, and the shell's typecheck, tests, package and smoke gates are
-# `app.yml`. This workflow builds the bytes the tag publishes, so it does not
-# run a second copy of the suites that already gate the merge. What it does gate is the artifact: the
-# package names the cask downloads, the core sits where the packaged shell
-# resolves it, the zip is intact, and the checksum the tap bump reads is the
-# checksum of those bytes.
+# `app.yml` before CUT-15 deleted it. This workflow builds the bytes the tag
+# publishes, so it does not run a second copy of the suites that already gate
+# the merge. What it does gate is the artifact.
+#
+# CUT-15 removed the Electron tree, so this file's build jobs still name a
+# package that no longer exists; CUT-16 rewrites them as standalone `tandem`
+# archives and restores the pull-request run. Until then the workflow runs on
+# tags and dispatch only, so a merge is not held by a pipeline whose subject
+# retired.
 #
 # The work is split in three: `build-macos` and `build-linux` each produce and verify
 # their platform's artifact, and `release` publishes them. The publisher keeps
@@ -27,7 +32,6 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  pull_request:
   workflow_dispatch:
 
 # Least privilege by default: the build job only reads the repo. The publish and

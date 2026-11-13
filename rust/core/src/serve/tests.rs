@@ -790,3 +790,568 @@ fn a_write_from_another_store_reports_changed_quickly() {
         "a write took {elapsed:?} to arrive, past the 40 ms ceiling plus jitter"
     );
 }
+
+// MARK: - Seam 1b: the ticket sheet and the bikeshed notes
+
+use crate::bikeshed::Bikeshed;
+use crate::domain::{Edit, SetFields};
+
+fn sheet_get(uri: &str) -> Request<Body> {
+    Request::builder()
+        .uri(uri)
+        .header(header::HOST, "127.0.0.1:7700")
+        .header("hx-request", "true")
+        .body(Body::empty())
+        .expect("the request builds")
+}
+
+fn page_get(uri: &str) -> Request<Body> {
+    Request::builder()
+        .uri(uri)
+        .header(header::HOST, "127.0.0.1:7700")
+        .body(Body::empty())
+        .expect("the request builds")
+}
+
+fn vault(store: &Store) -> Bikeshed {
+    Bikeshed::new(store.home().directory().join("bikeshed"))
+}
+
+#[tokio::test]
+async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
+    let sandbox = Sandbox::new("sheet-render");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    board
+        .set(
+            &ticket.id.to_string(),
+            SetFields {
+                description: Edit::Set(Some("## Why\n\nSome **bold** and `code`.\n\n- one\n- two")),
+                ..SetFields::default()
+            },
+        )
+        .expect("the description is set");
+    board
+        .comment_write(&ticket.id.to_string(), "A first comment")
+        .expect("the comment lands");
+    let beta = by_title(&board, "Beta one");
+    board
+        .block(&ticket.id.to_string(), &beta.id.to_string())
+        .expect("the ticket waits on beta");
+    let loose = by_title(&board, "Loose");
+    board
+        .block(&loose.id.to_string(), &ticket.id.to_string())
+        .expect("loose waits on the ticket");
+    let app = router(context(store));
+
+    let (status, headers, body) = send(&app, sheet_get(&format!("/tickets/{}", ticket.id))).await;
+    assert_eq!(status, StatusCode::OK, "the sheet answers: {body}");
+    assert!(
+        headers.contains_key(header::CONTENT_SECURITY_POLICY),
+        "the sheet carries the policy"
+    );
+    for marker in [
+        "sheet-backdrop",
+        "role=\"dialog\"",
+        "sheet__sticky",
+        "sheet__meta",
+        "data-status=\"ready\"",
+        "name=\"assignee\"",
+        "name=\"lane\"",
+        "Café alpha",
+        "markdown__heading",
+        "Why",
+        "<strong>bold</strong>",
+        "markdown__inline-code",
+        "markdown__list",
+        "A first comment",
+        "sheet__details",
+        "<summary",
+        "Blocked by",
+        "Blocks",
+        "New cycle lane",
+    ] {
+        assert!(body.contains(marker), "the sheet draws {marker}: {body}");
+    }
+    assert!(
+        !body.contains("<!doctype html>"),
+        "an htmx request answers the partial: {body}"
+    );
+
+    let (status, _, page) = send(&app, page_get(&format!("/tickets/{}", ticket.id))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        page.contains("<!doctype html>"),
+        "a plain request draws the shell"
+    );
+    assert!(
+        page.contains("board__column"),
+        "the board sits behind the sheet"
+    );
+    assert!(page.contains("sheet-backdrop"), "the sheet is open");
+}
+
+#[tokio::test]
+async fn post_ticket_sheet_saves_changes_and_refuses_stale_revision() {
+    let sandbox = Sandbox::new("sheet-save");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    let revision = store.revision().expect("the revision reads");
+    let app = router(context(store));
+
+    let body =
+        format!("title=Renamed&status=in-review&assignee=reviewer&expected_revision={revision}");
+    let (status, _, answer) = send(&app, form_request(&format!("/tickets/{id}"), &body)).await;
+    assert_eq!(status, StatusCode::OK, "the save answers: {answer}");
+    let saved = board.ticket(&id).expect("the ticket reads");
+    assert_eq!(saved.title, "Renamed");
+    assert_eq!(saved.status, Status::InReview);
+    assert_eq!(saved.assignee.as_deref(), Some("reviewer"));
+    assert!(
+        answer.contains("Renamed"),
+        "the sheet redraws the save: {answer}"
+    );
+
+    let stale =
+        format!("title=Overwritten&status=done&assignee=human&expected_revision={revision}");
+    let (status, _, answer) = send(&app, form_request(&format!("/tickets/{id}"), &stale)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        answer.contains("sheet__notice"),
+        "a stale save draws a notice: {answer}"
+    );
+    assert_eq!(
+        board.ticket(&id).expect("the ticket reads").title,
+        "Renamed",
+        "a stale save overwrites nothing"
+    );
+}
+
+#[tokio::test]
+async fn post_ticket_description_appends_with_blank_line_and_refuses_empty_addition_with_domain_wording()
+ {
+    let sandbox = Sandbox::new("sheet-append");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    board
+        .set(
+            &id,
+            SetFields {
+                description: Edit::Set(Some("First")),
+                ..SetFields::default()
+            },
+        )
+        .expect("the description is set");
+    let app = router(context(store));
+
+    let revision = board.store().revision().expect("the revision reads");
+    let (status, _, answer) = send(
+        &app,
+        form_request(
+            &format!("/tickets/{id}/description"),
+            &format!("addition=Second&expected_revision={revision}"),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the append answers: {answer}");
+    assert_eq!(
+        board
+            .ticket(&id)
+            .expect("the ticket reads")
+            .description
+            .as_deref(),
+        Some("First\n\nSecond"),
+        "an append lands one blank line under the stored body"
+    );
+
+    let revision = board.store().revision().expect("the revision reads");
+    let (status, _, answer) = send(
+        &app,
+        form_request(
+            &format!("/tickets/{id}/description"),
+            &format!("addition=%20%20%20&expected_revision={revision}"),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        answer.contains("sheet__refusal"),
+        "an empty append is refused: {answer}"
+    );
+    assert!(
+        answer.contains("Description body is empty."),
+        "the refusal carries the domain's wording: {answer}"
+    );
+    assert_eq!(
+        board
+            .ticket(&id)
+            .expect("the ticket reads")
+            .description
+            .as_deref(),
+        Some("First\n\nSecond"),
+        "a refused append writes nothing"
+    );
+}
+
+#[tokio::test]
+async fn post_ticket_comment_appends_as_human_and_refuses_empty_body() {
+    let sandbox = Sandbox::new("sheet-comment");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    let app = router(context(store));
+
+    let (status, _, answer) = send(
+        &app,
+        form_request(&format!("/tickets/{id}/comments"), "body=hello"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the comment answers: {answer}");
+    let comments = board.comments(&id).expect("the log reads");
+    assert_eq!(comments.len(), 1);
+    assert_eq!(comments[0].author, "human");
+    assert_eq!(comments[0].body, "hello");
+    assert!(
+        answer.contains("hello"),
+        "the sheet redraws the comment: {answer}"
+    );
+
+    let (status, _, answer) = send(
+        &app,
+        form_request(&format!("/tickets/{id}/comments"), "body=%20%20"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        answer.contains("sheet__refusal"),
+        "an empty comment is refused: {answer}"
+    );
+    assert!(
+        answer.contains("Comment body is empty."),
+        "the refusal carries the domain's wording: {answer}"
+    );
+    assert_eq!(
+        board.comments(&id).expect("the log reads").len(),
+        1,
+        "a refused comment writes nothing"
+    );
+}
+
+#[tokio::test]
+async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choices() {
+    let sandbox = Sandbox::new("sheet-lane");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    let app = router(context(store));
+
+    let revision = board.store().revision().expect("the revision reads");
+    let (status, _, answer) = send(
+        &app,
+        form_request(
+            &format!("/tickets/{id}/lane"),
+            &format!("lane=shared&expected_revision={revision}"),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the lane move answers: {answer}");
+    assert_eq!(
+        board.ticket(&id).expect("the ticket reads").lane.as_deref(),
+        Some("shared"),
+        "the lane moves at once"
+    );
+
+    let (status, _, answer) = send(
+        &app,
+        form_request("/lanes", &format!("name=gamma&abbr=GAM&ticket={id}")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the lane add answers: {answer}");
+    assert!(
+        board
+            .lanes()
+            .expect("the lanes read")
+            .iter()
+            .any(|lane| lane == "gamma"),
+        "the lane is declared"
+    );
+    assert!(
+        answer.contains("value=\"gamma\""),
+        "the sheet's lane choices carry the new lane: {answer}"
+    );
+
+    let (status, _, answer) = send(
+        &app,
+        form_request(
+            "/lanes/gamma/rename",
+            &format!("to=delta&abbr=DEL&ticket={id}"),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the lane rename answers: {answer}");
+    let lanes = board.lanes().expect("the lanes read");
+    assert!(
+        lanes.iter().any(|lane| lane == "delta"),
+        "the lane is renamed"
+    );
+    assert!(
+        !lanes.iter().any(|lane| lane == "gamma"),
+        "the old name is gone"
+    );
+    assert!(
+        answer.contains("delta"),
+        "the sheet redraws the rename: {answer}"
+    );
+
+    let (status, _, answer) = send(
+        &app,
+        form_request("/lanes", &format!("name=alpha&abbr=ALP&ticket={id}")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        answer.contains("sheet__notice"),
+        "a duplicate lane draws a notice: {answer}"
+    );
+    assert!(
+        answer.contains("already exists"),
+        "the notice carries the domain's wording: {answer}"
+    );
+}
+
+#[tokio::test]
+async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_footer() {
+    let sandbox = Sandbox::new("notes-render");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let notes = vault(&store);
+    notes.create("Index.md").expect("the note is created");
+    notes
+        .write("Index.md", "## Hello\n\nBody text")
+        .expect("the note is written");
+    notes.create("Other.md").expect("the note is created");
+    notes
+        .write("Other.md", "See [[Index]]")
+        .expect("the note is written");
+    notes
+        .create("projects/tandem/inside.md")
+        .expect("the note is created");
+    notes
+        .create("projects/other/outside.md")
+        .expect("the note is created");
+    board
+        .set_link(&ticket.id.to_string(), Some("Index.md"))
+        .expect("the ticket links the note");
+    let app = router(context(store));
+
+    let (status, _, body) = send(&app, page_get("/notes?path=Index.md")).await;
+    assert_eq!(status, StatusCode::OK, "the notes face answers: {body}");
+    for marker in [
+        "<!doctype html>",
+        "notes-root",
+        "tree__row",
+        "Index",
+        "bikeshed__breadcrumb",
+        "Bikeshed",
+        "markdown__heading",
+        "Hello",
+        "Body text",
+        "Backlinks",
+        "Other",
+        "Tickets",
+        "Café alpha",
+        ">Edit<",
+    ] {
+        assert!(
+            body.contains(marker),
+            "the notes face draws {marker}: {body}"
+        );
+    }
+
+    let (_, _, focused) = send(&app, page_get("/notes?project=tandem&path=Index.md")).await;
+    assert!(
+        focused.contains("inside"),
+        "the focused tree keeps the project's folder: {focused}"
+    );
+    assert!(
+        !focused.contains("outside"),
+        "the focused tree drops another project's folder: {focused}"
+    );
+}
+
+#[tokio::test]
+async fn post_notes_preview_renders_markdown_blocks_without_writing_disk() {
+    let sandbox = Sandbox::new("notes-preview");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    let app = router(context(store));
+
+    let (status, _, body) = send(
+        &app,
+        form_request("/notes/preview", "text=%23%23+Draft%0A%0A**bold**"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the preview answers: {body}");
+    assert!(
+        body.contains("markdown__heading"),
+        "a heading is drawn: {body}"
+    );
+    assert!(
+        body.contains("<strong>bold</strong>"),
+        "inline styles are drawn: {body}"
+    );
+    assert!(
+        notes.read("Draft.md").is_err(),
+        "a preview writes no note to disk"
+    );
+}
+
+#[tokio::test]
+async fn post_notes_save_writes_when_hash_matches_and_renders_mine_theirs_conflict_when_disk_moved()
+{
+    let sandbox = Sandbox::new("notes-save");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    notes.create("Index.md").expect("the note is created");
+    notes.write("Index.md", "one").expect("the note is written");
+    let first = notes.read("Index.md").expect("the note reads").value;
+    let app = router(context(store));
+
+    let (status, _, body) = send(
+        &app,
+        form_request(
+            "/notes/save",
+            &format!("path=Index.md&text=two&baseline_hash={}", first.hash),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the save answers: {body}");
+    assert_eq!(
+        notes.read("Index.md").expect("the note reads").value.text,
+        "two",
+        "a save at the baseline writes the text"
+    );
+
+    let second = notes.read("Index.md").expect("the note reads").value;
+    notes
+        .write("Index.md", "theirs")
+        .expect("the other writer lands");
+    let (status, _, body) = send(
+        &app,
+        form_request(
+            "/notes/save",
+            &format!("path=Index.md&text=mine&baseline_hash={}", second.hash),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    for marker in ["conflict", "Mine", "Theirs", "Keep mine", "Take theirs"] {
+        assert!(body.contains(marker), "the conflict draws {marker}: {body}");
+    }
+    assert!(
+        body.contains("mine") && body.contains("theirs"),
+        "both bodies are drawn: {body}"
+    );
+    assert_eq!(
+        notes.read("Index.md").expect("the note reads").value.text,
+        "theirs",
+        "a conflict writes nothing"
+    );
+
+    let (status, _, _) = send(
+        &app,
+        form_request(
+            "/notes/save",
+            &format!(
+                "path=Index.md&text=mine&baseline_hash={}&resolution=keep_mine",
+                second.hash
+            ),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        notes.read("Index.md").expect("the note reads").value.text,
+        "mine",
+        "Keep mine writes the buffer over the disk"
+    );
+}
+
+#[tokio::test]
+async fn post_notes_create_create_folder_and_move_update_vault_and_refuse_invalid_reparent() {
+    let sandbox = Sandbox::new("notes-move");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    let app = router(context(store));
+
+    let (status, _, body) = send(
+        &app,
+        form_request(
+            "/notes/create",
+            "path=projects/tandem/New.md&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the create answers: {body}");
+    assert!(
+        notes.read("projects/tandem/New.md").is_ok(),
+        "the note is created"
+    );
+    assert!(body.contains("New"), "the tree redraws the note: {body}");
+
+    let (status, _, _) = send(
+        &app,
+        form_request(
+            "/notes/create-folder",
+            "path=projects/tandem/Sub&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        notes
+            .file_url("projects/tandem/Sub")
+            .is_some_and(|path| path.is_dir()),
+        "the folder is created"
+    );
+
+    let (status, _, _) = send(
+        &app,
+        form_request(
+            "/notes/move",
+            "path=projects/tandem/New.md&into=projects/tandem/Sub&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        notes.read("projects/tandem/Sub/New.md").is_ok(),
+        "the note moves into the folder"
+    );
+
+    let (status, _, body) = send(
+        &app,
+        form_request(
+            "/notes/move",
+            "path=projects/tandem&into=projects/tandem/Sub&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("cannot be moved into itself"),
+        "a folder moved into its own descendant is refused: {body}"
+    );
+    assert!(
+        notes.read("projects/tandem/Sub/New.md").is_ok(),
+        "the refused move changes nothing"
+    );
+}

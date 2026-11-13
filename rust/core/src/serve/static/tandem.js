@@ -1,18 +1,16 @@
 /*
- * The board's act htmx does not own: a card move writes a status. It answers
- * both the mouse (drag and drop) and the keyboard (Alt+Left / Alt+Right on a
- * focused card), which is the route the React board's move took.
+ * The acts htmx does not own: a board card drop, a bikeshed tree move, the
+ * ticket sheet's lane select and shortcut keys, and the notes editor's
+ * debounced autosave and preview.
  *
- * The card carries the ticket id on dragstart, the column carries its stage in
- * `data-status`, and the board carries the revision it was drawn from in
- * `data-revision`. The POST is the same form the server's routes read, and it
- * sends `HX-Request` so the answer is the `#board-root` partial rather than the
- * whole shell. The partial replaces the root, so the filter bar, the notice and
- * the new revision all land together, and focus returns to the moved card.
- * Listeners are delegated from the document, so a swap never needs them rebound.
+ * The server draws every face; this file only turns a pointer or a key into the
+ * same form POST the page already carries. Listeners are delegated from the
+ * document, so an htmx swap never needs them rebound.
  */
 (function () {
-  var dragged = null;
+  var draggedCard = null;
+  var draggedNote = null;
+  var noteTimer = null;
 
   function closest(element, selector) {
     while (element && element.nodeType === 1) {
@@ -27,14 +25,25 @@
     if (card) card.focus();
   }
 
-  function move(ticketId, column) {
+  function htmxPost(form, target) {
+    if (!window.htmx) return false;
+    window.htmx.ajax('POST', form.getAttribute('action'), {
+      source: form,
+      target: target,
+      swap: 'outerHTML',
+      values: new FormData(form)
+    });
+    return true;
+  }
+
+  // MARK: - The board's card move
+
+  function moveCard(ticketId, column) {
     var root = document.getElementById('board-root');
     if (!root || !column || !ticketId) return;
-    // The board's answer replaces the root, so the POST has to carry the
-    // filters the board was drawn with; without them the partial redraws an
-    // unfiltered board and the human's project, lane, assignee and search are
-    // gone. The filter bar's own controls are that state, and they are the
-    // same field names the add form carries as hidden inputs.
+    // The board's answer replaces the root, so the POST carries the filters the
+    // board was drawn with; without them the partial redraws an unfiltered board
+    // and the human's project, lane, assignee and search are gone.
     var bar = root.querySelector('.tickets__bar--board');
     var body = bar ? new URLSearchParams(new FormData(bar)) : new URLSearchParams();
     body.set('status', column.getAttribute('data-status') || '');
@@ -58,40 +67,85 @@
         focusCard(ticketId);
       })
       .catch(function (error) {
-        // The card stays where the human left it; the page says nothing, so the
-        // console is the one record of the failed write.
         console.error('the card move failed:', error);
       });
   }
 
   document.addEventListener('dragstart', function (event) {
     var card = closest(event.target, '.ticket-card');
-    if (!card) return;
-    dragged = card.getAttribute('data-ticket');
-    event.dataTransfer.setData('text/plain', dragged);
-    event.dataTransfer.effectAllowed = 'move';
+    if (card) {
+      draggedCard = card.getAttribute('data-ticket');
+      event.dataTransfer.setData('text/plain', draggedCard);
+      event.dataTransfer.effectAllowed = 'move';
+      return;
+    }
+    var row = closest(event.target, '.tree__row[data-path]');
+    if (row) {
+      draggedNote = row.getAttribute('data-path');
+      event.dataTransfer.setData('text/plain', draggedNote);
+      event.dataTransfer.effectAllowed = 'move';
+    }
   });
 
   document.addEventListener('dragover', function (event) {
-    var column = closest(event.target, '.board__column');
-    if (!column || !dragged) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-    column.setAttribute('data-targeted', '');
+    if (draggedCard) {
+      var column = closest(event.target, '.board__column');
+      if (!column) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      column.setAttribute('data-targeted', '');
+      return;
+    }
+    if (draggedNote) {
+      var into = closest(event.target, '.tree__row[data-kind="folder"], .tree__vault');
+      if (!into) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      into.setAttribute('data-over', 'true');
+    }
   });
 
   document.addEventListener('dragleave', function (event) {
     var column = closest(event.target, '.board__column');
     if (column) column.removeAttribute('data-targeted');
+    var into = closest(event.target, '.tree__row[data-kind="folder"], .tree__vault');
+    if (into) into.removeAttribute('data-over');
   });
 
   document.addEventListener('drop', function (event) {
-    var column = closest(event.target, '.board__column');
-    if (!column || !dragged) return;
-    event.preventDefault();
-    column.removeAttribute('data-targeted');
-    move(dragged, column);
-    dragged = null;
+    if (draggedCard) {
+      var column = closest(event.target, '.board__column');
+      if (!column) return;
+      event.preventDefault();
+      column.removeAttribute('data-targeted');
+      moveCard(draggedCard, column);
+      draggedCard = null;
+      return;
+    }
+    if (draggedNote) {
+      var into = closest(event.target, '.tree__row[data-kind="folder"], .tree__vault');
+      if (!into) return;
+      event.preventDefault();
+      into.removeAttribute('data-over');
+      var target = into.getAttribute('data-path') || '';
+      var source = draggedNote;
+      draggedNote = null;
+      // A note cannot land on itself or inside its own folder, and a move into
+      // the folder it already sits in is a no-op: the same rule the core keeps.
+      var parent = source.lastIndexOf('/') === -1 ? '' : source.slice(0, source.lastIndexOf('/'));
+      if (source === target || target === source + '/' || target.indexOf(source + '/') === 0 || parent === target) return;
+      var form = document.createElement('form');
+      form.setAttribute('action', '/notes/move');
+      form.innerHTML =
+        '<input name="path"><input name="into">' +
+        '<input name="project"><input name="show_all">';
+      form.elements.path.value = source;
+      form.elements.into.value = target;
+      var focus = document.querySelector('#notes-root .focus');
+      form.elements.project.value = focus ? focus.elements.project.value : '';
+      form.elements.show_all.value = focus && focus.elements.show_all.checked ? '1' : '';
+      htmxPost(form, '#notes-root');
+    }
   });
 
   document.addEventListener('keydown', function (event) {
@@ -106,6 +160,126 @@
     var target = columns[index + (event.key === 'ArrowRight' ? 1 : -1)];
     if (!target) return;
     event.preventDefault();
-    move(card.getAttribute('data-ticket'), target);
+    moveCard(card.getAttribute('data-ticket'), target);
+  });
+
+  // MARK: - The ticket sheet
+
+  // The lane is the one metadata control that moves at once: its own form.
+  document.addEventListener('change', function (event) {
+    var select = closest(event.target, '[data-sheet-lane]');
+    if (select && select.form) htmxPost(select.form, '#board-root');
+  });
+
+  // Preview and source are both drawn; the toggle only decides which shows.
+  document.addEventListener('click', function (event) {
+    var toggle = closest(event.target, '[data-sheet-toggle="description"]');
+    if (!toggle) return;
+    var preview = document.querySelector('[data-sheet-preview="description"]');
+    var source = document.querySelector('[data-sheet-source="description"]');
+    if (!preview || !source) return;
+    var showingSource = !source.hidden;
+    source.hidden = showingSource;
+    preview.hidden = !showingSource;
+    toggle.textContent = showingSource ? 'View source' : 'Preview';
+  });
+
+  document.addEventListener('keydown', function (event) {
+    var sheet = document.querySelector('.sheet');
+    if (!sheet) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      window.location.href = '/board';
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+      event.preventDefault();
+      var form;
+      if (event.shiftKey) {
+        form = sheet.querySelector('.sheet__discussion form');
+      } else {
+        form = document.getElementById('sheet-save');
+      }
+      if (form) htmxPost(form, '#board-root');
+    }
+  });
+
+  // MARK: - The notes editor
+
+  function noteForm() {
+    return document.getElementById('note-form');
+  }
+
+  // The autosave writes without swapping the pane: a swap would replace the
+  // textarea under the human's caret every second. The response still carries
+  // the new baseline, which the hidden input adopts; a conflict or an error is
+  // the one answer that does swap, because it must be seen.
+  function saveNote() {
+    var form = noteForm();
+    if (!form) return Promise.resolve();
+    return fetch(form.getAttribute('action'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'HX-Request': 'true'
+      },
+      body: new URLSearchParams(new FormData(form)).toString()
+    })
+      .then(function (response) { return response.text(); })
+      .then(function (html) {
+        if (html.indexOf('class="conflict"') !== -1 || html.indexOf('class="banner"') !== -1) {
+          var root = document.getElementById('notes-root');
+          if (root) root.outerHTML = html;
+          return;
+        }
+        var parsed = new DOMParser().parseFromString(html, 'text/html');
+        var fresh = parsed.querySelector('[data-note-baseline]');
+        var current = form.querySelector('[data-note-baseline]');
+        if (fresh && current) current.value = fresh.getAttribute('value');
+      })
+      .catch(function (error) {
+        console.error('the note save failed:', error);
+      });
+  }
+
+  document.addEventListener('input', function (event) {
+    var editor = closest(event.target, '.note-editor');
+    if (!editor) return;
+    if (noteTimer) window.clearTimeout(noteTimer);
+    noteTimer = window.setTimeout(saveNote, 1000);
+  });
+
+  document.addEventListener('keydown', function (event) {
+    var editor = closest(event.target, '.note-editor');
+    if (!editor) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (noteTimer) window.clearTimeout(noteTimer);
+      var done = document.querySelector('.bikeshed__mode');
+      saveNote().then(function () {
+        if (done) window.location.href = done.getAttribute('href');
+      });
+    }
+  });
+
+  document.addEventListener('click', function (event) {
+    var toggle = closest(event.target, '[data-note-preview]');
+    if (!toggle) return;
+    var form = noteForm();
+    var out = document.querySelector('[data-note-preview-out]');
+    if (!form || !out) return;
+    fetch('/notes/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ text: form.elements.text.value }).toString()
+    })
+      .then(function (response) { return response.text(); })
+      .then(function (html) {
+        out.innerHTML = html;
+        out.hidden = !out.hidden;
+      })
+      .catch(function (error) {
+        console.error('the note preview failed:', error);
+      });
   });
 })();

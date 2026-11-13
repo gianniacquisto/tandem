@@ -5,9 +5,7 @@
 //!
 //! - [`store`]: the home, and from PRT-4 the SQLite adapter behind it. All SQL
 //!   lives there; nothing outside it writes a row.
-//! - [`wire`]: the JSON the agent face prints and the app reads. The
-//!   TypeScript declarations are generated from the same types (`ts-rs`).
-//!
+//! - [`wire`]: the JSON the agent face prints and the app reads.
 //! - [`domain`]: the aggregates, pure over the adapter: the board's tickets,
 //!   lanes, comments, order and the dependency edge (PRT-5). Every failure the
 //!   domain raises is [`domain::error::DomainError`],
