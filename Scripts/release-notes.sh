@@ -61,10 +61,10 @@ if [ -z "$prev" ]; then
   exit 1
 fi
 
-# The lead line is user-facing and always fully qualified: the token `tandem`
-# collides with Homebrew core's unrelated cask, and renaming it would break
-# existing installs' upgrade path (PRT-36), so the tap prefix is the contract.
-lead="Tandem $version for macOS 27 (Apple silicon). Install: brew install --cask gianniacquisto/tap/tandem"
+# The lead line is user-facing and names every platform the release publishes:
+# the staged installer verifies the archive's digest before it writes anything
+# and covers macOS arm64 and Linux x86_64, and Windows downloads the zip.
+lead="Tandem $version for macOS arm64, Linux x86_64 and Windows x86_64. Install: curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh (macOS and Linux), or download tandem-$version-windows-x86_64.zip from https://github.com/gianniacquisto/tandem/releases/latest (Windows)."
 
 # The integration tip a tag names. The tags before the flip sit on `dev`'s
 # head, which is their own tip, or on a `release/vX.Y.Z` merge of `dev` into

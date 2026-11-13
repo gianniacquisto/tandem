@@ -14,7 +14,8 @@ every area this PR touches:
 
 - [ ] `cargo test`, `cargo fmt --all --check`,
       `cargo clippy --all-targets -- -D warnings` in `rust/`
-- [ ] `npm run typecheck && npm test` in `app/`
+- [ ] `bash Scripts/test_install.sh` and `bash Scripts/check-retired-paths.sh`
+      when a workflow, the installer or the release stager changes
 - [ ] Untouched areas: <!-- name them, or n/a -->
 
 ## Words and decisions

@@ -66,8 +66,9 @@ jobs:
         # Electron tree, and had no caller after it. Once per run: it reads the
         # tracked tree, not the platform's build. The third-party notice check
         # rides `cargo test` beside it (`rust/core/tests/notice.rs`), so a
-        # vendored asset the notice does not name fails the same job.
-        if: runner.os == 'Linux'
+        # vendored asset the notice does not name fails the same job. CUT-16
+        # runs it on the macOS job, once, with the installer suite below.
+        if: runner.os == 'macOS'
         working-directory: ${{ github.workspace }}
         run: bash Scripts/check-retired-paths.sh
 

@@ -33,7 +33,7 @@ The app holds no domain logic. The binary the agents call and the core the app t
 | wire | `serde`, `serde_json` | the JSON the skills already parse |
 | hashing | `sha2` | note content hashes |
 | shell | Electron, electron-vite, electron-builder | one Chromium on all three platforms |
-| renderer | React + TypeScript | agent throughput and ecosystem depth; `app/CONVENTIONS.md` pins the idioms |
+| renderer | React + TypeScript | agent throughput and ecosystem depth; the renderer's conventions file pins the idioms |
 | message types | the Rust structs in `rust/core/src/wire/` | one shape the CLI, the MCP tools and the served faces all read |
 | UI screenshots | Playwright against the real app | a spec in CI, replacing the lldb shot script; answers `TAN-210`, unblocks `TAN-217` |
 
@@ -86,7 +86,7 @@ Not built: a hosted service for several humans (a deployment shape later, not a 
 
 ## How the work lands
 
-- **Landed additively on `main`**: new directories `rust/` and `app/` arrived first, and the Swift targets kept building and the release kept shipping the Swift app until the cutover commit deleted them. No long-lived port branch: the repo retired `dev` on 2026-10-29 for this shape ([ADR 0019](adr/0019-integration-branch.md)), and every agent contract branches from `main`.
+- **Landed additively on `main`**: the `rust/` tree and the renderer arrived first, and the Swift targets kept building and the release kept shipping the Swift app until the cutover commit deleted them. No long-lived port branch: the repo retired `dev` on 2026-10-29 for this shape ([ADR 0019](adr/0019-integration-branch.md)), and every agent contract branches from `main`.
 - **Fixture homes until cutover**: the Rust binary runs against `Fixtures/` homes and never touches `~/.tandem` while the Swift app owns it.
 - **Merges, not rebases**, per the repo's git rule.
 

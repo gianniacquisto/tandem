@@ -168,10 +168,9 @@ fn a_done_ticket_hidden_by_the_open_filter_still_anchors_the_drop_correctly() {
     assert_eq!(titles(&board, Filter::Open), ["c", "a"]);
 }
 
-/// The drop-index arithmetic, in a golden both implementations run:
-/// `Fixtures/port/ordering.json` is the case list, this suite reads it, and
-/// `app/tests/board.test.ts` reads the same file through the renderer's port.
-/// One rule, two languages, one set of answers (ADR 0008).
+/// The drop-index arithmetic, in a golden the port runs:
+/// `Fixtures/port/ordering.json` is the case list, and this suite reads it.
+/// One rule, one implementation, one set of answers (ADR 0008).
 #[derive(Deserialize)]
 struct Golden {
     cases: Vec<GoldenCase>,

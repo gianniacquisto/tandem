@@ -32,5 +32,19 @@ pub mod serve;
 pub mod store;
 pub mod wire;
 
+/// The release version the build carries.
+///
+/// The release workflow sets `TANDEM_VERSION` before `cargo build --release`,
+/// so the tag run's binary answers its tag and the archive's smoke test reads it
+/// back from `tandem --version`. A dev build carries no stamp and falls back to
+/// the crate version (the workspace sits at 0.1.0 and never moves with a
+/// release). One reader for both the CLI's version flag and the MCP handshake.
+pub const fn release_version() -> &'static str {
+    match option_env!("TANDEM_VERSION") {
+        Some(version) => version,
+        None => env!("CARGO_PKG_VERSION"),
+    }
+}
+
 #[cfg(test)]
 mod tests;

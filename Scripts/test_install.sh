@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
-# Tests for Scripts/install.sh and Scripts/stage-release-assets.sh (TAN-253).
+# Tests for Scripts/install.sh, Scripts/stage-release-assets.sh and the syntax
+# of Scripts/smoke-binary.sh (CUT-16). The install is the standalone `tandem`
+# binary now, not a macOS app bundle.
 #
-# Run from anywhere: `bash Scripts/test_install.sh`. Each test builds a fixture
-# release (a zip plus SHA256SUMS under file://) and drives the installer with
-# the test seams it documents: TANDEM_BASE_URL, TANDEM_APPLICATIONS_DIR,
-# TANDEM_FAKE_UNAME_S/_M, TANDEM_ALLOW_NON_MACOS and
-# TANDEM_SKIP_QUARANTINE_STRIP. Nothing touches /Applications or the network.
+# Run from anywhere: `bash Scripts/test_install.sh`. Each case builds a fixture
+# release (an archive plus SHA256SUMS under file://) and drives the installer
+# with the seams it documents: TANDEM_BASE_URL, TANDEM_INSTALL_DIR,
+# TANDEM_FAKE_UNAME_S/_M and TANDEM_SKIP_QUARANTINE_STRIP. Nothing touches the
+# network, a real home directory or the repository.
 set -u
 
 repo=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 installer=$repo/Scripts/install.sh
 stager=$repo/Scripts/stage-release-assets.sh
+smoke=$repo/Scripts/smoke-binary.sh
 
-# Hermetic PATH: /usr/bin plus /bin only, so a developer machine's brew (and
-# its cask) cannot leak into a test. Tests that need a brew provide a fake one
-# earlier on PATH.
+# Hermetic PATH: /usr/bin plus /bin only, so a developer machine's tools cannot
+# leak into a test.
 emptybin=$(mktemp -d)
 sealed_path="$emptybin:/usr/bin:/bin"
 
@@ -24,54 +26,73 @@ fail=0
 ok() { pass=$((pass + 1)); echo "ok: $1"; }
 no() { fail=$((fail + 1)); echo "NOT OK: $1" >&2; }
 
-# make_fixture <dir> <version>: writes a minimal Tandem.app, zips it, and
-# writes SHA256SUMS with the zip's real digest under download/<tag>/.
-make_fixture() {
-  dir=$1
-  ver=$2
-  tag="v$ver"
-  app="$dir/src/Tandem.app"
-  mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-  printf '#!/bin/sh\necho fixture\n' > "$app/Contents/MacOS/Tandem"
-  chmod +x "$app/Contents/MacOS/Tandem"
-  printf 'fixture-core' > "$app/Contents/Resources/tandem"
-  ln -s "../Resources/tandem" "$app/Contents/MacOS/tandem-cli"
-  (cd "$dir/src" && zip -qry "$dir/Tandem-$ver.zip" Tandem.app)
-  rel="$dir/download/$tag"
-  mkdir -p "$rel"
-  cp "$dir/Tandem-$ver.zip" "$rel/"
-  (cd "$rel" && shasum -a 256 "Tandem-$ver.zip" > SHA256SUMS)
+# sum256: the one digest tool the harness has, spelled for both platforms.
+sum256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$@"
+  else
+    shasum -a 256 "$@"
+  fi
 }
 
-# installer_env <apps-dir> <fixture-dir>: the common test seams.
-installer_env() {
-  echo "TANDEM_BASE_URL=file://$2"
-  echo "TANDEM_APPLICATIONS_DIR=$1"
-  echo "TANDEM_FAKE_UNAME_S=Darwin"
-  echo "TANDEM_FAKE_UNAME_M=arm64"
-  echo "TANDEM_ALLOW_NON_MACOS=1"
+# make_fixture <dir> <version> <suffix>: writes a fake `tandem` executable,
+# packs it as tandem-<version>-<suffix>, and writes the served SHA256SUMS under
+# download/v<version>/. The suffix is the platform part of the archive's name.
+make_fixture() {
+  local dir=$1
+  local ver=$2
+  local suffix=$3
+  local archive="tandem-$ver-$suffix"
+  mkdir -p "$dir/src"
+  printf '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "tandem %s"; exit 0; fi\necho fixture\n' "$ver" \
+    > "$dir/src/tandem"
+  chmod +x "$dir/src/tandem"
+  tar -czf "$dir/$archive" -C "$dir/src" tandem
+  local rel="$dir/download/v$ver"
+  mkdir -p "$rel"
+  cp "$dir/$archive" "$rel/"
+  (cd "$rel" && sum256 "$archive" > SHA256SUMS)
+}
+
+# installer_env_url <install-dir> <base-url> <os> <arch>: the common test seams.
+installer_env_url() {
+  echo "TANDEM_BASE_URL=$2"
+  echo "TANDEM_INSTALL_DIR=$1"
+  echo "TANDEM_FAKE_UNAME_S=$3"
+  echo "TANDEM_FAKE_UNAME_M=$4"
   echo "TANDEM_SKIP_QUARANTINE_STRIP=1"
   echo "PATH=$sealed_path"
+}
+
+# installer_env <install-dir> <fixture-dir> <os> <arch>: the file:// base the
+# fixture releases are served from.
+installer_env() {
+  installer_env_url "$1" "file://$2" "$3" "$4"
+}
+
+run_installer_url() {
+  while IFS='=' read -r k v; do export "$k=$v"; done < <(installer_env_url "$1" "$2" "$3" "$4")
+  shift 4
+  sh "$installer" "$@" 2>&1
+}
+
+run_installer() {
+  run_installer_url "$1" "file://$2" "$3" "$4" "${@:5}"
 }
 
 # --- syntax ---
 
 if sh -n "$installer" 2>/dev/null; then ok "install.sh parses under sh"; else no "install.sh parses under sh"; fi
 if sh -n "$stager" 2>/dev/null; then ok "stage-release-assets.sh parses under sh"; else no "stage-release-assets.sh parses under sh"; fi
+if sh -n "$smoke" 2>/dev/null; then ok "smoke-binary.sh parses under sh"; else no "smoke-binary.sh parses under sh"; fi
 
-# --- tampered checksum refuses before anything is written ---
+# --- a tampered archive refuses before anything is written ---
 
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
-make_fixture "$t/fix" "9.9.9"
-# Tamper: append a byte to the served zip without touching SHA256SUMS.
-printf 'x' >> "$t/fix/download/v9.9.9/Tandem-9.9.9.zip"
+make_fixture "$t/tamper" "9.9.9" "darwin-arm64.tar.gz"
+printf 'x' >> "$t/tamper/download/v9.9.9/tandem-9.9.9-darwin-arm64.tar.gz"
 mkdir -p "$t/apps"
-out=$(
-  while IFS='=' read -r k v; do export "$k=$v"; done < <(installer_env "$t/apps" "$t/fix")
-  sh "$installer" --version 9.9.9 >"$t/out.txt" 2>&1
-  echo "exit=$?"
-  cat "$t/out.txt"
-)
+out=$(run_installer "$t/apps" "$t/tamper" Darwin arm64 --version 9.9.9; echo "exit=$?")
 case "$out" in
   *"exit=0"*) no "tampered checksum refuses (exit was 0)" ;;
   *) ok "tampered checksum refuses" ;;
@@ -80,178 +101,181 @@ case "$out" in
   *[Mm]"ismatch"*|*"refus"*) ok "tampered checksum says why" ;;
   *) no "tampered checksum says why" ;;
 esac
-if [ -e "$t/apps/Tandem.app" ]; then no "tampered checksum writes nothing"; else ok "tampered checksum writes nothing"; fi
+if [ -e "$t/apps/tandem" ]; then no "tampered checksum writes nothing"; else ok "tampered checksum writes nothing"; fi
 
-# --- a good checksum installs and reports the tandem-cli link state ---
+# --- a missing digest line refuses before anything is written ---
 
 t2=$(mktemp -d)
-make_fixture "$t2/fix" "9.9.10"
+make_fixture "$t2/missing" "9.9.10" "darwin-arm64.tar.gz"
+printf 'deadbeef  tandem-0.0.0-darwin-arm64.tar.gz\n' > "$t2/missing/download/v9.9.10/SHA256SUMS"
 mkdir -p "$t2/apps"
-out2=$(
-  while IFS='=' read -r k v; do export "$k=$v"; done < <(installer_env "$t2/apps" "$t2/fix")
-  sh "$installer" --version 9.9.10 >"$t2/out.txt" 2>&1
-  echo "exit=$?"
-  cat "$t2/out.txt"
-)
+out2=$(run_installer "$t2/apps" "$t2/missing" Darwin arm64 --version 9.9.10; echo "exit=$?")
 case "$out2" in
-  *"exit=0"*) ok "good checksum installs" ;;
-  *) no "good checksum installs: $out2" ;;
+  *"exit=0"*) no "missing digest refuses" ;;
+  *) ok "missing digest refuses" ;;
 esac
-if [ -x "$t2/apps/Tandem.app/Contents/MacOS/Tandem" ] && [ -L "$t2/apps/Tandem.app/Contents/MacOS/tandem-cli" ]; then
-  ok "installed bundle keeps its layout"
-else
-  no "installed bundle keeps its layout"
-fi
-case "$out2" in
-  *"tandem-cli"*) ok "installer reports the tandem-cli link state" ;;
-  *) no "installer reports the tandem-cli link state" ;;
+if [ -e "$t2/apps/tandem" ]; then no "missing digest writes nothing"; else ok "missing digest writes nothing"; fi
+
+# --- an unsupported platform is refused before downloading ---
+
+t3=$(mktemp -d)
+mkdir -p "$t3/apps"
+out3=$(run_installer "$t3/apps" "$t2/missing" FreeBSD x86_64 --version 9.9.10; echo "exit=$?")
+case "$out3" in
+  *"exit=0"*) no "unsupported platform is refused" ;;
+  *) ok "unsupported platform is refused" ;;
 esac
-case "$out2" in
-  *"doctor"*) ok "installer points at tandem-cli doctor" ;;
-  *) no "installer points at tandem-cli doctor" ;;
+case "$out3" in
+  *"FreeBSD"*|*"no standalone archive"*) ok "unsupported platform says which target" ;;
+  *) no "unsupported platform says which target: $out3" ;;
 esac
+if [ -e "$t3/apps/tandem" ]; then no "unsupported platform writes nothing"; else ok "unsupported platform writes nothing"; fi
+
+# --- a valid archive installs on Darwin arm64 and on Linux x86_64 ---
+
+for target in "Darwin arm64 darwin-arm64.tar.gz" "Linux x86_64 linux-x86_64.tar.gz"; do
+  set -- $target
+  os=$1
+  arch=$2
+  suffix=$3
+  dir=$(mktemp -d)
+  make_fixture "$dir/fix" "9.9.11" "$suffix"
+  mkdir -p "$dir/bin"
+  out4=$(run_installer "$dir/bin" "$dir/fix" "$os" "$arch" --version 9.9.11; echo "exit=$?")
+  case "$out4" in
+    *"exit=0"*) ok "$os $arch installs" ;;
+    *) no "$os $arch installs: $out4" ;;
+  esac
+  if [ -x "$dir/bin/tandem" ]; then ok "$os $arch installs the executable"; else no "$os $arch installs the executable"; fi
+  if [ -L "$dir/bin/tandem-cli" ] && [ "$(readlink "$dir/bin/tandem-cli")" = "tandem" ]; then
+    ok "$os $arch links tandem-cli"
+  else
+    no "$os $arch links tandem-cli"
+  fi
+  case "$out4" in
+    *"tandem-cli"*) ok "$os $arch reports the tandem-cli link" ;;
+    *) no "$os $arch reports the tandem-cli link" ;;
+  esac
+  rm -rf "$dir"
+done
 
 # --- an existing install is left alone without --reinstall ---
 
-printf 'mine' > "$t2/apps/Tandem.app/Contents/Resources/tandem"
-out3=$(
-  while IFS='=' read -r k v; do export "$k=$v"; done < <(installer_env "$t2/apps" "$t2/fix")
-  sh "$installer" --version 9.9.10 >"$t2/out3.txt" 2>&1
-  echo "exit=$?"
-  cat "$t2/out3.txt"
-)
-case "$out3" in
+t4=$(mktemp -d)
+make_fixture "$t4/fix" "9.9.12" "darwin-arm64.tar.gz"
+mkdir -p "$t4/bin"
+run_installer "$t4/bin" "$t4/fix" Darwin arm64 --version 9.9.12 >/dev/null
+printf 'mine' > "$t4/bin/tandem"
+out5=$(run_installer "$t4/bin" "$t4/fix" Darwin arm64 --version 9.9.12; echo "exit=$?")
+case "$out5" in
   *"exit=0"*) ok "existing install exits zero" ;;
-  *) no "existing install exits zero: $out3" ;;
+  *) no "existing install exits zero: $out5" ;;
 esac
-if [ "$(cat "$t2/apps/Tandem.app/Contents/Resources/tandem")" = "mine" ]; then
-  ok "existing install is left alone"
-else
-  no "existing install is left alone"
-fi
-case "$out3" in
-  *"already"*) ok "existing install is told plainly" ;;
+if [ "$(cat "$t4/bin/tandem")" = "mine" ]; then ok "existing install is left alone"; else no "existing install is left alone"; fi
+case "$out5" in
+  *"already"*|*"--reinstall"*) ok "existing install is told plainly" ;;
   *) no "existing install is told plainly" ;;
 esac
 
 # --- --reinstall overwrites ---
 
-out4=$(
-  while IFS='=' read -r k v; do export "$k=$v"; done < <(installer_env "$t2/apps" "$t2/fix")
-  sh "$installer" --version 9.9.10 --reinstall >"$t2/out4.txt" 2>&1
-  echo "exit=$?"
-)
-case "$out4" in
+out6=$(run_installer "$t4/bin" "$t4/fix" Darwin arm64 --version 9.9.12 --reinstall; echo "exit=$?")
+case "$out6" in
   *"exit=0"*) ok "--reinstall exits zero" ;;
-  *) no "--reinstall exits zero: $out4" ;;
+  *) no "--reinstall exits zero: $out6" ;;
 esac
-if [ "$(cat "$t2/apps/Tandem.app/Contents/Resources/tandem")" = "fixture-core" ]; then
+if [ -x "$t4/bin/tandem" ] && [ "$("$t4/bin/tandem" --version)" = "tandem 9.9.12" ]; then
   ok "--reinstall overwrites"
 else
   no "--reinstall overwrites"
 fi
 
-# --- --uninstall removes the app and leaves data to the user ---
-
-out5=$(
-  while IFS='=' read -r k v; do export "$k=$v"; done < <(installer_env "$t2/apps" "$t2/fix")
-  sh "$installer" --uninstall >"$t2/out5.txt" 2>&1
-  echo "exit=$?"
-  cat "$t2/out5.txt"
-)
-case "$out5" in
-  *"exit=0"*) ok "--uninstall exits zero" ;;
-  *) no "--uninstall exits zero: $out5" ;;
-esac
-if [ ! -e "$t2/apps/Tandem.app" ]; then ok "--uninstall removes the app"; else no "--uninstall removes the app"; fi
-case "$out5" in
-  *".tandem"*|*"leaves"*) ok "--uninstall says data stays" ;;
-  *) no "--uninstall says data stays" ;;
-esac
-
-# --- --uninstall defers to the cask when brew owns it ---
-
-t3=$(mktemp -d)
-mkdir -p "$t3/apps" "$t3/bin"
-printf '#!/bin/sh\nexit 0\n' > "$t3/bin/brew"
-chmod +x "$t3/bin/brew"
-mkdir -p "$t3/apps/Tandem.app"
-out6=$(
-  while IFS='=' read -r k v; do export "$k=$v"; done < <(installer_env "$t3/apps" "$t2/fix")
-  export PATH="$t3/bin:$PATH"
-  sh "$installer" --uninstall >"$t3/out6.txt" 2>&1
-  echo "exit=$?"
-  cat "$t3/out6.txt"
-)
-case "$out6" in
-  *"brew uninstall"*) ok "--uninstall defers to the cask" ;;
-  *) no "--uninstall defers to the cask: $out6" ;;
-esac
-if [ -e "$t3/apps/Tandem.app" ]; then ok "--uninstall does not take the cask's app"; else no "--uninstall does not take the cask's app"; fi
-
-# --- a non-macOS machine is refused ---
-
-t4=$(mktemp -d)
-mkdir -p "$t4/apps"
-out7=$(env -u TANDEM_ALLOW_NON_MACOS TANDEM_BASE_URL="file://$t2/fix" TANDEM_APPLICATIONS_DIR="$t4/apps" TANDEM_FAKE_UNAME_S=Linux TANDEM_FAKE_UNAME_M=x86_64 TANDEM_SKIP_QUARANTINE_STRIP=1 sh "$installer" --version 9.9.10 >"$t4/out7.txt" 2>&1; echo "exit=$?"; cat "$t4/out7.txt")
-case "$out7" in
-  *"exit=0"*) no "non-macOS is refused" ;;
-  *) ok "non-macOS is refused" ;;
-esac
-if [ -e "$t4/apps/Tandem.app" ]; then no "non-macOS writes nothing"; else ok "non-macOS writes nothing"; fi
-
-# --- a zip with no digest line is refused ---
+# --- --bin-dir chooses the destination over TANDEM_INSTALL_DIR ---
 
 t5=$(mktemp -d)
-make_fixture "$t5/fix" "9.9.11"
-printf 'deadbeef  Tandem-0.0.0.zip\n' > "$t5/fix/download/v9.9.11/SHA256SUMS"
-mkdir -p "$t5/apps"
-out8=$(
-  while IFS='=' read -r k v; do export "$k=$v"; done < <(installer_env "$t5/apps" "$t5/fix")
-  sh "$installer" --version 9.9.11 >"$t5/out8.txt" 2>&1
-  echo "exit=$?"
-  cat "$t5/out8.txt"
-)
-case "$out8" in
-  *"exit=0"*) no "missing digest refuses" ;;
-  *) ok "missing digest refuses" ;;
+make_fixture "$t5/fix" "9.9.13" "linux-x86_64.tar.gz"
+mkdir -p "$t5/env" "$t5/chosen"
+out7=$(run_installer "$t5/env" "$t5/fix" Linux x86_64 --version 9.9.13 --bin-dir "$t5/chosen"; echo "exit=$?")
+case "$out7" in
+  *"exit=0"*) ok "--bin-dir exits zero" ;;
+  *) no "--bin-dir exits zero: $out7" ;;
 esac
-if [ -e "$t5/apps/Tandem.app" ]; then no "missing digest writes nothing"; else ok "missing digest writes nothing"; fi
+if [ -x "$t5/chosen/tandem" ] && [ ! -e "$t5/env/tandem" ]; then ok "--bin-dir wins over TANDEM_INSTALL_DIR"; else no "--bin-dir wins over TANDEM_INSTALL_DIR"; fi
 
-# --- the stager stamps the script and sums the zip plus the script ---
+# --- --uninstall removes the binary and the link, and leaves the home ---
 
 t6=$(mktemp -d)
-mkdir -p "$t6/dist"
-printf 'zip-bytes' > "$t6/dist/Tandem-1.2.3.zip"
-printf 'dmg-bytes' > "$t6/dist/Tandem-1.2.3.dmg"
-out9=$(sh "$stager" 1.2.3 "$t6/dist" >"$t6/out9.txt" 2>&1; echo "exit=$?"; cat "$t6/out9.txt")
+make_fixture "$t6/fix" "9.9.14" "darwin-arm64.tar.gz"
+mkdir -p "$t6/bin" "$t6/state"
+printf 'keep' > "$t6/state/marker"
+run_installer "$t6/bin" "$t6/fix" Darwin arm64 --version 9.9.14 >/dev/null
+out8=$(
+  while IFS='=' read -r k v; do export "$k=$v"; done < <(installer_env "$t6/bin" "$t6/fix" Darwin arm64)
+  export TANDEM_HOME="$t6/state"
+  sh "$installer" --uninstall 2>&1
+  echo "exit=$?"
+)
+case "$out8" in
+  *"exit=0"*) ok "--uninstall exits zero" ;;
+  *) no "--uninstall exits zero: $out8" ;;
+esac
+if [ ! -e "$t6/bin/tandem" ] && [ ! -L "$t6/bin/tandem-cli" ]; then ok "--uninstall removes the binary and the link"; else no "--uninstall removes the binary and the link"; fi
+if [ "$(cat "$t6/state/marker" 2>/dev/null)" = "keep" ]; then ok "--uninstall leaves the tandem home"; else no "--uninstall leaves the tandem home"; fi
+case "$out8" in
+  *".tandem"*|*"home"*|*"state"*) ok "--uninstall says the home stays" ;;
+  *) no "--uninstall says the home stays" ;;
+esac
+
+# --- the stager stamps the script and sums every archive plus the script ---
+
+t7=$(mktemp -d)
+mkdir -p "$t7/dist"
+printf 'darwin-bytes' > "$t7/dist/tandem-1.2.3-darwin-arm64.tar.gz"
+printf 'linux-bytes' > "$t7/dist/tandem-1.2.3-linux-x86_64.tar.gz"
+printf 'windows-bytes' > "$t7/dist/tandem-1.2.3-windows-x86_64.zip"
+printf 'unrelated' > "$t7/dist/notes.txt"
+out9=$(sh "$stager" 1.2.3 "$t7/dist" >"$t7/out9.txt" 2>&1; echo "exit=$?")
 case "$out9" in
   *"exit=0"*) ok "stager exits zero" ;;
   *) no "stager exits zero: $out9" ;;
 esac
-if [ -f "$t6/dist/install.sh" ]; then ok "stager stages install.sh"; else no "stager stages install.sh"; fi
-case "$(cat "$t6/dist/install.sh" 2>/dev/null)" in
+if [ -f "$t7/dist/install.sh" ]; then ok "stager stages install.sh"; else no "stager stages install.sh"; fi
+case "$(cat "$t7/dist/install.sh" 2>/dev/null)" in
   *'DEFAULT_VERSION="1.2.3"'*) ok "stager stamps the tag version" ;;
   *) no "stager stamps the tag version" ;;
 esac
-if [ -f "$t6/dist/SHA256SUMS" ] && [ "$(wc -l < "$t6/dist/SHA256SUMS" | tr -d ' ')" = "2" ] \
-  && grep -q "Tandem-1.2.3.zip" "$t6/dist/SHA256SUMS" && grep -q "install.sh" "$t6/dist/SHA256SUMS"; then
-  ok "SHA256SUMS covers the zip and the script"
+if [ -f "$t7/dist/SHA256SUMS" ] && [ "$(wc -l < "$t7/dist/SHA256SUMS" | tr -d ' ')" = "4" ] \
+  && grep -q "tandem-1.2.3-darwin-arm64.tar.gz" "$t7/dist/SHA256SUMS" \
+  && grep -q "tandem-1.2.3-linux-x86_64.tar.gz" "$t7/dist/SHA256SUMS" \
+  && grep -q "tandem-1.2.3-windows-x86_64.zip" "$t7/dist/SHA256SUMS" \
+  && grep -q "install.sh" "$t7/dist/SHA256SUMS"; then
+  ok "SHA256SUMS covers the three archives and the script"
 else
-  no "SHA256SUMS covers the zip and the script"
+  no "SHA256SUMS covers the three archives and the script"
 fi
-if (cd "$t6/dist" && shasum -a 256 -c SHA256SUMS >/dev/null 2>&1); then
+if (cd "$t7/dist" && sum256 -c SHA256SUMS >/dev/null 2>&1); then
   ok "staged checksums verify"
 else
   no "staged checksums verify"
 fi
-if [ -f "$t6/dist/Tandem-1.2.3.dmg" ] && [ "$(cat "$t6/dist/Tandem-1.2.3.dmg")" = "dmg-bytes" ]; then
-  ok "stager leaves the dmg alone"
+if [ "$(cat "$t7/dist/notes.txt" 2>/dev/null)" = "unrelated" ]; then
+  ok "stager leaves an unrelated file alone"
 else
-  no "stager leaves the dmg alone"
+  no "stager leaves an unrelated file alone"
 fi
 
-# --- the default download base matches the real release URL shape ---
+# --- the stager refuses a directory with no matching archive ---
+
+t8=$(mktemp -d)
+mkdir -p "$t8/dist"
+out10=$(sh "$stager" 1.2.3 "$t8/dist" >"$t8/out10.txt" 2>&1; echo "exit=$?")
+case "$out10" in
+  *"exit=0"*) no "stager without archives refuses" ;;
+  *) ok "stager without archives refuses" ;;
+esac
+if [ -f "$t8/dist/SHA256SUMS" ]; then no "stager without archives writes no sums"; else ok "stager without archives writes no sums"; fi
+
+# --- the default download base matches the release URL shape ---
 
 if grep -q 'TANDEM_BASE_URL:-https://github.com/gianniacquisto/tandem/releases}' "$installer" \
   && ! grep -q 'TANDEM_BASE_URL:-https://github.com/gianniacquisto/tandem/releases/download}' "$installer"; then
@@ -260,9 +284,95 @@ else
   no "default base builds .../releases/download/<tag>/..."
 fi
 
-if sh "$installer" --help >/dev/null 2>&1; then ok "--help exits zero"; else no "--help exits zero"; fi
+# --- `latest` resolves through the release page's redirect, not the API ---
 
-rm -rf "$t" "$t2" "$t3" "$t4" "$t5" "$t6" "$emptybin"
+t9=$(mktemp -d)
+make_fixture "$t9/fix" "9.9.15" "darwin-arm64.tar.gz"
+mkdir -p "$t9/bin"
+cat > "$t9/server.py" <<'PY'
+import http.server, sys
+root, tag, portfile = sys.argv[1], sys.argv[2], sys.argv[3]
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=root, **kwargs)
+    def do_GET(self):
+        if self.path == "/latest":
+            self.send_response(302)
+            self.send_header("Location", "/tag/" + tag)
+            self.end_headers()
+            return
+        if self.path.startswith("/tag/"):
+            self.send_response(200)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        super().do_GET()
+    def log_message(self, *args):
+        pass
+server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+with open(portfile, "w") as f:
+    f.write(str(server.server_address[1]))
+server.serve_forever()
+PY
+python3 "$t9/server.py" "$t9/fix" "v9.9.15" "$t9/port" &
+server_pid=$!
+port=
+for _ in $(seq 1 100); do
+  [ -s "$t9/port" ] && port=$(cat "$t9/port") && break
+  sleep 0.1
+done
+out11=$(run_installer_url "$t9/bin" "http://127.0.0.1:$port" Darwin arm64; echo "exit=$?")
+kill "$server_pid" 2>/dev/null || true
+wait "$server_pid" 2>/dev/null || true
+case "$out11" in
+  *"exit=0"*) ok "latest resolves through the base URL's redirect" ;;
+  *) no "latest resolves through the base URL's redirect: $out11" ;;
+esac
+if [ -x "$t9/bin/tandem" ] && [ "$("$t9/bin/tandem" --version)" = "tandem 9.9.15" ]; then
+  ok "latest installs the newest tag's archive"
+else
+  no "latest installs the newest tag's archive"
+fi
+if grep -q 'api.github.com' "$installer"; then
+  no "installer never calls api.github.com"
+else
+  ok "installer never calls api.github.com"
+fi
+
+# --- --uninstall refuses a `tandem` this installer did not write ---
+
+t10=$(mktemp -d)
+mkdir -p "$t10/bin"
+printf '#!/bin/sh\necho "other-tool 1.0"\n' > "$t10/bin/tandem"
+chmod +x "$t10/bin/tandem"
+out12=$(sh "$installer" --uninstall --bin-dir "$t10/bin" 2>&1; echo "exit=$?")
+case "$out12" in
+  *"exit=0"*) no "--uninstall refuses another tool's binary" ;;
+  *) ok "--uninstall refuses another tool's binary" ;;
+esac
+if [ -e "$t10/bin/tandem" ]; then
+  ok "--uninstall leaves another tool's binary"
+else
+  no "--uninstall leaves another tool's binary"
+fi
+
+# --- --help prints the whole header block, not a fixed line range ---
+
+help=$(sh "$installer" --help 2>&1; echo "exit=$?")
+case "$help" in
+  *"exit=0"*) ok "--help exits zero" ;;
+  *) no "--help exits zero: $help" ;;
+esac
+case "$help" in
+  *"TANDEM_SKIP_QUARANTINE_STRIP"*) ok "--help prints the header's last seam line" ;;
+  *) no "--help prints the header's last seam line" ;;
+esac
+case "$help" in
+  *"set -eu"*) no "--help stops at the header" ;;
+  *) ok "--help stops at the header" ;;
+esac
+
+rm -rf "$t" "$t2" "$t3" "$t4" "$t5" "$t6" "$t7" "$t8" "$t9" "$t10" "$emptybin"
 
 echo
 echo "$pass passed, $fail failed"

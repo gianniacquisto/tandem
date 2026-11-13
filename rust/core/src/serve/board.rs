@@ -154,8 +154,8 @@ struct AssigneeView {
 const LANE_TONES: [&str; 7] = ["moss", "ember", "accent", "sun", "skin", "hill", "sky"];
 
 /// The tone a lane's chip draws: the lane name hashed over the palette tokens,
-/// exactly as `app/renderer/src/shell/board.ts` does, so a lane keeps its colour
-/// and no colour is stored.
+/// exactly as the renderer's board module did, so a lane keeps its colour and
+/// no colour is stored.
 fn lane_tone(name: &str) -> &'static str {
     let mut hash: u32 = 0;
     for character in name.chars() {

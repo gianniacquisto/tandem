@@ -43,7 +43,7 @@ use tandem_core::wire::{
 #[derive(Parser)]
 #[command(
     name = "tandem",
-    version,
+    version = tandem_core::release_version(),
     about = "Tandem: the board, the bikeshed and the records",
     disable_help_flag = true,
     disable_help_subcommand = true
@@ -1169,6 +1169,23 @@ fn environment() -> Environment {
 /// speaks names a CLI verb, and the grammar answers it. A mutation message
 /// without a verb is a UI-only write, which the contract forbids. A read may name
 /// no verb: it writes nothing, and `usage.report` is the one such method.
+#[cfg(test)]
+mod version_flag {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// The release build stamps `TANDEM_VERSION`, and the smoke test on every
+    /// platform reads it back from `tandem --version`. A dev build falls back to
+    /// the crate version, so this pins the wiring rather than one value.
+    #[test]
+    fn the_version_flag_names_the_release_stamp() {
+        assert_eq!(
+            Cli::command().get_version(),
+            Some(tandem_core::release_version())
+        );
+    }
+}
+
 #[cfg(test)]
 mod wire_parity {
     use super::*;
