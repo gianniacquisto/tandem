@@ -2,7 +2,6 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 
 import type { Method } from '../../src/shared/bridge'
 import { BikeshedFace } from './faces/BikeshedFace'
-import { SettingsFace } from './faces/SettingsFace'
 import { SheetBoundary } from './faces/SheetBoundary'
 import { TicketSheet } from './faces/TicketSheet'
 import { TicketsFace } from './faces/TicketsFace'
@@ -38,6 +37,7 @@ function face(
     onDismiss: () => void
     openTicket: string | null
     onOpenTicket: (ticket: { id: string }, focus?: 'description' | null) => void
+    activeProject: string | null
     onPickProject: (lane: string | null) => void
   },
 ) {
@@ -47,8 +47,7 @@ function face(
         <TicketsFace
           snapshot={snapshot}
           view={route.view}
-          roster={snapshot.roster}
-          activeProject={snapshot.activeProject}
+          activeProject={actions.activeProject}
           onPickProject={actions.onPickProject}
           onReload={actions.onReload}
           onWrite={actions.onWrite}
@@ -62,12 +61,10 @@ function face(
         <BikeshedFace
           onOpenTicket={actions.onOpenTicket}
           projects={snapshot.projects}
-          activeProject={snapshot.activeProject}
+          activeProject={actions.activeProject}
           onPickProject={actions.onPickProject}
         />
       )
-    case 'settings':
-      return <SettingsFace />
   }
 }
 
@@ -90,6 +87,8 @@ export function App() {
   // quick-add handoff, else the dialog. Cleared with the sheet, so a kept link
   // never inherits the handoff.
   const [sheetFocus, setSheetFocus] = useState<'description' | null>(null)
+  // The project focus is the shell's own: no store row carries it any more.
+  const [activeProject, setActiveProject] = useState<string | null>(null)
   const [snapshot, dispatch] = useReducer(snapshotReducer, initialSnapshot)
   const state = useRef(snapshot)
   state.current = snapshot
@@ -103,18 +102,14 @@ export function App() {
 
   const load = useCallback(async (): Promise<void> => {
     try {
-      // The whole board, the lanes it is grouped into, the projects those
-      // lanes belong to, and the settings both assignee surfaces read, in one
-      // pass: the roster is the store's (`settings.get`), so neither surface
-      // derives its names from the rows. The board snapshot stays lane-keyed;
-      // the renderer joins `project.list` for the mapping instead of growing
-      // the snapshot.
-      const [board, lanes, projects, settings, workflow] = await Promise.all([
+      // The whole board, the lanes it is grouped into, and the projects those
+      // lanes belong to, in one pass. The board snapshot stays lane-keyed; the
+      // renderer joins `project.list` for the mapping instead of growing the
+      // snapshot.
+      const [board, lanes, projects] = await Promise.all([
         window.tandem.call({ method: 'ticket.list', params: WHOLE_BOARD }),
         window.tandem.call({ method: 'lane.list', params: {} }),
         window.tandem.call({ method: 'project.list', params: {} }),
-        window.tandem.call({ method: 'settings.get', params: {} }),
-        window.tandem.call({ method: 'workflow.show', params: { id: null } }),
       ])
       if (!mounted.current) return
       if ('error' in board) {
@@ -137,24 +132,6 @@ export function App() {
           : []
       if ('error' in projects) {
         dispatch({ type: 'notice', message: projects.error.message })
-      }
-      if ('error' in settings) {
-        // A refused settings read leaves both assignee surfaces on the names
-        // they already have: Unassigned and `human`. It is not a board failure.
-        dispatch({ type: 'notice', message: settings.error.message })
-      } else if ('roster' in settings.reply) {
-        dispatch({
-          type: 'settings',
-          roster: settings.reply.roster,
-          activeProject: settings.reply.activeProject ?? null,
-        })
-      }
-      if ('error' in workflow) {
-        // A refused workflow read leaves the faces on the default six: the
-        // board still draws, and the next read replaces the stage set.
-        dispatch({ type: 'notice', message: workflow.error.message })
-      } else if ('workflow' in workflow.reply) {
-        dispatch({ type: 'workflow', workflow: workflow.reply.workflow })
       }
       if ('tickets' in board.reply && 'revision' in board.reply) {
         dispatch({
@@ -241,19 +218,11 @@ export function App() {
   const reload = useCallback(() => {
     void load()
   }, [load])
-  // Persist the project focus through the shell's one door: the revision guard
-  // still applies, so a pick on a stale listing re-reads instead of writing
-  // over it, and the change event re-reads the new focus into the snapshot.
-  const pickProject = useCallback(
-    (lane: string | null) => {
-      void faceWrite({ method: 'settings.set', params: { project: lane, roster: null } }, null).then(
-        (outcome) => {
-          if (outcome.ok) reload()
-        },
-      )
-    },
-    [faceWrite, reload],
-  )
+  // The focus is client state now: no store write, no revision guard, and no
+  // change event to wait for.
+  const pickProject = useCallback((lane: string | null) => {
+    setActiveProject(lane)
+  }, [])
   const open = useCallback(
     (ticket: { id: string }, focus?: 'description' | null) => {
       setOpenTicket(ticket.id)
@@ -309,6 +278,7 @@ export function App() {
           onDismiss: dismiss,
           openTicket,
           onOpenTicket: open,
+          activeProject,
           onPickProject: pickProject,
         })}
         {openTicket === null ? null : (
@@ -316,8 +286,6 @@ export function App() {
             <TicketSheet
               ticketId={openTicket}
               lanes={snapshot.lanes}
-              roster={snapshot.roster}
-              stages={snapshot.workflow?.stages ?? null}
               revision={snapshot.revision}
               onWrite={sheetWrite}
               onDismiss={closeSheet}

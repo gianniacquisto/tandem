@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { initialSnapshot, snapshotReducer, type SnapshotState } from '../renderer/src/shell/snapshot'
 import { refusalBanner, writeBlocked } from '../renderer/src/shell/write'
 import type { TicketSummary } from '../renderer/src/wire/TicketSummary'
-import type { Workflow } from '../renderer/src/wire/Workflow'
 
 const ticket: TicketSummary = {
   archived: false,
@@ -42,9 +41,6 @@ describe('the shell snapshot', () => {
       tickets: [],
       lanes: [],
       projects: [],
-      roster: [],
-      activeProject: null,
-      workflow: null,
       error: null,
       notice: null,
       stale: false,
@@ -85,64 +81,6 @@ describe('the shell snapshot', () => {
     })
     expect(caughtUp.stale).toBe(false)
     expect(caughtUp.revision).toBe(13)
-  })
-
-  it('carries the roster the settings read answers, so both faces draw one list', () => {
-    const next = snapshotReducer(initialSnapshot, {
-      type: 'settings',
-      roster: ['human', 'review'],
-      activeProject: null,
-    })
-    expect(next.roster).toEqual(['human', 'review'])
-    expect(next.activeProject).toBeNull()
-
-    // A failed settings read leaves the roster as it was: the board keeps its
-    // names, and the picker does not empty itself over one refused read.
-    const failed = snapshotReducer(next, { type: 'failed', message: 'no store' })
-    expect(failed.roster).toEqual(['human', 'review'])
-  })
-
-  it('carries the active project the settings read answers, or every lane', () => {
-    const focused = snapshotReducer(initialSnapshot, {
-      type: 'settings',
-      roster: [],
-      activeProject: 'Tandem',
-    })
-    expect(focused.activeProject).toBe('Tandem')
-
-    const cleared = snapshotReducer(focused, {
-      type: 'settings',
-      roster: [],
-      activeProject: null,
-    })
-    expect(cleared.activeProject).toBeNull()
-  })
-
-  it('carries the active workflow whose stages the board draws', () => {
-    const workflow: Workflow = {
-      id: 'w1',
-      name: 'agile',
-      scope: 'home',
-      author: 'human',
-      createdAt: '2026-11-08T00:00:00Z',
-      updatedAt: '2026-11-08T00:00:00Z',
-      stages: [
-        { key: 'backlog', label: 'Backlog', role: 'intake', binding: null },
-        { key: 'on-hold', label: 'On hold', role: 'parked', binding: null },
-        { key: 'selected', label: 'Selected for development', role: 'intake', binding: null },
-        { key: 'ready', label: 'Ready', role: 'ready', binding: null },
-        { key: 'in-progress', label: 'In progress', role: 'active', binding: null },
-        { key: 'in-review', label: 'In Review', role: 'review', binding: null },
-        { key: 'done', label: 'Done', role: 'finished', binding: null },
-      ],
-    }
-    const next = snapshotReducer(initialSnapshot, { type: 'workflow', workflow })
-    expect(next.workflow).toBe(workflow)
-    expect(next.workflow?.stages).toHaveLength(7)
-
-    // A failed read keeps the stages the face already draws.
-    const failed = snapshotReducer(next, { type: 'failed', message: 'no store' })
-    expect(failed.workflow).toBe(workflow)
   })
 
   it('shows a conflict until it is dismissed, and a load does not wipe it', () => {

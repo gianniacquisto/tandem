@@ -293,8 +293,6 @@ pub(crate) struct DefaultStage {
 /// The v7 seed's six stages. **A shipped migration's data never changes**
 /// (append only), so this list stays the foundation's six and the seventh
 /// default stage lands in [`SELECTED_STAGE`] and the migration that adds it.
-/// [`current_default_stages`] is the default today, and the in-memory fallback
-/// reads it, so a fresh home and the fallback cannot disagree.
 pub(crate) const DEFAULT_STAGES: [DefaultStage; 6] = [
     DefaultStage {
         key: "backlog",
@@ -344,21 +342,6 @@ pub(crate) const SELECTED_STAGE: DefaultStage = DefaultStage {
     role: "intake",
     binding: None,
 };
-
-/// The default `agile` workflow as this build reads it: the v7 six with
-/// [`SELECTED_STAGE`] immediately before `ready`. A fresh home walks the v7
-/// seed and then the selected-stage migration, so it ends here; the in-memory
-/// fallback builds the same list, so a store with no workflow rows draws the
-/// same default.
-pub(crate) fn current_default_stages() -> Vec<DefaultStage> {
-    let mut stages = DEFAULT_STAGES.to_vec();
-    let at = stages
-        .iter()
-        .position(|stage| stage.key == "ready")
-        .unwrap_or(stages.len());
-    stages.insert(at, SELECTED_STAGE);
-    stages
-}
 
 /// Version 7: the workflow entity, its ordered stages, and the nullable
 /// `projects.workflow` hook for the later per-project adoption.

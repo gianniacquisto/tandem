@@ -1,7 +1,6 @@
 import type { ProjectListReply } from '../wire/ProjectListReply'
 import type { TicketListReply } from '../wire/TicketListReply'
 import type { TicketSummary } from '../wire/TicketSummary'
-import type { Workflow } from '../wire/Workflow'
 
 /**
  * One project and its lanes, in render order: the mapping the focus picker and
@@ -28,16 +27,6 @@ export type SnapshotState = {
   lanes: string[]
   /** Every project with its lanes, in render order: the board's grouping. */
   projects: SnapshotProject[]
-  /** The store's roster, the names both assignee surfaces offer. */
-  roster: string[]
-  /** The active project: the project the faces draw, or null for every project. */
-  activeProject: string | null
-  /**
-   * The active workflow: the board's columns, the list's status filter and the
-   * sheet's status menu all read its stages. Null until the first read lands, and
-   * the faces fall back to the default six in that window.
-   */
-  workflow: Workflow | null
   error: string | null
   /** A conflict or refusal the human has not dismissed yet. */
   notice: string | null
@@ -47,8 +36,6 @@ export type SnapshotState = {
 
 export type SnapshotAction =
   | { type: 'loaded'; reply: TicketListReply; lanes: string[]; projects: SnapshotProject[] }
-  | { type: 'settings'; roster: string[]; activeProject: string | null }
-  | { type: 'workflow'; workflow: Workflow }
   | { type: 'failed'; message: string }
   | { type: 'stale' }
   | { type: 'notice'; message: string }
@@ -60,9 +47,6 @@ export const initialSnapshot: SnapshotState = {
   tickets: [],
   lanes: [],
   projects: [],
-  roster: [],
-  activeProject: null,
-  workflow: null,
   error: null,
   notice: null,
   stale: false,
@@ -80,12 +64,6 @@ export function snapshotReducer(state: SnapshotState, action: SnapshotAction): S
       error: null,
       stale: false,
     }
-  }
-  if (action.type === 'settings') {
-    return { ...state, roster: action.roster, activeProject: action.activeProject }
-  }
-  if (action.type === 'workflow') {
-    return { ...state, workflow: action.workflow }
   }
   if (action.type === 'stale') {
     return { ...state, stale: true }

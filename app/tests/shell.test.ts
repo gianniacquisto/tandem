@@ -25,9 +25,9 @@ const sources = filesUnder(renderer, ['.ts', '.tsx', '.css', '.html']).filter(
 )
 
 describe('the shell', () => {
-  it('keeps the three tabs, in the spec order', () => {
-    expect(TABS.map((tab) => tab.label)).toEqual(['Tickets', 'Bikeshed', 'Settings'])
-    expect(new Set(TABS.map((tab) => tab.id)).size).toBe(3)
+  it('keeps the two tabs, in the spec order', () => {
+    expect(TABS.map((tab) => tab.label)).toEqual(['Tickets', 'Bikeshed'])
+    expect(new Set(TABS.map((tab) => tab.id)).size).toBe(2)
   })
 
   it('routes every tab to its own path and back', () => {
@@ -60,8 +60,8 @@ describe('the shell', () => {
     })
     expect(viewHref('tickets', 'board')).toBe('#/tickets/board')
     // Only the Tickets face has a board; another tab's second segment is ignored.
-    expect(parseRoute('#/settings/board')).toEqual({
-      tab: 'settings',
+    expect(parseRoute('#/bikeshed/board')).toEqual({
+      tab: 'bikeshed',
       view: 'list',
       ticket: null,
     })

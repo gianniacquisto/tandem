@@ -40,7 +40,6 @@ mod diagnostics;
 mod home;
 pub(crate) mod locked;
 mod rows;
-pub(crate) mod workflows;
 // Reachable from the schema suite, which builds a v2 home to prove a read of
 // an older file never fails on a column a later migration adds.
 pub(crate) mod schema;

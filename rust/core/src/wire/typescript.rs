@@ -18,11 +18,9 @@ use super::rpc::{
     NoteCaptureParams, NoteHealthReply, NoteMoveParams, NoteMoveReply, NotePathParams,
     NoteReadReply, NoteRecoveriesReply, NoteTreeParams, NoteTreeReply, NoteWriteParams,
     NoteWriteReply, Outcome, ProjectAddParams, ProjectDeleteParams, ProjectEntry, ProjectListReply,
-    ProjectRenameParams, Reply, Request, Response, SettingsReply, SettingsSetParams,
-    TicketAddFromNoteParams, TicketAddParams, TicketArchiveParams, TicketBlockParams,
-    TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams, TicketReply,
-    TicketSetParams, TicketUnblockParams, WireError, WorkflowIdParams, WorkflowListReply,
-    WorkflowReply, WorkflowSetParams, WorkflowShowParams,
+    ProjectRenameParams, Reply, Request, Response, TicketAddParams, TicketArchiveParams,
+    TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams,
+    TicketReply, TicketSetParams, TicketUnblockParams, WireError,
 };
 use super::views::{
     BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
@@ -31,7 +29,6 @@ use super::views::{
 };
 use super::{DoctorCheck, DoctorReport};
 use crate::bikeshed::{BikeshedHealth, BikeshedHealthCounts, BrokenLink};
-use crate::domain::workflow::{Pass, StageBinding, StageRole, Workflow, WorkflowStage};
 
 /// Every generated file, by name, in a stable order.
 ///
@@ -63,10 +60,6 @@ pub fn files() -> Vec<(&'static str, String)> {
         render(
             "TicketAddParams.ts",
             TicketAddParams::export_to_string(&cfg),
-        ),
-        render(
-            "TicketAddFromNoteParams.ts",
-            TicketAddFromNoteParams::export_to_string(&cfg),
         ),
         render(
             "TicketSetParams.ts",
@@ -120,28 +113,6 @@ pub fn files() -> Vec<(&'static str, String)> {
             ProjectListReply::export_to_string(&cfg),
         ),
         render(
-            "WorkflowShowParams.ts",
-            WorkflowShowParams::export_to_string(&cfg),
-        ),
-        render(
-            "WorkflowIdParams.ts",
-            WorkflowIdParams::export_to_string(&cfg),
-        ),
-        render(
-            "WorkflowSetParams.ts",
-            WorkflowSetParams::export_to_string(&cfg),
-        ),
-        render("Workflow.ts", Workflow::export_to_string(&cfg)),
-        render("WorkflowStage.ts", WorkflowStage::export_to_string(&cfg)),
-        render("StageRole.ts", StageRole::export_to_string(&cfg)),
-        render("StageBinding.ts", StageBinding::export_to_string(&cfg)),
-        render("Pass.ts", Pass::export_to_string(&cfg)),
-        render(
-            "WorkflowListReply.ts",
-            WorkflowListReply::export_to_string(&cfg),
-        ),
-        render("WorkflowReply.ts", WorkflowReply::export_to_string(&cfg)),
-        render(
             "TicketListReply.ts",
             TicketListReply::export_to_string(&cfg),
         ),
@@ -172,11 +143,6 @@ pub fn files() -> Vec<(&'static str, String)> {
             TicketBlockView::export_to_string(&cfg),
         ),
         render("CommentView.ts", CommentView::export_to_string(&cfg)),
-        render("SettingsReply.ts", SettingsReply::export_to_string(&cfg)),
-        render(
-            "SettingsSetParams.ts",
-            SettingsSetParams::export_to_string(&cfg),
-        ),
         render("NoteTreeParams.ts", NoteTreeParams::export_to_string(&cfg)),
         render("NotePathParams.ts", NotePathParams::export_to_string(&cfg)),
         render(

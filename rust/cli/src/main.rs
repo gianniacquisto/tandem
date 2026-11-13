@@ -23,13 +23,11 @@ use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
 use tandem_core::bikeshed::{Bikeshed, CaptureKind, Day};
 use tandem_core::diagnostics;
-use tandem_core::domain::workflow::{WorkflowDraft, Workflows};
 use tandem_core::domain::{
-    AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Settings, Status, TicketQuery,
+    AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Status, TicketQuery,
 };
 use tandem_core::env::Environment;
 use tandem_core::store::{self, Actor, Home, Store};
-use tandem_core::wire::rpc::{SettingsReply, WorkflowListReply, WorkflowReply, WorkflowSetParams};
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
     NoteMoveView, NotePathView, NoteWriteView, ProjectList, TicketDetail, TicketList,
@@ -85,17 +83,6 @@ enum Command {
         #[command(subcommand)]
         command: Option<NoteCommand>,
     },
-    /// The workflow: the stage set the board reads (TAN-328).
-    Workflow {
-        #[command(subcommand)]
-        command: Option<WorkflowCommand>,
-    },
-    /// The store's settings: the roster the pickers offer and the shared focus
-    /// the faces draw (TAN-258).
-    Settings {
-        #[command(subcommand)]
-        command: Option<SettingsCommand>,
-    },
     /// Report whether this machine's store and notes are sound (ADR 0014).
     Doctor,
     /// Speak the app's JSON protocol on stdin and stdout (PRT-11).
@@ -109,7 +96,6 @@ enum TicketCommand {
     List(ListArgs),
     Show(ShowArgs),
     Add(AddArgs),
-    File(FileArgs),
     Set(SetArgs),
     Move(MoveArgs),
     Block(BlockArgs),
@@ -159,35 +145,6 @@ enum NoteCommand {
     Daily,
 }
 
-#[derive(Subcommand)]
-enum WorkflowCommand {
-    List,
-    Show(WorkflowShowArgs),
-    Set(WorkflowSetArgs),
-    Use(WorkflowIdArgs),
-    Delete(WorkflowIdArgs),
-}
-
-#[derive(Args)]
-struct WorkflowShowArgs {
-    /// The workflow's UUID or its name; omitted reads the active one.
-    #[arg(long)]
-    id: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowSetArgs {
-    /// The workflow to update; omitted creates one.
-    #[arg(long)]
-    id: Option<String>,
-}
-
-#[derive(Args)]
-struct WorkflowIdArgs {
-    #[arg(long)]
-    id: Option<String>,
-}
-
 #[derive(Args)]
 struct ListArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
@@ -206,24 +163,6 @@ struct ListArgs {
     /// Only tickets waiting on an open blocker.
     #[arg(long)]
     blocked: bool,
-}
-
-#[derive(Args)]
-struct FileArgs {
-    /// The note the text came from (bikeshed-root-relative).
-    #[arg(long = "from-note", num_args = 0..=1, default_missing_value = "")]
-    from_note: Option<String>,
-    /// The selection; `-` or an absent flag reads stdin.
-    #[arg(long, num_args = 0..=1, default_missing_value = "", allow_hyphen_values = true)]
-    text: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    status: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    assignee: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    origin: Option<String>,
 }
 
 #[derive(Args)]
@@ -421,27 +360,6 @@ struct NoteStatsArgs {
     project: Option<String>,
 }
 
-#[derive(Subcommand)]
-enum SettingsCommand {
-    Get,
-    Set(SettingsSetArgs),
-}
-
-#[derive(Args)]
-struct SettingsSetArgs {
-    /// One roster name per flag; the spelled flags replace the stored list
-    /// whole, and a bare flag stores the empty list. Unspelled leaves the
-    /// stored list alone.
-    #[arg(long, num_args = 0..)]
-    roster: Option<Vec<String>>,
-    /// The project to focus; a spelled flag with a name focuses it, and a bare
-    /// or empty flag clears back to every project. Unspelled leaves the focus
-    /// alone, unless no flag is spelled at all: a bare `settings set` clears
-    /// the focus and leaves the roster alone.
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    project: Option<String>,
-}
-
 // MARK: - The process
 
 fn main() -> ExitCode {
@@ -546,14 +464,6 @@ fn help_text(cli: &Cli) -> &'static str {
             None => return usage::group("note").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
         },
-        Some(Command::Workflow { command }) => match command {
-            None => return usage::group("workflow").unwrap_or(usage::ROOT),
-            Some(command) => command.help(),
-        },
-        Some(Command::Settings { command }) => match command {
-            None => return usage::group("settings").unwrap_or(usage::ROOT),
-            Some(command) => command.help(),
-        },
     };
     usage::verb(name).unwrap_or(usage::ROOT)
 }
@@ -564,7 +474,6 @@ impl TicketCommand {
             Self::List(_) => "ticket list",
             Self::Show(_) => "ticket show",
             Self::Add(_) => "ticket add",
-            Self::File(_) => "ticket file",
             Self::Set(_) => "ticket set",
             Self::Move(_) => "ticket move",
             Self::Block(_) => "ticket block",
@@ -616,27 +525,6 @@ impl NoteCommand {
     }
 }
 
-impl SettingsCommand {
-    fn help(&self) -> &'static str {
-        match self {
-            Self::Get => "settings get",
-            Self::Set(_) => "settings set",
-        }
-    }
-}
-
-impl WorkflowCommand {
-    fn help(&self) -> &'static str {
-        match self {
-            Self::List => "workflow list",
-            Self::Show(_) => "workflow show",
-            Self::Set(_) => "workflow set",
-            Self::Use(_) => "workflow use",
-            Self::Delete(_) => "workflow delete",
-        }
-    }
-}
-
 // MARK: - Dispatch
 
 fn run(cli: &Cli) -> Result<(), Failure> {
@@ -653,8 +541,6 @@ fn run(cli: &Cli) -> Result<(), Failure> {
         Command::Lane { command } => lane(&home, command.as_ref()),
         Command::Project { command } => project(&home, command.as_ref()),
         Command::Note { command } => note(&home, command.as_ref()),
-        Command::Workflow { command } => workflow(&home, command.as_ref()),
-        Command::Settings { command } => settings_verb(&home, command.as_ref()),
     }
 }
 
@@ -687,11 +573,6 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                 args.blocked,
             )
             .map_err(Failure::domain)?;
-            if args.status.is_some() {
-                for status in &query.statuses {
-                    board.validate_status(status).map_err(Failure::domain)?;
-                }
-            }
             let tickets = board.list(&query).map_err(Failure::domain)?;
             print(&TicketList {
                 tickets: tickets.iter().map(TicketSummary::new).collect(),
@@ -706,7 +587,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
         TicketCommand::Add(args) => {
             let status = match args.status.as_deref() {
                 Some(raw) => Status::parse(raw).map_err(Failure::domain)?,
-                None => board.landing_status().map_err(Failure::domain)?,
+                None => Status::Backlog,
             };
             let assignee = resolve_assignee(args.assignee.as_deref())?;
             let origin = resolve_origin(args.origin.as_deref())?;
@@ -719,32 +600,6 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                         status,
                         assignee: assignee.as_deref(),
                         description: description.as_deref(),
-                        origin: &origin,
-                    },
-                )
-                .map_err(Failure::domain)?;
-            print(&TicketDetail::new(&ticket))
-        }
-        TicketCommand::File(args) => {
-            let text = match args.text.as_deref() {
-                None | Some("-") => read_standard_input()?,
-                Some(text) => text.to_string(),
-            };
-            let status = match args.status.as_deref() {
-                Some(raw) => Status::parse(raw).map_err(Failure::domain)?,
-                None => board.landing_status().map_err(Failure::domain)?,
-            };
-            let assignee = resolve_assignee(args.assignee.as_deref())?;
-            let origin = resolve_origin(args.origin.as_deref())?;
-            let ticket = board
-                .add_from_note(
-                    &text,
-                    args.from_note.as_deref().unwrap_or(""),
-                    AddTicket {
-                        lane: args.lane.as_deref(),
-                        status,
-                        assignee: assignee.as_deref(),
-                        description: None,
                         origin: &origin,
                     },
                 )
@@ -971,145 +826,6 @@ fn project(home: &Home, command: Option<&ProjectCommand>) -> Result<(), Failure>
                 .delete_project(args.name.as_deref().unwrap_or(""))
                 .map_err(Failure::domain)?;
             print(&ProjectList::new(&projects, None))
-        }
-    }
-}
-
-/// The store's settings: the roster the pickers offer and the shared focus
-/// the faces draw (TAN-258). `get` is the read the app makes over `rpc`;
-/// `set` is its write, beside `settings.get` in the method table, so agents
-/// read and write the same values the faces do. Each `set` flag spells one
-/// axis: an unspelled axis is left alone, except a bare `settings set`, which
-/// clears the focus and leaves the roster alone.
-fn settings_verb(home: &Home, command: Option<&SettingsCommand>) -> Result<(), Failure> {
-    let command = command.ok_or_else(Failure::usage)?;
-    let store = if matches!(command, SettingsCommand::Get) {
-        Store::new(home.clone())
-    } else {
-        write_store(home)?
-    };
-    let settings = Settings::new(&store);
-    let board = Board::new(store);
-
-    match command {
-        SettingsCommand::Get => {
-            let projects = project_names(&board)?;
-            print(&SettingsReply {
-                roster: settings.roster().map_err(Failure::domain)?,
-                active_project: settings
-                    .active_project(&projects)
-                    .map_err(Failure::domain)?,
-            })
-        }
-        SettingsCommand::Set(args) => {
-            let projects = project_names(&board)?;
-            let bare = args.roster.is_none() && args.project.is_none();
-            let roster = match args.roster.clone() {
-                Some(roster) => settings
-                    .set_roster(board.actor(), roster)
-                    .map_err(Failure::domain)?,
-                None => settings.roster().map_err(Failure::domain)?,
-            };
-            let active_project = match args.project.as_deref() {
-                Some(project) => settings
-                    .set_active_project(board.actor(), Some(project), &projects)
-                    .map_err(Failure::domain)?,
-                None if bare => settings
-                    .set_active_project(board.actor(), None, &projects)
-                    .map_err(Failure::domain)?,
-                None => settings
-                    .active_project(&projects)
-                    .map_err(Failure::domain)?,
-            };
-            print(&SettingsReply {
-                roster,
-                active_project,
-            })
-        }
-    }
-}
-
-/// The board's project names in render order: the focus resolves against
-/// these, not against lane names (UI-33), so a stored lane reads as no focus.
-fn project_names(board: &Board) -> Result<Vec<String>, Failure> {
-    Ok(board
-        .projects()
-        .map_err(Failure::domain)?
-        .into_iter()
-        .map(|project| project.name)
-        .collect())
-}
-
-/// The workflow verbs: the stage set as data (TAN-328). `list` and `show` read;
-/// `set` writes a whole document from stdin, atomically; `use` activates one;
-/// `delete` removes a workflow no ticket is using.
-fn workflow(home: &Home, command: Option<&WorkflowCommand>) -> Result<(), Failure> {
-    let command = command.ok_or_else(Failure::usage)?;
-    let read_only = matches!(command, WorkflowCommand::List | WorkflowCommand::Show(_));
-    let store = if read_only {
-        Store::new(home.clone())
-    } else {
-        write_store(home)?
-    };
-    let workflows = Workflows::new(&store);
-    let actor = Actor::current();
-    let revision = || store.last_revision();
-
-    match command {
-        WorkflowCommand::List => {
-            let (list, revision) = workflows.list_snapshot().map_err(Failure::domain)?;
-            let active = Workflows::new(&store).active().map_err(Failure::domain)?.id;
-            print(&WorkflowListReply {
-                revision,
-                workflows: list,
-                active,
-            })
-        }
-        WorkflowCommand::Show(args) => {
-            let (workflow, revision) = match args.id.as_deref() {
-                Some(id) => workflows.get_snapshot(id).map_err(Failure::domain)?,
-                None => workflows.active_snapshot().map_err(Failure::domain)?,
-            };
-            print(&WorkflowReply { revision, workflow })
-        }
-        WorkflowCommand::Set(args) => {
-            let text = read_standard_input()?;
-            let parsed: WorkflowSetParams = serde_json::from_str(&text).map_err(|error| {
-                Failure::message(format!("The workflow document is not JSON: {error}."))
-            })?;
-            let draft = WorkflowDraft {
-                name: parsed.name.unwrap_or_default(),
-                scope: parsed.scope.unwrap_or_else(|| "home".to_string()),
-                stages: parsed.stages,
-            };
-            let target = args.id.as_deref().or(parsed.id.as_deref());
-            let workflow = workflows
-                .set(&actor, target, draft)
-                .map_err(Failure::domain)?;
-            print(&WorkflowReply {
-                revision: revision(),
-                workflow,
-            })
-        }
-        WorkflowCommand::Use(args) => {
-            let workflow = workflows
-                .use_workflow(&actor, args.id.as_deref().unwrap_or(""))
-                .map_err(Failure::domain)?;
-            print(&WorkflowReply {
-                revision: revision(),
-                workflow,
-            })
-        }
-        WorkflowCommand::Delete(args) => {
-            let workflows = workflows
-                .delete(&actor, args.id.as_deref().unwrap_or(""))
-                .map_err(Failure::domain)?;
-            let active = Workflows::new(&store).active().map_err(Failure::domain)?.id;
-            print(&WorkflowListReply {
-                revision: revision(),
-                workflows,
-                active,
-            })
         }
     }
 }

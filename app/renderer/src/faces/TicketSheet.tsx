@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type { Method } from '../../../src/shared/bridge'
-import { assigneeChoices, boardStatuses, statusLabel } from '../shell/board'
+import { boardStatuses, statusLabel } from '../shell/board'
 import {
   EMPTY_COMMENT_REFUSAL,
   appendPlan,
@@ -25,7 +25,6 @@ import type { Write } from '../shell/write'
 import type { CommentView } from '../wire/CommentView'
 import type { MarkdownBlockView } from '../wire/MarkdownBlockView'
 import type { TicketDetail } from '../wire/TicketDetail'
-import type { WorkflowStage } from '../wire/WorkflowStage'
 import { MarkdownDocument } from './MarkdownDocument'
 
 export type TicketSheetProps = {
@@ -33,10 +32,6 @@ export type TicketSheetProps = {
   ticketId: string
   /** The board's declared lanes, in render order. */
   lanes: string[]
-  /** The names the assignee picker offers, off-roster names aside. */
-  roster: string[]
-  /** The active workflow's stages, so a custom status label draws. */
-  stages?: readonly WorkflowStage[] | null
   /** The revision the face last read; the shell's write guard pins to it. */
   revision: number | null
   /** A write through the shell's one guarded door. */
@@ -74,8 +69,6 @@ export type TicketSheetProps = {
 export function TicketSheet({
   ticketId,
   lanes,
-  roster,
-  stages,
   revision,
   onWrite,
   onDismiss,
@@ -339,7 +332,6 @@ export function TicketSheet({
   }
 
   const handle = ticket === null ? 'Ticket' : ticketHandle(ticket)
-  const choices = assigneeChoices(roster, assignee)
   const lanesShown = laneChoices(ticket?.lane ?? null, lanes)
 
   return (
@@ -436,7 +428,7 @@ export function TicketSheet({
                       value={status}
                       onChange={(event) => setStatus(event.target.value)}
                     >
-                      {boardStatuses(stages).map((entry) => (
+                      {boardStatuses().map((entry) => (
                         <option key={entry.value} value={entry.value}>
                           {entry.label}
                         </option>
@@ -450,20 +442,15 @@ export function TicketSheet({
                     <span className="sheet__fact-label">Assignee</span>
                     <span className="sheet__meta-write">saves with Save</span>
                   </span>
-                  <select
+                  <input
                     className="sheet__select"
                     aria-label="Assignee"
                     value={assignee ?? ''}
+                    placeholder="human or an agent name"
                     onChange={(event) =>
                       setAssignee(event.target.value === '' ? null : event.target.value)
                     }
-                  >
-                    {choices.map((choice) => (
-                      <option key={choice.value ?? ''} value={choice.value ?? ''}>
-                        {choice.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
 
                 <label className="sheet__meta-field">
@@ -618,7 +605,7 @@ export function TicketSheet({
                                   >
                                     <span className="sheet__edge-ref">{block.ref ?? 'no ref'}</span>
                                     <span className="sheet__edge-title">{block.title}</span>
-                                    <span className="sheet__edge-status">{statusLabel(block.status, stages)}</span>
+                                    <span className="sheet__edge-status">{statusLabel(block.status)}</span>
                                   </button>
                                 </li>
                               ))}
@@ -641,7 +628,7 @@ export function TicketSheet({
                                   >
                                     <span className="sheet__edge-ref">{block.ref ?? 'no ref'}</span>
                                     <span className="sheet__edge-title">{block.title}</span>
-                                    <span className="sheet__edge-status">{statusLabel(block.status, stages)}</span>
+                                    <span className="sheet__edge-status">{statusLabel(block.status)}</span>
                                   </button>
                                 </li>
                               ))}

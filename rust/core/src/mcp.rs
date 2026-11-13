@@ -31,9 +31,8 @@ use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     CommentAddParams, EmptyParams, LaneAddParams, LaneDeleteParams, LaneMoveParams,
     LaneRenameParams, Method, NoteCaptureParams, ProjectAddParams, ProjectDeleteParams,
-    ProjectRenameParams, SettingsSetParams, TicketAddFromNoteParams, TicketAddParams,
-    TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams, TicketMoveParams,
-    TicketSetParams, TicketUnblockParams, WorkflowIdParams, WorkflowSetParams, WorkflowShowParams,
+    ProjectRenameParams, TicketAddParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
+    TicketListParams, TicketMoveParams, TicketSetParams, TicketUnblockParams,
 };
 
 /// The server name the `initialize` answer carries.
@@ -311,8 +310,7 @@ fn id_of(value: &Value) -> Option<Value> {
 /// One tool: the covered method it calls, under its snake-case name, with the
 /// documentation the agent reads and the schema the params struct derives.
 pub struct Tool {
-    /// The tool's name: the method tag in snake case, except `ticket_file`,
-    /// which is the CLI verb the method shares.
+    /// The tool's name: the method tag in snake case.
     pub name: &'static str,
     /// The wire method the call feeds to the `rpc` door.
     pub method_tag: &'static str,
@@ -345,7 +343,7 @@ impl Tool {
     }
 }
 
-/// The 43 tools: one per covered wire method. The schema beside each entry is
+/// The tools: one per covered wire method. The schema beside each entry is
 /// the params struct's own derivation, so the list cannot drift from the wire
 /// without the registry test failing.
 pub fn tools() -> Vec<Tool> {
@@ -370,13 +368,6 @@ pub fn tools() -> Vec<Tool> {
             description: "File a ticket. A title alone lands backlog, unowned, on top of the default area.",
             input_schema: TicketAddParams::schema(),
             method: Method::TicketAdd(TicketAddParams::default()),
-        },
-        Tool {
-            name: "ticket_file",
-            method_tag: "ticket.addFromNote",
-            description: "File a note's selection as a ticket, linked to the note it came from.",
-            input_schema: TicketAddFromNoteParams::schema(),
-            method: Method::TicketAddFromNote(TicketAddFromNoteParams::default()),
         },
         Tool {
             name: "ticket_set",
@@ -512,60 +503,11 @@ pub fn tools() -> Vec<Tool> {
             method: Method::DoctorReport(EmptyParams {}),
         },
         Tool {
-            name: "settings_get",
-            method_tag: "settings.get",
-            description: "Read the faces' settings: the roster the pickers offer and the active project focus.",
-            input_schema: EmptyParams::schema(),
-            method: Method::SettingsGet(EmptyParams {}),
-        },
-        Tool {
-            name: "settings_set",
-            method_tag: "settings.set",
-            description: "Focus the faces on a declared lane, or clear back to every lane; optionally replace the roster.",
-            input_schema: SettingsSetParams::schema(),
-            method: Method::SettingsSet(SettingsSetParams::default()),
-        },
-        Tool {
             name: "note_health",
             method_tag: "note.health",
             description: "Check the vault's link graph: broken links, orphans and counts, the same report note links prints.",
             input_schema: EmptyParams::schema(),
             method: Method::NoteHealth(EmptyParams {}),
-        },
-        Tool {
-            name: "workflow_list",
-            method_tag: "workflow.list",
-            description: "List every workflow and the active one's id.",
-            input_schema: EmptyParams::schema(),
-            method: Method::WorkflowList(EmptyParams {}),
-        },
-        Tool {
-            name: "workflow_show",
-            method_tag: "workflow.show",
-            description: "Read one workflow whole. Omit the id for the active workflow.",
-            input_schema: WorkflowShowParams::schema(),
-            method: Method::WorkflowShow(WorkflowShowParams::default()),
-        },
-        Tool {
-            name: "workflow_set",
-            method_tag: "workflow.set",
-            description: "Write a workflow's whole document atomically. Omit the id to create one.",
-            input_schema: WorkflowSetParams::schema(),
-            method: Method::WorkflowSet(WorkflowSetParams::default()),
-        },
-        Tool {
-            name: "workflow_use",
-            method_tag: "workflow.use",
-            description: "Activate a workflow. Refused when tickets sit in stages it lacks.",
-            input_schema: WorkflowIdParams::schema(),
-            method: Method::WorkflowUse(WorkflowIdParams::default()),
-        },
-        Tool {
-            name: "workflow_delete",
-            method_tag: "workflow.delete",
-            description: "Delete a non-default, inactive workflow; refused for the default or the active one.",
-            input_schema: WorkflowIdParams::schema(),
-            method: Method::WorkflowDelete(WorkflowIdParams::default()),
         },
     ]
 }

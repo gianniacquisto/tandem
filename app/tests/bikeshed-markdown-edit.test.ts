@@ -31,8 +31,7 @@ describe('the opaque block edits in place as markdown', () => {
           document: parseDocument('intro\n\n| a | b |\n| - | - |'),
           focusToken: 0,
           onChange: (document) => changes.push(document),
-          onSendToTodos: () => undefined,
-        }),
+          }),
       )
     })
 
@@ -84,8 +83,7 @@ describe('the opaque block edits in place as markdown', () => {
           document: parseDocument('| a | b |\n| - | - |'),
           focusToken: 0,
           onChange: (document) => changes.push(document),
-          onSendToTodos: () => undefined,
-        }),
+          }),
       )
     })
 
@@ -118,8 +116,7 @@ describe('the opaque block edits in place as markdown', () => {
           document: parseDocument('| a | b |\n| - | - |'),
           focusToken: 0,
           onChange: (document) => changes.push(document),
-          onSendToTodos: () => undefined,
-        }),
+          }),
       )
     })
 

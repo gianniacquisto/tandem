@@ -309,14 +309,21 @@ fn parse_takes_comma_separated_statuses() {
 }
 
 #[test]
-fn parse_accepts_a_custom_stage_key_and_the_board_owns_the_stage_set() {
-    let query = TicketQuery::parse(None, None, Some("ready,blocked"), None, None, false, false)
-        .expect("the query does not own the workflow's stage set");
-    assert_eq!(
-        query.statuses,
-        vec![Status::Ready, Status::Custom("blocked".to_string())],
-        "a custom key is carried to the board, which refuses one the workflow lacks"
-    );
+fn parse_refuses_a_word_outside_the_six_fixed_statuses() {
+    let error = TicketQuery::parse(None, None, Some("ready,blocked"), None, None, false, false)
+        .unwrap_err();
+    match error {
+        DomainError::InvalidStatus(bad) => {
+            assert_eq!(bad, "blocked", "the refusal names the unknown word");
+            assert!(
+                DomainError::InvalidStatus(bad)
+                    .message()
+                    .contains("in-review"),
+                "the refusal names the fixed six"
+            );
+        }
+        other => panic!("expected invalidStatus, got {other:?}"),
+    }
 }
 
 #[test]
@@ -389,18 +396,17 @@ fn parse_keeps_the_shipped_filter_as_sugar_and_the_clis_filters_never_carry_the_
 }
 
 #[test]
-fn the_done_filter_reads_the_tickets_finished_key_not_the_literal_done() {
-    let shipped = Ticket {
-        status: Status::Custom("shipped".to_string()),
-        finished_key: "shipped".to_string(),
-        ..ticket("shipped")
-    };
-    let open = Ticket {
-        status: Status::Custom("doing".to_string()),
-        finished_key: "shipped".to_string(),
-        ..ticket("doing")
-    };
-    let tickets = vec![shipped, open];
+fn the_done_filter_reads_the_status_alone() {
+    let tickets = vec![
+        Ticket {
+            status: Status::Done,
+            ..ticket("shipped")
+        },
+        Ticket {
+            status: Status::InProgress,
+            ..ticket("doing")
+        },
+    ];
     assert_eq!(
         TicketQuery {
             done: Some(true),

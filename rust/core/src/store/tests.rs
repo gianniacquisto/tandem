@@ -1553,9 +1553,8 @@ mod schema {
     }
 
     #[test]
-    fn a_v6_file_reads_the_default_workflow_and_the_first_write_migrates_it() {
-        use crate::domain::workflow::Workflows;
-        use crate::domain::{AddTicket, Board, Status};
+    fn a_v6_file_reads_an_empty_board_and_the_first_write_migrates_it() {
+        use crate::domain::{AddTicket, Board};
 
         let sandbox = Sandbox::new("read-v6");
         fs::create_dir_all(sandbox.home_path()).unwrap();
@@ -1564,24 +1563,14 @@ mod schema {
         drop(connection);
 
         let store = sandbox.store();
-        let workflows = Workflows::new(&store);
-        let active = workflows
-            .active()
-            .expect("a v6 home reads the default instead of failing");
-        assert_eq!(active.name, "agile");
-        assert_eq!(
-            workflows.list().expect("the list reads").len(),
-            1,
-            "the default is the list"
-        );
         let board = Board::with_actor(store, Actor::Human);
-        assert_eq!(
-            board.landing_status().expect("the landing reads"),
-            Status::Backlog
+        assert!(
+            board
+                .list(&crate::domain::TicketQuery::default())
+                .expect("the board reads")
+                .is_empty(),
+            "a v6 home reads instead of failing"
         );
-        board
-            .validate_status(&Status::Backlog)
-            .expect("the default stage validates");
         assert_eq!(
             version(&sandbox.connection()).unwrap(),
             Some(6),

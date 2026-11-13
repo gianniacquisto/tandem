@@ -29,7 +29,6 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::bikeshed::health::BikeshedHealth;
-use crate::domain::workflow::{Workflow, WorkflowStage};
 use crate::wire::views::{
     BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
     NotePathView, NoteWriteView, RecoveryView, TicketDetail, TicketSummary,
@@ -95,7 +94,6 @@ methods! {
     TicketList: "ticket.list", TicketListParams, "ticket list";
     TicketShow: "ticket.show", TicketIdParams, "ticket show";
     TicketAdd: "ticket.add", TicketAddParams, "ticket add";
-    TicketAddFromNote: "ticket.addFromNote", TicketAddFromNoteParams, "ticket file";
     TicketSet: "ticket.set", TicketSetParams, "ticket set";
     TicketMove: "ticket.move", TicketMoveParams, "ticket move";
     TicketBlock: "ticket.block", TicketBlockParams, "ticket block";
@@ -113,14 +111,6 @@ methods! {
     ProjectAdd: "project.add", ProjectAddParams, "project add";
     ProjectRename: "project.rename", ProjectRenameParams, "project rename";
     ProjectDelete: "project.delete", ProjectDeleteParams, "project delete";
-    // The workflow model (TAN-328): the stage set as data. The verbs are the
-    // CLI's own, so the app and an agent configure a workflow through the same
-    // acts and the board reads one truth.
-    WorkflowList: "workflow.list", EmptyParams, "workflow list";
-    WorkflowShow: "workflow.show", WorkflowShowParams, "workflow show";
-    WorkflowSet: "workflow.set", WorkflowSetParams, "workflow set";
-    WorkflowUse: "workflow.use", WorkflowIdParams, "workflow use";
-    WorkflowDelete: "workflow.delete", WorkflowIdParams, "workflow delete";
     NoteCapture: "note.capture", NoteCaptureParams, "note capture";
     // The Bikeshed face's reads. The CLI spells no verb for them today, and
     // they write nothing, so no UI-only write hides behind an empty verb. The
@@ -136,20 +126,6 @@ methods! {
     NoteCreateFolder: "note.createFolder", NotePathParams, "note create-folder";
     NoteDaily: "note.daily", EmptyParams, "note daily";
     DoctorReport: "doctor.report", EmptyParams, "doctor";
-    // The settings the faces read, in one message: the sheet's assignee picker
-    // and the board's filter both offer the store's roster, and the board
-    // draws the active project beside it. Both are `settings` rows; the read
-    // writes nothing, so no UI-only write hides behind its empty verb. The
-    // write below names the CLI verb it shares with the Settings face's Save
-    // and the focus control.
-    SettingsGet: "settings.get", EmptyParams, "";
-    // The settings write: the roster's whole-list replace and the
-    // active-project focus, each applied only when its key is present, so a
-    // roster Save leaves the focus alone and a focus pick leaves the roster
-    // alone. The bare frame clears the focus and leaves the roster alone.
-    // The CLI spells it `settings set`, so no UI-only write hides
-    // here.
-    SettingsSet: "settings.set", SettingsSetParams, "settings set";
     // The ticket sheet's read: a body in, the blocks it draws out. The parsing
     // is the core's (`TicketMarkdown`), so the app and the CLI cannot read one
     // dialect two ways, and the message writes nothing: an empty verb.
@@ -234,23 +210,6 @@ pub struct TicketAddParams {
     pub lane: Option<String>,
     pub origin: Option<String>,
     pub description: Option<String>,
-}
-
-/// `ticket.addFromNote`: the selector's text filed as a ticket, linked to the
-/// note it came from. The title is the core's own derivation
-/// (`Board::add_from_note`), never the wire's.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct TicketAddFromNoteParams {
-    /// The bikeshed-root-relative note the text came from.
-    pub note: Option<String>,
-    /// The selection, or the caret's checkbox line. Absent is the empty
-    /// selection, which the domain refuses.
-    pub text: Option<String>,
-    pub status: Option<String>,
-    pub assignee: Option<String>,
-    pub lane: Option<String>,
-    pub origin: Option<String>,
 }
 
 /// `ticket.set`: an absent field is unchanged, `description: ""` is the clear.
@@ -364,34 +323,6 @@ pub struct ProjectDeleteParams {
     pub name: Option<String>,
 }
 
-/// `workflow.show`: the workflow to read. Absent reads the active one.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct WorkflowShowParams {
-    pub id: Option<String>,
-}
-
-/// `workflow.use` and `workflow.delete`: the workflow a handle names, its UUID
-/// or its name. Absent is refused by the domain, never guessed.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct WorkflowIdParams {
-    pub id: Option<String>,
-}
-
-/// `workflow.set`: the whole document. An absent id creates a workflow; a
-/// present one updates the workflow it names. `name` and `stages` are required
-/// by the domain and refused when missing, so the empty frame cannot wipe a
-/// workflow.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct WorkflowSetParams {
-    pub id: Option<String>,
-    pub name: Option<String>,
-    pub scope: Option<String>,
-    pub stages: Vec<WorkflowStage>,
-}
-
 /// `note.capture`: one raw memory note. The body rides a JSON string, as the
 /// stdin bodies ride the CLI; an empty one is the domain's own refusal. An
 /// absent project is the working directory's last component and an absent
@@ -489,9 +420,7 @@ impl TicketAddParams {
             ("title", string("one line, trimmed; required")),
             (
                 "status",
-                string(
-                    "backlog (default), on-hold, selected, ready, in-progress, in-review or done",
-                ),
+                string("backlog (default), on-hold, ready, in-progress, in-review or done"),
             ),
             (
                 "assignee",
@@ -510,34 +439,6 @@ impl TicketAddParams {
     }
 }
 
-impl TicketAddFromNoteParams {
-    /// The tool input for `ticket.file`.
-    pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            (
-                "note",
-                string("the bikeshed-root-relative note the text came from"),
-            ),
-            ("text", string("the selection to file as a ticket")),
-            (
-                "status",
-                string(
-                    "backlog (default), on-hold, selected, ready, in-progress, in-review or done",
-                ),
-            ),
-            (
-                "assignee",
-                string("a name, self to claim it, or human for the human"),
-            ),
-            ("lane", string("the cycle lane; it must exist")),
-            (
-                "origin",
-                string("who filed it, self for this agent; written at add, never changed"),
-            ),
-        ])
-    }
-}
-
 impl TicketSetParams {
     /// The tool input for `ticket.set`: every field named is changed in one
     /// write, everything unnamed is left alone.
@@ -550,7 +451,7 @@ impl TicketSetParams {
             ),
             (
                 "status",
-                string("backlog, on-hold, selected, ready, in-progress, in-review or done"),
+                string("backlog, on-hold, ready, in-progress, in-review or done"),
             ),
             (
                 "assignee",
@@ -727,76 +628,6 @@ impl NoteCaptureParams {
     }
 }
 
-impl SettingsSetParams {
-    /// The tool input for `settings.set`: each axis applies only when its key
-    /// is present, so one write spells one axis.
-    pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            (
-                "roster",
-                string("the whole roster replacement; omit to leave the stored list alone"),
-            ),
-            (
-                "project",
-                string(
-                    "the lane to focus on, or \"\" to clear back to every lane; omit to leave the focus alone",
-                ),
-            ),
-        ])
-    }
-}
-
-impl WorkflowShowParams {
-    /// The tool input for `workflow.show`.
-    pub fn schema() -> serde_json::Value {
-        object_schema(&[(
-            "id",
-            string("the workflow's UUID or its name; omit for the active workflow"),
-        )])
-    }
-}
-
-impl WorkflowIdParams {
-    /// The tool input for `workflow.use` and `workflow.delete`.
-    pub fn schema() -> serde_json::Value {
-        object_schema(&[("id", string("the workflow's UUID or its name; required"))])
-    }
-}
-
-impl WorkflowSetParams {
-    /// The tool input for `workflow.set`: the whole document. The id names the
-    /// workflow to update; omit it to create one.
-    pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("id", string("the workflow to update; omit to create one")),
-            ("name", string("the workflow's name; required")),
-            (
-                "scope",
-                string("home (the only scope today); omit for home"),
-            ),
-            (
-                "stages",
-                serde_json::json!({
-                    "type": "array",
-                    "description": "the ordered stage list; at least one intake, one parked and one finished",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "key": {"type": "string", "description": "the stable status key"},
-                            "label": {"type": "string", "description": "the word every face draws"},
-                            "role": {"type": "string", "description": "intake, parked, ready, active, review or finished"},
-                            "binding": {
-                                "type": "object",
-                                "description": "the roster role and pass a stage hands to"
-                            }
-                        }
-                    }
-                }),
-            ),
-        ])
-    }
-}
-
 // MARK: - Responses
 
 /// One answer: the request's id and exactly one of a result or an error.
@@ -830,15 +661,12 @@ pub enum Outcome {
 #[allow(clippy::large_enum_variant)]
 pub enum Reply {
     TicketList(TicketListReply),
-    Settings(SettingsReply),
     Ticket(TicketReply),
     Comment(CommentReply),
     CommentList(CommentListReply),
     LaneList(LaneListReply),
     LaneDeletion(LaneDeletionReply),
     ProjectList(ProjectListReply),
-    WorkflowList(WorkflowListReply),
-    Workflow(WorkflowReply),
     Archived(ArchivedReply),
     NotePath(NotePathView),
     Doctor(DoctorReply),
@@ -907,44 +735,6 @@ pub struct NoteBacklinksReply {
 #[serde(rename_all = "camelCase")]
 pub struct NoteRecoveriesReply {
     pub recoveries: Vec<RecoveryView>,
-}
-
-/// `settings.get`: the settings a face reads, and `settings.set`'s receipt.
-///
-/// The roster is the one setting the app reads (`TandemSettings.roster`): the
-/// names the sheet's assignee picker and the board's filter offer. It is the
-/// stored list, or the default when none was ever stored; the typing is the
-/// core's (`domain::Settings`), so neither face parses a settings row. A
-/// setting added later is one more field here, never a second method: the
-/// active project answers beside the roster, resolved against the declared
-/// lanes, so a stale focus reads as no focus; the write is its own method
-/// (`settings.set`), because only reads share this reply.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct SettingsReply {
-    pub roster: Vec<String>,
-    pub active_project: Option<String>,
-}
-
-/// `settings.set`: the roster's whole replacement and the focus to store, each
-/// applied only when its key is present, so one write spells one axis.
-///
-/// `roster`, when present, replaces the stored list whole: absent is not the
-/// empty list but "leave the stored list alone", and an explicitly emptied
-/// list is the human's removal rather than a value no build can read.
-/// `project`, when present, focuses the faces on one declared lane; a blank
-/// value clears back to every lane, and a name no declared lane carries is
-/// refused with nothing written. An absent project leaves the focus alone,
-/// unless the frame spells no roster either: the bare frame is the legacy
-/// bare write, which clears the focus and leaves the roster alone (an
-/// explicit null reads as absent on the wire, so clearing the focus never
-/// empties the roster). Optional throughout so the frame's
-/// empty-params round-trip still parses.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct SettingsSetParams {
-    pub roster: Option<Vec<String>>,
-    pub project: Option<String>,
 }
 
 /// `ticket.list`: the full snapshot and the revision it is a snapshot of.
@@ -1028,24 +818,6 @@ pub struct ProjectEntry {
 pub struct ProjectListReply {
     pub revision: i64,
     pub projects: Vec<ProjectEntry>,
-}
-
-/// `workflow.list`, and `workflow.delete`'s receipt: every workflow and the
-/// active workflow's id.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkflowListReply {
-    pub revision: i64,
-    pub workflows: Vec<Workflow>,
-    pub active: String,
-}
-
-/// `workflow.show`, `workflow.set` and `workflow.use`: one whole workflow.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkflowReply {
-    pub revision: i64,
-    pub workflow: Workflow,
 }
 
 /// `ticket.archive` without an id: how many tickets the sweep archived.

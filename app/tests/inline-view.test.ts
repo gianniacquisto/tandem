@@ -29,7 +29,6 @@ function drawBlocks(source: string): string {
       document: parseDocument(source),
       focusToken: 0,
       onChange: () => undefined,
-      onSendToTodos: () => undefined,
       noteIndex: notes,
     }),
   )
@@ -102,7 +101,6 @@ describe('the inline runs draw their elements', () => {
         document: parseDocument('**bold** and [[Index]] and $x^2$\n\n$$\nx = 1\n$$'),
         focusToken: 0,
         onChange: () => undefined,
-        onSendToTodos: () => undefined,
         noteIndex: notes,
       }),
     )

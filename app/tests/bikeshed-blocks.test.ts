@@ -11,7 +11,6 @@ function draw(text: string): string {
       document: parseDocument(text),
       focusToken: 0,
       onChange: () => undefined,
-      onSendToTodos: () => undefined,
     }),
   )
 }
@@ -29,7 +28,6 @@ function drawWith({
       focusToken: 0,
       readOnly,
       onChange: () => undefined,
-      onSendToTodos: () => undefined,
     }),
   )
 }
@@ -40,7 +38,6 @@ function drawDocument(document: Document): string {
       document,
       focusToken: 0,
       onChange: () => undefined,
-      onSendToTodos: () => undefined,
     }),
   )
 }

@@ -169,23 +169,14 @@ tandem-cli project add --name <name>
 tandem-cli project rename --from <name> --to <name>
 tandem-cli project delete --name <name>
 
-tandem-cli settings get
-tandem-cli settings set [--project <name>]
-
 tandem-cli note rename --from <path> --to <path>
 tandem-cli note capture --kind <decision|gotcha|fact|thread> [--project <name>] [--session <id>]
 tandem-cli note stats [--project <name>]
 tandem-cli note links
-tandem-cli workflow list
-tandem-cli workflow show [--id <id>]
-tandem-cli workflow set [--id <id>]
-tandem-cli workflow use --id <id>
-tandem-cli workflow delete --id <id>
-tandem-cli settings set [--roster <name>]...
 tandem-cli doctor
 ```
 
-The Statuses are `backlog`, `on-hold`, `selected`, `ready`, `in-progress`, `in-review` and `done` (`on-hold` is the parked slot: a blocker, a human decision pending); a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A ticket in a lane carries a **ref** — the lane's key and a per-lane number, `TAN-42` — and every `--id` (or `--ticket`) accepts it beside the full UUID; the default area's tickets have none, and a lane's key is frozen once its tickets carry numbers.
+The Statuses are `backlog`, `on-hold`, `ready`, `in-progress`, `in-review` and `done` (`on-hold` is the parked slot: a blocker, a human decision pending); a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A ticket in a lane carries a **ref** — the lane's key and a per-lane number, `TAN-42` — and every `--id` (or `--ticket`) accepts it beside the full UUID; the default area's tickets have none, and a lane's key is frozen once its tickets carry numbers.
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 

@@ -31,7 +31,6 @@ async function mount(markdown: string, changes: Document[]): Promise<HTMLDivElem
         document: parseDocument(markdown),
         focusToken: 0,
         onChange: (document) => changes.push(document),
-        onSendToTodos: () => undefined,
       }),
     )
   })
