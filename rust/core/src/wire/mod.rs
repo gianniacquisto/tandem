@@ -2,18 +2,15 @@
 //!
 //! One owner. The CLI parses argv and prints these types; it shapes no message
 //! of its own, so `--help` drift and wire drift can never be the same bug
-//! twice. `ts-rs` derives the TypeScript declarations from the same structs,
-//! so the app cannot ship a shape the core does not answer (PRT-12).
+//! once: the CLI parses argv and prints these types, and every face reads the
+//! same shape, so `--help` drift and wire drift can never be the same bug twice.
 
 mod views;
 
 pub mod rpc;
-pub mod typescript;
-
 use std::path::Path;
 
 use serde::Serialize;
-use ts_rs::TS;
 
 /// A path in the wire's spelling: `/`-separated on every platform (PRT-7).
 ///
@@ -37,7 +34,7 @@ pub use views::{
 /// The three rows, in the pinned order, are built by
 /// [`crate::diagnostics::report`] (ADR 0045 cut the report to `home`, `store`
 /// and `bikeshed`). `ok` is the AND of the rows that can fail.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DoctorReport {
     /// The AND of the rows that can fail.
     pub ok: bool,
@@ -46,7 +43,7 @@ pub struct DoctorReport {
 }
 
 /// One row of the report: exactly `name`, `ok` and `detail`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DoctorCheck {
     /// The check's stable name; renaming one is a breaking change to the wire.
     pub name: String,

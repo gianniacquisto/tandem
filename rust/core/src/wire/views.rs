@@ -18,7 +18,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
-use ts_rs::TS;
 
 use crate::bikeshed::{
     Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, Recovery, WriteRecord,
@@ -30,7 +29,7 @@ use crate::domain::{
 use crate::store::encode;
 
 /// One end of a dependency edge: the other ticket's id, ref, title and status.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketBlockView {
     pub id: String,
@@ -53,7 +52,7 @@ impl TicketBlockView {
 }
 
 /// A whole ticket: `ticket show`, and the receipt `add`/`set`/`complete` print.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketDetail {
     pub archived: bool,
@@ -112,7 +111,7 @@ impl TicketDetail {
 }
 
 /// A list row: the ticket's shape with the body projected to its length.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketSummary {
     pub archived: bool,
@@ -171,7 +170,7 @@ pub struct TicketList {
 }
 
 /// One comment: the object `ticket comment add` prints and a list row.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommentView {
     pub at: String,
     pub author: String,
@@ -269,7 +268,7 @@ pub struct ArchivedView {
 }
 
 /// `note rename` / `note capture`: `{"path": ...}`, and the duplicate's note.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NotePathView {
     pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -292,7 +291,7 @@ fn stamp(time: SystemTime) -> String {
 /// `kind` is `"folder"` or `"note"`, the two words the renderer branches on.
 /// The walk is the core's own (`Bikeshed::tree`): the wire adds no ordering and
 /// no filtering, and the hidden layer is drawn only when the read asked for it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteNodeView {
     pub name: String,
@@ -319,7 +318,7 @@ impl NoteNodeView {
 ///
 /// The hash is the save discipline's whole conflict rule: the buffer tracks the
 /// hash it last agreed with, and a read whose hash differs is an external write.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteContentView {
     pub path: String,
@@ -340,7 +339,7 @@ impl NoteContentView {
 }
 
 /// `note.write`: the path written and the hash of the bytes that landed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteWriteView {
     pub path: String,
@@ -357,7 +356,7 @@ impl NoteWriteView {
 }
 
 /// One note whose path changed in a move.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MovedNoteView {
     pub old_path: String,
@@ -374,7 +373,7 @@ impl MovedNoteView {
 }
 
 /// `note.move`: where the note or folder landed, and every note it carried.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteMoveView {
     pub path: String,
@@ -395,7 +394,7 @@ impl NoteMoveView {
 }
 
 /// One backlink row: the note that links here, and the line of its first link.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BacklinkView {
     pub path: String,
@@ -412,7 +411,7 @@ impl BacklinkView {
 }
 
 /// One orphaned temp a killed save left: the file, its size and its stamp.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecoveryView {
     pub file: String,
@@ -433,7 +432,7 @@ impl RecoveryView {
 /// One styled span of a ticket's markdown: the text, the markers it wears, and
 /// the destination a link pointed at. `styles` is a list because the domain
 /// keeps a set (`**bold with `code`**` is one run carrying both).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarkdownInlineView {
     pub text: String,
@@ -468,7 +467,7 @@ impl MarkdownInlineView {
 /// The tag is `kind`, so a face switches on one field and never on the shape of
 /// the object. The parsing is the core's: the sheet sends the text it holds and
 /// draws what comes back, so the app and the CLI read one dialect.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum MarkdownBlockView {
     Heading {

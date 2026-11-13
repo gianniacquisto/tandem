@@ -1,3 +1,13 @@
+{#- An open sheet is the human's: a store change must not re-draw the root
+    under their cursor, so the change stream pauses while a sheet is on screen.
+    The pause is the document: a card's link navigates to the sheet's own page,
+    which the shell draws without `sse-connect`. A swap would draw the sheet
+    inside the body already on screen, whose stream stays connected and
+    replaces the sheet on the next change, so nothing here swaps a sheet in.
+
+    The root keeps `hx-trigger` either way: htmx's default for `hx-get` with no
+    `hx-trigger` is `click`, so an absent attribute is not "no trigger", it is
+    "refetch the board on every click inside the sheet", which dismisses it. -#}
 <div id="board-root" class="tickets tickets--board" data-revision="{{ revision }}"
      hx-get="{{ self_url }}" hx-trigger="sse:changed from:body" hx-target="this" hx-swap="outerHTML">
   {% if let Some(notice) = notice %}
@@ -64,24 +74,27 @@
       </header>
       <ul class="board__cards">
         {% for card in column.cards %}
-        <li class="ticket-card" data-ticket="{{ card.id }}" draggable="true" tabindex="0" aria-describedby="board-keyboard-hint"{% if card.selected %} aria-current="true"{% endif %}>
-          {% if let Some(lane) = card.lane %}
-          <button type="button" class="ticket-card__lane" data-tone="{{ lane.tone }}">
-            <span class="ticket-card__lane-dot" aria-hidden="true"></span>{{ lane.name }}
-          </button>
-          {% endif %}
-          <span class="ticket-card__title">{{ card.title }}</span>
-          <span class="ticket-card__footer">
-            {% if let Some(reference) = card.reference %}
-            <span class="ticket-card__ref">{{ reference }}</span>
+        <li role="none">
+          <a class="ticket-card" href="/tickets/{{ card.id }}?{{ board_query }}" data-ticket="{{ card.id }}"
+             draggable="true" tabindex="0" aria-describedby="board-keyboard-hint"{% if card.selected %} aria-current="true"{% endif %}>
+            {% if let Some(lane) = card.lane %}
+            <span class="ticket-card__lane" data-tone="{{ lane.tone }}">
+              <span class="ticket-card__lane-dot" aria-hidden="true"></span>{{ lane.name }}
+            </span>
             {% endif %}
-            {% if let Some(assignee) = card.assignee %}
-            <span class="ticket-card__assignee{% if assignee.human %} ticket-card__assignee--human{% endif %}">{{ assignee.label }}</span>
-            {% endif %}
-            {% if let Some(blocked) = card.blocked %}
-            <span class="ticket-card__blocked">{{ blocked }}</span>
-            {% endif %}
-          </span>
+            <span class="ticket-card__title">{{ card.title }}</span>
+            <span class="ticket-card__footer">
+              {% if let Some(reference) = card.reference %}
+              <span class="ticket-card__ref">{{ reference }}</span>
+              {% endif %}
+              {% if let Some(assignee) = card.assignee %}
+              <span class="ticket-card__assignee{% if assignee.human %} ticket-card__assignee--human{% endif %}">{{ assignee.label }}</span>
+              {% endif %}
+              {% if let Some(blocked) = card.blocked %}
+              <span class="ticket-card__blocked">{{ blocked }}</span>
+              {% endif %}
+            </span>
+          </a>
         </li>
         {% endfor %}
       </ul>
@@ -101,4 +114,7 @@
     </section>
     {% endfor %}
   </div>
+  {% if let Some(sheet) = sheet %}
+  {{ sheet }}
+  {% endif %}
 </div>

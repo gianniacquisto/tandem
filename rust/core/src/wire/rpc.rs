@@ -3,8 +3,8 @@
 //! The app's only door to the core (`docs/port.md`, Transport and the UI
 //! contract), so the shapes are the contract and live here, beside the CLI's
 //! views, rather than in the process that reads stdin. One message set, one
-//! owner: `ts-rs` generates the TypeScript declarations from these types, and a
-//! later HTTPS adapter carries the same frames over another transport.
+//! owner: every face reads these types, and a later HTTPS adapter carries the
+//! same frames over another transport.
 //!
 //! Three rules the types encode:
 //!
@@ -26,7 +26,6 @@
 //!   may name no verb, and the table says so with an empty one.
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 use crate::bikeshed::health::BikeshedHealth;
 use crate::wire::views::{
@@ -40,7 +39,7 @@ use crate::wire::views::{
 ///
 /// The method is flattened into the frame, so the wire reads
 /// `{"id": 1, "method": "ticket.add", "params": {"title": "First"}}`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Request {
     /// Echoed on the response. The client chooses it; the server never reuses
     /// one.
@@ -59,7 +58,7 @@ macro_rules! methods {
     ( $( $variant:ident : $tag:literal, $params:ty, $verb:literal; )* ) => {
         /// One method and its parameters. The tag is the wire's spelling and
         /// the verb is the CLI's, one act under two names.
-        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
         #[serde(tag = "method", content = "params")]
         pub enum Method {
             $(
@@ -130,7 +129,7 @@ methods! {
 }
 
 /// `markdown.blocks`: the text to parse. Absent is no body, which draws nothing.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct MarkdownBlocksParams {
     pub text: Option<String>,
@@ -138,11 +137,11 @@ pub struct MarkdownBlocksParams {
 
 /// A method that takes nothing. The frame still carries `"params": {}`, so a
 /// client always sends the same three keys.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EmptyParams {}
 
 /// A method that names one note.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct NotePathParams {
     pub path: Option<String>,
@@ -151,7 +150,7 @@ pub struct NotePathParams {
 /// `note.write`: the path and its whole text. Both optional so the frame's
 /// empty-params round-trip still parses; a missing path is refused by the
 /// domain, never silently written.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct NoteWriteParams {
     pub path: Option<String>,
@@ -159,7 +158,7 @@ pub struct NoteWriteParams {
 }
 
 /// `note.move`: the note or folder, and the folder it moves into.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct NoteMoveParams {
     pub path: Option<String>,
@@ -170,7 +169,7 @@ pub struct NoteMoveParams {
 ///
 /// `filter` is the shipped three-value scope (`open`, `done`, `all`); the named
 /// axes narrow it. Absent fields mean the CLI's absent flags.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TicketListParams {
     pub filter: Option<String>,
@@ -183,14 +182,14 @@ pub struct TicketListParams {
 }
 
 /// A method that names one ticket.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TicketIdParams {
     pub id: Option<String>,
 }
 
 /// `ticket.add`: the same fields the verb's flags carry.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TicketAddParams {
     pub title: Option<String>,
@@ -202,7 +201,7 @@ pub struct TicketAddParams {
 }
 
 /// `ticket.set`: an absent field is unchanged, `description: ""` is the clear.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TicketSetParams {
     pub id: Option<String>,
@@ -213,7 +212,7 @@ pub struct TicketSetParams {
 }
 
 /// `ticket.move`: to the end of the lane when `index` is absent.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TicketMoveParams {
     pub id: Option<String>,
@@ -222,7 +221,7 @@ pub struct TicketMoveParams {
 }
 
 /// `ticket.block`: the edge's near end and the ticket it waits on.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TicketBlockParams {
     pub id: Option<String>,
@@ -230,7 +229,7 @@ pub struct TicketBlockParams {
 }
 
 /// `ticket.unblock`: every edge from the ticket when `on` is absent.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TicketUnblockParams {
     pub id: Option<String>,
@@ -238,14 +237,14 @@ pub struct TicketUnblockParams {
 }
 
 /// `ticket.archive`: one ticket, or the done ones when `id` is absent.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TicketArchiveParams {
     pub id: Option<String>,
 }
 
 /// `ticket.comment.add`: the comment's own author, not the write's actor.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CommentAddParams {
     pub id: Option<String>,
@@ -255,7 +254,7 @@ pub struct CommentAddParams {
 
 /// `lane.add`: the name, the ref key it issues, and the parent project.
 /// An absent project creates or reuses the project named for the lane.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LaneAddParams {
     pub name: Option<String>,
@@ -265,7 +264,7 @@ pub struct LaneAddParams {
 
 /// `lane.rename`: from one name to another, optionally re-keying the refs and
 /// re-parenting the lane. An absent project keeps the lane's parent.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LaneRenameParams {
     pub from: Option<String>,
@@ -275,7 +274,7 @@ pub struct LaneRenameParams {
 }
 
 /// `lane.delete`: the name, and nothing else.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LaneDeleteParams {
     pub name: Option<String>,
@@ -283,7 +282,7 @@ pub struct LaneDeleteParams {
 
 /// `lane.move`: reorder the declared lanes. The index is 0-based in the lane
 /// list and is clamped, so an absent index appends.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LaneMoveParams {
     pub name: Option<String>,
@@ -291,14 +290,14 @@ pub struct LaneMoveParams {
 }
 
 /// `project.add`: the name, and nothing else. Add appends, there is no move.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ProjectAddParams {
     pub name: Option<String>,
 }
 
 /// `project.rename`: from one name to another, moving its lanes with it.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ProjectRenameParams {
     pub from: Option<String>,
@@ -306,7 +305,7 @@ pub struct ProjectRenameParams {
 }
 
 /// `project.delete`: the name, and nothing else. Refused while lanes belong.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ProjectDeleteParams {
     pub name: Option<String>,
@@ -622,7 +621,7 @@ impl EmptyParams {
 ///
 /// A frame the server could not read as a request has no id to echo, so `id`
 /// is null there; every other answer carries the client's.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Response {
     pub id: Option<u64>,
     #[serde(flatten)]
@@ -631,7 +630,7 @@ pub struct Response {
 
 /// A response's two halves. Serialized as `{"result": ...}` or
 /// `{"error": ...}`.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 // A response is built, serialized and dropped inside one frame's handling; the
 // size difference between a whole ticket and an error is a few hundred stack
@@ -644,7 +643,7 @@ pub enum Outcome {
 
 /// What a method answers. Untagged: the client knows which method it called,
 /// so the payload needs no second tag on the wire.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum Reply {
@@ -669,49 +668,49 @@ pub enum Reply {
 }
 
 /// `markdown.blocks`: the document's blocks, top level first.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarkdownReply {
     pub blocks: Vec<MarkdownBlockView>,
 }
 
 /// `note.tree`: the folder and note rows, folders first as the core walks them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteTreeReply {
     pub nodes: Vec<NoteNodeView>,
 }
 
 /// `note.read`: the note's text, hash and stamp.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteReadReply {
     pub note: NoteContentView,
 }
 
 /// `note.write`: the path written and the hash that landed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteWriteReply {
     pub write: NoteWriteView,
 }
 
 /// `note.move`: where the note or folder landed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteMoveReply {
     pub moved: NoteMoveView,
 }
 
 /// `note.health`: the same report `note links` prints.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteHealthReply {
     pub health: BikeshedHealth,
 }
 
 /// `note.backlinks`: the notes linking to the path, and line of the first link.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteBacklinksReply {
     pub path: String,
@@ -719,7 +718,7 @@ pub struct NoteBacklinksReply {
 }
 
 /// `note.recoveries`: the orphaned temps a killed save left, if any.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteRecoveriesReply {
     pub recoveries: Vec<RecoveryView>,
@@ -732,7 +731,7 @@ pub struct NoteRecoveriesReply {
 /// intermediate commit the client saw before it listed) or a larger one (a write
 /// that landed after the list); either way the client compares this number, not
 /// the event's, and re-lists on the next event.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketListReply {
     pub revision: i64,
@@ -743,7 +742,7 @@ pub struct TicketListReply {
 ///
 /// The `revision` is the number the ticket is a snapshot of: the write's own for
 /// a receipt, the read transaction's for `ticket.show`.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketReply {
     pub revision: i64,
@@ -751,7 +750,7 @@ pub struct TicketReply {
 }
 
 /// `ticket.comment.add`: the comment, and the revision the write produced.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommentReply {
     pub revision: i64,
@@ -760,7 +759,7 @@ pub struct CommentReply {
 
 /// `ticket.comment.list`: every comment, append order, at the revision the log
 /// was read in.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommentListReply {
     pub revision: i64,
@@ -771,7 +770,7 @@ pub struct CommentListReply {
 ///
 /// The `revision` is the number the lanes are a snapshot of: the write's own for
 /// a mutation, the read transaction's for `lane.list`.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LaneListReply {
     pub revision: i64,
@@ -779,7 +778,7 @@ pub struct LaneListReply {
 }
 
 /// `lane.delete`: the lanes left, and how many tickets moved to the default.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LaneDeletionReply {
     pub revision: i64,
@@ -789,7 +788,7 @@ pub struct LaneDeletionReply {
 
 /// One project and its lanes, in render order: the answer to `project list`
 /// and every project write's receipt.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectEntry {
     pub name: String,
@@ -801,7 +800,7 @@ pub struct ProjectEntry {
 ///
 /// The `revision` is the number the projects are a snapshot of: the write's
 /// own for a mutation, the read transaction's for `project.list`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectListReply {
     pub revision: i64,
@@ -809,7 +808,7 @@ pub struct ProjectListReply {
 }
 
 /// `ticket.archive` without an id: how many tickets the sweep archived.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchivedReply {
     pub revision: i64,
@@ -817,7 +816,7 @@ pub struct ArchivedReply {
 }
 
 /// `doctor.report`: ADR 0014's pinned report, one row per check.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DoctorReply {
     pub report: crate::wire::DoctorReport,
@@ -828,7 +827,7 @@ pub struct DoctorReply {
 /// `parse` is a frame that is not a request; `method` is a method this build
 /// does not answer; `domain` is a refusal the domain made (an unknown id, an
 /// empty body); `store` is the store failing (a lock held past the window).
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WireError {
     pub code: String,
     pub message: String,
@@ -873,7 +872,7 @@ impl WireError {
 /// it can name an intermediate revision (a migration commits on its own) and it
 /// can be superseded before the client reads. The client re-lists, and the
 /// listing's `revision` is authoritative (`TicketListReply`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "camelCase")]
 pub enum Event {
     Changed { revision: i64 },

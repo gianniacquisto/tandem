@@ -1,0 +1,231 @@
+<div id="notes-root" class="face face--wide bikeshed-face">
+  {% if let Some(error) = error %}
+  <div class="banner" role="alert">
+    <span>{{ error }}</span>
+    <a class="banner__dismiss" href="{{ focus_url }}">Dismiss</a>
+  </div>
+  {% endif %}
+
+  {% if let Some(notice) = notice %}
+  <div class="banner banner--notice" role="status">
+    <span>{{ notice }}</span>
+    <a class="banner__dismiss" href="{{ focus_url }}">Dismiss</a>
+  </div>
+  {% endif %}
+
+  {% if let Some(conflict) = conflict %}
+  <div class="conflict" role="alert">
+    <div class="conflict__header">
+      <h2 class="conflict__title">This note changed on disk</h2>
+      <p class="conflict__body">{{ conflict.path }} was written by someone else while you were typing. Nothing has been written yet.</p>
+    </div>
+    <div class="conflict__bodies">
+      <div class="conflict__side">
+        <h3 class="conflict__side-title">Mine</h3>
+        <pre class="conflict__text">{{ conflict.mine }}</pre>
+      </div>
+      <div class="conflict__side">
+        <h3 class="conflict__side-title">Theirs</h3>
+        <pre class="conflict__text">{{ conflict.theirs }}</pre>
+      </div>
+    </div>
+    <div class="conflict__choices">
+      <form method="post" action="/notes/save" hx-post="/notes/save" hx-target="#notes-root" hx-swap="outerHTML">
+        <input type="hidden" name="path" value="{{ conflict.path }}">
+        <input type="hidden" name="text" value="{{ conflict.mine }}">
+        <input type="hidden" name="baseline_hash" value="{{ conflict.baseline_hash }}">
+        <input type="hidden" name="resolution" value="keep_mine">
+        <input type="hidden" name="project" value="{{ active_project }}">
+        <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+        <button class="button" type="submit">Keep mine</button>
+      </form>
+      <form method="post" action="/notes/save" hx-post="/notes/save" hx-target="#notes-root" hx-swap="outerHTML">
+        <input type="hidden" name="path" value="{{ conflict.path }}">
+        <input type="hidden" name="text" value="{{ conflict.mine }}">
+        <input type="hidden" name="baseline_hash" value="{{ conflict.baseline_hash }}">
+        <input type="hidden" name="resolution" value="take_theirs">
+        <input type="hidden" name="project" value="{{ active_project }}">
+        <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+        <button class="button" type="submit">Take theirs</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="bikeshed">
+    <aside class="bikeshed__tree" aria-label="Bikeshed notes">
+      <form class="focus" method="get" action="/notes" hx-get="/notes" hx-target="#notes-root" hx-swap="outerHTML">
+        {% if let Some(path) = path %}
+        <input type="hidden" name="path" value="{{ path }}">
+        {% endif %}
+        <label class="focus__label" for="notes-focus">Project</label>
+        <select id="notes-focus" class="filter focus__picker" name="project" aria-label="Project">
+          {% for option in project_options %}
+          <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+        <label class="focus__all" for="notes-show-all">
+          <input id="notes-show-all" type="checkbox" name="show_all" value="1"{% if show_all %} checked{% endif %}>
+          Show all
+        </label>
+      </form>
+
+      <div class="tree__vault" data-drop-into="">
+        <span class="tree__vault-name">Bikeshed</span>
+      </div>
+      <div class="tree__actions">
+        <form class="tree__prompt" method="post" action="/notes/create" hx-post="/notes/create"
+              hx-target="#notes-root" hx-swap="outerHTML">
+          <input type="hidden" name="project" value="{{ active_project }}">
+          <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+          <input class="tree__prompt-input" name="path" aria-label="New note path" placeholder="note or folder/note">
+          <button class="tree__new tree__new--note" type="submit">New note</button>
+        </form>
+        <form class="tree__prompt" method="post" action="/notes/create-folder" hx-post="/notes/create-folder"
+              hx-target="#notes-root" hx-swap="outerHTML">
+          <input type="hidden" name="project" value="{{ active_project }}">
+          <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+          <input class="tree__prompt-input" name="path" aria-label="New folder path" placeholder="folder">
+          <button class="tree__new tree__new--folder" type="submit">New folder</button>
+        </form>
+      </div>
+
+      {% if rows.is_empty() %}
+      <p class="tree__empty">The bikeshed is empty. Create a note or a folder to get started.</p>
+      {% else %}
+      <ul class="tree" role="tree">
+        {% for row in rows %}
+        <li role="none">
+          <div class="tree__row" role="treeitem" data-kind="{{ row.kind }}" data-path="{{ row.path }}"
+               draggable="true" aria-level="{{ row.level }}"
+               {% if row.folder %}aria-expanded="true"{% endif %}
+               aria-selected="{% if row.selected %}true{% else %}false{% endif %}">
+            {% if row.folder %}
+            <span class="tree__label" style="padding-left: {{ row.indent }}px">
+              <span class="tree__twisty" aria-hidden="true">▾</span>
+              <span class="tree__name">{{ row.name }}</span>
+            </span>
+            {% else %}
+            <a class="tree__label" href="{{ row.href }}" hx-get="{{ row.href }}"
+               hx-target="#notes-root" hx-swap="outerHTML" style="padding-left: {{ row.indent }}px">
+              <span class="tree__twisty" aria-hidden="true"></span>
+              <span class="tree__name">{{ row.name }}</span>
+            </a>
+            {% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </aside>
+
+    <div class="bikeshed__document">
+      {% if let Some(note) = note %}
+      <header class="bikeshed__breadcrumb">
+        <div class="bikeshed__breadcrumb-inner">
+          <nav class="bikeshed__crumbs" aria-label="Breadcrumb">
+            {% for crumb in crumbs %}
+            {% if !crumb.first %}<span class="bikeshed__crumb-sep" aria-hidden="true">/</span>{% endif %}
+            <span class="bikeshed__crumb{% if crumb.current %} bikeshed__crumb--current{% endif %}"
+                  {% if crumb.current %}aria-current="page"{% endif %}>{{ crumb.label }}</span>
+            {% endfor %}
+          </nav>
+          <div class="bikeshed__breadcrumb-end">
+            {% if mode == "edit" %}
+            <a class="bikeshed__mode" href="{{ read_href }}" hx-get="{{ read_href }}"
+               hx-target="#notes-root" hx-swap="outerHTML">Done</a>
+            {% else %}
+            <a class="bikeshed__mode" href="{{ edit_href }}" hx-get="{{ edit_href }}"
+               hx-target="#notes-root" hx-swap="outerHTML">Edit</a>
+            {% endif %}
+          </div>
+        </div>
+      </header>
+
+      <div class="bikeshed__page">
+        <div id="note-panel">
+          {% if mode == "edit" %}
+          <form id="note-form" method="post" action="/notes/save" hx-post="/notes/save"
+                hx-target="#notes-root" hx-swap="outerHTML">
+            <input type="hidden" name="path" value="{{ note.path }}">
+            <input type="hidden" name="project" value="{{ active_project }}">
+            <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+            <input type="hidden" name="mode" value="edit">
+            <input type="hidden" name="baseline_hash" value="{{ note.baseline_hash }}" data-note-baseline>
+            <textarea class="note-editor" name="text" aria-label="Note markdown" spellcheck="false">{{ note.text }}</textarea>
+          </form>
+          <div class="bikeshed__breadcrumb-end">
+            <button type="button" class="bikeshed__mode" data-note-preview>Preview</button>
+          </div>
+          <div class="note-preview" data-note-preview-out hidden></div>
+          {% else %}
+          {{ note.html }}
+          {% endif %}
+        </div>
+
+        <footer class="note-footer" aria-label="Note links">
+          <div class="note-footer__section">
+            <header class="note-footer__header">
+              <h2 class="note-footer__title">Backlinks</h2>
+              <span class="note-footer__count">{{ backlink_count }}</span>
+            </header>
+            {% if backlinks.is_empty() %}
+            <p class="note-footer__empty">Nothing links here yet.</p>
+            {% else %}
+            <ul class="note-footer__rows">
+              {% for backlink in backlinks %}
+              <li>
+                <a class="note-footer__row" href="{{ backlink.href }}" hx-get="{{ backlink.href }}"
+                   hx-target="#notes-root" hx-swap="outerHTML">
+                  <span class="note-footer__row-name">{{ backlink.name }}</span>
+                  <span class="note-footer__row-detail">{{ backlink.line }}</span>
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+          </div>
+
+          {% if !linked.is_empty() %}
+          <div class="note-footer__section">
+            <header class="note-footer__header">
+              <h2 class="note-footer__title">Tickets</h2>
+              <span class="note-footer__count">{{ linked_count }}</span>
+            </header>
+            <ul class="note-footer__rows">
+              {% for ticket in linked %}
+              <li>
+                <a class="note-footer__row" href="{{ ticket.href }}">
+                  <span class="note-footer__row-name">{{ ticket.reference }}</span>
+                  <span class="note-footer__row-detail">{{ ticket.title }}</span>
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+          {% if !recoveries.is_empty() %}
+          <div class="note-footer__section note-footer__section--recovery">
+            <header class="note-footer__header">
+              <h2 class="note-footer__title">Recoveries</h2>
+              <span class="note-footer__count">{{ recovery_count }}</span>
+            </header>
+            <ul class="note-footer__rows">
+              {% for recovery in recoveries %}
+              <li class="note-footer__recovery">{{ recovery }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+        </footer>
+      </div>
+      {% else %}
+      <div class="editor__empty">
+        <p class="editor__empty-title">No note selected</p>
+        <p class="editor__empty-body">Pick a note in the tree.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>

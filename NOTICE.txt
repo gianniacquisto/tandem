@@ -76,3 +76,17 @@ This product contains skills vendored from the mattpocock/skills collection.
   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
+
+-------------------------------------------------------------------------------
+
+This product contains htmx and its SSE extension, served as-is by `tandem serve`.
+
+  * rust/core/src/serve/static/htmx.min.js (htmx 2.0.8)
+  * rust/core/src/serve/static/sse.js (htmx-ext-sse 2.2.4)
+
+  * LICENSE (BSD 2-Clause, htmx):
+    * https://github.com/bigskysoftware/htmx/blob/master/LICENSE
+  * LICENSE (MIT, htmx-ext-sse):
+    * https://github.com/bigskysoftware/htmx-extensions/blob/main/LICENSE
+  * HOMEPAGE:
+    * https://github.com/bigskysoftware/htmx

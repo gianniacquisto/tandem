@@ -28,7 +28,6 @@ Apple silicon Mac is only for shipped-app work.
   [rust/rust-toolchain.toml](rust/rust-toolchain.toml) (currently 1.99.1 with
   the `rustfmt` and `clippy` components), so the right toolchain arrives on
   first use; do not override it with a floating channel.
-- Node 22, for `app/`.
 
 ## Setup
 
@@ -40,12 +39,8 @@ cd tandem
 ```
 
 Rust needs nothing beyond the toolchain above: `cargo` fetches the rest on
-first build. The two JavaScript areas install from their lockfiles:
-
-```sh
-cd app && npm ci
-cd ../Editor && npm ci
-```
+first build. The served faces ship with the binary; there is no second
+toolchain to install.
 
 ## The gates
 
@@ -60,12 +55,6 @@ cargo fmt --all --check
 cargo clippy --all-targets -- -D warnings
 ```
 
-In `app/`:
-
-```sh
-npm run typecheck && npm test
-```
-
 ## Conventions
 
 - Branch off `main`, and target pull requests at `main`. `main` is the trunk:
@@ -74,9 +63,11 @@ npm run typecheck && npm test
   destructive git actions unless absolutely necessary. When a force push is
   unavoidable, use `--force-with-lease`, never bare `--force`.
 - Use the project's words: [GLOSSARY.md](GLOSSARY.md) is the vocabulary.
-- Scripts have two homes, chosen by the runtime that runs them: `Scripts/` for
-  the shell-side release, gate and fixture tooling, and `app/scripts/` for the
-  JS-side build steps.
+- Scripts live in `Scripts/`: the release, gate and fixture tooling. There is
+  no JavaScript build step.
+- The served faces are Askama templates and static assets under
+  `rust/core/templates/` and `rust/core/src/serve/static/`; `tandem serve` is
+  the one door.
 - Respect the decisions in [docs/adr/](docs/adr/), and amend the ADR in the
   same pull request when you change what it decided.
 - The tracker is the Tandem board, not GitHub issues: the tracker contract is

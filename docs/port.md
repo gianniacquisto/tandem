@@ -34,7 +34,7 @@ The app holds no domain logic. The binary the agents call and the core the app t
 | hashing | `sha2` | note content hashes |
 | shell | Electron, electron-vite, electron-builder | one Chromium on all three platforms |
 | renderer | React + TypeScript | agent throughput and ecosystem depth; `app/CONVENTIONS.md` pins the idioms |
-| message types | `ts-rs` | generated from the Rust structs, so a shape cannot drift without a compile error on both sides |
+| message types | the Rust structs in `rust/core/src/wire/` | one shape the CLI, the MCP tools and the served faces all read |
 | UI screenshots | Playwright against the real app | a spec in CI, replacing the lldb shot script; answers `TAN-210`, unblocks `TAN-217` |
 
 No ORM and no async runtime: the store is one writer on one file.
