@@ -1304,7 +1304,7 @@ dependencies = [
 
 [[package]]
 name = "tandem"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "askama",
  "axum",
@@ -1318,7 +1318,7 @@ dependencies = [
 
 [[package]]
 name = "tandem-core"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "askama",
  "axum",
