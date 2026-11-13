@@ -9,7 +9,6 @@ import {
   type InlineStyle,
   type NoteChoice,
 } from '../shell/inline'
-import { MathSurface } from './MathSurface'
 
 /**
  * The drawing half of the inline layer: runs with their markers hidden, the
@@ -40,9 +39,8 @@ export type InlineRunsProps = {
   selection?: InlineSelection | null
   onOpenNote?: (path: string) => void
   /**
-   * True while the caret is in this block: math atoms show their raw TeX so
-   * the row stays editable and its textContent stays the source. False draws
-   * them with KaTeX.
+   * True while the caret is in this block. Math atoms draw their source either
+   * way; the flag still reveals the markers of the run the caret touches.
    */
   editing?: boolean
 }
@@ -176,18 +174,7 @@ function runNode(
   return styled(
     run.styles,
     <span className="run run--math" data-math={run.display ? 'display' : 'inline'}>
-      {editing ? (
-        run.source
-      ) : (
-        <MathSurface
-          tex={run.content}
-          display={run.display}
-          className="run__math-rendered"
-          data-rendered
-          data-from={run.from}
-          contentEditable={false}
-        />
-      )}
+      {run.source}
     </span>,
   )
 }

@@ -614,7 +614,6 @@ export function BikeshedFace({
               <BikeshedBlocks
                 document={open.document}
                 focusToken={token}
-                notePath={open.path}
                 onChange={(document) => setOpen((current) => applyEditor(current, document))}
                 onSendToTodos={(text) => {
                   if (text !== '') void fileTicket(text)

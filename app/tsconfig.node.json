@@ -18,13 +18,10 @@
   "include": [
     "electron.vite.config.mts",
     "vitest.config.mts",
-    "vitest.build.config.mts",
     "scripts/**/*.mjs",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
     "tests/**/*.ts",
-    "playwright.config.ts",
-    "shots/**/*.ts"
   ]
 }

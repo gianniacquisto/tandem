@@ -39,15 +39,6 @@ export default defineConfig({
     root: resolve('renderer'),
     plugins: [react(), policy],
     build: {
-      // UI-24's chunk guard reads the manifest: the entry's static closure must
-      // never name the mermaid or KaTeX chunks, and the dynamic edges prove how
-      // they are reached. `npm run test:build` reads it.
-      manifest: true,
-      // KaTeX's woff2 faces are the editor's fonts; none may be inlined as a
-      // `data:` URL, because the policy keeps `font-src 'self'` and emits the
-      // faces as assets beside the CSS. Vite's 4,096-byte default would inline
-      // `KaTeX_Size3-Regular.woff2` (3,624 B), so nothing is inlined.
-      assetsInlineLimit: 0,
       rollupOptions: {
         input: {
           index: resolve('renderer/index.html'),

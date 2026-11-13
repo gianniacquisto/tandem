@@ -30,7 +30,6 @@ describe('the opaque block edits in place as markdown', () => {
         createElement(BikeshedBlocks, {
           document: parseDocument('intro\n\n| a | b |\n| - | - |'),
           focusToken: 0,
-          notePath: '',
           onChange: (document) => changes.push(document),
           onSendToTodos: () => undefined,
         }),
@@ -84,7 +83,6 @@ describe('the opaque block edits in place as markdown', () => {
         createElement(BikeshedBlocks, {
           document: parseDocument('| a | b |\n| - | - |'),
           focusToken: 0,
-          notePath: '',
           onChange: (document) => changes.push(document),
           onSendToTodos: () => undefined,
         }),
@@ -119,7 +117,6 @@ describe('the opaque block edits in place as markdown', () => {
         createElement(BikeshedBlocks, {
           document: parseDocument('| a | b |\n| - | - |'),
           focusToken: 0,
-          notePath: '',
           onChange: (document) => changes.push(document),
           onSendToTodos: () => undefined,
         }),

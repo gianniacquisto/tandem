@@ -55,17 +55,17 @@ use crate::setup::Environment;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, Event, HostRoot, LaneDeletionReply,
-    LaneListReply, MarkdownReply, Method, NoteAssetReply, NoteBacklinksReply, NoteHealthReply,
-    NoteMoveReply, NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome,
-    ProjectEntry, ProjectListReply, Reply, Request, Response, SessionDetailReply, SessionListReply,
-    SessionReply, SessionTranscriptReply, SettingsReply, SetupReply, SprintListReply, SprintReply,
+    LaneListReply, MarkdownReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply,
+    NoteReadReply, NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, ProjectEntry,
+    ProjectListReply, Reply, Request, Response, SessionDetailReply, SessionListReply, SessionReply,
+    SessionTranscriptReply, SettingsReply, SetupReply, SprintListReply, SprintReply,
     TicketListReply, TicketReply, UsageReportReply, WireError, WorkflowListReply, WorkflowReply,
     WorkflowRunListReply, WorkflowRunReply,
 };
 use crate::wire::{
-    BacklinkView, CommentView, MarkdownBlockView, NoteAssetView, NoteContentView, NoteMoveView,
-    NoteNodeView, NotePathView, NoteWriteView, RecoveryView, TicketDetail, TicketSummary,
-    UsageReportView, slashed_path,
+    BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
+    NotePathView, NoteWriteView, RecoveryView, TicketDetail, TicketSummary, UsageReportView,
+    slashed_path,
 };
 use crate::{diagnostics, setup};
 
@@ -1012,13 +1012,6 @@ fn execute(
             let content = open_bikeshed(store).read(path).map_err(domain)?.value;
             Ok(Reply::NoteRead(NoteReadReply {
                 note: NoteContentView::new(path, &content),
-            }))
-        }
-        Method::NoteAsset(params) => {
-            let path = named(&params.path);
-            let asset = open_bikeshed(store).asset(path).map_err(domain)?.value;
-            Ok(Reply::NoteAsset(NoteAssetReply {
-                asset: NoteAssetView::new(&asset),
             }))
         }
         Method::NoteWrite(params) => {

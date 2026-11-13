@@ -10,10 +10,9 @@ name: Release
 # Linux, PRT-1) and ADR 0036 owns the tap bump.
 #
 # The gates that used to live here moved with the Swift tree: the Rust suite is
-# `rust.yml`, the shell's typecheck, tests, package and smoke gates are
-# `app.yml`, and the screenshot suite is `app.yml`'s `shots` job. This workflow
-# builds the bytes the tag publishes, so it does not run a second copy of the
-# suites that already gate the merge. What it does gate is the artifact: the
+# `rust.yml`, and the shell's typecheck, tests, package and smoke gates are
+# `app.yml`. This workflow builds the bytes the tag publishes, so it does not
+# run a second copy of the suites that already gate the merge. What it does gate is the artifact: the
 # package names the cask downloads, the core sits where the packaged shell
 # resolves it, the zip is intact, and the checksum the tap bump reads is the
 # checksum of those bytes.

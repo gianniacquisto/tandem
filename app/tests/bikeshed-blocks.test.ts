@@ -5,12 +5,11 @@ import { describe, expect, it } from 'vitest'
 import { parseDocument, type Document } from '../renderer/src/shell/blocks'
 import { BikeshedBlocks, BlockMenu, BlockShell } from '../renderer/src/faces/BikeshedBlocks'
 
-function draw(text: string, notePath = ''): string {
+function draw(text: string): string {
   return renderToStaticMarkup(
     createElement(BikeshedBlocks, {
       document: parseDocument(text),
       focusToken: 0,
-      notePath,
       onChange: () => undefined,
       onSendToTodos: () => undefined,
     }),
@@ -28,7 +27,6 @@ function drawWith({
     createElement(BikeshedBlocks, {
       document: parseDocument(text),
       focusToken: 0,
-      notePath: '',
       readOnly,
       onChange: () => undefined,
       onSendToTodos: () => undefined,
@@ -41,7 +39,6 @@ function drawDocument(document: Document): string {
     createElement(BikeshedBlocks, {
       document,
       focusToken: 0,
-      notePath: '',
       onChange: () => undefined,
       onSendToTodos: () => undefined,
     }),
@@ -107,34 +104,23 @@ describe('the Write surface draws each block kind', () => {
     expect(draw('---')).toContain('block block--rule')
   })
 
-  it('draws a local image as an encoded tandem img with its alt', () => {
-    const markup = draw('![A diagram](pics/a#b.png)', 'notes/page.md')
-    expect(markup).toContain('block block--image')
-    expect(markup).toContain('src="tandem:notes/pics/a%23b.png"')
-    expect(markup).toContain('alt="A diagram"')
-    expect(markup).not.toContain('block__image-placeholder')
-  })
-
-  it('draws the placeholder with the alt for remote, escape, invalid and empty targets', () => {
+  it('draws an image as its placeholder with alt and target, never a load', () => {
     for (const target of [
+      'pics/a#b.png',
       'https://example.com/x.png',
       '../../escape.png',
       'C:\\evil.png',
       '/',
     ]) {
-      const markup = draw(`![A diagram](${target})`, 'notes/page.md')
+      const markup = draw(`![A diagram](${target})`)
       expect(markup, target).toContain('block block--image')
       expect(markup, target).toContain('block__image-placeholder')
       expect(markup, target).toContain('A diagram')
+      expect(markup, target).toContain('data-kind="image"')
       expect(markup, target).not.toContain('<img')
+      expect(markup, target).not.toContain('tandem:')
+      expect(markup, target).toMatch(/contenteditable="false"/i)
     }
-  })
-
-  it('keeps the image figure markup', () => {
-    const markup = draw('![A diagram](pics/diagram.png)', 'note.md')
-    expect(markup).toContain('<figure')
-    expect(markup).toContain('data-kind="image"')
-    expect(markup).toMatch(/contenteditable="false"/i)
   })
 
   it('draws an empty note as one paragraph', () => {

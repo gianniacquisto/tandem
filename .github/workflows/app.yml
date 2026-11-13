@@ -1,12 +1,11 @@
 name: App
 
 # The shell's gates on the three platforms the port targets, plus one
-# packaging run per platform, plus the screenshot suite on Linux. The packaging step builds the Rust core into the artifact,
-# and two gates check it: the binary sits where the packaged shell resolves it,
-# and (on macOS and Linux) the packaged app answers `ticket.list` against a
-# fixture home. The checks this publishes are what a branch rule may name:
-# `app (macos-latest)`, `app (ubuntu-latest)`, `app (windows-latest)`,
-# `shots (ubuntu-latest)`.
+# packaging run per platform. The packaging step builds the Rust core into the
+# artifact, and two gates check it: the binary sits where the packaged shell
+# resolves it, and (on macOS and Linux) the packaged app answers `ticket.list`
+# against a fixture home. The checks this publishes are what a branch rule may
+# name: `app (macos-latest)`, `app (ubuntu-latest)`, `app (windows-latest)`.
 #
 # `push` is path-filtered, where a skipped run costs nothing; `pull_request` is
 # not, because a required check a path-filtered workflow never creates reads
@@ -74,18 +73,6 @@ jobs:
       - name: "Gate: build"
         run: npm run build
 
-      - name: "Gate: mermaid and KaTeX load only on demand"
-        # UI-24's permanent guard: the build manifest proves neither library is
-        # reachable from the entry chunk and both ride dynamic imports only.
-        run: npm run test:build
-
-      - name: "Gate: the renderer is one page with its fonts as files"
-        # UI-22 retired the committed editor bundle and its frame. The built
-        # renderer carries one page, no editor chunk and no `public/editor`
-        # copy, and KaTeX's 20 woff2 faces are emitted beside the CSS rather
-        # than inlined as `data:` URLs (the policy keeps `font-src 'self'`).
-        run: node scripts/check-renderer.mjs
-
       - name: "Gate: the third-party notice is current"
         # The notice is generated from the production lockfile closure, so the
         # committed copy cannot drift from the packages the app actually ships.
@@ -141,59 +128,3 @@ jobs:
             app/dist/*.AppImage
             app/dist/*.exe
           if-no-files-found: error
-
-  # The one screenshot rig, and the same job: a browser instead of an lldb
-  # injection. Linux only, because a display there is one command (`xvfb-run`).
-  # Two invocations, one per committed home: the full suite over
-  # `Fixtures/port/Home`, then the Tickets spec over `Fixtures/port/Board`,
-  # which is the home the Tickets pictures are shot on. Each run writes its
-  # PNGs to `app/shots-out/` in the runner's checkout and nothing under
-  # `docs/screenshots/`: the job is the spec's verdict on the scenes, and the
-  # committed pictures move only through `npm run shots:publish`. The core is
-  # built first because the specs drive the real shell over `rpc`, so the
-  # binary is the subject and not a stub.
-  shots:
-    name: shots (ubuntu-latest)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Check out the source
-        uses: actions/checkout@v4
-
-      - name: Use Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            app/package-lock.json
-
-      - name: Build the core
-        working-directory: rust
-        run: cargo build -p tandem
-
-      - name: Install
-        run: npm ci
-
-      - name: Install the window's system libraries
-        run: npx playwright install-deps chromium
-
-      - name: "Gate: the screenshot suite"
-        run: xvfb-run -a npm run shots
-        env:
-          TANDEM_SHOTS_HOME: ../Fixtures/port/Home
-
-      - name: "Gate: the screenshot suite over the board home"
-        run: xvfb-run -a npx playwright test tests/shots/tickets.shots.ts tests/shots/focus.shots.ts
-        env:
-          TANDEM_SHOTS_HOME: ../Fixtures/port/Board
-
-      - name: Keep what a failed run left
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: shot-run
-          path: |
-            app/test-results
-            app/playwright-report
-          if-no-files-found: ignore

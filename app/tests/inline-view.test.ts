@@ -23,6 +23,18 @@ function draw(
   )
 }
 
+function drawBlocks(source: string): string {
+  return renderToStaticMarkup(
+    createElement(BikeshedBlocks, {
+      document: parseDocument(source),
+      focusToken: 0,
+      onChange: () => undefined,
+      onSendToTodos: () => undefined,
+      noteIndex: notes,
+    }),
+  )
+}
+
 /** The rendered row's text, as the Write surface reads it back. */
 function textContent(markup: string): string {
   return markup
@@ -74,14 +86,14 @@ describe('the inline runs draw their elements', () => {
     expect(markup).toContain('$x^2$')
   })
 
-  it('paints inline math as its raw delimiters until the chunk arrives', () => {
-    // Static markup has no effects, which is the first-open gap UI-24 keeps:
-    // the note paints with the source and the chunk fills the typeset math in.
+  it('draws inline math as its source, never a typeset chunk', () => {
+    // The cut removed the KaTeX route (CUT-2): math is its own markdown text
+    // now, so a resting row shows the delimiters the human typed.
     const markup = draw('a $x^2$ b', { editing: false })
     expect(markup).toContain('run--math')
     expect(markup).toContain('$x^2$')
     expect(markup).not.toContain('class="katex"')
-    expect(markup).toContain('tandem-math-error')
+    expect(markup).not.toContain('tandem-math-error')
   })
 
   it('renders the chip and run inside the Write surface', () => {
@@ -89,7 +101,6 @@ describe('the inline runs draw their elements', () => {
       createElement(BikeshedBlocks, {
         document: parseDocument('**bold** and [[Index]] and $x^2$\n\n$$\nx = 1\n$$'),
         focusToken: 0,
-        notePath: 'inline-runs.md',
         onChange: () => undefined,
         onSendToTodos: () => undefined,
         noteIndex: notes,
@@ -100,6 +111,35 @@ describe('the inline runs draw their elements', () => {
     expect(markup).toContain('run--math')
     expect(markup).toContain('block--math')
     expect(markup).toContain('x = 1')
+  })
+})
+
+describe('the blocks the cut stopped drawing render their source', () => {
+  it('draws display math as its source, never a typeset surface', () => {
+    const markup = drawBlocks('$$\nx = 1\n$$')
+    expect(markup).toContain('block--math')
+    expect(markup).toContain('x = 1')
+    expect(markup).toContain('$$')
+    expect(markup).not.toContain('tandem-math-error')
+    expect(markup).not.toContain('block__math-rendered')
+  })
+
+  it('draws a mermaid fence as a code block, never a diagram', () => {
+    const markup = drawBlocks('```mermaid\ngraph TD; A-->B\n```')
+    expect(markup).toContain('block--code')
+    expect(markup).toContain('graph TD; A')
+    expect(markup).not.toContain('block--mermaid')
+    expect(markup).not.toContain('tandem-mermaid-error')
+  })
+
+  it('draws an image as its alt and target, never a tandem: load', () => {
+    const markup = drawBlocks('![plot](img/dot.png)')
+    expect(markup).toContain('block--image')
+    expect(markup).toContain('block__image-alt')
+    expect(markup).toContain('plot')
+    expect(markup).toContain('img/dot.png')
+    expect(markup).not.toContain('<img')
+    expect(markup).not.toContain('tandem:')
   })
 })
 
