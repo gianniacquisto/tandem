@@ -30,7 +30,6 @@ async function mount(markdown: string, changes: Document[]): Promise<HTMLDivElem
       createElement(BikeshedBlocks, {
         document: parseDocument(markdown),
         focusToken: 0,
-        notePath: '',
         onChange: (document) => changes.push(document),
         onSendToTodos: () => undefined,
       }),

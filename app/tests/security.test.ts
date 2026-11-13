@@ -27,10 +27,11 @@ describe('the content security policy', () => {
     expect(contentSecurityPolicy(false)).not.toContain('ws://')
   })
 
-  it('admits the tandem scheme for images and nothing else', () => {
+  it('admits no scheme for images, the asset protocol being cut', () => {
     for (const development of [false, true]) {
       const policy = contentSecurityPolicy(development)
-      expect(policy).toContain("img-src 'self' data: tandem:")
+      expect(policy).toContain("img-src 'self' data:")
+      expect(policy).not.toContain('tandem:')
       expect(policy).not.toMatch(/img-src[^;]*https?:/)
       expect(policy).not.toMatch(/img-src[^;]*\*/)
     }
@@ -42,7 +43,7 @@ describe('the content security policy', () => {
         "default-src 'self'",
         "script-src 'self'",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: tandem:",
+        "img-src 'self' data:",
         "font-src 'self'",
         "connect-src 'self'",
         "object-src 'none'",

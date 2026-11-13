@@ -82,10 +82,9 @@ export type ImageBlock = BlockBase & {
 }
 
 /**
- * A display-math block (`$$` on their own lines). Modelled now so the surface
- * does not fall back to the read-only card; UI-22 draws it with KaTeX, and
- * until then it is its own source lines. The block is edited as the text
- * between the delimiters and re-rendered canonically when touched.
+ * A display-math block (`$$` on their own lines). The surface draws it as its
+ * own source lines. The block is edited as the text between the delimiters and
+ * re-rendered canonically when touched.
  */
 export type MathBlock = BlockBase & {
   kind: 'math'

@@ -12,7 +12,6 @@ import {
 } from 'react'
 
 import { serialiseDocument, type Document } from '../shell/blocks'
-import { assetUrl, resolveImageTarget } from '../shell/image'
 import {
   applyCommand,
   applyShortcut,
@@ -43,7 +42,6 @@ import {
   toggleStyle,
   toggleTask,
   undo,
-  withCaret,
   withSelection,
   emptyHistory,
   type BlockCommand,
@@ -58,16 +56,12 @@ import type { ToolbarAction } from '../shell/toolbar'
 import { BikeshedToolbar } from './BikeshedToolbar'
 import { filterNotes, parseInline, wikilinkQueryAt, type NoteChoice } from '../shell/inline'
 import { InlineRuns, WikilinkPicker } from './InlineRuns'
-import { MathSurface } from './MathSurface'
-import { MermaidDiagram } from './MermaidDiagram'
 
 export type BikeshedBlocksProps = {
   /** UI-17's document: the surface's one truth. */
   document: Document
   /** Changes when the note is opened or adopted, so the host takes focus. */
   focusToken: number
-  /** The containing note's vault path: image targets resolve against its folder. */
-  notePath: string
   onChange: (next: Document) => void
   onSendToTodos: (text: string) => void
   /** Every note path in the face's index, for chips and the `[[` picker. */
@@ -123,7 +117,6 @@ const DRAG_TYPE = 'application/x-tandem-block'
 export function BikeshedBlocks({
   document: doc,
   focusToken,
-  notePath,
   onChange,
   onSendToTodos,
   noteIndex = [],
@@ -723,22 +716,6 @@ export function BikeshedBlocks({
     apply(toggleTask(stateRef.current, block, row), false)
   }
 
-  /**
-   * Put the caret in a block that is drawing a view (a mermaid diagram or a
-   * display-math block), so its source replaces the view and the row becomes
-   * editable again. This is a caret move, not a document edit: no `onChange`
-   * and no history entry.
-   */
-  function revealBlock(block: number): void {
-    const surface = stateRef.current.blocks[block]
-    if (surface === undefined) return
-    const offset = surface.kind === 'code' || surface.kind === 'math' ? surface.text.length : 0
-    const next = withCaret(stateRef.current, block, 0, offset)
-    stateRef.current = next
-    pending.current = next.selection
-    setState({ ...next })
-  }
-
   const activeRow =
     menu === null ? undefined : filterCommands(menu.query)[menu.active]
   return (
@@ -801,7 +778,6 @@ export function BikeshedBlocks({
           key={index}
           index={index}
           surface={surface}
-          notePath={notePath}
           selection={state.selection}
           noteIndex={noteIndex}
           onOpenNote={onOpenNote}
@@ -819,7 +795,6 @@ export function BikeshedBlocks({
             apply(commitBlockSource(stateRef.current, edit.block, edit.text), false)
           }}
           onMarkdownCancel={() => setMarkdown(null)}
-          onReveal={() => revealBlock(index)}
           editable={!readOnly}
           handles={!readOnly}
           indicator={
@@ -868,7 +843,6 @@ function textOf(surface: SurfaceBlock, row: number): string {
 type BlockViewProps = {
   index: number
   surface: SurfaceBlock
-  notePath: string
   selection: Selection
   noteIndex: string[]
   onOpenNote?: (path: string) => void
@@ -879,7 +853,6 @@ type BlockViewProps = {
   onMarkdownChange: (text: string) => void
   onMarkdownCommit: () => void
   onMarkdownCancel: () => void
-  onReveal: () => void
   editable: boolean
   handles: boolean
   indicator: 'above' | 'below' | null
@@ -1082,7 +1055,6 @@ function BlockView({
 type BlockBodyProps = {
   index: number
   surface: SurfaceBlock
-  notePath: string
   selection: Selection
   noteIndex: string[]
   onOpenNote?: (path: string) => void
@@ -1093,7 +1065,6 @@ type BlockBodyProps = {
   onMarkdownChange: (text: string) => void
   onMarkdownCommit: () => void
   onMarkdownCancel: () => void
-  onReveal: () => void
   editable: boolean
 }
 
@@ -1108,7 +1079,6 @@ type BlockBodyProps = {
 function BlockBody({
   index,
   surface,
-  notePath,
   selection,
   noteIndex,
   onOpenNote,
@@ -1119,10 +1089,8 @@ function BlockBody({
   onMarkdownChange,
   onMarkdownCommit,
   onMarkdownCancel,
-  onReveal,
   editable,
 }: BlockBodyProps) {
-  const [imageFailed, setImageFailed] = useState(false)
   const common = {
     className: `block block--${surface.kind}`,
     'data-kind': surface.kind,
@@ -1228,69 +1196,27 @@ function BlockBody({
           </span>
         </pre>
       )
-      // A ```mermaid fence draws its diagram while the caret is elsewhere, and
-      // shows its source while the caret is inside it (reveal-to-edit).
-      const mermaid = (surface.language ?? '').trim().toLowerCase() === 'mermaid'
-      if (!mermaid) {
-        return (
-          <div {...common} className="block block--code">
-            {head}
-            {source}
-          </div>
-        )
-      }
       return (
-        <div {...common} className="block block--code block--mermaid">
+        <div {...common} className="block block--code">
           {head}
-          {editing ? (
-            source
-          ) : (
-            <div
-              className="block__mermaid-reveal"
-              contentEditable={false}
-              onMouseDown={(event) => {
-                event.preventDefault()
-                onReveal()
-              }}
-            >
-              <MermaidDiagram source={surface.text} />
-            </div>
-          )}
+          {source}
         </div>
       )
     }
     case 'math':
       return (
         <div {...common} className="block block--math">
-          {editing ? (
-            <pre className="block__math-source">
-              <span className="block__math-line" contentEditable={false} aria-hidden="true">
-                {'$$'}
-              </span>
-              <span
-                className="block__text"
-                data-text
-                data-row="0"
-                key={`text-0-${surface.text}`}
-              >
-                {surface.text}
-              </span>
-              <span className="block__math-line" contentEditable={false} aria-hidden="true">
-                {'$$'}
-              </span>
-            </pre>
-          ) : (
-            <div
-              className="block__math-rendered"
-              contentEditable={false}
-              onMouseDown={(event) => {
-                event.preventDefault()
-                onReveal()
-              }}
-            >
-              <MathSurface tex={surface.text} display />
-            </div>
-          )}
+          <pre className="block__math-source">
+            <span className="block__math-line" contentEditable={false} aria-hidden="true">
+              {'$$'}
+            </span>
+            <span className="block__text" data-text data-row="0" key={`text-0-${surface.text}`}>
+              {surface.text}
+            </span>
+            <span className="block__math-line" contentEditable={false} aria-hidden="true">
+              {'$$'}
+            </span>
+          </pre>
         </div>
       )
     case 'rule':
@@ -1299,30 +1225,15 @@ function BlockBody({
           <hr className="block__rule" />
         </div>
       )
-    case 'image': {
-      const target = resolveImageTarget(surface.destination, notePath)
-      const src =
-        target.kind === 'bikeshed' && target.path !== '' && !imageFailed
-          ? assetUrl(target.path)
-          : null
+    case 'image':
       return (
         <figure {...common} className="block block--image" contentEditable={false}>
-          {src === null ? (
-            <div className="block__image-placeholder">
-              <span className="block__image-alt">{surface.alt}</span>
-              <span className="block__image-target">{surface.destination}</span>
-            </div>
-          ) : (
-            <img
-              className="block__image-img"
-              src={src}
-              alt={surface.alt}
-              onError={() => setImageFailed(true)}
-            />
-          )}
+          <div className="block__image-placeholder">
+            <span className="block__image-alt">{surface.alt}</span>
+            <span className="block__image-target">{surface.destination}</span>
+          </div>
         </figure>
       )
-    }
     case 'opaque':
       return (
         <div {...common} className="block block--opaque" contentEditable={false}>
@@ -1430,8 +1341,6 @@ function syncDomText(host: HTMLElement, state: EditorState): void {
     const index = Number(element.dataset['block'])
     const surface = state.blocks[index]
     if (surface === undefined) continue
-    // A resting math atom draws its own HTML; the model has its source.
-    if (element.querySelector('[data-rendered]') !== null) continue
     const texts = Array.from(element.querySelectorAll('[data-text]')) as HTMLElement[]
     if (surface.kind === 'code' || surface.kind === 'math') {
       const text = texts[0]
@@ -1485,9 +1394,6 @@ function readFromDom(host: HTMLElement, current: EditorState): EditorState {
     const index = Number(element.dataset['block'])
     const surface = blocks[index]
     if (surface === undefined) continue
-    // A resting math atom draws KaTeX's own text; the surface still holds the
-    // source, and it was not the block being typed in.
-    if (element.querySelector('[data-rendered]') !== null) continue
     const texts = Array.from(element.querySelectorAll('[data-text]')) as HTMLElement[]
     if (surface.kind === 'code' || surface.kind === 'math') {
       const text = texts[0]?.textContent ?? surface.text
@@ -1520,13 +1426,6 @@ function positionFrom(host: HTMLElement, node: Node | null, offset: number): Pos
   const block = Number(blockElement.dataset['block'])
   const rowElement = (element?.closest('[data-row]') as HTMLElement | null) ?? blockElement
   const row = Number(rowElement.dataset['row'] ?? '0')
-  // A rendered math atom is view-only: a click in it lands at the start of the
-  // run's source, the offset the model uses.
-  const rendered = element?.closest('[data-rendered]') as HTMLElement | null
-  if (rendered !== null) {
-    const from = Number(rendered.dataset['from'] ?? '0')
-    return { block, row, offset: Number.isFinite(from) ? from : 0 }
-  }
   const textElement = rowElement.matches('[data-text]')
     ? rowElement
     : (rowElement.querySelector('[data-text]') as HTMLElement | null)

@@ -8,11 +8,20 @@ import { describe, expect, it } from 'vitest'
 import { MarkdownDocument } from '../renderer/src/faces/MarkdownDocument'
 import type { MarkdownBlockView } from '../renderer/src/wire/MarkdownBlockView'
 import type { MarkdownInlineView } from '../renderer/src/wire/MarkdownInlineView'
-import { token } from '../shots/tokens'
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
 /** A Windows checkout reads the same stylesheet with CRLF endings. */
 const css = readFileSync(`${appRoot}renderer/src/app.css`, 'utf8').replace(/\r\n/g, '\n')
+const tokens = readFileSync(`${appRoot}renderer/src/tokens.css`, 'utf8').replace(/\r\n/g, '\n')
+
+/** A palette token's day value, read from `tokens.css` and never restated. */
+function token(name: string): string {
+  const block = tokens.match(/^:root\s*\{([\s\S]*?)^\}/m)?.[1]
+  if (block === undefined) throw new Error('tokens.css has no day :root block')
+  const value = block.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1]?.trim()
+  if (value === undefined) throw new Error(`the day :root block has no --${name}`)
+  return value
+}
 
 function paragraph(run: MarkdownInlineView): MarkdownBlockView[] {
   return [{ kind: 'paragraph', runs: [run] }]
@@ -62,9 +71,8 @@ describe('the markdown drawing', () => {
     if (colour === undefined) throw new Error(`.markdown__link draws no token colour: ${block}`)
 
     // The name is not the colour: a token the sheet does not define leaves the
-    // label on the inherited ink. Resolve it through the day palette, the way
-    // `shots/tokens.ts` reads the photographed faces, and compare it to the
-    // Swift label's emberDeep, which is what a link is meant to wear.
+    // label on the inherited ink. Resolve it through the day palette and
+    // compare it to the Swift label's emberDeep, which is what a link wears.
     expect(token(colour)).toBe(token('ember-deep'))
   })
 })

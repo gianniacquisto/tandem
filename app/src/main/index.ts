@@ -1,12 +1,9 @@
-import { createReadStream } from 'node:fs'
 import { join } from 'node:path'
-import { Readable } from 'node:stream'
 
-import { app, BrowserWindow, ipcMain, protocol, session } from 'electron'
+import { app, BrowserWindow, ipcMain, session } from 'electron'
 
 import { resolveBinary } from './binary'
 import { RpcClient } from './rpcClient'
-import { assetInitiator, respondToAsset, type AssetAnswer } from './assets'
 import { contentSecurityPolicy } from '../shared/security'
 import { CALL_CHANNEL, CHANGED_CHANNEL, type BridgeCall, type Call } from '../shared/bridge'
 import { windowOptions } from './window'
@@ -23,20 +20,6 @@ const devServerUrl: string | undefined = process.env['ELECTRON_RENDERER_URL']
 
 let client: RpcClient | null = null
 let shell: BrowserWindow | null = null
-
-/**
- * The image transport's scheme privileges, registered before the app is ready.
- *
- * `standard: false` is load-bearing: the committed editor bundle spells the
- * target `tandem:<path>` with no authority, and a standard scheme would parse
- * the first segment as a host and lowercase it, breaking the vault's
- * case-sensitive paths. `secure: true` keeps the scheme out of mixed-content
- * refusals on the loopback dev page. This is an in-app scheme, never an OS URL
- * handler: `electron-builder.yml` declares no protocol for it.
- */
-protocol.registerSchemesAsPrivileged([
-  { scheme: 'tandem', privileges: { standard: false, secure: true } },
-])
 
 function homeEnvironment(): Record<string, string> {
   const named = process.env['TANDEM_HOME']
@@ -134,33 +117,6 @@ function installContentSecurityPolicy(): void {
   })
 }
 
-/**
- * The `tandem:` handler on the session the window uses. The window is created
- * with no `partition`, so `session.defaultSession` is its session; the handler
- * asks the core for the confined file, its type and its size, and streams the
- * bytes from the main process.
- */
-function installTandemProtocol(): void {
-  session.defaultSession.protocol.handle('tandem', (request) =>
-    respondToAsset(
-      {
-        url: request.url,
-        initiatorOrigin:
-          (request as Request & { initiatorOrigin?: string | null }).initiatorOrigin ?? null,
-      },
-      {
-        allowedInitiator: assetInitiator(devServerUrl),
-        call: async (path): Promise<AssetAnswer> => {
-          const answer = await replyTo({ method: 'note.asset', params: { path } })
-          return 'reply' in answer ? (answer.reply as AssetAnswer) : answer
-        },
-        readFile: async (file) =>
-          Readable.toWeb(createReadStream(file)) as ReadableStream<Uint8Array>,
-      },
-    ),
-  )
-}
-
 function createWindow(): void {
   const win = new BrowserWindow(
     windowOptions({
@@ -189,7 +145,6 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   installContentSecurityPolicy()
-  installTandemProtocol()
 
   if (process.env['TANDEM_SMOKE'] !== undefined) {
     smoke()
