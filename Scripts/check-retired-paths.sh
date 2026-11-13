@@ -53,8 +53,6 @@ allow=(
   'docs/adr/*.md|.*|An ADR is the historical record: it names a path as it stood when the decision was made, and its amendments name what retired.'
   'docs/port.md|section:## Where the old code goes|The mapping table is the record of where each old path went. The spec prose around it is live and states the cutover, so it carries no retired path.'
   'rust/**/*.rs|^[[:space:]]*//!|A module doc comment records what the module was ported from, a reference to the git history.'
-  'examples/**|app/|The example face describes the pre-cut workflow (npm, the renderer); ADR 0045 retired the bundled face and CUT-3 deletes these files.'
-  'examples/**|export-wire|The example face still describes the ts-rs export the cut removed (CUT-15); CUT-3 deletes these files.'
   'rust/core/src/tests/fixtures/**|app/|A captured harness payload is a recording, not prose: editing it would make the fixture disagree with what the host sent.'
 )
 

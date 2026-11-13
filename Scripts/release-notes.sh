@@ -3,19 +3,12 @@
 # grouped by kind — features, bugs and fixes, docs and infra — with an
 # explicit "Other (unclassified)" fallback.
 #
-# Usage: Scripts/release-notes.sh <new-tag> [--capture] — run from a checkout
-# that has the tags. Prints the body to stdout: the fixed lead line plus one
-# section per kind, in the fixed order above, empty sections omitted. The
-# GitHub release body is this output.
-#
-# --capture also files the same note into the tandem bikeshed through the one
-# sanctioned agent write path — `tandem-cli note capture --kind fact --project
-# tandem --session release-notes` — so the note lands in the saddlebag
-# (projects/tandem/.raw/release-notes/<utc>-fact-release-<version>-what-
-# shipped.md) and the consolidation pass, the curated layer's only writer,
-# promotes it into a curated "Releases" note. This script never writes under
-# projects/** itself and never edits a curated note. Retrofiling a release is
-# the same call: Scripts/release-notes.sh v0.25.0 --capture.
+# Usage: Scripts/release-notes.sh <new-tag> — run from a checkout that has the
+# tags. Prints the body to stdout: the fixed lead line plus one section per
+# kind, in the fixed order above, empty sections omitted. The GitHub release
+# body is this output. A release cut files no note: the capture layer and its
+# verb left the CLI (ADR 0045), so the script writes nothing anywhere else.
+# Retrofiling a release is the same call: Scripts/release-notes.sh v0.25.0.
 #
 # Classification is mechanical, first match wins: the PR's labels, then the
 # words of its title. A title whose words say nothing falls back to the merge
@@ -39,18 +32,12 @@
 # without its `board/` prefix: the prefix is every branch's, not a word.
 set -eu
 
-new=${1:?usage: release-notes.sh <new-tag> [--capture]}
+new=${1:?usage: release-notes.sh <new-tag>}
 shift
-capture=0
-for argument in "$@"; do
-  case "$argument" in
-    --capture) capture=1 ;;
-    *)
-      echo "release-notes.sh: unknown argument: $argument (usage: release-notes.sh <new-tag> [--capture])" >&2
-      exit 2
-      ;;
-  esac
-done
+if [ "$#" -gt 0 ]; then
+  echo "release-notes.sh: unknown argument: $1 (usage: release-notes.sh <new-tag>)" >&2
+  exit 2
+fi
 
 version=${new#v}
 
@@ -188,19 +175,3 @@ done
 
 printf '%s\n' "$lead"
 cat "$tmp/sections"
-
-# The bikeshed note: the same content, filed through the verb, never written
-# into the curated layer by this script. The verb prints the path it used.
-if [ "$capture" = 1 ]; then
-  verb=${RELEASE_NOTES_TANDEM:-tandem-cli}
-  if ! command -v "$verb" >/dev/null 2>&1; then
-    echo "release-notes.sh: --capture needs $verb on PATH — the bikeshed note goes through note capture" >&2
-    exit 1
-  fi
-  {
-    printf '# Release %s: what shipped\n\n' "$version"
-    printf '%s\n' "$lead"
-    cat "$tmp/sections"
-  } | "$verb" note capture --kind fact --project tandem --session release-notes > "$tmp/filed"
-  echo "release-notes.sh: filed $(cat "$tmp/filed")" >&2
-fi

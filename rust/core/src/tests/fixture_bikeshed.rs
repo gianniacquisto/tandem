@@ -72,8 +72,6 @@ fn the_fixture_vaults_search_and_stats_answer() {
     let row = &stats.projects[0];
     assert_eq!(row.project, "fixture");
     assert_eq!(row.curated_notes, 1);
-    assert_eq!(row.raw_pending, 0);
-    assert_eq!(row.raw_archived, 0);
     assert!(row.last_consolidated.is_some());
 }
 

@@ -103,9 +103,6 @@ impl Drop for Vault {
     }
 }
 
-/// The fixed instant the stats suite spells out (2026-10-18T14:02:11Z).
-pub const INSTANT: i64 = 1_792_332_131;
-
 /// SHA-256 of the text, lowercase hex.
 pub fn sha256(text: &str) -> String {
     use sha2::{Digest, Sha256};

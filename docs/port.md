@@ -1,6 +1,6 @@
 # The port: one binary, one app, three platforms
 
-**Status**: decided 2026-10-30. The epic is `PRT-1` on the board; the decision record is [ADR 0037](adr/0037-one-stack-rust-core-electron-ui.md). This file is the spec: what the target looks like, what is deliberately not built, and what "done" means. The epic mirrors it and carries the work.
+**Status**: historical, decided 2026-10-30 and superseded 2026-11-13. The port landed, then [ADR 0046](adr/0046-tandem-serve-and-single-binary-distribution.md) retired the Electron shell and the React renderer for `tandem serve`: one binary serving the board as HTML. The target and the stack below are the decision as it stood; [install-paths.md](install-paths.md) and [ADR 0046](adr/0046-tandem-serve-and-single-binary-distribution.md) describe what ships today.
 
 Tandem was a macOS-only product by construction when the port was decided: the Swift package targeted `.macOS(.v27)`, the GUI was 8,934 lines of SwiftUI and AppKit, and nothing in the domain needed the Mac. The core was 11,377 lines with no AppKit or SwiftUI import, the CLI 1,995 lines of Foundation over it, the store SQLite behind a version seam, and the agent face spoke JSON. Only the presentation layer was Mac-bound, so only the presentation layer was rewritten.
 

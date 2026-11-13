@@ -21,7 +21,7 @@ A lens is named either way. A named lens with no target in the change says nothi
 | --- | --- | --- | --- |
 | `code` | `agents/reviewer.md` | `reviewer` | the gate's own reading: correctness, edges, breakage |
 | `security` | `skills/review-lenses/security.md` | `security` | secrets and tokens, shell and SQL interpolation, input that reaches a path, writes that lose or expose store data, `--force` and permission changes |
-| `ui-design` | `skills/review-lenses/ui-design.md` | `reviewer` | the app's visual language: `app/renderer/src/tokens.css` tokens instead of literals, spacing, type, colour, dark mode, popover and sheet sizing |
+| `ui-design` | `skills/review-lenses/ui-design.md` | `reviewer` | the board's visual language: `rust/core/src/serve/static/tokens.css` tokens instead of literals, spacing, type, colour, dark mode, popover and sheet sizing |
 | `ux` | `skills/review-lenses/ux.md` | `ux` | interaction and recovery: keyboard paths, destructive acts without undo or confirmation, empty and error states, the human's round-trips |
 | `architecture` | `skills/review-lenses/architecture.md` | `architect` | layering, one truth per fact, schema and migration discipline, the ADRs the change touches, the reader-first order |
 

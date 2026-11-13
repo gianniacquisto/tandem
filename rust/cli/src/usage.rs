@@ -658,7 +658,7 @@ pub fn verb(name: &str) -> Option<&'static str> {
             "  tandem-cli note rename --from <path> --to <path>",
         ),
         "note stats" => concat!(
-            "tandem-cli note stats \u{2014} the memory-health readout.",
+            "tandem-cli note stats \u{2014} the notes-health readout.",
             "\n",
             "",
             "\n",

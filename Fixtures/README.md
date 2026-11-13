@@ -1,20 +1,19 @@
 # Fixtures
 
-Three kinds of fixture live here, and the rule differs by kind.
+The fixtures live here, and the rule differs by kind.
 
 **Scratch homes** are the throwaway copies a manual look opens, and no scratch
 home is committed. A case copies a home under this folder to a scratch
-directory and points the app at the copy (`TANDEM_HOME=<scratch>/Home`), so no
-run writes into the fixture and nothing opens `~/.tandem`. The screenshot rig
+directory and points the server at the copy (`TANDEM_HOME=<scratch>/Home`), so
+no run writes into the fixture and nothing opens `~/.tandem`. The screenshot rig
 that used to copy these homes is cut (CUT-2); this folder only holds the homes
 the loop reads.
 
-**The port's homes** are the exception: authored and committed, because both the
-app and the CLI read them and their shape is part of the port's contract
-(`docs/port.md`, Phases 1). `Fixtures/port/Home/` is the contract home (four
-session records, two board tickets); `Fixtures/port/Board/` is the 78-ticket
-board the Tickets face's pictures are shot on. No run writes into either, and
-each README states the rule.
+**The port's homes** are the exception: authored and committed, because both
+`tandem serve` and the CLI read them and their shape is part of the fixture
+contract. `Fixtures/port/Home/` is the contract home (two board tickets and one
+lane); `Fixtures/port/Board/` is the 78-ticket board the board fixture is drawn
+from. No run writes into either, and each README states the rule.
 
 **The port's ordering golden**, `Fixtures/port/ordering.json`, is the drag
 arithmetic's one case list: `rust/core/tests/ordering.rs` runs the cases through
@@ -38,16 +37,14 @@ is only the result, self-describing enough that a reviewer can read it alone:
 Ids, timestamps, the two sandbox paths and the store's schema version appear as
 `<id>`, `<timestamp>`, `<tandem-home>`, `<home>` and `<schema>`, and nothing else
 is normalized. The schema is the one number the two stores do not share (the
-port's schema is its own, `docs/port.md`, Store), so the rule names it and
-compares everything around it. `doctor`'s `app` and `skills` rows read the
-machine rather than the home, so a case names them in its `mask` and their
-detail is `<environment>`; their names and `ok` still compare. The goldens were
+port's schema is its own), so the rule names it and compares everything around
+it. `doctor`'s rows read the sandbox home and the fixture's paths, and the
+normalization names them; their names and `ok` still compare. The goldens were
 written by the Swift capture before the cutover, which retired with the tree;
 `rust/cli/tests/goldens.rs` replays them, and a new shape is a deliberate
 manifest line plus a file written to the same shape.
 
-**The port's agent face**, `Fixtures/port/agent-face/`, is the bundle `setup`
-installs from: one skill, one prompt, one `AGENTS.md` and a `VERSION`. Both
-implementations are pointed at it with `TANDEM_AGENT_BUNDLE`, so the golden says
-what an install does without depending on the machine's app bundle or on this
-repo's own skills.
+**The port's agent face**, `Fixtures/port/agent-face/`, is a historical fixture:
+the bundle the retired `setup` verb installed from, kept because the goldens'
+environment still pins `TANDEM_AGENT_BUNDLE`. The bundled face and its install
+verb left the tree with CUT-3 ([ADR 0045](../docs/adr/0045-the-board-and-notes-cut.md)).
