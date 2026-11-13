@@ -1,5 +1,8 @@
+{#- An open sheet is the human's: a store change must not re-draw the root
+    under their cursor, so the change stream pauses until the sheet closes.
+    The sheet's own writes still answer with a fresh root. -#}
 <div id="board-root" class="tickets tickets--board" data-revision="{{ revision }}"
-     hx-get="{{ self_url }}" hx-trigger="sse:changed from:body" hx-target="this" hx-swap="outerHTML">
+     hx-get="{{ self_url }}"{% if sheet.is_none() %} hx-trigger="sse:changed from:body"{% endif %} hx-target="this" hx-swap="outerHTML">
   {% if let Some(notice) = notice %}
   <div class="shell__notice" role="status">
     <span>{{ notice }}</span>
@@ -65,13 +68,13 @@
       <ul class="board__cards">
         {% for card in column.cards %}
         <li role="none">
-          <a class="ticket-card" href="/tickets/{{ card.id }}" hx-get="/tickets/{{ card.id }}"
+          <a class="ticket-card" href="/tickets/{{ card.id }}?{{ board_query }}" hx-get="/tickets/{{ card.id }}?{{ board_query }}"
              hx-target="#board-root" hx-swap="outerHTML" data-ticket="{{ card.id }}"
              draggable="true" tabindex="0" aria-describedby="board-keyboard-hint"{% if card.selected %} aria-current="true"{% endif %}>
             {% if let Some(lane) = card.lane %}
-            <button type="button" class="ticket-card__lane" data-tone="{{ lane.tone }}">
+            <span class="ticket-card__lane" data-tone="{{ lane.tone }}">
               <span class="ticket-card__lane-dot" aria-hidden="true"></span>{{ lane.name }}
-            </button>
+            </span>
             {% endif %}
             <span class="ticket-card__title">{{ card.title }}</span>
             <span class="ticket-card__footer">

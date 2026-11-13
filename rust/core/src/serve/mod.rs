@@ -277,9 +277,9 @@ impl Filters {
         }
     }
 
-    /// The URL this view is fetched from, so a conflict's dismiss and the SSE
-    /// re-fetch keep the filters the human set.
-    fn url(&self) -> String {
+    /// The filters as a query string, so a link that opens a sheet or lands
+    /// back on the board carries them.
+    fn query(&self) -> String {
         let mut pairs: Vec<(&str, String)> = vec![
             ("project", self.project.clone()),
             (
@@ -297,10 +297,13 @@ impl Filters {
         if let Some(selected) = &self.selected {
             pairs.push(("selected", selected.clone()));
         }
-        match serde_urlencoded::to_string(&pairs) {
-            Ok(query) => format!("/board?{query}"),
-            Err(_) => "/board".to_string(),
-        }
+        serde_urlencoded::to_string(&pairs).unwrap_or_default()
+    }
+
+    /// The URL this view is fetched from, so a conflict's dismiss and the SSE
+    /// re-fetch keep the filters the human set.
+    fn url(&self) -> String {
+        format!("/board?{}", self.query())
     }
 }
 
@@ -395,6 +398,9 @@ struct BoardView {
     revision: i64,
     self_url: String,
     dismiss_url: String,
+    /// The filters as a query string, so a card's link to its sheet carries
+    /// them and the sheet opens over the board the human was looking at.
+    board_query: String,
     notice: Option<String>,
     form: FiltersView,
     project_options: Vec<ProjectOption>,
@@ -707,6 +713,7 @@ fn render_board(
         revision,
         self_url: url.clone(),
         dismiss_url: url,
+        board_query: filters.query(),
         notice,
         form: FiltersView {
             project: filters.project.clone(),
@@ -1041,6 +1048,13 @@ struct EdgeView {
 struct SheetView {
     revision: i64,
     id: String,
+    /// The filters the board behind the sheet was drawn with, as a query
+    /// string: every write form carries them, so an answer redraws that board
+    /// and the close link lands on it.
+    board_query: String,
+    /// The same filters as fields, for the hidden inputs every sheet form
+    /// carries back.
+    filters: FiltersView,
     handle: String,
     origin: String,
     link: Option<String>,
@@ -1152,6 +1166,7 @@ fn sheet_lane_options(ticket: &Ticket, lanes: &[String]) -> Vec<LaneOption> {
 fn render_sheet(
     context: &SessionContext,
     id: &str,
+    filters: &Filters,
     notice: Option<String>,
     description_refusal: Option<String>,
     comment_refusal: Option<String>,
@@ -1190,6 +1205,14 @@ fn render_sheet(
     Ok(SheetView {
         revision,
         id: ticket.id.to_string(),
+        board_query: filters.query(),
+        filters: FiltersView {
+            project: filters.project.clone(),
+            show_all: filters.show_all,
+            lane: filters.lane.clone(),
+            assignee: filters.assignee.clone(),
+            text: filters.text.clone(),
+        },
         handle: sheet_handle(&ticket),
         origin: ticket.origin.clone(),
         link: ticket.link.clone(),
@@ -1219,16 +1242,27 @@ fn render_sheet(
 }
 
 /// The sheet as an htmx partial or as a full page: the board is always behind
-/// it, so the human can dismiss back to the face they came from.
+/// it, so the human can dismiss back to the face they came from. The filters
+/// ride the sheet's own request (the query on a GET, the hidden fields on a
+/// write form), so the board behind is the one the sheet was opened over.
 fn sheet_response(
     context: &SessionContext,
     id: &str,
+    params: &HashMap<String, String>,
     notice: Option<String>,
     description_refusal: Option<String>,
     comment_refusal: Option<String>,
     headers: &HeaderMap,
 ) -> Response {
-    let view = match render_sheet(context, id, notice, description_refusal, comment_refusal) {
+    let filters = Filters::parse(params);
+    let view = match render_sheet(
+        context,
+        id,
+        &filters,
+        notice,
+        description_refusal,
+        comment_refusal,
+    ) {
         Ok(view) => view,
         Err(error) => return bad_request(&error),
     };
@@ -1244,9 +1278,9 @@ fn sheet_response(
     };
     board_with_sheet(
         context,
-        &Filters::default(),
+        &filters,
         html,
-        format!("/tickets/{id}"),
+        filters.url(),
         headers,
         StatusCode::OK,
     )
@@ -1277,9 +1311,10 @@ fn form_params(
 async fn ticket_page(
     State(context): State<Arc<SessionContext>>,
     Path(id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
-    sheet_response(&context, &id, None, None, None, &headers)
+    sheet_response(&context, &id, &params, None, None, None, &headers)
 }
 
 async fn save_ticket(
@@ -1302,6 +1337,7 @@ async fn save_ticket(
         return sheet_response(
             &context,
             &id,
+            &params,
             Some(CONFLICT_NOTICE.to_string()),
             None,
             None,
@@ -1313,6 +1349,7 @@ async fn save_ticket(
         return sheet_response(
             &context,
             &id,
+            &params,
             Some(crate::domain::DomainError::EmptyTitle.message()),
             None,
             None,
@@ -1322,7 +1359,15 @@ async fn save_ticket(
     let status = match Status::parse(field(&params, "status")) {
         Ok(status) => status,
         Err(error) => {
-            return sheet_response(&context, &id, Some(error.message()), None, None, &headers);
+            return sheet_response(
+                &context,
+                &id,
+                &params,
+                Some(error.message()),
+                None,
+                None,
+                &headers,
+            );
         }
     };
     let assignee = field(&params, "assignee");
@@ -1336,8 +1381,16 @@ async fn save_ticket(
         },
     );
     match outcome {
-        Ok(_) => sheet_response(&context, &id, None, None, None, &headers),
-        Err(error) => sheet_response(&context, &id, Some(error.message()), None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &params, None, None, None, &headers),
+        Err(error) => sheet_response(
+            &context,
+            &id,
+            &params,
+            Some(error.message()),
+            None,
+            None,
+            &headers,
+        ),
     }
 }
 
@@ -1361,6 +1414,7 @@ async fn append_description(
         return sheet_response(
             &context,
             &id,
+            &params,
             Some(CONFLICT_NOTICE.to_string()),
             None,
             None,
@@ -1372,6 +1426,7 @@ async fn append_description(
         return sheet_response(
             &context,
             &id,
+            &params,
             None,
             Some(crate::domain::DomainError::EmptyDescriptionBody.message()),
             None,
@@ -1385,8 +1440,16 @@ async fn append_description(
             ..SetFields::default()
         },
     ) {
-        Ok(_) => sheet_response(&context, &id, None, None, None, &headers),
-        Err(error) => sheet_response(&context, &id, None, Some(error.message()), None, &headers),
+        Ok(_) => sheet_response(&context, &id, &params, None, None, None, &headers),
+        Err(error) => sheet_response(
+            &context,
+            &id,
+            &params,
+            None,
+            Some(error.message()),
+            None,
+            &headers,
+        ),
     }
 }
 
@@ -1407,6 +1470,7 @@ async fn add_comment(
         return sheet_response(
             &context,
             &id,
+            &params,
             None,
             None,
             Some(crate::domain::DomainError::EmptyCommentBody.message()),
@@ -1414,8 +1478,16 @@ async fn add_comment(
         );
     }
     match context.board().comment_write(&id, body) {
-        Ok(_) => sheet_response(&context, &id, None, None, None, &headers),
-        Err(error) => sheet_response(&context, &id, Some(error.message()), None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &params, None, None, None, &headers),
+        Err(error) => sheet_response(
+            &context,
+            &id,
+            &params,
+            Some(error.message()),
+            None,
+            None,
+            &headers,
+        ),
     }
 }
 
@@ -1439,6 +1511,7 @@ async fn move_to_lane(
         return sheet_response(
             &context,
             &id,
+            &params,
             Some(CONFLICT_NOTICE.to_string()),
             None,
             None,
@@ -1455,8 +1528,16 @@ async fn move_to_lane(
         .board()
         .move_ticket(&id, lane.as_deref(), usize::MAX)
     {
-        Ok(_) => sheet_response(&context, &id, None, None, None, &headers),
-        Err(error) => sheet_response(&context, &id, Some(error.message()), None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &params, None, None, None, &headers),
+        Err(error) => sheet_response(
+            &context,
+            &id,
+            &params,
+            Some(error.message()),
+            None,
+            None,
+            &headers,
+        ),
     }
 }
 
@@ -1484,8 +1565,16 @@ async fn add_lane(
     let key = if abbr.is_empty() { None } else { Some(abbr) };
     let outcome = context.board().add_lane(field(&params, "name"), key, None);
     match outcome {
-        Ok(_) => sheet_response(&context, &id, None, None, None, &headers),
-        Err(error) => sheet_response(&context, &id, Some(error.message()), None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &params, None, None, None, &headers),
+        Err(error) => sheet_response(
+            &context,
+            &id,
+            &params,
+            Some(error.message()),
+            None,
+            None,
+            &headers,
+        ),
     }
 }
 
@@ -1511,8 +1600,16 @@ async fn rename_lane(
         .board()
         .rename_lane(&name, field(&params, "to"), key, None);
     match outcome {
-        Ok(_) => sheet_response(&context, &id, None, None, None, &headers),
-        Err(error) => sheet_response(&context, &id, Some(error.message()), None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &params, None, None, None, &headers),
+        Err(error) => sheet_response(
+            &context,
+            &id,
+            &params,
+            Some(error.message()),
+            None,
+            None,
+            &headers,
+        ),
     }
 }
 

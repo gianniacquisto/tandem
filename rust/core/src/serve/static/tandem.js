@@ -25,14 +25,30 @@
     if (card) card.focus();
   }
 
+  // htmx 2 drops a request whose source is not in the document: it returns
+  // before sending when `bodyContains` is false. A form built for one drag is
+  // detached until it lands, so it is attached for the request and taken away
+  // once the request settles.
   function htmxPost(form, target) {
     if (!window.htmx) return false;
-    window.htmx.ajax('POST', form.getAttribute('action'), {
+    var detached = !form.isConnected;
+    if (detached) {
+      form.hidden = true;
+      document.body.appendChild(form);
+    }
+    var request = window.htmx.ajax('POST', form.getAttribute('action'), {
       source: form,
       target: target,
       swap: 'outerHTML',
       values: new FormData(form)
     });
+    if (detached) {
+      var remove = function () {
+        if (form.parentNode) form.parentNode.removeChild(form);
+      };
+      if (request && request.then) request.then(remove, remove);
+      else window.setTimeout(remove, 0);
+    }
     return true;
   }
 
@@ -189,7 +205,9 @@
     if (!sheet) return;
     if (event.key === 'Escape') {
       event.preventDefault();
-      window.location.href = '/board';
+      // Close where the sheet was opened from, filters and all.
+      var close = sheet.querySelector('.sheet__close');
+      window.location.href = close ? close.getAttribute('href') : '/board';
       return;
     }
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
@@ -213,10 +231,12 @@
   // The autosave writes without swapping the pane: a swap would replace the
   // textarea under the human's caret every second. The response still carries
   // the new baseline, which the hidden input adopts; a conflict or an error is
-  // the one answer that does swap, because it must be seen.
-  function saveNote() {
+  // the one answer that does swap, because it must be seen. `writeNote`
+  // resolves whether the buffer reached the disk, so a caller that navigates
+  // (Escape) can stay put when it did not.
+  function writeNote() {
     var form = noteForm();
-    if (!form) return Promise.resolve();
+    if (!form) return Promise.resolve(false);
     return fetch(form.getAttribute('action'), {
       method: 'POST',
       headers: {
@@ -230,16 +250,28 @@
         if (html.indexOf('class="conflict"') !== -1 || html.indexOf('class="banner"') !== -1) {
           var root = document.getElementById('notes-root');
           if (root) root.outerHTML = html;
-          return;
+          return false;
         }
         var parsed = new DOMParser().parseFromString(html, 'text/html');
         var fresh = parsed.querySelector('[data-note-baseline]');
         var current = form.querySelector('[data-note-baseline]');
         if (fresh && current) current.value = fresh.getAttribute('value');
+        return true;
       })
       .catch(function (error) {
         console.error('the note save failed:', error);
+        return false;
       });
+  }
+
+  // One write at a time: a save asked for while another is out waits its turn
+  // and then reads the buffer again, so the text the human sees is the text
+  // that lands, and Escape's answer belongs to its own save.
+  var noteChain = Promise.resolve(true);
+
+  function saveNote() {
+    noteChain = noteChain.then(writeNote, writeNote);
+    return noteChain;
   }
 
   document.addEventListener('input', function (event) {
@@ -255,9 +287,11 @@
     if (event.key === 'Escape') {
       event.preventDefault();
       if (noteTimer) window.clearTimeout(noteTimer);
-      var done = document.querySelector('.bikeshed__mode');
-      saveNote().then(function () {
-        if (done) window.location.href = done.getAttribute('href');
+      var done = document.querySelector('.bikeshed__breadcrumb-end a.bikeshed__mode');
+      saveNote().then(function (saved) {
+        // A refused save drew its reason into the root. Navigating now would
+        // replace the banner before the human reads it, and their text with it.
+        if (saved && done) window.location.href = done.getAttribute('href');
       });
     }
   });

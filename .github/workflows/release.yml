@@ -18,9 +18,12 @@ name: Release
 #
 # CUT-15 removed the Electron tree, so this file's build jobs still name a
 # package that no longer exists; CUT-16 rewrites them as standalone `tandem`
-# archives and restores the pull-request run. Until then the workflow runs on
-# tags and dispatch only, so a merge is not held by a pipeline whose subject
-# retired.
+# archives. Until then the build and publish jobs run on tags and dispatch only,
+# so a merge is not held by a pipeline whose subject retired. Pull requests
+# still start the workflow, because `main` requires a check named `release`: on
+# a pull request the build jobs skip and the aggregator runs one cheap step
+# (the release scripts parse) so the required check reports instead of reading
+# "Expected" until CUT-16 restores the artifact run.
 #
 # The work is split in three: `build-macos` and `build-linux` each produce and verify
 # their platform's artifact, and `release` publishes them. The publisher keeps
@@ -32,6 +35,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  pull_request:
   workflow_dispatch:
 
 # Least privilege by default: the build job only reads the repo. The publish and
@@ -44,6 +48,10 @@ jobs:
     # The artifact. macOS runs the Electron package and arm64 is the port's one
     # macOS target; the core is built by the same pinned toolchain `rust.yml`
     # tests because `prepare-binary.mjs` runs the cargo proxy from `rust/`.
+    # The Electron build is retired (CUT-15); CUT-16 restores this job over the
+    # standalone archives, and until then a pull-request run only needs the
+    # aggregator's check.
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 45
     permissions:
@@ -158,6 +166,7 @@ jobs:
     # `prepare-binary.mjs` runs the cargo proxy from `rust/`. Ubuntu because
     # that is the AppImage's build platform; no signing identity exists, the
     # Linux artifact stays unsigned (PRT-32's decided-against).
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -255,6 +264,7 @@ jobs:
       contents: write # needed by the publish step (gh release); no other job has it
     steps:
       - name: "Verify: the builds are green"
+        if: github.event_name != 'pull_request'
         env:
           BUILD_MACOS_RESULT: ${{ needs['build-macos'].result }}
           BUILD_LINUX_RESULT: ${{ needs['build-linux'].result }}
@@ -276,7 +286,16 @@ jobs:
           # no-tags fetch has neither.
           fetch-depth: 0
 
+      - name: "Verify: the release scripts parse (pull-request runs)"
+        # The pull-request face of this job. CUT-16 restores the artifact run;
+        # until then `main`'s required `release` check is this: the scripts the
+        # tag run will execute are still syntactically whole.
+        if: github.event_name == 'pull_request'
+        working-directory: ${{ github.workspace }}
+        run: bash -n Scripts/bump-tap.sh Scripts/release-notes.sh Scripts/stage-release-assets.sh install.sh
+
       - name: Resolve the version
+        if: github.event_name != 'pull_request'
         run: |
           # The same rule as the build jobs: the artifacts are named after the
           # version, and all three jobs must agree on which artifacts to hand
@@ -288,18 +307,21 @@ jobs:
           fi
 
       - name: Download the artifacts
+        if: github.event_name != 'pull_request'
         uses: actions/download-artifact@v4
         with:
           name: Tandem-${{ env.version }}
           path: dist-mac
 
       - name: Download the Linux artifact
+        if: github.event_name != 'pull_request'
         uses: actions/download-artifact@v4
         with:
           name: Tandem-${{ env.version }}-linux
           path: dist-linux
 
       - name: "Verify: the downloaded artifacts match their SHA256SUMS"
+        if: github.event_name != 'pull_request'
         run: |
           # The handoff between the build jobs and this one is checked per
           # platform: each checksum a build job wrote must be the checksum of
@@ -310,6 +332,7 @@ jobs:
           shasum -a 256 -c SHA256SUMS
 
       - name: Assemble the release directory
+        if: github.event_name != 'pull_request'
         run: |
           # One directory of everything the release publishes, with one merged
           # SHA256SUMS covering every published file: the zip, the dmg,

@@ -61,6 +61,16 @@ jobs:
       - name: "Gate: cargo test"
         run: cargo test
 
+      - name: "Gate: the tree names no retired path"
+        # RET-91's scan lived in `app.yml`, which CUT-15 deleted with the
+        # Electron tree, and had no caller after it. Once per run: it reads the
+        # tracked tree, not the platform's build. The third-party notice check
+        # rides `cargo test` beside it (`rust/core/tests/notice.rs`), so a
+        # vendored asset the notice does not name fails the same job.
+        if: runner.os == 'ubuntu-latest'
+        working-directory: ${{ github.workspace }}
+        run: bash Scripts/check-retired-paths.sh
+
       - name: "Gate: the installer and stager suites"
         # TAN-253 wrote the suite and nothing ran it in CI, so a change to
         # either released script waited for a tag to show. install.sh is the

@@ -1355,3 +1355,121 @@ async fn post_notes_create_create_folder_and_move_update_vault_and_refuse_invali
         "the refused move changes nothing"
     );
 }
+
+// MARK: - The sheet over a filtered board
+
+/// A sheet opens over the board the human was looking at: the card link
+/// carries its filters, and the sheet draws that board behind itself with
+/// them, so the project, lane, assignee and search survive the click.
+#[tokio::test]
+async fn get_ticket_sheet_keeps_the_board_filters_behind_it() {
+    let sandbox = Sandbox::new("sheet-filters");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let app = router(context(store));
+
+    let (status, _, body) = send(
+        &app,
+        sheet_get(&format!(
+            "/tickets/{}?project=Alpha&show_all=&lane=alpha&assignee=builder&text=Caf",
+            ticket.id
+        )),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the sheet answers: {body}");
+    assert!(
+        body.contains("<option value=\"Alpha\" selected>Alpha</option>"),
+        "the project filter sits behind the sheet as the human set it: {body}"
+    );
+    assert!(
+        body.contains("name=\"text\" value=\"Caf\""),
+        "the search sits behind the sheet: {body}"
+    );
+    assert!(
+        body.contains("href=\"/board?project=Alpha"),
+        "the close link lands on the filtered board: {body}"
+    );
+    assert!(
+        !body.contains("Beta one"),
+        "the board behind the sheet is the filtered one: {body}"
+    );
+}
+
+/// A write from the sheet answers with the board it was opened over: the
+/// filters the form carried come back, so a save never silently clears them.
+#[tokio::test]
+async fn a_sheet_write_keeps_the_filters_its_form_carried() {
+    let sandbox = Sandbox::new("sheet-write-filters");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let revision = store.revision().expect("the revision reads");
+    let app = router(context(store));
+
+    let body = format!(
+        "addition=A line&expected_revision={revision}&project=Alpha&show_all=&lane=alpha&assignee=builder&text=Caf"
+    );
+    let (status, _, page) = send(
+        &app,
+        form_request(&format!("/tickets/{}/description", ticket.id), &body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the append answers: {page}");
+    assert!(page.contains("A line"), "the append landed: {page}");
+    assert!(
+        page.contains("<option value=\"Alpha\" selected>Alpha</option>"),
+        "the project filter survives a sheet write: {page}"
+    );
+    assert!(
+        page.contains("href=\"/board?project=Alpha"),
+        "the close link still lands on the filtered board: {page}"
+    );
+}
+
+/// The open sheet is the human's, not the store's: a write from another actor
+/// must not replace the form under their cursor and clear a half-typed comment.
+/// The plain board still follows the change stream.
+#[tokio::test]
+async fn an_open_sheet_does_not_refetch_under_the_human_while_they_type() {
+    let sandbox = Sandbox::new("sheet-quiet");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let app = router(context(store));
+
+    let (status, _, sheet) = send(&app, sheet_get(&format!("/tickets/{}", ticket.id))).await;
+    assert_eq!(status, StatusCode::OK, "the sheet answers: {sheet}");
+    assert!(
+        !sheet.contains("hx-trigger=\"sse:changed from:body\""),
+        "an open sheet does not re-fetch on every store change: {sheet}"
+    );
+
+    let (status, _, board_page) = send(&app, sheet_get("/board")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        board_page.contains("hx-trigger=\"sse:changed from:body\""),
+        "the plain board still follows the change stream: {board_page}"
+    );
+}
+
+/// A tab is a face change, not a partial swap: the Board tab must not target a
+/// root the Notes face does not draw, or the click is a resolved-to-nothing
+/// target error.
+#[tokio::test]
+async fn the_shell_tabs_navigate_instead_of_targeting_a_face_they_are_not_drawn_on() {
+    let sandbox = Sandbox::new("shell-tabs");
+    let app = router(context(sandbox.store()));
+
+    let (status, _, page) = send(&app, page_get("/notes")).await;
+    assert_eq!(status, StatusCode::OK, "the notes face answers: {page}");
+    assert!(page.contains("class=\"shell__tabs\""), "the tabs draw");
+    assert!(
+        page.contains("href=\"/board\">Board</a>"),
+        "the Board tab is a navigation link: {page}"
+    );
+    assert!(
+        !page.contains("hx-get=\"/board\" hx-target=\"#board-root\""),
+        "the Board tab does not target #board-root from the notes face: {page}"
+    );
+}
