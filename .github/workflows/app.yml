@@ -106,10 +106,11 @@ jobs:
         # every platform: a missing binary cannot ship silently.
         run: npm run check:artifact
 
-      - name: "Gate: the packaged app answers ticket.list"
-        # What the check above cannot prove: that the binary runs and the app
-        # answers against a fixture home, with the workspace build unreachable.
-        # Linux runners have no display, so the app runs under Xvfb.
+      - name: "Gate: the packaged app serves the board"
+        # What the check above cannot prove: that the binary runs, that the
+        # shell starts it, and that the board answers against a fixture home,
+        # with the workspace build unreachable. Linux runners have no display,
+        # so the app runs under Xvfb.
         if: runner.os != 'Windows'
         shell: bash
         run: |

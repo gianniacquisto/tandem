@@ -42,3 +42,27 @@ uuid = { version = "1.29", features = ["v4"] }
 # `rusqlite`'s transitive dependency. Unix only: Windows has no portable
 # equivalent, and the probe there assumes a present path is writable.
 libc = "0.2"
+# `tandem serve`: one loopback HTTP server in the one binary (ADR 0046). axum
+# owns the routing and the response shapes, tokio the runtime the listener and
+# the SSE stream run on, and askama compiles the board templates into the core.
+axum = { version = "0.8", features = ["form"] }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "net",
+    "sync",
+    "time",
+    "macros",
+    "signal",
+] }
+askama = "0.16"
+# The SSE route forwards a `tokio::sync::broadcast` channel as a stream; the
+# wrapper is the one adapter between the two, no server logic of its own.
+tokio-stream = { version = "0.1", features = ["sync"] }
+# The board's forms are `application/x-www-form-urlencoded`; the dismiss link
+# is built with the same encoder the extractor reads.
+serde_urlencoded = "0.7"
+# The in-process router tests drive a `Router` as a `tower` service and collect
+# its body; both are axum's own transitive dependencies, named here because the
+# test names them directly.
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

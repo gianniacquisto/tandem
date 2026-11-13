@@ -692,30 +692,31 @@ pub fn verb(name: &str) -> Option<&'static str> {
     })
 }
 
-/// `rpc`: the Rust-only verb the app spawns (PRT-11). The root text is the
-/// Swift binary's byte for byte, so this one is reachable by its own `--help`
-/// and is not listed among the agent verbs.
-pub const RPC: &str = concat!(
-    "tandem-cli rpc: speak the JSON protocol on stdin and stdout.",
+/// `serve`: the board's loopback HTTP door (ADR 0046). Like `mcp` it is
+/// reachable by its own `--help` and is not listed among the agent verbs.
+pub const SERVE: &str = concat!(
+    "tandem-cli serve: serve the board on loopback over HTTP.",
     "\n",
     "",
     "\n",
     "Usage:",
     "\n",
-    "  tandem-cli rpc [--home <path>]",
+    "  tandem-cli serve [--host <ip>] [--port <port>] [--open] [--allow-unauthenticated]",
     "\n",
     "",
     "\n",
-    "One JSON frame per line: a request carries `id`, `method` and `params`; a",
+    "The board is server-rendered HTML over htmx, with `GET /events` streaming",
     "\n",
-    "response echoes `id` with `result` or `error`; a change event carries",
+    "store revisions. The default bind is 127.0.0.1:7700. A non-loopback",
     "\n",
-    "`event` and the store's new `revision`. The app spawns this mode; a closed",
+    "--host is refused unless --allow-unauthenticated is set. --port 0 asks",
     "\n",
-    "stdin ends it.",
+    "the OS for a free port and prints the one it bound; --open launches the",
+    "\n",
+    "system browser at it. SIGINT or SIGTERM ends the run.",
 );
 
-/// `mcp`: the agent host's door (TAN-274). Like `rpc` it is reachable by its
+/// `mcp`: the agent host's door (TAN-274). Like `serve` it is reachable by its
 /// own `--help` and is not listed among the agent verbs: hosts discover it
 /// through the protocol handshake, and agents call its tools.
 pub const MCP: &str = concat!(
@@ -733,7 +734,7 @@ pub const MCP: &str = concat!(
     "\n",
     "version, `tools/list` names the 43 tools, and `tools/call` runs one",
     "\n",
-    "through the same dispatch the `rpc` door answers. `initialize` carries",
+    "through the same dispatch the CLI's verbs make. `initialize` carries",
     "\n",
     "a small health block (home, store ok, version, tool count); a full",
     "\n",

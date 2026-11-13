@@ -1,9 +1,10 @@
-//! The tandem binary: the agent face, and later the `rpc` the app holds.
+//! The tandem binary: the agent face and the board's HTTP server.
 //!
-//! One binary (`docs/port.md`, Target shape): the verbs agents call and the
-//! core the app trusts are the same executable, so they cannot drift. This rung
-//! carries the whole grammar the skills speak (PRT-9): `ticket`, `lane`, `note`,
-//! and `doctor`'s pinned report. `rpc` lands with PRT-11.
+//! One binary (`docs/port.md`, Target shape): the verbs agents call, the MCP
+//! server's stream and the board the human reads are the same executable, so
+//! they cannot drift. This rung carries the whole grammar the skills speak
+//! (PRT-9): `ticket`, `lane`, `note`, `doctor`'s pinned report, `mcp`'s stream
+//! and `serve`'s loopback server (ADR 0046).
 //!
 //! What lives here is what belongs to a process rather than to the domain:
 //! argv, the environment, the two streams and the exit code. Every verb maps to
@@ -14,7 +15,7 @@
 mod usage;
 
 use std::env;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -60,6 +61,22 @@ struct Cli {
     command: Option<Command>,
 }
 
+#[derive(Args)]
+struct ServeArgs {
+    /// The address to bind (default 127.0.0.1).
+    #[arg(long, default_value = "127.0.0.1", value_name = "IP")]
+    host: String,
+    /// The port to bind; 0 asks the OS for a free one.
+    #[arg(long, default_value_t = 7700, value_name = "PORT")]
+    port: u16,
+    /// Open the board in the system browser after binding.
+    #[arg(long)]
+    open: bool,
+    /// Serve a non-loopback address without the refusal.
+    #[arg(long)]
+    allow_unauthenticated: bool,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// The board's ticket surface.
@@ -84,10 +101,10 @@ enum Command {
     },
     /// Report whether this machine's store and notes are sound (ADR 0014).
     Doctor,
-    /// Speak the app's JSON protocol on stdin and stdout (PRT-11).
-    Rpc,
     /// Serve the agent face as an MCP server over stdio (TAN-274).
     Mcp,
+    /// Serve the board on loopback over HTTP (ADR 0046).
+    Serve(ServeArgs),
 }
 
 #[derive(Subcommand)]
@@ -425,8 +442,8 @@ fn help_text(cli: &Cli) -> &'static str {
     let name = match &cli.command {
         None => return usage::ROOT,
         Some(Command::Doctor) => return usage::verb("doctor").unwrap_or(usage::ROOT),
-        Some(Command::Rpc) => return usage::RPC,
         Some(Command::Mcp) => return usage::MCP,
+        Some(Command::Serve(_)) => return usage::SERVE,
         Some(Command::Ticket { command }) => match command {
             None => return usage::group("ticket").unwrap_or(usage::ROOT),
             Some(TicketCommand::Comment { command: None }) => "ticket comment",
@@ -518,8 +535,8 @@ fn run(cli: &Cli) -> Result<(), Failure> {
 
     match command {
         Command::Doctor => doctor(&home),
-        Command::Rpc => rpc(&home),
         Command::Mcp => mcp(&home),
+        Command::Serve(args) => serve(&home, args),
         Command::Ticket { command } => ticket(&home, command.as_ref()),
         Command::Lane { command } => lane(&home, command.as_ref()),
         Command::Project { command } => project(&home, command.as_ref()),
@@ -983,18 +1000,117 @@ fn add_description_body(flag: Option<&str>) -> Result<Option<String>, Failure> {
     }
 }
 
-// MARK: - rpc
+// MARK: - serve
 
-/// The app's door: frames on stdin, frames on stdout, and an exit on a closed
-/// stdin. The protocol lives in the core (`tandem_core::rpc`); this arm is only
-/// the process that owns the two streams.
-fn rpc(home: &Home) -> Result<(), Failure> {
-    tandem_core::rpc::serve(
-        tandem_core::rpc::StdioStream::new(),
-        Store::new(home.clone()),
-        Actor::current(),
-    )
-    .map_err(|error| Failure::message(format!("The rpc stream failed: {error}. Try again.")))
+/// The board's loopback door: a non-loopback address is refused before binding
+/// unless the human opted in, the listener prints the address it actually
+/// bound (so `--port 0` is usable), and SIGINT or SIGTERM ends the run.
+fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
+    let host: std::net::IpAddr = args.host.parse().map_err(|_| Failure {
+        message: format!(
+            "tandem serve: --host must be an IP address, got \"{}\".",
+            args.host
+        ),
+        exit: 2,
+    })?;
+    if !host.is_loopback() && !args.allow_unauthenticated {
+        return Err(Failure {
+            message: format!(
+                "tandem serve: {host} is not a loopback address. Pass --allow-unauthenticated to serve beyond this machine."
+            ),
+            exit: 2,
+        });
+    }
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| {
+            Failure::message(format!(
+                "tandem serve: the runtime could not start: {error}."
+            ))
+        })?;
+    runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind((host, args.port))
+            .await
+            .map_err(|error| {
+                Failure::message(format!(
+                    "tandem serve: could not bind {host}:{}: {error}.",
+                    args.port
+                ))
+            })?;
+        let address = listener.local_addr().map_err(|error| {
+            Failure::message(format!(
+                "tandem serve: the bound address is unreadable: {error}."
+            ))
+        })?;
+        println!("tandem serve: listening on http://{address}");
+        let _ = io::stdout().flush();
+        if args.open {
+            open_browser(&format!("http://{address}"));
+        }
+        let context = tandem_core::serve::SessionContext {
+            store: Store::new(home.clone()),
+            actor: Actor::current(),
+            environment: environment(),
+        };
+        let (changes, _) = tokio::sync::broadcast::channel(64);
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let watcher =
+            tandem_core::serve::watch(context.store.clone(), changes.clone(), stop.clone());
+        let app = tandem_core::serve::router_with(context, changes);
+        let outcome = tokio::select! {
+            result = axum::serve(listener, app) => result.map_err(|error| {
+                Failure::message(format!("tandem serve: the server stopped: {error}."))
+            }),
+            _ = shutdown_signal() => Ok(()),
+        };
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        // The watcher notices the stop on its next tick and exits; the process
+        // is ending, so the handle is dropped rather than joined.
+        drop(watcher);
+        outcome
+    })
+}
+
+/// SIGINT, or SIGTERM on unix. The serve future is dropped on either, which
+/// closes the listener and the open streams.
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut terminate = match signal(SignalKind::terminate()) {
+            Ok(signal) => signal,
+            Err(_) => {
+                let _ = tokio::signal::ctrl_c().await;
+                return;
+            }
+        };
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = terminate.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+/// `--open`: the system browser, after the listener has a real port. A browser
+/// that cannot start is not a server failure; the address is already printed.
+fn open_browser(url: &str) {
+    let program = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(windows) {
+        "cmd"
+    } else {
+        "xdg-open"
+    };
+    let mut command = std::process::Command::new(program);
+    if cfg!(windows) {
+        command.args(["/C", "start", ""]);
+    }
+    let _ = command.arg(url).spawn();
 }
 
 // MARK: - mcp

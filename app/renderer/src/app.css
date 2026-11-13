@@ -1099,6 +1099,21 @@ body {
   outline: var(--hairline) solid var(--accent);
 }
 
+.ticket-card:focus-visible {
+  outline: var(--hairline) solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The board's keyboard hint: read by a screen reader on a focused card. */
+.board__hint {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .ticket-card__lane {
   display: inline-flex;
   align-items: center;

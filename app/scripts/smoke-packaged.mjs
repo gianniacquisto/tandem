@@ -9,11 +9,13 @@ import { findPackagedApp } from './packaged.mjs'
 /**
  * The artifact launches and answers: copy the fixture home to a scratch
  * directory, run the packaged app against it with `TANDEM_SMOKE`, and require
- * the revision `ticket.list` answered.
+ * the revision the board it serves drew.
  *
  * The app runs from `dist/`, so the only core it can reach is the one
  * electron-builder put beside its resources; the workspace build is not in
- * this lookup. Linux needs a display, so CI runs this under `xvfb-run`.
+ * this lookup. The shell spawns that core's `serve` verb (ADR 0046), so this
+ * gate exercises the shell and the packaged binary together. Linux needs a
+ * display, so CI runs this under `xvfb-run`.
  */
 const appRoot = fileURLToPath(new URL('..', import.meta.url))
 const app = findPackagedApp(join(appRoot, 'dist'), process.platform)
@@ -48,11 +50,11 @@ child.on('close', (code) => {
   const revision = /^revision (\d+)$/m.exec(stdout)
   if (code !== 0 || revision === null) {
     process.stderr.write(
-      `the packaged app did not answer ticket.list (exit ${code}), spawned ${app.binary}\n` +
+      `the packaged app did not answer the board (exit ${code}), spawned ${app.binary}\n` +
         `stdout:\n${stdout}\nstderr:\n${stderr}\n`,
     )
     process.exit(1)
   }
 
-  console.log(`the packaged app answered ticket.list at revision ${revision[1]}`)
+  console.log(`the packaged app answered the board at revision ${revision[1]}`)
 })
