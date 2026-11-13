@@ -170,8 +170,7 @@
             <ul class="sheet__edges">
               {% for edge in blocked_by %}
               <li>
-                <a class="sheet__edge" href="/tickets/{{ edge.id }}?{{ board_query }}" hx-get="/tickets/{{ edge.id }}?{{ board_query }}"
-                   hx-target="#board-root" hx-swap="outerHTML">
+                <a class="sheet__edge" href="/tickets/{{ edge.id }}?{{ board_query }}">
                   <span class="sheet__edge-ref">{{ edge.reference }}</span>
                   <span class="sheet__edge-title">{{ edge.title }}</span>
                   <span class="sheet__edge-status">{{ edge.status }}</span>
@@ -188,8 +187,7 @@
             <ul class="sheet__edges">
               {% for edge in blocks %}
               <li>
-                <a class="sheet__edge" href="/tickets/{{ edge.id }}?{{ board_query }}" hx-get="/tickets/{{ edge.id }}?{{ board_query }}"
-                   hx-target="#board-root" hx-swap="outerHTML">
+                <a class="sheet__edge" href="/tickets/{{ edge.id }}?{{ board_query }}">
                   <span class="sheet__edge-ref">{{ edge.reference }}</span>
                   <span class="sheet__edge-title">{{ edge.title }}</span>
                   <span class="sheet__edge-status">{{ edge.status }}</span>

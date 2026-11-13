@@ -22,6 +22,11 @@ use super::*;
 use crate::domain::{AddTicket, Board, Status};
 use crate::store::{Home, NewProject};
 
+/// The templates that draw a sheet, read as text: a swap that would open a
+/// sheet inside a connected page is caught here, before a browser sees it.
+const BOARD_TEMPLATE: &str = include_str!("../../templates/board.html");
+const SHEET_TEMPLATE: &str = include_str!("../../templates/sheet.html");
+
 /// A throwaway home under the test runner's temp directory.
 struct Sandbox {
     root: PathBuf,
@@ -113,6 +118,16 @@ fn column_of(body: &str, title: &str) -> Option<&'static str> {
         }
     }
     found.map(|(key, _)| key)
+}
+
+/// The card's own `<a>` tag, found by the ticket it carries.
+fn card_tag<'a>(page: &'a str, id: &str) -> &'a str {
+    let at = page
+        .find(&format!("data-ticket=\"{id}\""))
+        .expect("the card draws");
+    let start = page[..at].rfind("<a ").expect("the card opens");
+    let end = at + page[at..].find('>').expect("the card tag closes");
+    &page[start..=end]
 }
 
 fn by_title(board: &Board, title: &str) -> Ticket {
@@ -1579,6 +1594,45 @@ async fn a_click_inside_the_open_sheet_does_not_refetch_the_board() {
         notes.contains("sse-connect=\"/events\""),
         "only the sheet's page pauses the stream: {notes}"
     );
+}
+
+/// A sheet reached by an htmx swap lands inside the body that is already on
+/// screen: the body is not re-drawn, so its `sse-connect` stays and a store
+/// change still swaps the root under the human's cursor. The pause is the
+/// sheet's own page, so the card that opens it navigates and no template swaps
+/// a sheet into a connected page.
+#[tokio::test]
+async fn a_sheet_is_opened_as_its_own_document_so_the_stream_pauses() {
+    let sandbox = Sandbox::new("sheet-document");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let app = router(context(store));
+
+    let (status, _, page) = send(&app, page_get("/board")).await;
+    assert_eq!(status, StatusCode::OK, "the board answers: {page}");
+    assert!(
+        page.contains("sse-connect=\"/events\""),
+        "the board follows the change stream: {page}"
+    );
+    let card = card_tag(&page, &ticket.id.to_string());
+    assert!(
+        card.contains(&format!("href=\"/tickets/{}", ticket.id)),
+        "the card links to its sheet: {card}"
+    );
+    assert!(
+        !card.contains("hx-get") && !card.contains("hx-target"),
+        "the card navigates: a swap would draw the sheet inside the body that \
+         is already connected, so the sheet's page never pauses the stream: \
+         {card}"
+    );
+
+    for (name, template) in [("board", BOARD_TEMPLATE), ("sheet", SHEET_TEMPLATE)] {
+        assert!(
+            !template.contains("hx-get=\"/tickets"),
+            "the {name} template swaps no sheet into a connected page"
+        );
+    }
 }
 
 /// A tab is a face change, not a partial swap: the Board tab must not target a
