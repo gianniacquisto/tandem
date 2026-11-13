@@ -46,7 +46,9 @@ while [ "$#" -gt 0 ]; do
     --reinstall) reinstall=1; shift ;;
     --uninstall) uninstall=1; shift ;;
     --help|-h)
-      sed -n '2,24p' "$0" | sed 's/^# \?//'
+      # Print the whole header block above `set -eu`. A fixed line range cut
+      # the last line mid-sentence when the seam list grew.
+      awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
       exit 0
       ;;
     *)
@@ -62,7 +64,19 @@ fi
 install_dir=${bin_dir:-${TANDEM_INSTALL_DIR:-$HOME/.local/bin}}
 
 # The two files this script leaves behind, and the home it never touches.
+# `--uninstall` only removes the binary this installer wrote: a `tandem` some
+# other tool put in the directory answers a different `--version`, and removing
+# it would be a surprise.
+identifies_as_tandem() {
+  [ -x "$1" ] || return 1
+  printed=$("$1" --version 2>/dev/null || true)
+  [ "${printed%% *}" = tandem ]
+}
 if [ "$uninstall" -eq 1 ]; then
+  if [ -e "$install_dir/tandem" ] && ! identifies_as_tandem "$install_dir/tandem"; then
+    echo "install.sh: $install_dir/tandem is not this project's binary; refusing to remove it." >&2
+    exit 1
+  fi
   if [ -e "$install_dir/tandem" ] || [ -L "$install_dir/tandem-cli" ]; then
     rm -f "$install_dir/tandem" "$install_dir/tandem-cli"
     echo "install.sh: removed $install_dir/tandem and $install_dir/tandem-cli."
@@ -84,14 +98,21 @@ case "$os/$arch" in
     ;;
 esac
 
-# Resolve `latest` through the releases API: the one-liner's URL cannot name a
-# version, so the script asks GitHub which tag is newest.
+# Resolve `latest` through the release page's own redirect: the one-liner's URL
+# cannot name a version, and `releases/latest` answers a redirect to the newest
+# tag without the releases API's 60-requests-an-hour budget. The lookup rides
+# `TANDEM_BASE_URL`, so a fixture serves its own redirect and the API is never
+# in the path.
 case "$version" in
   latest)
-    tag=$(curl -fsSL https://api.github.com/repos/gianniacquisto/tandem/releases/latest \
-      | sed -n 's/.*"tag_name": *"\(v[0-9][^"]*\)".*/\1/p' | head -1)
+    resolved=$(curl -fsSL -o /dev/null -w '%{url_effective}' "$BASE_URL/latest" 2>/dev/null || true)
+    tag=${resolved##*/}
+    case "$tag" in
+      v[0-9]*) ;;
+      *) tag="" ;;
+    esac
     if [ -z "$tag" ]; then
-      echo "install.sh: could not resolve the latest release" >&2
+      echo "install.sh: could not resolve the latest release from $BASE_URL/latest" >&2
       exit 1
     fi
     ;;

@@ -102,9 +102,31 @@ fn no_workflow_invokes_node_or_npm() {
     assert!(checked >= 2, "the workflows are read ({checked} files)");
 }
 
+/// One workflow step: its `name:` and every line that follows until the next
+/// step, so a test can read what a named step actually runs.
+fn steps(text: &str) -> Vec<(&str, String)> {
+    let mut steps: Vec<(&str, String)> = Vec::new();
+    let mut current: Option<(&str, String)> = None;
+    for line in text.lines() {
+        if let Some(name) = line.trim_start().strip_prefix("- name:") {
+            if let Some(finished) = current.take() {
+                steps.push(finished);
+            }
+            current = Some((name.trim().trim_matches('"'), String::new()));
+        } else if let Some((_, body)) = current.as_mut() {
+            body.push_str(line);
+            body.push('\n');
+        }
+    }
+    if let Some(finished) = current.take() {
+        steps.push(finished);
+    }
+    steps
+}
+
 /// The release pipeline CUT-16 delivers: one archive per platform, a smoke test
-/// of the extracted binary, and one aggregator that keeps the required check
-/// name `release`.
+/// that extracts that archive and runs the binary inside it, and one aggregator
+/// that keeps the required check name `release`.
 #[test]
 fn the_release_workflow_builds_three_platform_archives() {
     let text = std::fs::read_to_string(workflows().join("release.yml")).expect("release.yml reads");
@@ -129,5 +151,41 @@ fn the_release_workflow_builds_three_platform_archives() {
     assert!(
         text.contains("cargo build --release -p tandem"),
         "release.yml builds the one binary with cargo"
+    );
+}
+
+/// The gate's finding on #433: the smoke steps ran the build tree, so a broken
+/// tar or zip was caught only after a user downloaded it. Each build job must
+/// extract the archive it just wrote and smoke the binary that archive carries.
+#[test]
+fn every_smoke_step_extracts_its_archive_and_runs_the_extracted_binary() {
+    let text = std::fs::read_to_string(workflows().join("release.yml")).expect("release.yml reads");
+    let mut smoke_steps = 0;
+    for (name, body) in steps(&text) {
+        if !name.contains("Smoke:") {
+            continue;
+        }
+        smoke_steps += 1;
+        assert!(
+            !body.contains("target/release") && !body.contains("target\\release"),
+            "`{name}` smokes the build tree, not the archive the tag publishes"
+        );
+        assert!(
+            body.contains("tar -xzf") || body.contains("Expand-Archive"),
+            "`{name}` does not extract the archive before it smokes it"
+        );
+        assert!(
+            body.contains("dist/tandem-$version-")
+                || body.contains("dist\\tandem-$($env:version)-"),
+            "`{name}` does not read the archive the job packaged into dist"
+        );
+        assert!(
+            body.contains("$smoke/tandem") || body.contains("Join-Path $smoke 'tandem.exe'"),
+            "`{name}` does not run the binary the archive carried"
+        );
+    }
+    assert_eq!(
+        smoke_steps, 3,
+        "release.yml smokes each platform's extracted archive ({smoke_steps} smoke steps read)"
     );
 }

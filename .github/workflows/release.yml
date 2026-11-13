@@ -65,8 +65,17 @@ jobs:
           tar -czf "dist/$archive" -C "$staging" tandem
           tar -tzf "dist/$archive"
 
-      - name: "Smoke: the extracted binary serves the board"
-        run: bash Scripts/smoke-binary.sh rust/target/release/tandem "$version"
+      - name: "Smoke: the extracted archive serves the board"
+        run: |
+          # Smoke the bytes the tag publishes, not the build tree: untar the
+          # archive just written and run the binary a user would get. A wrong
+          # member name, a lost executable bit or a mislaid layout fails here
+          # rather than on someone's first install.
+          smoke="$RUNNER_TEMP/smoke"
+          mkdir -p "$smoke"
+          tar -xzf "dist/tandem-$version-darwin-arm64.tar.gz" -C "$smoke"
+          test -x "$smoke/tandem"
+          bash Scripts/smoke-binary.sh "$smoke/tandem" "$version"
 
       - name: Upload the archive
         uses: actions/upload-artifact@v4
@@ -110,8 +119,15 @@ jobs:
           tar -czf "dist/$archive" -C "$staging" tandem
           tar -tzf "dist/$archive"
 
-      - name: "Smoke: the extracted binary serves the board"
-        run: bash Scripts/smoke-binary.sh rust/target/release/tandem "$version"
+      - name: "Smoke: the extracted archive serves the board"
+        run: |
+          # Same as `build-macos`: the smoke runs the binary the archive
+          # carries, so the Linux package is verified as shipped.
+          smoke="$RUNNER_TEMP/smoke"
+          mkdir -p "$smoke"
+          tar -xzf "dist/tandem-$version-linux-x86_64.tar.gz" -C "$smoke"
+          test -x "$smoke/tandem"
+          bash Scripts/smoke-binary.sh "$smoke/tandem" "$version"
 
       - name: Upload the archive
         uses: actions/upload-artifact@v4
@@ -159,10 +175,15 @@ jobs:
           Compress-Archive -Path "$env:RUNNER_TEMP\package\tandem.exe" -DestinationPath "dist\$archive"
           Get-ChildItem dist
 
-      - name: "Smoke: the extracted binary serves the board"
+      - name: "Smoke: the extracted archive serves the board"
         shell: pwsh
         run: |
-          $exe = (Resolve-Path rust\target\release\tandem.exe).Path
+          # Extract the zip first: the smoke runs the executable the archive
+          # carries, so a member-name or layout change fails the build.
+          $smoke = Join-Path $env:RUNNER_TEMP 'smoke'
+          New-Item -ItemType Directory -Force -Path $smoke | Out-Null
+          Expand-Archive -Path "dist\tandem-$($env:version)-windows-x86_64.zip" -DestinationPath $smoke -Force
+          $exe = (Resolve-Path (Join-Path $smoke 'tandem.exe')).Path
           $printed = & $exe --version
           if ($printed -notmatch [regex]::Escape($env:version)) {
             throw "tandem --version did not name $env:version"

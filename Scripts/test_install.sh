@@ -54,9 +54,9 @@ make_fixture() {
   (cd "$rel" && sum256 "$archive" > SHA256SUMS)
 }
 
-# installer_env <install-dir> <fixture-dir> <os> <arch>: the common test seams.
-installer_env() {
-  echo "TANDEM_BASE_URL=file://$2"
+# installer_env_url <install-dir> <base-url> <os> <arch>: the common test seams.
+installer_env_url() {
+  echo "TANDEM_BASE_URL=$2"
   echo "TANDEM_INSTALL_DIR=$1"
   echo "TANDEM_FAKE_UNAME_S=$3"
   echo "TANDEM_FAKE_UNAME_M=$4"
@@ -64,10 +64,20 @@ installer_env() {
   echo "PATH=$sealed_path"
 }
 
-run_installer() {
-  while IFS='=' read -r k v; do export "$k=$v"; done < <(installer_env "$1" "$2" "$3" "$4")
+# installer_env <install-dir> <fixture-dir> <os> <arch>: the file:// base the
+# fixture releases are served from.
+installer_env() {
+  installer_env_url "$1" "file://$2" "$3" "$4"
+}
+
+run_installer_url() {
+  while IFS='=' read -r k v; do export "$k=$v"; done < <(installer_env_url "$1" "$2" "$3" "$4")
   shift 4
   sh "$installer" "$@" 2>&1
+}
+
+run_installer() {
+  run_installer_url "$1" "file://$2" "$3" "$4" "${@:5}"
 }
 
 # --- syntax ---
@@ -274,9 +284,95 @@ else
   no "default base builds .../releases/download/<tag>/..."
 fi
 
-if sh "$installer" --help >/dev/null 2>&1; then ok "--help exits zero"; else no "--help exits zero"; fi
+# --- `latest` resolves through the release page's redirect, not the API ---
 
-rm -rf "$t" "$t2" "$t3" "$t4" "$t5" "$t6" "$t7" "$t8" "$emptybin"
+t9=$(mktemp -d)
+make_fixture "$t9/fix" "9.9.15" "darwin-arm64.tar.gz"
+mkdir -p "$t9/bin"
+cat > "$t9/server.py" <<'PY'
+import http.server, sys
+root, tag, portfile = sys.argv[1], sys.argv[2], sys.argv[3]
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=root, **kwargs)
+    def do_GET(self):
+        if self.path == "/latest":
+            self.send_response(302)
+            self.send_header("Location", "/tag/" + tag)
+            self.end_headers()
+            return
+        if self.path.startswith("/tag/"):
+            self.send_response(200)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        super().do_GET()
+    def log_message(self, *args):
+        pass
+server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+with open(portfile, "w") as f:
+    f.write(str(server.server_address[1]))
+server.serve_forever()
+PY
+python3 "$t9/server.py" "$t9/fix" "v9.9.15" "$t9/port" &
+server_pid=$!
+port=
+for _ in $(seq 1 100); do
+  [ -s "$t9/port" ] && port=$(cat "$t9/port") && break
+  sleep 0.1
+done
+out11=$(run_installer_url "$t9/bin" "http://127.0.0.1:$port" Darwin arm64; echo "exit=$?")
+kill "$server_pid" 2>/dev/null || true
+wait "$server_pid" 2>/dev/null || true
+case "$out11" in
+  *"exit=0"*) ok "latest resolves through the base URL's redirect" ;;
+  *) no "latest resolves through the base URL's redirect: $out11" ;;
+esac
+if [ -x "$t9/bin/tandem" ] && [ "$("$t9/bin/tandem" --version)" = "tandem 9.9.15" ]; then
+  ok "latest installs the newest tag's archive"
+else
+  no "latest installs the newest tag's archive"
+fi
+if grep -q 'api.github.com' "$installer"; then
+  no "installer never calls api.github.com"
+else
+  ok "installer never calls api.github.com"
+fi
+
+# --- --uninstall refuses a `tandem` this installer did not write ---
+
+t10=$(mktemp -d)
+mkdir -p "$t10/bin"
+printf '#!/bin/sh\necho "other-tool 1.0"\n' > "$t10/bin/tandem"
+chmod +x "$t10/bin/tandem"
+out12=$(sh "$installer" --uninstall --bin-dir "$t10/bin" 2>&1; echo "exit=$?")
+case "$out12" in
+  *"exit=0"*) no "--uninstall refuses another tool's binary" ;;
+  *) ok "--uninstall refuses another tool's binary" ;;
+esac
+if [ -e "$t10/bin/tandem" ]; then
+  ok "--uninstall leaves another tool's binary"
+else
+  no "--uninstall leaves another tool's binary"
+fi
+
+# --- --help prints the whole header block, not a fixed line range ---
+
+help=$(sh "$installer" --help 2>&1; echo "exit=$?")
+case "$help" in
+  *"exit=0"*) ok "--help exits zero" ;;
+  *) no "--help exits zero: $help" ;;
+esac
+case "$help" in
+  *"TANDEM_SKIP_QUARANTINE_STRIP"*) ok "--help prints the header's last seam line" ;;
+  *) no "--help prints the header's last seam line" ;;
+esac
+case "$help" in
+  *"set -eu"*) no "--help stops at the header" ;;
+  *) ok "--help stops at the header" ;;
+esac
+
+rm -rf "$t" "$t2" "$t3" "$t4" "$t5" "$t6" "$t7" "$t8" "$t9" "$t10" "$emptybin"
 
 echo
 echo "$pass passed, $fail failed"
