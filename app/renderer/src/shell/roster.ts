@@ -1,9 +1,9 @@
 /**
- * The roster draft the Settings face edits, beside `shell/setup`'s
- * `checkChanges`: the small list helpers, so the face holds no parsing of its
- * own. The store cleans again on the write (`domain::Settings`), so these are
- * the draft's manners, not its validation: a blank never joins, a repeat
- * never doubles, and the receipt redraws whatever the store kept.
+ * The roster draft the Settings face edits: the small list helpers, so the face
+ * holds no parsing of its own. The store cleans again on the write
+ * (`domain::Settings`), so these are the draft's manners, not its validation: a
+ * blank never joins, a repeat never doubles, and the receipt redraws whatever
+ * the store kept.
  */
 
 /**

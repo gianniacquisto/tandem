@@ -129,7 +129,7 @@ The prose says what the project is, how to run it and where things live; its `##
 
 Start at `~/.tandem/bikeshed/Index.md`, or the app's Notes tab, when you do not know the project's name yet.
 
-## The agent face
+## The agent's CLI
 
 ### `tandem-cli` on PATH
 
@@ -206,9 +206,6 @@ tandem-cli workflow run run --lane <name> --note <string|->
 tandem-cli workflow run close --lane <name> [--number <n>] [--note <string|->]
 tandem-cli workflow run list [--lane <name>] [--workflow <id>] [--status open|closed]
 tandem-cli workflow run show --lane <name> [--number <n>]
-tandem-cli setup install [--host <opencode|claude>] [--force]
-tandem-cli setup uninstall [--host <opencode|claude>]
-tandem-cli setup status
 tandem-cli settings set [--roster <name>]...
 tandem-cli doctor
 ```
@@ -239,22 +236,9 @@ Not a ticket: `session start` opens a record of one agent session's run — the 
 
 `examples/skills/grilling/`, `examples/skills/tdd/` and `examples/skills/writing-for-agents/` are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), so a clone of this repo is the whole workflow; `examples/skills/retro/` is adapted from the same collection, its output filed as tickets on the board.
 
-### Setting a host up
+### The agent examples
 
-The app carries its own agent face: every skill, the four pass prompts (`builder`, `consolidator`, `refiner`, `reviewer`), the three specialist readers (`architect`, `security`, `ux`) and `AGENTS.md`. One command installs it into a host, so a checkout is not a prerequisite:
-
-```sh
-tandem-cli setup status    # the bundled and installed versions, each host's state, the warnings
-tandem-cli setup install   # OpenCode: the skills, the pass prompts and specialists, the AGENTS.md instruction, the tandem MCP server
-```
-
-Install writes the face once to `<TandemHome>/agent/` and points the host's paths at that copy with symlinks, so an upgrade is one directory replace and no re-linking. Every run also writes `~/.agents/skills/<name>` for every skill into the same face: the canonical listing the cross-tool Agent Skills readers serve, a client of the face and not a host. `--host claude` names the other host, and only a named host is written; `--host agents` is retired and refused. A real file where a link would go is never touched: the report names the path, and its hint says to move it.
-
-The app reaches the same install, the same `SetupInstall` the verb calls: the setup wizard's agent step runs it in one press and shows each host's state and the installed version, and Settings' Agent section shows the bundled and installed versions with the same host list and one Install or Repair button. Nothing is written to a host until you press it.
-
-On a machine working on Tandem itself, the host's links already resolve into the checkout. Install leaves them and reports each as a skip (`foreign-link`), and `tandem-cli doctor` stays green either way. `--force` replaces them with the installed copy.
-
-Nothing in this repo names a path on one machine: the installed app is the whole setup, and a clone of it anywhere behaves the same. A host the two `--host` names do not cover is the human's call: it reads the installed copy under `<TandemHome>/agent/skills/`, or the canonical `~/.agents/skills/` listing every run writes.
+The app no longer carries an agent face (ADR 0045). The skills, the pass prompts and `AGENTS.md` live in `examples/` for this repository's own workflow: a clone is the copy, and a host reads them from there or from a checkout. There is no `tandem-cli setup` verb, no `<TandemHome>/agent/` installed copy and no host symlink to keep in step.
 
 ## The store
 

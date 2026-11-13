@@ -25,8 +25,8 @@ use std::io;
 
 use serde_json::{Value, json};
 
+use crate::env::Environment;
 use crate::rpc::{Stream, handle_in};
-use crate::setup::Environment;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     CommentAddParams, EmptyParams, LaneAddParams, LaneDeleteParams, LaneMoveParams,
@@ -133,12 +133,7 @@ pub fn handle_mcp(
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
     let id = id_of(&value);
     match method {
-        "initialize" => Some(initialize_frame(
-            id,
-            request.get("params"),
-            store,
-            environment,
-        )),
+        "initialize" => Some(initialize_frame(id, request.get("params"), store)),
         "notifications/initialized" => {
             let id = id?;
             Some(result_frame(Some(id), json!({})))
@@ -185,12 +180,7 @@ pub fn handle_mcp(
 /// A small `health` block rides beside them (the resolved home and why, the
 /// store's ok, the version and the tool count), so a fresh session can see the
 /// default path is wired without running a full `doctor`.
-fn initialize_frame(
-    id: Option<Value>,
-    params: Option<&Value>,
-    store: &Store,
-    environment: &crate::setup::Environment,
-) -> String {
+fn initialize_frame(id: Option<Value>, params: Option<&Value>, store: &Store) -> String {
     let asked = params
         .and_then(|params| params.get("protocolVersion"))
         .and_then(Value::as_str)
@@ -205,41 +195,30 @@ fn initialize_frame(
         json!({
             "protocolVersion": negotiated,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": SERVER_NAME, "version": server_version(store, environment)},
-            "health": health_block(store, environment),
+            "serverInfo": {"name": SERVER_NAME, "version": server_version()},
+            "health": health_block(store),
         }),
     )
 }
 
 /// The release version the `initialize` answer carries: the stamped build
-/// version when the release stamped one, else the agent face `VERSION` marker
-/// beside the binary (or the installed copy), else the crate version. The
-/// workspace sits at 0.1.0 and never moves with releases, so the binary's own
-/// version is the last resort, never the answer on an installed app.
-pub fn server_version(store: &Store, environment: &crate::setup::Environment) -> String {
-    if let Some(stamped) = option_env!("TANDEM_VERSION")
+/// version when the release stamped one, else the crate version. The workspace
+/// sits at 0.1.0 and never moves with releases, so the binary's own version is
+/// the last resort. A dev build answers the crate version and no more (ADR
+/// 0045 retired the bundled `VERSION` marker).
+pub fn server_version() -> String {
+    option_env!("TANDEM_VERSION")
         .map(str::trim)
         .filter(|version| !version.is_empty())
-    {
-        return stamped.to_string();
-    }
-    if let Some(bundle) = crate::setup::bundled_face(environment)
-        && let Some(version) = crate::setup::version_text(&bundle)
-    {
-        return version;
-    }
-    let face = crate::setup::Context::new(store.home().directory(), environment).face();
-    if let Some(version) = crate::setup::version_text(&face) {
-        return version;
-    }
-    env!("CARGO_PKG_VERSION").to_string()
+        .unwrap_or(env!("CARGO_PKG_VERSION"))
+        .to_string()
 }
 
 /// A small health block for `initialize` and `session_start`: the resolved
 /// home and why, whether the store is ok, the release version and the tool
 /// count. It reads the store's lock-free health only, never the full `doctor`
 /// report, so every call stays cheap.
-fn health_block(store: &Store, environment: &crate::setup::Environment) -> Value {
+fn health_block(store: &Store) -> Value {
     let home = store.home();
     let store_ok = matches!(
         store.health(),
@@ -249,7 +228,7 @@ fn health_block(store: &Store, environment: &crate::setup::Environment) -> Value
         "home": crate::wire::slashed_path(home.directory()),
         "homeSource": home.source().as_str(),
         "storeOk": store_ok,
-        "version": server_version(store, environment),
+        "version": server_version(),
         "tools": tools().len(),
     })
 }
@@ -323,7 +302,7 @@ fn call_frame(
     if tool.method_tag == "session.start"
         && let Some(object) = result.as_object_mut()
     {
-        object.insert("health".to_string(), health_block(store, environment));
+        object.insert("health".to_string(), health_block(store));
     }
     result_frame(
         id,

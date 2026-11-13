@@ -3,8 +3,7 @@
 //! One binary (`docs/port.md`, Target shape): the verbs agents call and the
 //! core the app trusts are the same executable, so they cannot drift. This rung
 //! carries the whole grammar the skills speak (PRT-9): `ticket`, `lane`, `note`,
-//! `session`, `sprint`, and `doctor`'s pinned report. `setup` and the seven other
-//! doctor checks land with PRT-10, and `rpc` with PRT-11.
+//! `session`, `sprint`, and `doctor`'s pinned report. `rpc` lands with PRT-11.
 //!
 //! What lives here is what belongs to a process rather than to the domain:
 //! argv, the environment, the two streams and the exit code. Every verb maps to
@@ -33,7 +32,7 @@ use tandem_core::domain::workflow::{WorkflowDraft, Workflows};
 use tandem_core::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Settings, Status, TicketQuery,
 };
-use tandem_core::setup::{self, Environment};
+use tandem_core::env::Environment;
 use tandem_core::store::{self, Actor, Home, Store};
 use tandem_core::wire::rpc::{SettingsReply, WorkflowListReply, WorkflowReply, WorkflowSetParams};
 use tandem_core::wire::{
@@ -107,18 +106,13 @@ enum Command {
         #[command(subcommand)]
         command: Option<WorkflowCommand>,
     },
-    /// The agent face: install, uninstall and inspect it (ADR 0034).
-    Setup {
-        #[command(subcommand)]
-        command: Option<SetupCommand>,
-    },
     /// The store's settings: the roster the pickers offer and the shared focus
     /// the faces draw (TAN-258).
     Settings {
         #[command(subcommand)]
         command: Option<SettingsCommand>,
     },
-    /// Report whether this machine's Tandem setup is sound (ADR 0014).
+    /// Report whether this machine's store and notes are sound (ADR 0014).
     Doctor,
     /// Speak the app's JSON protocol on stdin and stdout (PRT-11).
     Rpc,
@@ -602,13 +596,6 @@ struct SessionShowArgs {
 }
 
 #[derive(Subcommand)]
-enum SetupCommand {
-    Install(SetupInstallArgs),
-    Uninstall(SetupUninstallArgs),
-    Status,
-}
-
-#[derive(Subcommand)]
 enum SettingsCommand {
     Get,
     Set(SettingsSetArgs),
@@ -627,23 +614,6 @@ struct SettingsSetArgs {
     /// the focus and leaves the roster alone.
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     project: Option<String>,
-}
-
-#[derive(Args)]
-struct SetupInstallArgs {
-    /// A host name, or a comma-separated list (default: opencode).
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    host: Option<String>,
-    /// Replace a link that points elsewhere, a checkout included.
-    #[arg(long)]
-    force: bool,
-}
-
-#[derive(Args)]
-struct SetupUninstallArgs {
-    /// A host name, or a comma-separated list (default: every host).
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    host: Option<String>,
 }
 
 #[derive(Args)]
@@ -755,15 +725,6 @@ impl Failure {
             exit: 1,
         }
     }
-
-    /// Exit with a code and no message: the verb already printed its report,
-    /// and the report is the diagnosis.
-    fn silent(exit: u8) -> Self {
-        Self {
-            message: String::new(),
-            exit,
-        }
-    }
 }
 
 /// The text a domain failure prints. An unknown id appends the open list in the
@@ -827,10 +788,6 @@ fn help_text(cli: &Cli) -> &'static str {
         },
         Some(Command::Workflow { command }) => match command {
             None => return usage::group("workflow").unwrap_or(usage::ROOT),
-            Some(command) => command.help(),
-        },
-        Some(Command::Setup { command }) => match command {
-            None => return usage::group("setup").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
         },
         Some(Command::Settings { command }) => match command {
@@ -911,16 +868,6 @@ impl SessionCommand {
     }
 }
 
-impl SetupCommand {
-    fn help(&self) -> &'static str {
-        match self {
-            Self::Install(_) => "setup install",
-            Self::Uninstall(_) => "setup uninstall",
-            Self::Status => "setup status",
-        }
-    }
-}
-
 impl SettingsCommand {
     fn help(&self) -> &'static str {
         match self {
@@ -988,7 +935,6 @@ fn run(cli: &Cli) -> Result<(), Failure> {
         Command::Session { command } => session(&home, command.as_ref()),
         Command::Sprint { command } => sprint(&home, command.as_ref()),
         Command::Workflow { command } => workflow(&home, command.as_ref()),
-        Command::Setup { command } => setup_command(&home, command.as_ref()),
         Command::Settings { command } => settings_verb(&home, command.as_ref()),
     }
 }
@@ -2395,13 +2341,13 @@ fn mcp(home: &Home) -> Result<(), Failure> {
 
 // MARK: - doctor
 
-/// `doctor` (ADR 0014): a setup report is not a domain call, so it does not go
+/// `doctor` (ADR 0014): a diagnostic report is not a domain call, so it does not go
 /// through `run`. It always prints the report JSON to stdout, the report is the
 /// success value even when a check fails, and exits 0 when every
 /// failing-capable check passed, 1 otherwise, echoing each failing check's next
 /// step to stderr. A read-only verb: it never creates the home it reports.
 fn doctor(home: &Home) -> Result<(), Failure> {
-    let report = diagnostics::run(home, &environment());
+    let report = diagnostics::run(home);
     print(&report)?;
     if report.ok {
         return Ok(());
@@ -2418,64 +2364,13 @@ fn doctor(home: &Home) -> Result<(), Failure> {
     })
 }
 
-// MARK: - setup
+// MARK: - the run's environment
 
-/// `setup install|uninstall|status` (ADR 0034): one JSON report on stdout
-/// whatever the exit code, because the report is the diagnosis. `install` and
-/// `uninstall` exit 1 when a warning is an error; `status` exits 0 always. A
-/// thrown failure keeps the other verbs' contract: message on stderr, exit 1,
-/// no JSON on stdout.
-fn setup_command(home: &Home, command: Option<&SetupCommand>) -> Result<(), Failure> {
-    let command = command.ok_or_else(Failure::usage)?;
-    let environment = environment();
-    match command {
-        SetupCommand::Install(args) => {
-            let hosts = setup::hosts(args.host.as_deref()).map_err(setup_failure)?;
-            let bundle = setup::bundled_face(&environment);
-            let report = setup::install(
-                home.directory(),
-                &environment,
-                bundle.as_deref(),
-                args.force,
-                &hosts,
-            )
-            .map_err(setup_failure)?;
-            print(&report)?;
-            if report.state.has_error() {
-                return Err(Failure::silent(1));
-            }
-            Ok(())
-        }
-        SetupCommand::Uninstall(args) => {
-            let hosts = setup::uninstall_hosts(args.host.as_deref()).map_err(setup_failure)?;
-            let report = setup::uninstall(home.directory(), &environment, hosts.as_deref())
-                .map_err(setup_failure)?;
-            print(&report)?;
-            if report.state.has_error() {
-                return Err(Failure::silent(1));
-            }
-            Ok(())
-        }
-        SetupCommand::Status => {
-            let report = setup::status(home.directory(), &environment);
-            print(&report)
-        }
-    }
-}
-
-/// A setup failure is a message an agent or human can act on, exit 1, and no
-/// JSON: the report is only for a run that got far enough to build one.
-fn setup_failure(error: impl std::fmt::Display) -> Failure {
-    Failure::message(error.to_string())
-}
-
-/// The process's environment as the setup and doctor code reads it: `HOME`,
-/// `XDG_CONFIG_HOME`, `TANDEM_AGENT_BUNDLE` and the four host flags. A value
-/// that is not UTF-8 is not one of those names and is dropped.
+/// The process's environment as the MCP door reads it: `TANDEM_HOME`,
+/// `TANDEM_AGENT` and the harness session pointer. A value that is not UTF-8 is
+/// not one of those names and is dropped.
 fn environment() -> Environment {
-    std::env::vars_os()
-        .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
-        .collect()
+    tandem_core::env::process()
 }
 
 // MARK: - The wire's parity gate

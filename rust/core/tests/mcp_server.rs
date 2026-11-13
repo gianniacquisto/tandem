@@ -15,20 +15,12 @@ mod support;
 
 use serde_json::{Value, json};
 use support::Sandbox;
+use tandem_core::env::Environment;
 use tandem_core::mcp;
 use tandem_core::store::Actor;
 
-fn environment() -> tandem_core::setup::Environment {
-    tandem_core::setup::Environment::new()
-}
-
-fn environment_with_bundle(bundle: &std::path::Path) -> tandem_core::setup::Environment {
-    let mut environment = tandem_core::setup::Environment::new();
-    environment.insert(
-        "TANDEM_AGENT_BUNDLE".to_string(),
-        bundle.to_string_lossy().into_owned(),
-    );
-    environment
+fn environment() -> Environment {
+    Environment::new()
 }
 
 fn call(store: &tandem_core::store::Store, frame: &str) -> Option<Value> {
@@ -205,7 +197,7 @@ fn the_call_meta_beats_a_stale_process_environment() {
         );
     }
 
-    let mut stale = tandem_core::setup::Environment::new();
+    let mut stale = Environment::new();
     stale.insert(
         "OPENCODE_SESSION_ID".to_string(),
         "ses_stale_env".to_string(),
@@ -351,44 +343,25 @@ fn session_start_carries_a_small_health_block() {
 }
 
 #[test]
-fn initialize_reports_the_bundled_release_version_with_crate_fallback() {
+fn initialize_reports_the_release_version_or_the_crate_version() {
     let sandbox = Sandbox::new("mcp-release-version");
     let store = sandbox.store();
 
-    let bundle = sandbox.root().join("bundle");
-    std::fs::create_dir_all(&bundle).expect("the bundle is creatable");
-    std::fs::write(bundle.join("VERSION"), "1.6.0\n").expect("VERSION is writable");
-    let bundled_env = environment_with_bundle(&bundle);
-    let answered = mcp::handle_mcp(
-        &request(
-            serde_json::json!(1),
-            "initialize",
-            serde_json::json!({"protocolVersion": "2025-11-25"}),
-        ),
-        &store,
-        &Actor::Human,
-        &bundled_env,
-    )
-    .expect("initialize answers");
-    let answered: Value = serde_json::from_str(&answered).expect("the answer is JSON");
-    assert_eq!(
-        answered["result"]["serverInfo"]["version"], "1.6.0",
-        "the bundled VERSION marker is the release version"
-    );
-
-    let fallback = call(
+    let answered = call(
         &store,
         &request(
-            json!(2),
+            json!(1),
             "initialize",
             json!({"protocolVersion": "2025-11-25"}),
         ),
     )
     .expect("initialize answers");
+    // A dev build carries no `TANDEM_VERSION` stamp, so the crate version is
+    // the answer (ADR 0045 retired the bundled `VERSION` marker).
     assert_eq!(
-        fallback["result"]["serverInfo"]["version"],
+        answered["result"]["serverInfo"]["version"],
         env!("CARGO_PKG_VERSION"),
-        "no marker is the crate version"
+        "no stamp is the crate version"
     );
 }
 

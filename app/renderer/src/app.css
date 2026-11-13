@@ -663,8 +663,7 @@ body {
   white-space: nowrap;
 }
 
-/* Settings: the machine's paths, the theme, and the agent face's setup. One
- * section per question, the setup section's rows drawn from `doctor`'s. The
+/* Settings: the theme and the store's roster. One section per question. The
  * face reads as a centred column, the same width as the Tickets list. */
 
 .settings {

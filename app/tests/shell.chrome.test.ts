@@ -28,14 +28,6 @@ describe('the shell chrome (TAND-16)', () => {
     expect(app).not.toContain('shell__revision')
   })
 
-  it('shows the store revision in Settings beside the doctor checks', () => {
-    const settings = faceSource('SettingsFace.tsx')
-    expect(app).toContain('revision')
-    expect(settings).toContain('revision')
-    expect(settings).toContain('rev')
-    expect(settings).toContain('doctor.checks')
-  })
-
   it('repeats no tab as a face heading', () => {
     expect(face).not.toContain('<h1')
     expect(face).not.toContain('face__title')

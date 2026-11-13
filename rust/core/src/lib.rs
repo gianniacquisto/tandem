@@ -18,20 +18,19 @@
 //!   derived readers (search, backlinks, health, front page, stats) and the
 //!   capture layer. It shares the store's locked-write mechanics and no SQL.
 //!
-//! - [`setup`]: the agent face's one writer (PRT-10, ADR 0034): the installed
-//!   copy, the host links, the manifest and the warning model `setup status` and
-//!   `doctor` both read.
+//! - [`env`]: the run's environment as one injectable value, so a test names a
+//!   throwaway home and a fixture instead of the process's own.
 //!
-//! - [`diagnostics`]: ADR 0014's thirteen-row setup report, a pure assembly over
-//!   injected facts with one impure gatherer.
+//! - [`diagnostics`]: ADR 0014's report, cut to `home`, `store` and `bikeshed`
+//!   (ADR 0045), a pure assembly over injected facts with one impure gatherer.
 
 pub mod bikeshed;
 pub mod diagnostics;
 pub mod domain;
+pub mod env;
 pub mod harness;
 pub mod mcp;
 pub mod rpc;
-pub mod setup;
 pub mod store;
 pub mod wire;
 

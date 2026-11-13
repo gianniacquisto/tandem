@@ -20,7 +20,6 @@ import type { SessionListReply } from "./SessionListReply";
 import type { SessionReply } from "./SessionReply";
 import type { SessionTranscriptReply } from "./SessionTranscriptReply";
 import type { SettingsReply } from "./SettingsReply";
-import type { SetupReply } from "./SetupReply";
 import type { SprintListReply } from "./SprintListReply";
 import type { SprintReply } from "./SprintReply";
 import type { TicketListReply } from "./TicketListReply";
@@ -35,4 +34,4 @@ import type { WorkflowRunReply } from "./WorkflowRunReply";
  * What a method answers. Untagged: the client knows which method it called,
  * so the payload needs no second tag on the wire.
  */
-export type Reply = TicketListReply | UsageReportReply | SettingsReply | TicketReply | CommentReply | CommentListReply | LaneListReply | LaneDeletionReply | ProjectListReply | WorkflowListReply | WorkflowReply | ArchivedReply | SprintListReply | SprintReply | WorkflowRunListReply | WorkflowRunReply | SessionReply | SessionListReply | SessionDetailReply | NotePathView | SetupReply | DoctorReply | NoteTreeReply | NoteReadReply | NoteWriteReply | NoteMoveReply | NoteHealthReply | NoteBacklinksReply | NoteRecoveriesReply | MarkdownReply | SessionTranscriptReply;
+export type Reply = TicketListReply | UsageReportReply | SettingsReply | TicketReply | CommentReply | CommentListReply | LaneListReply | LaneDeletionReply | ProjectListReply | WorkflowListReply | WorkflowReply | ArchivedReply | SprintListReply | SprintReply | WorkflowRunListReply | WorkflowRunReply | SessionReply | SessionListReply | SessionDetailReply | NotePathView | DoctorReply | NoteTreeReply | NoteReadReply | NoteWriteReply | NoteMoveReply | NoteHealthReply | NoteBacklinksReply | NoteRecoveriesReply | MarkdownReply | SessionTranscriptReply;

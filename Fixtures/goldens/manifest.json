@@ -2645,115 +2645,6 @@
       ]
     },
     {
-      "group": "setup",
-      "case": "help",
-      "argv": [
-        "setup",
-        "--help"
-      ]
-    },
-    {
-      "group": "setup",
-      "case": "status",
-      "argv": [
-        "setup",
-        "status"
-      ]
-    },
-    {
-      "group": "setup",
-      "case": "install",
-      "argv": [
-        "setup",
-        "install"
-      ]
-    },
-    {
-      "group": "setup",
-      "case": "install-twice",
-      "setup": [
-        {
-          "argv": [
-            "setup",
-            "install"
-          ]
-        }
-      ],
-      "argv": [
-        "setup",
-        "install"
-      ]
-    },
-    {
-      "group": "setup",
-      "case": "install-claude",
-      "argv": [
-        "setup",
-        "install",
-        "--host",
-        "claude"
-      ]
-    },
-    {
-      "group": "setup",
-      "case": "status-installed",
-      "setup": [
-        {
-          "argv": [
-            "setup",
-            "install"
-          ]
-        }
-      ],
-      "argv": [
-        "setup",
-        "status"
-      ]
-    },
-    {
-      "group": "setup",
-      "case": "uninstall",
-      "setup": [
-        {
-          "argv": [
-            "setup",
-            "install"
-          ]
-        }
-      ],
-      "argv": [
-        "setup",
-        "uninstall"
-      ]
-    },
-    {
-      "group": "setup",
-      "case": "install-help",
-      "argv": [
-        "setup",
-        "install",
-        "--help"
-      ]
-    },
-    {
-      "group": "setup",
-      "case": "uninstall-help",
-      "argv": [
-        "setup",
-        "uninstall",
-        "--help"
-      ]
-    },
-    {
-      "group": "setup",
-      "case": "status-help",
-      "argv": [
-        "setup",
-        "status",
-        "--help"
-      ]
-    },
-    {
       "group": "doctor",
       "case": "help",
       "argv": [
@@ -2764,14 +2655,6 @@
     {
       "group": "doctor",
       "case": "doctor",
-      "mask": {
-        "at": "checks",
-        "names": [
-          "app",
-          "skills"
-        ],
-        "as": "<environment>"
-      },
       "argv": [
         "doctor"
       ]
@@ -2801,37 +2684,6 @@
           ]
         }
       ],
-      "mask": {
-        "at": "checks",
-        "names": [
-          "app",
-          "skills"
-        ],
-        "as": "<environment>"
-      },
-      "argv": [
-        "doctor"
-      ]
-    },
-    {
-      "group": "doctor",
-      "case": "doctor-installed",
-      "setup": [
-        {
-          "argv": [
-            "setup",
-            "install"
-          ]
-        }
-      ],
-      "mask": {
-        "at": "checks",
-        "names": [
-          "app",
-          "skills"
-        ],
-        "as": "<environment>"
-      },
       "argv": [
         "doctor"
       ]
@@ -2850,14 +2702,6 @@
           }
         }
       ],
-      "mask": {
-        "at": "checks",
-        "names": [
-          "app",
-          "skills"
-        ],
-        "as": "<environment>"
-      },
       "argv": [
         "doctor"
       ],
