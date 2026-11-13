@@ -354,7 +354,7 @@ impl Contents {
                         id: ticket.id,
                         reference: ticket.reference.clone(),
                         title: ticket.title.clone(),
-                        status: ticket.status.clone(),
+                        status: ticket.status,
                     },
                 )
             })

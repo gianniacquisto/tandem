@@ -594,7 +594,7 @@ fn waiting(title: &str, status: Status, blockers: &[(uuid::Uuid, Status)]) -> Ti
                 id: *id,
                 reference: None,
                 title: "blocker".to_string(),
-                status: blocker_status.clone(),
+                status: *blocker_status,
             })
             .collect(),
         ..ticket(title)

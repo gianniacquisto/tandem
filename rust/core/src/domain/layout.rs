@@ -52,10 +52,7 @@ impl TicketBoard {
             .map(|key| {
                 let mut cells: BTreeMap<Status, Vec<Ticket>> = BTreeMap::new();
                 for ticket in tickets.iter().filter(|ticket| ticket.lane == key) {
-                    cells
-                        .entry(ticket.status.clone())
-                        .or_default()
-                        .push(ticket.clone());
+                    cells.entry(ticket.status).or_default().push(ticket.clone());
                 }
                 BoardLane { key, cells }
             })
