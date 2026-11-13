@@ -1,5 +1,7 @@
 # A setup verb outside the domains: `tandem-cli doctor`
 
+> **Amended 2026-11-13 by CUT-3:** the check list is three. `doctor` reports `home`, `store` and `bikeshed`; the `lock`, `app`, `skills`, `comments`, JSON-leftover, `agent-face` and `mcp` rows retired with the surfaces that owned them ([ADR 0045](0045-the-board-and-notes-cut.md)). `home` is informational, `store` and `bikeshed` can fail, and the report shape and exit codes are unchanged.
+
 > **Amended 2026-11-02 by TAN-274:** the check list is thirteen. One informational row joins last and names the MCP door beside the CLI: `mcp` reports the `tandem-mcp` server's presence at the binary's own version, with its tool count over the covered wire-method count, asserted statically against the registry rather than by spawning the server. The report shape, the names, the order and the exit codes are unchanged; a drift fails the registry test before it can ship, so the row names the numbers.
 
 > **Amended 2026-11-01 by TAN-243:** the check list is eleven. Three informational rows join directly after `comments` and name the JSON-era leftovers an imported store retired: `sessions` (`sessions.json` and its `.pre-sqlite-*` copy), `settings` (its own), and `todos-json` (the `todos.json.*` cohort, one row for the whole set). Each prints the files it found and one `rm -f` with every path quoted by the same helper the comments and store rows use, or a line saying the home has none; none can fail, so the report's `ok`, the exit codes and the pass/fail rule are unchanged. The `sessions` and `settings` rows print the removal command only beside a database, because ADR 0031's rule leaves the port no import marker: with no store they name the files and say nothing imported them. The `todos.json.*` cohort is ADR 0030's retirement and needs no marker, so its row names the removal in any home.
@@ -8,7 +10,7 @@
 
 > **Amended 2026-10-26 by [ADR 0031](0031-one-database-the-store.md):** the check list is seven — `comments` joined — and `lock` keeps its name and its non-destructive rule but probes a write transaction instead of a sidecar `flock`; the `store` row names `tandem.db` and its schema version. The names, the order, the report shape and the exit codes are unchanged. The amendment's text is ADR 0031's.
 
-[ADR 0009](0009-cli-agent-face.md) fixed the agent surface to `todo list|add|complete` plus `note rename`, under the rule "verbs are cheap to add and expensive to withdraw". Adding one therefore needs an argument. `doctor` is not a domain verb: it reads no todo and writes nothing. It reports *the machine's setup* — where the state lives, and whether the store, the bikeshed, the lock, the installed app, and the agent skill are sound — so it earns a place **outside** the `todo` / `note` namespaces, as a bare `tandem-cli doctor`.
+[ADR 0009](0009-cli-agent-face.md) fixed the agent surface to `todo list|add|complete` plus `note rename`, under the rule "verbs are cheap to add and expensive to withdraw". Adding one therefore needs an argument. `doctor` is not a domain verb: it reads no todo and writes nothing. It reports *the machine's setup* — where the state lives, and whether the store and the bikeshed are sound — so it earns a place **outside** the `todo` / `note` namespaces, as a bare `tandem-cli doctor`.
 
 ## Why
 
@@ -28,8 +30,8 @@
 
 ## Consequences
 
-- The output shape `{"ok": bool, "checks": [{"name", "ok", "detail"}]}` and the **check order** (`home`, `store`, `bikeshed`, `lock`, `app`, `skills`) are a contract, documented verbatim in the `tandem` skill. Renaming a check or reordering is a breaking change to it.
-- Three checks can fail — `store` (present but unreadable/corrupt), `bikeshed` (the path is a file), `lock` (held) — and `ok` is the AND of those. `home`, `app`, and `skills` are informational: a missing app or an uninstalled host is context, not a failure.
+- The output shape `{"ok": bool, "checks": [{"name", "ok", "detail"}]}` and the **check order** (`home`, `store`, `bikeshed`) are a contract, documented verbatim in the `tandem` skill. Renaming a check or reordering is a breaking change to it.
+- Two checks can fail — `store` (present but unreadable/corrupt, or an old schema) and `bikeshed` (the path is a file) — and `ok` is the AND of those. `home` is informational: the resolved path is context, not a failure.
 - New read-only core surface: `Store.health()` (counts, or `absent` / `unreadable`, with **no** recovery — a diagnostic never backs up or rewrites), `Store.lockIsHeld()` / `LockedDirectory.isLocked()`, and `TandemHome.Source`, which names which branch of the home rule a process took (the rule itself now derives from it, so the two cannot drift).
 - The README and the skill name the new verb; `docs/releasing.md` is unaffected.
 

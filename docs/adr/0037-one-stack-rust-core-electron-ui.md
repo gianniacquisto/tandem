@@ -1,3 +1,5 @@
+> **Superseded 2026-11-13 by [ADR 0046](0046-tandem-serve-and-single-binary-distribution.md):** the Electron shell retires. The same Rust core serves an Askama and htmx board over loopback from `tandem serve`, so the one stack is now one binary with no renderer bundle.
+
 # One stack: a Rust core and an Electron shell, one app for three platforms
 
 > **Amended 2026-11-09 by [ADR 0042](0042-the-bikeshed-editor-is-a-block-editor.md):** the CM6 bundle is no longer the reason the UI is a webview; the renderer and its block editor are. The rest of this decision stands.

@@ -12,27 +12,24 @@
 //!   drops `blockedReason` (also body text). `ticket show` and the write verbs'
 //!   receipts carry the whole ticket.
 //! - **`note` is a top-level key, present only when the write changed nothing.**
-//!   A re-run of `session start`, `sprint open` or `lane add` is a success that
-//!   says so, and the note is how it says it.
+//!   A re-run of `lane add` is a success that says so, and the
+//!   note is how it says it.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
-use ts_rs::TS;
 
 use crate::bikeshed::{
-    Asset, Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, Recovery, WriteRecord,
+    Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, Recovery, WriteRecord,
 };
-use crate::domain::session::{Session, SessionTokens};
-use crate::domain::sprint::{Sprint, WorkflowRun};
-use crate::domain::usage::{UsageReport, UsageRow};
+
 use crate::domain::{
     Comment, InlineStyle, LaneDeletion, MarkdownBlock, MarkdownInline, Ticket, TicketBlock,
 };
-use crate::store::timestamp::encode;
+use crate::store::encode;
 
 /// One end of a dependency edge: the other ticket's id, ref, title and status.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketBlockView {
     pub id: String,
@@ -55,7 +52,7 @@ impl TicketBlockView {
 }
 
 /// A whole ticket: `ticket show`, and the receipt `add`/`set`/`complete` print.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketDetail {
     pub archived: bool,
@@ -114,7 +111,7 @@ impl TicketDetail {
 }
 
 /// A list row: the ticket's shape with the body projected to its length.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketSummary {
     pub archived: bool,
@@ -173,7 +170,7 @@ pub struct TicketList {
 }
 
 /// One comment: the object `ticket comment add` prints and a list row.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommentView {
     pub at: String,
     pub author: String,
@@ -270,64 +267,9 @@ pub struct ArchivedView {
     pub archived: usize,
 }
 
-/// A session write's answer: the record, and the note when nothing changed.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SessionResult {
-    #[serde(flatten)]
-    pub session: Session,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub note: Option<String>,
-}
-
-/// `session show`: the record plus the note paths the session wrote.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SessionDetailView {
-    #[serde(flatten)]
-    pub session: Session,
-    /// Derived from the capture files, never stored (ADR 0016).
-    pub notes: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub note: Option<String>,
-}
-
-/// `session list`: `{"sessions": [...]}`, newest first.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SessionList {
-    pub sessions: Vec<Session>,
-}
-
-/// A sprint write's answer: the record, and the note when nothing changed.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SprintResult {
-    #[serde(flatten)]
-    pub sprint: Sprint,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub note: Option<String>,
-}
-
-/// `sprint list`: `{"sprints": [...]}`, newest first.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SprintList {
-    pub sprints: Vec<Sprint>,
-}
-
-/// A workflow run write's answer: the run, with the note when nothing changed.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct WorkflowRunResult {
-    #[serde(flatten)]
-    pub run: WorkflowRun,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub note: Option<String>,
-}
-
-/// `workflow run list`: `{"runs": [...]}`, newest first.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct WorkflowRunList {
-    pub runs: Vec<WorkflowRun>,
-}
-
-/// `note rename` / `note capture`: `{"path": ...}`, and the duplicate's note.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+/// `note create`, `note write`, `note move` and `note rename`: `{"path": ...}`,
+/// and the duplicate's note.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NotePathView {
     pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -347,10 +289,11 @@ fn stamp(time: SystemTime) -> String {
 
 /// One tree row: a folder or a note, with its children.
 ///
-/// `kind` is `"folder"` or `"note"`, the two words the renderer branches on.
+/// `kind` is `"folder"` or `"note"`, the two words the served tree branches on.
 /// The walk is the core's own (`Bikeshed::tree`): the wire adds no ordering and
-/// no filtering, and the hidden layer is drawn only when the read asked for it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+/// no filtering, and a dot component is never drawn (the reveal flag left the
+/// wire with the capture layer, CUT-7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteNodeView {
     pub name: String,
@@ -377,7 +320,7 @@ impl NoteNodeView {
 ///
 /// The hash is the save discipline's whole conflict rule: the buffer tracks the
 /// hash it last agreed with, and a read whose hash differs is an external write.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteContentView {
     pub path: String,
@@ -397,33 +340,8 @@ impl NoteContentView {
     }
 }
 
-/// `note.asset`: the confined file the app streams, its media type and size.
-///
-/// The renderer never sees this reply: the main process asks, streams the
-/// `file` and answers the `<img>`. The bytes stay out of the wire, so a large
-/// image cannot strain the stream on the way out.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct NoteAssetView {
-    pub path: String,
-    pub file: String,
-    pub media_type: String,
-    pub size: u64,
-}
-
-impl NoteAssetView {
-    pub fn new(asset: &Asset) -> Self {
-        Self {
-            path: asset.path.clone(),
-            file: super::slashed_path(&asset.file),
-            media_type: asset.media_type.clone(),
-            size: asset.size,
-        }
-    }
-}
-
 /// `note.write`: the path written and the hash of the bytes that landed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteWriteView {
     pub path: String,
@@ -440,7 +358,7 @@ impl NoteWriteView {
 }
 
 /// One note whose path changed in a move.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MovedNoteView {
     pub old_path: String,
@@ -457,7 +375,7 @@ impl MovedNoteView {
 }
 
 /// `note.move`: where the note or folder landed, and every note it carried.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteMoveView {
     pub path: String,
@@ -478,7 +396,7 @@ impl NoteMoveView {
 }
 
 /// One backlink row: the note that links here, and the line of its first link.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BacklinkView {
     pub path: String,
@@ -495,7 +413,7 @@ impl BacklinkView {
 }
 
 /// One orphaned temp a killed save left: the file, its size and its stamp.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecoveryView {
     pub file: String,
@@ -513,150 +431,10 @@ impl RecoveryView {
     }
 }
 
-// MARK: - Usage
-
-/// The five token pieces a record reported, each absent on the wire when it was
-/// not reported: the face draws the absent mark, never a zero dressed up as a
-/// count.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageTokensView {
-    pub input: Option<i64>,
-    pub output: Option<i64>,
-    pub reasoning: Option<i64>,
-    pub cache_read: Option<i64>,
-    pub cache_write: Option<i64>,
-}
-
-impl UsageTokensView {
-    fn new(tokens: &SessionTokens) -> Self {
-        Self {
-            input: tokens.input,
-            output: tokens.output,
-            reasoning: tokens.reasoning,
-            cache_read: tokens.cache_read,
-            cache_write: tokens.cache_write,
-        }
-    }
-}
-
-/// One record behind a row, as the roll-down draws it: the session id, the agent
-/// and model it was stamped with, its local start, and what it reported. The
-/// record's brief and summary belong to the session surfaces, not to this one.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageSessionView {
-    pub id: String,
-    pub agent: Option<String>,
-    pub model: Option<String>,
-    pub started_at: String,
-    pub cost: Option<f64>,
-    pub tokens: Option<UsageTokensView>,
-    /// The tickets the record carried, as ids: the face resolves one to its ref
-    /// and opens its sheet.
-    pub tickets: Vec<String>,
-}
-
-impl UsageSessionView {
-    fn new(session: &Session) -> Self {
-        Self {
-            id: session.id.clone(),
-            agent: session.agent.clone(),
-            model: session.model.clone(),
-            started_at: session.started_at.clone(),
-            cost: session.cost,
-            tokens: session.tokens.as_ref().map(UsageTokensView::new),
-            tickets: session.tickets.clone(),
-        }
-    }
-}
-
-/// One line of the table: its label, its record count, its tokens, its cost and
-/// the bar's width, all from the report.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageRowView {
-    pub id: String,
-    pub label: String,
-    pub records: usize,
-    pub reported: usize,
-    pub cost: f64,
-    /// The bar's width as a percentage of the row's own table, derived with the
-    /// report: the face writes the width and computes no percentage (PRT-15).
-    pub bar_percent: f64,
-    pub tokens: UsageTokensView,
-    /// The per-reported-record averages, in the tokens' five-piece shape: the
-    /// face reads them in Average mode and derives nothing (TAN-263).
-    pub average_tokens: UsageTokensView,
-    /// The reported cost over `reported`, at full precision for the face's
-    /// `money`; `0.0` when the row reported nothing.
-    pub average_cost: f64,
-    /// The records behind the row, newest start first.
-    pub sessions: Vec<UsageSessionView>,
-}
-
-impl UsageRowView {
-    fn new(row: &UsageRow) -> Self {
-        Self {
-            id: row.id.clone(),
-            label: row.label.clone(),
-            records: row.records,
-            reported: row.reported,
-            cost: row.cost,
-            bar_percent: row.bar_percent,
-            tokens: UsageTokensView::new(&row.tokens),
-            average_tokens: UsageTokensView::new(&row.average_tokens),
-            average_cost: row.average_cost,
-            sessions: row.sessions.iter().map(UsageSessionView::new).collect(),
-        }
-    }
-
-    fn rows(rows: &[UsageRow]) -> Vec<Self> {
-        rows.iter().map(Self::new).collect()
-    }
-}
-
-/// `usage.report`: the whole report the Usage face draws, one message.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageReportView {
-    pub records: usize,
-    pub reported: usize,
-    pub cost: f64,
-    pub tokens: UsageTokensView,
-    pub day: Vec<UsageRowView>,
-    pub model: Vec<UsageRowView>,
-    pub agent: Vec<UsageRowView>,
-    pub ticket: Vec<UsageRowView>,
-    /// The ticket rows' excess over `cost`: a shared record's cost per extra
-    /// ticket.
-    pub overlap: f64,
-    /// What the ticket rows add up to, `cost + overlap`, said once in the
-    /// header.
-    pub ticket_total: f64,
-}
-
-impl UsageReportView {
-    pub fn new(report: &UsageReport) -> Self {
-        Self {
-            records: report.records,
-            reported: report.reported,
-            cost: report.cost,
-            tokens: UsageTokensView::new(&report.tokens),
-            day: UsageRowView::rows(&report.day),
-            model: UsageRowView::rows(&report.model),
-            agent: UsageRowView::rows(&report.agent),
-            ticket: UsageRowView::rows(&report.ticket),
-            overlap: report.overlap,
-            ticket_total: report.ticket_total(),
-        }
-    }
-}
-
 /// One styled span of a ticket's markdown: the text, the markers it wears, and
 /// the destination a link pointed at. `styles` is a list because the domain
 /// keeps a set (`**bold with `code`**` is one run carrying both).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarkdownInlineView {
     pub text: String,
@@ -691,7 +469,7 @@ impl MarkdownInlineView {
 /// The tag is `kind`, so a face switches on one field and never on the shape of
 /// the object. The parsing is the core's: the sheet sends the text it holds and
 /// draws what comes back, so the app and the CLI read one dialect.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum MarkdownBlockView {
     Heading {

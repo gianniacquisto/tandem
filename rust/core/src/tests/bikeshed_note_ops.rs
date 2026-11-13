@@ -355,24 +355,6 @@ fn delete_on_a_missing_path_is_unknown_note() {
 }
 
 #[test]
-fn write_new_never_overwrites_and_suffixes_the_free_variant() {
-    use crate::domain::ticket_to_note::Notes;
-
-    let vault = Vault::new("ops-write-new");
-    let bikeshed = vault.bikeshed();
-    assert_eq!(
-        bikeshed.write_new("projects/t/a.md", "one").unwrap(),
-        "projects/t/a.md"
-    );
-    assert_eq!(
-        bikeshed.write_new("projects/t/a.md", "two").unwrap(),
-        "projects/t/a-2.md"
-    );
-    assert_eq!(vault.read("projects/t/a.md"), "one");
-    assert_eq!(vault.read("projects/t/a-2.md"), "two");
-}
-
-#[test]
 fn pre_existing_name_violators_are_tolerated() {
     let vault = Vault::new("ops-violators");
     // `#` is legal on every platform and is one wikilink separator.

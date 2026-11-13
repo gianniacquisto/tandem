@@ -14,16 +14,11 @@
       {
         "curatedNotes": 1,
         "lastConsolidated": "<timestamp>",
-        "oldestPending": "<timestamp>",
-        "project": "fixture",
-        "rawArchived": 0,
-        "rawPending": 1
+        "project": "fixture"
       }
     ],
     "totals": {
-      "curatedNotes": 1,
-      "rawArchived": 0,
-      "rawPending": 1
+      "curatedNotes": 1
     }
   },
   "stdoutKind": "json"

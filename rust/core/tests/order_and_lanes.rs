@@ -459,7 +459,7 @@ fn a_ticket_filed_in_a_lane_keeps_its_status_through_a_lane_reorder() {
     assert_eq!(
         support::all(&board)
             .iter()
-            .map(|ticket| ticket.status.clone())
+            .map(|ticket| ticket.status)
             .collect::<Vec<_>>(),
         [Status::OnHold, Status::Ready],
         "newest on top, and the reorder left every status alone"

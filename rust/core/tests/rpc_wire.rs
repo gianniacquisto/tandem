@@ -13,12 +13,8 @@ mod support;
 
 use serde_json::{Value, json};
 use support::Sandbox;
-use tandem_core::domain::AddTicket;
 use tandem_core::domain::DomainError;
-use tandem_core::domain::session::{
-    Ending, HarnessSession, HarnessTransport, SessionOutcome, SessionTokens, Sessions,
-};
-use tandem_core::store::{Actor, NewSetting};
+use tandem_core::store::Actor;
 use tandem_core::wire::rpc::{METHODS, Request};
 
 fn frame(id: u64, method: &str, params: Value) -> String {
@@ -45,11 +41,26 @@ fn every_method_round_trips_through_its_wire_tag() {
     }
 }
 
+/// The sprint record and the workflow's run history left the application
+/// (ADR 0045): the wire speaks neither family, so an app or an agent can no
+/// longer reach a record the store no longer keeps.
+#[test]
+fn the_sprint_and_workflow_run_methods_are_gone() {
+    let leftovers: Vec<&str> = METHODS
+        .iter()
+        .map(|(tag, _)| *tag)
+        .filter(|tag| tag.starts_with("sprint.") || tag.starts_with("workflow.run."))
+        .collect();
+    assert_eq!(
+        leftovers,
+        Vec::<&str>::new(),
+        "sprint.* and workflow.run.* left the wire"
+    );
+}
+
 /// The contract is "no UI-only write": a write names a CLI verb, and a read may
 /// name none. The list is spelled out so a new read is a decision a reviewer
-/// reads, not a verb someone forgot. `session.list` names the CLI verb
-/// `session list` since the MCP door (TAN-274) shares the sheet's method, so
-/// only `session.transcript` stays wire-only for the sheet.
+/// reads, not a verb someone forgot.
 #[test]
 fn the_read_methods_without_a_cli_verb_are_named_here() {
     let reads: Vec<&str> = METHODS
@@ -62,246 +73,33 @@ fn the_read_methods_without_a_cli_verb_are_named_here() {
         vec![
             "note.tree",
             "note.read",
-            "note.asset",
             "note.backlinks",
             "note.recoveries",
-            "usage.report",
-            "settings.get",
             "markdown.blocks",
-            "session.transcript",
         ],
         "a read with no CLI verb joins this list deliberately"
     );
 }
 
-/// The sheet's assignee picker and the board's filter read the store's roster,
-/// not the board's rows (PRT-38): a roster name with no ticket has no row to be
-/// derived from, and a fresh home has no rows at all. The read answers the
-/// stored list, its default when the human never edited one, and empty when the
-/// human emptied it.
+/// The workflow's stage set, the settings face and the note-to-ticket write
+/// left the application (ADR 0045): the wire speaks none of them, so an app or
+/// an agent can no longer reach a surface the domain no longer keeps.
 #[test]
-fn a_settings_read_answers_the_stores_roster() {
-    let roster = |home: &str, stored: Option<&str>| -> Value {
-        let sandbox = Sandbox::new(home);
-        let store = sandbox.store();
-        if let Some(value) = stored {
-            store
-                .write(&Actor::Human, |write| {
-                    write.insert_setting(NewSetting {
-                        key: "roster",
-                        value,
-                    })
-                })
-                .expect("the roster is stored");
-        }
-        let answer = handle(&store, &frame(1, "settings.get", json!({})));
-        assert_eq!(answer["id"], 1, "the frame echoes its id");
-        answer["result"]["roster"].clone()
-    };
-
-    let default = json!([
-        "human",
-        "builder",
-        "refiner",
-        "reviewer",
-        "consolidator",
-        "sprint"
-    ]);
-    assert_eq!(
-        roster("rpc-settings-fresh", None),
-        default,
-        "a roster that was never stored reads as the default"
-    );
-
-    // Stored names replace the default whole: `review` has no ticket, and the
-    // picker must still offer it.
-    assert_eq!(
-        roster("rpc-settings-stored", Some(r#"["human", "review"]"#)),
-        json!(["human", "review"])
-    );
-
-    // A list the human emptied stays empty: absent means "never edited", and
-    // the default is not a floor the picker is stuck above.
-    assert_eq!(roster("rpc-settings-empty", Some("[]")), json!([]));
-
-    // A value this build cannot read is the default too: a broken row must not
-    // shrink the picker, and it must not panic the stream either.
-    assert_eq!(
-        roster("rpc-settings-broken", Some("not json")),
-        default,
-        "a malformed roster reads as the default"
-    );
-}
-
-/// The faces share one focus: the Tickets face and the Notes face draw the
-/// active lane, and the CLI writes it. `settings.get` answers the resolved
-/// focus beside the roster: absent when no focus was ever stored, when it was
-/// cleared, and when the stored lane is no longer declared, so a stale focus
-/// never hides tickets.
-#[test]
-fn a_settings_read_answers_the_active_project() {
-    use tandem_core::domain::Board;
-
-    let sandbox = Sandbox::new("rpc-focus-read");
-    let store = sandbox.store();
-    Board::new(store.clone())
-        .add_lane("Tandem", None, None)
-        .expect("the lane is declared");
-
-    let fresh = handle(&store, &frame(1, "settings.get", json!({})));
-    assert_eq!(fresh["id"], 1);
-    assert_eq!(
-        fresh["result"]["activeProject"],
-        Value::Null,
-        "a home that never stored a focus has none: {fresh}"
-    );
-
-    let focused = handle(
-        &store,
-        &frame(2, "settings.set", json!({"project": "Tandem"})),
-    );
-    assert_eq!(focused["result"]["activeProject"], json!("Tandem"));
-
-    let read = handle(&store, &frame(3, "settings.get", json!({})));
-    assert_eq!(
-        read["result"]["activeProject"],
-        json!("Tandem"),
-        "the read answers the stored focus: {read}"
-    );
-    assert!(
-        read["result"]["roster"].is_array(),
-        "the roster still answers beside the focus: {read}"
-    );
-
-    // A stored lane the board no longer declares reads as no focus.
-    store
-        .write(&Actor::Human, |write| {
-            write.upsert_setting(NewSetting {
-                key: "active_project",
-                value: "Retro",
-            })
+fn the_workflow_settings_and_add_from_note_methods_are_gone() {
+    let leftovers: Vec<&str> = METHODS
+        .iter()
+        .map(|(tag, _)| *tag)
+        .filter(|tag| {
+            tag.starts_with("workflow.")
+                || tag.starts_with("settings.")
+                || *tag == "ticket.addFromNote"
         })
-        .expect("the stale row is stored");
-    let stale = handle(&store, &frame(4, "settings.get", json!({})));
+        .collect();
     assert_eq!(
-        stale["result"]["activeProject"],
-        Value::Null,
-        "a stale focus hides nothing: {stale}"
+        leftovers,
+        Vec::<&str>::new(),
+        "workflow.*, settings.* and ticket.addFromNote left the wire"
     );
-}
-
-/// The focus write refuses a lane the board never declared, naming the lanes
-/// the human may pick (`lane.rename`'s `UnknownLane` precedent), and the
-/// refused write leaves the store alone.
-#[test]
-fn a_settings_write_to_an_undeclared_lane_is_refused() {
-    use tandem_core::domain::Board;
-
-    let sandbox = Sandbox::new("rpc-focus-refusal");
-    let store = sandbox.store();
-    Board::new(store.clone())
-        .add_lane("Tandem", None, None)
-        .expect("the lane is declared");
-
-    let refused = handle(
-        &store,
-        &frame(1, "settings.set", json!({"project": "Nope"})),
-    );
-    assert_eq!(refused["error"]["code"], "domain");
-    let message = refused["error"]["message"].as_str().unwrap_or("");
-    assert!(
-        message.contains("Nope"),
-        "the refusal names the lane: {refused}"
-    );
-    assert!(
-        message.contains("Tandem"),
-        "the refusal names the declared lanes: {refused}"
-    );
-
-    let read = handle(&store, &frame(2, "settings.get", json!({})));
-    assert_eq!(
-        read["result"]["activeProject"],
-        Value::Null,
-        "the refused write left the store alone: {read}"
-    );
-}
-
-/// Clearing the focus restores no focus: an absent project clears, and the
-/// read answers null again.
-#[test]
-fn clearing_the_focus_restores_no_focus() {
-    use tandem_core::domain::Board;
-
-    let sandbox = Sandbox::new("rpc-focus-clear");
-    let store = sandbox.store();
-    Board::new(store.clone())
-        .add_lane("Tandem", None, None)
-        .expect("the lane is declared");
-    handle(
-        &store,
-        &frame(1, "settings.set", json!({"project": "Tandem"})),
-    );
-
-    let cleared = handle(&store, &frame(2, "settings.set", json!({})));
-    assert_eq!(
-        cleared["result"]["activeProject"],
-        Value::Null,
-        "an absent project clears: {cleared}"
-    );
-
-    let read = handle(&store, &frame(3, "settings.get", json!({})));
-    assert_eq!(read["result"]["activeProject"], Value::Null);
-}
-
-/// The write beside the read: `settings.set` stores the whole roster, and the
-/// receipt it answers is the cleaned list `settings.get` reads back. Cleaning
-/// is the domain's, so padding, empties and repeats never reach the store; an
-/// explicitly emptied list reads back empty, not the default.
-#[test]
-fn a_settings_write_stores_the_roster_a_read_answers_back() {
-    let sandbox = Sandbox::new("rpc-settings-write");
-    let store = sandbox.store();
-
-    let written = handle(
-        &store,
-        &frame(1, "settings.set", json!({"roster": ["human", "review"]})),
-    );
-    assert_eq!(written["id"], 1, "the frame echoes its id");
-    assert_eq!(
-        written["result"]["roster"],
-        json!(["human", "review"]),
-        "the receipt carries the stored roster"
-    );
-    let read = handle(&store, &frame(2, "settings.get", json!({})));
-    assert_eq!(
-        read["result"]["roster"],
-        json!(["human", "review"]),
-        "the read answers what the write stored"
-    );
-
-    // The second write replaces the first whole, and entries with
-    // padding, empties and repeats come back cleaned.
-    let cleaned = handle(
-        &store,
-        &frame(
-            3,
-            "settings.set",
-            json!({"roster": ["  alpha  ", "", "   ", "beta", "alpha", "beta "]}),
-        ),
-    );
-    assert_eq!(cleaned["result"]["roster"], json!(["alpha", "beta"]));
-    let reread = handle(&store, &frame(4, "settings.get", json!({})));
-    assert_eq!(
-        reread["result"]["roster"],
-        json!(["alpha", "beta"]),
-        "the read answers the cleaned list, not the request's echo"
-    );
-
-    // An emptied list stays empty: the receipt and the re-read agree.
-    let emptied = handle(&store, &frame(5, "settings.set", json!({"roster": []})));
-    assert_eq!(emptied["result"]["roster"], json!([]));
-    let empty = handle(&store, &frame(6, "settings.get", json!({})));
-    assert_eq!(empty["result"]["roster"], json!([]));
 }
 
 /// The ticket sheet draws a body as markdown (`TicketMarkdown`, TAN-219). The
@@ -345,331 +143,6 @@ fn a_markdown_read_answers_the_blocks_the_sheet_draws() {
     // A body with nothing in it draws nothing: the sheet opens for writing.
     let empty = handle(&store, &frame(2, "markdown.blocks", json!({"text": "   "})));
     assert_eq!(empty["result"]["blocks"], json!([]));
-}
-
-#[test]
-fn a_usage_report_is_one_message_over_the_records() {
-    let sandbox = Sandbox::new("rpc-usage");
-    let store = sandbox.store();
-
-    // An empty home answers every field a face draws, zeroed.
-    let empty = handle(&store, &frame(1, "usage.report", json!({})));
-    assert_eq!(empty["id"], 1);
-    let report = &empty["result"]["report"];
-    assert_eq!(report["records"], 0);
-    assert_eq!(report["reported"], 0);
-    assert_eq!(report["cost"], 0.0);
-    assert_eq!(report["overlap"], 0.0);
-    assert_eq!(report["day"], json!([]));
-    assert_eq!(report["model"], json!([]));
-    assert_eq!(report["agent"], json!([]));
-    assert_eq!(report["ticket"], json!([]));
-
-    // Two records: one stamped with usage, one that reported nothing at all.
-    let sessions = Sessions::new(&store);
-    let actor = Actor::Agent("builder".to_string());
-    sessions
-        .start(
-            &actor,
-            "ses_a",
-            "tandem",
-            Some("builder"),
-            "A brief.",
-            Some("2026-10-30T12:00:00Z"),
-        )
-        .expect("the record starts");
-    sessions
-        .end(
-            &actor,
-            "ses_a",
-            Ending {
-                outcome: SessionOutcome::Succeeded,
-                summary: Some("What landed."),
-                tokens: None,
-                cost: Some(0.5),
-                model: Some("deepseek-v4"),
-                skills: None,
-                turns: None,
-                calls: None,
-                at: Some("2026-10-30T12:05:00Z"),
-            },
-        )
-        .expect("the record stamps");
-    sessions
-        .start(
-            &actor,
-            "ses_b",
-            "tandem",
-            Some("builder"),
-            "A brief.",
-            Some("2026-10-30T11:00:00Z"),
-        )
-        .expect("the record starts");
-    sessions
-        .end(&actor, "ses_b", Ending::new(SessionOutcome::Succeeded))
-        .expect("the record stamps");
-
-    let answer = handle(&store, &frame(2, "usage.report", json!({})));
-    let report = &answer["result"]["report"];
-    assert_eq!(report["records"], 2);
-    assert_eq!(report["reported"], 1, "one record carries no usage");
-    assert_eq!(report["cost"], 0.5);
-    assert_eq!(report["agent"][0]["label"], "builder");
-    assert_eq!(report["agent"][0]["barPercent"], 100.0);
-    assert_eq!(report["model"][0]["label"], "deepseek-v4");
-    assert_eq!(
-        report["ticket"][0]["label"], "no ticket",
-        "a record that carried none lands in the ticketless row"
-    );
-    assert_eq!(report["ticket"][0]["records"], 2);
-}
-
-#[test]
-fn a_home_whose_records_predate_usage_reports_zeros_over_its_records() {
-    let sandbox = Sandbox::new("rpc-usage-predates");
-    let store = sandbox.store();
-    let sessions = Sessions::new(&store);
-    let actor = Actor::Human;
-    for id in ["ses_old", "ses_older"] {
-        sessions
-            .start(
-                &actor,
-                id,
-                "tandem",
-                Some("builder"),
-                "A brief.",
-                Some("2026-10-30T12:00:00Z"),
-            )
-            .expect("the record starts");
-        sessions
-            .end(&actor, id, Ending::new(SessionOutcome::Unknown))
-            .expect("the record stamps");
-    }
-
-    let answer = handle(&store, &frame(1, "usage.report", json!({})));
-    let report = &answer["result"]["report"];
-    assert_eq!(
-        report["records"], 2,
-        "the records are the coverage's denominator"
-    );
-    assert_eq!(report["reported"], 0, "no record reports usage");
-    assert_eq!(report["cost"], 0.0, "no sum invents a cost");
-    assert_eq!(report["agent"][0]["barPercent"], 0.0, "and no bar is drawn");
-}
-
-/// One harness session carries two records, because a re-dispatched pass opens
-/// its own (ADR 0027). Each stamps the harness's cumulative snapshot, and the
-/// derivation attributes each record its share, so the report counts the
-/// session once.
-#[test]
-fn a_usage_report_counts_one_harness_session_once() {
-    let sandbox = Sandbox::new("rpc-usage-attribution");
-    let store = sandbox.store();
-    let sessions = Sessions::new(&store);
-    let actor = Actor::Agent("builder".to_string());
-    let harness = || HarnessSession {
-        id: "ses_one".to_string(),
-        transport: HarnessTransport::Database,
-    };
-    let input = |value: i64| {
-        Some(SessionTokens {
-            input: Some(value),
-            ..SessionTokens::default()
-        })
-    };
-
-    for (id, started, ended, tokens_input) in [
-        (
-            "ses_first",
-            "2026-10-30T09:00:00Z",
-            "2026-10-30T09:10:00Z",
-            1_000,
-        ),
-        (
-            "ses_second",
-            "2026-10-30T10:00:00Z",
-            "2026-10-30T10:10:00Z",
-            1_500,
-        ),
-    ] {
-        sessions
-            .start_with_harness(
-                &actor,
-                id,
-                "tandem",
-                Some("builder"),
-                "A brief.",
-                harness(),
-                Some(started),
-            )
-            .expect("the record starts");
-        sessions
-            .end(
-                &actor,
-                id,
-                Ending {
-                    outcome: SessionOutcome::Succeeded,
-                    tokens: input(tokens_input),
-                    cost: Some(1.0),
-                    at: Some(ended),
-                    ..Ending::default()
-                },
-            )
-            .expect("the record stamps");
-    }
-
-    let answer = handle(&store, &frame(1, "usage.report", json!({})));
-    let report = &answer["result"]["report"];
-    assert_eq!(report["records"], 2, "both records are still listed");
-    assert_eq!(
-        report["tokens"]["input"], 1_500,
-        "the session's own total, not the sum of the snapshots"
-    );
-}
-
-/// Attribution runs before the window: a record whose earlier sibling fell
-/// outside the selected window still reports its own share, never the whole
-/// snapshot.
-#[test]
-fn a_usage_report_attributes_before_the_window_narrows() {
-    let sandbox = Sandbox::new("rpc-usage-window");
-    let store = sandbox.store();
-    let sessions = Sessions::new(&store);
-    let actor = Actor::Agent("builder".to_string());
-    let harness = || HarnessSession {
-        id: "ses_one".to_string(),
-        transport: HarnessTransport::Database,
-    };
-    let input = |value: i64| {
-        Some(SessionTokens {
-            input: Some(value),
-            ..SessionTokens::default()
-        })
-    };
-
-    // The earlier sibling is far outside Last 7 days; the later record starts
-    // now, so it is inside.
-    sessions
-        .start_with_harness(
-            &actor,
-            "ses_old",
-            "tandem",
-            Some("builder"),
-            "A brief.",
-            harness(),
-            Some("2000-01-01T09:00:00Z"),
-        )
-        .expect("the record starts");
-    sessions
-        .end(
-            &actor,
-            "ses_old",
-            Ending {
-                outcome: SessionOutcome::Succeeded,
-                tokens: input(1_000),
-                cost: Some(1.0),
-                at: Some("2000-01-01T09:10:00Z"),
-                ..Ending::default()
-            },
-        )
-        .expect("the record stamps");
-    sessions
-        .start_with_harness(
-            &actor,
-            "ses_new",
-            "tandem",
-            Some("builder"),
-            "A brief.",
-            harness(),
-            None,
-        )
-        .expect("the record starts");
-    sessions
-        .end(
-            &actor,
-            "ses_new",
-            Ending {
-                outcome: SessionOutcome::Succeeded,
-                tokens: input(1_500),
-                cost: Some(2.0),
-                at: None,
-                ..Ending::default()
-            },
-        )
-        .expect("the record stamps");
-
-    let answer = handle(
-        &store,
-        &frame(1, "usage.report", json!({"window": "last-7-days"})),
-    );
-    let report = &answer["result"]["report"];
-    assert_eq!(report["records"], 1, "only the record inside the window");
-    assert_eq!(
-        report["tokens"]["input"], 500,
-        "its share, not the 1,500 snapshot it stamped"
-    );
-}
-
-/// The RPC end door stamps the record and writes nothing to the comment log:
-/// usage is the record's, and the report reads it there.
-#[test]
-fn the_rpc_door_stamps_the_record_and_writes_no_comment() {
-    let sandbox = Sandbox::new("rpc-usage-door");
-    let store = sandbox.store();
-    let board = sandbox.board();
-    let ticket = board
-        .add("The ticket", AddTicket::default())
-        .expect("the ticket is added");
-    let ticket_id = ticket.id.to_string();
-    let sessions = Sessions::new(&store);
-    let actor = Actor::Agent("builder".to_string());
-    let harness = || HarnessSession {
-        id: "ses_one".to_string(),
-        transport: HarnessTransport::Database,
-    };
-
-    for (id, started, tokens_input) in [
-        ("ses_first", "2026-10-30T09:00:00Z", 1_500),
-        ("ses_second", "2026-10-30T10:00:00Z", 2_000),
-    ] {
-        sessions
-            .start_with_harness(
-                &actor,
-                id,
-                "tandem",
-                Some("builder"),
-                "A brief.",
-                harness(),
-                Some(started),
-            )
-            .expect("the record starts");
-        sessions
-            .link(&actor, id, &ticket_id)
-            .expect("the ticket is linked");
-        let answer = handle(
-            &store,
-            &frame(
-                1,
-                "session.end",
-                json!({
-                    "session": id,
-                    "outcome": "succeeded",
-                    "usageFromHarness": false,
-                    "tokensInput": tokens_input,
-                }),
-            ),
-        );
-        assert_eq!(
-            answer["result"]["session"]["tokens"]["input"], tokens_input,
-            "the record keeps the snapshot it stamped"
-        );
-    }
-
-    let comments = board.comments(&ticket_id).expect("the comments read");
-    assert!(
-        comments.is_empty(),
-        "neither stamp writes a comment: usage is the record's (TAN-323)"
-    );
 }
 
 #[test]
@@ -1048,28 +521,26 @@ fn the_note_methods_read_write_move_and_report_the_vault() {
 }
 
 #[test]
-fn the_note_tree_draws_the_hidden_layer_only_when_asked() {
+fn the_note_tree_never_draws_a_hidden_entry() {
     let sandbox = Sandbox::new("rpc-note-hidden");
     let store = sandbox.store();
     let bikeshed = sandbox.root().join("home").join("bikeshed");
-    std::fs::create_dir_all(bikeshed.join(".raw")).expect("the saddlebag is creatable");
+    std::fs::create_dir_all(bikeshed.join(".raw")).expect("the folder is creatable");
     std::fs::write(bikeshed.join(".raw").join("capture.md"), "hidden")
-        .expect("the capture is written");
+        .expect("the note is written");
 
     let curated = handle(&store, &frame(1, "note.tree", json!({})));
     assert!(
         !curated["result"]["nodes"]
             .to_string()
             .contains("capture.md"),
-        "the hidden layer is not drawn by default"
+        "a dot component is not drawn: the reveal parameter left the wire (CUT-7)"
     );
 
-    let revealed = handle(&store, &frame(2, "note.tree", json!({"hidden": true})));
+    let asked = handle(&store, &frame(2, "note.tree", json!({"hidden": true})));
     assert!(
-        revealed["result"]["nodes"]
-            .to_string()
-            .contains("capture.md"),
-        "the reveal draws the saddlebag"
+        !asked["result"]["nodes"].to_string().contains("capture.md"),
+        "a hidden field is not a parameter any more: {asked}"
     );
 }
 
@@ -1106,114 +577,6 @@ fn a_note_read_of_no_path_is_the_domains_own_refusal() {
             .unwrap_or("")
             .contains("escape.md"),
         "the refusal names the path: {answer}"
-    );
-}
-
-#[test]
-fn the_daily_note_opens_today_and_keeps_staged_content() {
-    let sandbox = Sandbox::new("rpc-note-daily");
-    let store = sandbox.store();
-    let bikeshed = sandbox.root().join("home").join("bikeshed");
-
-    let opened = handle(&store, &frame(1, "note.daily", json!({})));
-    let path = opened["result"]["path"]
-        .as_str()
-        .unwrap_or_else(|| panic!("the daily open answers its path: {opened}"))
-        .to_string();
-    assert!(
-        path.starts_with("daily/") && path.ends_with(".md"),
-        "today lives at daily/YYYY-MM-DD.md: {path}"
-    );
-    let day = path
-        .strip_prefix("daily/")
-        .and_then(|rest| rest.strip_suffix(".md"))
-        .unwrap_or("");
-    assert_eq!(day.len(), 10, "the day is YYYY-MM-DD: {path}");
-    assert!(
-        bikeshed.join(&path).is_file(),
-        "the day file is created: {path}"
-    );
-
-    handle(
-        &store,
-        &frame(
-            2,
-            "note.write",
-            json!({"path": path, "text": "# Today\n\nwords"}),
-        ),
-    );
-    let again = handle(&store, &frame(3, "note.daily", json!({})));
-    assert_eq!(
-        again["result"]["path"], path,
-        "the second open returns the same file"
-    );
-    let read = handle(&store, &frame(4, "note.read", json!({"path": path})));
-    assert_eq!(
-        read["result"]["note"]["text"], "# Today\n\nwords",
-        "staged content survives the second open"
-    );
-}
-
-#[test]
-fn the_daily_note_refuses_when_a_folder_sits_at_todays_path() {
-    use tandem_core::bikeshed::{DailyNote, Day};
-
-    let sandbox = Sandbox::new("rpc-note-daily-folder");
-    let store = sandbox.store();
-    let bikeshed = sandbox.root().join("home").join("bikeshed");
-    let path = DailyNote::path(Day::today());
-    std::fs::create_dir_all(bikeshed.join(&path)).expect("the folder is creatable");
-
-    let answer = handle(&store, &frame(1, "note.daily", json!({})));
-    assert_eq!(answer["error"]["code"], "domain");
-    assert!(
-        answer["error"]["message"]
-            .as_str()
-            .unwrap_or("")
-            .contains("folder"),
-        "the refusal names the folder: {answer}"
-    );
-    assert!(
-        bikeshed.join(&path).is_dir(),
-        "nothing is created over the folder"
-    );
-}
-
-#[test]
-fn a_ticket_filed_from_a_note_links_to_it() {
-    let sandbox = Sandbox::new("rpc-ticket-from-note");
-    let store = sandbox.store();
-    let bikeshed = sandbox.root().join("home").join("bikeshed");
-    std::fs::create_dir_all(&bikeshed).expect("the vault is creatable");
-    std::fs::write(bikeshed.join("note.md"), "the note the ticket came from")
-        .expect("the note is written");
-
-    let added = handle(
-        &store,
-        &frame(
-            1,
-            "ticket.addFromNote",
-            json!({"note": "note.md", "text": "- [ ] File me"}),
-        ),
-    );
-    assert_eq!(added["result"]["ticket"]["title"], "File me");
-    assert_eq!(added["result"]["ticket"]["link"], "note.md");
-    assert_eq!(added["result"]["ticket"]["description"], "- [ ] File me");
-
-    let listed = handle(&store, &frame(2, "ticket.list", json!({})));
-    assert_eq!(listed["result"]["tickets"][0]["link"], "note.md");
-
-    let empty = handle(
-        &store,
-        &frame(3, "ticket.addFromNote", json!({"note": "note.md"})),
-    );
-    assert_eq!(empty["error"]["code"], "domain");
-    assert!(
-        empty["error"]["message"]
-            .as_str()
-            .unwrap_or("")
-            .contains("Select text"),
-        "the domain's own empty-selection refusal: {empty}"
     );
 }
 
@@ -1405,138 +768,5 @@ fn lane_move_reorders_the_declared_lanes_over_the_wire() {
     assert!(
         message.contains("lane add") && message.contains("lane list"),
         "the refusal names the fix: {refused}"
-    );
-}
-
-#[test]
-fn a_note_asset_answers_the_confined_file_type_and_size() {
-    let sandbox = Sandbox::new("rpc-note-asset");
-    let store = sandbox.store();
-    let bikeshed = sandbox.root().join("home").join("bikeshed");
-    std::fs::create_dir_all(bikeshed.join("img")).expect("the vault is creatable");
-    std::fs::write(bikeshed.join("img").join("dot.png"), "png-bytes")
-        .expect("the image is written");
-
-    let answer = handle(
-        &store,
-        &frame(1, "note.asset", json!({"path": "img/dot.png"})),
-    );
-    assert_eq!(answer["result"]["asset"]["path"], "img/dot.png");
-    assert_eq!(answer["result"]["asset"]["mediaType"], "image/png");
-    assert_eq!(answer["result"]["asset"]["size"], 9);
-    let file = answer["result"]["asset"]["file"]
-        .as_str()
-        .unwrap_or_else(|| panic!("the asset names its file: {answer}"));
-    assert_eq!(
-        std::path::Path::new(file),
-        bikeshed.join("img").join("dot.png"),
-        "the file is the confined absolute path"
-    );
-
-    for (id, bad) in [(2, "../escape.png"), (3, "/etc/passwd.png")] {
-        let refused = handle(&store, &frame(id, "note.asset", json!({"path": bad})));
-        assert_eq!(
-            refused["error"]["code"], "domain",
-            "{bad} is a domain refusal"
-        );
-        assert!(
-            refused.get("result").is_none(),
-            "a refusal carries no asset reply: {refused}"
-        );
-    }
-}
-
-#[test]
-fn the_workflow_run_methods_round_trip_and_the_sprint_aliases_agree() {
-    let sandbox = Sandbox::new("run-wire");
-    let store = sandbox.store();
-
-    let opened = handle(
-        &store,
-        &frame(1, "workflow.run.open", json!({"lane": "Cycle"})),
-    );
-    assert_eq!(opened["result"]["run"]["number"], 1);
-    assert_eq!(opened["result"]["run"]["status"], "open");
-    assert_eq!(
-        opened["result"]["run"]["workflow"], "00000000-0000-4000-8000-000000000001",
-        "an absent workflow is the active one"
-    );
-
-    let added = handle(
-        &store,
-        &frame(2, "ticket.add", json!({"title": "A run ticket"})),
-    );
-    let ticket = added["result"]["ticket"]["id"]
-        .as_str()
-        .expect("a ticket id")
-        .to_string();
-    let drawn = handle(
-        &store,
-        &frame(
-            3,
-            "workflow.run.ticket",
-            json!({"lane": "Cycle", "ticket": ticket}),
-        ),
-    );
-    assert_eq!(drawn["result"]["run"]["batch"][0], ticket);
-
-    let logged = handle(
-        &store,
-        &frame(
-            4,
-            "workflow.run.run",
-            json!({"lane": "Cycle", "note": "The run landed."}),
-        ),
-    );
-    assert_eq!(logged["result"]["run"]["runs"].as_array().unwrap().len(), 1);
-
-    let listed = handle(
-        &store,
-        &frame(5, "workflow.run.list", json!({"status": "open"})),
-    );
-    assert_eq!(listed["result"]["runs"].as_array().unwrap().len(), 1);
-    assert_eq!(listed["result"]["runs"][0]["number"], 1);
-
-    let shown = handle(
-        &store,
-        &frame(6, "workflow.run.show", json!({"lane": "Cycle"})),
-    );
-    assert_eq!(
-        shown["result"]["run"]["number"], 1,
-        "show is the current run"
-    );
-
-    let alias = handle(&store, &frame(7, "sprint.show", json!({"lane": "Cycle"})));
-    assert_eq!(alias["result"]["sprint"]["number"], 1);
-    assert_eq!(
-        alias["result"]["sprint"]["runs"],
-        shown["result"]["run"]["runs"]
-    );
-    assert!(
-        alias["result"]["sprint"].get("workflow").is_none(),
-        "the sprint alias keeps the legacy shape"
-    );
-
-    handle(
-        &store,
-        &frame(
-            8,
-            "workflow.run.close",
-            json!({"lane": "Cycle", "note": "Landed."}),
-        ),
-    );
-    let history = handle(
-        &store,
-        &frame(9, "workflow.run.list", json!({"status": "closed"})),
-    );
-    assert_eq!(history["result"]["runs"].as_array().unwrap().len(), 1);
-    assert_eq!(history["result"]["runs"][0]["close"], "Landed.");
-    let alias_history = handle(
-        &store,
-        &frame(10, "sprint.list", json!({"status": "closed"})),
-    );
-    assert_eq!(
-        alias_history["result"]["sprints"].as_array().unwrap().len(),
-        1
     );
 }

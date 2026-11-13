@@ -1,5 +1,7 @@
 # Tandem epic lanes
 
+**Status**: historical. This note describes the epic lane set of the workflow-data era. [ADR 0045](adr/0045-the-board-and-notes-cut.md) retired the sprint and session records and the workflow tables; the verbs in the journey below answer an unknown verb today. The live lanes are whatever the store's `projects` and `lanes` rows name.
+
 The Tandem project was one lane (`Tandem`) plus leftovers (`tandem-ui`, `Port`,
 `Retro`). Triage had nowhere to land: UI work, core work, CLI work and MCP work
 all filed to the same lane, and the lane a batch drew from was never the epic

@@ -18,8 +18,8 @@ use std::collections::{HashMap, HashSet};
 
 use uuid::Uuid;
 
-use crate::store::timestamp;
 use crate::store::{Actor, NewComment, Store};
+use crate::store::{decode, encode, unix_now};
 
 use super::comment::{Comment, CommentRead};
 use super::contents::Contents;
@@ -29,8 +29,6 @@ use super::error::DomainError;
 use super::lane::{Lane, LaneDeletion};
 use super::query::{Filter, HUMAN, TicketQuery};
 use super::ticket::{Status, Ticket};
-use super::undo::CompletionUndo;
-use super::workflow::Workflow;
 
 /// The fields a new ticket may be given, over the title it must have.
 #[derive(Debug, Clone)]
@@ -100,42 +98,6 @@ impl Board {
         &self.actor
     }
 
-    // MARK: - The workflow
-
-    /// The active workflow, or the seeded default when the `active_workflow`
-    /// row is missing or unreadable.
-    pub fn workflow(&self) -> Result<Workflow, DomainError> {
-        super::workflow::Workflows::new(&self.store).active()
-    }
-
-    /// The stage a new ticket lands in: the active workflow's first intake
-    /// stage. A caller that names no `--status` writes this.
-    pub fn landing_status(&self) -> Result<Status, DomainError> {
-        super::workflow::Workflows::new(&self.store).landing_status()
-    }
-
-    /// Refuse a status the active workflow does not declare, naming the valid
-    /// stage keys.
-    pub fn validate_status(&self, status: &Status) -> Result<(), DomainError> {
-        super::workflow::Workflows::new(&self.store).validate_status(status)
-    }
-
-    fn validate_named_status(&self, status: &Status) -> Result<(), DomainError> {
-        self.validate_status(status)
-    }
-
-    /// The active workflow's finished stage key, the one `complete` writes and
-    /// `done()` reads.
-    fn finished_key(&self) -> Result<String, DomainError> {
-        Ok(self.workflow()?.finished_key().to_string())
-    }
-
-    /// A status parsed from a workflow key. The workflow validates its own
-    /// document, so the only failure is an unreadable stored key.
-    fn stage_status(key: &str) -> Result<Status, DomainError> {
-        Status::parse(key)
-    }
-
     // MARK: - Reads
 
     /// `list(query)`: the tickets in view, in stored order.
@@ -155,8 +117,7 @@ impl Board {
         let Some((rows, revision)) = self.store.board_snapshot()? else {
             return Ok((Vec::new(), 0));
         };
-        let mut contents = Contents::from_rows(&rows)?;
-        contents.set_finished_key(&self.finished_key()?);
+        let contents = Contents::from_rows(&rows)?;
         Ok((query.apply(&contents.tickets), revision))
     }
 
@@ -193,8 +154,7 @@ impl Board {
                 open: Vec::new(),
             });
         };
-        let mut contents = Contents::from_rows(&rows)?;
-        contents.set_finished_key(&self.finished_key()?);
+        let contents = Contents::from_rows(&rows)?;
         let (_, index) = contents.require_ticket(handle)?;
         Ok((contents.tickets[index].clone(), revision))
     }
@@ -562,61 +522,16 @@ impl Board {
         let assignee = normalize_assignee(fields.assignee);
         let origin = normalize_origin(Some(fields.origin));
         let description = description::normalize(fields.description);
-        self.validate_named_status(&fields.status)?;
         self.mutate(|contents| {
             contents.validate_lane(fields.lane)?;
-            let now = timestamp::unix_now();
+            let now = unix_now();
             let mut ticket = Ticket::new(title);
             ticket.description = description.clone();
             ticket.assignee = assignee.clone();
             ticket.origin = origin.clone();
             ticket.lane = fields.lane.map(str::to_string);
-            ticket.finished_key = contents.finished_key.clone();
             ticket.set_status(fields.status, now);
             insert_at_top(&mut ticket, contents);
-            Ok((ticket, true))
-        })
-    }
-
-    /// `add_from_note(selection, note_path, ...)`: file a selection from a note as a
-    /// ticket, linked to that note.
-    ///
-    /// The title is the selection's first non-blank line, trimmed, with a leading
-    /// task-list marker removed; the description is the whole selection. **The note
-    /// is never touched**: the operation writes the store and nothing else.
-    pub fn add_from_note(
-        &self,
-        selection: &str,
-        note_path: &str,
-        fields: AddTicket<'_>,
-    ) -> Result<Ticket, DomainError> {
-        let selection = selection.trim();
-        let title = ticket_title(selection);
-        if title.is_empty() {
-            return Err(DomainError::EmptySelection);
-        }
-        let path = note_path.trim();
-        if !is_note_link_path(path) {
-            return Err(DomainError::InvalidNotePath(note_path.to_string()));
-        }
-        let assignee = normalize_assignee(fields.assignee);
-        let origin = normalize_origin(Some(fields.origin));
-        let description = description::normalize(Some(selection));
-        self.validate_named_status(&fields.status)?;
-        self.mutate(|contents| {
-            contents.validate_lane(fields.lane)?;
-            let now = timestamp::unix_now();
-            let mut ticket = Ticket::new(title.clone());
-            ticket.description = description.clone();
-            ticket.assignee = assignee.clone();
-            ticket.origin = origin.clone();
-            ticket.lane = fields.lane.map(str::to_string);
-            ticket.link = Some(path.to_string());
-            ticket.finished_key = contents.finished_key.clone();
-            ticket.set_status(fields.status, now);
-            // The same placement `add` gives it: the top of its lane.
-            let start = contents.block_start(fields.lane);
-            contents.tickets.insert(start, ticket.clone());
             Ok((ticket, true))
         })
     }
@@ -652,57 +567,46 @@ impl Board {
         status: Status,
         at: usize,
     ) -> Result<Ticket, DomainError> {
-        self.validate_named_status(&status)?;
         self.mutate(|contents| {
             let from = contents.require_ticket(handle)?.1;
             contents.validate_lane(lane)?;
             let before = contents.tickets.clone();
             let mut moved = contents.tickets.remove(from);
-            moved.set_status(status, timestamp::unix_now());
+            moved.set_status(status, unix_now());
             insert(&mut moved, lane, contents, at);
             let changed = contents.tickets != before;
             Ok((moved, changed))
         })
     }
 
-    // MARK: - Complete, reopen, undo
+    // MARK: - Complete and reopen
 
-    /// `complete(id)`: idempotent. Moves the ticket to the active workflow's
-    /// finished stage and stamps `completed_at` on the transition. The stored
-    /// order is never changed.
+    /// `complete(id)`: idempotent. Moves the ticket to Done and stamps
+    /// `completed_at` on the transition. The stored order is never changed.
     pub fn complete(&self, handle: &str) -> Result<Ticket, DomainError> {
-        let finished = Self::stage_status(self.workflow()?.finished_key())?;
         self.mutate(|contents| {
             let index = contents.require_ticket(handle)?.1;
             let mut changed = false;
             if !contents.tickets[index].done() {
-                contents.tickets[index].set_status(finished.clone(), timestamp::unix_now());
+                contents.tickets[index].set_status(Status::Done, unix_now());
                 changed = true;
             }
             Ok((contents.tickets[index].clone(), changed))
         })
     }
 
-    /// `reopen(id)`: the inverse of `complete`, idempotent. **A reopen lands in
-    /// the active workflow's intake stage**, because completing erased the stage
-    /// it came from.
+    /// `reopen(id)`: the inverse of `complete`, idempotent. A reopen lands in
+    /// Backlog, because completing erased the stage it came from.
     pub fn reopen(&self, handle: &str) -> Result<Ticket, DomainError> {
-        let intake = Self::stage_status(self.workflow()?.landing_key())?;
         self.mutate(|contents| {
             let index = contents.require_ticket(handle)?.1;
             let mut changed = false;
             if contents.tickets[index].done() {
-                contents.tickets[index].set_status(intake.clone(), timestamp::unix_now());
+                contents.tickets[index].set_status(Status::Backlog, unix_now());
                 changed = true;
             }
             Ok((contents.tickets[index].clone(), changed))
         })
-    }
-
-    /// `undo(offer)`: take a completion back. This is `reopen` under the name the
-    /// interaction has.
-    pub fn undo(&self, offer: &CompletionUndo) -> Result<Ticket, DomainError> {
-        self.reopen(&offer.id.to_string())
     }
 
     // MARK: - Set
@@ -738,9 +642,6 @@ impl Board {
             Edit::Set(raw) => Some(DescriptionBody::required(raw)?),
             Edit::Unchanged => None,
         };
-        if let Edit::Set(status) = &fields.status {
-            self.validate_named_status(status)?;
-        }
         self.mutate(|contents| {
             let index = contents.require_ticket(handle)?.1;
             let mut ticket = contents.tickets[index].clone();
@@ -754,7 +655,7 @@ impl Board {
             if let Edit::Set(new_status) = fields.status
                 && ticket.status != new_status
             {
-                ticket.set_status(new_status, timestamp::unix_now());
+                ticket.set_status(new_status, unix_now());
                 changed = true;
             }
             if let Some(new_assignee) = &new_assignee
@@ -794,25 +695,6 @@ impl Board {
                 ..SetFields::default()
             },
         )
-    }
-
-    /// The promotion's link write: point a ticket at the note that was just
-    /// written, **refusing a ticket that acquired a link since the promotion's own
-    /// read**. The Swift promotion re-checks inside its transaction
-    /// (`TicketToNote.swift:59-68`) because the note and the link are two writes
-    /// with a store write between them: another face may have linked the ticket in
-    /// that window, and that note is the human's prose now.
-    pub(crate) fn link_from_note(&self, handle: &str, path: &str) -> Result<Ticket, DomainError> {
-        self.mutate(|contents| {
-            let index = contents.require_ticket(handle)?.1;
-            if let Some(existing) = &contents.tickets[index].link {
-                return Err(DomainError::AlreadyLinked {
-                    path: existing.clone(),
-                });
-            }
-            contents.tickets[index].link = Some(path.to_string());
-            Ok((contents.tickets[index].clone(), true))
-        })
     }
 
     /// `set_link(id, to)`: point a ticket at a bikeshed note, or clear the link.
@@ -972,7 +854,7 @@ impl Board {
         }
         let comment = Comment {
             author: author.trim().to_string(),
-            at: timestamp::unix_now(),
+            at: unix_now(),
             body: text.to_string(),
         };
         let handle = handle.to_string();
@@ -1005,7 +887,7 @@ impl Board {
                 &record.author,
                 NewComment {
                     ticket_id: &ticket_id,
-                    at: &timestamp::encode(record.at),
+                    at: &encode(record.at),
                     body: &record.body,
                 },
             )
@@ -1036,9 +918,7 @@ impl Board {
     /// The board as one value, with the refs and the edges made true.
     fn load(&self) -> Result<Contents, DomainError> {
         let rows = self.store.board_rows()?.unwrap_or_default();
-        let mut contents = Contents::from_rows(&rows)?;
-        contents.set_finished_key(&self.finished_key()?);
-        Ok(contents)
+        Contents::from_rows(&rows)
     }
 
     /// One transaction: read the board **inside** it, let `body` change it, and
@@ -1057,7 +937,6 @@ impl Board {
         &self,
         body: impl FnOnce(&mut Contents) -> Result<(T, bool), DomainError>,
     ) -> Result<T, DomainError> {
-        let finished_key = self.finished_key()?;
         let refused: std::cell::RefCell<Option<DomainError>> = std::cell::RefCell::new(None);
         let outcome = self.store.write(&self.actor, |write| {
             let before = write.board_rows()?;
@@ -1070,7 +949,6 @@ impl Board {
                     ));
                 }
             };
-            contents.set_finished_key(&finished_key);
             let (value, changed) = match body(&mut contents) {
                 Ok(step) => step,
                 Err(error) => {
@@ -1101,7 +979,7 @@ fn map_store_error(error: crate::store::StoreError) -> DomainError {
 /// One comment row as the domain reads it: its stamp decoded or the row named
 /// as unreadable. The read path and the snapshot path share this conversion.
 fn comment_from_row(row: crate::store::board_rows::CommentRow) -> Result<Comment, DomainError> {
-    let at = timestamp::decode(&row.at).ok_or_else(|| {
+    let at = decode(&row.at).ok_or_else(|| {
         DomainError::Io(format!(
             "a comment row carries an unreadable timestamp \"{}\"",
             row.at
@@ -1294,70 +1172,4 @@ pub fn normalize_origin(raw: Option<&str>) -> String {
     } else {
         name.to_string()
     }
-}
-
-/// The ticket title a piece of note text makes: the **first non-blank line**,
-/// trimmed, with a leading task-list marker removed.
-pub fn ticket_title(text: &str) -> String {
-    for line in text.split('\n') {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        return stripping_task_marker(trimmed);
-    }
-    String::new()
-}
-
-/// The task-list marker at the start of a line, removed: `- [ ] `, `* [x] `,
-/// `1. [ ] ` (any bullet, any indentation). A checkbox line's *text* is the
-/// ticket's title; the syntax is the note's business.
-pub fn stripping_task_marker(line: &str) -> String {
-    let mut rest = line.trim_start();
-    let bullet = rest.chars().next();
-    match bullet {
-        Some('-') | Some('*') | Some('+') => {
-            rest = &rest[1..];
-        }
-        Some(character) if character.is_ascii_digit() => {
-            let digits = rest
-                .char_indices()
-                .find(|(_, character)| !character.is_ascii_digit())
-                .map(|(index, _)| index)
-                .unwrap_or(rest.len());
-            rest = &rest[digits..];
-            match rest.chars().next() {
-                Some('.') | Some(')') => rest = &rest[1..],
-                _ => return line.to_string(),
-            }
-        }
-        _ => return line.to_string(),
-    }
-    if !(rest.starts_with(' ') || rest.starts_with('\t')) {
-        return line.to_string();
-    }
-    rest = rest.trim_start();
-    let Some(marker) = rest.strip_prefix('[') else {
-        return line.to_string();
-    };
-    let mut characters = marker.chars();
-    match characters.next() {
-        Some(' ') | Some('x') | Some('X') => {}
-        _ => return line.to_string(),
-    }
-    let Some(rest) = characters.as_str().strip_prefix(']') else {
-        return line.to_string();
-    };
-    rest.trim().to_string()
-}
-
-/// Whether `path` is a legal bikeshed-root-relative path: not absolute, and no
-/// empty, `.` or `..` component (ADR 0008's rule, without a root to resolve it
-/// under).
-pub fn is_note_link_path(path: &str) -> bool {
-    if path.is_empty() || path.starts_with('/') {
-        return false;
-    }
-    path.split('/')
-        .all(|component| !component.is_empty() && component != "." && component != "..")
 }

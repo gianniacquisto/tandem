@@ -112,6 +112,12 @@ impl MarkdownInline {
             link: None,
         }
     }
+
+    /// Whether the run carries one style: the template's one question, so a
+    /// servery can wrap a run without naming the set.
+    pub fn has(&self, style: InlineStyle) -> bool {
+        self.styles.contains(&style)
+    }
 }
 
 /// The inline markers a run can carry. They are styles, never characters: `**x**`

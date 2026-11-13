@@ -4,31 +4,21 @@
 //! These are the claims the pipe test cannot isolate:
 //!
 //! - `initialize` negotiates the protocol version instead of assuming it;
-//! - `tools/list` names the 48 tools with object-rooted schemas;
+//! - `tools/list` names every tool with an object-rooted schema;
 //! - `tools/call` drives the whole ticket loop through the `rpc` door, and a
 //!   domain refusal is a result with `isError`, not a JSON-RPC error;
-//! - `session.end` reads the harness by default and stamps without usage when
-//!   the harness has no row, never failing;
 //! - a frame the door cannot route is a JSON-RPC error and never a panic.
 
 mod support;
 
 use serde_json::{Value, json};
 use support::Sandbox;
+use tandem_core::env::Environment;
 use tandem_core::mcp;
 use tandem_core::store::Actor;
 
-fn environment() -> tandem_core::setup::Environment {
-    tandem_core::setup::Environment::new()
-}
-
-fn environment_with_bundle(bundle: &std::path::Path) -> tandem_core::setup::Environment {
-    let mut environment = tandem_core::setup::Environment::new();
-    environment.insert(
-        "TANDEM_AGENT_BUNDLE".to_string(),
-        bundle.to_string_lossy().into_owned(),
-    );
-    environment
+fn environment() -> Environment {
+    Environment::new()
 }
 
 fn call(store: &tandem_core::store::Store, frame: &str) -> Option<Value> {
@@ -49,180 +39,6 @@ fn tool_call(id: i64, name: &str, arguments: Value) -> String {
         "tools/call",
         json!({"name": name, "arguments": arguments}),
     )
-}
-
-fn tool_call_meta(id: i64, name: &str, arguments: Value, harness_session: &str) -> String {
-    request(
-        json!(id),
-        "tools/call",
-        json!({
-            "name": name,
-            "arguments": arguments,
-            "_meta": {"ai.opencode/sessionID": harness_session},
-        }),
-    )
-}
-
-#[test]
-fn session_verbs_resolve_the_harness_session_from_the_call_meta() {
-    let sandbox = Sandbox::new("mcp-harness-meta");
-    let store = sandbox.store();
-
-    let added: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(1, "ticket_add", json!({"title": "Carried"})),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    let ticket = added["ticket"]["id"].as_str().expect("an id").to_string();
-
-    let started: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(
-                2,
-                "session_start",
-                json!({"project": "tandem", "agent": "builder", "brief": "A pass.", "harnessSession": "ses_meta_link"}),
-            ),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    let record = started["session"]["id"]
-        .as_str()
-        .expect("an id")
-        .to_string();
-    assert_eq!(
-        started["session"]["harnessSessionId"], "ses_meta_link",
-        "the record carries the harness pointer: {started}"
-    );
-
-    let linked: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call_meta(
-                3,
-                "session_link",
-                json!({"ticket": ticket}),
-                "ses_meta_link",
-            ),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    assert_eq!(
-        linked["session"]["id"], record,
-        "no session param still links the caller's record: {linked}"
-    );
-
-    let shown: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call_meta(4, "session_show", json!({}), "ses_meta_link"),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    assert_eq!(
-        shown["session"]["id"], record,
-        "no session param still shows the caller's record: {shown}"
-    );
-}
-
-#[test]
-fn sprint_open_records_the_harness_session_from_the_call_meta() {
-    let sandbox = Sandbox::new("mcp-sprint-meta");
-    let store = sandbox.store();
-
-    let started: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(
-                1,
-                "session_start",
-                json!({"project": "tandem", "agent": "builder", "brief": "A pass.", "harnessSession": "ses_meta_sprint"}),
-            ),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    let record = started["session"]["id"]
-        .as_str()
-        .expect("an id")
-        .to_string();
-
-    let opened: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call_meta(
-                2,
-                "sprint_open",
-                json!({"lane": "Tandem", "mode": "serial"}),
-                "ses_meta_sprint",
-            ),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    assert_eq!(
-        opened["sprint"]["session"], record,
-        "no session param still records the opener's record, not the pointer and not null: {opened}"
-    );
-
-    let refused = call(
-        &store,
-        &tool_call(
-            3,
-            "sprint_open",
-            json!({"lane": "Tandem", "session": "no-such-record"}),
-        ),
-    )
-    .expect("the call answers");
-    assert_eq!(
-        refused["result"]["isError"], true,
-        "an unknown session is refused, not recorded: {refused}"
-    );
-}
-
-#[test]
-fn the_call_meta_beats_a_stale_process_environment() {
-    let sandbox = Sandbox::new("mcp-meta-precedence");
-    let store = sandbox.store();
-
-    for (id, harness) in [(4, "ses_stale_env"), (5, "ses_fresh_call")] {
-        let _ = tool_text(
-            &call(
-                &store,
-                &tool_call(
-                    id,
-                    "session_start",
-                    json!({"project": "tandem", "brief": "A pass.", "harnessSession": harness}),
-                ),
-            )
-            .expect("the call answers"),
-        );
-    }
-
-    let mut stale = tandem_core::setup::Environment::new();
-    stale.insert(
-        "OPENCODE_SESSION_ID".to_string(),
-        "ses_stale_env".to_string(),
-    );
-    let answer = mcp::handle_mcp(
-        &tool_call_meta(6, "session_show", json!({}), "ses_fresh_call"),
-        &store,
-        &Actor::Human,
-        &stale,
-    )
-    .expect("the call answers");
-    let answer: Value = serde_json::from_str(&answer).expect("the answer is JSON");
-    let shown: Value = serde_json::from_str(&tool_text(&answer)).expect("the tool result is JSON");
-    assert_eq!(
-        shown["session"]["harnessSessionId"], "ses_fresh_call",
-        "the caller's pointer beats the server's spawn environment: {shown}"
-    );
 }
 
 fn tool_text(answer: &Value) -> String {
@@ -318,77 +134,31 @@ fn initialize_carries_a_small_health_block() {
         "the health block names the version: {health}"
     );
     assert_eq!(
-        health["tools"], 48,
+        health["tools"], 28,
         "the health block names the tool count: {health}"
     );
 }
 
 #[test]
-fn session_start_carries_a_small_health_block() {
-    let sandbox = Sandbox::new("mcp-session-start-health");
-    let store = sandbox.store();
-
-    let started = call(
-        &store,
-        &tool_call(
-            1,
-            "session_start",
-            json!({"project": "tandem", "agent": "builder", "brief": "A pass."}),
-        ),
-    )
-    .expect("session_start answers");
-    let result: Value =
-        serde_json::from_str(&tool_text(&started)).expect("the tool result is JSON");
-    let health = &result["health"];
-    assert!(
-        health.is_object(),
-        "session_start carries a health block beside the session: {result}"
-    );
-    assert_eq!(
-        health["tools"], 48,
-        "the health block names the tool count: {health}"
-    );
-}
-
-#[test]
-fn initialize_reports_the_bundled_release_version_with_crate_fallback() {
+fn initialize_reports_the_release_version_or_the_crate_version() {
     let sandbox = Sandbox::new("mcp-release-version");
     let store = sandbox.store();
 
-    let bundle = sandbox.root().join("bundle");
-    std::fs::create_dir_all(&bundle).expect("the bundle is creatable");
-    std::fs::write(bundle.join("VERSION"), "1.6.0\n").expect("VERSION is writable");
-    let bundled_env = environment_with_bundle(&bundle);
-    let answered = mcp::handle_mcp(
-        &request(
-            serde_json::json!(1),
-            "initialize",
-            serde_json::json!({"protocolVersion": "2025-11-25"}),
-        ),
-        &store,
-        &Actor::Human,
-        &bundled_env,
-    )
-    .expect("initialize answers");
-    let answered: Value = serde_json::from_str(&answered).expect("the answer is JSON");
-    assert_eq!(
-        answered["result"]["serverInfo"]["version"], "1.6.0",
-        "the bundled VERSION marker is the release version"
-    );
-
-    let fallback = call(
+    let answered = call(
         &store,
         &request(
-            json!(2),
+            json!(1),
             "initialize",
             json!({"protocolVersion": "2025-11-25"}),
         ),
     )
     .expect("initialize answers");
+    // A dev build carries no `TANDEM_VERSION` stamp, so the crate version is
+    // the answer (ADR 0045 retired the bundled `VERSION` marker).
     assert_eq!(
-        fallback["result"]["serverInfo"]["version"],
+        answered["result"]["serverInfo"]["version"],
         env!("CARGO_PKG_VERSION"),
-        "no marker is the crate version"
+        "no stamp is the crate version"
     );
 }
 
@@ -414,7 +184,7 @@ fn a_notification_is_answered_with_silence() {
 }
 
 #[test]
-fn tools_list_names_the_48_tools_with_object_schemas() {
+fn tools_list_names_the_28_tools_with_object_schemas() {
     let sandbox = Sandbox::new("mcp-tools-list");
     let store = sandbox.store();
 
@@ -422,8 +192,18 @@ fn tools_list_names_the_48_tools_with_object_schemas() {
     let tools = listed["result"]["tools"]
         .as_array()
         .expect("tools is an array");
-    assert_eq!(tools.len(), 48);
+    assert_eq!(tools.len(), 28);
     for tool in tools {
+        let name = tool["name"].as_str().unwrap_or("");
+        assert!(
+            !name.starts_with("sprint_")
+                && !name.starts_with("workflow_run_")
+                && !name.starts_with("workflow_")
+                && !name.starts_with("settings_")
+                && name != "ticket_file"
+                && name != "note_capture",
+            "the retired tickets and workflow surfaces are gone: {name}"
+        );
         assert!(
             !tool["name"].as_str().unwrap_or("").is_empty(),
             "every tool is named: {tool}"
@@ -570,66 +350,8 @@ fn a_frame_that_is_not_a_request_answers_a_parse_error() {
 }
 
 #[test]
-fn session_end_reads_the_harness_by_default_and_stamps_without_it() {
-    let sandbox = Sandbox::new("mcp-session-harness");
-    let store = sandbox.store();
-
-    let started: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(
-                1,
-                "session_start",
-                json!({"project": "tandem", "agent": "builder", "brief": "A pass."}),
-            ),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    let id = started["session"]["id"]
-        .as_str()
-        .expect("an id")
-        .to_string();
-
-    let linked = call(
-        &store,
-        &tool_call(2, "session_link", json!({"ticket": id, "session": id})),
-    )
-    .expect("the call answers");
-    assert!(
-        linked["result"]["isError"] == true,
-        "a ticket that does not exist is a tool error: {linked}"
-    );
-
-    let ended: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(
-                3,
-                "session_end",
-                json!({"session": id, "outcome": "succeeded"}),
-            ),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    assert_eq!(ended["session"]["status"], "ended");
-    assert!(
-        ended["session"].get("tokens").is_none(),
-        "no harness row is no usage, not invented zeros: {ended}"
-    );
-    assert!(
-        ended["note"]
-            .as_str()
-            .unwrap_or("")
-            .contains("without usage"),
-        "the stamp says the harness had nothing: {ended}"
-    );
-}
-
-#[test]
-fn tools_call_drives_the_sprint_record_and_a_capture() {
-    let sandbox = Sandbox::new("mcp-sprint");
+fn tools_call_drives_a_ticket_and_the_note_tools() {
+    let sandbox = Sandbox::new("mcp-notes");
     let store = sandbox.store();
 
     let added: Value = serde_json::from_str(&tool_text(
@@ -640,195 +362,81 @@ fn tools_call_drives_the_sprint_record_and_a_capture() {
         .expect("the call answers"),
     ))
     .expect("the tool result is JSON");
-    let ticket = added["ticket"]["id"].as_str().expect("an id").to_string();
+    assert_eq!(added["ticket"]["title"], "Batch");
 
-    let started: Value = serde_json::from_str(&tool_text(
+    let written: Value = serde_json::from_str(&tool_text(
         &call(
             &store,
             &tool_call(
-                2,
-                "session_start",
-                json!({"project": "tandem", "brief": "A pass."}),
+                7,
+                "note_write",
+                json!({"path": "notes/Index.md", "text": "# Index\n\n[[Daily]]"}),
             ),
         )
         .expect("the call answers"),
     ))
     .expect("the tool result is JSON");
-    let session = started["session"]["id"]
-        .as_str()
-        .expect("an id")
-        .to_string();
-
-    let opened: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(
-                3,
-                "sprint_open",
-                json!({"lane": "Tandem", "session": session}),
-            ),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    assert_eq!(opened["sprint"]["lane"], "Tandem");
-    assert_eq!(opened["sprint"]["status"], "open");
-
-    let drawn: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(
-                4,
-                "sprint_ticket",
-                json!({"lane": "Tandem", "ticket": ticket}),
-            ),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    assert_eq!(drawn["sprint"]["batch"], json!([ticket]));
-
-    let ran: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(
-                5,
-                "sprint_run",
-                json!({"lane": "Tandem", "note": "First entry."}),
-            ),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    assert!(
-        ran["sprint"]["runs"].as_array().expect("runs").len() == 1,
-        "the entry lands on the run log: {ran}"
+    assert_eq!(
+        written["write"]["path"], "notes/Index.md",
+        "the write answers its path: {written}"
     );
 
-    let shown: Value = serde_json::from_str(&tool_text(
+    let read: Value = serde_json::from_str(&tool_text(
         &call(
             &store,
-            &tool_call(6, "sprint_show", json!({"lane": "Tandem"})),
+            &tool_call(8, "note_read", json!({"path": "notes/Index.md"})),
         )
         .expect("the call answers"),
     ))
     .expect("the tool result is JSON");
-    assert_eq!(shown["sprint"]["batch"], json!([ticket]));
+    assert_eq!(read["note"]["text"], "# Index\n\n[[Daily]]");
 
-    let listed: Value = serde_json::from_str(&tool_text(
+    let tree: Value = serde_json::from_str(&tool_text(
+        &call(&store, &tool_call(9, "note_tree", json!({}))).expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(tree["nodes"][0]["path"], "notes");
+
+    let created: Value = serde_json::from_str(&tool_text(
         &call(
             &store,
-            &tool_call(7, "sprint_list", json!({"lane": "Tandem"})),
+            &tool_call(10, "note_create", json!({"path": "notes/Daily.md"})),
         )
         .expect("the call answers"),
     ))
     .expect("the tool result is JSON");
-    assert_eq!(listed["sprints"].as_array().expect("sprints").len(), 1);
+    assert_eq!(created["path"], "notes/Daily.md");
 
-    let captured: Value = serde_json::from_str(&tool_text(
+    let folder: Value = serde_json::from_str(&tool_text(
+        &call(
+            &store,
+            &tool_call(11, "note_create_folder", json!({"path": "archive"})),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(folder["path"], "archive");
+
+    let moved: Value = serde_json::from_str(&tool_text(
         &call(
             &store,
             &tool_call(
-                8,
-                "note_capture",
-                json!({"kind": "fact", "project": "tandem", "session": session, "body": "The door works."}),
+                12,
+                "note_move",
+                json!({"path": "notes/Daily.md", "into": "archive"}),
             ),
         )
         .expect("the call answers"),
     ))
     .expect("the tool result is JSON");
-    assert!(
-        captured["path"].as_str().expect("a path").ends_with(".md"),
-        "the capture files a note: {captured}"
-    );
+    assert_eq!(moved["moved"]["path"], "archive/Daily.md");
 
-    let closed: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(
-                9,
-                "sprint_close",
-                json!({"lane": "Tandem", "note": "Landed."}),
-            ),
-        )
-        .expect("the call answers"),
+    let health: Value = serde_json::from_str(&tool_text(
+        &call(&store, &tool_call(13, "note_health", json!({}))).expect("the call answers"),
     ))
     .expect("the tool result is JSON");
-    assert_eq!(closed["sprint"]["status"], "closed");
-}
-
-#[test]
-fn session_end_with_explicit_usage_stores_it_and_writes_no_comment() {
-    let sandbox = Sandbox::new("mcp-session-usage");
-    let store = sandbox.store();
-
-    let added: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(1, "ticket_add", json!({"title": "Carried"})),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    let ticket = added["ticket"]["id"].as_str().expect("an id").to_string();
-
-    let started: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(
-                2,
-                "session_start",
-                json!({"project": "tandem", "brief": "A pass."}),
-            ),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    let id = started["session"]["id"]
-        .as_str()
-        .expect("an id")
-        .to_string();
-
-    let _ = tool_text(
-        &call(
-            &store,
-            &tool_call(3, "session_link", json!({"ticket": ticket, "session": id})),
-        )
-        .expect("the call answers"),
-    );
-
-    let ended: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(
-                4,
-                "session_end",
-                json!({"session": id, "outcome": "succeeded", "summary": "Done.", "usageFromHarness": false, "tokensInput": 10, "tokensOutput": 5, "model": "probe"}),
-            ),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    assert_eq!(ended["session"]["tokens"]["input"], 10);
-    assert_eq!(ended["session"]["model"], "probe");
-    assert!(
-        ended.get("note").is_none(),
-        "explicit usage needs no harness note: {ended}"
-    );
-
-    let comments: Value = serde_json::from_str(&tool_text(
-        &call(
-            &store,
-            &tool_call(5, "ticket_comment_list", json!({"id": ticket})),
-        )
-        .expect("the call answers"),
-    ))
-    .expect("the tool result is JSON");
-    assert!(
-        comments["comments"]
-            .as_array()
-            .expect("comments")
-            .is_empty(),
-        "the stamp writes no comment: usage is the record's (TAN-323)"
+    assert_eq!(
+        health["health"]["counts"]["notes"], 2,
+        "the health read walks the same vault: {health}"
     );
 }

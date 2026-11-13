@@ -14,8 +14,8 @@
 
 use rusqlite::params;
 
-use super::rows::{NewLane, NewProject, NewTicket};
 use super::schema::{has_column, has_table};
+use super::write::{NewLane, NewProject, NewTicket};
 use super::{Result, Store, Write, translate};
 
 /// One lane row: its name (the key the board groups by), its ref prefix, the last
@@ -380,7 +380,7 @@ impl Write<'_> {
         }
         for new in &after.edges {
             if !before.edges.contains(new) {
-                self.insert_dependency(super::rows::NewDependency {
+                self.insert_dependency(super::write::NewDependency {
                     ticket_id: &new.ticket_id,
                     depends_on_id: &new.depends_on_id,
                 })?;

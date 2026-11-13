@@ -10,8 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use tandem_core::domain::{
-    AddTicket, Board, CommentRead, CompletionUndo, DomainError, Edit, Filter, SetFields, Status,
-    TicketBoard,
+    AddTicket, Board, CommentRead, DomainError, Edit, Filter, SetFields, Status, TicketBoard,
 };
 use tandem_core::store::{Actor, Home, Store};
 
@@ -83,13 +82,11 @@ fn the_board_lives_a_whole_life_against_the_fixture_home() {
     // Re-referenced: the ref resolves wherever an id is accepted.
     assert_eq!(board.ticket("prt-1").unwrap().id, ticket.id);
 
-    // Completed and un-completed, through the undo a completion raises.
+    // Completed and re-opened, through the same door a completion crosses.
     let done = board.complete("PRT-1").unwrap();
     assert!(done.done());
     assert!(done.completed_at.is_some());
-    let undone = board
-        .undo(&CompletionUndo::new(ticket.id, ticket.title.clone(), 1_000))
-        .unwrap();
+    let undone = board.reopen(&ticket.id.to_string()).unwrap();
     assert_eq!(undone.status, Status::Backlog);
     assert!(undone.completed_at.is_none());
 

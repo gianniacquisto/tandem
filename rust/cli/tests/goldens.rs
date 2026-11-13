@@ -481,7 +481,7 @@ impl Sandbox {
             environment.insert(key.clone(), value);
         }
         // A null value means the case runs with the variable absent, which is a
-        // shape of its own (`session start` without a session id).
+        // shape of its own.
         for (key, value) in case["env"].as_object().into_iter().flatten() {
             match value {
                 Value::Null => {

@@ -1,0 +1,246 @@
+<div class="sheet-backdrop" data-sheet>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="{{ handle }}" tabindex="-1">
+    <header class="sheet__header">
+      <span class="sheet__handle">{{ handle }}</span>
+      <span class="sheet__origin">{% if origin == "human" %}you filed{% else %}@{{ origin }} filed{% endif %}</span>
+      {% if let Some(link) = link %}
+      <span class="sheet__link" title="{{ link }}">{{ link }}</span>
+      {% endif %}
+      <a class="sheet__close" aria-label="Close the ticket" href="/board?{{ board_query }}">×</a>
+    </header>
+
+    {% if let Some(notice) = notice %}
+    <div class="sheet__notice" role="alert">
+      <span>{{ notice }}</span>
+      <a class="sheet__dismiss" href="/tickets/{{ id }}?{{ board_query }}">Dismiss</a>
+    </div>
+    {% endif %}
+
+    <div class="sheet__body">
+      <form id="sheet-save" method="post" action="/tickets/{{ id }}"
+            hx-post="/tickets/{{ id }}" hx-target="#board-root" hx-swap="outerHTML">
+        <input type="hidden" name="board_project" value="{{ filters.project }}">
+        <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+        <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+        <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+        <input type="hidden" name="board_text" value="{{ filters.text }}">
+      </form>
+
+      <div class="sheet__sticky">
+        <div class="sheet__title-row">
+          <input class="sheet__title" form="sheet-save" name="title" aria-label="Title"
+                 value="{{ title }}" required>
+          <input type="hidden" form="sheet-save" name="expected_revision" value="{{ revision }}">
+          <button class="sheet__save" form="sheet-save" type="submit">Save</button>
+        </div>
+
+        <div class="sheet__meta" role="group" aria-label="Ticket metadata">
+          <label class="sheet__meta-field">
+            <span class="sheet__meta-label">
+              <span class="sheet__fact-label">Status</span>
+              <span class="sheet__meta-write">saves with Save</span>
+            </span>
+            <span class="sheet__status-row">
+              <span class="sheet__status-dot" data-status="{{ status }}" aria-hidden="true"></span>
+              <select class="sheet__select" data-status="{{ status }}" form="sheet-save"
+                      name="status" aria-label="Status">
+                {% for option in status_options %}
+                <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+              </select>
+            </span>
+          </label>
+
+          <label class="sheet__meta-field">
+            <span class="sheet__meta-label">
+              <span class="sheet__fact-label">Assignee</span>
+              <span class="sheet__meta-write">saves with Save</span>
+            </span>
+            <input class="sheet__select" form="sheet-save" name="assignee" aria-label="Assignee"
+                   value="{{ assignee }}" placeholder="human or an agent name">
+          </label>
+
+          <div class="sheet__meta-field">
+            <span class="sheet__meta-label">
+              <span class="sheet__fact-label">Lane</span>
+              <span class="sheet__meta-write">moves at once</span>
+            </span>
+            <form class="sheet__lane-move" method="post" action="/tickets/{{ id }}/lane"
+                  hx-post="/tickets/{{ id }}/lane" hx-target="#board-root" hx-swap="outerHTML">
+              <input type="hidden" name="expected_revision" value="{{ revision }}">
+              <input type="hidden" name="board_project" value="{{ filters.project }}">
+              <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+              <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+              <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+              <input type="hidden" name="board_text" value="{{ filters.text }}">
+              <select class="sheet__select" name="lane" aria-label="Lane" data-sheet-lane>
+                {% for option in lane_options %}
+                <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+              </select>
+              <noscript><button class="sheet__button" type="submit">Move</button></noscript>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <section class="sheet__description" aria-label="Description">
+        <header class="sheet__section-header">
+          <h2 class="sheet__section-title">Description</h2>
+          <button type="button" class="sheet__toggle" data-sheet-toggle="description">View source</button>
+        </header>
+        <p class="sheet__note">Append-only: additions land under the stored text and never overwrite it.</p>
+
+        <div class="sheet__preview" data-sheet-preview="description">
+          {% if description_empty %}
+          <p class="sheet__empty">No description yet.</p>
+          {% else %}
+          {{ description_html }}
+          {% endif %}
+        </div>
+        <pre class="sheet__source" data-sheet-source="description" aria-label="Stored description, read-only" hidden>{{ description_source }}</pre>
+
+        <form class="sheet__addition" method="post" action="/tickets/{{ id }}/description"
+              hx-post="/tickets/{{ id }}/description" hx-target="#board-root" hx-swap="outerHTML">
+          <input type="hidden" name="expected_revision" value="{{ revision }}">
+          <input type="hidden" name="board_project" value="{{ filters.project }}">
+          <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+          <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+          <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+          <input type="hidden" name="board_text" value="{{ filters.text }}">
+          <label class="sheet__addition">
+            <span class="sheet__fact-label">Add to the description</span>
+            <textarea class="sheet__addition-field" name="addition" aria-label="Add to the description"
+                      rows="4" placeholder="Appended under the stored body, never over it."></textarea>
+          </label>
+          {% if let Some(refusal) = description_refusal %}
+          <p class="sheet__refusal" role="alert">{{ refusal }}</p>
+          {% endif %}
+          <div class="sheet__actions">
+            <button class="sheet__button" type="submit">Append</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="sheet__discussion" aria-label="Comments">
+        <h2 class="sheet__section-title">Comments</h2>
+        {% if comments.is_empty() %}
+        <p class="sheet__empty">Nothing in the log yet.</p>
+        {% else %}
+        <ul class="sheet__comments">
+          {% for comment in comments %}
+          <li class="sheet__comment">
+            <header class="sheet__comment-header">
+              <span class="sheet__comment-author">{{ comment.author }}</span>
+              <span class="sheet__comment-time">{{ comment.time }}</span>
+            </header>
+            {{ comment.html }}
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        <form class="sheet__addition" method="post" action="/tickets/{{ id }}/comments"
+              hx-post="/tickets/{{ id }}/comments" hx-target="#board-root" hx-swap="outerHTML">
+          <input type="hidden" name="board_project" value="{{ filters.project }}">
+          <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+          <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+          <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+          <input type="hidden" name="board_text" value="{{ filters.text }}">
+          <label class="sheet__addition">
+            <span class="sheet__fact-label">Add a comment</span>
+            <textarea class="sheet__addition-field" name="body" aria-label="Add a comment"
+                      rows="3" placeholder="Write a comment…"></textarea>
+          </label>
+          {% if let Some(refusal) = comment_refusal %}
+          <p class="sheet__refusal" role="alert">{{ refusal }}</p>
+          {% endif %}
+          <div class="sheet__actions">
+            <button class="sheet__button" type="submit">Post</button>
+          </div>
+        </form>
+      </section>
+
+      <details class="sheet__details" aria-label="Details">
+        <summary class="sheet__details-toggle">Details</summary>
+        <div class="sheet__details-body">
+          <section class="sheet__dependencies" aria-label="Dependencies">
+            {% if !blocked_by.is_empty() %}
+            <h2 class="sheet__section-title">Blocked by</h2>
+            <ul class="sheet__edges">
+              {% for edge in blocked_by %}
+              <li>
+                <a class="sheet__edge" href="/tickets/{{ edge.id }}?{{ board_query }}">
+                  <span class="sheet__edge-ref">{{ edge.reference }}</span>
+                  <span class="sheet__edge-title">{{ edge.title }}</span>
+                  <span class="sheet__edge-status">{{ edge.status }}</span>
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+            {% if let Some(reason) = blocked_reason %}
+            <p class="sheet__blocked-reason">{{ reason }}</p>
+            {% endif %}
+            {% if !blocks.is_empty() %}
+            <h2 class="sheet__section-title">Blocks</h2>
+            <ul class="sheet__edges">
+              {% for edge in blocks %}
+              <li>
+                <a class="sheet__edge" href="/tickets/{{ edge.id }}?{{ board_query }}">
+                  <span class="sheet__edge-ref">{{ edge.reference }}</span>
+                  <span class="sheet__edge-title">{{ edge.title }}</span>
+                  <span class="sheet__edge-status">{{ edge.status }}</span>
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+          </section>
+
+          <section class="sheet__lanes" aria-label="Lanes">
+            <header class="sheet__section-header">
+              <h2 class="sheet__section-title">Lanes</h2>
+            </header>
+            <ul class="sheet__lane-rows">
+              {% for lane in lane_rows %}
+              <li class="sheet__lane-row" data-lane="{{ lane.name }}">
+                <span class="sheet__lane-name">{{ lane.name }}</span>
+                <form class="sheet__lane-form" method="post" action="/lanes/{{ lane.encoded }}/rename"
+                      hx-post="/lanes/{{ lane.encoded }}/rename" hx-target="#board-root" hx-swap="outerHTML">
+                  <input type="hidden" name="ticket" value="{{ id }}">
+                  <input type="hidden" name="board_project" value="{{ filters.project }}">
+                  <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+                  <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+                  <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+                  <input type="hidden" name="board_text" value="{{ filters.text }}">
+                  <input class="sheet__field" name="to" aria-label="Lane name" value="{{ lane.name }}">
+                  <input class="sheet__field" name="abbr" aria-label="Lane key" placeholder="Key">
+                  <button class="sheet__button" type="submit">Rename</button>
+                </form>
+              </li>
+              {% endfor %}
+            </ul>
+
+            <form class="sheet__lane-form" method="post" action="/lanes"
+                  hx-post="/lanes" hx-target="#board-root" hx-swap="outerHTML">
+              <input type="hidden" name="ticket" value="{{ id }}">
+              <input type="hidden" name="board_project" value="{{ filters.project }}">
+              <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+              <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+              <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+              <input type="hidden" name="board_text" value="{{ filters.text }}">
+              <input class="sheet__field" name="name" aria-label="New lane name" placeholder="Cycle lane name">
+              <input class="sheet__field" name="abbr" aria-label="New lane key" placeholder="Key">
+              <button class="sheet__button" type="submit">New cycle lane</button>
+            </form>
+          </section>
+        </div>
+      </details>
+
+      <footer class="sheet__footer">
+        <span class="sheet__hint">Cmd/Ctrl+Enter saves · Cmd/Ctrl+Shift+Enter posts · Esc closes</span>
+      </footer>
+    </div>
+  </div>
+</div>
