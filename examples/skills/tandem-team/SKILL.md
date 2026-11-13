@@ -11,10 +11,9 @@ description: "The roster, which agent fills which role, what to write in `assign
 | `builder` | the `builder` subagent, one per ticket | branch, build, verify, PR | `agents/builder.md` |
 | `refiner` | the `refiner` subagent | `backlog` → `ready` (`on-hold` when parked) | `agents/refiner.md`, dispatched by `skills/tandem-refine/` |
 | `reviewer` | the `reviewer` subagent | the merge gate, read through the ticket's lenses: `code`, `security`, `ui-design`, `ux`, `architecture` | `agents/reviewer.md`, `skills/review-lenses/` |
-| `consolidator` | the `consolidator` subagent | the sole writer of the curated bikeshed notes | `agents/consolidator.md`, dispatched by `skills/tandem-consolidate/` |
-| `sprint` | the session's own agent | runs the loop — refine, build, review, retro, close | `skills/tandem-sprint/` (build phase: `skills/tandem-build/`) |
+| `sprint` | the pass's own agent | runs the loop: refine, build, review, retro, close | `skills/tandem-sprint/` (build phase: `skills/tandem-build/`) |
 
-`sprint` and `human` fill no subagent — the sprint is a procedure the session runs, the human is the decision. `retro` is not a role: it is a skill (`skills/retro/SKILL.md`) that runs at every sprint close and on human request, filing `backlog` tickets into the project's lane, and into `Retro` only when no project owns the finding. Capture is not a role either: it is the session rule in `AGENTS.md`.
+`sprint` and `human` fill no subagent: the sprint is a procedure the pass runs, the human is the decision. `retro` is not a role: it is a skill (`skills/retro/SKILL.md`) that runs at every batch close and on human request, filing `backlog` tickets into the project's lane, and into `Retro` only when no project owns the finding.
 
 ## The specialists
 
@@ -39,4 +38,4 @@ One vocabulary, two fields. The pass table's owner can be an assignee; a special
 
 ## The minutes
 
-The comment log on a ticket is the team's minutes — append-only, no edit, no delete; a correction is a new comment. The description is the brief: written once and appended to, never overwritten. Evidence a reader must act on goes in the description too; the comment is the conversation. The regular producer is the reviewer's verdict; any role that speaks on a ticket writes as itself. A pass's own handoff comment carries what landed, the outcome and next status, and any issues (`AGENTS.md`, Handoff). A sprint's run log is the record's, not a ticket's, and it is not part of the minutes.
+The comment log on a ticket is the team's minutes: append-only, no edit, no delete; a correction is a new comment. The description is the brief: written once and appended to, never overwritten. Evidence a reader must act on goes in the description too; the comment is the conversation. The regular producer is the reviewer's verdict; any role that speaks on a ticket writes as itself. A pass's own handoff comment carries what landed, the outcome and next status, and any issues (`AGENTS.md`, Handoff). The sprint keeps no separate run log: the ticket comments are the record.

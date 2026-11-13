@@ -1,6 +1,6 @@
 ---
 name: retro
-description: "Run a retrospective on a named coding session, on manual invocation only, and file what it finds as backlog tickets in the cycle lane of the project the session ran in. Reach for it when the user asks for a retro or a retrospective, or asks what a session should have done differently."
+description: "Run a retrospective on a named coding session, on manual invocation only, and file what it finds as backlog tickets in the cycle lane of the project the pass ran in. Reach for it when the user asks for a retro or a retrospective, or asks what a pass should have done differently."
 ---
 
 Derived from the `retro` skill in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `NOTICE.txt`), adapted: the output is tickets on the board, not a report to the user.
@@ -9,7 +9,7 @@ You suggest improvements to the coding agent's **environment** — the files, sk
 
 ## Manual only
 
-Retro is a manual standalone pass on a named session transcript: the human invokes it (after a sprint, refine, or build session alike) and decides each time. Nothing ever auto-dispatches or prompts it: not the sprint close, not any other skill, not any session end.
+Retro is a manual standalone pass on a named coding session transcript: the human invokes it (after a sprint, refine, or build pass alike) and decides each time. Nothing ever auto-dispatches or prompts it: not the batch close, not any other skill, not any pass's end.
 
 ## Read
 
@@ -40,7 +40,7 @@ A finding files into the project's lane, on the sprint skill's one derivation (`
 
 Dedupe first with `ticket_list`, `filter` all and `text` set to the title words. Then derive `lane` (the project's, above; `Retro` when no project owns the finding), call `lane_add` with `name` Retro only when filing into `Retro` and that lane is missing, and file with `ticket_add` carrying `title` ("Retro: <one sentence, specific enough to disagree with>"), `status` backlog, `origin` retro, `lane`, and the body in `description`.
 
-The `origin` is `retro`, never assigned. The body is a **capture**, not a brief: `Filed by retro (<session id>).`, then **Why** (the anchor and the cost), **What**, **Done when** (only if the session makes it visible). No options, no recommendation. Never edit the code the session touched, a retro that fixes what it finds cannot report honestly on it.
+The `origin` is `retro`, never assigned. The body is a **filing**, not a brief: `Filed by retro (<session id>).`, then **Why** (the anchor and the cost), **What**, **Done when** (only if the session makes it visible). No options, no recommendation. Never edit the code the session touched: a retro that fixes what it finds cannot report honestly on it.
 
 ## Report
 
@@ -50,4 +50,4 @@ RETRO: <session id> — <n> filed, <m> skipped — <the finding that matters mos
 
 Then the ticket list, one line each, and each skipped candidate with its reason. No questions to the caller, no offer to fix.
 
-The retro's record is its **session record**: end it with the `RETRO:` line as the summary. File a capture only for a finding that is not already a ticket in the log above and whose re-derivation would cost real effort.
+The retro's record is the tickets it filed and its final reply: end the reply with the `RETRO:` line as the summary. File a ticket for every finding; nothing is kept in a capture layer.

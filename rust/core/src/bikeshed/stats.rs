@@ -1,9 +1,9 @@
-//! `note stats` (`BikeshedStats.swift`): per-project memory health, the
-//! curated-note count, the hidden saddlebag's pending/archived depth and
-//! oldest-pending age, and the newest curated-note mtime, summed into totals.
+//! `note stats` (`BikeshedStats.swift`): per-project notes health, the
+//! curated-note count and the newest curated-note mtime, summed into totals.
 //!
-//! Read-only and lock-free: it reads the tree (the one command that deliberately
-//! looks inside the hidden `.raw/` layer) and writes nothing.
+//! Read-only and lock-free: it reads the visible tree and writes nothing. The
+//! capture layer that once lived under `.raw/` left the core with CUT-7, so this
+//! read has no hidden subtree to count.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,11 +13,11 @@ use serde::Serialize;
 
 use crate::domain::error::DomainResult;
 use crate::domain::operation::Operation;
-use crate::store::{decode, encode};
+use crate::store::encode;
 
 use super::{Bikeshed, sort_key};
 
-/// One project's memory health.
+/// One project's notes health.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BikeshedProjectStats {
@@ -25,17 +25,11 @@ pub struct BikeshedProjectStats {
     pub project: String,
     /// Curated notes: `.md` files under the project, hidden subtrees pruned.
     pub curated_notes: usize,
-    /// Pending captures: files under `.raw/`, excluding `.done/`.
-    pub raw_pending: usize,
-    /// Consumed captures: files under `.raw/.done/`.
-    pub raw_archived: usize,
-    /// The oldest pending capture's UTC stamp, ISO-8601, or null.
-    pub oldest_pending: Option<String>,
     /// The newest curated-note mtime, ISO-8601, or null.
     pub last_consolidated: Option<String>,
 }
 
-/// The memory-health readout for the whole vault.
+/// The notes-health readout for the whole vault.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BikeshedStats {
     /// The vault root, absolute.
@@ -50,12 +44,10 @@ pub struct BikeshedStats {
 #[serde(rename_all = "camelCase")]
 pub struct BikeshedStatsTotals {
     pub curated_notes: usize,
-    pub raw_pending: usize,
-    pub raw_archived: usize,
 }
 
 impl Bikeshed {
-    /// `stats(project)`: per-project memory health, narrowed to one folder name
+    /// `stats(project)`: per-project notes health, narrowed to one folder name
     /// when given. A missing vault, a missing `projects/`, or a name matching no
     /// folder is empty, never an error.
     pub fn stats(&self, project: Option<&str>) -> DomainResult<Operation<BikeshedStats>> {
@@ -67,8 +59,6 @@ impl Bikeshed {
             .collect();
         let totals = BikeshedStatsTotals {
             curated_notes: rows.iter().map(|row| row.curated_notes).sum(),
-            raw_pending: rows.iter().map(|row| row.raw_pending).sum(),
-            raw_archived: rows.iter().map(|row| row.raw_archived).sum(),
         };
         Ok(Operation {
             value: BikeshedStats {
@@ -113,14 +103,6 @@ impl Bikeshed {
                     .unwrap_or(false)
             })
             .collect();
-        let raw = url.join(".raw");
-        let pending = files(&raw, true, true);
-        let archived = files(&raw.join(".done"), true, false);
-
-        let oldest = pending
-            .iter()
-            .filter_map(|file| capture_timestamp(file).or_else(|| modified_seconds(file)))
-            .min();
         let last = curated
             .iter()
             .filter_map(|file| modified_seconds(file))
@@ -129,9 +111,6 @@ impl Bikeshed {
         BikeshedProjectStats {
             project: name.to_string(),
             curated_notes: curated.len(),
-            raw_pending: pending.len(),
-            raw_archived: archived.len(),
-            oldest_pending: oldest.map(encode),
             last_consolidated: last.map(encode),
         }
     }
@@ -162,22 +141,6 @@ pub(crate) fn files(under: &Path, recursive: bool, pruning_hidden: bool) -> Vec<
         }
     }
     found
-}
-
-/// A capture file's own UTC stamp, decoded from its leading `<utc>` name.
-fn capture_timestamp(file: &Path) -> Option<i64> {
-    let name = file.file_name()?.to_string_lossy();
-    let stamp = name.get(..16)?;
-    let iso = format!(
-        "{}-{}-{}T{}:{}:{}Z",
-        &stamp[0..4],
-        &stamp[4..6],
-        &stamp[6..8],
-        &stamp[9..11],
-        &stamp[11..13],
-        &stamp[13..15]
-    );
-    decode(&iso)
 }
 
 /// A file's on-disk modification time, whole seconds since the epoch.

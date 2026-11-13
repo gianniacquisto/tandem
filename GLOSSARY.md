@@ -1,6 +1,6 @@
 # Tandem
 
-A macOS ticket board shared by humans and agents on the same machine.
+A local ticket board, served by one binary, shared by humans and agents on the same machine.
 
 ## Language
 
@@ -10,28 +10,28 @@ A macOS ticket board shared by humans and agents on the same machine.
 The macOS ticket board, usable by both humans and agents on the same machine.
 _Avoid_: "the app", "the todo app"
 
-**Main window**:
-Tandem's desktop face: the full ticket list and the board for browsing, adding, and editing, beside the bikeshed.
-_Avoid_: panel, dashboard, view
+**Serve**:
+Tandem's browser face: `tandem serve` binds a loopback address and draws the board and the bikeshed as HTML. `tandem mcp` is the agent face over stdio. Both doors are the same binary, so the human's board and the agent's tools cannot drift.
+_Avoid_: main window, desktop app, renderer, shell
+
+**Installer**:
+`install.sh`, the one-line script a release publishes beside its archives and `SHA256SUMS`. It picks this machine's archive, verifies its SHA-256 against the manifest before writing anything, and installs `tandem` and its `tandem-cli` link.
+_Avoid_: package manager, bundle installer
+
+**Archive**:
+One platform's release artifact: a `tandem-<version>-darwin-arm64.tar.gz`, `tandem-<version>-linux-x86_64.tar.gz` or `tandem-<version>-windows-x86_64.zip`, each carrying the executable. A release publishes all three, `install.sh` and one `SHA256SUMS`.
+_Avoid_: app bundle, package, build
 
 **Board**:
-The main window's ticket view: Status columns across, Cycle lanes down, a ticket drawn in the cell where its Status and lane meet. A view of the same tickets, not a fourth axis — the list and the board differ in layout, never in data.
+The served ticket view: Status columns across, Cycle lanes down, a ticket drawn in the cell where its Status and lane meet. A view of the same tickets, not a fourth axis.
 _Avoid_: kanban board, swimlane view, board tab (when the view is meant)
 
-**Menu bar item**:
-Tandem's presence in the macOS menu bar (top bar): quick glance and quick action on tickets.
-_Avoid_: top bar element, status bar, tray, badge
-
-**Quick open**:
-The main window's ⌘K palette: one ranked list over the bikeshed's notes and the store's tickets — a note opens in the editor, a ticket in its sheet. The match is the store's own comparison, so the palette and the list find the same things.
-_Avoid_: command palette, launcher, fuzzy finder, spotlight
-
-**Agent face**:
-Tandem's skills, agent prompts and `AGENTS.md` as one set: shipped inside the app, installed at `<TandemHome>/agent/`, and read from there by every host. One copy, version-locked to the binary; `tandem-cli setup install` is its only writer.
+**Example face**:
+The skills and pass prompts under `examples/`, kept for this repository's own workflow. They are read from a checkout or copied by hand, not installed into a Tandem home; the cut retired the bundled face and the install verb ([ADR 0045](docs/adr/0045-the-board-and-notes-cut.md)).
 _Avoid_: prompt pack, agent assets, skill bundle
 
 **Host**:
-A program that reads the agent face: OpenCode, Claude Code, or any agent that loads skills and prompts from a directory. Each host has its own paths, and `tandem-cli setup install --host` names the ones to wire.
+A program that reads skills and prompts from a directory: OpenCode, Claude Code, or any agent that loads them. A host points at `examples/` or at a copy of it.
 _Avoid_: client, harness, runtime
 
 ### The domain
@@ -39,14 +39,6 @@ _Avoid_: client, harness, runtime
 **Ticket**:
 The only entity in the domain — the word the store, the CLI and the board use for it. "Todo" was the word until ADR 0030; it survives only as the CLI's deprecated alias, retired with the old wire keys.
 _Avoid_: task, item, to-do (hyphenated), todo (the old word), card, issue, story
-
-**Session**:
-A record of one agent session — its brief, its outcome, and the tickets and notes it carried — a row of the store's `sessions` table with its own two states (`running`, `ended`); the CLI's five verbs are `session start/link/end/list/show`. Not a ticket, and not on the board. Its record is a fact, not a log: created once, stamped once, linked to.
-_Avoid_: session log, journal
-
-**Sprint**:
-A record of one sprint — its lane, batch, run log and close — with its own two states (`open`, `closed`), stored in the store's `sprints` table and identified by the pair (lane, number). Its six verbs are `sprint open/ticket/run/close/list/show`. Not a ticket, and not on the board. The batch write links each ticket to the sprint's opening session.
-_Avoid_: sprint ticket
 
 **Open**:
 A ticket that has not yet been completed.
@@ -57,11 +49,11 @@ A ticket sitting in the active workflow's finished stage. The default `agile` wo
 _Avoid_: closed, finished (as a second flag), complete (as a noun)
 
 **Status**:
-A ticket's position in the workflow: the key of one of the active workflow's ordered stages. The default `agile` workflow's seven stages are `backlog` (intake), `on-hold` (parked), `selected` (intake), `ready`, `in-progress`, `in-review` and `done` (finished); `workflow set` writes others. The set is data, not code, so a custom stage appears without a build and an unknown stored key from an older build reads as `backlog`.
+A ticket's position in the workflow: the key of one of the six fixed stages. They are `backlog` (intake), `on-hold` (parked), `ready`, `in-progress`, `in-review` and `done` (finished); a key from an older build's workflow data reads as `backlog`.
 _Avoid_: state, step, column
 
 **Stage**:
-One entry in a workflow's ordered list: a stable key, an editable label, a role (`intake`, `parked`, `ready`, `active`, `review` or `finished`) and an optional binding to a roster role and one of the three passes. A ticket's Status is a stage's key; the board's columns, the list's status filter and the sheet's status menu all draw the active workflow's stages.
+One of the six fixed steps a ticket moves through: `backlog`, `on-hold`, `ready`, `in-progress`, `in-review` or `done`. A ticket's Status is a stage's key; the board's columns and the sheet's status menu draw the same six.
 _Avoid_: status (when the entry is meant), column (that is the board's drawing of a stage)
 
 **Archived**:
@@ -89,7 +81,7 @@ Which tickets are in view: `open` (the default), `done`, or `all`. One term for 
 _Avoid_: view, tab, scope, state
 
 **Store**:
-Tandem's single source of truth for every domain it keeps — tickets and lanes, comments, sessions, sprints, settings — one SQLite database at `<home>/tandem.db`, read and written by the app and by every `tandem-cli` invocation. All reads and writes go through it; no other copy is authoritative, and there is no second file to fall out of step. Its shape changes only by a **schema migration**; its move off the JSON files is recorded by an **import marker**; beside it sits its **rolling backup**, `tandem.db.bak` — the one previous complete generation, which a human restores and nothing reads (ADR 0018, ADR 0031).
+Tandem's single source of truth for the work it keeps: tickets, their dependency edges, comments, lanes, projects and the store's own metadata, one SQLite database at `<home>/tandem.db`, read and written by `tandem serve`, `tandem mcp` and every `tandem-cli` invocation. All reads and writes go through it; no other copy is authoritative. Its shape changes only by a **schema migration**; its move off the JSON files is recorded by an **import marker**; beside it sits its **rolling backup**, `tandem.db.bak` — the one previous complete generation, which a human restores and nothing reads (ADR 0018, ADR 0031).
 _Avoid_: store file, JSON store, hand edits, backend, sync, cache (the JSON store and its sidecars are history: ADR 0001, and ADR 0031's amendments)
 
 **Schema migration**:
@@ -118,26 +110,6 @@ _Avoid_: document, entry, page
 Changing where a note or a folder sits in the bikeshed — the name stays, the path changes. A move made in the app rewrites the wikilinks that resolve to every note that moved with it, so the references travel with the files. Distinct from a rename, which changes the name itself.
 _Avoid_: mv, relocate, drag (the gesture, not the operation)
 
-**Memory note**:
-A note created by a memory session recording the highlights of work — where the work left off, decisions with one-line rationale, learnings and gotchas, expensive-to-derive facts — written for the next agent session as reader.
-_Avoid_: session log, journal, scratch note
-
-**Consolidator**:
-The role that performs a consolidation pass: the agent that is the sole writer of the curated notes (`Index.md` and the notes under `projects/**`). It folds the pending captures in and archives them — it never writes a capture, and no other agent writes the curated layer.
-_Avoid_: memory agent, curator, synthesizer, cleaner
-
-**Human note**:
-A note a person wrote, rather than an agent memory session. Indistinguishable from a memory note on disk (no author field), so its authority is judged by content: human prose is context, not state of record; only a memory note's _Where left off_/decisions carry current-state authority.
-_Avoid_: user note, personal note
-
-**Anchor note**:
-A project's note: the orientation surface for that project, Where left off at the top. A project's memory starts as a single anchor; it becomes a folder when a second note is earned.
-_Avoid_: project page, home note, project index
-
-**Hub**:
-The bikeshed's entry point: the note a new session opens first to find the project it needs. Exactly one, at the bikeshed root (`Index.md`); pointers and one-line status, never detail. Its wikilinks are the **spokes** that reach the project notes.
-_Avoid_: orientation note, dashboard, home page, table of contents
-
 **Wikilink**:
 An in-note reference to another note, written `[[target]]` with an optional `#fragment` and `|alias`, resolved live by case-insensitive name against the bikeshed; a wikilink that resolves to no note is a broken link.
 _Avoid_: internal link, embed
@@ -147,7 +119,7 @@ A note that contains a wikilink resolving to a given note; the open note's backl
 _Avoid_: inbound link, references, mentions
 
 **Spokes**:
-The wikilinks a note sends out, seen as its connections to the rest of the bikeshed; the Hub's spokes are how the entry point reaches the project notes. Every note is a small hub with its own spokes.
+The wikilinks a note sends out, seen as its connections to the rest of the bikeshed. Every note is a small hub with its own spokes.
 _Avoid_: links (too broad), connections
 
 **Attachment**:
@@ -157,11 +129,11 @@ _Avoid_: asset, media file, resource
 ### The users
 
 **Human**:
-A person using Tandem through the main window or menu bar item.
+A person using Tandem through the board in a browser.
 _Avoid_: user (ambiguous with the OS account), client, owner
 
 **Agent**:
-A local AI coding agent (e.g. OpenCode, Claude Code) running as the same OS user on the same Mac, interacting with Tandem through the CLI.
+A local AI coding agent (e.g. OpenCode, Claude Code) running as the same OS user on the same machine, interacting with Tandem through `tandem mcp` or the CLI.
 _Avoid_: bot, client, automation, user
 
 **Reviewer**:
@@ -177,13 +149,13 @@ A named reader that owns one lens: `architect` owns `architecture`, `security` o
 _Avoid_: sub-reviewer, lens agent, second reviewer
 
 **Retro**:
-The role that reads one session and files what it finds as backlog tickets — the tickets are the output, the report is a receipt. It runs at every sprint close, on the sprint session's own transcript, and is still invocable alone on a session the human names. It never fixes what it finds, because a retro that changes the work cannot report on it honestly.
-_Avoid_: retrospective agent, postmortem, session analyst
+The role that reads one pass and files what it finds as backlog tickets — the tickets are the output, the report is a receipt. It runs at every batch close, on the pass's own transcript, and is still invocable alone on a pass the human names. It never fixes what it finds, because a retro that changes the work cannot report on it honestly.
+_Avoid_: retrospective agent, postmortem, transcript analyst
 
 **Refiner**:
-The role that turns a backlog ticket into a brief a builder can take: it grills the decision tree, writes the spec, and splits an effort too big for one session into tickets that each fit one session. It chooses the lens owners from the brief's surface and dispatches a specialist only when the lens has a target. It owns no code and no design of its own — the ticket is the whole output.
+The role that turns a backlog ticket into a brief a builder can take: it grills the decision tree, writes the spec, and splits an effort too big for one pass into tickets that each fit one pass. It chooses the lens owners from the brief's surface and dispatches a specialist only when the lens has a target. It owns no code and no design of its own — the ticket is the whole output.
 _Avoid_: spec writer, planner, triage
 
 **CLI**:
-Tandem's agent-facing interface: a command-line binary, `tandem-cli`, shipped inside the app bundle and reached at its in-bundle path.
+Tandem's agent-facing interface: the `tandem-cli` binary `install.sh` puts on PATH beside `tandem`; both names reach the same executable.
 _Avoid_: API (too generic), backend, endpoint

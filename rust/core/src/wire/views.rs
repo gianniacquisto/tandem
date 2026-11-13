@@ -267,7 +267,8 @@ pub struct ArchivedView {
     pub archived: usize,
 }
 
-/// `note rename` / `note capture`: `{"path": ...}`, and the duplicate's note.
+/// `note create`, `note write`, `note move` and `note rename`: `{"path": ...}`,
+/// and the duplicate's note.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NotePathView {
     pub path: String,
@@ -288,9 +289,10 @@ fn stamp(time: SystemTime) -> String {
 
 /// One tree row: a folder or a note, with its children.
 ///
-/// `kind` is `"folder"` or `"note"`, the two words the renderer branches on.
+/// `kind` is `"folder"` or `"note"`, the two words the served tree branches on.
 /// The walk is the core's own (`Bikeshed::tree`): the wire adds no ordering and
-/// no filtering, and the hidden layer is drawn only when the read asked for it.
+/// no filtering, and a dot component is never drawn (the reveal flag left the
+/// wire with the capture layer, CUT-7).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteNodeView {

@@ -1,6 +1,6 @@
 # Installing Tandem
 
-**Status**: the standalone binary is the only install path (CUT-16, 2026-11-13). The Homebrew cask and its tap were retired with the Electron tree ([ADR 0045](adr/0045-the-board-and-notes-cut.md)); this page replaces the 2026-11-01 comparison between the cask, a piped script and a hand-run zip.
+**Status**: the standalone binary is the only install path (CUT-16, 2026-11-13). The Homebrew cask and its tap were retired with the Electron tree ([ADR 0046](adr/0046-tandem-serve-and-single-binary-distribution.md)); this page replaces the 2026-11-01 comparison between the cask, a piped script and a hand-run zip.
 
 A release publishes three archives, `install.sh` and one `SHA256SUMS`:
 
