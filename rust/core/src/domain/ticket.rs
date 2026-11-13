@@ -22,7 +22,7 @@ use uuid::Uuid;
 
 use super::description::DescriptionBody;
 use super::error::DomainError;
-use crate::store::timestamp;
+use crate::store::unix_now;
 
 /// Where a ticket is in the workflow (`Status.swift`, ADR 0017).
 ///
@@ -192,7 +192,7 @@ impl Ticket {
             link: None,
             blocked_by: Vec::new(),
             blocks: Vec::new(),
-            created_at: timestamp::unix_now(),
+            created_at: unix_now(),
             completed_at: None,
         }
     }

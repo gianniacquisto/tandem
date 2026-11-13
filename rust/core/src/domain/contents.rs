@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::store::board_rows::{BoardRows, EdgeRow, LaneRow, TicketRow};
-use crate::store::timestamp;
+use crate::store::{decode, encode};
 
 use super::error::DomainError;
 use super::lane::{Lane, LaneKey, Project, TicketRef};
@@ -522,14 +522,14 @@ fn ticket_from_row(row: &TicketRow) -> Result<Ticket, DomainError> {
         link: row.link.clone(),
         blocked_by: Vec::new(),
         blocks: Vec::new(),
-        created_at: timestamp::decode(&row.created_at).ok_or_else(|| {
+        created_at: decode(&row.created_at).ok_or_else(|| {
             DomainError::Unreadable(format!(
                 "a ticket row carries an unreadable created_at \"{}\"",
                 row.created_at
             ))
         })?,
         completed_at: match row.completed_at.as_deref() {
-            Some(raw) => Some(timestamp::decode(raw).ok_or_else(|| {
+            Some(raw) => Some(decode(raw).ok_or_else(|| {
                 DomainError::Unreadable(format!(
                     "a ticket row carries an unreadable completed_at \"{raw}\""
                 ))
@@ -552,7 +552,7 @@ fn ticket_to_row(ticket: &Ticket, position: i64) -> TicketRow {
         assignee: ticket.assignee.clone(),
         link: ticket.link.clone(),
         position,
-        created_at: timestamp::encode(ticket.created_at),
-        completed_at: ticket.completed_at.map(timestamp::encode),
+        created_at: encode(ticket.created_at),
+        completed_at: ticket.completed_at.map(encode),
     }
 }

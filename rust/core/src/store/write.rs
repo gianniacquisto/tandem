@@ -6,17 +6,70 @@
 //! copied **before the first mutation of the transaction**, while the database
 //! still holds the last committed state (ADR 0018), and a write that changes
 //! nothing rolls no backup at all.
+//!
+//! The `New*` structs are the insert parameters, not the domain's types: PRT-5
+//! and PRT-6 map the ticket and record aggregates onto them, and the wire never
+//! sees them (`docs/port.md`: the messages are domain verbs, not rows). Each
+//! struct names every column its insert writes; the author is the only column it
+//! does not carry, because the write's [`Actor`] fills it. Timestamps are
+//! ISO-8601 UTC text ([`super::encode`]), whole seconds.
 
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, params};
 
-use super::rows::{
-    NewComment, NewDependency, NewLane, NewProject, NewSetting, NewTicket, NewWorkflow,
-    NewWorkflowStage,
-};
 use super::{Actor, Result};
+
+/// A cycle lane: its name, its key (the ref prefix), its issued-number counter,
+/// its render position and its parent project.
+pub struct NewLane<'a> {
+    pub name: &'a str,
+    pub key: &'a str,
+    pub last_number: i64,
+    pub position: i64,
+    pub project: &'a str,
+}
+
+/// One project: its name and its render position. Add appends, there is no
+/// move verb, and a rename keeps its position.
+pub struct NewProject<'a> {
+    pub name: &'a str,
+    pub position: i64,
+}
+
+/// A ticket. The ref is not a column: it is the lane's key and `number`, read
+/// together, so a lane move cannot leave a second truth behind.
+pub struct NewTicket<'a> {
+    pub id: &'a str,
+    pub title: &'a str,
+    pub description: Option<&'a str>,
+    pub status: &'a str,
+    pub archived: bool,
+    pub lane: Option<&'a str>,
+    pub number: Option<i64>,
+    pub origin: &'a str,
+    pub assignee: Option<&'a str>,
+    pub link: Option<&'a str>,
+    pub position: i64,
+    pub created_at: &'a str,
+    pub completed_at: Option<&'a str>,
+}
+
+/// One dependency edge, both ends a ticket's UUID. A table, not a column of
+/// refs: the far side (`blocks`) is the same rows read backwards.
+pub struct NewDependency<'a> {
+    pub ticket_id: &'a str,
+    pub depends_on_id: &'a str,
+}
+
+/// One comment. Its author is the write's actor: the comment's author and the
+/// mutation's author are the same fact, so the row carries it once.
+pub struct NewComment<'a> {
+    pub ticket_id: &'a str,
+    pub at: &'a str,
+    pub body: &'a str,
+}
 
 /// A write in progress. Rows enter the store through its inserts only, so no
 /// caller writes SQL and no caller chooses the author.
@@ -132,114 +185,6 @@ impl Write<'_> {
                 comment.body
             ],
         )
-    }
-
-    pub fn insert_setting(&self, setting: NewSetting<'_>) -> Result<()> {
-        self.before_mutation()?;
-        self.execute(
-            "INSERT INTO settings (key, value, author) VALUES (?1, ?2, ?3)",
-            params![setting.key, setting.value, self.actor.as_str()],
-        )
-    }
-
-    /// Store a setting whether or not the key was stored before: the roster and
-    /// the focus are whole-value replaces, so the second write overwrites the
-    /// first in one statement. A first write inserts; a later one updates the
-    /// value and the author, and a write that changes nothing still reads its
-    /// receipt after.
-    pub fn upsert_setting(&self, setting: NewSetting<'_>) -> Result<()> {
-        self.before_mutation()?;
-        self.execute(
-            "INSERT INTO settings (key, value, author) VALUES (?1, ?2, ?3)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value, author = excluded.author",
-            params![setting.key, setting.value, self.actor.as_str()],
-        )
-    }
-
-    /// Drop a setting's row: clearing the focus removes the key, so an absent
-    /// row and a cleared one read the same way. A missing row is a no-op.
-    pub fn delete_setting(&self, key: &str) -> Result<()> {
-        self.before_mutation()?;
-        self.execute("DELETE FROM settings WHERE key = ?1", params![key])
-    }
-
-    pub fn insert_workflow(&self, workflow: NewWorkflow<'_>) -> Result<()> {
-        self.before_mutation()?;
-        self.execute(
-            "INSERT INTO workflows (id, name, scope, created_at, updated_at, author)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                workflow.id,
-                workflow.name,
-                workflow.scope,
-                workflow.created_at,
-                workflow.updated_at,
-                self.actor.as_str()
-            ],
-        )
-    }
-
-    /// Update a workflow's editable half: its name and its stamp. The id, the
-    /// scope and the creation stamp never move.
-    pub fn update_workflow(&self, workflow: NewWorkflow<'_>) -> Result<()> {
-        self.before_mutation()?;
-        self.execute(
-            "UPDATE workflows SET name = ?2, updated_at = ?3, author = ?4 WHERE id = ?1",
-            params![
-                workflow.id,
-                workflow.name,
-                workflow.updated_at,
-                self.actor.as_str()
-            ],
-        )
-    }
-
-    /// Replace every stage of a workflow with the document's ordered list.
-    /// The write is one transaction, so a refused document leaves the old
-    /// stages in place; an unchanged document still rewrites, and the revision
-    /// moves.
-    pub fn replace_workflow_stages(
-        &self,
-        workflow_id: &str,
-        stages: &[NewWorkflowStage<'_>],
-    ) -> Result<()> {
-        self.before_mutation()?;
-        self.execute(
-            "DELETE FROM workflow_stages WHERE workflow_id = ?1",
-            params![workflow_id],
-        )?;
-        for stage in stages {
-            self.execute(
-                "INSERT INTO workflow_stages
-                    (workflow_id, position, key, label, role, binding_role, binding_pass)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![
-                    stage.workflow_id,
-                    stage.position,
-                    stage.key,
-                    stage.label,
-                    stage.role,
-                    stage.binding_role,
-                    stage.binding_pass
-                ],
-            )?;
-        }
-        Ok(())
-    }
-
-    pub fn delete_workflow(&self, id: &str) -> Result<()> {
-        self.before_mutation()?;
-        self.execute(
-            "DELETE FROM workflow_stages WHERE workflow_id = ?1",
-            params![id],
-        )?;
-        self.execute("DELETE FROM workflows WHERE id = ?1", params![id])
-    }
-
-    /// One setting's value inside this transaction: the row as it stands now,
-    /// not as it read before the write began.
-    pub fn setting(&self, key: &str) -> Result<Option<String>> {
-        super::setting(self.connection, key)
     }
 
     /// The pre-write state, copied once, before this transaction modifies a

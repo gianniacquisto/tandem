@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use crate::domain::error::DomainResult;
 use crate::domain::operation::Operation;
-use crate::store::timestamp;
+use crate::store::{decode, encode};
 
 use super::{Bikeshed, sort_key};
 
@@ -131,8 +131,8 @@ impl Bikeshed {
             curated_notes: curated.len(),
             raw_pending: pending.len(),
             raw_archived: archived.len(),
-            oldest_pending: oldest.map(timestamp::encode),
-            last_consolidated: last.map(timestamp::encode),
+            oldest_pending: oldest.map(encode),
+            last_consolidated: last.map(encode),
         }
     }
 }
@@ -177,7 +177,7 @@ fn capture_timestamp(file: &Path) -> Option<i64> {
         &stamp[11..13],
         &stamp[13..15]
     );
-    timestamp::decode(&iso)
+    decode(&iso)
 }
 
 /// A file's on-disk modification time, whole seconds since the epoch.

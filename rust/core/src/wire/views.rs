@@ -27,7 +27,7 @@ use crate::bikeshed::{
 use crate::domain::{
     Comment, InlineStyle, LaneDeletion, MarkdownBlock, MarkdownInline, Ticket, TicketBlock,
 };
-use crate::store::timestamp::encode;
+use crate::store::encode;
 
 /// One end of a dependency edge: the other ticket's id, ref, title and status.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]

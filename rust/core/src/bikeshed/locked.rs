@@ -1,18 +1,19 @@
-//! The storage mechanics a file-tree writer shares: a `flock` sidecar with
-//! bounded retry, same-directory temp files with `fsync` + rename, and the
-//! orphan sweep that clears a crash's leftovers under the lock.
+//! The bikeshed's locked write mechanics: a `flock` sidecar with bounded
+//! retry, same-directory temp files with `fsync` + rename, and the orphan
+//! sweep that clears a crash's leftovers under the lock.
 //!
 //! Ported from `LockedDirectory.swift` and its tests (`LockedDirectoryTests`),
 //! behaviour for behaviour: the lock is never a suggestion, a write lands whole
 //! or not at all, and a temp older than a minute is a crash's, not a writer's.
 //! This module is the mechanism only. It owns no schema and no domain
-//! vocabulary; the store translates its two failures into the store's words.
+//! vocabulary; the vault translates its failures into the bikeshed's words.
 //!
 //! The store takes no lock (ADR 0031): SQLite's `BEGIN IMMEDIATE` and the busy
-//! window are its contention bound, and it borrows the temp, the commit, the
-//! directory sync and the orphan sweep for its rolling backup. The sidecar and
-//! [`LockedDirectory::lock`] are the bikeshed's, which is the file tree that
-//! still needs one.
+//! window are its contention bound. The sidecar and [`LockedDirectory::lock`]
+//! are the bikeshed's, which is the file tree that still needs one; the
+//! atomic file helper (temp naming, commit, directory sync) lives in
+//! [`crate::store`] and is shared by the store's rolling backup and by
+//! [`LockedDirectory::atomic_write`].
 //!
 //! One thing the Swift mechanism did not need and this one does: `flock` has no
 //! queue, so threads of one process that want the same lock race `try_lock`
@@ -26,12 +27,11 @@
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use super::{Result, StoreError};
+use crate::store::{Result, StoreError, sibling};
 
 /// How long a writer waits for the sidecar lock before answering "locked".
 ///
@@ -43,10 +43,6 @@ pub(crate) const LOCK_TIMEOUT: Duration = Duration::from_millis(2_000);
 
 /// A temp older than this is a crash's leftover, never an in-flight write's.
 pub(crate) const ORPHAN_MAX_AGE: Duration = Duration::from_secs(60);
-
-/// The store's temp prefix: its own files only, so the sweep cannot touch the
-/// bikeshed's.
-pub(crate) const TEMP_PREFIX: &str = ".tandem-";
 
 const TEMP_SUFFIX: &str = ".tmp";
 
@@ -212,16 +208,13 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// One domain's locked directory: the sidecar lockfile, the temp naming and the
+/// One vault's locked directory: the sidecar lockfile, the temp naming and the
 /// tree the orphan sweep walks.
 #[derive(Debug, Clone)]
 pub(crate) struct LockedDirectory {
     lock_file: PathBuf,
     temp_prefix: String,
     root: PathBuf,
-    /// True for the bikeshed, whose temps sit beside each note in a nested
-    /// tree; false for the store, one flat file per directory.
-    recursive: bool,
     /// How long one acquisition waits before answering `Locked`: the
     /// production [`LOCK_TIMEOUT`], unless a test configures its own
     /// directory (a slow runner can spend the window on one write).
@@ -234,7 +227,6 @@ impl LockedDirectory {
             lock_file,
             temp_prefix: temp_prefix.into(),
             root,
-            recursive: false,
             timeout: LOCK_TIMEOUT,
         }
     }
@@ -249,24 +241,10 @@ impl LockedDirectory {
         self
     }
 
-    /// The store's own directory: `<home>/tandem.lock` as the lock file and the
-    /// home as its root. The store takes no lock (ADR 0031) and borrows this
-    /// value for the rolling backup's commit and directory sync and for the
-    /// sweep of its own backup temp; the sidecar itself is the bikeshed's.
-    pub(crate) fn for_store(home: &Path) -> Self {
-        Self::new(home.join("tandem.lock"), TEMP_PREFIX, home.to_path_buf())
-    }
-
     /// The bikeshed's sidecar: `<home>/bikeshed.lock` (outside the vault) and the
     /// vault as its root, swept recursively (ADR 0004).
     pub(crate) fn for_bikeshed(root: PathBuf, lock_file: PathBuf) -> Self {
-        Self {
-            lock_file,
-            temp_prefix: BIKESHED_TEMP_PREFIX.to_string(),
-            root,
-            recursive: true,
-            timeout: LOCK_TIMEOUT,
-        }
+        Self::new(lock_file, BIKESHED_TEMP_PREFIX, root)
     }
 
     /// Acquire the lock and sweep, handing back the guard that holds it. A
@@ -306,72 +284,18 @@ impl LockedDirectory {
 
     /// Make `temp` durable, run `before_commit`, and rename it over `target`.
     ///
-    /// `before_commit` runs once the new bytes are on disk but **before** the
-    /// rename: the seam for work that must see the file the write is about to
-    /// replace (the store's rolling backup). The old file is still in place
-    /// when it runs, and still in place if it throws, so neither failure can
-    /// leave a half-written file. A failed commit removes its temp.
+    /// The mechanics live in [`crate::store`] so the store's rolling backup and
+    /// the vault share one atomic commit. `before_commit` runs once the new
+    /// bytes are on disk but **before** the rename: the old file is still in
+    /// place when it runs, and still in place if it throws, so neither failure
+    /// can leave a half-written file. A failed commit removes its temp.
     pub(crate) fn commit(
         &self,
         temp: &Path,
         target: &Path,
         before_commit: impl FnOnce() -> Result<()>,
     ) -> Result<()> {
-        let outcome = (|| {
-            // The sync handle carries write access: Windows' `FlushFileBuffers`
-            // needs `GENERIC_WRITE` and answers "Access is denied" on the
-            // read-only handle `File::open` would give, and that is every
-            // commit, on every write, since the backup rides this path.
-            let file = OpenOptions::new().write(true).open(temp).map_err(|error| {
-                StoreError::Io(format!(
-                    "could not open the temp at {}: {error}",
-                    temp.display()
-                ))
-            })?;
-            file.sync_all().map_err(|error| {
-                StoreError::Io(format!(
-                    "could not fsync the temp at {}: {error}",
-                    temp.display()
-                ))
-            })?;
-            before_commit()?;
-            fs::rename(temp, target).map_err(|error| {
-                StoreError::Io(format!(
-                    "could not rename {} to {}: {error}",
-                    temp.display(),
-                    target.display()
-                ))
-            })
-        })();
-        if outcome.is_err() {
-            let _ = fs::remove_file(temp);
-        }
-        outcome
-    }
-
-    /// Flush the directory's entries: a rename is durable only once the entry
-    /// it changed is synced. An unopenable directory is a failed guarantee,
-    /// not a tolerated absence, so the caller cannot proceed unconfirmed.
-    #[cfg(unix)]
-    pub(crate) fn fsync_directory(&self) -> Result<()> {
-        let directory = File::open(&self.root).map_err(|error| {
-            StoreError::Io(format!(
-                "could not open directory {}: {error}",
-                self.root.display()
-            ))
-        })?;
-        directory.sync_all().map_err(|error| {
-            StoreError::Io(format!(
-                "could not fsync directory {}: {error}",
-                self.root.display()
-            ))
-        })
-    }
-
-    /// Windows has no directory fsync; the rename is still the atomic step.
-    #[cfg(not(unix))]
-    pub(crate) fn fsync_directory(&self) -> Result<()> {
-        Ok(())
+        crate::store::commit_file(temp, target, before_commit)
     }
 
     /// The exclusive `flock`, behind this process's queue, with the bounded
@@ -443,28 +367,15 @@ impl LockedDirectory {
         }
     }
 
-    /// Remove `<prefix>*<suffix>` files older than [`ORPHAN_MAX_AGE`]: flat for
-    /// the store, whose temps sit beside the database, and recursive for the
-    /// bikeshed, whose temps sit beside each note in the tree.
+    /// Remove `<prefix>*<suffix>` files older than [`ORPHAN_MAX_AGE`], walking
+    /// the vault's tree: the bikeshed's temps sit beside each note.
     ///
-    /// The store calls this itself, under its own gate, before it opens the
-    /// database: a writer killed mid-backup leaves its temp and nothing renames
-    /// it, so the next write is what clears it. The bikeshed calls it under its
-    /// sidecar lock.
+    /// The bikeshed calls this under its sidecar lock.
     pub(crate) fn sweep_orphans(&self) {
         let cutoff = SystemTime::now()
             .checked_sub(ORPHAN_MAX_AGE)
             .unwrap_or(UNIX_EPOCH);
-        if self.recursive {
-            self.sweep_tree(&self.root, cutoff);
-            return;
-        }
-        let Ok(entries) = fs::read_dir(&self.root) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            self.sweep_entry(&entry, cutoff);
-        }
+        self.sweep_tree(&self.root, cutoff);
     }
 
     /// Walk `directory` and sweep every stale temp under it. A missing or
@@ -529,22 +440,4 @@ impl Drop for LockGuard {
         self.queue.release(self.ticket);
         forget(&self.key, &self.queue);
     }
-}
-
-/// A temp path beside `target`, unique across processes and calls.
-pub(crate) fn sibling(target: &Path, prefix: &str) -> PathBuf {
-    let parent = target.parent().unwrap_or_else(|| Path::new("."));
-    parent.join(format!("{prefix}{}{TEMP_SUFFIX}", stamp()))
-}
-
-/// A name no other writer in this process or another can pick at the same
-/// nanosecond: the process id, the wall clock and a counter.
-fn stamp() -> String {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let serial = NEXT.fetch_add(1, Ordering::Relaxed);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_nanos())
-        .unwrap_or(0);
-    format!("{}-{nanos}-{serial}", std::process::id())
 }
