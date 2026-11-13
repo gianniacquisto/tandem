@@ -54,9 +54,12 @@ impl Sandbox {
         command
             .arg("--home")
             .arg(self.home())
-            .env_clear()
+            // No `env_clear`: Windows needs its system environment for
+            // winsock to initialize, and a cleared environment makes the
+            // server's bind fail before it prints an address.
             .env("HOME", self.root.join("user"))
-            .env("TANDEM_HOME", self.home());
+            .env("TANDEM_HOME", self.home())
+            .env_remove("TANDEM_AGENT");
         command
     }
 }
