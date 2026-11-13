@@ -167,12 +167,12 @@ jobs:
           if ($printed -notmatch [regex]::Escape($env:version)) {
             throw "tandem --version did not name $env:version"
           }
-          $home = Join-Path $env:RUNNER_TEMP 'smoke-home'
-          New-Item -ItemType Directory -Force -Path $home | Out-Null
+          $smokeHome = Join-Path $env:RUNNER_TEMP 'smoke-home'
+          New-Item -ItemType Directory -Force -Path $smokeHome | Out-Null
           $out = Join-Path $env:RUNNER_TEMP 'serve.log'
           $err = Join-Path $env:RUNNER_TEMP 'serve.err'
           $process = Start-Process -FilePath $exe `
-            -ArgumentList @('serve', '--port', '0', '--home', $home) `
+            -ArgumentList @('serve', '--port', '0', '--home', $smokeHome) `
             -RedirectStandardOutput $out -RedirectStandardError $err -PassThru -NoNewWindow
           $address = $null
           for ($i = 0; $i -lt 150; $i++) {
