@@ -30,9 +30,10 @@ use crate::rpc::{Stream, handle_in};
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     CommentAddParams, EmptyParams, LaneAddParams, LaneDeleteParams, LaneMoveParams,
-    LaneRenameParams, Method, NoteCaptureParams, ProjectAddParams, ProjectDeleteParams,
-    ProjectRenameParams, TicketAddParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
-    TicketListParams, TicketMoveParams, TicketSetParams, TicketUnblockParams,
+    LaneRenameParams, Method, NoteMoveParams, NotePathParams, NoteWriteParams, ProjectAddParams,
+    ProjectDeleteParams, ProjectRenameParams, TicketAddParams, TicketArchiveParams,
+    TicketBlockParams, TicketIdParams, TicketListParams, TicketMoveParams, TicketSetParams,
+    TicketUnblockParams,
 };
 
 /// The server name the `initialize` answer carries.
@@ -489,18 +490,53 @@ pub fn tools() -> Vec<Tool> {
             method: Method::ProjectDelete(ProjectDeleteParams::default()),
         },
         Tool {
-            name: "note_capture",
-            method_tag: "note.capture",
-            description: "File one capture: a decision, gotcha, fact or thread the next session would otherwise re-derive.",
-            input_schema: NoteCaptureParams::schema(),
-            method: Method::NoteCapture(NoteCaptureParams::default()),
-        },
-        Tool {
             name: "doctor_report",
             method_tag: "doctor.report",
             description: "Report where this machine's Tandem state lives and whether it is healthy.",
             input_schema: EmptyParams::schema(),
             method: Method::DoctorReport(EmptyParams {}),
+        },
+        Tool {
+            name: "note_tree",
+            method_tag: "note.tree",
+            description: "Read the vault's folder tree: folders first, notes after, hidden entries skipped.",
+            input_schema: EmptyParams::schema(),
+            method: Method::NoteTree(EmptyParams {}),
+        },
+        Tool {
+            name: "note_read",
+            method_tag: "note.read",
+            description: "Read one note: its whole text, the content hash a save compares and its mtime.",
+            input_schema: NotePathParams::schema(),
+            method: Method::NoteRead(NotePathParams::default()),
+        },
+        Tool {
+            name: "note_write",
+            method_tag: "note.write",
+            description: "Write a note's whole text, atomically, under the vault lock. A missing text is refused.",
+            input_schema: NoteWriteParams::schema(),
+            method: Method::NoteWrite(NoteWriteParams::default()),
+        },
+        Tool {
+            name: "note_create",
+            method_tag: "note.create",
+            description: "Create an empty note. A taken path is refused, never overwritten.",
+            input_schema: NotePathParams::schema(),
+            method: Method::NoteCreate(NotePathParams::default()),
+        },
+        Tool {
+            name: "note_create_folder",
+            method_tag: "note.createFolder",
+            description: "Create a folder, with no note in it.",
+            input_schema: NotePathParams::schema(),
+            method: Method::NoteCreateFolder(NotePathParams::default()),
+        },
+        Tool {
+            name: "note_move",
+            method_tag: "note.move",
+            description: "Move a note or folder into another folder, rewriting every wikilink that resolves to it.",
+            input_schema: NoteMoveParams::schema(),
+            method: Method::NoteMove(NoteMoveParams::default()),
         },
         Tool {
             name: "note_health",

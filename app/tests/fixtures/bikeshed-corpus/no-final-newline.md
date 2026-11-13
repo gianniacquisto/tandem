@@ -1,1 +1,0 @@
-A note whose last line carries no newline.

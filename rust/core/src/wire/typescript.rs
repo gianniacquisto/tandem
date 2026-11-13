@@ -15,12 +15,12 @@ use super::rpc::{
     ArchivedReply, CommentAddParams, CommentListReply, CommentReply, DoctorReply, EmptyParams,
     Event, LaneAddParams, LaneDeleteParams, LaneDeletionReply, LaneListReply, LaneMoveParams,
     LaneRenameParams, MarkdownBlocksParams, MarkdownReply, Method, NoteBacklinksReply,
-    NoteCaptureParams, NoteHealthReply, NoteMoveParams, NoteMoveReply, NotePathParams,
-    NoteReadReply, NoteRecoveriesReply, NoteTreeParams, NoteTreeReply, NoteWriteParams,
-    NoteWriteReply, Outcome, ProjectAddParams, ProjectDeleteParams, ProjectEntry, ProjectListReply,
-    ProjectRenameParams, Reply, Request, Response, TicketAddParams, TicketArchiveParams,
-    TicketBlockParams, TicketIdParams, TicketListParams, TicketListReply, TicketMoveParams,
-    TicketReply, TicketSetParams, TicketUnblockParams, WireError,
+    NoteHealthReply, NoteMoveParams, NoteMoveReply, NotePathParams, NoteReadReply,
+    NoteRecoveriesReply, NoteTreeReply, NoteWriteParams, NoteWriteReply, Outcome, ProjectAddParams,
+    ProjectDeleteParams, ProjectEntry, ProjectListReply, ProjectRenameParams, Reply, Request,
+    Response, TicketAddParams, TicketArchiveParams, TicketBlockParams, TicketIdParams,
+    TicketListParams, TicketListReply, TicketMoveParams, TicketReply, TicketSetParams,
+    TicketUnblockParams, WireError,
 };
 use super::views::{
     BacklinkView, CommentView, MarkdownBlockView, MarkdownInlineView, MovedNoteView,
@@ -128,10 +128,6 @@ pub fn files() -> Vec<(&'static str, String)> {
             LaneDeletionReply::export_to_string(&cfg),
         ),
         render("ArchivedReply.ts", ArchivedReply::export_to_string(&cfg)),
-        render(
-            "NoteCaptureParams.ts",
-            NoteCaptureParams::export_to_string(&cfg),
-        ),
         render("NotePathView.ts", NotePathView::export_to_string(&cfg)),
         render("DoctorReply.ts", DoctorReply::export_to_string(&cfg)),
         render("DoctorReport.ts", DoctorReport::export_to_string(&cfg)),
@@ -143,7 +139,6 @@ pub fn files() -> Vec<(&'static str, String)> {
             TicketBlockView::export_to_string(&cfg),
         ),
         render("CommentView.ts", CommentView::export_to_string(&cfg)),
-        render("NoteTreeParams.ts", NoteTreeParams::export_to_string(&cfg)),
         render("NotePathParams.ts", NotePathParams::export_to_string(&cfg)),
         render(
             "NoteWriteParams.ts",

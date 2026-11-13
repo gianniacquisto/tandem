@@ -521,28 +521,26 @@ fn the_note_methods_read_write_move_and_report_the_vault() {
 }
 
 #[test]
-fn the_note_tree_draws_the_hidden_layer_only_when_asked() {
+fn the_note_tree_never_draws_a_hidden_entry() {
     let sandbox = Sandbox::new("rpc-note-hidden");
     let store = sandbox.store();
     let bikeshed = sandbox.root().join("home").join("bikeshed");
-    std::fs::create_dir_all(bikeshed.join(".raw")).expect("the saddlebag is creatable");
+    std::fs::create_dir_all(bikeshed.join(".raw")).expect("the folder is creatable");
     std::fs::write(bikeshed.join(".raw").join("capture.md"), "hidden")
-        .expect("the capture is written");
+        .expect("the note is written");
 
     let curated = handle(&store, &frame(1, "note.tree", json!({})));
     assert!(
         !curated["result"]["nodes"]
             .to_string()
             .contains("capture.md"),
-        "the hidden layer is not drawn by default"
+        "a dot component is not drawn: the reveal parameter left the wire (CUT-7)"
     );
 
-    let revealed = handle(&store, &frame(2, "note.tree", json!({"hidden": true})));
+    let asked = handle(&store, &frame(2, "note.tree", json!({"hidden": true})));
     assert!(
-        revealed["result"]["nodes"]
-            .to_string()
-            .contains("capture.md"),
-        "the reveal draws the saddlebag"
+        !asked["result"]["nodes"].to_string().contains("capture.md"),
+        "a hidden field is not a parameter any more: {asked}"
     );
 }
 
@@ -579,76 +577,6 @@ fn a_note_read_of_no_path_is_the_domains_own_refusal() {
             .unwrap_or("")
             .contains("escape.md"),
         "the refusal names the path: {answer}"
-    );
-}
-
-#[test]
-fn the_daily_note_opens_today_and_keeps_staged_content() {
-    let sandbox = Sandbox::new("rpc-note-daily");
-    let store = sandbox.store();
-    let bikeshed = sandbox.root().join("home").join("bikeshed");
-
-    let opened = handle(&store, &frame(1, "note.daily", json!({})));
-    let path = opened["result"]["path"]
-        .as_str()
-        .unwrap_or_else(|| panic!("the daily open answers its path: {opened}"))
-        .to_string();
-    assert!(
-        path.starts_with("daily/") && path.ends_with(".md"),
-        "today lives at daily/YYYY-MM-DD.md: {path}"
-    );
-    let day = path
-        .strip_prefix("daily/")
-        .and_then(|rest| rest.strip_suffix(".md"))
-        .unwrap_or("");
-    assert_eq!(day.len(), 10, "the day is YYYY-MM-DD: {path}");
-    assert!(
-        bikeshed.join(&path).is_file(),
-        "the day file is created: {path}"
-    );
-
-    handle(
-        &store,
-        &frame(
-            2,
-            "note.write",
-            json!({"path": path, "text": "# Today\n\nwords"}),
-        ),
-    );
-    let again = handle(&store, &frame(3, "note.daily", json!({})));
-    assert_eq!(
-        again["result"]["path"], path,
-        "the second open returns the same file"
-    );
-    let read = handle(&store, &frame(4, "note.read", json!({"path": path})));
-    assert_eq!(
-        read["result"]["note"]["text"], "# Today\n\nwords",
-        "staged content survives the second open"
-    );
-}
-
-#[test]
-fn the_daily_note_refuses_when_a_folder_sits_at_todays_path() {
-    use tandem_core::bikeshed::{DailyNote, Day};
-
-    let sandbox = Sandbox::new("rpc-note-daily-folder");
-    let store = sandbox.store();
-    let bikeshed = sandbox.root().join("home").join("bikeshed");
-    let path = DailyNote::path(Day::today());
-    std::fs::create_dir_all(bikeshed.join(&path)).expect("the folder is creatable");
-
-    let answer = handle(&store, &frame(1, "note.daily", json!({})));
-    assert_eq!(answer["error"]["code"], "domain");
-    assert!(
-        answer["error"]["message"]
-            .as_str()
-            .unwrap_or("")
-            .contains("folder"),
-        "the refusal names the folder: {answer}"
-    );
-    assert!(
-        bikeshed.join(&path).is_dir(),
-        "nothing is created over the folder"
     );
 }
 

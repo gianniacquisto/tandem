@@ -9,7 +9,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use crate::bikeshed::Bikeshed;
 
@@ -44,10 +44,6 @@ impl Vault {
 
     pub fn bikeshed(&self) -> Bikeshed {
         Bikeshed::new(&self.root)
-    }
-
-    pub fn revealed(&self) -> Bikeshed {
-        Bikeshed::with_reveal(&self.root, true)
     }
 
     pub fn lock_path(&self) -> PathBuf {
@@ -107,13 +103,7 @@ impl Drop for Vault {
     }
 }
 
-/// A whole-second instant the suites share.
-pub fn instant(seconds: i64) -> SystemTime {
-    UNIX_EPOCH + Duration::from_secs(seconds as u64)
-}
-
-/// The fixed instant the capture and stats suites spell out
-/// (2026-10-18T14:02:11Z).
+/// The fixed instant the stats suite spells out (2026-10-18T14:02:11Z).
 pub const INSTANT: i64 = 1_792_332_131;
 
 /// SHA-256 of the text, lowercase hex.

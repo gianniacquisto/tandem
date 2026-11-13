@@ -4,10 +4,9 @@
 //! Ported from `Sources/TandemCore/Bikeshed*.swift` and `LockedDirectory.swift`:
 //!
 //! - **Identity and naming** — a note is any file ending `.md`, case-insensitively.
-//!   Hidden files are ignored everywhere except in the tree when the human reveals
-//!   them; non-`.md` files are attachments. The app only *creates* names free of
-//!   `#` and `|`, the wikilink grammar's separators; pre-existing violators on
-//!   disk are still shown and edited.
+//!   Hidden files are ignored everywhere; non-`.md` files are attachments. The
+//!   app only *creates* names free of `#` and `|`, the wikilink grammar's
+//!   separators; pre-existing violators on disk are still shown and edited.
 //! - **Frontmatter** — tolerated, opaque: the core never parses note text.
 //! - **Locking** — writes take an exclusive `flock` on the sidecar lockfile
 //!   (`<home>/bikeshed.lock`, outside the vault, ADR 0011), held across the whole
@@ -18,14 +17,10 @@
 //!   first (per-file atomic), then one `rename(2)`. No journal (ADR 0005).
 //!
 //! A missing bikeshed folder is an empty bikeshed, created lazily, never an error.
-//! The derived readers (search, backlinks, health, front page, stats) recompute
-//! from the file set; there is no stored index.
+//! The derived readers (search, backlinks, health, stats) recompute from the
+//! file set; there is no stored index.
 
-pub mod capture;
-pub mod daily;
-pub mod front;
 pub mod health;
-pub mod prune;
 pub mod stats;
 pub mod wikilink;
 
@@ -43,11 +38,7 @@ use crate::store::locked::LockedDirectory;
 
 use self::wikilink::{LinkOccurrence, LinkResolution, NoteIndex, link_occurrences, rewrite_links};
 
-pub use self::capture::CaptureKind;
-pub use self::daily::{DailyNote, Day};
-pub use self::front::{ProjectFront, ScaffoldPage};
 pub use self::health::{BikeshedHealth, BikeshedHealthCounts, BrokenLink};
-pub use self::prune::BikeshedPrune;
 pub use self::stats::{BikeshedProjectStats, BikeshedStats, BikeshedStatsTotals};
 pub use self::wikilink::{LinkResolution as Resolution, Wikilink};
 
@@ -192,17 +183,13 @@ pub struct Recovery {
     pub modified_at: SystemTime,
 }
 
-/// The vault: the directory, the sidecar lockfile and the reveal flag.
+/// The vault: the directory and the sidecar lockfile.
 #[derive(Debug, Clone)]
 pub struct Bikeshed {
     /// The vault root (created lazily).
     pub directory: PathBuf,
     /// The sidecar lockfile, outside the vault (created if missing).
     pub lock_file: PathBuf,
-    /// Whether the tree reveals the hidden layer. The flag decides what the tree
-    /// draws, never what the curated graph is: the linkable note set always prunes
-    /// the hidden layer.
-    pub shows_hidden_files: bool,
     storage: LockedDirectory,
 }
 
@@ -210,16 +197,12 @@ impl Bikeshed {
     /// A vault rooted at `directory`, with the sibling `bikeshed.lock` as its
     /// sidecar (the tests' and the app's explicit path).
     pub fn new(directory: impl Into<PathBuf>) -> Self {
-        Self::with_reveal(directory, false)
-    }
-
-    pub fn with_reveal(directory: impl Into<PathBuf>, shows_hidden_files: bool) -> Self {
         let directory = standardize(&directory.into());
         let lock_file = directory
             .parent()
             .map(|parent| parent.join("bikeshed.lock"))
             .unwrap_or_else(|| PathBuf::from("bikeshed.lock"));
-        Self::with_lock_file(directory, lock_file, shows_hidden_files)
+        Self::with_lock_file(directory, lock_file)
     }
 
     /// Test-facing: this vault with its own lock window, so a contention case
@@ -233,18 +216,13 @@ impl Bikeshed {
 
     /// A vault with an explicit sidecar lockfile: the default (chosen) folder
     /// keeps its lock in Tandem's home rather than beside an arbitrary folder.
-    pub fn with_lock_file(
-        directory: impl Into<PathBuf>,
-        lock_file: impl Into<PathBuf>,
-        shows_hidden_files: bool,
-    ) -> Self {
+    pub fn with_lock_file(directory: impl Into<PathBuf>, lock_file: impl Into<PathBuf>) -> Self {
         let directory = standardize(&directory.into());
         let lock_file = lock_file.into();
         let storage = LockedDirectory::for_bikeshed(directory.clone(), lock_file.clone());
         Self {
             directory,
             lock_file,
-            shows_hidden_files,
             storage,
         }
     }
@@ -295,19 +273,13 @@ impl Bikeshed {
 
     // MARK: - The walk
 
-    /// Whether `path` names something inside the hidden layer: any component
-    /// starts with a dot.
-    pub fn is_hidden_path(path: &str) -> bool {
-        path.split('/').any(|component| component.starts_with('.'))
-    }
-
     /// The full tree: folders first, alphabetical within each level. Hidden
-    /// entries are drawn only when the reveal flag is on.
+    /// entries are never drawn: there is no hidden layer to reveal.
     pub fn tree(&self) -> Vec<BikeshedNode> {
-        self.nodes(&self.directory, "", self.shows_hidden_files)
+        self.nodes(&self.directory, "")
     }
 
-    fn nodes(&self, directory: &Path, relative: &str, include_hidden: bool) -> Vec<BikeshedNode> {
+    fn nodes(&self, directory: &Path, relative: &str) -> Vec<BikeshedNode> {
         let Ok(entries) = fs::read_dir(directory) else {
             return Vec::new();
         };
@@ -315,7 +287,7 @@ impl Bikeshed {
         let mut notes = Vec::new();
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
-            if is_hidden(&name) && !include_hidden {
+            if is_hidden(&name) {
                 continue;
             }
             let path = if relative.is_empty() {
@@ -331,7 +303,7 @@ impl Bikeshed {
                     name: name.clone(),
                     path: path.clone(),
                     kind: NodeKind::Folder,
-                    children: self.nodes(&entry.path(), &path, include_hidden),
+                    children: self.nodes(&entry.path(), &path),
                 });
             } else if is_note_name(&name) {
                 notes.push(BikeshedNode {
@@ -348,10 +320,10 @@ impl Bikeshed {
         folders
     }
 
-    /// The linkable note set: every `.md` path, hidden layer always pruned.
+    /// The linkable note set: every `.md` path, hidden entries pruned.
     pub fn note_paths(&self) -> Vec<String> {
         let mut paths = Vec::new();
-        collect_notes(&self.nodes(&self.directory, "", false), &mut paths);
+        collect_notes(&self.nodes(&self.directory, ""), &mut paths);
         paths
     }
 
@@ -412,7 +384,7 @@ impl Bikeshed {
             if component.is_empty()
                 || *component == "."
                 || *component == ".."
-                || (is_hidden(component) && !self.shows_hidden_files)
+                || is_hidden(component)
                 || component.contains('#')
                 || component.contains('|')
             {

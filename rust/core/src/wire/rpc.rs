@@ -111,11 +111,9 @@ methods! {
     ProjectAdd: "project.add", ProjectAddParams, "project add";
     ProjectRename: "project.rename", ProjectRenameParams, "project rename";
     ProjectDelete: "project.delete", ProjectDeleteParams, "project delete";
-    NoteCapture: "note.capture", NoteCaptureParams, "note capture";
-    // The Bikeshed face's reads. The CLI spells no verb for them today, and
-    // they write nothing, so no UI-only write hides behind an empty verb. The
-    // two mutations name the verbs they share with the agent face.
-    NoteTree: "note.tree", NoteTreeParams, "";
+    // The Bikeshed face's reads: the CLI spells no verb for them, and they
+    // write nothing, so the parity test's empty-verb list names each.
+    NoteTree: "note.tree", EmptyParams, "";
     NoteRead: "note.read", NotePathParams, "";
     NoteHealth: "note.health", EmptyParams, "note links";
     NoteBacklinks: "note.backlinks", NotePathParams, "";
@@ -124,7 +122,6 @@ methods! {
     NoteMove: "note.move", NoteMoveParams, "note move";
     NoteCreate: "note.create", NotePathParams, "note create";
     NoteCreateFolder: "note.createFolder", NotePathParams, "note create-folder";
-    NoteDaily: "note.daily", EmptyParams, "note daily";
     DoctorReport: "doctor.report", EmptyParams, "doctor";
     // The ticket sheet's read: a body in, the blocks it draws out. The parsing
     // is the core's (`TicketMarkdown`), so the app and the CLI cannot read one
@@ -143,14 +140,6 @@ pub struct MarkdownBlocksParams {
 /// client always sends the same three keys.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 pub struct EmptyParams {}
-
-/// `note.tree`: whether the hidden layer is drawn. The flag reaches the tree
-/// walk only; the linkable graph is always the curated layer.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct NoteTreeParams {
-    pub hidden: bool,
-}
 
 /// A method that names one note.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
@@ -323,19 +312,6 @@ pub struct ProjectDeleteParams {
     pub name: Option<String>,
 }
 
-/// `note.capture`: one raw memory note. The body rides a JSON string, as the
-/// stdin bodies ride the CLI; an empty one is the domain's own refusal. An
-/// absent project is the working directory's last component and an absent
-/// session is `$OPENCODE_SESSION_ID`, as the verb defaults them.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", default)]
-pub struct NoteCaptureParams {
-    pub kind: Option<String>,
-    pub project: Option<String>,
-    pub session: Option<String>,
-    pub body: Option<String>,
-}
-
 // MARK: - Input schemas
 
 /// One tool input's shape: an object whose properties are the params struct's
@@ -410,6 +386,36 @@ impl TicketIdParams {
             "id",
             string("the ticket's UUID or its ref (the lane key and number, TAN-42)"),
         )])
+    }
+}
+
+impl NotePathParams {
+    /// The tool input for the note reads and creates that name one path.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[("path", string("the bikeshed-root-relative path"))])
+    }
+}
+
+impl NoteWriteParams {
+    /// The tool input for `note.write`: the path and its whole text.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[
+            ("path", string("the bikeshed-root-relative path")),
+            (
+                "text",
+                string("the note's whole text; a missing text is refused"),
+            ),
+        ])
+    }
+}
+
+impl NoteMoveParams {
+    /// The tool input for `note.move`: what moves, and the folder it lands in.
+    pub fn schema() -> serde_json::Value {
+        object_schema(&[
+            ("path", string("the note or folder that moves")),
+            ("into", string("the folder it moves into; the root is \"\"")),
+        ])
     }
 }
 
@@ -607,24 +613,6 @@ impl EmptyParams {
     /// The tool input for the methods that take nothing.
     pub fn schema() -> serde_json::Value {
         object_schema(&[])
-    }
-}
-
-impl NoteCaptureParams {
-    /// The tool input for `note.capture`.
-    pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("kind", string("decision, gotcha, fact or thread; required")),
-            (
-                "project",
-                string("the project; omit for the working directory's last component"),
-            ),
-            (
-                "session",
-                string("the session folder; omit for $OPENCODE_SESSION_ID"),
-            ),
-            ("body", string("the capture body; an empty body is refused")),
-        ])
     }
 }
 

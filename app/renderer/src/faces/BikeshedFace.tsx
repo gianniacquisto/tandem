@@ -1,18 +1,13 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 
-import type { BikeshedHealth } from '../wire/BikeshedHealth'
 import type { BacklinkView } from '../wire/BacklinkView'
+import type { MarkdownBlockView } from '../wire/MarkdownBlockView'
 import type { NoteNodeView } from '../wire/NoteNodeView'
 import type { RecoveryView } from '../wire/RecoveryView'
 import type { Reply } from '../wire/Reply'
 import type { TicketSummary } from '../wire/TicketSummary'
 import type { SnapshotProject } from '../shell/snapshot'
-import {
-  ancestorsOf,
-  focusNodes,
-  folderPaths,
-  notePaths,
-} from '../shell/bikeshed'
+import { ancestorsOf, focusNodes, folderPaths } from '../shell/bikeshed'
 import {
   applyEditor,
   arrival,
@@ -28,18 +23,10 @@ import {
   type SaveOutcome,
   type Theirs,
 } from '../shell/note'
-import {
-  loadEditorFontSize,
-  saveEditorFontSize,
-  stepEditorFontSize,
-} from '../shell/fontSize'
-import { BikeshedBlocks } from './BikeshedBlocks'
 import { BikeshedTree } from './BikeshedTree'
 import { FocusControl } from './FocusControl'
+import { MarkdownDocument } from './MarkdownDocument'
 import { NoteFooter } from './NoteFooter'
-import { NoteSizeControl } from './NoteSizeControl'
-
-const HIDDEN_KEY = 'tandem.bikeshed.hidden'
 
 /** `ticket.list`'s absent flags: the open board, the tickets a note may link. */
 const OPEN_BOARD = {
@@ -52,12 +39,14 @@ const OPEN_BOARD = {
   blocked: false,
 } as const
 
+type Mode = 'read' | 'edit'
+
 function treeOf(reply: Reply): NoteNodeView[] | null {
   return 'nodes' in reply ? reply.nodes : null
 }
 
-function healthOf(reply: Reply): BikeshedHealth | null {
-  return 'health' in reply ? reply.health : null
+function blocksOf(reply: Reply): MarkdownBlockView[] | null {
+  return 'blocks' in reply ? reply.blocks : null
 }
 
 function backlinksOf(reply: Reply): BacklinkView[] | null {
@@ -77,15 +66,20 @@ function message(error: unknown): string {
 }
 
 /**
- * The Bikeshed face: the tree, the editor frame, backlinks, health and the
- * save discipline (`BikeFaceView` in the Swift app).
+ * The Bikeshed face: the tree, a note read as markdown or edited in a plain
+ * `<textarea>`, and the save discipline.
  *
  * The face owns the reads: the vault is not the store, so a change event only
  * tells it to look again, and a window focus does the same for a note an agent
  * wrote while it was away. Every write is a message the CLI also answers
- * (`note write`, `note move`, `note create`, `note create-folder`, `note daily`), and a save
+ * (`note write`, `note move`, `note create`, `note create-folder`), and a save
  * compares the hash it read with the hash on disk before it writes: a
  * concurrent write is a conflict with both bodies, never a lost one.
+ *
+ * The block editor left (CUT-7). The reader draws the core's own blocks
+ * (`markdown.blocks`, the ticket sheet's parser), so the note and a ticket body
+ * are one dialect, and the editor is the whole text in a textarea: what a human
+ * types is what the file holds.
  */
 export type BikeshedFaceProps = {
   /** The note's ticket rows open the one sheet, over the bikeshed. */
@@ -104,47 +98,39 @@ export function BikeshedFace({
   activeProject,
   onPickProject,
 }: BikeshedFaceProps) {
-  const [hidden, setHidden] = useState(() => window.localStorage.getItem(HIDDEN_KEY) === 'true')
-  // One app-wide note size: ADR 0012's preference, applied once on the wrapper
-  // the block surface sits in.
-  const [size, setSize] = useState(() => loadEditorFontSize())
   const [nodes, setNodes] = useState<NoteNodeView[]>([])
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState<NoteBuffer | null>(null)
+  const [mode, setMode] = useState<Mode>('read')
+  const [blocks, setBlocks] = useState<MarkdownBlockView[]>([])
   const [conflict, setConflict] = useState<Theirs | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [backlinks, setBacklinks] = useState<BacklinkView[]>([])
   const [linked, setLinked] = useState<TicketSummary[]>([])
-  const [health, setHealth] = useState<BikeshedHealth | null>(null)
   const [recoveries, setRecoveries] = useState<RecoveryView[]>([])
-  const [token, setToken] = useState(0)
   // The show-all escape: the whole vault without clearing the stored focus.
   const [showAll, setShowAll] = useState(false)
   const seeded = useRef(false)
   const openRef = useRef<NoteBuffer | null>(null)
   openRef.current = open
-  const conflictRef = useRef<Theirs | null>(null)
-  conflictRef.current = conflict
   // One write at a time: a save that meets an autosave awaits that same promise
   // instead of starting a second one (ADR 0004's one save path).
   const inFlight = useRef<Promise<SaveOutcome> | null>(null)
 
-  const noteIndex = useMemo(() => notePaths(nodes), [nodes])
   // The tree the focus draws: the focused project's folder alone, or the
   // whole vault when nothing is focused or no folder answers the focus.
   const drawn = focusNodes(nodes, showAll ? null : activeProject)
 
   async function refreshVault(): Promise<void> {
     try {
-      const [tree, report, drafts] = await Promise.all([
-        window.tandem.call({ method: 'note.tree', params: { hidden } }),
-        window.tandem.call({ method: 'note.health', params: {} }),
+      const [tree, drafts] = await Promise.all([
+        window.tandem.call({ method: 'note.tree', params: {} }),
         window.tandem.call({ method: 'note.recoveries', params: {} }),
       ])
-      if ('error' in tree || 'error' in report || 'error' in drafts) {
-        const failure = 'error' in tree ? tree : 'error' in report ? report : drafts
+      if ('error' in tree || 'error' in drafts) {
+        const failure = 'error' in tree ? tree : drafts
         setError('error' in failure ? failure.error.message : 'The bikeshed could not be read.')
         return
       }
@@ -156,8 +142,6 @@ export function BikeshedFace({
           setExpanded(new Set(folderPaths(read)))
         }
       }
-      const nextHealth = healthOf(report.reply)
-      if (nextHealth !== null) setHealth(nextHealth)
       const nextRecoveries = recoveriesOf(drafts.reply)
       if (nextRecoveries !== null) setRecoveries(nextRecoveries)
     } catch (failure) {
@@ -180,8 +164,8 @@ export function BikeshedFace({
     }
   }
 
-  // The vault, re-read on a reveal, a focus, and every store change (a ticket
-  // may have learned to link to a note).
+  // The vault, re-read on a focus and every store change (a ticket may have
+  // learned to link to a note).
   useEffect(() => {
     void refreshVault()
     function onFocus(): void {
@@ -198,9 +182,7 @@ export function BikeshedFace({
       window.removeEventListener('focus', onFocus)
       stop()
     }
-    // `hidden` is the read's one parameter; the open note is the ref's.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hidden])
+  }, [])
 
   // A note's own reads: who links here, and the tickets that name it.
   useEffect(() => {
@@ -212,6 +194,31 @@ export function BikeshedFace({
     void refreshNote(open.path)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open?.path])
+
+  // The reader: the core parses the text the buffer holds, so a note draws the
+  // same blocks a ticket body does. Editor keystrokes cost no parse; the read
+  // catches up when the editor closes or an external write lands.
+  useEffect(() => {
+    if (open === null || mode !== 'read') return
+    let current = true
+    void (async () => {
+      try {
+        const answer = await window.tandem.call({
+          method: 'markdown.blocks',
+          params: { text: open.text },
+        })
+        if (!current || 'error' in answer) return
+        const drawnBlocks = blocksOf(answer.reply)
+        if (drawnBlocks !== null) setBlocks(drawnBlocks)
+      } catch {
+        // A reader that cannot draw the text keeps the last blocks: the note
+        // is still in the buffer, and the editor shows it whole.
+      }
+    })()
+    return () => {
+      current = false
+    }
+  }, [mode, open?.path, open?.text])
 
   /**
    * The one write path. A dirty buffer is handed to `saveNote`; a second
@@ -275,7 +282,7 @@ export function BikeshedFace({
     const draft = takeDraft()
     if (draft === null) return
     setOpen(draft)
-    setToken((current) => current + 1)
+    setMode('edit')
     setExpanded((current) => new Set([...current, ...ancestorsOf(draft.path)]))
     setNotice('A draft from your last visit was kept. Saving again.')
   }, [])
@@ -313,7 +320,6 @@ export function BikeshedFace({
       setConflict(next.theirs)
     } else if (next.type === 'adopted') {
       setOpen(next.buffer)
-      setToken((value) => value + 1)
       setConflict(null)
       void refreshVault()
       void refreshNote(current.path)
@@ -332,9 +338,10 @@ export function BikeshedFace({
       return
     }
     setOpen(openBuffer({ path: note.path, text: note.text, hash: note.hash }))
+    setBlocks([])
+    setMode('read')
     setConflict(null)
     setExpanded((current) => new Set([...current, ...ancestorsOf(path)]))
-    setToken((current) => current + 1)
     setError(null)
   }
 
@@ -347,21 +354,14 @@ export function BikeshedFace({
     await loadNote(path)
   }
 
-  async function openDaily(): Promise<void> {
-    if (conflict !== null) return
-    if (open !== null && open.dirty) await save(open)
-    const answer = await window.tandem.call({ method: 'note.daily', params: {} })
-    if ('error' in answer) {
-      setError(answer.error.message)
+  async function toggleMode(): Promise<void> {
+    if (open === null || conflict !== null) return
+    if (mode === 'edit') {
+      if (open.dirty) await save(open)
+      setMode('read')
       return
     }
-    const path = 'path' in answer.reply ? answer.reply.path : null
-    if (typeof path !== 'string' || path === '') {
-      setError("Today's note could not be opened.")
-      return
-    }
-    await refreshVault()
-    await loadNote(path)
+    setMode('edit')
   }
 
   async function move(source: string, into: string): Promise<void> {
@@ -435,20 +435,7 @@ export function BikeshedFace({
     if (open === null || conflict === null) return
     setOpen(takeTheirs(open, conflict))
     setConflict(null)
-    setToken((current) => current + 1)
     void refreshNote(open.path)
-  }
-
-  function reveal(next: boolean): void {
-    window.localStorage.setItem(HIDDEN_KEY, next ? 'true' : 'false')
-    setHidden(next)
-  }
-
-  /** A step is view state: it writes the preference, never the note. */
-  function stepSize(delta: number): void {
-    const next = stepEditorFontSize(size, delta)
-    setSize(next)
-    saveEditorFontSize(next)
   }
 
   const folder =
@@ -523,9 +510,7 @@ export function BikeshedFace({
           <BikeshedTree
             nodes={drawn}
             expanded={expanded}
-            hidden={hidden}
             openPath={open?.path ?? null}
-            health={health}
             onToggle={(path) =>
               setExpanded((current) => {
                 const next = new Set(current)
@@ -534,12 +519,10 @@ export function BikeshedFace({
                 return next
               })
             }
-            onReveal={reveal}
             onOpen={(path) => void openNote(path)}
             onMove={(source, into) => void move(source, into)}
             onCreateNote={(path) => void createNote(path)}
             onCreateFolder={(path) => void createFolder(path)}
-            onDaily={() => void openDaily()}
           />
         </aside>
 
@@ -570,29 +553,45 @@ export function BikeshedFace({
                 </nav>
                 <div className="bikeshed__breadcrumb-end">
                   {saving ? <span className="editor__saving">saving{'\u2026'}</span> : null}
-                  <NoteSizeControl size={size} onStep={stepSize} />
+                  <button
+                    type="button"
+                    className="bikeshed__mode"
+                    onClick={() => void toggleMode()}
+                    disabled={conflict !== null}
+                  >
+                    {mode === 'edit' ? 'Done' : 'Edit'}
+                  </button>
                 </div>
               </div>
             </header>
           )}
 
-          <div
-            className="bikeshed__page"
-            style={{ '--tandem-editor-font-size': `${size}px` } as CSSProperties}
-          >
+          <div className="bikeshed__page">
             {open === null ? (
               <div className="editor__empty">
                 <p className="editor__empty-title">No note selected</p>
                 <p className="editor__empty-body">Pick a note in the tree.</p>
               </div>
-            ) : (
-              <BikeshedBlocks
-                document={open.document}
-                focusToken={token}
-                onChange={(document) => setOpen((current) => applyEditor(current, document))}
-                noteIndex={noteIndex}
-                onOpenNote={(path) => void openNote(path)}
+            ) : mode === 'edit' ? (
+              <textarea
+                className="note-editor"
+                aria-label="Note markdown"
+                spellCheck={false}
+                value={open.text}
+                onChange={(event) =>
+                  setOpen((current) => applyEditor(current, event.target.value))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    void toggleMode()
+                  }
+                }}
               />
+            ) : (
+              <div className="note-preview" aria-label="Note preview">
+                <MarkdownDocument blocks={blocks} />
+              </div>
             )}
             <NoteFooter
               backlinks={backlinks}
