@@ -19,11 +19,11 @@
     <div class="sheet__body">
       <form id="sheet-save" method="post" action="/tickets/{{ id }}"
             hx-post="/tickets/{{ id }}" hx-target="#board-root" hx-swap="outerHTML">
-        <input type="hidden" name="project" value="{{ filters.project }}">
-        <input type="hidden" name="show_all" value="{% if filters.show_all %}1{% endif %}">
-        <input type="hidden" name="lane" value="{{ filters.lane }}">
-        <input type="hidden" name="assignee" value="{{ filters.assignee }}">
-        <input type="hidden" name="text" value="{{ filters.text }}">
+        <input type="hidden" name="board_project" value="{{ filters.project }}">
+        <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+        <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+        <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+        <input type="hidden" name="board_text" value="{{ filters.text }}">
       </form>
 
       <div class="sheet__sticky">
@@ -68,11 +68,11 @@
             <form class="sheet__lane-move" method="post" action="/tickets/{{ id }}/lane"
                   hx-post="/tickets/{{ id }}/lane" hx-target="#board-root" hx-swap="outerHTML">
               <input type="hidden" name="expected_revision" value="{{ revision }}">
-              <input type="hidden" name="project" value="{{ filters.project }}">
-              <input type="hidden" name="show_all" value="{% if filters.show_all %}1{% endif %}">
-              <input type="hidden" name="lane" value="{{ filters.lane }}">
-              <input type="hidden" name="assignee" value="{{ filters.assignee }}">
-              <input type="hidden" name="text" value="{{ filters.text }}">
+              <input type="hidden" name="board_project" value="{{ filters.project }}">
+              <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+              <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+              <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+              <input type="hidden" name="board_text" value="{{ filters.text }}">
               <select class="sheet__select" name="lane" aria-label="Lane" data-sheet-lane>
                 {% for option in lane_options %}
                 <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
@@ -103,11 +103,11 @@
         <form class="sheet__addition" method="post" action="/tickets/{{ id }}/description"
               hx-post="/tickets/{{ id }}/description" hx-target="#board-root" hx-swap="outerHTML">
           <input type="hidden" name="expected_revision" value="{{ revision }}">
-          <input type="hidden" name="project" value="{{ filters.project }}">
-          <input type="hidden" name="show_all" value="{% if filters.show_all %}1{% endif %}">
-          <input type="hidden" name="lane" value="{{ filters.lane }}">
-          <input type="hidden" name="assignee" value="{{ filters.assignee }}">
-          <input type="hidden" name="text" value="{{ filters.text }}">
+          <input type="hidden" name="board_project" value="{{ filters.project }}">
+          <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+          <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+          <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+          <input type="hidden" name="board_text" value="{{ filters.text }}">
           <label class="sheet__addition">
             <span class="sheet__fact-label">Add to the description</span>
             <textarea class="sheet__addition-field" name="addition" aria-label="Add to the description"
@@ -142,11 +142,11 @@
 
         <form class="sheet__addition" method="post" action="/tickets/{{ id }}/comments"
               hx-post="/tickets/{{ id }}/comments" hx-target="#board-root" hx-swap="outerHTML">
-          <input type="hidden" name="project" value="{{ filters.project }}">
-          <input type="hidden" name="show_all" value="{% if filters.show_all %}1{% endif %}">
-          <input type="hidden" name="lane" value="{{ filters.lane }}">
-          <input type="hidden" name="assignee" value="{{ filters.assignee }}">
-          <input type="hidden" name="text" value="{{ filters.text }}">
+          <input type="hidden" name="board_project" value="{{ filters.project }}">
+          <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+          <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+          <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+          <input type="hidden" name="board_text" value="{{ filters.text }}">
           <label class="sheet__addition">
             <span class="sheet__fact-label">Add a comment</span>
             <textarea class="sheet__addition-field" name="body" aria-label="Add a comment"
@@ -211,11 +211,11 @@
                 <form class="sheet__lane-form" method="post" action="/lanes/{{ lane.encoded }}/rename"
                       hx-post="/lanes/{{ lane.encoded }}/rename" hx-target="#board-root" hx-swap="outerHTML">
                   <input type="hidden" name="ticket" value="{{ id }}">
-                  <input type="hidden" name="project" value="{{ filters.project }}">
-                  <input type="hidden" name="show_all" value="{% if filters.show_all %}1{% endif %}">
-                  <input type="hidden" name="lane" value="{{ filters.lane }}">
-                  <input type="hidden" name="assignee" value="{{ filters.assignee }}">
-                  <input type="hidden" name="text" value="{{ filters.text }}">
+                  <input type="hidden" name="board_project" value="{{ filters.project }}">
+                  <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+                  <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+                  <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+                  <input type="hidden" name="board_text" value="{{ filters.text }}">
                   <input class="sheet__field" name="to" aria-label="Lane name" value="{{ lane.name }}">
                   <input class="sheet__field" name="abbr" aria-label="Lane key" placeholder="Key">
                   <button class="sheet__button" type="submit">Rename</button>
@@ -227,11 +227,11 @@
             <form class="sheet__lane-form" method="post" action="/lanes"
                   hx-post="/lanes" hx-target="#board-root" hx-swap="outerHTML">
               <input type="hidden" name="ticket" value="{{ id }}">
-              <input type="hidden" name="project" value="{{ filters.project }}">
-              <input type="hidden" name="show_all" value="{% if filters.show_all %}1{% endif %}">
-              <input type="hidden" name="lane" value="{{ filters.lane }}">
-              <input type="hidden" name="assignee" value="{{ filters.assignee }}">
-              <input type="hidden" name="text" value="{{ filters.text }}">
+              <input type="hidden" name="board_project" value="{{ filters.project }}">
+              <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+              <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+              <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+              <input type="hidden" name="board_text" value="{{ filters.text }}">
               <input class="sheet__field" name="name" aria-label="New lane name" placeholder="Cycle lane name">
               <input class="sheet__field" name="abbr" aria-label="New lane key" placeholder="Key">
               <button class="sheet__button" type="submit">New cycle lane</button>

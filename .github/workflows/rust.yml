@@ -67,7 +67,7 @@ jobs:
         # tracked tree, not the platform's build. The third-party notice check
         # rides `cargo test` beside it (`rust/core/tests/notice.rs`), so a
         # vendored asset the notice does not name fails the same job.
-        if: runner.os == 'ubuntu-latest'
+        if: runner.os == 'Linux'
         working-directory: ${{ github.workspace }}
         run: bash Scripts/check-retired-paths.sh
 

@@ -252,6 +252,21 @@ impl Filters {
         }
     }
 
+    /// The board filters a sheet's write form carries back. They are named with
+    /// a `board_` prefix because the same form carries the ticket's own fields:
+    /// its `assignee` and `lane` mean the ticket's, and reading them as the
+    /// board's would redraw the board behind narrowed to this very ticket.
+    fn parse_board_fields(params: &HashMap<String, String>) -> Self {
+        let board = params
+            .iter()
+            .filter_map(|(key, value)| {
+                key.strip_prefix("board_")
+                    .map(|key| (key.to_string(), value.clone()))
+            })
+            .collect();
+        Self::parse(&board)
+    }
+
     fn lane_axis(&self) -> LaneAxis {
         match self.lane.as_str() {
             "" => LaneAxis::Any,
@@ -1248,17 +1263,16 @@ fn render_sheet(
 fn sheet_response(
     context: &SessionContext,
     id: &str,
-    params: &HashMap<String, String>,
+    filters: &Filters,
     notice: Option<String>,
     description_refusal: Option<String>,
     comment_refusal: Option<String>,
     headers: &HeaderMap,
 ) -> Response {
-    let filters = Filters::parse(params);
     let view = match render_sheet(
         context,
         id,
-        &filters,
+        filters,
         notice,
         description_refusal,
         comment_refusal,
@@ -1278,7 +1292,7 @@ fn sheet_response(
     };
     board_with_sheet(
         context,
-        &filters,
+        filters,
         html,
         filters.url(),
         headers,
@@ -1314,7 +1328,8 @@ async fn ticket_page(
     Query(params): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
-    sheet_response(&context, &id, &params, None, None, None, &headers)
+    let filters = Filters::parse(&params);
+    sheet_response(&context, &id, &filters, None, None, None, &headers)
 }
 
 async fn save_ticket(
@@ -1329,6 +1344,7 @@ async fn save_ticket(
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
+    let filters = Filters::parse_board_fields(&params);
     let expected = match expected_revision(&params) {
         Ok(revision) => revision,
         Err(message) => return bad_request(&message),
@@ -1337,7 +1353,7 @@ async fn save_ticket(
         return sheet_response(
             &context,
             &id,
-            &params,
+            &filters,
             Some(CONFLICT_NOTICE.to_string()),
             None,
             None,
@@ -1349,7 +1365,7 @@ async fn save_ticket(
         return sheet_response(
             &context,
             &id,
-            &params,
+            &filters,
             Some(crate::domain::DomainError::EmptyTitle.message()),
             None,
             None,
@@ -1362,7 +1378,7 @@ async fn save_ticket(
             return sheet_response(
                 &context,
                 &id,
-                &params,
+                &filters,
                 Some(error.message()),
                 None,
                 None,
@@ -1381,11 +1397,11 @@ async fn save_ticket(
         },
     );
     match outcome {
-        Ok(_) => sheet_response(&context, &id, &params, None, None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
         Err(error) => sheet_response(
             &context,
             &id,
-            &params,
+            &filters,
             Some(error.message()),
             None,
             None,
@@ -1406,6 +1422,7 @@ async fn append_description(
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
+    let filters = Filters::parse_board_fields(&params);
     let expected = match expected_revision(&params) {
         Ok(revision) => revision,
         Err(message) => return bad_request(&message),
@@ -1414,7 +1431,7 @@ async fn append_description(
         return sheet_response(
             &context,
             &id,
-            &params,
+            &filters,
             Some(CONFLICT_NOTICE.to_string()),
             None,
             None,
@@ -1426,7 +1443,7 @@ async fn append_description(
         return sheet_response(
             &context,
             &id,
-            &params,
+            &filters,
             None,
             Some(crate::domain::DomainError::EmptyDescriptionBody.message()),
             None,
@@ -1440,11 +1457,11 @@ async fn append_description(
             ..SetFields::default()
         },
     ) {
-        Ok(_) => sheet_response(&context, &id, &params, None, None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
         Err(error) => sheet_response(
             &context,
             &id,
-            &params,
+            &filters,
             None,
             Some(error.message()),
             None,
@@ -1465,12 +1482,13 @@ async fn add_comment(
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
+    let filters = Filters::parse_board_fields(&params);
     let body = field(&params, "body");
     if body.trim().is_empty() {
         return sheet_response(
             &context,
             &id,
-            &params,
+            &filters,
             None,
             None,
             Some(crate::domain::DomainError::EmptyCommentBody.message()),
@@ -1478,11 +1496,11 @@ async fn add_comment(
         );
     }
     match context.board().comment_write(&id, body) {
-        Ok(_) => sheet_response(&context, &id, &params, None, None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
         Err(error) => sheet_response(
             &context,
             &id,
-            &params,
+            &filters,
             Some(error.message()),
             None,
             None,
@@ -1503,6 +1521,7 @@ async fn move_to_lane(
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
+    let filters = Filters::parse_board_fields(&params);
     let expected = match expected_revision(&params) {
         Ok(revision) => revision,
         Err(message) => return bad_request(&message),
@@ -1511,7 +1530,7 @@ async fn move_to_lane(
         return sheet_response(
             &context,
             &id,
-            &params,
+            &filters,
             Some(CONFLICT_NOTICE.to_string()),
             None,
             None,
@@ -1528,11 +1547,11 @@ async fn move_to_lane(
         .board()
         .move_ticket(&id, lane.as_deref(), usize::MAX)
     {
-        Ok(_) => sheet_response(&context, &id, &params, None, None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
         Err(error) => sheet_response(
             &context,
             &id,
-            &params,
+            &filters,
             Some(error.message()),
             None,
             None,
@@ -1557,6 +1576,7 @@ async fn add_lane(
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
+    let filters = Filters::parse_board_fields(&params);
     let id = lane_ticket(&params);
     if id.is_empty() {
         return bad_request("a lane write names the ticket it was drawn from");
@@ -1565,11 +1585,11 @@ async fn add_lane(
     let key = if abbr.is_empty() { None } else { Some(abbr) };
     let outcome = context.board().add_lane(field(&params, "name"), key, None);
     match outcome {
-        Ok(_) => sheet_response(&context, &id, &params, None, None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
         Err(error) => sheet_response(
             &context,
             &id,
-            &params,
+            &filters,
             Some(error.message()),
             None,
             None,
@@ -1590,6 +1610,7 @@ async fn rename_lane(
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
+    let filters = Filters::parse_board_fields(&params);
     let id = lane_ticket(&params);
     if id.is_empty() {
         return bad_request("a lane write names the ticket it was drawn from");
@@ -1600,11 +1621,11 @@ async fn rename_lane(
         .board()
         .rename_lane(&name, field(&params, "to"), key, None);
     match outcome {
-        Ok(_) => sheet_response(&context, &id, &params, None, None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
         Err(error) => sheet_response(
             &context,
             &id,
-            &params,
+            &filters,
             Some(error.message()),
             None,
             None,

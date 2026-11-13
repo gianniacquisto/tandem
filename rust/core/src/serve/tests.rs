@@ -1383,8 +1383,12 @@ async fn get_ticket_sheet_keeps_the_board_filters_behind_it() {
         "the project filter sits behind the sheet as the human set it: {body}"
     );
     assert!(
-        body.contains("name=\"text\" value=\"Caf\""),
+        body.contains("name=\"board_text\" value=\"Caf\""),
         "the search sits behind the sheet: {body}"
+    );
+    assert!(
+        body.contains("name=\"board_assignee\" value=\"builder\""),
+        "the board's assignee rides the sheet under its own name: {body}"
     );
     assert!(
         body.contains("href=\"/board?project=Alpha"),
@@ -1408,7 +1412,7 @@ async fn a_sheet_write_keeps_the_filters_its_form_carried() {
     let app = router(context(store));
 
     let body = format!(
-        "addition=A line&expected_revision={revision}&project=Alpha&show_all=&lane=alpha&assignee=builder&text=Caf"
+        "addition=A line&expected_revision={revision}&board_project=Alpha&board_show_all=&board_lane=alpha&board_assignee=builder&board_text=Caf"
     );
     let (status, _, page) = send(
         &app,
@@ -1424,6 +1428,67 @@ async fn a_sheet_write_keeps_the_filters_its_form_carried() {
     assert!(
         page.contains("href=\"/board?project=Alpha"),
         "the close link still lands on the filtered board: {page}"
+    );
+}
+
+/// A write form carries the board's filter under `board_` names and the
+/// ticket's own fields under theirs, and the server keeps them apart. A save
+/// reads its `assignee` as the ticket's, and the board behind comes back
+/// unfiltered; before the split both lived under `assignee`, the last value won
+/// and closing the sheet landed on the board filtered to that ticket's owner.
+#[tokio::test]
+async fn a_sheet_write_reads_the_board_filter_from_its_own_fields_not_the_tickets() {
+    let sandbox = Sandbox::new("sheet-write-filter-names");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    let revision = store.revision().expect("the revision reads");
+    let app = router(context(store));
+
+    // The browser encodes a form in document order: the filter's hidden fields
+    // first, then the ticket's title, revision, status and assignee.
+    let body = format!(
+        "board_project=&board_show_all=&board_lane=&board_assignee=&board_text=\
+         &title=Café alpha&expected_revision={revision}&status=backlog&assignee=builder"
+    );
+    let (status, _, page) = send(&app, form_request(&format!("/tickets/{id}"), &body)).await;
+    assert_eq!(status, StatusCode::OK, "the save answers: {page}");
+    assert_eq!(
+        board
+            .ticket(&id)
+            .expect("the ticket reads")
+            .assignee
+            .as_deref(),
+        Some("builder"),
+        "the save still sets the ticket's assignee"
+    );
+    assert!(
+        page.contains("href=\"/board?project=&#38;show_all=&#38;lane=&#38;assignee=&#38;text=\""),
+        "the board behind keeps the filter the form carried, empty: {page}"
+    );
+    assert!(
+        !page.contains("<option value=\"builder\" selected>builder</option>"),
+        "the ticket's assignee is not the board's filter: {page}"
+    );
+
+    // The lane form's way round: its select is the ticket's lane, its hidden
+    // field the board's filter.
+    let revision = board.store().revision().expect("the revision reads");
+    let body = format!(
+        "expected_revision={revision}&board_project=&board_show_all=&board_lane=\
+         &board_assignee=&board_text=&lane=shared"
+    );
+    let (status, _, page) = send(&app, form_request(&format!("/tickets/{id}/lane"), &body)).await;
+    assert_eq!(status, StatusCode::OK, "the lane move answers: {page}");
+    assert_eq!(
+        board.ticket(&id).expect("the ticket reads").lane.as_deref(),
+        Some("shared"),
+        "the lane still moves"
+    );
+    assert!(
+        page.contains("href=\"/board?project=&#38;show_all=&#38;lane=&#38;assignee=&#38;text=\""),
+        "the moved lane is not the board's lane filter: {page}"
     );
 }
 
