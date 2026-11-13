@@ -427,6 +427,100 @@ async fn post_ticket_status_moves_card_across_columns_and_ignores_same_column_dr
     );
 }
 
+/// The board refreshes itself over the change stream, so the client must be the
+/// htmx 2 extension: the htmx 1 build defines its `hx-trigger="sse:*"` listener
+/// and never registers it, reads the whole attribute as the event name, and
+/// swaps through `api.selectAndSwap`, which htmx 2 does not expose.
+#[tokio::test]
+async fn the_change_stream_client_is_the_htmx_two_extension() {
+    let sandbox = Sandbox::new("board-sse-client");
+    let app = router(context(sandbox.store()));
+
+    let (status, _, htmx) = get(&app, "/static/htmx.min.js").await;
+    assert_eq!(status, StatusCode::OK, "htmx is served");
+    assert!(
+        htmx.contains("version:\"2."),
+        "the extension is written against htmx 2, so the client is htmx 2"
+    );
+
+    let (status, _, sse) = get(&app, "/static/sse.js").await;
+    assert_eq!(status, StatusCode::OK, "the extension is served");
+    assert!(
+        sse.contains("htmx-ext-sse 2."),
+        "the vendored file names the htmx 2 extension it is: {}",
+        &sse[..200.min(sse.len())]
+    );
+    assert!(
+        !sse.contains("selectAndSwap"),
+        "the htmx 1 swap API is not in htmx 2"
+    );
+    assert!(
+        sse.contains("api.getTriggerSpecs(elt)"),
+        "the sse:* branch reads hx-trigger's parsed specs, so `sse:changed from:body` listens on `changed`"
+    );
+    assert!(
+        sse.contains("source.addEventListener(ts.trigger.slice(4)"),
+        "the sse:* branch registers the listener for the parsed event name"
+    );
+
+    let (_, _, page) = get(&app, "/board").await;
+    assert!(
+        page.contains("hx-trigger=\"sse:changed from:body\""),
+        "the board waits for the change event: {page}"
+    );
+}
+
+/// A drop writes a status, and its answer redraws the board: the POST carries
+/// the filter bar the board was drawn with, so the partial keeps the human's
+/// project, lane, assignee and search rather than clearing them.
+#[tokio::test]
+async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
+    let sandbox = Sandbox::new("board-move-filters");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let app = router(context(store.clone()));
+    let ticket = by_title(&board, "Beta one");
+    let revision = store.revision().expect("the revision reads");
+    let uri = format!("/tickets/{}/status", ticket.id);
+
+    let body = format!(
+        "status=in-progress&expected_revision={revision}&project=Beta&show_all=&lane=beta&assignee=&text=one"
+    );
+    let (status, _, page) = send(&app, form_request(&uri, &body)).await;
+    assert_eq!(status, StatusCode::OK, "the move answers the board: {page}");
+    assert_eq!(
+        column_of(&page, "Beta one"),
+        Some("in-progress"),
+        "the card moved"
+    );
+    assert!(
+        !page.contains("Café alpha"),
+        "the answer is still drawn through the focus filter: {page}"
+    );
+    assert!(
+        page.contains("<option value=\"Beta\" selected>Beta</option>"),
+        "the project filter survives the drop: {page}"
+    );
+    assert!(
+        page.contains("<option value=\"beta\" selected>beta</option>"),
+        "the lane filter survives the drop: {page}"
+    );
+    assert!(
+        page.contains("name=\"text\" value=\"one\""),
+        "the search survives the drop: {page}"
+    );
+    assert!(
+        page.contains("hx-get=\"/board?project=Beta"),
+        "the refresh URL keeps the filters: {page}"
+    );
+
+    let (_, _, script) = get(&app, "/static/tandem.js").await;
+    assert!(
+        script.contains(".tickets__bar--board") && script.contains("new FormData("),
+        "the drop posts the filter bar it was drawn with"
+    );
+}
+
 #[tokio::test]
 async fn post_routes_reject_missing_form_content_type_and_cross_origin_header() {
     let sandbox = Sandbox::new("board-guards");

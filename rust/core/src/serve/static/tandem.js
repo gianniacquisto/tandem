@@ -30,7 +30,13 @@
   function move(ticketId, column) {
     var root = document.getElementById('board-root');
     if (!root || !column || !ticketId) return;
-    var body = new URLSearchParams();
+    // The board's answer replaces the root, so the POST has to carry the
+    // filters the board was drawn with; without them the partial redraws an
+    // unfiltered board and the human's project, lane, assignee and search are
+    // gone. The filter bar's own controls are that state, and they are the
+    // same field names the add form carries as hidden inputs.
+    var bar = root.querySelector('.tickets__bar--board');
+    var body = bar ? new URLSearchParams(new FormData(bar)) : new URLSearchParams();
     body.set('status', column.getAttribute('data-status') || '');
     body.set('expected_revision', root.getAttribute('data-revision') || '0');
     fetch('/tickets/' + encodeURIComponent(ticketId) + '/status', {
