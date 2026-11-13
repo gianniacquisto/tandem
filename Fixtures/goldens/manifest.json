@@ -1477,68 +1477,13 @@
     },
     {
       "group": "note",
-      "case": "capture",
-      "stdin": "A fact the golden keeps.\n",
-      "argv": [
-        "note",
-        "capture",
-        "--kind",
-        "fact",
-        "--project",
-        "fixture"
-      ]
-    },
-    {
-      "group": "note",
-      "case": "capture-duplicate",
-      "stdin": "A fact the golden keeps.\n",
-      "setup": [
-        {
-          "argv": [
-            "note",
-            "capture",
-            "--kind",
-            "fact",
-            "--project",
-            "fixture"
-          ],
-          "stdin": "A fact the golden keeps.\n"
-        }
-      ],
-      "argv": [
-        "note",
-        "capture",
-        "--kind",
-        "fact",
-        "--project",
-        "fixture"
-      ]
-    },
-    {
-      "group": "note",
-      "case": "capture-empty-body",
-      "argv": [
-        "note",
-        "capture",
-        "--kind",
-        "fact"
-      ],
-      "exit": 2
-    },
-    {
-      "group": "note",
       "case": "stats",
       "setup": [
         {
-          "argv": [
-            "note",
-            "capture",
-            "--kind",
-            "decision",
-            "--project",
-            "fixture"
-          ],
-          "stdin": "A decision the golden keeps.\n"
+          "write": {
+            "at": "bikeshed/projects/fixture/.raw/golden-session/20261018T140211-decision-a-decision-the-golden-keeps.md",
+            "text": "# A decision the golden keeps.\n"
+          }
         }
       ],
       "argv": [
@@ -1551,15 +1496,10 @@
       "case": "stats-project",
       "setup": [
         {
-          "argv": [
-            "note",
-            "capture",
-            "--kind",
-            "decision",
-            "--project",
-            "fixture"
-          ],
-          "stdin": "A decision the golden keeps.\n"
+          "write": {
+            "at": "bikeshed/projects/fixture/.raw/golden-session/20261018T140211-decision-a-decision-the-golden-keeps.md",
+            "text": "# A decision the golden keeps.\n"
+          }
         }
       ],
       "argv": [
@@ -1608,15 +1548,6 @@
       "argv": [
         "note",
         "rename",
-        "--help"
-      ]
-    },
-    {
-      "group": "note",
-      "case": "capture-help",
-      "argv": [
-        "note",
-        "capture",
         "--help"
       ]
     },

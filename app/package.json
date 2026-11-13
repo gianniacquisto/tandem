@@ -21,7 +21,6 @@
     "dist": "npm run build && npm run binary:release && electron-builder --publish never"
   },
   "dependencies": {
-    "@lezer/markdown": "1.8.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

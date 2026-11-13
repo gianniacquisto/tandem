@@ -4,7 +4,7 @@
 //! These are the claims the pipe test cannot isolate:
 //!
 //! - `initialize` negotiates the protocol version instead of assuming it;
-//! - `tools/list` names the 23 tools with object-rooted schemas;
+//! - `tools/list` names every tool with an object-rooted schema;
 //! - `tools/call` drives the whole ticket loop through the `rpc` door, and a
 //!   domain refusal is a result with `isError`, not a JSON-RPC error;
 //! - a frame the door cannot route is a JSON-RPC error and never a panic.
@@ -134,7 +134,7 @@ fn initialize_carries_a_small_health_block() {
         "the health block names the version: {health}"
     );
     assert_eq!(
-        health["tools"], 23,
+        health["tools"], 28,
         "the health block names the tool count: {health}"
     );
 }
@@ -184,7 +184,7 @@ fn a_notification_is_answered_with_silence() {
 }
 
 #[test]
-fn tools_list_names_the_23_tools_with_object_schemas() {
+fn tools_list_names_the_28_tools_with_object_schemas() {
     let sandbox = Sandbox::new("mcp-tools-list");
     let store = sandbox.store();
 
@@ -192,7 +192,7 @@ fn tools_list_names_the_23_tools_with_object_schemas() {
     let tools = listed["result"]["tools"]
         .as_array()
         .expect("tools is an array");
-    assert_eq!(tools.len(), 23);
+    assert_eq!(tools.len(), 28);
     for tool in tools {
         let name = tool["name"].as_str().unwrap_or("");
         assert!(
@@ -200,7 +200,8 @@ fn tools_list_names_the_23_tools_with_object_schemas() {
                 && !name.starts_with("workflow_run_")
                 && !name.starts_with("workflow_")
                 && !name.starts_with("settings_")
-                && name != "ticket_file",
+                && name != "ticket_file"
+                && name != "note_capture",
             "the retired tickets and workflow surfaces are gone: {name}"
         );
         assert!(
@@ -349,8 +350,8 @@ fn a_frame_that_is_not_a_request_answers_a_parse_error() {
 }
 
 #[test]
-fn tools_call_drives_a_ticket_and_a_capture() {
-    let sandbox = Sandbox::new("mcp-capture");
+fn tools_call_drives_a_ticket_and_the_note_tools() {
+    let sandbox = Sandbox::new("mcp-notes");
     let store = sandbox.store();
 
     let added: Value = serde_json::from_str(&tool_text(
@@ -363,18 +364,79 @@ fn tools_call_drives_a_ticket_and_a_capture() {
     .expect("the tool result is JSON");
     assert_eq!(added["ticket"]["title"], "Batch");
 
-    let captured: Value = serde_json::from_str(&tool_text(
+    let written: Value = serde_json::from_str(&tool_text(
         &call(
             &store,
-            &tool_call(7, "note_capture",
-                json!({"kind": "fact", "project": "tandem", "session": "ses_test", "body": "The door works."}),
+            &tool_call(
+                7,
+                "note_write",
+                json!({"path": "notes/Index.md", "text": "# Index\n\n[[Daily]]"}),
             ),
         )
         .expect("the call answers"),
     ))
     .expect("the tool result is JSON");
-    assert!(
-        captured["path"].as_str().expect("a path").ends_with(".md"),
-        "the capture files a note: {captured}"
+    assert_eq!(
+        written["write"]["path"], "notes/Index.md",
+        "the write answers its path: {written}"
+    );
+
+    let read: Value = serde_json::from_str(&tool_text(
+        &call(
+            &store,
+            &tool_call(8, "note_read", json!({"path": "notes/Index.md"})),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(read["note"]["text"], "# Index\n\n[[Daily]]");
+
+    let tree: Value = serde_json::from_str(&tool_text(
+        &call(&store, &tool_call(9, "note_tree", json!({}))).expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(tree["nodes"][0]["path"], "notes");
+
+    let created: Value = serde_json::from_str(&tool_text(
+        &call(
+            &store,
+            &tool_call(10, "note_create", json!({"path": "notes/Daily.md"})),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(created["path"], "notes/Daily.md");
+
+    let folder: Value = serde_json::from_str(&tool_text(
+        &call(
+            &store,
+            &tool_call(11, "note_create_folder", json!({"path": "archive"})),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(folder["path"], "archive");
+
+    let moved: Value = serde_json::from_str(&tool_text(
+        &call(
+            &store,
+            &tool_call(
+                12,
+                "note_move",
+                json!({"path": "notes/Daily.md", "into": "archive"}),
+            ),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(moved["moved"]["path"], "archive/Daily.md");
+
+    let health: Value = serde_json::from_str(&tool_text(
+        &call(&store, &tool_call(13, "note_health", json!({}))).expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(
+        health["health"]["counts"]["notes"], 2,
+        "the health read walks the same vault: {health}"
     );
 }

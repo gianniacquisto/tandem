@@ -1,6 +1,5 @@
 import type { Method, MethodCall } from '../../../src/shared/bridge'
 import type { NoteContentView } from '../wire/NoteContentView'
-import { parseDocument, serialiseDocument, type Document } from './blocks'
 
 /**
  * The save discipline, as plain data (`BikeshedModel.performSave` in Swift).
@@ -17,12 +16,6 @@ export type NoteBuffer = {
   /** The on-disk hash the buffer last agreed with. */
   baseline: string
   dirty: boolean
-  /**
-   * The parsed document behind the text. A full parse per posted change, by
-   * choice: notes are small and a second, incrementally updated block list
-   * would be a second truth.
-   */
-  document: Document
 }
 
 export type Theirs = { text: string; hash: string }
@@ -46,7 +39,6 @@ export function openBuffer(note: { path: string; text: string; hash: string }): 
     text: note.text,
     baseline: note.hash,
     dirty: false,
-    document: parseDocument(note.text),
   }
 }
 
@@ -61,7 +53,6 @@ export function arrival(buffer: NoteBuffer, onDisk: Theirs): Arrival {
         text: onDisk.text,
         baseline: onDisk.hash,
         dirty: false,
-        document: parseDocument(onDisk.text),
       },
     }
   }
@@ -84,7 +75,6 @@ export function takeTheirs(buffer: NoteBuffer, theirs: Theirs): NoteBuffer {
     text: theirs.text,
     baseline: theirs.hash,
     dirty: false,
-    document: parseDocument(theirs.text),
   }
 }
 
@@ -104,16 +94,13 @@ export function conflictStillApplies(
 }
 
 /**
- * A block-surface edit as data: the surface's block document is the truth and
- * the save still writes it through UI-17's serialiser. It keeps the exact
- * document (gaps and untouched sources included) rather than reparsing, and it
- * never re-dirties a buffer whose serialised text it already holds.
+ * A textarea edit as data: the one text is the truth, and the save writes it.
+ * Text the buffer already holds never re-dirties it.
  */
-export function applyEditor(buffer: NoteBuffer | null, document: Document): NoteBuffer | null {
+export function applyEditor(buffer: NoteBuffer | null, text: string): NoteBuffer | null {
   if (buffer === null) return null
-  const text = serialiseDocument(document)
-  if (buffer.text === text) return { ...buffer, document }
-  return { ...buffer, text, dirty: true, document }
+  if (buffer.text === text) return buffer
+  return { ...buffer, text, dirty: true }
 }
 
 /** A note read reply, or null for any other reply. */
@@ -183,16 +170,7 @@ export function resolveFolderPath(folder: string, name: string): string {
 export async function saveNote(call: NoteCall, buffer: NoteBuffer): Promise<SaveOutcome> {
   if (!buffer.dirty) return { type: 'saved', hash: buffer.baseline }
 
-  // The bytes the save writes come from the model, never from a silent string
-  // walk: a block that cannot render fails the save into the banner instead.
-  let text: string
-  try {
-    text = serialiseDocument(buffer.document)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'The note could not be serialised.'
-    return { type: 'error', message }
-  }
-
+  const text = buffer.text
   const disk = await call({ method: 'note.read', params: { path: buffer.path } })
   if ('error' in disk) return { type: 'error', message: disk.error.message }
 

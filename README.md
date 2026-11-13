@@ -170,7 +170,6 @@ tandem-cli project rename --from <name> --to <name>
 tandem-cli project delete --name <name>
 
 tandem-cli note rename --from <path> --to <path>
-tandem-cli note capture --kind <decision|gotcha|fact|thread> [--project <name>] [--session <id>]
 tandem-cli note stats [--project <name>]
 tandem-cli note links
 tandem-cli doctor
@@ -180,7 +179,7 @@ The Statuses are `backlog`, `on-hold`, `ready`, `in-progress`, `in-review` and `
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](docs/adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 
-That block is `main`'s grammar, the trunk the next release is cut from: `tandem-cli --help` prints the whole of it, and `--help` on any subcommand or verb prints that subcommand's own usage (`tandem-cli note capture --help` the `note capture` line) on stdout, exit 0.
+That block is `main`'s grammar, the trunk the next release is cut from: `tandem-cli --help` prints the whole of it, and `--help` on any subcommand or verb prints that subcommand's own usage (`tandem-cli note rename --help` the `note rename` line) on stdout, exit 0.
 
 ### A session is its own record
 

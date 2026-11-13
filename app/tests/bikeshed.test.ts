@@ -5,10 +5,7 @@ import {
   canReparent,
   flattenTree,
   focusNodes,
-  healthSummary,
-  isHiddenPath,
   recoverableLabel,
-  resolveWikilink,
   ticketHref,
 } from '../renderer/src/shell/bikeshed'
 
@@ -67,14 +64,6 @@ describe('the tree rows', () => {
   })
 })
 
-describe('the hidden layer', () => {
-  it('is any path component that starts with a dot', () => {
-    expect(isHiddenPath('.raw/capture.md')).toBe(true)
-    expect(isHiddenPath('projects/.draft/note.md')).toBe(true)
-    expect(isHiddenPath('projects/fixture/fixture.md')).toBe(false)
-  })
-})
-
 describe('the drag that re-parents', () => {
   it('refuses a folder into its own descendant', () => {
     expect(canReparent('projects', 'projects/fixture')).toBe(false)
@@ -107,50 +96,6 @@ describe('the project focus', () => {
 
   it('falls back to the whole vault when no project folder matches, so a stale focus hides nothing', () => {
     expect(focusNodes(FOLDERS, 'Retro')).toBe(FOLDERS)
-  })
-})
-
-describe('a wikilink click', () => {
-  const paths = ['Index.md', 'daily/2026-10-30.md', 'projects/fixture/fixture.md']
-
-  it('resolves a unique basename to its path', () => {
-    expect(resolveWikilink('fixture', paths)).toBe('projects/fixture/fixture.md')
-  })
-
-  it('resolves a path as written', () => {
-    expect(resolveWikilink('projects/fixture/fixture', paths)).toBe(
-      'projects/fixture/fixture.md',
-    )
-  })
-
-  it('leaves a duplicate basename unresolved', () => {
-    expect(resolveWikilink('fixture', [...paths, 'projects/other/fixture.md'])).toBeNull()
-  })
-
-  it('leaves a target that resolves to nothing unresolved', () => {
-    expect(resolveWikilink('missing', paths)).toBeNull()
-  })
-})
-
-describe('the health panel summary', () => {
-  it('names the broken links and the orphans in the Swift panel words', () => {
-    expect(
-      healthSummary({
-        broken: [{ note: 'Index.md', link: 'missing', line: 4 }],
-        orphans: ['daily/2026-10-30.md'],
-        counts: { notes: 3, links: 2, broken: 1, orphans: 1 },
-      }),
-    ).toBe('1 broken, 1 orphan')
-  })
-
-  it('says the clean report in one line', () => {
-    expect(
-      healthSummary({
-        broken: [],
-        orphans: [],
-        counts: { notes: 3, links: 1, broken: 0, orphans: 0 },
-      }),
-    ).toBe('No broken links, no orphan notes.')
   })
 })
 

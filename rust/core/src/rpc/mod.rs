@@ -35,7 +35,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::bikeshed::{Bikeshed, CaptureKind};
+use crate::bikeshed::Bikeshed;
 use crate::diagnostics;
 use crate::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, Status, TicketQuery, resolve_assignee,
@@ -393,14 +393,13 @@ fn classify(frame: &str, error: &serde_json::Error) -> WireError {
 /// One method through the domain. Every arm is the CLI verb's call, with the
 /// same defaults: the wire adds no rule of its own.
 ///
-/// `environment` is the process's, injected so a test can name a throwaway
-/// home: `doctor` is the machine's read, and the app gets it over this door
-/// rather than opening the filesystem itself.
+/// `_environment` is the process's, injected by [`handle_in`] so the doors keep
+/// one shape; no arm reads it since the note capture left (CUT-7).
 fn execute(
     method: Method,
     store: &Store,
     actor: &Actor,
-    environment: &Environment,
+    _environment: &Environment,
 ) -> Result<Reply, WireError> {
     let board = Board::with_actor(store.clone(), actor.clone());
     match method {
@@ -677,8 +676,8 @@ fn execute(
         Method::DoctorReport(_) => Ok(Reply::Doctor(DoctorReply {
             report: diagnostics::run(store.home()),
         })),
-        Method::NoteTree(params) => {
-            let bikeshed = Bikeshed::with_reveal(bikeshed_directory(store), params.hidden);
+        Method::NoteTree(_) => {
+            let bikeshed = Bikeshed::new(bikeshed_directory(store));
             Ok(Reply::NoteTree(NoteTreeReply {
                 nodes: bikeshed.tree().iter().map(NoteNodeView::new).collect(),
             }))
@@ -735,15 +734,6 @@ fn execute(
                 note: None,
             }))
         }
-        Method::NoteDaily(_) => {
-            let result = open_bikeshed(store)
-                .open_daily_note(crate::bikeshed::Day::today())
-                .map_err(domain)?;
-            Ok(Reply::NotePath(NotePathView {
-                path: result.value,
-                note: result.note,
-            }))
-        }
         Method::NoteHealth(_) => Ok(Reply::NoteHealth(NoteHealthReply {
             health: open_bikeshed(store).health().map_err(domain)?.value,
         })),
@@ -762,32 +752,6 @@ fn execute(
                 .map(RecoveryView::new)
                 .collect(),
         })),
-        Method::NoteCapture(params) => {
-            store.home().ensure().map_err(|error| {
-                WireError::store(format!(
-                    "Cannot create the Tandem home at {}: {error}. Try again.",
-                    store.home().directory().display()
-                ))
-            })?;
-            let kind = CaptureKind::parse(params.kind.as_deref().unwrap_or("")).map_err(domain)?;
-            let project = match params.project.as_deref() {
-                Some(project) => project.to_string(),
-                None => project_default(),
-            };
-            let session = match params.session.as_deref() {
-                Some(session) => session.to_string(),
-                None => capture_session_default(environment),
-            };
-            let body = params.body.as_deref().unwrap_or("");
-            let vault = Bikeshed::new(store.home().directory().join("bikeshed"));
-            let result = vault
-                .capture(&project, kind, body, &session, std::time::SystemTime::now())
-                .map_err(domain)?;
-            Ok(Reply::NotePath(NotePathView {
-                path: result.value,
-                note: result.note,
-            }))
-        }
     }
 }
 
@@ -806,29 +770,6 @@ fn open_bikeshed(store: &Store) -> Bikeshed {
 /// so the domain's unknown-id refusal is the same answer on both doors.
 fn named(value: &Option<String>) -> &str {
     value.as_deref().unwrap_or("")
-}
-
-/// The working directory's last component: the project a capture or session
-/// defaults to.
-fn project_default() -> String {
-    std::env::current_dir()
-        .ok()
-        .and_then(|directory| {
-            directory
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-        })
-        .unwrap_or_default()
-}
-
-/// A capture's session default: `$OPENCODE_SESSION_ID`, else a short generated
-/// token.
-fn capture_session_default(environment: &Environment) -> String {
-    environment
-        .get("OPENCODE_SESSION_ID")
-        .map(|id| id.trim().to_string())
-        .filter(|id| !id.is_empty())
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()[..8].to_string())
 }
 
 /// A ticket receipt: the ticket a write answered and the revision that write

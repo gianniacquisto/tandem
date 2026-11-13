@@ -17,11 +17,10 @@ use std::env;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::SystemTime;
 
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
-use tandem_core::bikeshed::{Bikeshed, CaptureKind, Day};
+use tandem_core::bikeshed::Bikeshed;
 use tandem_core::diagnostics;
 use tandem_core::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Status, TicketQuery,
@@ -134,15 +133,12 @@ enum ProjectCommand {
 #[derive(Subcommand)]
 enum NoteCommand {
     Rename(NoteRenameArgs),
-    Capture(NoteCaptureArgs),
     Stats(NoteStatsArgs),
-    Prune,
     Links,
     Write(NoteWriteArgs),
     Move(NoteMoveArgs),
     Create(NoteCreateArgs),
     CreateFolder(NoteCreateFolderArgs),
-    Daily,
 }
 
 #[derive(Args)]
@@ -345,16 +341,6 @@ struct NoteCreateFolderArgs {
 }
 
 #[derive(Args)]
-struct NoteCaptureArgs {
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    kind: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    project: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    session: Option<String>,
-}
-
-#[derive(Args)]
 struct NoteStatsArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     project: Option<String>,
@@ -512,15 +498,12 @@ impl NoteCommand {
     fn help(&self) -> &'static str {
         match self {
             Self::Rename(_) => "note rename",
-            Self::Capture(_) => "note capture",
             Self::Stats(_) => "note stats",
-            Self::Prune => "note prune",
             Self::Links => "note links",
             Self::Write(_) => "note write",
             Self::Move(_) => "note move",
             Self::Create(_) => "note create",
             Self::CreateFolder(_) => "note create-folder",
-            Self::Daily => "note daily",
         }
     }
 }
@@ -849,31 +832,11 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
                 note: result.note,
             })
         }
-        NoteCommand::Capture(args) => {
-            home.ensure()
-                .map_err(|error| home_failure(home.directory(), error))?;
-            let kind =
-                CaptureKind::parse(args.kind.as_deref().unwrap_or("")).map_err(capture_failure)?;
-            let project = args.project.clone().unwrap_or_else(project_default);
-            let session = args.session.clone().unwrap_or_else(capture_session_default);
-            let body = read_standard_input()?;
-            match vault.capture(&project, kind, &body, &session, SystemTime::now()) {
-                Ok(result) => print(&NotePathView {
-                    path: result.value,
-                    note: result.note,
-                }),
-                Err(error) => Err(capture_failure(error)),
-            }
-        }
         NoteCommand::Stats(args) => {
             let stats = vault
                 .stats(args.project.as_deref())
                 .map_err(Failure::domain)?;
             print(&stats.value)
-        }
-        NoteCommand::Prune => {
-            let pruned = vault.prune().map_err(Failure::domain)?;
-            print(&pruned.value)
         }
         NoteCommand::Links => {
             let health = vault.health().map_err(Failure::domain)?;
@@ -923,32 +886,7 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
                 note: result.note,
             })
         }
-        NoteCommand::Daily => {
-            home.ensure()
-                .map_err(|error| home_failure(home.directory(), error))?;
-            let result = vault
-                .open_daily_note(Day::today())
-                .map_err(Failure::domain)?;
-            print(&NotePathView {
-                path: result.value,
-                note: result.note,
-            })
-        }
     }
-}
-
-/// A refused capture is the caller's own text to fix, not a retryable domain
-/// failure: an empty body or a slug with no words exits 2, the usage code.
-fn capture_failure(error: DomainError) -> Failure {
-    let refused = matches!(
-        error,
-        DomainError::EmptyCaptureBody | DomainError::EmptyCaptureSlug(_)
-    );
-    let mut failure = Failure::domain(error);
-    if refused {
-        failure.exit = 2;
-    }
-    failure
 }
 
 // MARK: - Plumbing
@@ -985,29 +923,6 @@ fn read_standard_input() -> Result<String, Failure> {
         .read_to_end(&mut bytes)
         .map_err(|error| Failure::message(format!("Cannot read stdin: {error}. Try again.")))?;
     String::from_utf8(bytes).map_err(|_| Failure::domain(DomainError::StandardInputNotUtf8))
-}
-
-/// The working directory's last component: the project a capture or session
-/// defaults to (ADR 0016).
-fn project_default() -> String {
-    env::current_dir()
-        .ok()
-        .and_then(|directory| {
-            directory
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-        })
-        .unwrap_or_default()
-}
-
-/// A capture's session default: `$OPENCODE_SESSION_ID`, else a short generated
-/// token for hosts that export none (ADR 0016). A note is filed by path, so an
-/// invented folder is fine here; a session record's handle is not.
-fn capture_session_default() -> String {
-    env::var("OPENCODE_SESSION_ID")
-        .ok()
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()[..8].to_string())
 }
 
 /// `--assignee self` is the agent running this command: the core's rule, shared

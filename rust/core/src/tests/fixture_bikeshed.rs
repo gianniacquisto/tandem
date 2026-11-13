@@ -8,7 +8,6 @@
 use std::path::Path;
 
 use crate::bikeshed::Bikeshed;
-use crate::bikeshed::front::ScaffoldRole;
 use crate::bikeshed::wikilink::LinkResolution;
 
 use super::bikeshed_support::Vault;
@@ -18,28 +17,6 @@ fn fixture() -> Vault {
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Fixtures/port/Home/bikeshed");
     vault.copy_from(&source);
     vault
-}
-
-#[test]
-fn the_fixture_vault_reads_as_one_project_with_its_overview() {
-    let vault = fixture();
-    let rows = vault
-        .bikeshed()
-        .front_page()
-        .expect("the front page reads")
-        .value;
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].name, "Fixture");
-    assert_eq!(rows[0].folder, "projects/fixture");
-    assert_eq!(
-        rows[0]
-            .pages
-            .iter()
-            .map(|page| page.role)
-            .collect::<Vec<_>>(),
-        vec![ScaffoldRole::Overview]
-    );
-    assert_eq!(rows[0].pages[0].path, "projects/fixture/fixture.md");
 }
 
 #[test]
@@ -98,34 +75,6 @@ fn the_fixture_vaults_search_and_stats_answer() {
     assert_eq!(row.raw_pending, 0);
     assert_eq!(row.raw_archived, 0);
     assert!(row.last_consolidated.is_some());
-}
-
-#[test]
-fn the_fixture_vaults_daily_note_is_pending_until_the_marker_moves() {
-    let vault = fixture();
-    let bikeshed = vault.bikeshed();
-    assert_eq!(
-        bikeshed
-            .pending_daily_notes()
-            .expect("the daily scan runs")
-            .value,
-        vec!["daily/2026-10-30.md".to_string()]
-    );
-
-    // A copy is the suite's own: advancing the marker writes nothing to the
-    // committed fixture.
-    let index = vault.read("Index.md");
-    vault.stage(
-        "Index.md",
-        &format!("{index}\nHuman notes folded through 2026-10-30\n"),
-    );
-    assert!(
-        bikeshed
-            .pending_daily_notes()
-            .expect("the daily scan runs")
-            .value
-            .is_empty()
-    );
 }
 
 #[test]

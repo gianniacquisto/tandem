@@ -92,9 +92,6 @@ pub enum DomainError {
     /// `--assignee self` / `--origin self` was used and `TANDEM_AGENT` names no
     /// agent.
     AgentNameUnset,
-    /// A caller-supplied timestamp is not the store's own ISO-8601 UTC form. A
-    /// stamp the write cannot read is a record every later read fails on.
-    InvalidStamp(String),
     /// The bikeshed lock could not be acquired within its bounded retry window.
     BikeshedLocked,
     /// The bikeshed itself failed: an unreadable note, a failed rename.
@@ -109,17 +106,6 @@ pub enum DomainError {
     NoteAlreadyExists(String),
     /// A name the bikeshed's create/rename rule refuses.
     InvalidName(String),
-    /// A capture `project` or `session` that is not one visible folder name.
-    InvalidCaptureName(String),
-    /// A capture kind that is not one of the four.
-    InvalidCaptureKind(String),
-    /// The retired `work` capture kind: the session summary is the work record.
-    RetiredCaptureKind(String),
-    /// A capture body that is empty or whitespace-only.
-    EmptyCaptureBody,
-    /// A capture body whose first non-empty line carries no words, so the
-    /// filename would fall back to the kind's own name.
-    EmptyCaptureSlug(String),
     /// A folder moved into itself or one of its own descendants.
     MoveCycle { path: String, into: String },
 }
@@ -227,10 +213,6 @@ impl DomainError {
             Self::AgentNameUnset => "Cannot resolve self: set TANDEM_AGENT to this agent's \
                  name, or pass a name instead of self."
                 .to_string(),
-            Self::InvalidStamp(bad) => format!(
-                "\"{bad}\" is not a timestamp. Stamps are ISO-8601 UTC, \
-                 YYYY-MM-DDTHH:MM:SSZ; omit the value to use the current time."
-            ),
             Self::BikeshedLocked => {
                 "The bikeshed is locked by another process. Please retry.".to_string()
             }
@@ -248,27 +230,6 @@ impl DomainError {
             Self::InvalidName(name) => format!(
                 "Name \"{name}\" is not allowed: note names cannot contain # or |, and must \
                  end in .md. Choose a different name."
-            ),
-            Self::InvalidCaptureName(name) => format!(
-                "Capture name \"{name}\" is not allowed: project and session must each be one \
-                 folder name with no /, #, |, or leading dot. Choose a different name."
-            ),
-            Self::InvalidCaptureKind(kind) => format!(
-                "Unknown capture kind \"{kind}\". Use one of: {}.",
-                crate::bikeshed::CaptureKind::WIRE_VALUES.join(", ")
-            ),
-            Self::RetiredCaptureKind(kind) => format!(
-                "The capture kind \"{kind}\" is retired. The summary at `session end \
-                 --summary` is the work record (ADR 0027). Use one of: {}.",
-                crate::bikeshed::CaptureKind::WIRE_VALUES.join(", ")
-            ),
-            Self::EmptyCaptureBody => "Capture body is empty. Provide a non-empty body on \
-                 stdin and try again."
-                .to_string(),
-            Self::EmptyCaptureSlug(kind) => format!(
-                "Capture \"{kind}\" has no usable slug: the body's first non-empty line \
-                 carries no words. Start the body with a short title line (e.g. \"# Caret not \
-                 placed\") and try again."
             ),
             Self::MoveCycle { path, into } => {
                 let destination = if into.is_empty() {

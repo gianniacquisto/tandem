@@ -29,9 +29,9 @@ function ticketName(ticket: TicketSummary): string {
  * The note's footer: who links here, the tickets that name this note, and any
  * draft a killed save left, after the note in its scrolling page.
  *
- * The section names are the Swift panel's ("Backlinks", the health panel's
- * sibling under the tree); a recovery is drawn as what it is, a draft, never as
- * an error banner. There is no collapse control: a footer costs no width.
+ * The section names are the Swift panel's ("Backlinks"); a recovery is drawn as
+ * what it is, a draft, never as an error banner. There is no collapse control:
+ * a footer costs no width.
  */
 export function BacklinksSection({
   backlinks,

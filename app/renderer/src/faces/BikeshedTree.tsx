@@ -1,28 +1,18 @@
 import { useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 
-import type { BikeshedHealth } from '../wire/BikeshedHealth'
 import type { NoteNodeView } from '../wire/NoteNodeView'
-import {
-  canReparent,
-  flattenTree,
-  healthSummary,
-  isHiddenPath,
-} from '../shell/bikeshed'
+import { canReparent, flattenTree } from '../shell/bikeshed'
 import { defaultCreateFolder, resolveFolderPath, resolveNotePath } from '../shell/note'
 
 export type BikeshedTreeProps = {
   nodes: NoteNodeView[]
   expanded: Set<string>
-  hidden: boolean
   openPath: string | null
-  health: BikeshedHealth | null
   onToggle: (path: string) => void
-  onReveal: (hidden: boolean) => void
   onOpen: (path: string) => void
   onMove: (source: string, into: string) => void
   onCreateNote: (path: string) => void
   onCreateFolder: (path: string) => void
-  onDaily: () => void
 }
 
 function name(path: string): string {
@@ -31,27 +21,25 @@ function name(path: string): string {
 }
 
 /**
- * The tree pane and the Health panel under it (`BikeTreeView` and
- * `BikeHealthPanel` in the Swift face).
+ * The tree pane: a plain folder tree over the vault.
  *
  * A note or a folder is a drag source; a folder row and the vault's own row are
  * drop targets. The gesture asks the core for the same move the `note move`
  * verb performs, and `canReparent` keeps it from asking for one the domain
- * refuses. Revealed hidden rows are drawn dimmed, as in the Swift tree.
+ * refuses.
+ *
+ * The memory layer's chrome left with the layer (CUT-7): no reveal control, no
+ * health panel, no daily note, and the graph's report stays a CLI and MCP read.
  */
 export function BikeshedTree({
   nodes,
   expanded,
-  hidden,
   openPath,
-  health,
   onToggle,
-  onReveal,
   onOpen,
   onMove,
   onCreateNote,
   onCreateFolder,
-  onDaily,
 }: BikeshedTreeProps) {
   const rows = flattenTree(nodes, expanded)
   const [dragging, setDragging] = useState<string | null>(null)
@@ -109,9 +97,6 @@ export function BikeshedTree({
   function actions(): ReactNode {
     return (
       <div className="tree__actions">
-        <button type="button" className="tree__action" onClick={onDaily}>
-          Today&apos;s note
-        </button>
         <button
           type="button"
           className="tree__new tree__new--note"
@@ -179,14 +164,6 @@ export function BikeshedTree({
         {...target('')}
       >
         <span className="tree__vault-name">Bikeshed</span>
-        <label className="tree__reveal">
-          <input
-            type="checkbox"
-            checked={hidden}
-            onChange={(event) => onReveal(event.target.checked)}
-          />
-          Show hidden
-        </label>
       </div>
       {actions()}
       {prompt()}
@@ -199,7 +176,6 @@ export function BikeshedTree({
         <ul className="tree" role="tree">
           {rows.map(({ node, depth }) => {
             const folder = node.kind === 'folder'
-            const revealed = hidden && isHiddenPath(node.path)
             return (
               <li key={node.path} role="none">
                 <div
@@ -209,7 +185,6 @@ export function BikeshedTree({
                   aria-expanded={folder ? expanded.has(node.path) : undefined}
                   aria-selected={node.path === openPath}
                   data-kind={node.kind}
-                  data-hidden={revealed ? 'true' : undefined}
                   data-over={over === node.path ? 'true' : undefined}
                   draggable
                   onDragStart={(event) => {
@@ -228,7 +203,7 @@ export function BikeshedTree({
                     className="tree__label"
                     style={{ paddingLeft: `${8 + depth * 14}px` }}
                     onClick={() => (folder ? onToggle(node.path) : onOpen(node.path))}
-                    title={revealed ? 'Hidden layer: outside search, backlinks and wikilinks.' : node.path}
+                    title={node.path}
                   >
                     <span className="tree__twisty" aria-hidden="true">
                       {folder ? (expanded.has(node.path) ? '\u25be' : '\u25b8') : ''}
@@ -240,43 +215,6 @@ export function BikeshedTree({
             )
           })}
         </ul>
-      )}
-
-      {health === null ? null : (
-        <section className="health" aria-label="Health">
-          <header className="health__header">
-            <h2 className="health__title">Health</h2>
-            <span className="health__count">{healthSummary(health)}</span>
-          </header>
-          {health.broken.length === 0 && health.orphans.length === 0 ? (
-            <p className="health__clean">No broken links, no orphan notes.</p>
-          ) : (
-            <ul className="health__rows">
-              {health.broken.map((link) => (
-                <li key={`${link.note}:${link.line}:${link.link}`}>
-                  <button
-                    type="button"
-                    className="health__row"
-                    onClick={() => onOpen(link.note)}
-                  >
-                    <span className="health__row-name">{name(link.note)}</span>
-                    <span className="health__row-detail">
-                      {'\u2192'} {link.link} {'\u00b7'} line {link.line}
-                    </span>
-                  </button>
-                </li>
-              ))}
-              {health.orphans.map((path) => (
-                <li key={path}>
-                  <button type="button" className="health__row" onClick={() => onOpen(path)}>
-                    <span className="health__row-name">{name(path)}</span>
-                    <span className="health__row-detail">nothing links here</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
       )}
     </>
   )

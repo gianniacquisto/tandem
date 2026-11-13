@@ -122,14 +122,6 @@ _Avoid_: mv, relocate, drag (the gesture, not the operation)
 A note created by a memory session recording the highlights of work — where the work left off, decisions with one-line rationale, learnings and gotchas, expensive-to-derive facts — written for the next agent session as reader.
 _Avoid_: session log, journal, scratch note
 
-**Saddlebag**:
-A project's hidden layer of captures — the `projects/<project>/.raw/` folder: what an agent carries as it works, emptied at the consolidation stop. Holds many captures; a **Capture** is one note in it. Hidden from the tree by default; the app's settings can reveal it (ADR 0023) — revealed, it is still outside the curated graph.
-_Avoid_: raw layer, queue, inbox, backlog
-
-**Capture**:
-A small, create-only note an agent files with `tandem-cli note capture` for a decision, gotcha or fact whose re-derivation would cost real effort: one file in its project's **saddlebag**, out of the curated graph, for the consolidation pass to fold into the project's curated notes.
-_Avoid_: note (ambiguous with a curated note), raw note, log entry, scratch note
-
 **Consolidator**:
 The role that performs a consolidation pass: the agent that is the sole writer of the curated notes (`Index.md` and the notes under `projects/**`). It folds the pending captures in and archives them — it never writes a capture, and no other agent writes the curated layer.
 _Avoid_: memory agent, curator, synthesizer, cleaner

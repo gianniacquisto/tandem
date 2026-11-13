@@ -1,22 +1,56 @@
-//! Ported from `BikeshedStatsTests`: the curated-note count, the hidden
-//! saddlebag's pending/archived depth and oldest-pending age, the newest curated
+//! Ported from `BikeshedStatsTests`: the curated-note count, the `.raw`
+//! folder's pending/archived depth and oldest-pending age, the newest curated
 //! note's mtime, the totals, and the JSON's null keys.
+//!
+//! The capture verb left the core (CUT-7), so the `.raw` files a human or an
+//! agent wrote by hand are planted directly: the stats read counts files, not
+//! writes.
 
 use std::fs;
 use std::time::{Duration, SystemTime};
 
-use crate::bikeshed::{BikeshedProjectStats, BikeshedStats, BikeshedStatsTotals, CaptureKind};
+use crate::bikeshed::{BikeshedProjectStats, BikeshedStats, BikeshedStatsTotals};
 
-use super::bikeshed_support::{INSTANT, Vault, instant};
+use super::bikeshed_support::{INSTANT, Vault};
 
 const INSTANT_ISO: &str = "2026-10-18T14:02:11Z";
 
-fn archive(vault: &Vault, capture: &str, session: &str) {
-    let source = vault.dir().join(capture);
+/// One pending `.raw` file: `projects/<project>/.raw/<session>/<stamp>-<name>`.
+fn plant(vault: &Vault, project: &str, session: &str, stamp: &str, name: &str) {
+    let folder = vault
+        .dir()
+        .join("projects")
+        .join(project)
+        .join(".raw")
+        .join(session);
+    fs::create_dir_all(&folder).unwrap();
+    fs::write(folder.join(format!("{stamp}-{name}.md")), "# planted").unwrap();
+}
+
+/// Move one pending file into the archive folder, as a consolidation pass does.
+fn archive(
+    vault: &Vault,
+    project: &str,
+    session: &str,
+    done_session: &str,
+    stamp: &str,
+    name: &str,
+) {
     let done = vault
         .dir()
-        .join(format!("projects/tandem/.raw/.done/{session}"));
+        .join("projects")
+        .join(project)
+        .join(".raw")
+        .join(".done")
+        .join(done_session);
     fs::create_dir_all(&done).unwrap();
+    let source = vault
+        .dir()
+        .join("projects")
+        .join(project)
+        .join(".raw")
+        .join(session)
+        .join(format!("{stamp}-{name}.md"));
     fs::rename(&source, done.join(source.file_name().unwrap())).unwrap();
 }
 
@@ -42,37 +76,19 @@ fn an_empty_bikeshed_reports_no_projects_and_zero_totals() {
 #[test]
 fn a_project_reports_its_queue_its_archive_and_its_oldest_pending() {
     let vault = Vault::new("stats-pending");
-    let bikeshed = vault.bikeshed();
-    bikeshed
-        .capture(
-            "tandem",
-            CaptureKind::Gotcha,
-            "# Older",
-            "ses",
-            instant(INSTANT),
-        )
-        .unwrap();
-    bikeshed
-        .capture(
-            "tandem",
-            CaptureKind::Fact,
-            "# Newer",
-            "ses",
-            instant(INSTANT + 60),
-        )
-        .unwrap();
-    let consumed = bikeshed
-        .capture(
-            "tandem",
-            CaptureKind::Fact,
-            "# Consumed",
-            "ses",
-            instant(INSTANT + 120),
-        )
-        .unwrap()
-        .value;
-    archive(&vault, &consumed, "ses_done");
+    plant(&vault, "tandem", "ses", "20261018T140211", "gotcha-older");
+    plant(&vault, "tandem", "ses", "20261018T140311", "fact-newer");
+    plant(&vault, "tandem", "ses", "20261018T140411", "fact-consumed");
+    archive(
+        &vault,
+        "tandem",
+        "ses",
+        "ses_done",
+        "20261018T140411",
+        "fact-consumed",
+    );
 
+    let bikeshed = vault.bikeshed();
     bikeshed.write("projects/tandem/Note.md", "# Note").unwrap();
     let consolidated = SystemTime::UNIX_EPOCH + Duration::from_secs(1_792_400_000);
     vault.set_modified("projects/tandem/Note.md", consolidated);
@@ -90,18 +106,9 @@ fn a_project_reports_its_queue_its_archive_and_its_oldest_pending() {
 }
 
 #[test]
-fn a_project_with_captures_but_no_curated_notes() {
+fn a_project_with_pending_files_but_no_curated_notes() {
     let vault = Vault::new("stats-no-curated");
-    vault
-        .bikeshed()
-        .capture(
-            "fresh",
-            CaptureKind::Decision,
-            "# First",
-            "ses",
-            instant(INSTANT),
-        )
-        .unwrap();
+    plant(&vault, "fresh", "ses", "20261018T140211", "decision-first");
     let row = &stats(&vault, None).projects[0];
     assert_eq!(row.project, "fresh");
     assert_eq!(row.curated_notes, 0);
@@ -120,15 +127,7 @@ fn curated_notes_count_recursively_and_totals_sum_the_rows() {
         .write("projects/alpha/deep/Nested.md", "# Nested")
         .unwrap();
     bikeshed.write("projects/beta/Only.md", "# Only").unwrap();
-    bikeshed
-        .capture(
-            "alpha",
-            CaptureKind::Fact,
-            "# Hidden",
-            "ses",
-            instant(INSTANT),
-        )
-        .unwrap();
+    plant(&vault, "alpha", "ses", "20261018T140211", "fact-hidden");
 
     let found = stats(&vault, None);
     assert_eq!(
@@ -151,6 +150,20 @@ fn curated_notes_count_recursively_and_totals_sum_the_rows() {
     assert_eq!(found.totals.curated_notes, 3);
     assert_eq!(found.totals.raw_pending, 1);
     assert_eq!(found.totals.raw_archived, 0);
+}
+
+#[test]
+fn the_oldest_pending_falls_back_to_the_files_own_mtime() {
+    let vault = Vault::new("stats-mtime");
+    let folder = vault.dir().join("projects/tandem/.raw/ses");
+    fs::create_dir_all(&folder).unwrap();
+    fs::write(folder.join("untitled.md"), "# unstamped").unwrap();
+    let row = &stats(&vault, None).projects[0];
+    assert_eq!(row.raw_pending, 1);
+    assert!(
+        row.oldest_pending.is_some(),
+        "a file with no leading stamp still names an age"
+    );
 }
 
 #[test]
@@ -200,4 +213,11 @@ fn the_json_keeps_both_queue_age_keys_present_as_null() {
     let value: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(value["bikeshed"], "/tmp/bikeshed");
     assert_eq!(value["projects"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn the_planted_stamp_matches_the_suites_instant() {
+    // The planted filenames above are only the suite's own words if the stamp
+    // spells the instant the fixture names.
+    assert_eq!(crate::store::timestamp::encode(INSTANT), INSTANT_ISO);
 }
