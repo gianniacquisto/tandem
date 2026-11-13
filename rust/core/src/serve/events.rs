@@ -3,7 +3,7 @@
 use super::*;
 
 pub(super) async fn events(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     Extension(changes): Extension<broadcast::Sender<i64>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<SseEvent, Infallible>>> {
     // The stream opens on the revision the board was drawn from, so a client
@@ -15,7 +15,7 @@ pub(super) async fn events(
             .event("changed")
             .data(current.to_string()),
     ));
-    let lagged = Arc::clone(&context);
+    let lagged = context.clone();
     let updates = BroadcastStream::new(changes.subscribe()).filter_map(move |item| match item {
         Ok(revision) => Some(Ok(SseEvent::default()
             .event("changed")

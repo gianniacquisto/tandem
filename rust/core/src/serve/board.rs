@@ -503,7 +503,7 @@ fn render_response(
     }
 }
 pub(super) async fn board_page(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     Query(params): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
@@ -511,13 +511,10 @@ pub(super) async fn board_page(
     render_response(&context, &filters, None, &headers, StatusCode::OK)
 }
 pub(super) async fn add_ticket(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
-    if let Some(denied) = guard(&headers) {
-        return denied;
-    }
     let Ok(Form(params)) = form else {
         return bad_request("the form could not be read");
     };
@@ -561,14 +558,11 @@ pub(super) async fn add_ticket(
 }
 
 pub(super) async fn move_ticket(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     Path(id): Path<String>,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
-    if let Some(denied) = guard(&headers) {
-        return denied;
-    }
     let Ok(Form(params)) = form else {
         return bad_request("the form could not be read");
     };

@@ -290,7 +290,7 @@ fn encode_component(value: &str) -> String {
 }
 
 pub(super) async fn ticket_page(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     Path(id): Path<String>,
     Query(params): Query<HashMap<String, String>>,
     headers: HeaderMap,
@@ -300,14 +300,11 @@ pub(super) async fn ticket_page(
 }
 
 pub(super) async fn save_ticket(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     Path(id): Path<String>,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
-    if let Some(denied) = guard(&headers) {
-        return denied;
-    }
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
@@ -378,14 +375,11 @@ pub(super) async fn save_ticket(
 }
 
 pub(super) async fn append_description(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     Path(id): Path<String>,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
-    if let Some(denied) = guard(&headers) {
-        return denied;
-    }
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
@@ -438,14 +432,11 @@ pub(super) async fn append_description(
 }
 
 pub(super) async fn add_comment(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     Path(id): Path<String>,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
-    if let Some(denied) = guard(&headers) {
-        return denied;
-    }
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
@@ -477,14 +468,11 @@ pub(super) async fn add_comment(
 }
 
 pub(super) async fn move_to_lane(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     Path(id): Path<String>,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
-    if let Some(denied) = guard(&headers) {
-        return denied;
-    }
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
@@ -533,13 +521,10 @@ fn lane_ticket(params: &HashMap<String, String>) -> String {
 }
 
 pub(super) async fn add_lane(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
-    if let Some(denied) = guard(&headers) {
-        return denied;
-    }
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
@@ -566,14 +551,11 @@ pub(super) async fn add_lane(
 }
 
 pub(super) async fn rename_lane(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     Path(name): Path<String>,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
-    if let Some(denied) = guard(&headers) {
-        return denied;
-    }
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };

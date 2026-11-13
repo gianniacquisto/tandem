@@ -2,16 +2,20 @@
 //!
 //! The board is rendered on the server: askama compiles the templates into the
 //! core, htmx swaps the `#board-root` partial, and a vendored `tandem.js`
-//! carries the one act htmx cannot, a card drop. One [`SessionContext`] is the
-//! router's state, so every route reads and writes through the same store and
-//! actor the CLI uses. A [`watch`] thread forwards every store revision to the
-//! `GET /events` stream, and the shell re-fetches the board on each one.
+//! carries the one act htmx cannot, a card drop. Each request resolves one
+//! [`Context`] through the router's state, so every route reads and writes
+//! through the same store and actor the CLI uses, and a face that serves more
+//! than one caller resolves the caller there instead. Every mutating request
+//! crosses one write guard layer, so a route cannot opt out by forgetting it.
+//! A [`watch`] thread forwards every store revision to the `GET /events`
+//! stream, and the shell re-fetches the board on each one.
 //!
 //! Two seams hold the contract: [`router`] is the in-process HTTP seam the unit
 //! tests drive, and the `serve` verb in `rust/cli` is the process seam.
 
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
@@ -19,8 +23,10 @@ use std::time::{Duration, Instant};
 
 use askama::Template;
 use axum::extract::rejection::FormRejection;
-use axum::extract::{DefaultBodyLimit, Form, Path, Query, State};
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::extract::{DefaultBodyLimit, Form, FromRequestParts, Path, Query, Request};
+use axum::http::request::Parts;
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
+use axum::middleware::{self, Next};
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
@@ -100,6 +106,51 @@ impl SessionContext {
     }
 }
 
+/// How the router resolves one request's context.
+///
+/// Local mode is the process's one [`SessionContext`], so resolution is the
+/// clone. A face that serves more than one caller resolves the caller and the
+/// workspace it may read here, from the request parts, without a handler
+/// changing: this trait is the one door the context comes through.
+// The rejection is the response the request gets, the shape every axum
+// extractor answers a refusal in; a box would only move the error a layer out.
+#[allow(clippy::result_large_err)]
+pub trait ResolveContext {
+    fn resolve(&self, parts: &Parts) -> Result<Context, Response>;
+}
+
+#[allow(clippy::result_large_err)]
+impl ResolveContext for Arc<SessionContext> {
+    fn resolve(&self, _parts: &Parts) -> Result<Context, Response> {
+        Ok(Context(Arc::clone(self)))
+    }
+}
+
+/// One request's context. Every handler takes this, never the router's state,
+/// so the context is resolved per request and nothing depends on a
+/// process-wide one.
+#[derive(Debug, Clone)]
+pub struct Context(Arc<SessionContext>);
+
+impl Deref for Context {
+    type Target = SessionContext;
+
+    fn deref(&self) -> &SessionContext {
+        &self.0
+    }
+}
+
+impl<S> FromRequestParts<S> for Context
+where
+    S: ResolveContext + Send + Sync,
+{
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        state.resolve(parts)
+    }
+}
+
 /// The in-process HTTP seam: the board routes over `context`.
 pub fn router(context: SessionContext) -> Router {
     let (changes, _) = broadcast::channel(64);
@@ -109,6 +160,13 @@ pub fn router(context: SessionContext) -> Router {
 /// The router over an existing change channel, so the `serve` verb runs the
 /// watcher on the same broadcast every connected stream listens to.
 pub fn router_with(context: SessionContext, changes: broadcast::Sender<i64>) -> Router {
+    layered(routes(), changes).with_state(Arc::new(context))
+}
+
+/// Every route the loopback face serves, before its layers and its state. One
+/// table: the layers below cover everything added to it, so a route added here
+/// is guarded by construction and cannot be served without the write guard.
+fn routes() -> Router<Arc<SessionContext>> {
     Router::new()
         .route("/", get(board::board_page))
         .route("/board", get(board::board_page))
@@ -133,9 +191,31 @@ pub fn router_with(context: SessionContext, changes: broadcast::Sender<i64>) -> 
         .route("/notes/create", post(notes::note_create))
         .route("/notes/create-folder", post(notes::note_create_folder))
         .route("/notes/move", post(notes::note_move))
+}
+
+/// The layers every route carries: the write guard, the body ceiling and the
+/// change channel the events stream reads.
+fn layered(
+    router: Router<Arc<SessionContext>>,
+    changes: broadcast::Sender<i64>,
+) -> Router<Arc<SessionContext>> {
+    router
+        .layer(middleware::from_fn(write_guard))
         .layer(DefaultBodyLimit::max(crate::rpc::MAX_FRAME))
         .layer(Extension(changes))
-        .with_state(Arc::new(context))
+}
+
+/// The write guard as a layer: every request that is not a read crosses it
+/// before a handler runs, so a route cannot opt out by forgetting the call.
+async fn write_guard(request: Request, next: Next) -> Response {
+    if !matches!(
+        *request.method(),
+        Method::GET | Method::HEAD | Method::OPTIONS
+    ) && let Some(denied) = guard(request.headers())
+    {
+        return denied;
+    }
+    next.run(request).await
 }
 
 /// The store watch: one read-only connection, a 40 ms stat and a 5 s fallback,
@@ -360,9 +440,10 @@ fn html_response(html: String, status: StatusCode) -> Response {
     );
     response
 }
-/// A mutating POST's two guards: the form content type and a same-origin
-/// `Origin` when one is sent. A browser sends `Origin` on every cross-origin
-/// POST, so the check keeps an untrusted page from writing to loopback.
+/// The write guard's policy: the form content type and a same-origin `Origin`
+/// when one is sent. [`write_guard`] applies it to every request that is not a
+/// read. A browser sends `Origin` on every cross-origin POST, so the check keeps
+/// an untrusted page from writing to loopback.
 fn guard(headers: &HeaderMap) -> Option<Response> {
     let form = headers
         .get(header::CONTENT_TYPE)

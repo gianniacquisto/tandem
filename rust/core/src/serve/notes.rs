@@ -372,7 +372,7 @@ fn notes_response(
 }
 
 pub(super) async fn notes_page(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     Query(params): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
@@ -380,7 +380,7 @@ pub(super) async fn notes_page(
 }
 
 pub(super) async fn note_view(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     Query(mut params): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
@@ -389,7 +389,7 @@ pub(super) async fn note_view(
 }
 
 pub(super) async fn note_edit(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     Query(mut params): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
@@ -398,7 +398,7 @@ pub(super) async fn note_edit(
 }
 
 pub(super) async fn note_preview(
-    State(_context): State<Arc<SessionContext>>,
+    _context: Context,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
     let Some(params) = form_params(form) else {
@@ -416,13 +416,10 @@ pub(super) async fn note_preview(
 }
 
 pub(super) async fn note_save(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
-    if let Some(denied) = guard(&headers) {
-        return denied;
-    }
     let Some(params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
@@ -471,7 +468,7 @@ pub(super) async fn note_save(
 }
 
 pub(super) async fn note_create(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
@@ -479,7 +476,7 @@ pub(super) async fn note_create(
 }
 
 pub(super) async fn note_create_folder(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
@@ -492,9 +489,6 @@ async fn note_create_thing(
     form: Result<Form<HashMap<String, String>>, FormRejection>,
     folder: bool,
 ) -> Response {
-    if let Some(denied) = guard(&headers) {
-        return denied;
-    }
     let Some(mut params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
@@ -524,13 +518,10 @@ async fn note_create_thing(
 }
 
 pub(super) async fn note_move(
-    State(context): State<Arc<SessionContext>>,
+    context: Context,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
 ) -> Response {
-    if let Some(denied) = guard(&headers) {
-        return denied;
-    }
     let Some(mut params) = form_params(form) else {
         return bad_request("the form could not be read");
     };
