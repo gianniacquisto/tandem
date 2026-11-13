@@ -2,76 +2,68 @@
 
 [![CI](https://github.com/gianniacquisto/tandem/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/gianniacquisto/tandem/actions/workflows/release.yml)
 [![Release](https://img.shields.io/github/v/release/gianniacquisto/tandem)](https://github.com/gianniacquisto/tandem/releases/latest)
-[![shipped app: macOS 27+ on Apple silicon](https://img.shields.io/badge/shipped%20app-macOS%2027%2B%20on%20Apple%20silicon-lightgrey.svg)](https://github.com/gianniacquisto/tandem/releases/latest)
+[![single binary: macOS arm64 and Linux x86_64](https://img.shields.io/badge/single%20binary-macOS%20arm64%20%2B%20Linux%20x86__64-lightgrey.svg)](https://github.com/gianniacquisto/tandem/releases/latest)
 [![Licence](https://img.shields.io/badge/licence-MIT-sage.svg)](LICENSE)
 
 ![The tandem bike — the app's brand mark and icon](Resources/TandemBike.jpg)
 
-**Tandem is a board for you and your AI coding agents that ships as a macOS app.** One ticket list, one board by status and lane, an inbox for what the agents owe you, and the bikeshed — a folder of markdown notes — that doubles as the agents' memory. Your agent and you share one list: it files tickets you see, and it sees the ones you close. Everything runs on your Mac today: one SQLite database and a folder of markdown notes you own, with no account to create. A hosted core is a later deployment shape, so the boundary is today's, not the product's.
+**Tandem is a board for you and your AI coding agents that ships as one binary.** One ticket list, one board by status and lane, an inbox for what the agents owe you, and the bikeshed (a folder of markdown notes) that doubles as the agents' memory. Your agent and you share one list: it files tickets you see, and it sees the ones you close. Everything runs on your machine: one SQLite database and a folder of markdown notes you own, with no account to create. `tandem serve` opens the board in your browser; the agent face is the same binary. A hosted core is a later deployment shape, so the boundary is today's, not the product's.
 
 ## Install
 
-The shipped app needs macOS 27 (Golden Gate) or later, on an Apple silicon Mac.
-
-```sh
-brew install --cask gianniacquisto/tap/tandem
-```
-
-Spell the tap out in full, every time. Homebrew core has an unrelated cask named `tandem`, and the Caskroom is keyed by the token — a bare `brew install --cask tandem` installs that one over this app and offers it as an upgrade forever. The install puts `Tandem.app` in `/Applications` and links the bundled `tandem-cli` into Homebrew's `bin`.
-
-Without Homebrew, the same zip installs through a script the release publishes beside it:
+Tandem ships as one binary. A release publishes a standalone `tandem` archive for macOS on Apple silicon and for Linux on x86_64, with `install.sh` and one `SHA256SUMS` beside them.
 
 ```sh
 curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh
 ```
 
-The script verifies the zip against the release's `SHA256SUMS` before writing anything, copies `Tandem.app` to `/Applications`, and leaves an existing install (a cask or a previous script run) alone unless re-run with `--reinstall`. It reports the `tandem-cli` link state instead of changing it. To remove a script install later:
+The script picks this machine's archive, verifies its SHA-256 against the release's manifest before writing anything, and installs `tandem` into `~/.local/bin` (or `$TANDEM_INSTALL_DIR`, or `--bin-dir`). It also writes a `tandem-cli` link to the same binary, so both names work. An existing `tandem` is left alone unless you pass `--reinstall`. To remove it later:
 
 ```sh
 curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh -s -- --uninstall
 ```
 
-(The cask stays the first-documented path; [`docs/install-paths.md`](docs/install-paths.md) compares the two.)
+`--uninstall` removes the binary and its link; `~/.tandem` (the store and the notes) stays. On Windows, download `tandem-<version>-windows-x86_64.zip`, extract `tandem.exe` and put it on PATH. [`docs/install-paths.md`](docs/install-paths.md) is the install page.
 
-### First launch (once per install or upgrade)
-
-Tandem is ad-hoc signed, not Developer ID signed or notarized, so macOS still shows a Gatekeeper warning the first time you launch it after a download, and the app quits by itself a few seconds later. The bundle's signature is valid and its resources are sealed, so the warning is the missing notarization, not a damaged app. Clear the download flag once, then relaunch:
+Then start the board:
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/Tandem.app
+tandem serve
 ```
 
-Tandem then opens normally until the next install or upgrade.
+It prints the loopback address it bound; `tandem serve --open` opens the browser for you.
+
+### First launch on macOS
+
+macOS quarantines a downloaded archive. The installer clears the flag on macOS (`xattr -dr com.apple.quarantine`); if you unpack an archive by hand, run that command on the installed binary yourself. Linux archives carry no such flag.
 
 ### Check the install
 
 ```sh
-tandem-cli doctor
+tandem doctor
 ```
 
-One JSON report of where your state lives and whether it is healthy: the home directory, the store, the bikeshed, the comment log, the write lock, the installed app and the agent skills. It exits `1` when something needs attention, so it is the quickest way to know a fresh install is whole.
+One JSON report of where your state lives and whether it is healthy: the home directory, the store, the bikeshed, the comment log, the write lock and the installed binary. It exits `1` when something needs attention, so it is the quickest way to know a fresh install is whole.
 
-### What the shipped app runs on
+### What the release covers
 
 | | Supported |
 | --- | --- |
-| macOS | 27 (Golden Gate) or later |
-| Hardware | Apple silicon |
+| macOS | Apple silicon (a `darwin-arm64` archive) |
+| Linux | x86_64 (a `linux-x86_64` archive) |
+| Windows | x86_64 (a `windows-x86_64` zip, extracted by hand) |
 | Agent hosts | OpenCode (skills, agent prompts, `AGENTS.md`), Claude Code (skills), and any host that reads skills from a directory |
-| Network | none today, the app and the CLI are local |
+| Network | none today, `tandem` is local |
 | Accounts | none today, the state is files in your home directory |
 
-That table is the shipped app: every release publishes macOS artifacts only.
-Underneath, the repo builds and tests cross-platform. CI runs the Rust suite
-and the app suite (typecheck, tests, packaging, artifact check, and smoke
-on macOS and Linux only) on
-macOS, Windows and Ubuntu runners, so a checkout on any of the three builds
-and tests what it can run. [CONTRIBUTING.md](CONTRIBUTING.md) is the
-per-platform on-ramp.
+Every tag publishes those three archives. CI runs the cargo gates on macOS,
+Windows and Ubuntu, and the installer and archived-binary smoke tests on macOS
+and Linux, so a checkout on any of the three builds and tests what it can run.
+[CONTRIBUTING.md](CONTRIBUTING.md) is the per-platform on-ramp.
 
 ## What it does
 
-The app and the agent read and write the same store, and the app watches it: a ticket an agent files appears in your window, and a ticket you close is gone from the agent's next read.
+The board and the agent read and write the same store, and the server watches it: a ticket an agent files appears in your window, and a ticket you close is gone from the agent's next read.
 
 | | Since |
 | --- | --- |
@@ -131,12 +123,12 @@ Start at `~/.tandem/bikeshed/Index.md`, or the app's Notes tab, when you do not 
 
 ## The agent's CLI
 
-### `tandem-cli` on PATH
+### `tandem` and `tandem-cli` on PATH
 
-The cask links the bundled binary into Homebrew's `bin`, so `tandem-cli` is on your PATH after the install. Where the app is installed but the link is not:
+The installer puts the binary in `~/.local/bin` and links `tandem-cli` to it, so both names are the same executable. Add `~/.local/bin` to PATH if the installer says it is missing:
 
 ```sh
-ln -s "/Applications/Tandem.app/Contents/MacOS/tandem-cli" "$(brew --prefix)/bin/tandem-cli"
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Every command prints JSON on stdout.
@@ -232,7 +224,7 @@ Tandem's store was `tickets.json` until v0.27.0, with the comments, sessions, sp
 
 - **Not a service yet.** There is no account to create and nothing syncs; the state is one SQLite database and a folder of notes in your home directory. A hosted core for several humans is a later deployment shape, not a feature you have now.
 - **Not a team tool yet.** One Mac, one store. There is no shared board and no realtime collaboration; the bikeshed is not shareable either.
-- **Not cross-platform as a shipped app.** The release publishes macOS artifacts only: macOS 27 or later, on Apple silicon. Windows and Linux app builds are unshipped and unsupported.
+- **Not every platform.** The release publishes macOS arm64, Linux x86_64 and Windows x86_64 archives. Linux arm64, Intel Mac and static musl builds are later work.
 - **Not a tracker with edges.** The board has no labels, no blocking edges and no child tickets — see [ADR 0026](docs/adr/0026-agent-prompts-and-portable-setup.md).
 - **Not a text file.** The store is a database the app and the CLI own; the bikeshed is where prose, and hand edits, belong. A JSON store from an older build is read once and then ignored.
 

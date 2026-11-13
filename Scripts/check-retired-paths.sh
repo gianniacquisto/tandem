@@ -2,12 +2,13 @@
 #
 # Fails when the tracked tree still names a path the cutover retired (RET-91).
 #
-# The cutover deleted the Swift tree and retired two scripts. A doc, a prompt or
-# a comment that still names one sends a reader to a path that no longer exists,
-# and PR #283 found that class of rot in review instead of in a check. This
-# greps the tracked tree and names every file and line that still mentions a
-# retired path, minus the mentions the allowlist below records: the ADRs, the
-# port's dated spec, and the provenance notes that point at the git history.
+# The cutover deleted the Swift tree, the Electron app and the old scripts. A
+# doc, a prompt or a comment that still names one sends a reader to a path that
+# no longer exists, and PR #283 found that class of rot in review instead of in
+# a check. This greps the tracked tree and names every file and line that still
+# mentions a retired path, minus the mentions the allowlist below records: the
+# ADRs, the port's dated spec, the example face the cut retired, and the
+# provenance notes that point at the git history.
 #
 # Run it from anywhere: `bash Scripts/check-retired-paths.sh`.
 
@@ -30,9 +31,17 @@ retired=(
   Scripts/usage-report.sh
   Editor/
   editor-frame.html
+  Scripts/bump-tap.sh
+  app/
+  rust/core/src/wire/typescript.rs
+  rust/core/examples/export-wire.rs
 )
 
-pattern=$(printf '%s\n' "${retired[@]}" | sed 's/\./\\./g' | paste -sd '|' -)
+# A retired path is matched at a path boundary: the character before it cannot
+# be a letter, a digit, a dot, a slash or a hyphen. Without the boundary,
+# `Tandem.app/Contents` would match `app/` and every macOS install path in the
+# prose would fail the check.
+pattern="(^|[^[:alnum:]_./-])($(printf '%s\n' "${retired[@]}" | sed 's/\./\\./g' | paste -sd '|' -))"
 
 # The allowlist. Each entry is `file-glob|line-regex|reason`: a hit is allowed
 # when its file matches the glob and its line matches the regex. `.*` allows the
@@ -44,9 +53,9 @@ allow=(
   'docs/adr/*.md|.*|An ADR is the historical record: it names a path as it stood when the decision was made, and its amendments name what retired.'
   'docs/port.md|section:## Where the old code goes|The mapping table is the record of where each old path went. The spec prose around it is live and states the cutover, so it carries no retired path.'
   'rust/**/*.rs|^[[:space:]]*//!|A module doc comment records what the module was ported from, a reference to the git history.'
-  'app/tests/*.test.ts|^[[:space:]]*//.*Sources/Tandem[^ ]*\.swift|A ported test cites the Swift file the behaviour came from, a provenance comment: the same class as the Rust module docs.'
-  'app/renderer/src/shell/*.ts|Editor/|A module doc comment records the retired editor module the behaviour was ported from, a reference to the git history.'
-  'app/tests/*.test.ts|Editor/|A ported test cites the retired editor source or test it pins, a provenance comment.'
+  'examples/**|app/|The example face describes the pre-cut workflow (npm, the renderer); ADR 0045 retired the bundled face and CUT-3 deletes these files.'
+  'examples/**|export-wire|The example face still describes the ts-rs export the cut removed (CUT-15); CUT-3 deletes these files.'
+  'rust/core/src/tests/fixtures/**|app/|A captured harness payload is a recording, not prose: editing it would make the fixture disagree with what the host sent.'
 )
 
 # `in_section <file> <line> <heading>`: is `<line>` inside the section the

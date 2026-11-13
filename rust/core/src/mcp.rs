@@ -203,11 +203,12 @@ fn initialize_frame(id: Option<Value>, params: Option<&Value>, store: &Store) ->
 /// the last resort. A dev build answers the crate version and no more (ADR
 /// 0045 retired the bundled `VERSION` marker).
 pub fn server_version() -> String {
-    option_env!("TANDEM_VERSION")
-        .map(str::trim)
-        .filter(|version| !version.is_empty())
-        .unwrap_or(env!("CARGO_PKG_VERSION"))
-        .to_string()
+    let version = crate::release_version().trim();
+    if version.is_empty() {
+        env!("CARGO_PKG_VERSION").to_string()
+    } else {
+        version.to_string()
+    }
 }
 
 /// A small health block for `initialize`: the resolved home and why, whether

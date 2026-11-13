@@ -17,9 +17,9 @@ board the Tickets face's pictures are shot on. No run writes into either, and
 each README states the rule.
 
 **The port's ordering golden**, `Fixtures/port/ordering.json`, is the drag
-arithmetic's one case list: `rust/core/tests/ordering.rs` and
-`app/tests/board.test.ts` run the same cases through their own implementation,
-so a drop index cannot drift between the two.
+arithmetic's one case list: `rust/core/tests/ordering.rs` runs the cases through
+the port's implementation, so a drop index cannot drift between the board and
+the notes tree.
 
 **The port's goldens**, `Fixtures/goldens/`, are the CLI's contract written down:
 `manifest.json` is the case list, one deliberate line per verb shape, and

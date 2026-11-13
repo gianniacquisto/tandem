@@ -58,14 +58,76 @@ fn every_runner_os_condition_names_an_os_value() {
 }
 
 #[test]
-fn the_retired_path_scan_is_guarded_by_the_linux_os() {
+fn the_retired_path_scan_is_guarded_by_the_macos_os() {
     let text = std::fs::read_to_string(workflows().join("rust.yml")).expect("rust.yml reads");
     assert!(
         text.contains("run: bash Scripts/check-retired-paths.sh"),
         "the retained scan still has its step"
     );
     assert!(
-        text.contains("if: runner.os == 'Linux'"),
-        "the scan's step runs on the Ubuntu job: `runner.os` is `Linux`, not a runner label"
+        text.contains("if: runner.os == 'macOS'"),
+        "the scan's step runs on the macOS job: `runner.os` is `macOS`, not a runner label"
+    );
+}
+
+/// CUT-16 removed the renderer tree and the Node toolchain. A workflow that sets Node up,
+/// installs from a lockfile or runs an npm script is a second toolchain the
+/// repository no longer has, and it fails before it reaches the cargo gates.
+#[test]
+fn no_workflow_invokes_node_or_npm() {
+    let banned = [
+        "actions/setup-node",
+        "npm ci",
+        "npm run",
+        "npm test",
+        "npm version",
+        "npx ",
+    ];
+    let mut checked = 0;
+    for entry in std::fs::read_dir(workflows()).expect("the workflow folder reads") {
+        let path = entry.expect("the folder entry reads").path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("yml") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).expect("the workflow reads");
+        for command in banned {
+            assert!(
+                !text.contains(command),
+                "{} still runs `{command}`: the Node toolchain was removed with the renderer tree (CUT-15, CUT-16)",
+                path.display()
+            );
+        }
+        checked += 1;
+    }
+    assert!(checked >= 2, "the workflows are read ({checked} files)");
+}
+
+/// The release pipeline CUT-16 delivers: one archive per platform, a smoke test
+/// of the extracted binary, and one aggregator that keeps the required check
+/// name `release`.
+#[test]
+fn the_release_workflow_builds_three_platform_archives() {
+    let text = std::fs::read_to_string(workflows().join("release.yml")).expect("release.yml reads");
+    for job in ["build-macos:", "build-linux:", "build-windows:"] {
+        assert!(text.contains(job), "release.yml still names `{job}`");
+    }
+    assert!(
+        text.contains("needs: [build-macos, build-linux, build-windows]"),
+        "the `release` aggregator waits for all three builds"
+    );
+    for archive in [
+        "tandem-$version-darwin-arm64.tar.gz",
+        "tandem-$version-linux-x86_64.tar.gz",
+        "tandem-$version-windows-x86_64.zip",
+    ] {
+        assert!(text.contains(archive), "release.yml packages `{archive}`");
+    }
+    assert!(
+        text.contains("Scripts/stage-release-assets.sh"),
+        "release.yml stages install.sh and SHA256SUMS with the stager"
+    );
+    assert!(
+        text.contains("cargo build --release -p tandem"),
+        "release.yml builds the one binary with cargo"
     );
 }
