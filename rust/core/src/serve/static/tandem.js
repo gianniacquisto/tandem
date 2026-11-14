@@ -396,8 +396,13 @@
     }
     if (RULE.test(line)) return ['lp__line--rule', esc(line)];
     if ((m = BULLET.exec(line))) {
-      var task = m[4] ? '<span class="lp__task">' + esc(m[4]) + '</span>' : '';
-      return ['lp__line--bullet', esc(m[1]) + marker(m[2] + m[3]) + task + inline(m[5])];
+      if (m[4]) {
+        // A task line has no dot: its box is drawn over the `[ ]` characters.
+        var done = m[4].charAt(1) !== ' ';
+        return ['lp__line--task' + (done ? ' lp__line--done' : ''),
+          esc(m[1]) + marker(m[2] + m[3]) + '<span class="lp__task">' + esc(m[4]) + '</span>' + inline(m[5])];
+      }
+      return ['lp__line--bullet', esc(m[1]) + marker(m[2] + m[3]) + inline(m[5])];
     }
     if ((m = NUMBER.exec(line))) {
       return ['lp__line--number', esc(m[1]) + '<span class="lp__num">' + esc(m[2] + m[3] + m[4]) + '</span>' + inline(m[5])];
@@ -563,6 +568,24 @@
     this.set(text, { start: at, end: at });
   };
 
+  // A click on a drawn box flips `[ ]` and `[x]` in the text. The mousedown is
+  // held back so the caret stays put and the line stays rendered; the active
+  // line shows raw markdown, so a click there is an ordinary caret click.
+  Live.prototype.toggleTask = function (event) {
+    var box = event.target.closest ? event.target.closest('.lp__task') : null;
+    if (!box || !this.root.contains(box) || box.closest('.lp__line--active')) return false;
+    event.preventDefault();
+    var before = document.createRange();
+    before.selectNodeContents(this.root);
+    before.setEnd(box, 0);
+    var at = before.toString().length + 1;
+    var sel = this.selection();
+    // Its own undo step, never folded into a burst of typing before it.
+    this.history[this.position].at = 0;
+    this.replace(at, at + 1, this.text.charAt(at) === ' ' ? 'x' : ' ', sel ? sel.start : at);
+    return true;
+  };
+
   Live.prototype.lineBounds = function (offset) {
     var from = this.text.lastIndexOf('\n', offset - 1) + 1;
     var to = this.text.indexOf('\n', offset);
@@ -601,7 +624,10 @@
 
     // A drag is left alone until the button is up: a re-draw under the pointer
     // would cut the selection short.
-    root.addEventListener('mousedown', function () { self.dragging = true; });
+    root.addEventListener('mousedown', function (event) {
+      if (self.toggleTask(event)) return;
+      self.dragging = true;
+    });
 
     root.addEventListener('keydown', function (event) {
       if (self.menu && !self.composing && !event.isComposing && self.menuKey(event)) return;

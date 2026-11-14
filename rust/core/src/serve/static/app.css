@@ -2582,23 +2582,50 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   border-top: var(--hairline) solid var(--sand);
 }
 
+.markdown__item:has(> .markdown__task) {
+  list-style: none;
+  /* The box sits in the column the bullet dot would have. */
+  margin-left: -14px;
+}
+
 .markdown__task {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: 4px;
 }
 
+/* Centred on the first line of text, whatever the line height is. */
 .markdown__checkbox {
-  margin-top: 3px;
-  width: 10px;
-  height: 10px;
-  border: var(--hairline) solid var(--line);
-  border-radius: 3px;
+  position: relative;
+  box-sizing: border-box;
+  flex: none;
+  margin-top: calc((1lh - 14px) / 2);
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--ink-dim);
+  border-radius: var(--radius-checkbox);
 }
 
 .markdown__task[data-checked] .markdown__checkbox {
   border-color: var(--accent);
   background: var(--accent);
+}
+
+.markdown__task[data-checked] .markdown__checkbox::before {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 0.5px;
+  width: 3px;
+  height: 7px;
+  border: solid var(--paper);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.markdown__task[data-checked] .markdown__task-body {
+  color: var(--ink-dim);
+  text-decoration: line-through;
 }
 
 .markdown__link {
@@ -3779,6 +3806,48 @@ body {
 
 .lp__task {
   color: var(--ink-dim);
+}
+
+/* The `[ ]` characters stay in the text; off the active line they shrink to
+ * nothing and a box is drawn in their place. */
+.lp__line--task:not(.lp__line--active) .lp__task {
+  position: relative;
+  display: inline-block;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  /* The box takes the bullet dot's place: the same 1.1em column (1.1 x the
+   * editor's 16px; em is 0 here, the characters are shrunk away). */
+  margin-left: -4px;
+  margin-right: 7.6px;
+  border: 1.5px solid var(--ink-dim);
+  border-radius: var(--radius-checkbox);
+  vertical-align: middle;
+  font-size: 0;
+  cursor: pointer;
+}
+
+.lp__line--done:not(.lp__line--active) .lp__task {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* A drawn tick, centred in the box. */
+.lp__line--done:not(.lp__line--active) .lp__task::after {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 0.5px;
+  width: 3px;
+  height: 7px;
+  border: solid var(--paper);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.lp__line--done:not(.lp__line--active) {
+  color: var(--ink-dim);
+  text-decoration: line-through;
 }
 
 .lp__line--rule:not(.lp__line--active) {

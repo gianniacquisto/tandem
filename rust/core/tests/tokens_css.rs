@@ -248,7 +248,9 @@ fn the_four_palettes_declare_the_same_token_names() {
 
 #[test]
 fn neutral_light_is_the_default_before_a_theme_attribute_is_set() {
-    assert!(TOKENS.contains(":root,\nhtml[data-style=\"neutral\"][data-theme=\"light\"] {"));
+    // A checkout may carry the file with CRLF line ends.
+    let tokens = TOKENS.replace("\r\n", "\n");
+    assert!(tokens.contains(":root,\nhtml[data-style=\"neutral\"][data-theme=\"light\"] {"));
 }
 
 #[test]
