@@ -179,10 +179,12 @@ fn render_notes(
         .get("path")
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
-    let mode = if field(params, "mode") == "edit" {
-        "edit"
-    } else {
+    // A note opens in the editor with its preview beside it; `mode=read` is
+    // the page without the editor.
+    let mode = if field(params, "mode") == "read" {
         "read"
+    } else {
+        "edit"
     };
 
     let board = context.board();
@@ -321,7 +323,7 @@ fn render_notes(
         conflict,
         focus_url: notes_href(&project, show_all, path.as_deref(), None),
         edit_href: notes_href(&project, show_all, path.as_deref(), Some("edit")),
-        read_href: notes_href(&project, show_all, path.as_deref(), None),
+        read_href: notes_href(&project, show_all, path.as_deref(), Some("read")),
     })
 }
 
@@ -384,7 +386,7 @@ pub(super) async fn note_view(
     Query(mut params): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
-    params.remove("mode");
+    params.insert("mode".to_string(), "read".to_string());
     notes_response(&context, &params, None, None, None, &headers)
 }
 
@@ -563,6 +565,74 @@ pub(super) async fn note_daily(
     };
     params.insert("path".to_string(), opened);
     notes_response(&context, &params, None, None, None, &headers)
+}
+
+/// Rename a note in place: the new name keeps the folder and the `.md`
+/// extension, and the core rewrites every link that pointed at the old path.
+pub(super) async fn note_rename(
+    context: Context,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    let Some(mut params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let path = field(&params, "path").to_string();
+    let name = field(&params, "name")
+        .trim()
+        .trim_end_matches(".md")
+        .to_string();
+    let folder = path.rsplit_once('/').map_or("", |(folder, _)| folder);
+    let target = if folder.is_empty() {
+        format!("{name}.md")
+    } else {
+        format!("{folder}/{name}.md")
+    };
+    match context.bikeshed().rename(&path, &target) {
+        Ok(read) => {
+            // The open page follows the rename; a rename of another row leaves it.
+            if field(&params, "open") == path {
+                params.insert("path".to_string(), read.value);
+            } else {
+                params.insert("path".to_string(), field(&params, "open").to_string());
+            }
+            notes_response(&context, &params, None, None, None, &headers)
+        }
+        Err(error) => {
+            params.insert("path".to_string(), field(&params, "open").to_string());
+            notes_response(
+                &context,
+                &params,
+                None,
+                Some(error.message()),
+                None,
+                &headers,
+            )
+        }
+    }
+}
+
+/// Delete a note, or a folder with everything in it. The page closes when it
+/// was the one deleted or sat inside the deleted folder.
+pub(super) async fn note_delete(
+    context: Context,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    let Some(mut params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let path = field(&params, "path").to_string();
+    let open = field(&params, "open").to_string();
+    let outcome = context.bikeshed().delete(&path);
+    let error = outcome.err().map(|error| error.message());
+    let gone = open == path || open.starts_with(&format!("{path}/"));
+    if gone && error.is_none() {
+        params.remove("path");
+    } else {
+        params.insert("path".to_string(), open);
+    }
+    notes_response(&context, &params, None, error, None, &headers)
 }
 
 pub(super) async fn note_move(

@@ -3619,3 +3619,119 @@ body {
   font: inherit;
   text-align: left;
 }
+
+/* A note's row menu: rename and delete, revealed on hover. */
+.tree__row {
+  position: relative;
+}
+
+.row-menu {
+  flex: none;
+  opacity: 0;
+}
+
+.tree__row:hover .row-menu,
+.tree__row:focus-within .row-menu,
+.row-menu[open] {
+  opacity: 1;
+}
+
+.row-menu__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.row-menu__button::-webkit-details-marker {
+  display: none;
+}
+
+.row-menu__button:hover,
+.row-menu[open] > .row-menu__button {
+  background: var(--shadow);
+}
+
+.row-menu__panel {
+  top: 100%;
+  min-width: 210px;
+  gap: 6px;
+}
+
+.row-menu__form {
+  display: flex;
+  gap: 6px;
+}
+
+.row-menu__name {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.row-menu__action {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-menu__action:hover {
+  background: var(--sand);
+}
+
+.row-menu__action--danger {
+  flex: 1 1 auto;
+  color: var(--ember-deep);
+}
+
+/* Editing: the markdown on the left, the page it makes on the right. */
+.bikeshed__page--edit {
+  max-width: 1400px;
+}
+
+.note-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.note-split .note-editor {
+  min-height: calc(100vh - 340px);
+  padding: 12px 14px;
+  border: var(--hairline) solid var(--sand);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  font-size: 14px;
+}
+
+.note-split .note-preview {
+  min-height: 0;
+  padding: 12px 4px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1000px) {
+  .note-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

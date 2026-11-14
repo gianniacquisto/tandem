@@ -283,12 +283,16 @@
     }
   });
 
-  document.addEventListener('click', function (event) {
-    var toggle = closest(event.target, '[data-note-preview]');
-    if (!toggle) return;
+  // The preview beside the editor redraws as the human types.
+  var previewTimer = null;
+  var previewSeq = 0;
+
+  function refreshPreview() {
     var form = noteForm();
     var out = document.querySelector('[data-note-preview-out]');
     if (!form || !out) return;
+    previewSeq += 1;
+    var mine = previewSeq;
     fetch('/notes/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -296,12 +300,17 @@
     })
       .then(function (response) { return response.text(); })
       .then(function (html) {
-        out.innerHTML = html;
-        out.hidden = !out.hidden;
+        if (mine === previewSeq) out.innerHTML = html;
       })
       .catch(function (error) {
         console.error('the note preview failed:', error);
       });
+  }
+
+  document.addEventListener('input', function (event) {
+    if (!closest(event.target, '.note-editor')) return;
+    if (previewTimer) window.clearTimeout(previewTimer);
+    previewTimer = window.setTimeout(refreshPreview, 250);
   });
 })();
 
@@ -335,5 +344,14 @@
     var now = new Date();
     var pad = function (value) { return (value < 10 ? '0' : '') + value; };
     form.elements.date.value = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  }, true);
+
+  // A destructive form names what it deletes and waits for a yes.
+  document.addEventListener('submit', function (event) {
+    var message = event.target.getAttribute && event.target.getAttribute('data-confirm');
+    if (message && !window.confirm(message)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   }, true);
 })();

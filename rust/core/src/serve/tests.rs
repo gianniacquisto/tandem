@@ -1243,13 +1243,20 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         "Other",
         "Tickets",
         "Café alpha",
-        ">Edit<",
+        ">Done<",
+        "note-split",
     ] {
         assert!(
             body.contains(marker),
             "the notes face draws {marker}: {body}"
         );
     }
+
+    let (_, _, read) = send(&app, page_get("/notes?path=Index.md&mode=read")).await;
+    assert!(
+        read.contains(">Edit<") && !read.contains("note-split"),
+        "mode=read draws the page without the editor: {read}"
+    );
 
     let (_, _, focused) = send(&app, page_get("/notes?project=tandem&path=Index.md")).await;
     assert!(
@@ -1357,6 +1364,64 @@ async fn post_notes_save_writes_when_hash_matches_and_renders_mine_theirs_confli
         notes.read("Index.md").expect("the note reads").value.text,
         "mine",
         "Keep mine writes the buffer over the disk"
+    );
+}
+
+#[tokio::test]
+async fn post_notes_rename_and_delete_manage_a_note_and_the_open_page_follows() {
+    let sandbox = Sandbox::new("notes-manage");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    let app = router(context(store));
+
+    let (status, _, _) = send(
+        &app,
+        form_request(
+            "/notes/create",
+            "path=projects/tandem/Draft.md&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _, body) = send(
+        &app,
+        form_request(
+            "/notes/rename",
+            "path=projects/tandem/Draft.md&name=Final&open=projects/tandem/Draft.md&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the rename answers: {body}");
+    assert!(
+        notes.read("projects/tandem/Final.md").is_ok(),
+        "the note is renamed"
+    );
+    assert!(
+        notes.read("projects/tandem/Draft.md").is_err(),
+        "the old name is gone"
+    );
+    assert!(
+        body.contains("Final"),
+        "the open page follows the rename: {body}"
+    );
+
+    let (status, _, body) = send(
+        &app,
+        form_request(
+            "/notes/delete",
+            "path=projects/tandem/Final.md&open=projects/tandem/Final.md&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the delete answers: {body}");
+    assert!(
+        notes.read("projects/tandem/Final.md").is_err(),
+        "the note is deleted"
+    );
+    assert!(
+        body.contains("No note selected"),
+        "the deleted page closes: {body}"
     );
 }
 

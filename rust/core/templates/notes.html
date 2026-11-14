@@ -127,6 +127,33 @@
               <span class="tree__name">{{ row.name }}</span>
             </a>
             {% endif %}
+          <details class="row-menu">
+            <summary class="row-menu__button" aria-label="Manage {{ row.name }}">
+              <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12.5" cy="8" r="1"/></svg>
+            </summary>
+            <div class="menu__panel row-menu__panel">
+              {% if !row.folder %}
+              <form class="row-menu__form" method="post" action="/notes/rename" hx-post="/notes/rename"
+                    hx-target="#notes-root" hx-swap="outerHTML">
+                <input type="hidden" name="project" value="{{ active_project }}">
+                <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+                <input type="hidden" name="open" value="{% if let Some(open) = path %}{{ open }}{% endif %}">
+                <input type="hidden" name="path" value="{{ row.path }}">
+                <input class="row-menu__name" name="name" value="{{ row.name }}" aria-label="New name for {{ row.name }}" required>
+                <button class="row-menu__action" type="submit">Rename</button>
+              </form>
+              {% endif %}
+              <form class="row-menu__form" method="post" action="/notes/delete" hx-post="/notes/delete"
+                    hx-target="#notes-root" hx-swap="outerHTML"
+                    data-confirm="{% if row.folder %}Delete the folder {{ row.name }} and everything in it?{% else %}Delete {{ row.name }}?{% endif %}">
+                <input type="hidden" name="project" value="{{ active_project }}">
+                <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+                <input type="hidden" name="open" value="{% if let Some(open) = path %}{{ open }}{% endif %}">
+                <input type="hidden" name="path" value="{{ row.path }}">
+                <button class="row-menu__action row-menu__action--danger" type="submit">Delete{% if row.folder %} folder{% endif %}</button>
+              </form>
+            </div>
+          </details>
           </div>
         </li>
         {% endfor %}
@@ -157,7 +184,7 @@
         </div>
       </header>
 
-      <div class="bikeshed__page">
+      <div class="bikeshed__page{% if mode == "edit" %} bikeshed__page--edit{% endif %}">
         <div class="page-head">
           <h1 class="page-title">{% for crumb in crumbs %}{% if crumb.current %}{{ crumb.label }}{% endif %}{% endfor %}</h1>
           <dl class="props" aria-label="Note properties">
@@ -168,19 +195,19 @@
         </div>
         <div id="note-panel">
           {% if mode == "edit" %}
-          <form id="note-form" method="post" action="/notes/save" hx-post="/notes/save"
-                hx-target="#notes-root" hx-swap="outerHTML">
-            <input type="hidden" name="path" value="{{ note.path }}">
-            <input type="hidden" name="project" value="{{ active_project }}">
-            <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
-            <input type="hidden" name="mode" value="edit">
-            <input type="hidden" name="baseline_hash" value="{{ note.baseline_hash }}" data-note-baseline>
-            <textarea class="note-editor" name="text" aria-label="Note markdown" spellcheck="false">{{ note.text }}</textarea>
-          </form>
-          <div class="bikeshed__breadcrumb-end">
-            <button type="button" class="bikeshed__mode" data-note-preview>Preview</button>
+          <div class="note-split">
+            <form id="note-form" method="post" action="/notes/save" hx-post="/notes/save"
+                  hx-target="#notes-root" hx-swap="outerHTML">
+              <input type="hidden" name="path" value="{{ note.path }}">
+              <input type="hidden" name="project" value="{{ active_project }}">
+              <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+              <input type="hidden" name="mode" value="edit">
+              <input type="hidden" name="baseline_hash" value="{{ note.baseline_hash }}" data-note-baseline>
+              <textarea class="note-editor" name="text" aria-label="Note markdown" spellcheck="false"
+                        placeholder="Start writing…">{{ note.text }}</textarea>
+            </form>
+            <div class="note-preview" data-note-preview-out aria-label="Preview">{{ note.html }}</div>
           </div>
-          <div class="note-preview" data-note-preview-out hidden></div>
           {% else %}
           {{ note.html }}
           {% endif %}
