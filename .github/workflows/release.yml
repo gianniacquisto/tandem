@@ -16,6 +16,11 @@ name: Release
 # The version is the tag without its `v`, or `0.0.0` on a pull request or a
 # dispatch. It is stamped into the binary as `TANDEM_VERSION`, so the archive's
 # own smoke test reads the same version back from `tandem --version`.
+#
+# No third-party action: `actions/cache` is GitHub's own. This workflow has no
+# `main` trigger, so each build uses the combined cache step: a PR's later
+# pushes hit its own PR-scoped entry, and a tag run restores from `main` or its
+# own scope. The tag run still rebuilds, since it stamps its own version.
 
 on:
   push:
@@ -28,11 +33,16 @@ on:
 permissions:
   contents: read
 
+# A superseded pull-request run is cancelled; tag runs and dispatches never are.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-macos:
     name: build-macos
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -42,6 +52,25 @@ jobs:
       - name: Warm the Rust toolchain
         working-directory: rust
         run: cargo --version
+
+      - name: Resolve the toolchain pin
+        id: toolchain
+        shell: bash
+        run: |
+          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache cargo and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            rust/target
+          key: ${{ runner.os }}-build-macos-release-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
+          restore-keys: |
+            ${{ runner.os }}-build-macos-release-${{ steps.toolchain.outputs.channel }}-
 
       - name: Resolve the version
         run: |
@@ -86,7 +115,7 @@ jobs:
   build-linux:
     name: build-linux
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -96,6 +125,25 @@ jobs:
       - name: Warm the Rust toolchain
         working-directory: rust
         run: cargo --version
+
+      - name: Resolve the toolchain pin
+        id: toolchain
+        shell: bash
+        run: |
+          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache cargo and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            rust/target
+          key: ${{ runner.os }}-build-linux-release-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
+          restore-keys: |
+            ${{ runner.os }}-build-linux-release-${{ steps.toolchain.outputs.channel }}-
 
       - name: Resolve the version
         run: |
@@ -138,7 +186,7 @@ jobs:
   build-windows:
     name: build-windows
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -148,6 +196,25 @@ jobs:
       - name: Warm the Rust toolchain
         working-directory: rust
         run: cargo --version
+
+      - name: Resolve the toolchain pin
+        id: toolchain
+        shell: bash
+        run: |
+          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache cargo and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            rust/target
+          key: ${{ runner.os }}-build-windows-release-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
+          restore-keys: |
+            ${{ runner.os }}-build-windows-release-${{ steps.toolchain.outputs.channel }}-
 
       - name: Resolve the version
         shell: pwsh
