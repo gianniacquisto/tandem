@@ -2258,6 +2258,10 @@ async fn a_note_save_logs_its_path_at_info_and_never_the_body() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    windows,
+    ignore = "Windows forbids a newline or ESC in a file name; the lane-name escape test covers the escape on every platform"
+)]
 async fn a_note_path_with_control_characters_stays_on_one_escaped_line() {
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("log-path-escape");
