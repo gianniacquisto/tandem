@@ -73,6 +73,10 @@ struct NotesView {
     path: Option<String>,
     crumbs: Vec<Crumb>,
     mode: &'static str,
+    /// The folder the open note sits in: where New note files its page.
+    current_dir: String,
+    /// A just-created note puts the cursor in its title.
+    focus_title: bool,
     note: Option<NotePane>,
     backlinks: Vec<BacklinkRow>,
     backlink_count: usize,
@@ -311,6 +315,11 @@ fn render_notes(
         path: path.clone(),
         crumbs,
         mode,
+        current_dir: path
+            .as_deref()
+            .and_then(|open| open.rsplit_once('/'))
+            .map_or(String::new(), |(folder, _)| folder.to_string()),
+        focus_title: field(params, "rename") == "1",
         note,
         backlink_count: backlinks.len(),
         backlinks,
@@ -588,6 +597,10 @@ pub(super) async fn note_rename(
     } else {
         format!("{folder}/{name}.md")
     };
+    if target == path {
+        params.insert("path".to_string(), field(&params, "open").to_string());
+        return notes_response(&context, &params, None, None, None, &headers);
+    }
     match context.bikeshed().rename(&path, &target) {
         Ok(read) => {
             // The open page follows the rename; a rename of another row leaves it.
@@ -633,6 +646,53 @@ pub(super) async fn note_delete(
         params.insert("path".to_string(), open);
     }
     notes_response(&context, &params, None, error, None, &headers)
+}
+
+/// New note: an empty `Untitled` page in the folder the human is in, with the
+/// cursor in its title so the first act is naming it.
+pub(super) async fn note_new(
+    context: Context,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    let Some(mut params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let folder = field(&params, "dir").trim().trim_matches('/').to_string();
+    let vault = context.bikeshed();
+    let mut created = None;
+    for number in 1..100 {
+        let name = if number == 1 {
+            "Untitled".to_string()
+        } else {
+            format!("Untitled {number}")
+        };
+        let path = if folder.is_empty() {
+            format!("{name}.md")
+        } else {
+            format!("{folder}/{name}.md")
+        };
+        if let Ok(read) = vault.create(&path) {
+            created = Some(read.value);
+            break;
+        }
+    }
+    match created {
+        Some(path) => {
+            params.insert("path".to_string(), path);
+            params.insert("rename".to_string(), "1".to_string());
+            params.insert("mode".to_string(), "edit".to_string());
+            notes_response(&context, &params, None, None, None, &headers)
+        }
+        None => notes_response(
+            &context,
+            &params,
+            None,
+            Some("Could not create a new note here.".to_string()),
+            None,
+            &headers,
+        ),
+    }
 }
 
 pub(super) async fn note_move(

@@ -283,35 +283,220 @@
     }
   });
 
-  // The preview beside the editor redraws as the human types.
-  var previewTimer = null;
-  var previewSeq = 0;
+  // MARK: - The live editor
+  //
+  // A note is a column of blocks split on blank lines. Every block shows as the
+  // page it makes, except the one the cursor is in, which shows its markdown:
+  // click a block to edit it, leave it and it draws again. The hidden textarea
+  // in the form stays the one source of truth, so the autosave above needs no
+  // change: each edit writes the joined blocks into it and fires its `input`.
+  var live = null;
 
-  function refreshPreview() {
-    var form = noteForm();
-    var out = document.querySelector('[data-note-preview-out]');
-    if (!form || !out) return;
-    previewSeq += 1;
-    var mine = previewSeq;
-    fetch('/notes/preview', {
+  function splitBlocks(text) {
+    var blocks = [];
+    var current = [];
+    var fenced = false;
+    text.split('\n').forEach(function (line) {
+      if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+      if (!fenced && line.trim() === '') {
+        if (current.length) {
+          blocks.push(current.join('\n'));
+          current = [];
+        }
+      } else {
+        current.push(line);
+      }
+    });
+    if (current.length) blocks.push(current.join('\n'));
+    return blocks;
+  }
+
+  function Live(root, store) {
+    this.root = root;
+    this.store = store;
+    this.blocks = splitBlocks(store.value);
+    if (!this.blocks.length) this.blocks = [''];
+    this.cache = {};
+    this.active = this.blocks.length === 1 && this.blocks[0] === '' ? 0 : -1;
+    this.draw();
+  }
+
+  Live.prototype.render = function (text) {
+    var self = this;
+    if (text.trim() === '') return Promise.resolve('');
+    if (this.cache[text] !== undefined) return Promise.resolve(this.cache[text]);
+    return fetch('/notes/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ text: form.elements.text.value }).toString()
+      body: new URLSearchParams({ text: text }).toString()
     })
       .then(function (response) { return response.text(); })
       .then(function (html) {
-        if (mine === previewSeq) out.innerHTML = html;
-      })
-      .catch(function (error) {
-        console.error('the note preview failed:', error);
+        self.cache[text] = html;
+        return html;
       });
+  };
+
+  Live.prototype.sync = function () {
+    this.store.value = this.blocks.filter(function (block) {
+      return block.trim() !== '';
+    }).join('\n\n') + '\n';
+    this.store.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  Live.prototype.draw = function () {
+    var self = this;
+    this.root.textContent = '';
+    this.blocks.forEach(function (text, index) {
+      var element = document.createElement('div');
+      element.className = 'live__block';
+      element.setAttribute('data-index', String(index));
+      self.root.appendChild(element);
+      if (index === self.active) {
+        self.edit(element, index);
+      } else {
+        self.show(element, text);
+      }
+    });
+    var tail = document.createElement('div');
+    tail.className = 'live__tail';
+    tail.setAttribute('data-live-tail', '');
+    this.root.appendChild(tail);
+  };
+
+  Live.prototype.show = function (element, text) {
+    if (text.trim() === '') {
+      element.classList.add('live__block--empty');
+      return;
+    }
+    this.render(text).then(function (html) {
+      element.innerHTML = html;
+    });
+  };
+
+  Live.prototype.edit = function (element, index, caret) {
+    var self = this;
+    var input = document.createElement('textarea');
+    input.className = 'live__input';
+    input.value = this.blocks[index];
+    input.rows = 1;
+    input.spellcheck = false;
+    input.setAttribute('aria-label', 'Edit block');
+    input.placeholder = index === 0 && this.blocks.length === 1 ? 'Start writing…' : '';
+    element.appendChild(input);
+    function fit() {
+      input.style.height = 'auto';
+      input.style.height = input.scrollHeight + 'px';
+    }
+    fit();
+    input.focus();
+    var at = caret === 'start' ? 0 : input.value.length;
+    input.setSelectionRange(at, at);
+    input.addEventListener('input', function () {
+      fit();
+      var value = input.value;
+      // Two returns in a row end the block: the next one opens below it.
+      if (/\n\n$/.test(value) && !/(```|~~~)/.test(value)) {
+        self.blocks[index] = value.replace(/\s+$/, '');
+        self.blocks.splice(index + 1, 0, '');
+        self.active = index + 1;
+        self.sync();
+        self.draw();
+        return;
+      }
+      self.blocks[index] = value;
+      self.sync();
+    });
+    input.addEventListener('keydown', function (event) {
+      var start = input.selectionStart;
+      var end = input.selectionEnd;
+      if (event.key === 'ArrowUp' && start === 0 && end === 0 && index > 0) {
+        event.preventDefault();
+        self.activate(index - 1, 'end');
+      } else if (event.key === 'ArrowDown' && start === input.value.length && end === start && index < self.blocks.length - 1) {
+        event.preventDefault();
+        self.activate(index + 1, 'start');
+      } else if (event.key === 'Backspace' && input.value === '' && index > 0) {
+        event.preventDefault();
+        self.blocks.splice(index, 1);
+        self.sync();
+        self.active = index - 1;
+        self.draw();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        input.blur();
+      }
+    });
+    input.addEventListener('blur', function () {
+      window.setTimeout(function () {
+        if (self.active !== index) return;
+        self.active = -1;
+        if (self.blocks[index].trim() === '' && self.blocks.length > 1) {
+          self.blocks.splice(index, 1);
+          self.sync();
+        }
+        self.draw();
+      }, 0);
+    });
+  };
+
+  Live.prototype.activate = function (index, caret) {
+    this.active = index;
+    this.draw();
+    var element = this.root.querySelector('[data-index="' + index + '"]');
+    var input = element && element.querySelector('textarea');
+    if (input) {
+      var at = caret === 'start' ? 0 : input.value.length;
+      input.setSelectionRange(at, at);
+    }
+  };
+
+  function initLive() {
+    var root = document.querySelector('[data-live]');
+    var store = document.querySelector('#note-form .note-editor');
+    if (!root || !store || root.hasAttribute('data-live-ready')) return;
+    root.setAttribute('data-live-ready', '');
+    live = new Live(root, store);
   }
 
-  document.addEventListener('input', function (event) {
-    if (!closest(event.target, '.note-editor')) return;
-    if (previewTimer) window.clearTimeout(previewTimer);
-    previewTimer = window.setTimeout(refreshPreview, 250);
+  // Mouse down, not click: the block being left redraws on blur, and a click
+  // aimed at a block that has just been replaced would land on nothing.
+  document.addEventListener('mousedown', function (event) {
+    if (!live) return;
+    if (closest(event.target, 'a')) return;
+    var tail = closest(event.target, '[data-live-tail]');
+    if (tail) {
+      event.preventDefault();
+      var last = live.blocks.length - 1;
+      if (live.blocks[last].trim() !== '') live.blocks.push('');
+      live.activate(live.blocks.length - 1, 'end');
+      return;
+    }
+    var block = closest(event.target, '.live__block');
+    if (!block || block.querySelector('textarea')) return;
+    event.preventDefault();
+    live.activate(Number(block.getAttribute('data-index')), 'end');
   });
+
+  // A page of its own (a note just created, a rename) names the title field to
+  // put the cursor in.
+  function focusTitle() {
+    var title = document.querySelector('[data-autofocus]');
+    if (title) {
+      title.focus();
+      title.select();
+    }
+  }
+
+  function setUpNote() {
+    live = null;
+    initLive();
+    focusTitle();
+  }
+
+  document.addEventListener('DOMContentLoaded', setUpNote);
+  document.addEventListener('htmx:afterSettle', setUpNote);
 })();
 
 // MARK: - The board bar's filter chips and the New ticket form

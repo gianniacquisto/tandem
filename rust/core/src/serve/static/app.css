@@ -3703,35 +3703,85 @@ body {
   color: var(--ember-deep);
 }
 
-/* Editing: the markdown on the left, the page it makes on the right. */
-.bikeshed__page--edit {
-  max-width: 1400px;
+/* Editing in place: each block is the page it makes; the one with the cursor
+ * shows its markdown. */
+.live {
+  min-height: calc(100vh - 360px);
+  font-size: 16px;
+  line-height: 1.6;
 }
 
-.note-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 32px;
-  align-items: start;
+.live__block {
+  margin: 0 -8px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: text;
 }
 
-.note-split .note-editor {
-  min-height: calc(100vh - 340px);
-  padding: 12px 14px;
-  border: var(--hairline) solid var(--sand);
-  border-radius: var(--radius-card);
-  background: var(--paper);
-  font-size: 14px;
+.live__block:hover {
+  background: var(--parchment);
 }
 
-.note-split .note-preview {
-  min-height: 0;
-  padding: 12px 4px;
-  overflow-wrap: anywhere;
+.live__block--empty {
+  min-height: 1.6em;
 }
 
-@media (max-width: 1000px) {
-  .note-split {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.live__block > :first-child {
+  margin-top: 0;
+}
+
+.live__block > :last-child {
+  margin-bottom: 0;
+}
+
+.live__input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 14.5px;
+  line-height: 1.6;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+}
+
+.live__block:has(.live__input) {
+  background: var(--parchment);
+}
+
+.live__tail {
+  min-height: 160px;
+  cursor: text;
+}
+
+/* The title is the name: edit it to rename the note. */
+.page-title-form {
+  margin: 0;
+}
+
+.page-title {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 16px -8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  outline: none;
+}
+
+.page-title:hover,
+.page-title:focus {
+  background: var(--parchment);
 }

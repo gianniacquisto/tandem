@@ -1244,7 +1244,7 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         "Tickets",
         "Café alpha",
         ">Done<",
-        "note-split",
+        "data-live",
     ] {
         assert!(
             body.contains(marker),
@@ -1254,7 +1254,7 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
 
     let (_, _, read) = send(&app, page_get("/notes?path=Index.md&mode=read")).await;
     assert!(
-        read.contains(">Edit<") && !read.contains("note-split"),
+        read.contains(">Edit<") && !read.contains("data-live"),
         "mode=read draws the page without the editor: {read}"
     );
 
@@ -1422,6 +1422,40 @@ async fn post_notes_rename_and_delete_manage_a_note_and_the_open_page_follows() 
     assert!(
         body.contains("No note selected"),
         "the deleted page closes: {body}"
+    );
+}
+
+#[tokio::test]
+async fn post_notes_new_files_untitled_in_the_current_folder_with_the_title_focused() {
+    let sandbox = Sandbox::new("notes-new");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    let app = router(context(store));
+
+    let (status, _, body) = send(
+        &app,
+        form_request("/notes/new", "dir=projects/tandem&project=tandem"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the new note answers: {body}");
+    assert!(
+        notes.read("projects/tandem/Untitled.md").is_ok(),
+        "an empty Untitled page is filed in the current folder"
+    );
+    assert!(
+        body.contains("data-autofocus"),
+        "the cursor goes to the title: {body}"
+    );
+
+    let (status, _, _) = send(
+        &app,
+        form_request("/notes/new", "dir=projects/tandem&project=tandem"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        notes.read("projects/tandem/Untitled 2.md").is_ok(),
+        "a second new note does not collide"
     );
 }
 
