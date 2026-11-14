@@ -1182,11 +1182,7 @@ async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choic
         "the lane moves at once"
     );
 
-    let (status, _, answer) = send(
-        &app,
-        form_request("/lanes", &format!("name=gamma&abbr=GAM")),
-    )
-    .await;
+    let (status, _, answer) = send(&app, form_request("/lanes", "name=gamma&abbr=GAM")).await;
     assert_eq!(status, StatusCode::OK, "the lane add answers: {answer}");
     assert!(
         board
@@ -1203,7 +1199,7 @@ async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choic
 
     let (status, _, answer) = send(
         &app,
-        form_request("/lanes/gamma/rename", &format!("to=delta&abbr=DEL")),
+        form_request("/lanes/gamma/rename", "to=delta&abbr=DEL"),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "the lane rename answers: {answer}");
@@ -1221,11 +1217,7 @@ async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choic
         "the board redraws the rename: {answer}"
     );
 
-    let (status, _, answer) = send(
-        &app,
-        form_request("/lanes", &format!("name=alpha&abbr=ALP")),
-    )
-    .await;
+    let (status, _, answer) = send(&app, form_request("/lanes", "name=alpha&abbr=ALP")).await;
     assert_eq!(status, StatusCode::OK);
     assert!(
         answer.contains("shell__notice"),
