@@ -730,11 +730,11 @@
       return;
     }
     // Typed text can arrive in one piece (a fast burst), so `/todo` counts.
-    if (event.inputType !== 'insertText' || !event.data || event.data.charAt(0) !== '/' ||
-        /\s/.test(event.data)) return;
+    var typed = event.inputType === 'insertText' && event.data ? /^\s*(\/\S*)$/.exec(event.data) : null;
+    if (!typed) return;
     var selection = this.selection();
     if (!selection || selection.start !== selection.end) return;
-    var from = selection.end - event.data.length;
+    var from = selection.end - typed[1].length;
     // A `/` inside a word (a path, a URL, a/b) is just a slash.
     if (from > 0 && !/\s/.test(this.text.charAt(from - 1))) return;
     var el = document.createElement('div');
