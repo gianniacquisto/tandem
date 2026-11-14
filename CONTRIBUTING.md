@@ -67,7 +67,7 @@ cargo clippy --all-targets -- -D warnings
 - Respect the decisions in [docs/adr/](docs/adr/), and amend the ADR in the
   same pull request when you change what it decided.
 - The tracker is the Tandem board, not GitHub issues: the tracker contract is
-  the `tandem` skill ([examples/skills/tandem/SKILL.md](examples/skills/tandem/SKILL.md)). A
+  the starter instructions ([examples/AGENTS.md](examples/AGENTS.md)). A
   ticket's description is written once as the brief and appended to with the
   outcome, never overwritten; the brief's shape is the refiner's
   ([examples/agents/refiner.md](examples/agents/refiner.md)).

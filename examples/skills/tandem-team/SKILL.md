@@ -5,6 +5,8 @@ description: "The roster, which agent fills which role, what to write in `assign
 
 # Tandem team
 
+A template: the roster below is this repository's own. Replace it with your own team, and keep the name rule and the minutes rule.
+
 | Role | Who | The pass it owns | Where it lives |
 | --- | --- | --- | --- |
 | `human` | the human | the decision gate: a preference, a spend, an irreversible or outward-facing act; the release | — |
