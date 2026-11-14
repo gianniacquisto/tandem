@@ -268,21 +268,6 @@
     noteTimer = window.setTimeout(saveNote, 1000);
   });
 
-  document.addEventListener('keydown', function (event) {
-    var editor = closest(event.target, '.note-editor');
-    if (!editor) return;
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      if (noteTimer) window.clearTimeout(noteTimer);
-      var done = document.querySelector('.bikeshed__breadcrumb-end a.bikeshed__mode');
-      saveNote().then(function (saved) {
-        // A refused save drew its reason into the root. Navigating now would
-        // replace the banner before the human reads it, and their text with it.
-        if (saved && done) window.location.href = done.getAttribute('href');
-      });
-    }
-  });
-
   // MARK: - The live editor
   //
   // One editable surface holding the note's plain markdown. Every line is
@@ -419,26 +404,31 @@
     return { start: start, end: start + range.toString().length };
   };
 
+  // A position that sits exactly between two text nodes belongs to the later
+  // one: the cursor after a line's trailing newline is the start of the next
+  // line, and the browser would otherwise draw it, and type into it, at the
+  // end of the line above.
   Live.prototype.select = function (start, end) {
     var walker = document.createTreeWalker(this.root, NodeFilter.SHOW_TEXT);
-    var range = document.createRange();
     var seen = 0;
     var node;
-    var startSet = false;
-    range.setStart(this.root, 0);
-    range.collapse(true);
+    var last = null;
+    var from = null;
+    var to = null;
     while ((node = walker.nextNode())) {
       var length = node.nodeValue.length;
-      if (!startSet && start <= seen + length) {
-        range.setStart(node, start - seen);
-        startSet = true;
-      }
-      if (end <= seen + length) {
-        range.setEnd(node, end - seen);
-        break;
-      }
+      if (from === null && start < seen + length) from = { node: node, offset: start - seen };
+      if (to === null && end < seen + length) to = { node: node, offset: end - seen };
+      last = { node: node, offset: length };
+      if (from && to) break;
       seen += length;
     }
+    if (!last) return;
+    var range = document.createRange();
+    var open = from || last;
+    var close = to || last;
+    range.setStart(open.node, open.offset);
+    range.setEnd(close.node, close.offset);
     var sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
@@ -559,30 +549,38 @@
     this.set(text, { start: selection.start + mark.length, end: selection.end + mark.length });
   };
 
-  // Return in a list carries the list on; return on an empty item ends it.
+  // Return starts a new line. In a list it carries the list on, and on an
+  // empty item it ends the list. The editor writes the newline itself rather
+  // than leave it to the browser, so it lands the same way everywhere.
   Live.prototype.enter = function (event) {
     var selection = this.selection();
-    if (!selection || selection.start !== selection.end) return;
-    var bounds = this.lineBounds(selection.start);
-    if (selection.start !== bounds.to) return;
-    var line = this.text.slice(bounds.from, bounds.to);
-    var m = BULLET.exec(line);
-    var next = null;
-    var body = '';
-    if (m) {
-      body = m[5];
-      next = m[1] + m[2] + m[3] + (m[4] ? '[ ] ' : '');
-    } else if ((m = NUMBER.exec(line))) {
-      body = m[5];
-      next = m[1] + (Number(m[2]) + 1) + m[3] + m[4];
-    }
-    if (next === null) return;
+    if (!selection) return;
     event.preventDefault();
-    if (body.trim() === '') {
-      this.replace(bounds.from, bounds.to, '', bounds.from);
-    } else {
-      this.replace(selection.start, selection.start, '\n' + next);
+    if (selection.start === selection.end) {
+      var bounds = this.lineBounds(selection.start);
+      if (selection.start === bounds.to) {
+        var line = this.text.slice(bounds.from, bounds.to);
+        var m = BULLET.exec(line);
+        var next = null;
+        var body = '';
+        if (m) {
+          body = m[5];
+          next = m[1] + m[2] + m[3] + (m[4] ? '[ ] ' : '');
+        } else if ((m = NUMBER.exec(line))) {
+          body = m[5];
+          next = m[1] + (Number(m[2]) + 1) + m[3] + m[4];
+        }
+        if (next !== null) {
+          if (body.trim() === '') {
+            this.replace(bounds.from, bounds.to, '', bounds.from);
+          } else {
+            this.replace(selection.start, selection.start, '\n' + next);
+          }
+          return;
+        }
+      }
     }
+    this.replace(selection.start, selection.end, '\n');
   };
 
   function initLive() {

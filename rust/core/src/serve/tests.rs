@@ -1243,7 +1243,6 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         "Other",
         "Tickets",
         "Café alpha",
-        ">Done<",
         "data-live",
     ] {
         assert!(
@@ -1254,7 +1253,7 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
 
     let (_, _, read) = send(&app, page_get("/notes?path=Index.md&mode=read")).await;
     assert!(
-        read.contains(">Edit<") && !read.contains("data-live"),
+        !read.contains("data-live"),
         "mode=read draws the page without the editor: {read}"
     );
 

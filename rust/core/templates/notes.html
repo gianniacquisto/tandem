@@ -175,15 +175,6 @@
                   {% if crumb.current %}aria-current="page"{% endif %}>{{ crumb.label }}</span>
             {% endfor %}
           </nav>
-          <div class="bikeshed__breadcrumb-end">
-            {% if mode == "edit" %}
-            <a class="bikeshed__mode" href="{{ read_href }}" hx-get="{{ read_href }}"
-               hx-target="#notes-root" hx-swap="outerHTML">Done</a>
-            {% else %}
-            <a class="bikeshed__mode" href="{{ edit_href }}" hx-get="{{ edit_href }}"
-               hx-target="#notes-root" hx-swap="outerHTML">Edit</a>
-            {% endif %}
-          </div>
         </div>
       </header>
 

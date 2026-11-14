@@ -88,8 +88,6 @@ struct NotesView {
     error: Option<String>,
     conflict: Option<ConflictView>,
     focus_url: String,
-    edit_href: String,
-    read_href: String,
 }
 
 /// The notes view's own URL: the focus, the show-all escape and one note.
@@ -331,8 +329,6 @@ fn render_notes(
         error: render_error,
         conflict,
         focus_url: notes_href(&project, show_all, path.as_deref(), None),
-        edit_href: notes_href(&project, show_all, path.as_deref(), Some("edit")),
-        read_href: notes_href(&project, show_all, path.as_deref(), Some("read")),
     })
 }
 
