@@ -70,11 +70,16 @@ impl Drop for Sandbox {
     }
 }
 
-/// One running server and the port it bound.
+/// One running server, the port it bound, and every stdout line after the
+/// listening line. The log goes to stdout, so a reader drains the pipe on its
+/// own thread: an undrained pipe would stall the server on its first full
+/// buffer.
 struct Server {
     child: Child,
     port: u16,
-    _output: BufReader<std::process::ChildStdout>,
+    /// The listening line as printed, before any log line.
+    listening: String,
+    log: Receiver<String>,
 }
 
 impl Server {
@@ -83,12 +88,17 @@ impl Server {
     }
 
     fn start_with(sandbox: &Sandbox, extra: &[&str]) -> Self {
+        Self::start_with_env(sandbox, extra, &[])
+    }
+
+    fn start_with_env(sandbox: &Sandbox, extra: &[&str], env: &[(&str, &str)]) -> Self {
         let mut child = sandbox
             .command()
             .arg("serve")
             .arg("--port")
             .arg("0")
             .args(extra)
+            .envs(env.iter().copied())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -99,6 +109,14 @@ impl Server {
         output
             .read_line(&mut line)
             .expect("the listening line is readable");
+        let (sender, log) = mpsc::channel();
+        thread::spawn(move || {
+            for line in output.lines() {
+                let Ok(line) = line else { break };
+                // The receiver may be gone; the drain keeps reading regardless.
+                let _ = sender.send(line);
+            }
+        });
         let url = line
             .trim()
             .rsplit(' ')
@@ -113,7 +131,28 @@ impl Server {
         Self {
             child,
             port,
-            _output: output,
+            listening: line.trim_end().to_string(),
+            log,
+        }
+    }
+
+    /// The next stdout line after the listening line, within `within`.
+    fn next_line(&self, within: Duration) -> String {
+        self.log
+            .recv_timeout(within)
+            .unwrap_or_else(|error| panic!("no log line arrived: {error}"))
+    }
+
+    /// The next stdout line that carries `needle`, within `within`. Lines that
+    /// do not carry it are skipped, so a test can name the line it means.
+    fn next_line_with(&self, needle: &str, within: Duration) -> String {
+        let deadline = Instant::now() + within;
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            let line = self.next_line(left);
+            if line.contains(needle) {
+                return line;
+            }
         }
     }
 }
@@ -607,5 +646,76 @@ fn a_serve_session_drives_the_sheet_and_notes_faces() {
         &stream,
         |revision| revision == current,
         Duration::from_secs(5),
+    );
+}
+
+#[test]
+fn the_listening_line_is_first_and_each_request_is_a_timestamped_log_line() {
+    let sandbox = Sandbox::new("log-request");
+    let server = Server::start(&sandbox);
+    assert_eq!(
+        server.listening,
+        format!(
+            "tandem serve: listening on http://127.0.0.1:{}",
+            server.port
+        )
+    );
+    let answer = get(server.port, "/");
+    assert_eq!(answer.status, 200);
+    let line = server.next_line_with("route=", Duration::from_secs(10));
+    assert!(
+        line.starts_with(|c: char| c.is_ascii_digit()),
+        "a log line starts with its timestamp: {line}"
+    );
+    assert!(line.contains(" INFO "), "the request is info: {line}");
+    assert!(
+        line.contains("route=\"/\""),
+        "the route is the template: {line}"
+    );
+    assert!(line.contains("status=200"), "the status is logged: {line}");
+    assert!(
+        line.contains("latency_ms="),
+        "the latency is logged: {line}"
+    );
+}
+
+#[test]
+fn tandem_log_sets_the_filter_and_warn_hides_the_info_request_line() {
+    let sandbox = Sandbox::new("log-filter");
+    let server = Server::start_with_env(
+        &sandbox,
+        &["--host", "127.0.0.1"],
+        &[("TANDEM_LOG", "warn")],
+    );
+    assert_eq!(get(server.port, "/").status, 200);
+    assert_eq!(get(server.port, "/no-such-route").status, 404);
+    // The info request for `/` and the startup line are filtered out, so the
+    // first line that reaches stdout is the 404's warning.
+    let line = server.next_line(Duration::from_secs(10));
+    assert!(
+        line.contains(" WARN "),
+        "the warning is the first line: {line}"
+    );
+    assert!(line.contains("status=404"), "the 404 is logged: {line}");
+}
+
+#[test]
+fn an_unparsable_tandem_log_still_serves_and_warns_once_without_echoing_it() {
+    let sandbox = Sandbox::new("log-invalid");
+    let server = Server::start_with_env(
+        &sandbox,
+        &["--host", "127.0.0.1"],
+        &[("TANDEM_LOG", "not[valid")],
+    );
+    assert_eq!(get(server.port, "/").status, 200, "the board still serves");
+    let line = server.next_line(Duration::from_secs(10));
+    assert!(line.contains(" WARN "), "the fallback warns: {line}");
+    assert!(
+        line.contains("TANDEM_LOG"),
+        "the warning names the variable: {line}"
+    );
+    assert!(
+        !line.contains("not[valid"),
+        "the value is never echoed: {line}"
     );
 }

@@ -340,9 +340,13 @@ fn notes_response(
     conflict: Option<ConflictView>,
     headers: &HeaderMap,
 ) -> Response {
+    if let Some(refusal) = notice.as_ref().or(error.as_ref()) {
+        tracing::warn!(error = ?refusal, "notes refused");
+    }
     let view = match render_notes(context, params, notice, error, conflict) {
         Ok(view) => view,
         Err(error) => {
+            tracing::error!(error = ?error, "the notes could not be read");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("the notes could not be read: {error}\n"),
@@ -462,7 +466,15 @@ pub(super) async fn note_save(
         return notes_response(&context, &params, None, None, Some(conflict), &headers);
     }
     match vault.write(&path, text) {
-        Ok(_) => notes_response(&context, &params, None, None, None, &headers),
+        Ok(_) => {
+            tracing::info!(
+                actor = ?context.actor.as_str(),
+                path = ?path,
+                revision = context.revision(),
+                "note saved"
+            );
+            notes_response(&context, &params, None, None, None, &headers)
+        }
         Err(error) => notes_response(
             &context,
             &params,
@@ -508,6 +520,13 @@ async fn note_create_thing(
     };
     match outcome {
         Ok(read) => {
+            tracing::info!(
+                actor = ?context.actor.as_str(),
+                path = ?path,
+                folder,
+                revision = context.revision(),
+                "note created"
+            );
             if !folder {
                 params.insert("path".to_string(), read.value);
             }
@@ -568,6 +587,12 @@ pub(super) async fn note_daily(
         Ok(read) => read.value,
         Err(_) => path,
     };
+    tracing::info!(
+        actor = ?context.actor.as_str(),
+        path = ?opened,
+        revision = context.revision(),
+        "daily note opened"
+    );
     params.insert("path".to_string(), opened);
     notes_response(&context, &params, None, None, None, &headers)
 }
@@ -599,6 +624,13 @@ pub(super) async fn note_rename(
     }
     match context.bikeshed().rename(&path, &target) {
         Ok(read) => {
+            tracing::info!(
+                actor = ?context.actor.as_str(),
+                from = ?path,
+                to = ?read.value,
+                revision = context.revision(),
+                "note renamed"
+            );
             // The open page follows the rename; a rename of another row leaves it.
             let followed = field(&params, "open") == path;
             if followed {
@@ -649,6 +681,14 @@ pub(super) async fn note_delete(
     let path = field(&params, "path").to_string();
     let open = field(&params, "open").to_string();
     let outcome = context.bikeshed().delete(&path);
+    if outcome.is_ok() {
+        tracing::info!(
+            actor = ?context.actor.as_str(),
+            path = ?path,
+            revision = context.revision(),
+            "note deleted"
+        );
+    }
     let error = outcome.err().map(|error| error.message());
     let gone = open == path || open.starts_with(&format!("{path}/"));
     if gone && error.is_none() {
@@ -690,6 +730,12 @@ pub(super) async fn note_new(
     }
     match created {
         Some(path) => {
+            tracing::info!(
+                actor = ?context.actor.as_str(),
+                path = ?path,
+                revision = context.revision(),
+                "note created"
+            );
             params.insert("path".to_string(), path);
             params.insert("rename".to_string(), "1".to_string());
             params.insert("mode".to_string(), "edit".to_string());
@@ -719,6 +765,13 @@ pub(super) async fn note_move(
     let vault = context.bikeshed();
     match vault.move_into(&path, &into) {
         Ok(read) => {
+            tracing::info!(
+                actor = ?context.actor.as_str(),
+                from = ?path,
+                into = ?into,
+                revision = context.revision(),
+                "note moved"
+            );
             if !read.value.is_folder {
                 params.insert("path".to_string(), read.value.path);
             } else {

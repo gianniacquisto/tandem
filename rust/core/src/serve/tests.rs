@@ -22,6 +22,13 @@ use super::*;
 use crate::domain::{AddTicket, Board, Status};
 use crate::store::{Home, NewProject};
 
+/// The serve seam's tests run one at a time. Callsite interest is cached
+/// process-wide, so a test on another thread can leave a callsite cached as off
+/// for the subscriber a capture test installs; running them in turn keeps every
+/// capture whole. The lock is a tokio mutex, so an async test may hold it across
+/// its awaits.
+static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// The templates that draw a sheet, read as text: a swap that would open a
 /// sheet inside a connected page is caught here, before a browser sees it.
 const BOARD_TEMPLATE: &str = include_str!("../../templates/board.html");
@@ -200,6 +207,7 @@ fn setup_board(store: &Store) -> Board {
 
 #[tokio::test]
 async fn get_board_renders_six_status_columns_in_order_and_empty_copy() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-empty");
     let store = sandbox.store();
     let app = router(context(store));
@@ -270,6 +278,7 @@ async fn get_board_renders_six_status_columns_in_order_and_empty_copy() {
 /// the card draws in a column instead of vanishing.
 #[tokio::test]
 async fn a_ticket_in_a_stage_the_board_does_not_draw_still_lands_in_a_column() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-retired-stage");
     let store = sandbox.store();
     setup_board(&store);
@@ -303,6 +312,7 @@ async fn a_ticket_in_a_stage_the_board_does_not_draw_still_lands_in_a_column() {
 
 #[tokio::test]
 async fn get_board_filters_by_project_focus_lane_assignee_and_accent_folded_search() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-filters");
     let store = sandbox.store();
     setup_board(&store);
@@ -359,6 +369,7 @@ async fn get_board_filters_by_project_focus_lane_assignee_and_accent_folded_sear
 
 #[tokio::test]
 async fn post_tickets_adds_card_in_column_and_refuses_stale_revision_with_notice() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-add");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -416,6 +427,7 @@ async fn post_tickets_adds_card_in_column_and_refuses_stale_revision_with_notice
 
 #[tokio::test]
 async fn post_ticket_status_moves_card_across_columns_and_ignores_same_column_drop() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-status");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -448,6 +460,7 @@ async fn post_ticket_status_moves_card_across_columns_and_ignores_same_column_dr
 /// swaps through `api.selectAndSwap`, which htmx 2 does not expose.
 #[tokio::test]
 async fn the_change_stream_client_is_the_htmx_two_extension() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-sse-client");
     let app = router(context(sandbox.store()));
 
@@ -490,6 +503,7 @@ async fn the_change_stream_client_is_the_htmx_two_extension() {
 /// project, lane, assignee and search rather than clearing them.
 #[tokio::test]
 async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-move-filters");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -538,6 +552,7 @@ async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
 
 #[tokio::test]
 async fn post_routes_reject_missing_form_content_type_and_cross_origin_header() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-guards");
     let store = sandbox.store();
     let app = router(context(store.clone()));
@@ -612,6 +627,7 @@ fn extra_router(extra: Router<Arc<SessionContext>>, store: Store) -> Router {
 
 #[tokio::test]
 async fn write_guard_is_a_layer_so_a_route_cannot_skip_it_by_omission() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("guard-layer");
     let app = extra_router(
         routes().route("/unguarded", post(unguarded_write)),
@@ -661,6 +677,7 @@ async fn write_guard_is_a_layer_so_a_route_cannot_skip_it_by_omission() {
 
 #[tokio::test]
 async fn the_context_resolves_per_request_to_local_modes_one_context() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("context-extractor");
     let store = sandbox.store();
     let expected = format!(
@@ -686,6 +703,7 @@ async fn the_context_resolves_per_request_to_local_modes_one_context() {
 
 #[tokio::test]
 async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-static");
     let app = router(context(sandbox.store()));
 
@@ -731,6 +749,7 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
 
 #[test]
 fn a_refused_store_backs_off_to_a_cap() {
+    let _serial = ONE_AT_A_TIME.blocking_lock();
     let mut wait = WATCH_INTERVAL;
     for _ in 0..16 {
         wait = backoff(wait);
@@ -794,6 +813,7 @@ fn seen(receiver: &mut broadcast::Receiver<i64>) -> Vec<i64> {
 #[cfg(unix)]
 #[test]
 fn a_store_with_no_revision_backs_off_instead_of_reopening() {
+    let _serial = ONE_AT_A_TIME.blocking_lock();
     let (root, store) = store_without_a_revision("no-revision");
     let store = Arc::new(store);
     let stop = Arc::new(AtomicBool::new(false));
@@ -818,6 +838,7 @@ fn a_store_with_no_revision_backs_off_instead_of_reopening() {
 
 #[test]
 fn an_idle_watch_issues_no_revision_read() {
+    let _serial = ONE_AT_A_TIME.blocking_lock();
     let (root, store) = store_with_a_revision("idle");
     let store = Arc::new(store);
     let stop = Arc::new(AtomicBool::new(false));
@@ -847,6 +868,7 @@ fn an_idle_watch_issues_no_revision_read() {
 
 #[test]
 fn a_write_from_another_store_reports_changed_quickly() {
+    let _serial = ONE_AT_A_TIME.blocking_lock();
     let (root, store) = store_with_a_revision("latency");
     let store = Arc::new(store);
     let stop = Arc::new(AtomicBool::new(false));
@@ -933,6 +955,7 @@ fn vault(store: &Store) -> Bikeshed {
 
 #[tokio::test]
 async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-render");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -1002,6 +1025,7 @@ async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
 
 #[tokio::test]
 async fn post_ticket_sheet_saves_changes_and_refuses_stale_revision() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-save");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -1040,6 +1064,7 @@ async fn post_ticket_sheet_saves_changes_and_refuses_stale_revision() {
 
 #[tokio::test]
 async fn saving_the_sheet_replaces_the_description_with_the_edited_box() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-description");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -1086,6 +1111,7 @@ async fn saving_the_sheet_replaces_the_description_with_the_edited_box() {
 
 #[tokio::test]
 async fn post_ticket_comment_appends_as_human_and_refuses_empty_body() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-comment");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -1131,6 +1157,7 @@ async fn post_ticket_comment_appends_as_human_and_refuses_empty_body() {
 
 #[tokio::test]
 async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choices() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-lane");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -1203,6 +1230,7 @@ async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choic
 
 #[tokio::test]
 async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_footer() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("notes-render");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -1270,6 +1298,7 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
 
 #[tokio::test]
 async fn the_edit_page_keeps_a_leading_blank_line_in_the_note_text() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("notes-leading-newline");
     let store = sandbox.store();
     let notes = vault(&store);
@@ -1293,6 +1322,7 @@ async fn the_edit_page_keeps_a_leading_blank_line_in_the_note_text() {
 
 #[tokio::test]
 async fn post_notes_preview_renders_markdown_blocks_without_writing_disk() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("notes-preview");
     let store = sandbox.store();
     let notes = vault(&store);
@@ -1321,6 +1351,7 @@ async fn post_notes_preview_renders_markdown_blocks_without_writing_disk() {
 #[tokio::test]
 async fn post_notes_save_writes_when_hash_matches_and_renders_mine_theirs_conflict_when_disk_moved()
 {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("notes-save");
     let store = sandbox.store();
     let notes = vault(&store);
@@ -1391,6 +1422,7 @@ async fn post_notes_save_writes_when_hash_matches_and_renders_mine_theirs_confli
 
 #[tokio::test]
 async fn post_notes_rename_and_delete_manage_a_note_and_the_open_page_follows() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("notes-manage");
     let store = sandbox.store();
     let notes = vault(&store);
@@ -1456,6 +1488,7 @@ async fn post_notes_rename_and_delete_manage_a_note_and_the_open_page_follows() 
 
 #[tokio::test]
 async fn post_notes_new_files_untitled_in_the_current_folder_with_the_title_focused() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("notes-new");
     let store = sandbox.store();
     let notes = vault(&store);
@@ -1490,6 +1523,7 @@ async fn post_notes_new_files_untitled_in_the_current_folder_with_the_title_focu
 
 #[tokio::test]
 async fn post_notes_daily_creates_the_days_page_once_and_opens_it_after() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("notes-daily");
     let store = sandbox.store();
     let notes = vault(&store);
@@ -1520,6 +1554,7 @@ async fn post_notes_daily_creates_the_days_page_once_and_opens_it_after() {
 
 #[tokio::test]
 async fn post_notes_create_create_folder_and_move_update_vault_and_refuse_invalid_reparent() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("notes-move");
     let store = sandbox.store();
     let notes = vault(&store);
@@ -1596,6 +1631,7 @@ async fn post_notes_create_create_folder_and_move_update_vault_and_refuse_invali
 /// them, so the project, lane, assignee and search survive the click.
 #[tokio::test]
 async fn get_ticket_sheet_keeps_the_board_filters_behind_it() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-filters");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -1637,6 +1673,7 @@ async fn get_ticket_sheet_keeps_the_board_filters_behind_it() {
 /// filters the form carried come back, so a save never silently clears them.
 #[tokio::test]
 async fn a_sheet_write_keeps_the_filters_its_form_carried() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-write-filters");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -1672,6 +1709,7 @@ async fn a_sheet_write_keeps_the_filters_its_form_carried() {
 /// and closing the sheet landed on the board filtered to that ticket's owner.
 #[tokio::test]
 async fn a_sheet_write_reads_the_board_filter_from_its_own_fields_not_the_tickets() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-write-filter-names");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -1757,6 +1795,7 @@ fn board_root_triggers(page: &str) -> Vec<String> {
 /// the board on every click inside the sheet and dismisses it.
 #[tokio::test]
 async fn a_click_inside_the_open_sheet_does_not_refetch_the_board() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-quiet");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -1822,6 +1861,7 @@ async fn a_click_inside_the_open_sheet_does_not_refetch_the_board() {
 /// a sheet into a connected page.
 #[tokio::test]
 async fn a_sheet_is_opened_as_its_own_document_so_the_stream_pauses() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-document");
     let store = sandbox.store();
     let board = setup_board(&store);
@@ -1859,6 +1899,7 @@ async fn a_sheet_is_opened_as_its_own_document_so_the_stream_pauses() {
 /// target error.
 #[tokio::test]
 async fn the_shell_tabs_navigate_instead_of_targeting_a_face_they_are_not_drawn_on() {
+    let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("shell-tabs");
     let app = router(context(sandbox.store()));
 
@@ -1873,4 +1914,321 @@ async fn the_shell_tabs_navigate_instead_of_targeting_a_face_they_are_not_drawn_
         !page.contains("hx-get=\"/board\" hx-target=\"#board-root\""),
         "the Board tab does not target #board-root from the notes face: {page}"
     );
+}
+
+// MARK: - The application log
+
+/// The text one captured subscriber wrote, shared between the test and the
+/// subscriber's writer.
+#[derive(Clone, Default)]
+struct Captured(Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl Captured {
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().expect("the buffer locks")).into_owned()
+    }
+
+    /// A debug-level fmt subscriber on this thread. The guard keeps it in place
+    /// across the awaits of a current-thread test.
+    fn install(&self) -> tracing::subscriber::DefaultGuard {
+        let writer = self.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        let guard = tracing::subscriber::set_default(subscriber);
+        // Recompute the cached interest for this subscriber, so a callsite an
+        // earlier test cached as off is not left off.
+        tracing::callsite::rebuild_interest_cache();
+        guard
+    }
+}
+
+impl std::io::Write for Captured {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .expect("the buffer locks")
+            .extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Every line the subscriber wrote starts with its timestamp, so no value
+/// carried a newline into a line of its own.
+fn assert_every_line_is_a_timestamped_event(text: &str) {
+    for line in text.lines().filter(|line| !line.is_empty()) {
+        assert!(
+            line.starts_with(|c: char| c.is_ascii_digit()),
+            "a value broke a log line: {line:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_board_read_logs_one_request_line_by_route_and_status_and_never_the_query() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("log-board");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let (status, _, _) = get(&app, "/board?text=secretword").await;
+    assert_eq!(status, StatusCode::OK);
+    let text = captured.text();
+    assert!(text.contains(" INFO "), "the request is info: {text}");
+    assert!(
+        text.contains("route=\"/board\""),
+        "the route is logged: {text}"
+    );
+    assert!(text.contains("status=200"), "the status is logged: {text}");
+    assert!(
+        text.contains("latency_ms="),
+        "the latency is logged: {text}"
+    );
+    assert!(
+        !text.contains("secretword"),
+        "the search text stays out: {text}"
+    );
+    assert!(!text.contains("text="), "no query string is logged: {text}");
+    assert_every_line_is_a_timestamped_event(&text);
+}
+
+#[tokio::test]
+async fn a_static_asset_logs_at_debug_under_its_route_template() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("log-static");
+    let store = sandbox.store();
+    let app = router(context(store));
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let (status, _, _) = get(&app, "/static/app.css").await;
+    assert_eq!(status, StatusCode::OK);
+    let text = captured.text();
+    assert!(text.contains(" DEBUG "), "a static asset is debug: {text}");
+    assert!(
+        text.contains("route=\"/static/{*path}\""),
+        "the route is the template: {text}"
+    );
+    assert!(
+        !text.contains(" INFO "),
+        "a static asset is not info: {text}"
+    );
+}
+
+#[tokio::test]
+async fn a_ticket_add_logs_identifiers_and_never_the_title() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("log-add");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let app = router(context(store.clone()));
+    let before = store.revision().expect("the revision reads");
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let body = format!(
+        "title=SecretTitleWords&status=ready&lane=&expected_revision={before}&project=&show_all=&assignee=&text="
+    );
+    let (status, _, _) = send(&app, form_request("/tickets", &body)).await;
+    assert_eq!(status, StatusCode::OK);
+    let added = by_title(&board, "SecretTitleWords");
+    let text = captured.text();
+    assert!(text.contains("ticket added"), "the add is an event: {text}");
+    assert!(
+        text.contains(&format!("id={:?}", added.id)),
+        "the ticket id is logged: {text}"
+    );
+    assert!(
+        !text.contains("SecretTitleWords"),
+        "the title stays out: {text}"
+    );
+    assert_every_line_is_a_timestamped_event(&text);
+}
+
+#[tokio::test]
+async fn a_card_move_logs_the_status_it_came_from_and_the_one_it_went_to() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("log-move");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let app = router(context(store.clone()));
+    let before = store.revision().expect("the revision reads");
+    let ticket = by_title(&board, "Café alpha");
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let body = format!("status=done&expected_revision={before}&project=&show_all=&assignee=&text=");
+    let uri = format!("/tickets/{}/status", ticket.id);
+    let (status, _, _) = send(&app, form_request(&uri, &body)).await;
+    assert_eq!(status, StatusCode::OK);
+    let text = captured.text();
+    assert!(
+        text.contains("ticket moved"),
+        "the move is an event: {text}"
+    );
+    assert!(
+        text.contains("ready"),
+        "the origin status is logged: {text}"
+    );
+    assert!(
+        text.contains("done"),
+        "the destination status is logged: {text}"
+    );
+}
+
+#[tokio::test]
+async fn a_stale_revision_logs_a_warning_with_the_refusal() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("log-stale");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store.clone()));
+    let stale = store.revision().expect("the revision reads") - 1;
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let body = format!(
+        "title=Late&status=backlog&lane=&expected_revision={stale}&project=&show_all=&assignee=&text="
+    );
+    let (status, _, _) = send(&app, form_request("/tickets", &body)).await;
+    assert_eq!(status, StatusCode::OK, "a conflict still answers the board");
+    let text = captured.text();
+    assert!(text.contains(" WARN "), "the conflict is a warning: {text}");
+    assert!(
+        text.contains("changed while you were writing"),
+        "the refusal's message is logged: {text}"
+    );
+    assert!(!text.contains("Late"), "the stale title stays out: {text}");
+}
+
+#[tokio::test]
+async fn the_write_guard_logs_its_reason_and_never_the_origin_value() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("log-guard");
+    let store = sandbox.store();
+    let app = router(context(store));
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let json = Request::builder()
+        .method("POST")
+        .uri("/tickets")
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from("{}"))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, json).await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+
+    let cross = Request::builder()
+        .method("POST")
+        .uri("/tickets")
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::ORIGIN, "https://evil.example")
+        .body(Body::from("title=x"))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, cross).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let text = captured.text();
+    assert!(
+        text.contains("content type is not form-encoded"),
+        "the 415 logs its reason: {text}"
+    );
+    assert!(
+        text.contains("came from another origin"),
+        "the 403 logs its reason: {text}"
+    );
+    assert!(
+        !text.contains("evil.example"),
+        "the origin value stays out: {text}"
+    );
+}
+
+#[tokio::test]
+async fn a_control_character_in_a_user_value_stays_on_one_escaped_line() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("log-escape");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store.clone()));
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    // A lane name carrying a newline and an ESC: the log must escape both.
+    let (status, _, _) = send(
+        &app,
+        form_request(
+            "/lanes",
+            "name=a%0Ab%1B%5B31m&abbr=&project=&show_all=&assignee=&text=",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let text = captured.text();
+    assert!(
+        !text.contains('\u{1b}'),
+        "no raw ESC reaches the log: {text:?}"
+    );
+    assert_every_line_is_a_timestamped_event(&text);
+}
+
+#[test]
+fn the_watch_logs_its_attach_and_a_broadcast_and_no_tick() {
+    let _serial = ONE_AT_A_TIME.blocking_lock();
+    let captured = Captured::default();
+    let _guard = captured.install();
+    let (root, store) = store_with_a_revision("log-attach");
+    let stop = Arc::new(AtomicBool::new(false));
+    let (changes, _receiver) = broadcast::channel(8);
+    let handle = watch(store.clone(), changes, Arc::clone(&stop));
+
+    let attached = Instant::now() + Duration::from_secs(10);
+    while !captured.text().contains("store watch attached") && Instant::now() < attached {
+        thread::sleep(Duration::from_millis(5));
+    }
+    // Several ticks pass with the store still: an idle watch logs nothing.
+    thread::sleep(Duration::from_millis(300));
+    let idle = captured.text();
+    assert_eq!(
+        idle.matches("store watch").count(),
+        1,
+        "the attach logs once and the ticks log nothing: {idle}"
+    );
+    assert!(
+        !idle.contains("store revision broadcast"),
+        "no tick broadcasts: {idle}"
+    );
+
+    store
+        .write(&Actor::Human, |write| {
+            write.insert_project(NewProject {
+                name: "second",
+                position: 1,
+            })
+        })
+        .expect("the second write lands");
+    let moved = Instant::now() + Duration::from_secs(10);
+    while !captured.text().contains("store revision broadcast") && Instant::now() < moved {
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        captured.text().contains("store revision broadcast"),
+        "a revision that moves is broadcast at debug: {}",
+        captured.text()
+    );
+
+    stop.store(true, Ordering::Relaxed);
+    handle.join().expect("the watch exits");
+    let _ = std::fs::remove_dir_all(root);
 }

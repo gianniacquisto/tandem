@@ -479,9 +479,13 @@ fn render_response(
     headers: &HeaderMap,
     status: StatusCode,
 ) -> Response {
+    if let Some(notice) = &notice {
+        tracing::warn!(error = ?notice, "board refused");
+    }
     let view = match render_board(context, filters, notice) {
         Ok(view) => view,
         Err(error) => {
+            tracing::error!(error = ?error, "the board could not be read");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("the board could not be read: {error}\n"),
@@ -563,6 +567,15 @@ pub(super) async fn add_ticket(
         },
     ) {
         Ok(ticket) => {
+            tracing::info!(
+                actor = ?context.actor.as_str(),
+                id = ?ticket.id,
+                reference = ?ticket.reference,
+                lane = ?ticket.lane,
+                status = ticket.status.as_str(),
+                revision = context.revision(),
+                "ticket added"
+            );
             let mut filters = filters;
             filters.selected = Some(ticket.id.to_string());
             render_response(&context, &filters, None, &headers, StatusCode::OK)
@@ -605,16 +618,25 @@ pub(super) async fn move_ticket(
     };
     // The column the card already stands in has no order to write, so a drop
     // there writes nothing (the renderer's rule).
-    if ticket.status != status
-        && let Err(error) = board.set(
+    if ticket.status != status {
+        let to = status.as_str();
+        match board.set(
             &id,
             SetFields {
                 status: Edit::Set(status),
                 ..SetFields::default()
             },
-        )
-    {
-        return bad_request(&error.message());
+        ) {
+            Ok(_) => tracing::info!(
+                actor = ?context.actor.as_str(),
+                id = ?id,
+                from = ticket.status.as_str(),
+                to,
+                revision = context.revision(),
+                "ticket moved"
+            ),
+            Err(error) => return bad_request(&error.message()),
+        }
     }
     render_response(&context, &filters, None, &headers, StatusCode::OK)
 }
@@ -632,11 +654,16 @@ pub(super) async fn add_lane(
     let filters = Filters::parse(&params);
     let abbr = field(&params, "abbr").trim();
     let key = if abbr.is_empty() { None } else { Some(abbr) };
-    let notice = context
-        .board()
-        .add_lane(field(&params, "name"), key, None)
-        .err()
-        .map(|error| error.message());
+    let outcome = context.board().add_lane(field(&params, "name"), key, None);
+    if outcome.is_ok() {
+        tracing::info!(
+            actor = ?context.actor.as_str(),
+            lane = ?field(&params, "name"),
+            revision = context.revision(),
+            "lane added"
+        );
+    }
+    let notice = outcome.err().map(|error| error.message());
     render_response(&context, &filters, notice, &headers, StatusCode::OK)
 }
 
@@ -654,6 +681,15 @@ pub(super) async fn rename_lane(
     let key = if abbr.is_empty() { None } else { Some(abbr) };
     let to = field(&params, "to");
     let outcome = context.board().rename_lane(&name, to, key, None);
+    if outcome.is_ok() {
+        tracing::info!(
+            actor = ?context.actor.as_str(),
+            from = ?name,
+            to = ?to,
+            revision = context.revision(),
+            "lane renamed"
+        );
+    }
     if outcome.is_ok() && filters.lane == name {
         filters.lane = to.trim().to_string();
     }

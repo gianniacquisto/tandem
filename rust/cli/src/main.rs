@@ -15,7 +15,7 @@
 mod usage;
 
 use std::env;
-use std::io::{self, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -33,6 +33,7 @@ use tandem_core::wire::{
     NoteMoveView, NotePathView, NoteWriteView, ProjectList, TicketDetail, TicketList,
     TicketSummary,
 };
+use tracing_subscriber::EnvFilter;
 
 // MARK: - The grammar
 
@@ -1002,6 +1003,33 @@ fn add_description_body(flag: Option<&str>) -> Result<Option<String>, Failure> {
 
 // MARK: - serve
 
+/// The environment variable that sets `tandem serve`'s log filter, in RUST_LOG's
+/// directive syntax. Read once, here: the core never reads it.
+const LOG_VARIABLE: &str = "TANDEM_LOG";
+
+/// Installs `tandem serve`'s log: plain lines on stdout, filtered by
+/// `TANDEM_LOG` (default `info`). Returns whether the variable is set to a
+/// filter that does not parse, so `serve` can say so once the listening line is
+/// out. The value is never echoed.
+fn install_log() -> bool {
+    let (filter, invalid) = match env::var(LOG_VARIABLE) {
+        Ok(value) if !value.trim().is_empty() => match EnvFilter::try_new(&value) {
+            Ok(filter) => (filter, false),
+            Err(_) => (EnvFilter::new("info"), true),
+        },
+        Err(env::VarError::NotUnicode(_)) => (EnvFilter::new("info"), true),
+        _ => (EnvFilter::new("info"), false),
+    };
+    // `try_init` fails only when a subscriber is already installed, which
+    // leaves that one in charge: the first install wins.
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(io::stdout)
+        .with_ansi(io::stdout().is_terminal())
+        .try_init();
+    invalid
+}
+
 /// The board's loopback door: a non-loopback address is refused before binding
 /// unless the human opted in, the listener prints the address it actually
 /// bound (so `--port 0` is usable), and SIGINT or SIGTERM ends the run.
@@ -1021,6 +1049,9 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
             exit: 2,
         });
     }
+    // Installed after the host checks, before any event can fire: the listening
+    // line below is still the first stdout line, because nothing logs before it.
+    let invalid_filter = install_log();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -1045,6 +1076,9 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
         })?;
         println!("tandem serve: listening on http://{address}");
         let _ = io::stdout().flush();
+        if invalid_filter {
+            tracing::warn!("{LOG_VARIABLE} is not a valid log filter; logging at info");
+        }
         if args.open {
             open_browser(&format!("http://{address}"));
         }
@@ -1053,6 +1087,13 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
             actor: Actor::current(),
             environment: environment(),
         };
+        tracing::info!(
+            address = %address,
+            home = ?home.directory(),
+            actor = ?context.actor.as_str(),
+            version = %tandem_core::mcp::server_version(),
+            "tandem serve started"
+        );
         let (changes, _) = tokio::sync::broadcast::channel(64);
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let watcher =
@@ -1060,9 +1101,13 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
         let app = tandem_core::serve::router_with(context, changes);
         let outcome = tokio::select! {
             result = axum::serve(listener, app) => result.map_err(|error| {
+                tracing::error!(error = ?error, "the server stopped");
                 Failure::message(format!("tandem serve: the server stopped: {error}."))
             }),
-            _ = shutdown_signal() => Ok(()),
+            _ = shutdown_signal() => {
+                tracing::info!("tandem serve stopping: signal received");
+                Ok(())
+            }
         };
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         // The watcher notices the stop on its next tick and exits; the process

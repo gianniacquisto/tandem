@@ -714,6 +714,10 @@ pub const SERVE: &str = concat!(
     "the OS for a free port and prints the one it bound; --open launches the",
     "\n",
     "system browser at it. SIGINT or SIGTERM ends the run.",
+    "\n",
+    "The log goes to stdout after the listening line, filtered by TANDEM_LOG",
+    "\n",
+    "(RUST_LOG syntax, default info).",
 );
 
 /// `mcp`: the agent host's door (TAN-274). Like `serve` it is reachable by its

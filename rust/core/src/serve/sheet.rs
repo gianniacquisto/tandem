@@ -221,6 +221,9 @@ fn sheet_response(
     comment_refusal: Option<String>,
     headers: &HeaderMap,
 ) -> Response {
+    if let Some(refusal) = notice.as_ref().or(comment_refusal.as_ref()) {
+        tracing::warn!(error = ?refusal, "sheet refused");
+    }
     let view = match render_sheet(context, id, filters, notice, comment_refusal) {
         Ok(view) => view,
         Err(error) => return bad_request(&error),
@@ -317,6 +320,7 @@ pub(super) async fn save_ticket(
         }
     };
     let assignee = field(&params, "assignee");
+    let to = status.as_str();
     let description = if params.contains_key("description") {
         Edit::Set(Some(field(&params, "description")))
     } else {
@@ -333,7 +337,16 @@ pub(super) async fn save_ticket(
         },
     );
     match outcome {
-        Ok(_) => sheet_response(&context, &id, &filters, None, None, &headers),
+        Ok(_) => {
+            tracing::info!(
+                actor = ?context.actor.as_str(),
+                id = ?id,
+                to,
+                revision = context.revision(),
+                "ticket saved"
+            );
+            sheet_response(&context, &id, &filters, None, None, &headers)
+        }
         Err(error) => sheet_response(
             &context,
             &id,
@@ -367,7 +380,15 @@ pub(super) async fn add_comment(
         );
     }
     match context.board().comment_write(&id, body) {
-        Ok(_) => sheet_response(&context, &id, &filters, None, None, &headers),
+        Ok(_) => {
+            tracing::info!(
+                actor = ?context.actor.as_str(),
+                id = ?id,
+                revision = context.revision(),
+                "comment added"
+            );
+            sheet_response(&context, &id, &filters, None, None, &headers)
+        }
         Err(error) => sheet_response(
             &context,
             &id,
@@ -413,7 +434,16 @@ pub(super) async fn move_to_lane(
         .board()
         .move_ticket(&id, lane.as_deref(), usize::MAX)
     {
-        Ok(_) => sheet_response(&context, &id, &filters, None, None, &headers),
+        Ok(_) => {
+            tracing::info!(
+                actor = ?context.actor.as_str(),
+                id = ?id,
+                lane = ?lane,
+                revision = context.revision(),
+                "ticket moved to lane"
+            );
+            sheet_response(&context, &id, &filters, None, None, &headers)
+        }
         Err(error) => sheet_response(
             &context,
             &id,

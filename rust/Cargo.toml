@@ -64,3 +64,13 @@ serde_urlencoded = "0.7"
 # test names them directly.
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+# `tandem serve`'s application log (ADR 0046 amendment): the macros the core
+# emits through, and the subscriber the cli installs. The subscriber carries
+# only the features the log needs, no appender, no time crate.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3.20", default-features = false, features = [
+    "std",
+    "fmt",
+    "ansi",
+    "env-filter",
+] }

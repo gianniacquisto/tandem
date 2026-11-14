@@ -12,7 +12,7 @@
 //! - a closed stdin ends the child and leaves no lock or temp behind.
 
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -61,6 +61,10 @@ struct Session {
 
 impl Session {
     fn start(sandbox: &Sandbox) -> Self {
+        Self::start_with_env(sandbox, &[])
+    }
+
+    fn start_with_env(sandbox: &Sandbox, env: &[(&str, &str)]) -> Self {
         let home = sandbox.home();
         let mut child = Command::new(BINARY)
             .arg("mcp")
@@ -70,6 +74,7 @@ impl Session {
             .env("HOME", sandbox.root.join("user"))
             .env("TANDEM_HOME", &home)
             .env("TANDEM_AGENT", "builder")
+            .envs(env.iter().copied())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -260,4 +265,33 @@ fn closing_stdin_exits_the_child_and_leaves_no_lock_or_temp() {
         leftovers.is_empty(),
         "no temp outlives the child: {leftovers:?}"
     );
+}
+
+/// `TANDEM_LOG` is `tandem serve`'s alone: the mcp door installs no subscriber,
+/// so a trace filter changes nothing on its stdout, which stays JSON-RPC frames.
+#[test]
+fn tandem_log_trace_leaves_the_mcp_stdout_as_frames_only() {
+    let sandbox = Sandbox::new("log-trace");
+    let mut session = Session::start_with_env(&sandbox, &[("TANDEM_LOG", "trace")]);
+
+    session.send(json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                        "params": {"protocolVersion": "2025-11-25"}}));
+    let hello = session.receive();
+    assert_eq!(hello["id"], 1);
+
+    session.send(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}));
+    let listed = session.receive();
+    assert_eq!(listed["id"], 2);
+
+    session.close_stdin();
+    session.wait_for_exit();
+    let mut rest = String::new();
+    session
+        .output
+        .read_to_string(&mut rest)
+        .expect("the rest of stdout reads");
+    for line in rest.lines().filter(|line| !line.trim().is_empty()) {
+        serde_json::from_str::<Value>(line)
+            .unwrap_or_else(|error| panic!("a non-frame line on mcp stdout ({error}): {line}"));
+    }
 }
