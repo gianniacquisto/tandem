@@ -122,7 +122,6 @@
           <h2 class="sheet__section-title">Description</h2>
           <button type="button" class="sheet__toggle" data-sheet-toggle="description">View source</button>
         </header>
-        <p class="sheet__note">Append-only: additions land under the stored text and never overwrite it.</p>
 
         <div class="sheet__preview" data-sheet-preview="description">
           {% if description_empty %}
@@ -133,26 +132,29 @@
         </div>
         <pre class="sheet__source" data-sheet-source="description" aria-label="Stored description, read-only" hidden>{{ description_source }}</pre>
 
-        <form class="sheet__addition" method="post" action="/tickets/{{ id }}/description"
-              hx-post="/tickets/{{ id }}/description" hx-target="#board-root" hx-swap="outerHTML">
-          <input type="hidden" name="expected_revision" value="{{ revision }}">
-          <input type="hidden" name="board_project" value="{{ filters.project }}">
-          <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
-          <input type="hidden" name="board_lane" value="{{ filters.lane }}">
-          <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
-          <input type="hidden" name="board_text" value="{{ filters.text }}">
-          <label class="sheet__addition">
-            <span class="sheet__fact-label">Add to the description</span>
-            <textarea class="sheet__addition-field" name="addition" aria-label="Add to the description"
-                      rows="4" placeholder="Appended under the stored body, never over it."></textarea>
-          </label>
-          {% if let Some(refusal) = description_refusal %}
-          <p class="sheet__refusal" role="alert">{{ refusal }}</p>
-          {% endif %}
-          <div class="sheet__actions">
-            <button class="sheet__button" type="submit">Append</button>
-          </div>
-        </form>
+        <details class="sheet__append"{% if description_refusal.is_some() %} open{% endif %}>
+          <summary class="sheet__details-toggle">+ Add to description</summary>
+          <form class="sheet__addition" method="post" action="/tickets/{{ id }}/description"
+                hx-post="/tickets/{{ id }}/description" hx-target="#board-root" hx-swap="outerHTML">
+            <input type="hidden" name="expected_revision" value="{{ revision }}">
+            <input type="hidden" name="board_project" value="{{ filters.project }}">
+            <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
+            <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+            <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
+            <input type="hidden" name="board_text" value="{{ filters.text }}">
+            <label class="sheet__addition">
+              <span class="sheet__fact-label">Add more</span>
+              <textarea class="sheet__addition-field" name="addition" aria-label="Add to the description"
+                        rows="4" placeholder="Write more…"></textarea>
+            </label>
+            {% if let Some(refusal) = description_refusal %}
+            <p class="sheet__refusal" role="alert">{{ refusal }}</p>
+            {% endif %}
+            <div class="sheet__actions">
+              <button class="sheet__button" type="submit">Append</button>
+            </div>
+          </form>
+        </details>
       </section>
 
       <section class="sheet__discussion" aria-label="Comments">

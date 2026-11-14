@@ -67,6 +67,13 @@
   document.addEventListener('DOMContentLoaded', function () {
     var state = current();
     apply(state.style, state.appearance);
+    // The tab for the face on screen reads as current.
+    var tabs = document.querySelectorAll('.shell__tab');
+    var path = window.location.pathname;
+    var face = path.indexOf('/notes') === 0 ? '/notes' : '/board';
+    for (var i = 0; i < tabs.length; i += 1) {
+      if (tabs[i].getAttribute('href') === face) tabs[i].setAttribute('aria-current', 'page');
+    }
   });
 
   document.addEventListener('click', function (event) {

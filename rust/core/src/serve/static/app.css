@@ -3127,3 +3127,190 @@ body {
 .ticket-card__assignee--human {
   color: var(--ember-deep);
 }
+
+/* Second pass: the current tab, the filter button, column heads, the sheet's
+ * alignment, quiet scrollbars. */
+
+.shell__tab[aria-current="page"] {
+  background: var(--parchment);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.menu__button--label {
+  border: var(--hairline) solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.board__column-label::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--status-tone, var(--ink-dim));
+}
+
+.board__column[data-status="on-hold"] { --status-tone: var(--tone-sun); }
+.board__column[data-status="ready"] { --status-tone: var(--tone-sky); }
+.board__column[data-status="in-progress"] { --status-tone: var(--tone-ember); }
+.board__column[data-status="in-review"] { --status-tone: var(--tone-accent); }
+.board__column[data-status="done"] { --status-tone: var(--tone-hill); }
+
+.board__column-title {
+  justify-content: flex-start;
+}
+
+.board__column-count {
+  margin-left: auto;
+}
+
+.ticket-card__blocked {
+  background: var(--wikilink-chip-broken);
+  border-color: transparent;
+}
+
+.ticket-card__blocked::before {
+  content: none;
+}
+
+.board__add-summary {
+  width: auto;
+  padding: 0 10px 0 9px;
+  opacity: 0.6;
+}
+
+.board__column:hover .board__add-summary,
+.board__add-summary:focus-visible {
+  opacity: 1;
+}
+
+.board__add-summary::after {
+  content: " New";
+  font-size: 13px;
+  vertical-align: 2px;
+}
+
+.board,
+.board__column,
+.sheet__body,
+.bikeshed__document,
+.bikeshed__tree {
+  scrollbar-width: thin;
+  scrollbar-color: var(--shadow) transparent;
+}
+
+/* The sheet: one left edge for the title, the rows and the sections. */
+.sheet__header {
+  padding: 10px var(--space-gutter) 6px;
+  border-bottom: 0;
+}
+
+.sheet__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.sheet__body {
+  gap: 20px;
+  padding: 0 28px 28px;
+}
+
+.sheet__sticky {
+  top: 0;
+  margin: 0 -28px;
+  padding: 4px 28px 12px;
+  gap: 12px;
+}
+
+.sheet__title {
+  margin-left: -8px;
+  padding: 4px 8px;
+}
+
+.sheet__meta-field > .sheet__select,
+.sheet__meta-field > .sheet__status-row,
+.sheet__meta-field > .sheet__lane-move {
+  margin-left: -8px;
+}
+
+.sheet__status-row {
+  gap: 0;
+}
+
+.sheet__status-row .sheet__status-dot {
+  position: relative;
+  left: 14px;
+  z-index: 1;
+}
+
+.sheet__status-row .sheet__select {
+  padding-left: 22px;
+}
+
+.sheet__select {
+  padding: 0 8px;
+}
+
+.sheet__section-title {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sheet__addition {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sheet__addition-field {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.sheet__addition .sheet__fact-label {
+  font-size: 12.5px;
+}
+
+.sheet__preview {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 14px;
+}
+
+.sheet__note {
+  margin: 2px 0 8px;
+  font-size: 12px;
+}
+
+.sheet__comment-author {
+  font-weight: 600;
+}
+
+.sheet__toggle {
+  font-size: 12.5px;
+}
+
+.sheet__append {
+  margin-top: 4px;
+}
+
+.sheet__append > summary {
+  padding: 4px 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.sheet__append > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sheet__append[open] > summary {
+  margin-bottom: 8px;
+}
