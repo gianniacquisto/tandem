@@ -745,14 +745,14 @@ pub const MCP: &str = concat!(
 
 #[cfg(test)]
 mod tests {
-    //! The README's grammar block is a hand-copy of [`ROOT`], and a hand-copy
+    //! The CLI doc's (docs/cli.md) grammar block is a hand-copy of [`ROOT`], and a hand-copy
     //! drifts. This is the gate the retired Swift check carried, moved to the
     //! binary that now owns the grammar: the block must carry every entry in
     //! the same order, and no entry ROOT does not have.
 
     use super::ROOT;
 
-    const README: &str = include_str!("../../../README.md");
+    const README: &str = include_str!("../../../docs/cli.md");
 
     /// The README's grammar fence: the ```sh block beginning `tandem-cli ticket list`.
     fn readme_block() -> Vec<String> {
@@ -780,7 +780,7 @@ mod tests {
                 lines.push(line.to_string());
             }
         }
-        panic!("README.md has no ```sh block that begins with `tandem-cli ticket list`");
+        panic!("docs/cli.md has no ```sh block that begins with `tandem-cli ticket list`");
     }
 
     /// One entry per `tandem-cli` command: continuation lines join the entry above.
@@ -824,7 +824,7 @@ mod tests {
         assert_eq!(
             entries(readme_block()),
             source_entries(),
-            "README.md's CLI grammar block is not the root usage text"
+            "docs/cli.md's CLI grammar block is not the root usage text"
         );
     }
 }
