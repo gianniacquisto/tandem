@@ -285,170 +285,303 @@
 
   // MARK: - The live editor
   //
-  // A note is a column of blocks split on blank lines. Every block shows as the
-  // page it makes, except the one the cursor is in, which shows its markdown:
-  // click a block to edit it, leave it and it draws again. The hidden textarea
-  // in the form stays the one source of truth, so the autosave above needs no
-  // change: each edit writes the joined blocks into it and fires its `input`.
+  // One editable surface holding the note's plain markdown. Every line is
+  // styled as the page it makes (headings large, bold bold, bullets as bullets)
+  // with its markers hidden, except the line the cursor is in, which shows them.
+  // The hidden textarea in the form stays the one source of truth: each edit
+  // writes the text into it and fires its `input`, so the autosave above needs
+  // no change. The text is never anything but the file's own characters.
   var live = null;
 
-  function splitBlocks(text) {
-    var blocks = [];
-    var current = [];
-    var fenced = false;
-    text.split('\n').forEach(function (line) {
-      if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
-      if (!fenced && line.trim() === '') {
-        if (current.length) {
-          blocks.push(current.join('\n'));
-          current = [];
-        }
+  function esc(text) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function marker(text) {
+    return '<span class="lp__m">' + esc(text) + '</span>';
+  }
+
+  // Bold, italic, strike, code, wikilinks and links inside one line.
+  var INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(~~[^~\n]+~~)|(\*[^*\n]+\*)|(\b_[^_\n]+_\b)|(\[\[[^\]\n]+\]\])|(\[[^\]\n]+\]\([^)\n]+\))/g;
+
+  function inline(source) {
+    var out = '';
+    var last = 0;
+    var match;
+    INLINE.lastIndex = 0;
+    while ((match = INLINE.exec(source))) {
+      out += esc(source.slice(last, match.index));
+      var token = match[0];
+      if (match[1]) {
+        out += '<span class="lp__code">' + marker('`') + esc(token.slice(1, -1)) + marker('`') + '</span>';
+      } else if (match[2]) {
+        out += '<strong>' + marker('**') + esc(token.slice(2, -2)) + marker('**') + '</strong>';
+      } else if (match[3]) {
+        out += '<s>' + marker('~~') + esc(token.slice(2, -2)) + marker('~~') + '</s>';
+      } else if (match[4] || match[5]) {
+        out += '<em>' + marker(token.charAt(0)) + esc(token.slice(1, -1)) + marker(token.charAt(0)) + '</em>';
+      } else if (match[6]) {
+        out += '<span class="lp__wiki">' + marker('[[') + esc(token.slice(2, -2)) + marker(']]') + '</span>';
       } else {
-        current.push(line);
+        var close = token.indexOf('](');
+        out += '<span class="lp__link">' + marker('[') + esc(token.slice(1, close)) +
+          marker(token.slice(close)) + '</span>';
       }
-    });
-    if (current.length) blocks.push(current.join('\n'));
-    return blocks;
+      last = match.index + token.length;
+    }
+    return out + esc(source.slice(last));
+  }
+
+  var HEADING = /^(#{1,6})( +)(.*)$/;
+  var RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
+  var BULLET = /^(\s*)([-*+])( +)(\[[ xX]\] +)?(.*)$/;
+  var NUMBER = /^(\s*)(\d+)([.)])( +)(.*)$/;
+  var QUOTE = /^(>+)( ?)(.*)$/;
+  var FENCE = /^\s*(```|~~~)/;
+
+  function lineHtml(line) {
+    var m;
+    if ((m = HEADING.exec(line))) {
+      return ['lp__line--h' + m[1].length, marker(m[1] + m[2]) + inline(m[3])];
+    }
+    if (RULE.test(line)) return ['lp__line--rule', esc(line)];
+    if ((m = BULLET.exec(line))) {
+      var task = m[4] ? '<span class="lp__task">' + esc(m[4]) + '</span>' : '';
+      return ['lp__line--bullet', esc(m[1]) + marker(m[2] + m[3]) + task + inline(m[5])];
+    }
+    if ((m = NUMBER.exec(line))) {
+      return ['lp__line--number', esc(m[1]) + '<span class="lp__num">' + esc(m[2] + m[3] + m[4]) + '</span>' + inline(m[5])];
+    }
+    if ((m = QUOTE.exec(line))) {
+      return ['lp__line--quote', marker(m[1] + m[2]) + inline(m[3])];
+    }
+    return ['', inline(line)];
   }
 
   function Live(root, store) {
     this.root = root;
     this.store = store;
-    this.blocks = splitBlocks(store.value);
-    if (!this.blocks.length) this.blocks = [''];
-    this.cache = {};
-    this.active = this.blocks.length === 1 && this.blocks[0] === '' ? 0 : -1;
-    this.draw();
+    this.text = store.value.replace(/\n$/, '');
+    this.composing = false;
+    this.activeLine = -1;
+    this.history = [{ text: this.text, start: 0, end: 0, at: 0 }];
+    this.position = 0;
+    this.bind();
+    this.render(null);
   }
 
-  Live.prototype.render = function (text) {
-    var self = this;
-    if (text.trim() === '') return Promise.resolve('');
-    if (this.cache[text] !== undefined) return Promise.resolve(this.cache[text]);
-    return fetch('/notes/preview', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ text: text }).toString()
-    })
-      .then(function (response) { return response.text(); })
-      .then(function (html) {
-        self.cache[text] = html;
-        return html;
-      });
+  Live.prototype.lineIndex = function (offset) {
+    return this.text.slice(0, offset).split('\n').length - 1;
+  };
+
+  Live.prototype.render = function (selection) {
+    var lines = this.text.split('\n');
+    var caret = selection ? selection.start : null;
+    this.activeLine = caret === null ? -1 : this.lineIndex(caret);
+    var fenced = false;
+    var html = '';
+    for (var i = 0; i < lines.length; i += 1) {
+      var line = lines[i];
+      var classes = 'lp__line';
+      var body;
+      if (FENCE.test(line)) {
+        fenced = !fenced;
+        classes += ' lp__line--fence';
+        body = esc(line);
+      } else if (fenced) {
+        classes += ' lp__line--code';
+        body = esc(line);
+      } else {
+        var parts = lineHtml(line);
+        classes += parts[0] ? ' ' + parts[0] : '';
+        body = parts[1];
+      }
+      if (i === this.activeLine) classes += ' lp__line--active';
+      html += '<span class="' + classes + '">' + body + '\n</span>';
+    }
+    this.root.innerHTML = html;
+    if (selection) this.select(selection.start, selection.end);
+  };
+
+  Live.prototype.read = function () {
+    var text = this.root.textContent;
+    return text.charAt(text.length - 1) === '\n' ? text.slice(0, -1) : text;
+  };
+
+  Live.prototype.selection = function () {
+    var sel = window.getSelection();
+    if (!sel.rangeCount || !this.root.contains(sel.anchorNode)) return null;
+    var range = sel.getRangeAt(0);
+    var before = document.createRange();
+    before.selectNodeContents(this.root);
+    before.setEnd(range.startContainer, range.startOffset);
+    var start = before.toString().length;
+    return { start: start, end: start + range.toString().length };
+  };
+
+  Live.prototype.select = function (start, end) {
+    var walker = document.createTreeWalker(this.root, NodeFilter.SHOW_TEXT);
+    var range = document.createRange();
+    var seen = 0;
+    var node;
+    var startSet = false;
+    range.setStart(this.root, 0);
+    range.collapse(true);
+    while ((node = walker.nextNode())) {
+      var length = node.nodeValue.length;
+      if (!startSet && start <= seen + length) {
+        range.setStart(node, start - seen);
+        startSet = true;
+      }
+      if (end <= seen + length) {
+        range.setEnd(node, end - seen);
+        break;
+      }
+      seen += length;
+    }
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
   };
 
   Live.prototype.sync = function () {
-    this.store.value = this.blocks.filter(function (block) {
-      return block.trim() !== '';
-    }).join('\n\n') + '\n';
+    this.store.value = this.text + '\n';
     this.store.dispatchEvent(new Event('input', { bubbles: true }));
   };
 
-  Live.prototype.draw = function () {
-    var self = this;
-    this.root.textContent = '';
-    this.blocks.forEach(function (text, index) {
-      var element = document.createElement('div');
-      element.className = 'live__block';
-      element.setAttribute('data-index', String(index));
-      self.root.appendChild(element);
-      if (index === self.active) {
-        self.edit(element, index);
+  // Every change goes through here: record it, write it, draw it.
+  Live.prototype.set = function (text, selection) {
+    if (text !== this.text) {
+      this.text = text;
+      var now = Date.now();
+      var top = this.history[this.position];
+      var entry = { text: text, start: selection.start, end: selection.end, at: now };
+      // Typing in a burst is one undo step.
+      if (this.position > 0 && now - top.at < 600 && this.position === this.history.length - 1) {
+        this.history[this.position] = entry;
       } else {
-        self.show(element, text);
+        this.history = this.history.slice(0, this.position + 1);
+        this.history.push(entry);
+        this.position = this.history.length - 1;
+      }
+      this.sync();
+    }
+    this.render(selection);
+  };
+
+  Live.prototype.travel = function (step) {
+    var next = this.position + step;
+    if (next < 0 || next >= this.history.length) return;
+    this.position = next;
+    var state = this.history[next];
+    this.text = state.text;
+    this.sync();
+    this.render({ start: state.start, end: state.end });
+  };
+
+  Live.prototype.replace = function (start, end, insert, caretAt) {
+    var text = this.text.slice(0, start) + insert + this.text.slice(end);
+    var at = caretAt === undefined ? start + insert.length : caretAt;
+    this.set(text, { start: at, end: at });
+  };
+
+  Live.prototype.lineBounds = function (offset) {
+    var from = this.text.lastIndexOf('\n', offset - 1) + 1;
+    var to = this.text.indexOf('\n', offset);
+    return { from: from, to: to === -1 ? this.text.length : to };
+  };
+
+  Live.prototype.bind = function () {
+    var self = this;
+    var root = this.root;
+
+    root.addEventListener('compositionstart', function () { self.composing = true; });
+    root.addEventListener('compositionend', function () {
+      self.composing = false;
+      self.changed();
+    });
+
+    root.addEventListener('beforeinput', function (event) {
+      if (event.inputType === 'historyUndo') {
+        event.preventDefault();
+        self.travel(-1);
+      } else if (event.inputType === 'historyRedo') {
+        event.preventDefault();
+        self.travel(1);
       }
     });
-    var tail = document.createElement('div');
-    tail.className = 'live__tail';
-    tail.setAttribute('data-live-tail', '');
-    this.root.appendChild(tail);
-  };
 
-  Live.prototype.show = function (element, text) {
-    if (text.trim() === '') {
-      element.classList.add('live__block--empty');
-      return;
-    }
-    this.render(text).then(function (html) {
-      element.innerHTML = html;
+    root.addEventListener('input', function () {
+      if (!self.composing) self.changed();
     });
-  };
 
-  Live.prototype.edit = function (element, index, caret) {
-    var self = this;
-    var input = document.createElement('textarea');
-    input.className = 'live__input';
-    input.value = this.blocks[index];
-    input.rows = 1;
-    input.spellcheck = false;
-    input.setAttribute('aria-label', 'Edit block');
-    input.placeholder = index === 0 && this.blocks.length === 1 ? 'Start writing…' : '';
-    element.appendChild(input);
-    function fit() {
-      input.style.height = 'auto';
-      input.style.height = input.scrollHeight + 'px';
-    }
-    fit();
-    input.focus();
-    var at = caret === 'start' ? 0 : input.value.length;
-    input.setSelectionRange(at, at);
-    input.addEventListener('input', function () {
-      fit();
-      var value = input.value;
-      // Two returns in a row end the block: the next one opens below it.
-      if (/\n\n$/.test(value) && !/(```|~~~)/.test(value)) {
-        self.blocks[index] = value.replace(/\s+$/, '');
-        self.blocks.splice(index + 1, 0, '');
-        self.active = index + 1;
-        self.sync();
-        self.draw();
+    document.addEventListener('selectionchange', function () {
+      if (document.activeElement !== root || self.composing) return;
+      var selection = self.selection();
+      if (!selection) return;
+      if (self.lineIndex(selection.start) !== self.activeLine) self.render(selection);
+    });
+
+    root.addEventListener('keydown', function (event) {
+      var meta = event.metaKey || event.ctrlKey;
+      var key = event.key.toLowerCase();
+      if (meta && key === 'z') {
+        event.preventDefault();
+        self.travel(event.shiftKey ? 1 : -1);
         return;
       }
-      self.blocks[index] = value;
-      self.sync();
-    });
-    input.addEventListener('keydown', function (event) {
-      var start = input.selectionStart;
-      var end = input.selectionEnd;
-      if (event.key === 'ArrowUp' && start === 0 && end === 0 && index > 0) {
+      if (meta && key === 'y') {
         event.preventDefault();
-        self.activate(index - 1, 'end');
-      } else if (event.key === 'ArrowDown' && start === input.value.length && end === start && index < self.blocks.length - 1) {
-        event.preventDefault();
-        self.activate(index + 1, 'start');
-      } else if (event.key === 'Backspace' && input.value === '' && index > 0) {
-        event.preventDefault();
-        self.blocks.splice(index, 1);
-        self.sync();
-        self.active = index - 1;
-        self.draw();
-      } else if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        input.blur();
+        self.travel(1);
+        return;
       }
-    });
-    input.addEventListener('blur', function () {
-      window.setTimeout(function () {
-        if (self.active !== index) return;
-        self.active = -1;
-        if (self.blocks[index].trim() === '' && self.blocks.length > 1) {
-          self.blocks.splice(index, 1);
-          self.sync();
-        }
-        self.draw();
-      }, 0);
+      if (meta && (key === 'b' || key === 'i')) {
+        event.preventDefault();
+        self.wrap(key === 'b' ? '**' : '*');
+        return;
+      }
+      if (event.key === 'Enter' && !event.shiftKey && !meta) self.enter(event);
     });
   };
 
-  Live.prototype.activate = function (index, caret) {
-    this.active = index;
-    this.draw();
-    var element = this.root.querySelector('[data-index="' + index + '"]');
-    var input = element && element.querySelector('textarea');
-    if (input) {
-      var at = caret === 'start' ? 0 : input.value.length;
-      input.setSelectionRange(at, at);
+  // The editor's text after a native edit.
+  Live.prototype.changed = function () {
+    var selection = this.selection() || { start: this.text.length, end: this.text.length };
+    this.set(this.read(), selection);
+  };
+
+  // Bold or italic around the selection; around the cursor when it is bare.
+  Live.prototype.wrap = function (mark) {
+    var selection = this.selection();
+    if (!selection) return;
+    var chosen = this.text.slice(selection.start, selection.end);
+    var text = this.text.slice(0, selection.start) + mark + chosen + mark + this.text.slice(selection.end);
+    this.set(text, { start: selection.start + mark.length, end: selection.end + mark.length });
+  };
+
+  // Return in a list carries the list on; return on an empty item ends it.
+  Live.prototype.enter = function (event) {
+    var selection = this.selection();
+    if (!selection || selection.start !== selection.end) return;
+    var bounds = this.lineBounds(selection.start);
+    if (selection.start !== bounds.to) return;
+    var line = this.text.slice(bounds.from, bounds.to);
+    var m = BULLET.exec(line);
+    var next = null;
+    var body = '';
+    if (m) {
+      body = m[5];
+      next = m[1] + m[2] + m[3] + (m[4] ? '[ ] ' : '');
+    } else if ((m = NUMBER.exec(line))) {
+      body = m[5];
+      next = m[1] + (Number(m[2]) + 1) + m[3] + m[4];
+    }
+    if (next === null) return;
+    event.preventDefault();
+    if (body.trim() === '') {
+      this.replace(bounds.from, bounds.to, '', bounds.from);
+    } else {
+      this.replace(selection.start, selection.start, '\n' + next);
     }
   };
 
@@ -457,27 +590,20 @@
     var store = document.querySelector('#note-form .note-editor');
     if (!root || !store || root.hasAttribute('data-live-ready')) return;
     root.setAttribute('data-live-ready', '');
-    live = new Live(root, store);
-  }
-
-  // Mouse down, not click: the block being left redraws on blur, and a click
-  // aimed at a block that has just been replaced would land on nothing.
-  document.addEventListener('mousedown', function (event) {
-    if (!live) return;
-    if (closest(event.target, 'a')) return;
-    var tail = closest(event.target, '[data-live-tail]');
-    if (tail) {
-      event.preventDefault();
-      var last = live.blocks.length - 1;
-      if (live.blocks[last].trim() !== '') live.blocks.push('');
-      live.activate(live.blocks.length - 1, 'end');
+    root.contentEditable = 'plaintext-only';
+    // A browser without plaintext editing gets the plain textarea instead.
+    if (root.contentEditable !== 'plaintext-only') {
+      root.hidden = true;
+      store.hidden = false;
       return;
     }
-    var block = closest(event.target, '.live__block');
-    if (!block || block.querySelector('textarea')) return;
-    event.preventDefault();
-    live.activate(Number(block.getAttribute('data-index')), 'end');
-  });
+    root.classList.add('lp');
+    root.setAttribute('spellcheck', 'true');
+    root.setAttribute('role', 'textbox');
+    root.setAttribute('aria-multiline', 'true');
+    root.setAttribute('aria-label', 'Note');
+    live = new Live(root, store);
+  }
 
   // A page of its own (a note just created, a rename) names the title field to
   // put the cursor in.
@@ -489,10 +615,69 @@
     }
   }
 
+  // MARK: - Collapsing folders in the notes tree
+  //
+  // The tree is a flat list with each row's depth, so a folder hides the rows
+  // below it that sit deeper, up to the next row at its own depth or shallower.
+  // Which folders are shut is kept per browser.
+  var COLLAPSED_KEY = 'tandem.collapsed';
+
+  function collapsedFolders() {
+    try {
+      return JSON.parse(window.localStorage.getItem(COLLAPSED_KEY) || '[]');
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function applyTree() {
+    var items = document.querySelectorAll('.tree > li');
+    var shut = collapsedFolders();
+    var hideBelow = null;
+    for (var i = 0; i < items.length; i += 1) {
+      var row = items[i].querySelector('.tree__row');
+      if (!row) continue;
+      var level = Number(row.getAttribute('aria-level'));
+      if (hideBelow !== null) {
+        if (level > hideBelow) {
+          items[i].hidden = true;
+          continue;
+        }
+        hideBelow = null;
+      }
+      items[i].hidden = false;
+      if (row.getAttribute('data-kind') === 'folder') {
+        var closed = shut.indexOf(row.getAttribute('data-path')) >= 0;
+        row.setAttribute('aria-expanded', closed ? 'false' : 'true');
+        var twisty = row.querySelector('.tree__twisty');
+        if (twisty) twisty.textContent = closed ? '▸' : '▾';
+        if (closed) hideBelow = level;
+      }
+    }
+  }
+
+  document.addEventListener('click', function (event) {
+    if (closest(event.target, '.row-menu')) return;
+    var row = closest(event.target, '.tree__row[data-kind="folder"]');
+    if (!row) return;
+    var path = row.getAttribute('data-path');
+    var shut = collapsedFolders();
+    var at = shut.indexOf(path);
+    if (at >= 0) shut.splice(at, 1);
+    else shut.push(path);
+    try {
+      window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(shut));
+    } catch (error) {
+      // Private mode: the fold holds until the next redraw.
+    }
+    applyTree();
+  });
+
   function setUpNote() {
     live = null;
     initLive();
     focusTitle();
+    applyTree();
   }
 
   document.addEventListener('DOMContentLoaded', setUpNote);

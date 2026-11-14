@@ -3703,60 +3703,102 @@ body {
   color: var(--ember-deep);
 }
 
-/* Editing in place: each block is the page it makes; the one with the cursor
- * shows its markdown. */
-.live {
-  min-height: calc(100vh - 360px);
+/* Editing in place: the note's own text, styled as the page it makes. A line
+ * shows its markdown markers only while the cursor is in it. */
+.live,
+.lp {
+  min-height: calc(100vh - 300px);
+  padding-bottom: 160px;
   font-size: 16px;
-  line-height: 1.6;
-}
-
-.live__block {
-  margin: 0 -8px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  cursor: text;
-}
-
-.live__block:hover {
-  background: var(--parchment);
-}
-
-.live__block--empty {
-  min-height: 1.6em;
-}
-
-.live__block > :first-child {
-  margin-top: 0;
-}
-
-.live__block > :last-child {
-  margin-bottom: 0;
-}
-
-.live__input {
-  box-sizing: border-box;
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: 14.5px;
-  line-height: 1.6;
-  resize: none;
-  overflow: hidden;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   outline: none;
+  caret-color: var(--ink);
 }
 
-.live__block:has(.live__input) {
+.lp__m {
+  display: none;
+  color: var(--ink-dim);
+}
+
+.lp__line--active .lp__m {
+  display: inline;
+}
+
+.lp__line--h1 { font-size: 2em; font-weight: 700; line-height: 1.3; }
+.lp__line--h2 { font-size: 1.55em; font-weight: 700; line-height: 1.35; }
+.lp__line--h3 { font-size: 1.25em; font-weight: 700; line-height: 1.4; }
+.lp__line--h4,
+.lp__line--h5,
+.lp__line--h6 { font-weight: 700; }
+
+.lp__line--quote {
+  padding-left: 14px;
+  border-left: 3px solid var(--line);
+  color: var(--ink-dim);
+}
+
+.lp__line--quote.lp__line--active {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.lp__line--bullet:not(.lp__line--active)::before {
+  content: "\2022";
+  position: absolute;
+  margin-left: -1.1em;
+  color: var(--ink-dim);
+}
+
+.lp__line--bullet:not(.lp__line--active) {
+  margin-left: 1.1em;
+}
+
+.lp__num {
+  color: var(--ink-dim);
+}
+
+.lp__task {
+  color: var(--ink-dim);
+}
+
+.lp__line--rule:not(.lp__line--active) {
+  color: transparent;
+  background: linear-gradient(var(--line), var(--line)) center / 100% 1px no-repeat;
+}
+
+.lp__line--fence {
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.lp__line--code {
   background: var(--parchment);
+  font-family: var(--font-mono);
+  font-size: 14px;
 }
 
-.live__tail {
-  min-height: 160px;
-  cursor: text;
+.lp__code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--parchment);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.lp__wiki {
+  color: var(--accent-deep);
+}
+
+.lp__link {
+  color: var(--accent-deep);
+  text-decoration: underline;
+}
+
+.lp__line--active {
+  border-radius: 4px;
 }
 
 /* The title is the name: edit it to rename the note. */
@@ -3784,4 +3826,9 @@ body {
 .page-title:hover,
 .page-title:focus {
   background: var(--parchment);
+}
+
+.lp__line {
+  display: block;
+  min-height: 1.65em;
 }

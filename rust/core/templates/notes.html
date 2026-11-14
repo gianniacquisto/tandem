@@ -200,11 +200,6 @@
                    value="{% for crumb in crumbs %}{% if crumb.current %}{{ crumb.label }}{% endif %}{% endfor %}"
                    {% if focus_title %}data-autofocus{% endif %}>
           </form>
-          <dl class="props" aria-label="Note properties">
-            <div class="props__row"><dt>Path</dt><dd>{{ note.path }}</dd></div>
-            <div class="props__row"><dt>Backlinks</dt><dd>{{ backlink_count }}</dd></div>
-            {% if linked_count > 0 %}<div class="props__row"><dt>Tickets</dt><dd>{{ linked_count }}</dd></div>{% endif %}
-          </dl>
         </div>
         <div id="note-panel">
           {% if mode == "edit" %}
