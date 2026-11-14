@@ -1269,6 +1269,27 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
 }
 
 #[tokio::test]
+async fn the_edit_page_keeps_a_leading_blank_line_in_the_note_text() {
+    let sandbox = Sandbox::new("notes-leading-newline");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    notes.create("Lead.md").expect("the note is created");
+    notes
+        .write("Lead.md", "\n\nfirst line")
+        .expect("the note is written");
+    let app = router(context(store));
+
+    let (status, _, body) = send(&app, page_get("/notes/edit?path=Lead.md")).await;
+    assert_eq!(status, StatusCode::OK, "the edit page answers: {body}");
+    // The HTML parser drops one newline right after the opening tag, so the
+    // template emits a spare one and the text keeps its own.
+    assert!(
+        body.contains("hidden>\n\n\nfirst line</textarea>"),
+        "the textarea keeps the leading blank lines: {body}"
+    );
+}
+
+#[tokio::test]
 async fn post_notes_preview_renders_markdown_blocks_without_writing_disk() {
     let sandbox = Sandbox::new("notes-preview");
     let store = sandbox.store();
@@ -1383,11 +1404,11 @@ async fn post_notes_rename_and_delete_manage_a_note_and_the_open_page_follows() 
     .await;
     assert_eq!(status, StatusCode::OK);
 
-    let (status, _, body) = send(
+    let (status, headers, body) = send(
         &app,
         form_request(
             "/notes/rename",
-            "path=projects/tandem/Draft.md&name=Final&open=projects/tandem/Draft.md&project=tandem",
+            "path=projects/tandem/Draft.md&name=Final&open=projects/tandem/Draft.md&project=tandem&mode=edit",
         ),
     )
     .await;
@@ -1403,6 +1424,13 @@ async fn post_notes_rename_and_delete_manage_a_note_and_the_open_page_follows() 
     assert!(
         body.contains("Final"),
         "the open page follows the rename: {body}"
+    );
+    assert_eq!(
+        headers
+            .get("hx-replace-url")
+            .and_then(|value| value.to_str().ok()),
+        Some("/notes?project=tandem&path=projects%2Ftandem%2FFinal.md&mode=edit"),
+        "the address bar follows the rename"
     );
 
     let (status, _, body) = send(

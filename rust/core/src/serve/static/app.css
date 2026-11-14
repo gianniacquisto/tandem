@@ -3707,6 +3707,7 @@ body {
  * shows its markdown markers only while the cursor is in it. */
 .live,
 .lp {
+  position: relative;
   min-height: calc(100vh - 300px);
   padding-bottom: 160px;
   font-size: 16px;
@@ -3765,7 +3766,19 @@ body {
 
 .lp__line--rule:not(.lp__line--active) {
   color: transparent;
-  background: linear-gradient(var(--line), var(--line)) center / 100% 1px no-repeat;
+}
+
+/* An inline line is only as wide as its text, so the rule is drawn by a
+ * pseudo-element that spans the editor, positioned where the line sits. */
+.lp__line--rule:not(.lp__line--active)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  margin-top: 0.8em;
+  background: var(--line);
+  pointer-events: none;
 }
 
 .lp__line--fence {
@@ -3828,7 +3841,9 @@ body {
   background: var(--parchment);
 }
 
+/* Lines are inline, the trailing newline in each is the line break: Chrome's
+ * up and down caret movement skips lines when block lines also end in a
+ * literal newline. */
 .lp__line {
-  display: block;
-  min-height: 1.65em;
+  display: inline;
 }

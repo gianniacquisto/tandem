@@ -201,7 +201,8 @@
             <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
             <input type="hidden" name="mode" value="edit">
             <input type="hidden" name="baseline_hash" value="{{ note.baseline_hash }}" data-note-baseline>
-            <textarea class="note-editor" name="text" aria-label="Note markdown" hidden>{{ note.text }}</textarea>
+            <textarea class="note-editor" name="text" aria-label="Note markdown" hidden>
+{{ note.text }}</textarea>
           </form>
           <div class="live" data-live>{{ note.html }}</div>
           {% else %}

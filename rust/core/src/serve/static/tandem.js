@@ -211,21 +211,20 @@
 
   // MARK: - The notes editor
 
-  function noteForm() {
-    return document.getElementById('note-form');
-  }
-
   // The autosave writes without swapping the pane: a swap would replace the
   // textarea under the human's caret every second. The response still carries
   // the new baseline, which the hidden input adopts; a conflict or an error is
   // the one answer that does swap, because it must be seen. `writeNote`
   // resolves whether the buffer reached the disk, so a caller that navigates
-  // (Escape) can stay put when it did not.
-  function writeNote() {
-    var form = noteForm();
+  // can stay put when it did not. It posts the form it is handed, the one whose
+  // text was edited, never whichever note the page shows by the time it runs.
+  // `leaving` marks the write sent as the page closes: only that one asks for
+  // keepalive, whose body is capped at 64 KB, so a long note still saves.
+  function writeNote(form, leaving) {
     if (!form) return Promise.resolve(false);
     return fetch(form.getAttribute('action'), {
       method: 'POST',
+      keepalive: !!leaving,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'HX-Request': 'true'
@@ -236,7 +235,12 @@
       .then(function (html) {
         if (html.indexOf('class="conflict"') !== -1 || html.indexOf('class="banner"') !== -1) {
           var root = document.getElementById('notes-root');
-          if (root) root.outerHTML = html;
+          // Through htmx, so the new nodes are processed and the editor is
+          // made editable again.
+          if (root) {
+            window.htmx.swap(root, html, { swapStyle: 'outerHTML' });
+            setUpNote();
+          }
           return false;
         }
         var parsed = new DOMParser().parseFromString(html, 'text/html');
@@ -253,19 +257,78 @@
 
   // One write at a time: a save asked for while another is out waits its turn
   // and then reads the buffer again, so the text the human sees is the text
-  // that lands, and Escape's answer belongs to its own save.
+  // that lands, and a navigation's answer belongs to its own save.
   var noteChain = Promise.resolve(true);
+  var pendingForm = null;
+  var savesOut = 0;
 
-  function saveNote() {
-    noteChain = noteChain.then(writeNote, writeNote);
+  function saveNote(form) {
+    var write = function () { return writeNote(form); };
+    savesOut += 1;
+    noteChain = noteChain.then(write, write);
+    noteChain.then(function () { savesOut -= 1; });
+    return noteChain;
+  }
+
+  function scheduleSave() {
+    if (noteTimer) window.clearTimeout(noteTimer);
+    noteTimer = window.setTimeout(function () {
+      var form = pendingForm;
+      noteTimer = null;
+      pendingForm = null;
+      saveNote(form);
+    }, 1000);
+  }
+
+  // Write now what the debounce still holds, and wait for any write in flight.
+  // Resolves whether the disk has the text.
+  function flushNote() {
+    if (noteTimer) {
+      var form = pendingForm;
+      window.clearTimeout(noteTimer);
+      noteTimer = null;
+      pendingForm = null;
+      return saveNote(form);
+    }
     return noteChain;
   }
 
   document.addEventListener('input', function (event) {
     var editor = closest(event.target, '.note-editor');
     if (!editor) return;
-    if (noteTimer) window.clearTimeout(noteTimer);
-    noteTimer = window.setTimeout(saveNote, 1000);
+    var form = closest(editor, 'form');
+    // Edits to a form other than the pending one: the pending one goes first.
+    if (pendingForm && pendingForm !== form) flushNote();
+    pendingForm = form;
+    scheduleSave();
+  });
+
+  // A request that swaps the pane waits for the save, so the last second of
+  // typing lands before the page moves on, and a rename posts the old path
+  // only after the text is on disk. A save that did not land (a conflict, an
+  // error) keeps the page where it is, banner showing.
+  document.addEventListener('htmx:confirm', function (event) {
+    if (!noteTimer && !pendingForm && savesOut === 0) return;
+    event.preventDefault();
+    var issue = event.detail.issueRequest;
+    flushNote().then(function (landed) {
+      if (landed) issue();
+    });
+  });
+
+  // Closing the tab inside the debounce: send what is held, past the unload.
+  function flushOnLeave() {
+    if (!noteTimer) return;
+    var form = pendingForm;
+    window.clearTimeout(noteTimer);
+    noteTimer = null;
+    pendingForm = null;
+    writeNote(form, true);
+  }
+
+  window.addEventListener('pagehide', flushOnLeave);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') flushOnLeave();
   });
 
   // MARK: - The live editor
@@ -348,6 +411,7 @@
     this.store = store;
     this.text = store.value.replace(/\n$/, '');
     this.composing = false;
+    this.dragging = false;
     this.activeLine = -1;
     this.history = [{ text: this.text, start: 0, end: 0, at: 0 }];
     this.position = 0;
@@ -361,7 +425,7 @@
 
   Live.prototype.render = function (selection) {
     var lines = this.text.split('\n');
-    var caret = selection ? selection.start : null;
+    var caret = selection ? (selection.backward ? selection.start : selection.end) : null;
     this.activeLine = caret === null ? -1 : this.lineIndex(caret);
     var fenced = false;
     var html = '';
@@ -385,7 +449,7 @@
       html += '<span class="' + classes + '">' + body + '\n</span>';
     }
     this.root.innerHTML = html;
-    if (selection) this.select(selection.start, selection.end);
+    if (selection) this.select(selection.start, selection.end, selection.backward);
   };
 
   Live.prototype.read = function () {
@@ -401,14 +465,19 @@
     before.selectNodeContents(this.root);
     before.setEnd(range.startContainer, range.startOffset);
     var start = before.toString().length;
-    return { start: start, end: start + range.toString().length };
+    // The focus end is where the human is extending, so the line it sits in is
+    // the active one, and a re-draw must keep the anchor where it was.
+    var backward = !sel.isCollapsed && sel.focusNode === range.startContainer &&
+      sel.focusOffset === range.startOffset &&
+      !(sel.anchorNode === range.startContainer && sel.anchorOffset === range.startOffset);
+    return { start: start, end: start + range.toString().length, backward: backward };
   };
 
   // A position that sits exactly between two text nodes belongs to the later
   // one: the cursor after a line's trailing newline is the start of the next
   // line, and the browser would otherwise draw it, and type into it, at the
   // end of the line above.
-  Live.prototype.select = function (start, end) {
+  Live.prototype.select = function (start, end, backward) {
     var walker = document.createTreeWalker(this.root, NodeFilter.SHOW_TEXT);
     var seen = 0;
     var node;
@@ -424,14 +493,16 @@
       seen += length;
     }
     if (!last) return;
-    var range = document.createRange();
     var open = from || last;
     var close = to || last;
-    range.setStart(open.node, open.offset);
-    range.setEnd(close.node, close.offset);
     var sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
+    // The anchor stays where the selection began, so Shift+Arrow and a drag
+    // keep extending from the same end after a re-draw.
+    if (backward) {
+      sel.setBaseAndExtent(close.node, close.offset, open.node, open.offset);
+    } else {
+      sel.setBaseAndExtent(open.node, open.offset, close.node, close.offset);
+    }
   };
 
   Live.prototype.sync = function () {
@@ -505,12 +576,9 @@
       if (!self.composing) self.changed();
     });
 
-    document.addEventListener('selectionchange', function () {
-      if (document.activeElement !== root || self.composing) return;
-      var selection = self.selection();
-      if (!selection) return;
-      if (self.lineIndex(selection.start) !== self.activeLine) self.render(selection);
-    });
+    // A drag is left alone until the button is up: a re-draw under the pointer
+    // would cut the selection short.
+    root.addEventListener('mousedown', function () { self.dragging = true; });
 
     root.addEventListener('keydown', function (event) {
       var meta = event.metaKey || event.ctrlKey;
@@ -532,6 +600,15 @@
       }
       if (event.key === 'Enter' && !event.shiftKey && !meta) self.enter(event);
     });
+  };
+
+  // The caret moved: draw the line it is in with its markers.
+  Live.prototype.follow = function () {
+    if (document.activeElement !== this.root || this.composing || this.dragging) return;
+    var selection = this.selection();
+    if (!selection) return;
+    var caret = selection.backward ? selection.start : selection.end;
+    if (this.lineIndex(caret) !== this.activeLine) this.render(selection);
   };
 
   // The editor's text after a native edit.
@@ -582,6 +659,18 @@
     }
     this.replace(selection.start, selection.end, '\n');
   };
+
+  // One listener for the page, aimed at the editor now showing: a listener per
+  // editor would outlive each swap and keep its detached root alive.
+  document.addEventListener('selectionchange', function () {
+    if (live) live.follow();
+  });
+  document.addEventListener('mouseup', function () {
+    if (live && live.dragging) {
+      live.dragging = false;
+      live.follow();
+    }
+  });
 
   function initLive() {
     var root = document.querySelector('[data-live]');
@@ -672,7 +761,9 @@
   });
 
   function setUpNote() {
-    live = null;
+    // An editor of a note the page has left saves the text it holds and goes.
+    if (pendingForm && !document.contains(pendingForm)) flushNote();
+    if (live && !document.contains(live.root)) live = null;
     initLive();
     focusTitle();
     applyTree();

@@ -600,12 +600,27 @@ pub(super) async fn note_rename(
     match context.bikeshed().rename(&path, &target) {
         Ok(read) => {
             // The open page follows the rename; a rename of another row leaves it.
-            if field(&params, "open") == path {
+            let followed = field(&params, "open") == path;
+            if followed {
                 params.insert("path".to_string(), read.value);
             } else {
                 params.insert("path".to_string(), field(&params, "open").to_string());
             }
-            notes_response(&context, &params, None, None, None, &headers)
+            let mut response = notes_response(&context, &params, None, None, None, &headers);
+            // The address bar still names the old path; only the server knows
+            // the final one, so a reload after a rename lands on the note.
+            if followed {
+                let url = notes_href(
+                    field(&params, "project"),
+                    !matches!(field(&params, "show_all"), "" | "0" | "false"),
+                    Some(field(&params, "path")),
+                    Some(field(&params, "mode")).filter(|mode| !mode.is_empty()),
+                );
+                if let Ok(value) = HeaderValue::from_str(&url) {
+                    response.headers_mut().insert("hx-replace-url", value);
+                }
+            }
+            response
         }
         Err(error) => {
             params.insert("path".to_string(), field(&params, "open").to_string());
