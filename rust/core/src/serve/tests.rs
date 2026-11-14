@@ -1283,6 +1283,8 @@ async fn the_edit_page_keeps_a_leading_blank_line_in_the_note_text() {
     assert_eq!(status, StatusCode::OK, "the edit page answers: {body}");
     // The HTML parser drops one newline right after the opening tag, so the
     // template emits a spare one and the text keeps its own.
+    // A checkout may carry the template with CRLF line ends.
+    let body = body.replace("\r\n", "\n");
     assert!(
         body.contains("hidden>\n\n\nfirst line</textarea>"),
         "the textarea keeps the leading blank lines: {body}"

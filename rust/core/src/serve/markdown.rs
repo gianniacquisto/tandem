@@ -89,6 +89,17 @@ fn block_into(block: &MarkdownBlock, out: &mut String) {
             blocks_into(inner, out);
             out.push_str("</blockquote>");
         }
+        MarkdownBlock::Alert { kind, blocks } => {
+            out.push_str("<div class=\"markdown__alert markdown__alert--");
+            out.push_str(kind);
+            out.push_str("\"><p class=\"markdown__alert-title\">");
+            let mut title = kind.to_string();
+            title[..1].make_ascii_uppercase();
+            out.push_str(&title);
+            out.push_str("</p>");
+            blocks_into(blocks, out);
+            out.push_str("</div>");
+        }
         MarkdownBlock::Table { header, rows } => {
             out.push_str("<table class=\"markdown__table\">");
             if !header.is_empty() {
@@ -188,5 +199,25 @@ fn escape_into(text: &str, out: &mut String) {
             '\'' => out.push_str("&#39;"),
             other => out.push(other),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::document;
+    use crate::domain::markdown::TicketMarkdown;
+
+    #[test]
+    fn an_alert_renders_as_a_titled_box() {
+        let html = document(&TicketMarkdown::blocks(Some("> [!NOTE]\n> read me")));
+        assert!(
+            html.contains("markdown__alert markdown__alert--note"),
+            "{html}"
+        );
+        assert!(
+            html.contains("<p class=\"markdown__alert-title\">Note</p>"),
+            "{html}"
+        );
+        assert!(html.contains("read me"), "{html}");
     }
 }

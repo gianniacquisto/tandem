@@ -528,7 +528,8 @@ impl MarkdownBlockView {
                 language: language.clone(),
                 text: text.clone(),
             },
-            MarkdownBlock::Quote(blocks) => Self::Quote {
+            // The wire has no alert kind: a callout reads as a quote there.
+            MarkdownBlock::Quote(blocks) | MarkdownBlock::Alert { blocks, .. } => Self::Quote {
                 blocks: blocks.iter().map(Self::new).collect(),
             },
             MarkdownBlock::Table { header, rows } => Self::Table {

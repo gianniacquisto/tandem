@@ -14,7 +14,7 @@
 
 use std::collections::BTreeSet;
 
-use comrak::nodes::{AstNode, ListType, NodeValue};
+use comrak::nodes::{AlertType, AstNode, ListType, NodeValue};
 use comrak::{Options, parse_document};
 
 /// The ticket faces' markdown seam: pure strings in, blocks out.
@@ -53,6 +53,8 @@ fn options() -> Options<'static> {
     options.extension.table = true;
     options.extension.strikethrough = true;
     options.extension.tasklist = true;
+    // `> [!NOTE]` is a callout box, the shape the live editor's slash menu writes.
+    options.extension.alerts = true;
     options
 }
 
@@ -80,6 +82,12 @@ pub enum MarkdownBlock {
     },
     /// A blockquote's own blocks.
     Quote(Vec<MarkdownBlock>),
+    /// A GitHub alert (`> [!NOTE]`): the kind's class name (`note`, `tip`,
+    /// `important`, `warning`, `caution`) over the box's own blocks.
+    Alert {
+        kind: &'static str,
+        blocks: Vec<MarkdownBlock>,
+    },
     /// A GFM table: the header row and the body rows, cells as plain text.
     Table {
         header: Vec<String>,
@@ -158,6 +166,16 @@ fn convert<'a>(node: &'a AstNode<'a>) -> Option<MarkdownBlock> {
             NodeValue::BlockQuote | NodeValue::MultilineBlockQuote(_) => {
                 MarkdownBlock::Quote(children(node))
             }
+            NodeValue::Alert(alert) => MarkdownBlock::Alert {
+                kind: match alert.alert_type {
+                    AlertType::Note => "note",
+                    AlertType::Tip => "tip",
+                    AlertType::Important => "important",
+                    AlertType::Warning => "warning",
+                    AlertType::Caution => "caution",
+                },
+                blocks: children(node),
+            },
             NodeValue::Table(_) => table(node),
             NodeValue::ThematicBreak => MarkdownBlock::Rule,
             // The app loads no remote content and draws no HTML: a raw block is

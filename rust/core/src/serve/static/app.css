@@ -2546,6 +2546,23 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   color: var(--ink-dim);
 }
 
+.markdown__alert {
+  padding: 8px 10px;
+  border-left: 3px solid var(--tone-sky);
+  border-radius: var(--radius-control);
+  background: var(--sky);
+}
+
+.markdown__alert--tip { border-left-color: var(--tone-hill); background: var(--hill); }
+.markdown__alert--important { border-left-color: var(--tone-accent); background: var(--hill-far); }
+.markdown__alert--warning,
+.markdown__alert--caution { border-left-color: var(--tone-ember); background: var(--skin); }
+
+.markdown__alert-title {
+  margin: 0 0 2px;
+  font-weight: 600;
+}
+
 .markdown__table {
   border-collapse: collapse;
   font-size: 11.5px;
@@ -3812,6 +3829,98 @@ body {
 
 .lp__line--active {
   border-radius: 4px;
+}
+
+/* A callout box in the live editor: the opener shows its label in place of the
+ * `> [!NOTE]` marker, the `> ` lines under it are the body. The lines stay
+ * inline, so the tint is a background and a left rule, not a block. */
+.lp__line--callout {
+  padding-left: 12px;
+  border-left: 3px solid var(--tone-sky);
+  background: var(--sky);
+  color: var(--ink);
+}
+
+.lp__line--callout-tip { border-left-color: var(--tone-hill); background: var(--hill); }
+.lp__line--callout-warning { border-left-color: var(--tone-ember); background: var(--skin); }
+
+.lp__line--callout.lp__line--active {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.lp__line--callout:not(.lp__line--active):not(.lp__line--callout-body)::before {
+  content: "Note";
+  font-weight: 600;
+}
+
+.lp__line--callout-info:not(.lp__line--active):not(.lp__line--callout-body)::before { content: "Info"; }
+.lp__line--callout-tip:not(.lp__line--active):not(.lp__line--callout-body)::before { content: "Tip"; }
+.lp__line--callout-warning:not(.lp__line--active):not(.lp__line--callout-body)::before { content: "Warning"; }
+
+/* The slash menu: a small listbox under the caret, outside the note's text. */
+.slash {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  box-sizing: border-box;
+  width: 280px;
+  max-height: 320px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  overflow-y: auto;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  box-shadow: 0 8px 28px var(--shadow);
+  font-size: 13px;
+}
+
+.slash__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.slash__item[aria-selected="true"] {
+  background: var(--parchment);
+}
+
+.slash__glyph {
+  display: inline-flex;
+  box-sizing: border-box;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-checkbox);
+  background: var(--paper);
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.slash__label {
+  flex: 1 1 auto;
+}
+
+.slash__hint {
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.slash__empty {
+  padding: 6px 8px;
+  color: var(--ink-dim);
 }
 
 /* The title is the name: edit it to rename the note. */

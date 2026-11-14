@@ -386,6 +386,8 @@
   var NUMBER = /^(\s*)(\d+)([.)])( +)(.*)$/;
   var QUOTE = /^(>+)( ?)(.*)$/;
   var FENCE = /^\s*(```|~~~)/;
+  // A box's opener: GitHub's alert syntax, the shape the slash menu writes.
+  var CALLOUT = /^(>)( ?)(\[!(NOTE|INFO|TIP|WARNING)\])\s*$/i;
 
   function lineHtml(line) {
     var m;
@@ -400,6 +402,10 @@
     if ((m = NUMBER.exec(line))) {
       return ['lp__line--number', esc(m[1]) + '<span class="lp__num">' + esc(m[2] + m[3] + m[4]) + '</span>' + inline(m[5])];
     }
+    if ((m = CALLOUT.exec(line))) {
+      return ['lp__line--quote lp__line--callout lp__line--callout-' + m[4].toLowerCase(),
+        marker(m[1] + m[2] + m[3])];
+    }
     if ((m = QUOTE.exec(line))) {
       return ['lp__line--quote', marker(m[1] + m[2]) + inline(m[3])];
     }
@@ -413,6 +419,7 @@
     this.composing = false;
     this.dragging = false;
     this.activeLine = -1;
+    this.menu = null;
     this.history = [{ text: this.text, start: 0, end: 0, at: 0 }];
     this.position = 0;
     this.bind();
@@ -428,6 +435,8 @@
     var caret = selection ? (selection.backward ? selection.start : selection.end) : null;
     this.activeLine = caret === null ? -1 : this.lineIndex(caret);
     var fenced = false;
+    // The box a run of `> ` lines belongs to, from its opener on.
+    var box = '';
     var html = '';
     for (var i = 0; i < lines.length; i += 1) {
       var line = lines[i];
@@ -442,6 +451,14 @@
         body = esc(line);
       } else {
         var parts = lineHtml(line);
+        var opener = /lp__line--callout-(\w+)/.exec(parts[0]);
+        if (opener) {
+          box = opener[1];
+        } else if (parts[0] === 'lp__line--quote' && box) {
+          parts[0] += ' lp__line--callout lp__line--callout-' + box + ' lp__line--callout-body';
+        } else {
+          box = '';
+        }
         classes += parts[0] ? ' ' + parts[0] : '';
         body = parts[1];
       }
@@ -572,15 +589,22 @@
       }
     });
 
-    root.addEventListener('input', function () {
-      if (!self.composing) self.changed();
+    root.addEventListener('input', function (event) {
+      if (self.composing || event.isComposing) return;
+      self.changed();
+      self.menuInput(event);
     });
+
+    // Leaving the editor shuts the menu; a click on the menu itself does not
+    // blur, its mousedown is held back.
+    root.addEventListener('blur', function () { self.menuClose(); });
 
     // A drag is left alone until the button is up: a re-draw under the pointer
     // would cut the selection short.
     root.addEventListener('mousedown', function () { self.dragging = true; });
 
     root.addEventListener('keydown', function (event) {
+      if (self.menu && !self.composing && !event.isComposing && self.menuKey(event)) return;
       var meta = event.metaKey || event.ctrlKey;
       var key = event.key.toLowerCase();
       if (meta && key === 'z') {
@@ -660,10 +684,267 @@
     this.replace(selection.start, selection.end, '\n');
   };
 
+  // MARK: - The slash menu
+  //
+  // `/` at the start of a line or after a space opens a list of block kinds
+  // under the caret. What follows the `/` filters it and stays in the text as
+  // ordinary characters until an item turns the line into that block.
+  var SLASH_ITEMS = [
+    { id: 'text', glyph: 'T', label: 'Text', hint: '', terms: ['text', 'plain', 'paragraph', 'p'] },
+    { id: 'h1', glyph: 'H1', label: 'Heading 1', hint: '#', terms: ['heading 1', 'h1', 'title'] },
+    { id: 'h2', glyph: 'H2', label: 'Heading 2', hint: '##', terms: ['heading 2', 'h2'] },
+    { id: 'h3', glyph: 'H3', label: 'Heading 3', hint: '###', terms: ['heading 3', 'h3'] },
+    { id: 'bullet', glyph: '•', label: 'Bullet list', hint: '-', terms: ['bullet list', 'bullet', 'ul', 'list', 'unordered'] },
+    { id: 'number', glyph: '1.', label: 'Numbered list', hint: '1.', terms: ['numbered list', 'number', 'ol', 'list', 'ordered'] },
+    { id: 'todo', glyph: '☐', label: 'To-do', hint: '[ ]', terms: ['to-do', 'todo', 'task', 'checkbox', 'check', 'checklist'] },
+    { id: 'quote', glyph: '“', label: 'Quote', hint: '>', terms: ['quote', 'blockquote', 'cite'] },
+    { id: 'code', glyph: '</>', label: 'Code block', hint: '```', terms: ['code block', 'code', 'fence', 'snippet'] },
+    { id: 'note', glyph: 'i', label: 'Info box', hint: '[!NOTE]', terms: ['info box', 'info', 'callout', 'note'] },
+    { id: 'warning', glyph: '!', label: 'Warning box', hint: '[!WARNING]', terms: ['warning box', 'warning', 'warn', 'callout', 'alert'] },
+    { id: 'tip', glyph: '*', label: 'Tip box', hint: '[!TIP]', terms: ['tip box', 'tip', 'hint', 'callout'] },
+    { id: 'divider', glyph: '─', label: 'Divider', hint: '---', terms: ['divider', 'hr', 'rule', 'line', 'separator'] }
+  ];
+  var BLOCK_PREFIX = /^(?:#{1,6} +|[-*+] +(?:\[[ xX]\] +)?|\d+[.)] +|> ?)+/;
+
+  function slashMatches(query) {
+    var q = query.toLowerCase();
+    var first = [];
+    var rest = [];
+    for (var i = 0; i < SLASH_ITEMS.length; i += 1) {
+      var terms = SLASH_ITEMS[i].terms;
+      var rank = 2;
+      for (var t = 0; t < terms.length; t += 1) {
+        var at = terms[t].indexOf(q);
+        if (at === 0) rank = 0;
+        else if (at > 0 && rank > 1) rank = 1;
+      }
+      if (rank === 0) first.push(SLASH_ITEMS[i]);
+      else if (rank === 1) rest.push(SLASH_ITEMS[i]);
+    }
+    return first.concat(rest);
+  }
+
+  Live.prototype.menuInput = function (event) {
+    if (this.menu) {
+      this.menuCheck();
+      return;
+    }
+    // Typed text can arrive in one piece (a fast burst), so `/todo` counts.
+    if (event.inputType !== 'insertText' || !event.data || event.data.charAt(0) !== '/' ||
+        /\s/.test(event.data)) return;
+    var selection = this.selection();
+    if (!selection || selection.start !== selection.end) return;
+    var from = selection.end - event.data.length;
+    // A `/` inside a word (a path, a URL, a/b) is just a slash.
+    if (from > 0 && !/\s/.test(this.text.charAt(from - 1))) return;
+    var el = document.createElement('div');
+    el.className = 'slash';
+    el.id = 'slash-menu';
+    el.setAttribute('role', 'listbox');
+    el.setAttribute('aria-label', 'Turn this line into');
+    var self = this;
+    // The mouse must not pull focus, or the editor blur would shut the menu
+    // before the click lands.
+    el.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    el.addEventListener('click', function (e) {
+      var row = closest(e.target, '[data-slash]');
+      if (row) self.menuApply(SLASH_ITEMS[Number(row.getAttribute('data-slash'))]);
+    });
+    el.addEventListener('mousemove', function (e) {
+      var row = closest(e.target, '[data-slash]');
+      if (row && self.menu && self.menu.items[self.menu.index] !== SLASH_ITEMS[Number(row.getAttribute('data-slash'))]) {
+        self.menu.index = self.menu.items.indexOf(SLASH_ITEMS[Number(row.getAttribute('data-slash'))]);
+        self.menuDraw();
+      }
+    });
+    document.body.appendChild(el);
+    this.menu = { from: from, el: el, items: [], index: 0, missAt: -1, query: null };
+    this.root.setAttribute('aria-haspopup', 'listbox');
+    this.root.setAttribute('aria-controls', 'slash-menu');
+    this.root.setAttribute('aria-expanded', 'true');
+    this.menuCheck();
+  };
+
+  // The text after the `/` up to the caret filters the list; a caret that has
+  // left that span, or a `/` that is gone, ends it.
+  Live.prototype.menuCheck = function () {
+    var menu = this.menu;
+    if (!menu) return;
+    var selection = this.selection();
+    if (!selection || selection.start !== selection.end || this.composing) {
+      this.menuClose();
+      return;
+    }
+    var caret = selection.end;
+    var query = this.text.slice(menu.from + 1, caret);
+    if (caret <= menu.from || this.text.charAt(menu.from) !== '/' || query.indexOf('\n') >= 0) {
+      this.menuClose();
+      return;
+    }
+    if (query === menu.query) return;
+    menu.query = query;
+    menu.items = slashMatches(query);
+    menu.index = 0;
+    if (!menu.items.length) {
+      // A space with nothing to match is a sentence, and a couple of strays
+      // after the first miss is a typo for nothing.
+      if (menu.missAt < 0) menu.missAt = query.length;
+      if (/\s$/.test(query) || query.length - menu.missAt >= 2) {
+        this.menuClose();
+        return;
+      }
+    } else {
+      menu.missAt = -1;
+    }
+    this.menuDraw();
+  };
+
+  Live.prototype.menuDraw = function () {
+    var menu = this.menu;
+    var html = '';
+    for (var i = 0; i < menu.items.length; i += 1) {
+      var item = menu.items[i];
+      var on = i === menu.index;
+      html += '<div class="slash__item" role="option" id="slash-opt-' + item.id + '" data-slash="' +
+        SLASH_ITEMS.indexOf(item) + '" aria-selected="' + on + '">' +
+        '<span class="slash__glyph" aria-hidden="true">' + esc(item.glyph) + '</span>' +
+        '<span class="slash__label">' + esc(item.label) + '</span>' +
+        '<span class="slash__hint" aria-hidden="true">' + esc(item.hint) + '</span></div>';
+    }
+    if (!menu.items.length) html = '<div class="slash__empty">No matching block</div>';
+    menu.el.innerHTML = html;
+    var current = menu.items[menu.index];
+    if (current) {
+      this.root.setAttribute('aria-activedescendant', 'slash-opt-' + current.id);
+      var row = menu.el.querySelector('[aria-selected="true"]');
+      if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
+    } else {
+      this.root.removeAttribute('aria-activedescendant');
+    }
+    this.menuPlace();
+  };
+
+  // Under the caret; above it when the page ends first. A caret on an empty
+  // line has no box of its own, so the line's is borrowed.
+  Live.prototype.menuPlace = function () {
+    var menu = this.menu;
+    var sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    var range = sel.getRangeAt(0).cloneRange();
+    var rect = range.getBoundingClientRect();
+    if (!rect.height) {
+      var node = range.startContainer;
+      var el = node.nodeType === 1 ? node : node.parentNode;
+      var box = el && el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+      if (box && box.height) rect = { left: box.left, top: box.top, bottom: box.bottom };
+    }
+    var width = menu.el.offsetWidth;
+    var height = menu.el.offsetHeight;
+    var left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+    var top = rect.bottom + 6;
+    if (top + height > window.innerHeight - 8 && rect.top - height - 6 > 8) top = rect.top - height - 6;
+    menu.el.style.left = left + 'px';
+    menu.el.style.top = top + 'px';
+  };
+
+  Live.prototype.menuClose = function () {
+    var menu = this.menu;
+    if (!menu) return;
+    this.menu = null;
+    if (menu.el.parentNode) menu.el.parentNode.removeChild(menu.el);
+    this.root.removeAttribute('aria-expanded');
+    this.root.removeAttribute('aria-activedescendant');
+    this.root.removeAttribute('aria-controls');
+    this.root.removeAttribute('aria-haspopup');
+  };
+
+  // The menu owns the arrows, Enter, Tab and Escape while it is open. True
+  // when the key was taken.
+  Live.prototype.menuKey = function (event) {
+    var menu = this.menu;
+    var key = event.key;
+    if (event.metaKey || event.ctrlKey || event.altKey) return false;
+    if (key === 'Escape') {
+      event.preventDefault();
+      this.menuClose();
+      return true;
+    }
+    if (key === 'ArrowDown' || key === 'ArrowUp') {
+      if (!menu.items.length) return false;
+      event.preventDefault();
+      var count = menu.items.length;
+      menu.index = (menu.index + (key === 'ArrowDown' ? 1 : count - 1)) % count;
+      this.menuDraw();
+      return true;
+    }
+    if (key === 'Enter' || key === 'Tab') {
+      if (!menu.items.length) {
+        this.menuClose();
+        return false;
+      }
+      event.preventDefault();
+      this.menuApply(menu.items[menu.index]);
+      return true;
+    }
+    return false;
+  };
+
+  // The line without its `/query`, and without a block prefix it already had,
+  // becomes the item's block. One `replace`, so one undo step.
+  Live.prototype.menuApply = function (item) {
+    var menu = this.menu;
+    var selection = this.selection();
+    this.menuClose();
+    if (!menu || !item || !selection) return;
+    var bounds = this.lineBounds(menu.from);
+    var line = this.text.slice(bounds.from, bounds.to);
+    var at = menu.from - bounds.from;
+    var rest = line.slice(0, at) + line.slice(Math.max(selection.end, menu.from + 1) - bounds.from);
+    var indent = /^\s*/.exec(rest)[0];
+    rest = rest.slice(indent.length).replace(BLOCK_PREFIX, '').trim();
+    var out;
+    var caret;
+    var id = item.id;
+    if (id === 'text') {
+      out = rest;
+    } else if (id === 'h1' || id === 'h2' || id === 'h3') {
+      out = '###'.slice(0, Number(id.charAt(1))) + ' ' + rest;
+    } else if (id === 'bullet') {
+      out = indent + '- ' + rest;
+    } else if (id === 'number') {
+      var number = 1;
+      if (bounds.from > 0) {
+        var above = this.text.slice(this.text.lastIndexOf('\n', bounds.from - 2) + 1, bounds.from - 1);
+        var m = NUMBER.exec(above);
+        if (m && m[1] === indent) number = Number(m[2]) + 1;
+      }
+      out = indent + number + '. ' + rest;
+    } else if (id === 'todo') {
+      out = indent + '- [ ] ' + rest;
+    } else if (id === 'quote') {
+      out = '> ' + rest;
+    } else if (id === 'code') {
+      out = '```\n' + rest;
+      caret = bounds.from + out.length;
+      out += '\n```';
+    } else if (id === 'note' || id === 'warning' || id === 'tip') {
+      out = '> [!' + id.toUpperCase() + ']\n> ' + rest;
+    } else {
+      out = (rest ? rest + '\n' : '') + '---\n';
+    }
+    if (caret === undefined) caret = bounds.from + out.length;
+    // A step of its own, so one undo gives back the line as it was typed.
+    this.history[this.position].at = 0;
+    this.replace(bounds.from, bounds.to, out, caret);
+  };
+
   // One listener for the page, aimed at the editor now showing: a listener per
   // editor would outlive each swap and keep its detached root alive.
   document.addEventListener('selectionchange', function () {
-    if (live) live.follow();
+    if (live) {
+      live.follow();
+      live.menuCheck();
+    }
   });
   document.addEventListener('mouseup', function () {
     if (live && live.dragging) {
@@ -763,7 +1044,15 @@
   function setUpNote() {
     // An editor of a note the page has left saves the text it holds and goes.
     if (pendingForm && !document.contains(pendingForm)) flushNote();
-    if (live && !document.contains(live.root)) live = null;
+    if (live && !document.contains(live.root)) {
+      live.menuClose();
+      live = null;
+    }
+    // A menu left by an editor the swap took away.
+    var stray = document.querySelectorAll('.slash');
+    for (var i = 0; i < stray.length; i += 1) {
+      if (!live || !live.menu || live.menu.el !== stray[i]) stray[i].remove();
+    }
     initLive();
     focusTitle();
     applyTree();
