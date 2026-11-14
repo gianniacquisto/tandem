@@ -1,15 +1,120 @@
 /*
- * The design tokens, frozen at the cutover from the Swift theme.
+ * The design tokens: four palettes behind one scale.
  *
- * One file, one palette pair: the day panel is the light scheme and the night
- * panel the dark one, and the app follows the system appearance. Components
- * read these variables and never a raw colour. The test in `rust/core/tests/tokens_css.rs`
- * pins every palette value, so a drift is a red test. TAND-11 darkened the day
- * `--ink-dim` so quiet text meets AA on paper and parchment.
+ * The style (`neutral`, the default, or `tandem`, the parchment/moss/ember
+ * palette frozen at the cutover from the Swift theme) and the resolved
+ * appearance (`light` or `dark`) are attributes on <html>: `data-style` and
+ * `data-theme`. The inline script in `shell.html` sets them before first paint
+ * from localStorage and `prefers-color-scheme`, and `tandem.js` keeps them
+ * current. With no attribute the neutral light set applies. Every set declares
+ * the same token names, so a component reads a variable and never a raw colour.
+ * `rust/core/tests/tokens_css.rs` pins every value in all four sets.
+ *
+ * The scale (geometry, motion, type) is shared by all four.
  */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
+  --hairline: 1px;
+  --radius-checkbox: 5px;
+  --radius-control: 9px;
+  --radius-card: 12px;
+  --space-gutter: 20px;
+  --space-row: 40px;
+  --space-control: 32px;
+  --space-lane: 12px;
+  --space-chip: 6px;
+  --motion-insert: 200ms;
+  --motion-toggle: 180ms;
+  --motion-remove: 150ms;
+  --window-floor: 760px;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* neutral light */
+:root,
+html[data-style="neutral"][data-theme="light"] {
+  --paper: #FFFFFF;
+  --parchment: #F6F5F4;
+  --sand: #EDE9E4;
+  --shadow: #C8C4BE;
+  --line: #DDD9D3;
+  --ink: #1A1A1A;
+  --ink-dim: #5D5B54;
+  --accent: #5645D4;
+  --accent-deep: #4534B3;
+  --ember: #9A3D00;
+  --ember-deep: #793400;
+  --moss: #1B7F7B;
+  --moss-deep: #146560;
+  --sky: #DCECFA;
+  --hill: #D9F3E1;
+  --hill-far: #E6E0F5;
+  --skin: #FFE8D4;
+  --sun: #F5D75E;
+  --wikilink-chip: #E6E0F5;
+  --wikilink-chip-broken: #FDE0EC;
+  --card: #FFFFFF;
+  --tint-backlog: #F0EEEC;
+  --tint-on-hold: #FEF7D6;
+  --tint-ready: #DCECFA;
+  --tint-in-progress: #FFE8D4;
+  --tint-in-review: #E6E0F5;
+  --tint-done: #D9F3E1;
+  --tone-moss: #2A9D99;
+  --tone-ember: #DD5B00;
+  --tone-accent: #5645D4;
+  --tone-sun: #A67C00;
+  --tone-skin: #A8683A;
+  --tone-hill: #168F2E;
+  --tone-sky: #0075DE;
+}
+
+/* neutral dark */
+html[data-style="neutral"][data-theme="dark"] {
+  --paper: #191918;
+  --parchment: #222120;
+  --sand: #2D2B29;
+  --shadow: #0E0E0D;
+  --line: #3A3835;
+  --ink: #EDEBE6;
+  --ink-dim: #A9A59C;
+  --accent: #A89DF2;
+  --accent-deep: #CFC8FA;
+  --ember: #F0A070;
+  --ember-deep: #F4B08A;
+  --moss: #5CC4BF;
+  --moss-deep: #7AD3CE;
+  --sky: #1F2D3A;
+  --hill: #1D2F25;
+  --hill-far: #2B2640;
+  --skin: #3A2B20;
+  --sun: #EDE6D3;
+  --wikilink-chip: #2E2A44;
+  --wikilink-chip-broken: #43283A;
+  --card: #2A2927;
+  --tint-backlog: #212120;
+  --tint-on-hold: #2B2818;
+  --tint-ready: #1D2A38;
+  --tint-in-progress: #32261C;
+  --tint-in-review: #27233A;
+  --tint-done: #1C2B22;
+  --tone-moss: #5CC4BF;
+  --tone-ember: #F08A4B;
+  --tone-accent: #A89DF2;
+  --tone-sun: #E5C455;
+  --tone-skin: #D49A6A;
+  --tone-hill: #5CCB78;
+  --tone-sky: #5AAEF0;
+}
+
+/* tandem light */
+html[data-style="tandem"][data-theme="light"] {
   --paper: #F1E9D7;
   --parchment: #E7DECA;
   --sand: #D6C9AE;
@@ -30,43 +135,56 @@
   --sun: #E5C07B;
   --wikilink-chip: #DAD6C5;
   --wikilink-chip-broken: #EFE3D6;
-
-  --hairline: 1px;
-  --radius-checkbox: 5px;
-  --radius-control: 9px;
-  --radius-card: 12px;
-  --space-gutter: 20px;
-  --space-row: 40px;
-  --space-control: 32px;
-  --space-lane: 12px;
-  --space-chip: 6px;
-  --motion-insert: 200ms;
-  --motion-toggle: 180ms;
-  --motion-remove: 150ms;
-  --window-floor: 760px;
+  --card: #F6F0E2;
+  --tint-backlog: #EAE2CF;
+  --tint-on-hold: #EFE3C4;
+  --tint-ready: #DEE5E0;
+  --tint-in-progress: #EBDCC4;
+  --tint-in-review: #E0E3D8;
+  --tint-done: #DCE4D2;
+  --tone-moss: #6C7A66;
+  --tone-ember: #A9745C;
+  --tone-accent: #6E7D6E;
+  --tone-sun: #9A7420;
+  --tone-skin: #A07A45;
+  --tone-hill: #5F7A52;
+  --tone-sky: #5E8696;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #23211C;
-    --parchment: #2C2A23;
-    --sand: #3C3930;
-    --shadow: #191712;
-    --line: #494437;
-    --ink: #EDE6D3;
-    --ink-dim: #9C9583;
-    --accent: #93A48F;
-    --accent-deep: #6E7E6A;
-    --ember: #C08A70;
-    --ember-deep: #9E6B54;
-    --moss: #8FA084;
-    --moss-deep: #74856E;
-    --sky: #2A2E28;
-    --hill: #3A4441;
-    --hill-far: #313A36;
-    --skin: #E3C29B;
-    --sun: #EDE6D3;
-    --wikilink-chip: #33362E;
-    --wikilink-chip-broken: #322D27;
-  }
+/* tandem dark */
+html[data-style="tandem"][data-theme="dark"] {
+  --paper: #23211C;
+  --parchment: #2C2A23;
+  --sand: #3C3930;
+  --shadow: #191712;
+  --line: #494437;
+  --ink: #EDE6D3;
+  --ink-dim: #9C9583;
+  --accent: #93A48F;
+  --accent-deep: #6E7E6A;
+  --ember: #C08A70;
+  --ember-deep: #9E6B54;
+  --moss: #8FA084;
+  --moss-deep: #74856E;
+  --sky: #2A2E28;
+  --hill: #3A4441;
+  --hill-far: #313A36;
+  --skin: #E3C29B;
+  --sun: #EDE6D3;
+  --wikilink-chip: #33362E;
+  --wikilink-chip-broken: #322D27;
+  --card: #2C2A23;
+  --tint-backlog: #27251F;
+  --tint-on-hold: #2F2B1F;
+  --tint-ready: #262B27;
+  --tint-in-progress: #2F2922;
+  --tint-in-review: #282A24;
+  --tint-done: #252B23;
+  --tone-moss: #8FA084;
+  --tone-ember: #C08A70;
+  --tone-accent: #93A48F;
+  --tone-sun: #E0BC70;
+  --tone-skin: #E3C29B;
+  --tone-hill: #8AA67C;
+  --tone-sky: #8FB3C2;
 }

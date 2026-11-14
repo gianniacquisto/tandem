@@ -73,6 +73,10 @@ struct NotesView {
     path: Option<String>,
     crumbs: Vec<Crumb>,
     mode: &'static str,
+    /// The folder the open note sits in: where New note files its page.
+    current_dir: String,
+    /// A just-created note puts the cursor in its title.
+    focus_title: bool,
     note: Option<NotePane>,
     backlinks: Vec<BacklinkRow>,
     backlink_count: usize,
@@ -84,8 +88,6 @@ struct NotesView {
     error: Option<String>,
     conflict: Option<ConflictView>,
     focus_url: String,
-    edit_href: String,
-    read_href: String,
 }
 
 /// The notes view's own URL: the focus, the show-all escape and one note.
@@ -179,10 +181,12 @@ fn render_notes(
         .get("path")
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
-    let mode = if field(params, "mode") == "edit" {
-        "edit"
-    } else {
+    // A note opens in the editor with its preview beside it; `mode=read` is
+    // the page without the editor.
+    let mode = if field(params, "mode") == "read" {
         "read"
+    } else {
+        "edit"
     };
 
     let board = context.board();
@@ -309,6 +313,11 @@ fn render_notes(
         path: path.clone(),
         crumbs,
         mode,
+        current_dir: path
+            .as_deref()
+            .and_then(|open| open.rsplit_once('/'))
+            .map_or(String::new(), |(folder, _)| folder.to_string()),
+        focus_title: field(params, "rename") == "1",
         note,
         backlink_count: backlinks.len(),
         backlinks,
@@ -320,8 +329,6 @@ fn render_notes(
         error: render_error,
         conflict,
         focus_url: notes_href(&project, show_all, path.as_deref(), None),
-        edit_href: notes_href(&project, show_all, path.as_deref(), Some("edit")),
-        read_href: notes_href(&project, show_all, path.as_deref(), None),
     })
 }
 
@@ -384,7 +391,7 @@ pub(super) async fn note_view(
     Query(mut params): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
-    params.remove("mode");
+    params.insert("mode".to_string(), "read".to_string());
     notes_response(&context, &params, None, None, None, &headers)
 }
 
@@ -511,6 +518,188 @@ async fn note_create_thing(
             &params,
             None,
             Some(error.message()),
+            None,
+            &headers,
+        ),
+    }
+}
+
+/// A well-formed `YYYY-MM-DD`: the only shape a daily note's name may take, so a
+/// client-supplied date can never steer the path.
+fn is_iso_date(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 10
+        && bytes.iter().enumerate().all(|(index, byte)| match index {
+            4 | 7 => *byte == b'-',
+            _ => byte.is_ascii_digit(),
+        })
+}
+
+/// Today in UTC, the fallback when the browser sends no date of its own.
+fn utc_today() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    let days = i64::try_from(seconds / 86_400).unwrap_or(0);
+    let (year, month, day) = super::sheet::civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+/// The daily note: today's page under `daily/`, created on first use and opened
+/// on every use after. The browser names its own local date.
+pub(super) async fn note_daily(
+    context: Context,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    let Some(mut params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let sent = field(&params, "date").to_string();
+    let date = if is_iso_date(&sent) {
+        sent
+    } else {
+        utc_today()
+    };
+    let path = format!("daily/{date}.md");
+    let vault = context.bikeshed();
+    // An existing page is the common case and not an error: open it.
+    let opened = match vault.create(&path) {
+        Ok(read) => read.value,
+        Err(_) => path,
+    };
+    params.insert("path".to_string(), opened);
+    notes_response(&context, &params, None, None, None, &headers)
+}
+
+/// Rename a note in place: the new name keeps the folder and the `.md`
+/// extension, and the core rewrites every link that pointed at the old path.
+pub(super) async fn note_rename(
+    context: Context,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    let Some(mut params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let path = field(&params, "path").to_string();
+    let name = field(&params, "name")
+        .trim()
+        .trim_end_matches(".md")
+        .to_string();
+    let folder = path.rsplit_once('/').map_or("", |(folder, _)| folder);
+    let target = if folder.is_empty() {
+        format!("{name}.md")
+    } else {
+        format!("{folder}/{name}.md")
+    };
+    if target == path {
+        params.insert("path".to_string(), field(&params, "open").to_string());
+        return notes_response(&context, &params, None, None, None, &headers);
+    }
+    match context.bikeshed().rename(&path, &target) {
+        Ok(read) => {
+            // The open page follows the rename; a rename of another row leaves it.
+            let followed = field(&params, "open") == path;
+            if followed {
+                params.insert("path".to_string(), read.value);
+            } else {
+                params.insert("path".to_string(), field(&params, "open").to_string());
+            }
+            let mut response = notes_response(&context, &params, None, None, None, &headers);
+            // The address bar still names the old path; only the server knows
+            // the final one, so a reload after a rename lands on the note.
+            if followed {
+                let url = notes_href(
+                    field(&params, "project"),
+                    !matches!(field(&params, "show_all"), "" | "0" | "false"),
+                    Some(field(&params, "path")),
+                    Some(field(&params, "mode")).filter(|mode| !mode.is_empty()),
+                );
+                if let Ok(value) = HeaderValue::from_str(&url) {
+                    response.headers_mut().insert("hx-replace-url", value);
+                }
+            }
+            response
+        }
+        Err(error) => {
+            params.insert("path".to_string(), field(&params, "open").to_string());
+            notes_response(
+                &context,
+                &params,
+                None,
+                Some(error.message()),
+                None,
+                &headers,
+            )
+        }
+    }
+}
+
+/// Delete a note, or a folder with everything in it. The page closes when it
+/// was the one deleted or sat inside the deleted folder.
+pub(super) async fn note_delete(
+    context: Context,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    let Some(mut params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let path = field(&params, "path").to_string();
+    let open = field(&params, "open").to_string();
+    let outcome = context.bikeshed().delete(&path);
+    let error = outcome.err().map(|error| error.message());
+    let gone = open == path || open.starts_with(&format!("{path}/"));
+    if gone && error.is_none() {
+        params.remove("path");
+    } else {
+        params.insert("path".to_string(), open);
+    }
+    notes_response(&context, &params, None, error, None, &headers)
+}
+
+/// New note: an empty `Untitled` page in the folder the human is in, with the
+/// cursor in its title so the first act is naming it.
+pub(super) async fn note_new(
+    context: Context,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    let Some(mut params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let folder = field(&params, "dir").trim().trim_matches('/').to_string();
+    let vault = context.bikeshed();
+    let mut created = None;
+    for number in 1..100 {
+        let name = if number == 1 {
+            "Untitled".to_string()
+        } else {
+            format!("Untitled {number}")
+        };
+        let path = if folder.is_empty() {
+            format!("{name}.md")
+        } else {
+            format!("{folder}/{name}.md")
+        };
+        if let Ok(read) = vault.create(&path) {
+            created = Some(read.value);
+            break;
+        }
+    }
+    match created {
+        Some(path) => {
+            params.insert("path".to_string(), path);
+            params.insert("rename".to_string(), "1".to_string());
+            params.insert("mode".to_string(), "edit".to_string());
+            notes_response(&context, &params, None, None, None, &headers)
+        }
+        None => notes_response(
+            &context,
+            &params,
+            None,
+            Some("Could not create a new note here.".to_string()),
             None,
             &headers,
         ),

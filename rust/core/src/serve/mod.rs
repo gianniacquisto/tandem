@@ -178,11 +178,10 @@ fn routes() -> Router<Arc<SessionContext>> {
             get(sheet::ticket_page).post(sheet::save_ticket),
         )
         .route("/tickets/{id}/status", post(board::move_ticket))
-        .route("/tickets/{id}/description", post(sheet::append_description))
         .route("/tickets/{id}/comments", post(sheet::add_comment))
         .route("/tickets/{id}/lane", post(sheet::move_to_lane))
-        .route("/lanes", post(sheet::add_lane))
-        .route("/lanes/{name}/rename", post(sheet::rename_lane))
+        .route("/lanes", post(board::add_lane))
+        .route("/lanes/{name}/rename", post(board::rename_lane))
         .route("/notes", get(notes::notes_page))
         .route("/notes/view", get(notes::note_view))
         .route("/notes/edit", get(notes::note_edit))
@@ -190,7 +189,11 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/notes/save", post(notes::note_save))
         .route("/notes/create", post(notes::note_create))
         .route("/notes/create-folder", post(notes::note_create_folder))
+        .route("/notes/daily", post(notes::note_daily))
+        .route("/notes/new", post(notes::note_new))
         .route("/notes/move", post(notes::note_move))
+        .route("/notes/rename", post(notes::note_rename))
+        .route("/notes/delete", post(notes::note_delete))
 }
 
 /// The layers every route carries: the write guard, the body ceiling and the

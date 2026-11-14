@@ -538,13 +538,15 @@ fn a_serve_session_drives_the_sheet_and_notes_faces() {
     let revision = revision_of(server.port);
     let answer = form(
         server.port,
-        &format!("/tickets/{id}/description"),
-        &format!("addition=More&expected_revision={revision}"),
+        &format!("/tickets/{id}"),
+        &format!(
+            "title=Sheet&status=ready&assignee=&description=More&expected_revision={revision}"
+        ),
     );
     assert_eq!(answer.status, 200);
     assert!(
         answer.body.contains("More"),
-        "the append is redrawn: {}",
+        "the description save is redrawn: {}",
         answer.body
     );
 

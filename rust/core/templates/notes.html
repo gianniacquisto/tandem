@@ -73,22 +73,38 @@
       <div class="tree__vault" data-drop-into="">
         <span class="tree__vault-name">Bikeshed</span>
       </div>
-      <div class="tree__actions">
-        <form class="tree__prompt" method="post" action="/notes/create" hx-post="/notes/create"
-              hx-target="#notes-root" hx-swap="outerHTML">
-          <input type="hidden" name="project" value="{{ active_project }}">
-          <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
-          <input class="tree__prompt-input" name="path" aria-label="New note path" placeholder="note or folder/note">
-          <button class="tree__new tree__new--note" type="submit">New note</button>
-        </form>
+      <form class="tree__daily" method="post" action="/notes/daily" hx-post="/notes/daily"
+            hx-target="#notes-root" hx-swap="outerHTML">
+        <input type="hidden" name="project" value="{{ active_project }}">
+        <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+        <input type="hidden" name="date" value="">
+        <button class="tree__create-summary tree__daily-button" type="submit">
+          <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/></svg>Today's note
+        </button>
+      </form>
+
+      <form class="tree__daily" method="post" action="/notes/new" hx-post="/notes/new"
+            hx-target="#notes-root" hx-swap="outerHTML">
+        <input type="hidden" name="project" value="{{ active_project }}">
+        <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+        <input type="hidden" name="dir" value="{{ current_dir }}">
+        <button class="tree__create-summary tree__daily-button" type="submit">
+          <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>New note
+        </button>
+      </form>
+
+      <details class="tree__create">
+        <summary class="tree__create-summary">
+          <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5h4.5l1.5 1.5h7v7.5h-13z"/></svg>New folder
+        </summary>
         <form class="tree__prompt" method="post" action="/notes/create-folder" hx-post="/notes/create-folder"
               hx-target="#notes-root" hx-swap="outerHTML">
           <input type="hidden" name="project" value="{{ active_project }}">
           <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
-          <input class="tree__prompt-input" name="path" aria-label="New folder path" placeholder="folder">
-          <button class="tree__new tree__new--folder" type="submit">New folder</button>
+          <input class="tree__prompt-input" name="path" aria-label="New folder path" placeholder="Folder name, then Enter">
+          <button class="tree__new tree__new--folder" type="submit">Create folder</button>
         </form>
-      </div>
+      </details>
 
       {% if rows.is_empty() %}
       <p class="tree__empty">The bikeshed is empty. Create a note or a folder to get started.</p>
@@ -103,15 +119,44 @@
             {% if row.folder %}
             <span class="tree__label" style="padding-left: {{ row.indent }}px">
               <span class="tree__twisty" aria-hidden="true">▾</span>
+              <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5h4.5l1.5 1.5h7v7.5h-13z"/></svg>
               <span class="tree__name">{{ row.name }}</span>
             </span>
             {% else %}
             <a class="tree__label" href="{{ row.href }}" hx-get="{{ row.href }}"
                hx-target="#notes-root" hx-swap="outerHTML" style="padding-left: {{ row.indent }}px">
               <span class="tree__twisty" aria-hidden="true"></span>
+              <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h5.5l3 3v10H4z M9.5 1.5v3h3"/></svg>
               <span class="tree__name">{{ row.name }}</span>
             </a>
             {% endif %}
+          <details class="row-menu">
+            <summary class="row-menu__button" aria-label="Manage {{ row.name }}">
+              <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12.5" cy="8" r="1"/></svg>
+            </summary>
+            <div class="menu__panel row-menu__panel">
+              {% if !row.folder %}
+              <form class="row-menu__form" method="post" action="/notes/rename" hx-post="/notes/rename"
+                    hx-target="#notes-root" hx-swap="outerHTML">
+                <input type="hidden" name="project" value="{{ active_project }}">
+                <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+                <input type="hidden" name="open" value="{% if let Some(open) = path %}{{ open }}{% endif %}">
+                <input type="hidden" name="path" value="{{ row.path }}">
+                <input class="row-menu__name" name="name" value="{{ row.name }}" aria-label="New name for {{ row.name }}" required>
+                <button class="row-menu__action" type="submit">Rename</button>
+              </form>
+              {% endif %}
+              <form class="row-menu__form" method="post" action="/notes/delete" hx-post="/notes/delete"
+                    hx-target="#notes-root" hx-swap="outerHTML"
+                    data-confirm="{% if row.folder %}Delete the folder {{ row.name }} and everything in it?{% else %}Delete {{ row.name }}?{% endif %}">
+                <input type="hidden" name="project" value="{{ active_project }}">
+                <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+                <input type="hidden" name="open" value="{% if let Some(open) = path %}{{ open }}{% endif %}">
+                <input type="hidden" name="path" value="{{ row.path }}">
+                <button class="row-menu__action row-menu__action--danger" type="submit">Delete{% if row.folder %} folder{% endif %}</button>
+              </form>
+            </div>
+          </details>
           </div>
         </li>
         {% endfor %}
@@ -130,19 +175,23 @@
                   {% if crumb.current %}aria-current="page"{% endif %}>{{ crumb.label }}</span>
             {% endfor %}
           </nav>
-          <div class="bikeshed__breadcrumb-end">
-            {% if mode == "edit" %}
-            <a class="bikeshed__mode" href="{{ read_href }}" hx-get="{{ read_href }}"
-               hx-target="#notes-root" hx-swap="outerHTML">Done</a>
-            {% else %}
-            <a class="bikeshed__mode" href="{{ edit_href }}" hx-get="{{ edit_href }}"
-               hx-target="#notes-root" hx-swap="outerHTML">Edit</a>
-            {% endif %}
-          </div>
         </div>
       </header>
 
       <div class="bikeshed__page">
+        <div class="page-head">
+          <form class="page-title-form" method="post" action="/notes/rename" hx-post="/notes/rename"
+                hx-target="#notes-root" hx-swap="outerHTML" hx-trigger="change, submit">
+            <input type="hidden" name="project" value="{{ active_project }}">
+            <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+            <input type="hidden" name="path" value="{{ note.path }}">
+            <input type="hidden" name="open" value="{{ note.path }}">
+            <input type="hidden" name="mode" value="{{ mode }}">
+            <input class="page-title" name="name" aria-label="Note title" autocomplete="off" required
+                   value="{% for crumb in crumbs %}{% if crumb.current %}{{ crumb.label }}{% endif %}{% endfor %}"
+                   {% if focus_title %}data-autofocus{% endif %}>
+          </form>
+        </div>
         <div id="note-panel">
           {% if mode == "edit" %}
           <form id="note-form" method="post" action="/notes/save" hx-post="/notes/save"
@@ -152,12 +201,10 @@
             <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
             <input type="hidden" name="mode" value="edit">
             <input type="hidden" name="baseline_hash" value="{{ note.baseline_hash }}" data-note-baseline>
-            <textarea class="note-editor" name="text" aria-label="Note markdown" spellcheck="false">{{ note.text }}</textarea>
+            <textarea class="note-editor" name="text" aria-label="Note markdown" hidden>
+{{ note.text }}</textarea>
           </form>
-          <div class="bikeshed__breadcrumb-end">
-            <button type="button" class="bikeshed__mode" data-note-preview>Preview</button>
-          </div>
-          <div class="note-preview" data-note-preview-out hidden></div>
+          <div class="live" data-live>{{ note.html }}</div>
           {% else %}
           {{ note.html }}
           {% endif %}

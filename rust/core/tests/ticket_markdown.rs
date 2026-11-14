@@ -262,3 +262,14 @@ fn no_prose_means_no_excerpt() {
     );
     assert_eq!(TicketMarkdown::excerpt(Some("## Blocked on")), None);
 }
+
+#[test]
+fn a_github_alert_is_a_callout_block() {
+    assert_eq!(
+        TicketMarkdown::blocks(Some("> [!WARNING]\n> mind the gap")),
+        [MarkdownBlock::Alert {
+            kind: "warning",
+            blocks: vec![paragraph("mind the gap")]
+        }]
+    );
+}

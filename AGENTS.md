@@ -24,6 +24,10 @@ The actor that finishes a ticket's work sets the next status and, where there is
 
 **Status and assignee move together, and `human` is an assignee only while a question is open.** The actor that closes a hold records the decision in a comment and moves the pair with `ticket_set`: the status the decision earns and the next owner move in the same call, and the ticket leaves the inbox with them. The inbox is the assignee alone, with no Answer-block check.
 
+## Design
+
+`DESIGN.md` at the repo root is the reference for the default, neutral style, taken from [awesome-design-md](https://github.com/VoltAgent/awesome-design-md) (MIT). Read it before drawing a new screen or component. The board ships two palettes, `neutral` (the default) and `tandem`, each in light and dark, and `rust/core/src/serve/static/tokens.css` stays the source of truth for every colour, space and radius: the style follows `DESIGN.md` for look and feel, and where the two disagree on a value the tokens win. Its marketing-site parts (hero bands, pricing tiers) do not apply to the board.
+
 ## Git
 
 Prefer merges over rebases, and avoid force pushes and other destructive git actions unless absolutely necessary — when a force push is unavoidable, `--force-with-lease`, never bare `--force`. This applies to sub-agents too.

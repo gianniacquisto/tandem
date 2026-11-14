@@ -12,7 +12,7 @@ body {
   min-width: var(--window-floor);
   background: var(--paper);
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-body);
   font-size: 13px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
@@ -282,11 +282,9 @@ body {
   background: var(--usage-series-primary);
 }
 
-@media (prefers-color-scheme: dark) {
-  .usage {
-    --usage-series-total: var(--accent);
-    --usage-series-cost: var(--ember);
-  }
+html[data-theme="dark"] .usage {
+  --usage-series-total: var(--accent);
+  --usage-series-cost: var(--ember);
 }
 
 .usage__graph {
@@ -559,10 +557,8 @@ body {
   background: var(--accent-deep);
 }
 
-@media (prefers-color-scheme: dark) {
-  .usage__meter::-webkit-meter-optimum-value {
-    background: var(--accent);
-  }
+html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
+  background: var(--accent);
 }
 
 .usage__roll > td {
@@ -591,7 +587,7 @@ body {
 
 .usage__session {
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
@@ -623,7 +619,7 @@ body {
   border-radius: 4px;
   background: var(--paper);
   color: var(--accent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   font-weight: 500;
   cursor: pointer;
@@ -1137,31 +1133,31 @@ body {
 }
 
 .ticket-card__lane[data-tone="moss"] {
-  --lane-tone: var(--moss);
+  --lane-tone: var(--tone-moss);
 }
 
 .ticket-card__lane[data-tone="ember"] {
-  --lane-tone: var(--ember);
+  --lane-tone: var(--tone-ember);
 }
 
 .ticket-card__lane[data-tone="accent"] {
-  --lane-tone: var(--accent);
+  --lane-tone: var(--tone-accent);
 }
 
 .ticket-card__lane[data-tone="sun"] {
-  --lane-tone: var(--sun);
+  --lane-tone: var(--tone-sun);
 }
 
 .ticket-card__lane[data-tone="skin"] {
-  --lane-tone: var(--skin);
+  --lane-tone: var(--tone-skin);
 }
 
 .ticket-card__lane[data-tone="hill"] {
-  --lane-tone: var(--hill);
+  --lane-tone: var(--tone-hill);
 }
 
 .ticket-card__lane[data-tone="sky"] {
-  --lane-tone: var(--sky);
+  --lane-tone: var(--tone-sky);
 }
 
 .ticket-card__title {
@@ -1415,7 +1411,7 @@ body {
   border: 0;
   background: transparent;
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.65;
   resize: none;
@@ -1771,7 +1767,7 @@ body {
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-control);
   background: var(--paper);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   white-space: pre-wrap;
 }
@@ -1837,7 +1833,7 @@ body {
 }
 
 .sheet__handle {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--ink-dim);
 }
@@ -2150,7 +2146,7 @@ body {
 
 .sheet__edge-ref {
   color: var(--ink-dim);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
 }
 
@@ -2192,7 +2188,7 @@ body {
 .sheet__source {
   overflow: auto;
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
 }
@@ -2461,7 +2457,7 @@ body {
 }
 
 .sheet__session-tool-name {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
 }
@@ -2476,7 +2472,7 @@ body {
   overflow: auto;
   max-height: 240px;
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -2530,7 +2526,7 @@ body {
   overflow: auto;
   border-radius: var(--radius-control);
   background: var(--parchment);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   white-space: pre-wrap;
 }
@@ -2539,7 +2535,7 @@ body {
   padding: 0 3px;
   border-radius: 3px;
   background: var(--sand);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
 }
 
@@ -2548,6 +2544,23 @@ body {
   padding: 2px 0 2px 10px;
   border-left: 2px solid var(--sand);
   color: var(--ink-dim);
+}
+
+.markdown__alert {
+  padding: 8px 10px;
+  border-left: 3px solid var(--tone-sky);
+  border-radius: var(--radius-control);
+  background: var(--sky);
+}
+
+.markdown__alert--tip { border-left-color: var(--tone-hill); background: var(--hill); }
+.markdown__alert--important { border-left-color: var(--tone-accent); background: var(--hill-far); }
+.markdown__alert--warning,
+.markdown__alert--caution { border-left-color: var(--tone-ember); background: var(--skin); }
+
+.markdown__alert-title {
+  margin: 0 0 2px;
+  font-weight: 600;
 }
 
 .markdown__table {
@@ -2569,18 +2582,28 @@ body {
   border-top: var(--hairline) solid var(--sand);
 }
 
+.markdown__item:has(> .markdown__task) {
+  list-style: none;
+  /* The box sits in the column the bullet dot would have. */
+  margin-left: -14px;
+}
+
 .markdown__task {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: 4px;
 }
 
+/* Centred on the first line of text, whatever the line height is. */
 .markdown__checkbox {
-  margin-top: 3px;
-  width: 10px;
-  height: 10px;
-  border: var(--hairline) solid var(--line);
-  border-radius: 3px;
+  position: relative;
+  box-sizing: border-box;
+  flex: none;
+  margin-top: calc((1lh - 14px) / 2);
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--ink-dim);
+  border-radius: var(--radius-checkbox);
 }
 
 .markdown__task[data-checked] .markdown__checkbox {
@@ -2588,9 +2611,1417 @@ body {
   background: var(--accent);
 }
 
+.markdown__task[data-checked] .markdown__checkbox::before {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 0.5px;
+  width: 3px;
+  height: 7px;
+  border: solid var(--paper);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.markdown__task[data-checked] .markdown__task-body {
+  color: var(--ink-dim);
+  text-decoration: line-through;
+}
+
 .markdown__link {
   /* The Swift label's `palette.emberDeep`: a link is warm ink, not the sage
      accent the sheet uses for its own marks. */
   color: var(--ember-deep);
   text-decoration: underline dotted;
+}
+
+
+/* ==========================================================================
+ * The restyle layer: airy layout, large titles, quiet chrome, tinted columns.
+ * It follows the rules above and wins over them on purpose; the palette is
+ * whichever of the four token sets is on <html>, so none of it names a colour.
+ * ========================================================================== */
+
+:root {
+  --measure: 720px;
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Header: a quiet wordmark, text tabs and the theme menu. */
+.shell__header {
+  gap: 24px;
+  height: 52px;
+  padding: 0 28px;
+}
+
+.shell__wordmark {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.shell__tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.shell__tab {
+  padding: 4px 10px;
+  border-radius: var(--radius-control);
+  color: var(--ink-dim);
+  font-size: 13.5px;
+  text-decoration: none;
+}
+
+.shell__tab:hover {
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+.theme-menu {
+  margin-left: auto;
+}
+
+/* A menu: a summary button and a floating panel. */
+.menu {
+  position: relative;
+}
+
+.menu__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--space-control);
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  color: var(--ink-dim);
+  font-size: 13px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.menu__button::-webkit-details-marker {
+  display: none;
+}
+
+.menu__button:hover,
+.menu[open] > .menu__button {
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+.menu__button:focus-visible,
+.menu__option:focus-visible,
+.chip:focus-visible,
+.board__add-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.menu__icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.4;
+}
+
+.menu__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  display: flex;
+  min-width: 190px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  box-shadow: 0 8px 28px var(--shadow);
+}
+
+.filter-menu .menu__panel {
+  right: auto;
+  left: 0;
+  gap: 8px;
+  min-width: 230px;
+}
+
+.menu__title {
+  margin: 6px 6px 2px;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.menu__field {
+  display: flex;
+  flex-direction: column;
+}
+
+.menu__field .filter {
+  height: var(--space-control);
+  padding: 0 6px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.menu__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.menu__option {
+  display: block;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu__option:hover {
+  background: var(--parchment);
+}
+
+.menu__option[aria-pressed="true"] {
+  background: var(--parchment);
+  font-weight: 600;
+}
+
+.menu__option[aria-pressed="true"]::after {
+  content: " ✓";
+  color: var(--accent-deep);
+}
+
+/* The board bar: search first, one Filter menu, removable chips. */
+.tickets--board {
+  padding: 8px 28px 0;
+}
+
+.tickets__bar--board {
+  position: relative;
+  margin: 0 0 16px;
+  padding-bottom: 0;
+  border-bottom: 0;
+  gap: 8px 12px;
+}
+
+.search--board {
+  order: -1;
+  width: 260px;
+  padding: 0 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+}
+
+.search--board:focus-within,
+.search--board:has(.search__input:not(:placeholder-shown)) {
+  width: 260px;
+}
+
+.search--board:focus-within {
+  outline: 2px solid var(--accent);
+  box-shadow: none;
+}
+
+.search__input {
+  font-size: 13.5px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--wikilink-chip);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--sand);
+}
+
+/* The board: tinted columns, quiet heads. */
+.board {
+  gap: 14px;
+  padding-bottom: 24px;
+  grid-auto-columns: minmax(230px, 1fr);
+}
+
+.board__column {
+  max-height: calc(100vh - 170px);
+  padding: 0 8px 8px;
+  border-radius: var(--radius-card);
+  background: var(--col-tint, var(--parchment));
+}
+
+.board__column[data-status="backlog"] { --col-tint: var(--tint-backlog); }
+.board__column[data-status="on-hold"] { --col-tint: var(--tint-on-hold); }
+.board__column[data-status="ready"] { --col-tint: var(--tint-ready); }
+.board__column[data-status="in-progress"] { --col-tint: var(--tint-in-progress); }
+.board__column[data-status="in-review"] { --col-tint: var(--tint-in-review); }
+.board__column[data-status="done"] { --col-tint: var(--tint-done); }
+
+.board__column[data-targeted] {
+  background: var(--col-tint, var(--parchment));
+  outline: 2px solid var(--accent);
+}
+
+.board__column-head {
+  padding: 12px 6px 8px;
+  background: var(--col-tint, var(--parchment));
+}
+
+.board__column-title {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.board__column-count {
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+.board__cards {
+  gap: 8px;
+}
+
+.ticket-card {
+  gap: 8px;
+  padding: 10px 12px;
+  border-color: transparent;
+  border-radius: var(--radius-control);
+  background: var(--card);
+  box-shadow: 0 1px 2px var(--shadow);
+}
+
+.ticket-card:hover,
+.ticket-card[aria-current="true"] {
+  background: var(--card);
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+.ticket-card__title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.ticket-card__footer {
+  gap: 4px 10px;
+  font-size: 12px;
+}
+
+.ticket-card__lane {
+  align-self: auto;
+  padding: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+.ticket-card__lane-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.ticket-card__blocked {
+  padding: 0 6px;
+  border: var(--hairline) solid var(--ember-deep);
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.ticket-card__blocked::before {
+  content: "\26D4\FE0E ";
+}
+
+/* Add a card: one quiet plus per column; the input appears on click. */
+.board__add {
+  padding: 8px 0 0;
+}
+
+.board__add-summary {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-control);
+  color: var(--ink-dim);
+  font-size: 18px;
+  line-height: 28px;
+  text-align: center;
+  list-style: none;
+  cursor: pointer;
+}
+
+.board__add-summary::-webkit-details-marker {
+  display: none;
+}
+
+.board__add-summary:hover {
+  background: var(--card);
+  color: var(--ink);
+}
+
+.board__add-toggle[open] > .board__add-summary {
+  display: none;
+}
+
+.board__add-input {
+  padding: 8px 10px;
+  border-color: var(--accent);
+  background: var(--card);
+  font-size: 13.5px;
+}
+
+/* The ticket sheet: a large title over a properties block. */
+.sheet {
+  width: 640px;
+}
+
+.sheet__sticky {
+  gap: 8px;
+}
+
+.sheet__title {
+  border-color: transparent;
+  background: transparent;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.sheet__title:hover,
+.sheet__title:focus {
+  background: var(--parchment);
+}
+
+.sheet__meta {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.sheet__meta-field {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.sheet__fact-label {
+  color: var(--ink-dim);
+  font-size: 13px;
+}
+
+.sheet__select,
+.sheet__field {
+  height: 28px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 13.5px;
+}
+
+.sheet__select:hover,
+.sheet__select:focus,
+.sheet__field:hover,
+.sheet__field:focus {
+  border-color: var(--line);
+  background: var(--paper);
+}
+
+.sheet__dependencies {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 4px 8px;
+}
+
+.sheet__dependencies .sheet__section-title {
+  font-size: 13px;
+}
+
+.sheet__details {
+  border: 0;
+  padding: 0;
+}
+
+.sheet__details-toggle {
+  font-size: 12.5px;
+}
+
+/* Notes: an icon and a properties block over the page, a large first title. */
+.bikeshed__page {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 32px 40px 80px;
+}
+
+.page-head {
+  margin-bottom: 8px;
+}
+
+.props {
+  margin: 12px 0 0;
+  padding: 0 0 12px;
+  border-bottom: var(--hairline) solid var(--sand);
+}
+
+.props__row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  min-height: 26px;
+  font-size: 13px;
+}
+
+.props__row dt {
+  color: var(--ink-dim);
+}
+
+.props__row dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+
+.bikeshed__tree {
+  flex-basis: 280px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
+
+.ticket-card,
+.ticket-card * {
+  color: inherit;
+  text-decoration: none;
+}
+
+.ticket-card__title {
+  color: var(--ink);
+}
+
+.ticket-card__footer {
+  color: var(--ink-dim);
+}
+
+.ticket-card__blocked,
+.ticket-card__assignee--human {
+  color: var(--ember-deep);
+}
+
+/* Second pass: the current tab, the filter button, column heads, the sheet's
+ * alignment, quiet scrollbars. */
+
+.shell__tab[aria-current="page"] {
+  background: var(--parchment);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.menu__button--label {
+  border: var(--hairline) solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.board__column-label::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--status-tone, var(--ink-dim));
+}
+
+.board__column[data-status="on-hold"] { --status-tone: var(--tone-sun); }
+.board__column[data-status="ready"] { --status-tone: var(--tone-sky); }
+.board__column[data-status="in-progress"] { --status-tone: var(--tone-ember); }
+.board__column[data-status="in-review"] { --status-tone: var(--tone-accent); }
+.board__column[data-status="done"] { --status-tone: var(--tone-hill); }
+
+.board__column-title {
+  justify-content: flex-start;
+}
+
+.board__column-count {
+  margin-left: auto;
+}
+
+.ticket-card__blocked {
+  background: var(--wikilink-chip-broken);
+  border-color: transparent;
+}
+
+.ticket-card__blocked::before {
+  content: none;
+}
+
+.board__add-summary {
+  width: auto;
+  padding: 0 10px 0 9px;
+  opacity: 0.6;
+}
+
+.board__column:hover .board__add-summary,
+.board__add-summary:focus-visible {
+  opacity: 1;
+}
+
+.board__add-summary::after {
+  content: " New";
+  font-size: 13px;
+  vertical-align: 2px;
+}
+
+.board,
+.board__column,
+.sheet__body,
+.bikeshed__document,
+.bikeshed__tree {
+  scrollbar-width: thin;
+  scrollbar-color: var(--shadow) transparent;
+}
+
+/* The sheet: one left edge for the title, the rows and the sections. */
+.sheet__header {
+  padding: 10px var(--space-gutter) 6px;
+  border-bottom: 0;
+}
+
+.sheet__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.sheet__body {
+  gap: 20px;
+  padding: 0 28px 28px;
+}
+
+.sheet__sticky {
+  top: 0;
+  margin: 0 -28px;
+  padding: 4px 28px 12px;
+  gap: 12px;
+}
+
+.sheet__title {
+  margin-left: -8px;
+  padding: 4px 8px;
+}
+
+.sheet__meta-field > .sheet__select,
+.sheet__meta-field > .sheet__status-row,
+.sheet__meta-field > .sheet__lane-move {
+  margin-left: -8px;
+}
+
+.sheet__status-row {
+  gap: 0;
+}
+
+.sheet__status-row .sheet__status-dot {
+  position: relative;
+  left: 14px;
+  z-index: 1;
+}
+
+.sheet__status-row .sheet__select {
+  padding-left: 22px;
+}
+
+.sheet__select {
+  padding: 0 8px;
+}
+
+.sheet__section-title {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sheet__addition {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sheet__addition-field {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.sheet__addition .sheet__fact-label {
+  font-size: 12.5px;
+}
+
+.sheet__preview {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 14px;
+}
+
+.sheet__note {
+  margin: 2px 0 8px;
+  font-size: 12px;
+}
+
+.sheet__comment-author {
+  font-weight: 600;
+}
+
+.sheet__toggle {
+  font-size: 12.5px;
+}
+
+.sheet__append {
+  margin-top: 4px;
+}
+
+.sheet__append > summary {
+  padding: 4px 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.sheet__append > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sheet__append[open] > summary {
+  margin-bottom: 8px;
+}
+
+/* Lanes are the board's: a menu beside Filter, not a section of a ticket. */
+.tickets__barwrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+
+.tickets__barwrap .tickets__bar--board {
+  margin: 0;
+}
+
+.lanes-menu .menu__panel {
+  right: auto;
+  left: 0;
+  min-width: 300px;
+  gap: 6px;
+}
+
+.lane-form {
+  display: flex;
+  gap: 6px;
+}
+
+.lane-form__name,
+.lane-form__key {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 8px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.lane-form__name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lane-form__key {
+  flex: 0 0 56px;
+}
+
+.lane-form__save {
+  height: 28px;
+  padding: 0 12px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lanes-menu .menu__panel {
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+}
+
+.lane-form {
+  flex: none;
+}
+
+/* New: the one create button, top right of the board. */
+.new-menu {
+  margin-left: auto;
+}
+
+.menu__button--primary {
+  background: var(--accent);
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.menu__button--primary:hover,
+.new-menu[open] > .menu__button--primary {
+  background: var(--accent-deep);
+  color: var(--paper);
+}
+
+.new-menu .menu__panel {
+  min-width: 300px;
+}
+
+.new-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.new-form__title,
+.new-form__status {
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+
+.new-form__create {
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: var(--paper);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* The description is one editable box. */
+.sheet__description-field {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 140px;
+  padding: 10px 12px;
+  border: var(--hairline) solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.sheet__description-field:hover {
+  border-color: var(--line);
+}
+
+.sheet__description-field:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: var(--paper);
+}
+
+
+/* Notes: a sidebar of quiet rows with icons, a page with a large title. */
+.bikeshed__tree {
+  flex-basis: 260px;
+  padding: 8px 6px;
+  border-right: 0;
+  background: var(--parchment);
+}
+
+.bikeshed__tree > .focus {
+  margin: 0 0 8px;
+  padding: 0 4px;
+}
+
+.bikeshed__tree .focus__all {
+  height: 28px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.tree__vault {
+  padding: 8px 8px 4px;
+}
+
+.tree__vault-name {
+  color: var(--ink-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tree__create {
+  margin: 0 0 4px;
+}
+
+.tree__create-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--ink-dim);
+  list-style: none;
+  cursor: pointer;
+}
+
+.tree__create-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tree__create-summary:hover,
+.tree__create[open] > .tree__create-summary {
+  background: var(--sand);
+  color: var(--ink);
+}
+
+.tree__create .tree__prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 4px;
+}
+
+.tree__icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--ink-dim);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.tree__row {
+  min-height: 28px;
+  border-radius: 6px;
+}
+
+.tree__label {
+  height: 28px;
+  gap: 6px;
+  padding-right: 8px;
+  border-radius: 6px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.tree__row:hover,
+.tree__row[aria-selected="true"] {
+  background: var(--sand);
+}
+
+.tree__row[aria-selected="true"] .tree__label {
+  background: transparent;
+  font-weight: 600;
+}
+
+.tree__twisty {
+  width: 12px;
+}
+
+.bikeshed__breadcrumb {
+  border-bottom: 0;
+}
+
+.bikeshed__breadcrumb-inner {
+  max-width: 900px;
+  padding: 0 48px;
+}
+
+.bikeshed__crumb {
+  color: var(--ink-dim);
+  font-size: 13.5px;
+}
+
+.bikeshed__crumb--current {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.bikeshed__mode {
+  padding: 4px 10px;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.bikeshed__mode:hover {
+  background: var(--sand);
+}
+
+.bikeshed__page {
+  max-width: 900px;
+  padding: 40px 48px 96px;
+}
+
+.page-head {
+  margin-bottom: 24px;
+}
+
+.page-title {
+  margin: 0 0 16px;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.props {
+  margin: 0;
+  padding: 0 0 12px;
+  border-bottom: var(--hairline) solid var(--sand);
+}
+
+#note-panel {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+#note-panel h1,
+#note-panel h2,
+#note-panel h3 {
+  margin: 1.4em 0 0.4em;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.note-footer {
+  margin-top: 48px;
+  padding-top: 16px;
+  border-top: var(--hairline) solid var(--sand);
+}
+
+.tree__daily {
+  margin: 0;
+}
+
+.tree__daily-button {
+  box-sizing: border-box;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+/* A note's row menu: rename and delete, revealed on hover. */
+.tree__row {
+  position: relative;
+}
+
+.row-menu {
+  flex: none;
+  opacity: 0;
+}
+
+.tree__row:hover .row-menu,
+.tree__row:focus-within .row-menu,
+.row-menu[open] {
+  opacity: 1;
+}
+
+.row-menu__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.row-menu__button::-webkit-details-marker {
+  display: none;
+}
+
+.row-menu__button:hover,
+.row-menu[open] > .row-menu__button {
+  background: var(--shadow);
+}
+
+.row-menu__panel {
+  top: 100%;
+  min-width: 210px;
+  gap: 6px;
+}
+
+.row-menu__form {
+  display: flex;
+  gap: 6px;
+}
+
+.row-menu__name {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.row-menu__action {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-menu__action:hover {
+  background: var(--sand);
+}
+
+.row-menu__action--danger {
+  flex: 1 1 auto;
+  color: var(--ember-deep);
+}
+
+/* Editing in place: the note's own text, styled as the page it makes. A line
+ * shows its markdown markers only while the cursor is in it. */
+.live,
+.lp {
+  position: relative;
+  min-height: calc(100vh - 300px);
+  padding-bottom: 160px;
+  font-size: 16px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  outline: none;
+  caret-color: var(--ink);
+}
+
+.lp__m {
+  display: none;
+  color: var(--ink-dim);
+}
+
+.lp__line--active .lp__m {
+  display: inline;
+}
+
+.lp__line--h1 { font-size: 2em; font-weight: 700; line-height: 1.3; }
+.lp__line--h2 { font-size: 1.55em; font-weight: 700; line-height: 1.35; }
+.lp__line--h3 { font-size: 1.25em; font-weight: 700; line-height: 1.4; }
+.lp__line--h4,
+.lp__line--h5,
+.lp__line--h6 { font-weight: 700; }
+
+.lp__line--quote {
+  padding-left: 14px;
+  border-left: 3px solid var(--line);
+  color: var(--ink-dim);
+}
+
+.lp__line--quote.lp__line--active {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.lp__line--bullet:not(.lp__line--active)::before {
+  content: "\2022";
+  position: absolute;
+  margin-left: -1.1em;
+  color: var(--ink-dim);
+}
+
+.lp__line--bullet:not(.lp__line--active) {
+  margin-left: 1.1em;
+}
+
+.lp__num {
+  color: var(--ink-dim);
+}
+
+.lp__task {
+  color: var(--ink-dim);
+}
+
+/* The `[ ]` characters stay in the text; off the active line they shrink to
+ * nothing and a box is drawn in their place. */
+.lp__line--task:not(.lp__line--active) .lp__task {
+  position: relative;
+  display: inline-block;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  /* The box takes the bullet dot's place: the same 1.1em column (1.1 x the
+   * editor's 16px; em is 0 here, the characters are shrunk away). */
+  margin-left: -4px;
+  margin-right: 7.6px;
+  border: 1.5px solid var(--ink-dim);
+  border-radius: var(--radius-checkbox);
+  vertical-align: middle;
+  font-size: 0;
+  cursor: pointer;
+}
+
+.lp__line--done:not(.lp__line--active) .lp__task {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* A drawn tick, centred in the box. */
+.lp__line--done:not(.lp__line--active) .lp__task::after {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 0.5px;
+  width: 3px;
+  height: 7px;
+  border: solid var(--paper);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.lp__line--done:not(.lp__line--active) {
+  color: var(--ink-dim);
+  text-decoration: line-through;
+}
+
+.lp__line--rule:not(.lp__line--active) {
+  color: transparent;
+}
+
+/* An inline line is only as wide as its text, so the rule is drawn by a
+ * pseudo-element that spans the editor, positioned where the line sits. */
+.lp__line--rule:not(.lp__line--active)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  margin-top: 0.8em;
+  background: var(--line);
+  pointer-events: none;
+}
+
+.lp__line--fence {
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.lp__line--code {
+  background: var(--parchment);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.lp__code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--parchment);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.lp__wiki {
+  color: var(--accent-deep);
+}
+
+.lp__link {
+  color: var(--accent-deep);
+  text-decoration: underline;
+}
+
+.lp__line--active {
+  border-radius: 4px;
+}
+
+/* A callout box in the live editor: the opener shows its label in place of the
+ * `> [!NOTE]` marker, the `> ` lines under it are the body. The lines stay
+ * inline, so the tint is a background and a left rule, not a block. */
+.lp__line--callout {
+  padding-left: 12px;
+  border-left: 3px solid var(--tone-sky);
+  background: var(--sky);
+  color: var(--ink);
+}
+
+.lp__line--callout-tip { border-left-color: var(--tone-hill); background: var(--hill); }
+.lp__line--callout-warning { border-left-color: var(--tone-ember); background: var(--skin); }
+
+.lp__line--callout.lp__line--active {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.lp__line--callout:not(.lp__line--active):not(.lp__line--callout-body)::before {
+  content: "Note";
+  font-weight: 600;
+}
+
+.lp__line--callout-info:not(.lp__line--active):not(.lp__line--callout-body)::before { content: "Info"; }
+.lp__line--callout-tip:not(.lp__line--active):not(.lp__line--callout-body)::before { content: "Tip"; }
+.lp__line--callout-warning:not(.lp__line--active):not(.lp__line--callout-body)::before { content: "Warning"; }
+
+/* The slash menu: a small listbox under the caret, outside the note's text. */
+.slash {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  box-sizing: border-box;
+  width: 280px;
+  max-height: 320px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  overflow-y: auto;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  box-shadow: 0 8px 28px var(--shadow);
+  font-size: 13px;
+}
+
+.slash__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.slash__item[aria-selected="true"] {
+  background: var(--parchment);
+}
+
+.slash__glyph {
+  display: inline-flex;
+  box-sizing: border-box;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-checkbox);
+  background: var(--paper);
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.slash__label {
+  flex: 1 1 auto;
+}
+
+.slash__hint {
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.slash__empty {
+  padding: 6px 8px;
+  color: var(--ink-dim);
+}
+
+/* The title is the name: edit it to rename the note. */
+.page-title-form {
+  margin: 0;
+}
+
+.page-title {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 16px -8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  outline: none;
+}
+
+.page-title:hover,
+.page-title:focus {
+  background: var(--parchment);
+}
+
+/* Lines are inline, the trailing newline in each is the line break: Chrome's
+ * up and down caret movement skips lines when block lines also end in a
+ * literal newline. */
+.lp__line {
+  display: inline;
 }

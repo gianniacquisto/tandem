@@ -237,8 +237,8 @@ async fn get_board_renders_six_status_columns_in_order_and_empty_copy() {
         cursor += at + marker.len();
         assert!(body.contains(label), "the {key} column carries its label");
         assert!(
-            body.contains("+ Add a card"),
-            "every column carries its add"
+            body.contains(&format!("<option value=\"{key}\">{label}</option>")),
+            "the New form offers every column"
         );
     }
     assert!(
@@ -974,17 +974,11 @@ async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
         "name=\"assignee\"",
         "name=\"lane\"",
         "Café alpha",
-        "markdown__heading",
-        "Why",
-        "<strong>bold</strong>",
-        "markdown__inline-code",
-        "markdown__list",
+        "sheet__description-field",
+        "## Why",
         "A first comment",
-        "sheet__details",
-        "<summary",
         "Blocked by",
         "Blocks",
-        "New cycle lane",
     ] {
         assert!(body.contains(marker), "the sheet draws {marker}: {body}");
     }
@@ -1045,9 +1039,8 @@ async fn post_ticket_sheet_saves_changes_and_refuses_stale_revision() {
 }
 
 #[tokio::test]
-async fn post_ticket_description_appends_with_blank_line_and_refuses_empty_addition_with_domain_wording()
- {
-    let sandbox = Sandbox::new("sheet-append");
+async fn saving_the_sheet_replaces_the_description_with_the_edited_box() {
+    let sandbox = Sandbox::new("sheet-description");
     let store = sandbox.store();
     let board = setup_board(&store);
     let ticket = by_title(&board, "Café alpha");
@@ -1067,48 +1060,27 @@ async fn post_ticket_description_appends_with_blank_line_and_refuses_empty_addit
     let (status, _, answer) = send(
         &app,
         form_request(
-            &format!("/tickets/{id}/description"),
-            &format!("addition=Second&expected_revision={revision}"),
+            &format!("/tickets/{id}"),
+            &format!(
+                "title=Caf%C3%A9+alpha&status={}&assignee=&description=Rewritten+body&expected_revision={revision}",
+                ticket.status.as_str()
+            ),
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "the append answers: {answer}");
+    assert_eq!(status, StatusCode::OK, "the save answers: {answer}");
     assert_eq!(
         board
             .ticket(&id)
             .expect("the ticket reads")
             .description
             .as_deref(),
-        Some("First\n\nSecond"),
-        "an append lands one blank line under the stored body"
-    );
-
-    let revision = board.store().revision().expect("the revision reads");
-    let (status, _, answer) = send(
-        &app,
-        form_request(
-            &format!("/tickets/{id}/description"),
-            &format!("addition=%20%20%20&expected_revision={revision}"),
-        ),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(
-        answer.contains("sheet__refusal"),
-        "an empty append is refused: {answer}"
+        Some("Rewritten body"),
+        "the box replaces the stored body"
     );
     assert!(
-        answer.contains("Description body is empty."),
-        "the refusal carries the domain's wording: {answer}"
-    );
-    assert_eq!(
-        board
-            .ticket(&id)
-            .expect("the ticket reads")
-            .description
-            .as_deref(),
-        Some("First\n\nSecond"),
-        "a refused append writes nothing"
+        answer.contains("sheet__description-field"),
+        "the sheet draws the description as one editable box: {answer}"
     );
 }
 
@@ -1182,11 +1154,7 @@ async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choic
         "the lane moves at once"
     );
 
-    let (status, _, answer) = send(
-        &app,
-        form_request("/lanes", &format!("name=gamma&abbr=GAM&ticket={id}")),
-    )
-    .await;
+    let (status, _, answer) = send(&app, form_request("/lanes", "name=gamma&abbr=GAM")).await;
     assert_eq!(status, StatusCode::OK, "the lane add answers: {answer}");
     assert!(
         board
@@ -1198,15 +1166,12 @@ async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choic
     );
     assert!(
         answer.contains("value=\"gamma\""),
-        "the sheet's lane choices carry the new lane: {answer}"
+        "the board's lane menu carries the new lane: {answer}"
     );
 
     let (status, _, answer) = send(
         &app,
-        form_request(
-            "/lanes/gamma/rename",
-            &format!("to=delta&abbr=DEL&ticket={id}"),
-        ),
+        form_request("/lanes/gamma/rename", "to=delta&abbr=DEL"),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "the lane rename answers: {answer}");
@@ -1221,17 +1186,13 @@ async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choic
     );
     assert!(
         answer.contains("delta"),
-        "the sheet redraws the rename: {answer}"
+        "the board redraws the rename: {answer}"
     );
 
-    let (status, _, answer) = send(
-        &app,
-        form_request("/lanes", &format!("name=alpha&abbr=ALP&ticket={id}")),
-    )
-    .await;
+    let (status, _, answer) = send(&app, form_request("/lanes", "name=alpha&abbr=ALP")).await;
     assert_eq!(status, StatusCode::OK);
     assert!(
-        answer.contains("sheet__notice"),
+        answer.contains("shell__notice"),
         "a duplicate lane draws a notice: {answer}"
     );
     assert!(
@@ -1282,13 +1243,19 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         "Other",
         "Tickets",
         "Café alpha",
-        ">Edit<",
+        "data-live",
     ] {
         assert!(
             body.contains(marker),
             "the notes face draws {marker}: {body}"
         );
     }
+
+    let (_, _, read) = send(&app, page_get("/notes?path=Index.md&mode=read")).await;
+    assert!(
+        !read.contains("data-live"),
+        "mode=read draws the page without the editor: {read}"
+    );
 
     let (_, _, focused) = send(&app, page_get("/notes?project=tandem&path=Index.md")).await;
     assert!(
@@ -1298,6 +1265,29 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
     assert!(
         !focused.contains("outside"),
         "the focused tree drops another project's folder: {focused}"
+    );
+}
+
+#[tokio::test]
+async fn the_edit_page_keeps_a_leading_blank_line_in_the_note_text() {
+    let sandbox = Sandbox::new("notes-leading-newline");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    notes.create("Lead.md").expect("the note is created");
+    notes
+        .write("Lead.md", "\n\nfirst line")
+        .expect("the note is written");
+    let app = router(context(store));
+
+    let (status, _, body) = send(&app, page_get("/notes/edit?path=Lead.md")).await;
+    assert_eq!(status, StatusCode::OK, "the edit page answers: {body}");
+    // The HTML parser drops one newline right after the opening tag, so the
+    // template emits a spare one and the text keeps its own.
+    // A checkout may carry the template with CRLF line ends.
+    let body = body.replace("\r\n", "\n");
+    assert!(
+        body.contains("hidden>\n\n\nfirst line</textarea>"),
+        "the textarea keeps the leading blank lines: {body}"
     );
 }
 
@@ -1396,6 +1386,135 @@ async fn post_notes_save_writes_when_hash_matches_and_renders_mine_theirs_confli
         notes.read("Index.md").expect("the note reads").value.text,
         "mine",
         "Keep mine writes the buffer over the disk"
+    );
+}
+
+#[tokio::test]
+async fn post_notes_rename_and_delete_manage_a_note_and_the_open_page_follows() {
+    let sandbox = Sandbox::new("notes-manage");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    let app = router(context(store));
+
+    let (status, _, _) = send(
+        &app,
+        form_request(
+            "/notes/create",
+            "path=projects/tandem/Draft.md&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, headers, body) = send(
+        &app,
+        form_request(
+            "/notes/rename",
+            "path=projects/tandem/Draft.md&name=Final&open=projects/tandem/Draft.md&project=tandem&mode=edit",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the rename answers: {body}");
+    assert!(
+        notes.read("projects/tandem/Final.md").is_ok(),
+        "the note is renamed"
+    );
+    assert!(
+        notes.read("projects/tandem/Draft.md").is_err(),
+        "the old name is gone"
+    );
+    assert!(
+        body.contains("Final"),
+        "the open page follows the rename: {body}"
+    );
+    assert_eq!(
+        headers
+            .get("hx-replace-url")
+            .and_then(|value| value.to_str().ok()),
+        Some("/notes?project=tandem&path=projects%2Ftandem%2FFinal.md&mode=edit"),
+        "the address bar follows the rename"
+    );
+
+    let (status, _, body) = send(
+        &app,
+        form_request(
+            "/notes/delete",
+            "path=projects/tandem/Final.md&open=projects/tandem/Final.md&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the delete answers: {body}");
+    assert!(
+        notes.read("projects/tandem/Final.md").is_err(),
+        "the note is deleted"
+    );
+    assert!(
+        body.contains("No note selected"),
+        "the deleted page closes: {body}"
+    );
+}
+
+#[tokio::test]
+async fn post_notes_new_files_untitled_in_the_current_folder_with_the_title_focused() {
+    let sandbox = Sandbox::new("notes-new");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    let app = router(context(store));
+
+    let (status, _, body) = send(
+        &app,
+        form_request("/notes/new", "dir=projects/tandem&project=tandem"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the new note answers: {body}");
+    assert!(
+        notes.read("projects/tandem/Untitled.md").is_ok(),
+        "an empty Untitled page is filed in the current folder"
+    );
+    assert!(
+        body.contains("data-autofocus"),
+        "the cursor goes to the title: {body}"
+    );
+
+    let (status, _, _) = send(
+        &app,
+        form_request("/notes/new", "dir=projects/tandem&project=tandem"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        notes.read("projects/tandem/Untitled 2.md").is_ok(),
+        "a second new note does not collide"
+    );
+}
+
+#[tokio::test]
+async fn post_notes_daily_creates_the_days_page_once_and_opens_it_after() {
+    let sandbox = Sandbox::new("notes-daily");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    let app = router(context(store));
+
+    let (status, _, body) = send(&app, form_request("/notes/daily", "date=2026-11-14")).await;
+    assert_eq!(status, StatusCode::OK, "the daily note answers: {body}");
+    assert!(
+        notes.read("daily/2026-11-14.md").is_ok(),
+        "today's page is created"
+    );
+    assert!(body.contains("2026-11-14"), "the page opens: {body}");
+
+    let (status, _, again) = send(&app, form_request("/notes/daily", "date=2026-11-14")).await;
+    assert_eq!(status, StatusCode::OK, "a second press opens it: {again}");
+    assert!(
+        !again.contains("shell__error"),
+        "no error on reopen: {again}"
+    );
+
+    let (status, _, _) = send(&app, form_request("/notes/daily", "date=../../etc")).await;
+    assert_eq!(status, StatusCode::OK, "a malformed date falls back");
+    assert!(
+        notes.read("daily/../../etc.md").is_err(),
+        "a client date never steers the path"
     );
 }
 
@@ -1526,15 +1645,16 @@ async fn a_sheet_write_keeps_the_filters_its_form_carried() {
     let app = router(context(store));
 
     let body = format!(
-        "addition=A line&expected_revision={revision}&board_project=Alpha&board_show_all=&board_lane=alpha&board_assignee=builder&board_text=Caf"
+        "title=Caf%C3%A9+alpha&status={}&assignee=&description=A+line&expected_revision={revision}&board_project=Alpha&board_show_all=&board_lane=alpha&board_assignee=builder&board_text=Caf",
+        ticket.status.as_str()
     );
     let (status, _, page) = send(
         &app,
-        form_request(&format!("/tickets/{}/description", ticket.id), &body),
+        form_request(&format!("/tickets/{}", ticket.id), &body),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "the append answers: {page}");
-    assert!(page.contains("A line"), "the append landed: {page}");
+    assert_eq!(status, StatusCode::OK, "the save answers: {page}");
+    assert!(page.contains("A line"), "the description landed: {page}");
     assert!(
         page.contains("<option value=\"Alpha\" selected>Alpha</option>"),
         "the project filter survives a sheet write: {page}"
