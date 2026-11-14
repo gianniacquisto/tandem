@@ -1184,7 +1184,7 @@ async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choic
 
     let (status, _, answer) = send(
         &app,
-        form_request("/lanes", &format!("name=gamma&abbr=GAM&ticket={id}")),
+        form_request("/lanes", &format!("name=gamma&abbr=GAM")),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "the lane add answers: {answer}");
@@ -1198,15 +1198,12 @@ async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choic
     );
     assert!(
         answer.contains("value=\"gamma\""),
-        "the sheet's lane choices carry the new lane: {answer}"
+        "the board's lane menu carries the new lane: {answer}"
     );
 
     let (status, _, answer) = send(
         &app,
-        form_request(
-            "/lanes/gamma/rename",
-            &format!("to=delta&abbr=DEL&ticket={id}"),
-        ),
+        form_request("/lanes/gamma/rename", &format!("to=delta&abbr=DEL")),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "the lane rename answers: {answer}");
@@ -1221,17 +1218,17 @@ async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choic
     );
     assert!(
         answer.contains("delta"),
-        "the sheet redraws the rename: {answer}"
+        "the board redraws the rename: {answer}"
     );
 
     let (status, _, answer) = send(
         &app,
-        form_request("/lanes", &format!("name=alpha&abbr=ALP&ticket={id}")),
+        form_request("/lanes", &format!("name=alpha&abbr=ALP")),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
     assert!(
-        answer.contains("sheet__notice"),
+        answer.contains("shell__notice"),
         "a duplicate lane draws a notice: {answer}"
     );
     assert!(

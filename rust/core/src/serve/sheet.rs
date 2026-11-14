@@ -13,12 +13,6 @@ struct SheetStatusOption {
     selected: bool,
 }
 
-/// One lane the sheet may rename.
-struct LaneRow {
-    name: String,
-    encoded: String,
-}
-
 /// One comment, its markdown already drawn.
 struct SheetComment {
     author: String,
@@ -54,7 +48,6 @@ struct SheetView {
     assignee: String,
     status_options: Vec<SheetStatusOption>,
     lane_options: Vec<LaneOption>,
-    lane_rows: Vec<LaneRow>,
     description_empty: bool,
     description_html: askama::filters::Safe<String>,
     description_source: String,
@@ -212,13 +205,6 @@ fn render_sheet(
         assignee: ticket.assignee.clone().unwrap_or_default(),
         status_options,
         lane_options: sheet_lane_options(&ticket, &lanes),
-        lane_rows: lanes
-            .iter()
-            .map(|lane| LaneRow {
-                name: lane.clone(),
-                encoded: encode_component(lane),
-            })
-            .collect(),
         description_empty: description_blocks.is_empty(),
         description_html: askama::filters::Safe(description_html),
         description_source,
@@ -277,7 +263,7 @@ fn sheet_response(
 }
 
 /// One percent-encoded path segment, for a lane name in a route.
-fn encode_component(value: &str) -> String {
+pub(super) fn encode_component(value: &str) -> String {
     let mut encoded = String::new();
     for byte in value.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
@@ -502,74 +488,6 @@ pub(super) async fn move_to_lane(
         .board()
         .move_ticket(&id, lane.as_deref(), usize::MAX)
     {
-        Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
-        Err(error) => sheet_response(
-            &context,
-            &id,
-            &filters,
-            Some(error.message()),
-            None,
-            None,
-            &headers,
-        ),
-    }
-}
-
-/// The ticket a lane write re-draws; a form without one has no sheet to answer.
-fn lane_ticket(params: &HashMap<String, String>) -> String {
-    field(params, "ticket").trim().to_string()
-}
-
-pub(super) async fn add_lane(
-    context: Context,
-    headers: HeaderMap,
-    form: Result<Form<HashMap<String, String>>, FormRejection>,
-) -> Response {
-    let Some(params) = form_params(form) else {
-        return bad_request("the form could not be read");
-    };
-    let filters = Filters::parse_board_fields(&params);
-    let id = lane_ticket(&params);
-    if id.is_empty() {
-        return bad_request("a lane write names the ticket it was drawn from");
-    }
-    let abbr = field(&params, "abbr").trim();
-    let key = if abbr.is_empty() { None } else { Some(abbr) };
-    let outcome = context.board().add_lane(field(&params, "name"), key, None);
-    match outcome {
-        Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
-        Err(error) => sheet_response(
-            &context,
-            &id,
-            &filters,
-            Some(error.message()),
-            None,
-            None,
-            &headers,
-        ),
-    }
-}
-
-pub(super) async fn rename_lane(
-    context: Context,
-    Path(name): Path<String>,
-    headers: HeaderMap,
-    form: Result<Form<HashMap<String, String>>, FormRejection>,
-) -> Response {
-    let Some(params) = form_params(form) else {
-        return bad_request("the form could not be read");
-    };
-    let filters = Filters::parse_board_fields(&params);
-    let id = lane_ticket(&params);
-    if id.is_empty() {
-        return bad_request("a lane write names the ticket it was drawn from");
-    }
-    let abbr = field(&params, "abbr").trim();
-    let key = if abbr.is_empty() { None } else { Some(abbr) };
-    let outcome = context
-        .board()
-        .rename_lane(&name, field(&params, "to"), key, None);
-    match outcome {
         Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
         Err(error) => sheet_response(
             &context,

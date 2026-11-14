@@ -83,12 +83,19 @@ struct BoardView {
     project_options: Vec<ProjectOption>,
     lane_options: Vec<LaneOption>,
     assignee_options: Vec<AssigneeOption>,
+    lane_rows: Vec<LaneRow>,
     show_all: bool,
     empty: Option<EmptyView>,
     columns: Vec<ColumnView>,
     /// The ticket sheet, drawn inside the board root so an htmx swap of the
     /// root carries both. `None` on the plain board.
     sheet: Option<askama::filters::Safe<String>>,
+}
+
+/// One lane the board may rename.
+struct LaneRow {
+    name: String,
+    encoded: String,
 }
 
 pub(super) struct FiltersView {
@@ -402,6 +409,13 @@ fn render_board(
         project_options,
         lane_options,
         assignee_options,
+        lane_rows: lanes
+            .iter()
+            .map(|lane| LaneRow {
+                name: lane.clone(),
+                encoded: super::sheet::encode_component(lane),
+            })
+            .collect(),
         show_all: filters.show_all,
         empty,
         columns,
@@ -603,4 +617,46 @@ pub(super) async fn move_ticket(
         return bad_request(&error.message());
     }
     render_response(&context, &filters, None, &headers, StatusCode::OK)
+}
+
+/// Lanes belong to the board, not to a ticket: the add and rename forms live in
+/// the board's lane menu and answer with the board.
+pub(super) async fn add_lane(
+    context: Context,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    let Ok(Form(params)) = form else {
+        return bad_request("the form could not be read");
+    };
+    let filters = Filters::parse(&params);
+    let abbr = field(&params, "abbr").trim();
+    let key = if abbr.is_empty() { None } else { Some(abbr) };
+    let notice = context
+        .board()
+        .add_lane(field(&params, "name"), key, None)
+        .err()
+        .map(|error| error.message());
+    render_response(&context, &filters, notice, &headers, StatusCode::OK)
+}
+
+pub(super) async fn rename_lane(
+    context: Context,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    let Ok(Form(params)) = form else {
+        return bad_request("the form could not be read");
+    };
+    let mut filters = Filters::parse(&params);
+    let abbr = field(&params, "abbr").trim();
+    let key = if abbr.is_empty() { None } else { Some(abbr) };
+    let to = field(&params, "to");
+    let outcome = context.board().rename_lane(&name, to, key, None);
+    if outcome.is_ok() && filters.lane == name {
+        filters.lane = to.trim().to_string();
+    }
+    let notice = outcome.err().map(|error| error.message());
+    render_response(&context, &filters, notice, &headers, StatusCode::OK)
 }

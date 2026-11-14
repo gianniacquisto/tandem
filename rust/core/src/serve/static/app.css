@@ -3314,3 +3314,71 @@ body {
 .sheet__append[open] > summary {
   margin-bottom: 8px;
 }
+
+/* Lanes are the board's: a menu beside Filter, not a section of a ticket. */
+.tickets__barwrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+
+.tickets__barwrap .tickets__bar--board {
+  margin: 0;
+}
+
+.lanes-menu .menu__panel {
+  right: auto;
+  left: 0;
+  min-width: 300px;
+  gap: 6px;
+}
+
+.lane-form {
+  display: flex;
+  gap: 6px;
+}
+
+.lane-form__name,
+.lane-form__key {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 8px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.lane-form__name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lane-form__key {
+  flex: 0 0 56px;
+}
+
+.lane-form__save {
+  height: 28px;
+  padding: 0 12px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lanes-menu .menu__panel {
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+}
+
+.lane-form {
+  flex: none;
+}

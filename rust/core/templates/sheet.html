@@ -196,50 +196,6 @@
         </form>
       </section>
 
-      <details class="sheet__details" aria-label="Manage lanes">
-        <summary class="sheet__details-toggle">Manage lanes</summary>
-        <div class="sheet__details-body">
-
-          <section class="sheet__lanes" aria-label="Lanes">
-            <header class="sheet__section-header">
-              <h2 class="sheet__section-title">Lanes</h2>
-            </header>
-            <ul class="sheet__lane-rows">
-              {% for lane in lane_rows %}
-              <li class="sheet__lane-row" data-lane="{{ lane.name }}">
-                <span class="sheet__lane-name">{{ lane.name }}</span>
-                <form class="sheet__lane-form" method="post" action="/lanes/{{ lane.encoded }}/rename"
-                      hx-post="/lanes/{{ lane.encoded }}/rename" hx-target="#board-root" hx-swap="outerHTML">
-                  <input type="hidden" name="ticket" value="{{ id }}">
-                  <input type="hidden" name="board_project" value="{{ filters.project }}">
-                  <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
-                  <input type="hidden" name="board_lane" value="{{ filters.lane }}">
-                  <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
-                  <input type="hidden" name="board_text" value="{{ filters.text }}">
-                  <input class="sheet__field" name="to" aria-label="Lane name" value="{{ lane.name }}">
-                  <input class="sheet__field" name="abbr" aria-label="Lane key" placeholder="Key">
-                  <button class="sheet__button" type="submit">Rename</button>
-                </form>
-              </li>
-              {% endfor %}
-            </ul>
-
-            <form class="sheet__lane-form" method="post" action="/lanes"
-                  hx-post="/lanes" hx-target="#board-root" hx-swap="outerHTML">
-              <input type="hidden" name="ticket" value="{{ id }}">
-              <input type="hidden" name="board_project" value="{{ filters.project }}">
-              <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
-              <input type="hidden" name="board_lane" value="{{ filters.lane }}">
-              <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
-              <input type="hidden" name="board_text" value="{{ filters.text }}">
-              <input class="sheet__field" name="name" aria-label="New lane name" placeholder="Cycle lane name">
-              <input class="sheet__field" name="abbr" aria-label="New lane key" placeholder="Key">
-              <button class="sheet__button" type="submit">New cycle lane</button>
-            </form>
-          </section>
-        </div>
-      </details>
-
       <footer class="sheet__footer">
         <span class="sheet__hint">Cmd/Ctrl+Enter saves · Cmd/Ctrl+Shift+Enter posts · Esc closes</span>
       </footer>

@@ -18,6 +18,7 @@
   </div>
   {% endif %}
 
+  <div class="tickets__barwrap">
   <form class="tickets__bar tickets__bar--board" method="get" action="/board"
         hx-get="/board" hx-target="#board-root" hx-swap="outerHTML" hx-push-url="true"
         hx-trigger="change, submit">
@@ -79,6 +80,39 @@
       {% endif %}{% endfor %}
     </ul>
   </form>
+
+  <details class="menu lanes-menu">
+    <summary class="menu__button menu__button--label">Lanes</summary>
+    <div class="menu__panel menu__panel--form">
+      <p class="menu__title">New cycle lane</p>
+      <form class="lane-form" method="post" action="/lanes" hx-post="/lanes"
+            hx-target="#board-root" hx-swap="outerHTML">
+        <input type="hidden" name="project" value="{{ form.project }}">
+        <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
+        <input type="hidden" name="lane" value="{{ form.lane }}">
+        <input type="hidden" name="assignee" value="{{ form.assignee }}">
+        <input type="hidden" name="text" value="{{ form.text }}">
+        <input class="lane-form__name" name="name" aria-label="New lane name" placeholder="Lane name" required>
+        <input class="lane-form__key" name="abbr" aria-label="New lane key" placeholder="Key">
+        <button class="lane-form__save" type="submit">Add</button>
+      </form>
+      <p class="menu__title">Rename a lane</p>
+      {% for lane in lane_rows %}
+      <form class="lane-form" method="post" action="/lanes/{{ lane.encoded }}/rename"
+            hx-post="/lanes/{{ lane.encoded }}/rename" hx-target="#board-root" hx-swap="outerHTML">
+        <input type="hidden" name="project" value="{{ form.project }}">
+        <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
+        <input type="hidden" name="lane" value="{{ form.lane }}">
+        <input type="hidden" name="assignee" value="{{ form.assignee }}">
+        <input type="hidden" name="text" value="{{ form.text }}">
+        <input class="lane-form__name" name="to" aria-label="Name of lane {{ lane.name }}" value="{{ lane.name }}">
+        <input class="lane-form__key" name="abbr" aria-label="Key for lane {{ lane.name }}" placeholder="Key">
+        <button class="lane-form__save" type="submit">Save</button>
+      </form>
+      {% endfor %}
+    </div>
+  </details>
+  </div>
 
   {% if let Some(empty) = empty %}
   <div class="empty{% if empty.hero %} empty--hero{% endif %}">
