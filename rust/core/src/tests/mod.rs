@@ -28,6 +28,7 @@ mod bikeshed_search;
 mod bikeshed_stats;
 mod bikeshed_support;
 mod bikeshed_wikilink;
+mod examples_tools;
 mod fixture_bikeshed;
 
 #[cfg(test)]

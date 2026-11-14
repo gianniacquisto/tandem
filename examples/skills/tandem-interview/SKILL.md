@@ -5,9 +5,9 @@ description: "The human's decisions in one pass — walks the human through ever
 
 # Tandem interview
 
-A pass that walks the human through every ticket awaiting their decision, one ticket at a time. The 2026-10-24 interview settled all eleven human-assigned tickets in one sitting on exactly this procedure, improvised from the `grilling` skill's round format and the board half of the `tandem` skill; this skill pins it. It settles decisions only — building, refining and reviewing the settled tickets stay the other passes' work.
+A pass that walks the human through every ticket awaiting their decision, one ticket at a time. The 2026-10-24 interview settled all eleven human-assigned tickets in one sitting on exactly this procedure, improvised from the `grilling` skill's round format and the ticket conventions in `AGENTS.md`; this skill pins it. It settles decisions only — building, refining and reviewing the settled tickets stay the other passes' work.
 
-The round format is the grilling skill's (`skills/grilling/SKILL.md`): number the questions, give a recommended answer each, word so "yes" accepts. The board mechanics are the `tandem` skill's. The runner signs its comments by its own role, the roster's (`skills/tandem-team/SKILL.md`).
+The round format is the grilling skill's (`skills/grilling/SKILL.md`): number the questions, give a recommended answer each, word so "yes" accepts. The board mechanics are the MCP tools' and the ticket conventions in `AGENTS.md`. The runner signs its comments by its own role, the roster's (`skills/tandem-team/SKILL.md`).
 
 ## The pass
 

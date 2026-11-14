@@ -50,4 +50,4 @@ That block is `main`'s grammar, the trunk the next release is cut from: `tandem-
 
 ## Agent examples
 
-The app no longer carries an agent face (ADR 0045). The skills and the pass prompts live in `examples/` for this repository's own workflow: a clone is the copy, and a host reads them from there or from a checkout. There is no `tandem-cli setup` verb, no `<TandemHome>/agent/` installed copy and no host symlink to keep in step.
+The app no longer carries an agent face (ADR 0045). The skills and the pass prompts live in `examples/` (start at [examples/README.md](../examples/README.md)) for this repository's own workflow: a clone is the copy, and a host reads them from there or from a checkout. There is no `tandem-cli setup` verb, no `<TandemHome>/agent/` installed copy and no host symlink to keep in step.

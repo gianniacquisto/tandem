@@ -4,7 +4,7 @@
 
 The ticket comment log is the work record: a pass narrates what landed, the outcome and next status, and any issues on every ticket it carried, and that comment is the only record kept. No pass record, usage report or capture layer sits beside it (ADR 0045).
 
-**Agents call Tandem through the MCP tools**, never through the shell: `tandem-cli` is the human's and the scripts' door, documented in `examples/skills/tandem/SKILL.md`.
+**Agents call Tandem through the MCP tools**, never through the shell: `tandem-cli` is the human's and the scripts' door, documented in `docs/cli.md`; the tool conventions an agent needs are in `examples/AGENTS.md`.
 
 ## Prose
 
