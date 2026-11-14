@@ -9,6 +9,7 @@ The checklist for a diff that draws or sizes something in the served board. It r
 - Type: font choices against the theme's own, and whether the change holds at the sizes the board already uses.
 - Dark mode, where the diff's view appears in both palettes.
 - Popover and sheet sizing: the height and width a view asks for against its content, and whether a long ticket title or an empty list changes it.
+- A new component or screen against `DESIGN.md` at the repo root, where `tokens.css` is silent. The tokens win over it when they disagree. The board has four palettes (`neutral` and `tandem`, each light and dark, selected by `data-style` and `data-theme` on `<html>`): a diff reads tokens only, and a new token lands in all four sets with an AA check (4.5:1 text, 3:1 UI) in each.
 - The markup contract: a template change keeps the ids and classes `tandem.js` and the htmx swaps name, or moves both in the same diff.
 
 ## Blocks on

@@ -143,6 +143,16 @@
       </header>
 
       <div class="bikeshed__page">
+        <div class="page-head">
+          <span class="page-head__icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16"><path d="M4 1.5h5.5L12.5 4.5v10h-8.5z M9.5 1.5v3h3"/></svg>
+          </span>
+          <dl class="props" aria-label="Note properties">
+            <div class="props__row"><dt>Path</dt><dd>{{ note.path }}</dd></div>
+            <div class="props__row"><dt>Backlinks</dt><dd>{{ backlink_count }}</dd></div>
+            {% if linked_count > 0 %}<div class="props__row"><dt>Tickets</dt><dd>{{ linked_count }}</dd></div>{% endif %}
+          </dl>
+        </div>
         <div id="note-panel">
           {% if mode == "edit" %}
           <form id="note-form" method="post" action="/notes/save" hx-post="/notes/save"

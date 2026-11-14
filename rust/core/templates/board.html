@@ -21,35 +21,63 @@
   <form class="tickets__bar tickets__bar--board" method="get" action="/board"
         hx-get="/board" hx-target="#board-root" hx-swap="outerHTML" hx-push-url="true"
         hx-trigger="change, submit">
-    <div class="focus">
-      <label class="focus__label" for="focus-picker">Project</label>
-      <select id="focus-picker" class="filter focus__picker" name="project" aria-label="Project">
-        {% for option in project_options %}
-        <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
-        {% endfor %}
-      </select>
-      <label class="focus__all" for="show-all">
-        <input id="show-all" type="checkbox" name="show_all" value="1"{% if show_all %} checked{% endif %}>
-        Show all
-      </label>
-    </div>
-    <select class="filter" name="lane" aria-label="Lane">
-      {% for option in lane_options %}
-      <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
-      {% endfor %}
-    </select>
-    <select class="filter" name="assignee" aria-label="Assignee">
-      {% for option in assignee_options %}
-      <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
-      {% endfor %}
-    </select>
-    <div class="search">
+    <div class="search search--board">
+      <svg class="search__icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
       <input class="search__input" type="search" name="text" value="{{ form.text }}"
              placeholder="Search tickets…" aria-label="Search tickets"
              hx-get="/board" hx-include="closest form" hx-target="#board-root"
              hx-swap="outerHTML" hx-push-url="true"
              hx-trigger="input changed delay:300ms">
     </div>
+
+    <details class="menu filter-menu">
+      <summary class="menu__button menu__button--label">Filter</summary>
+      <div class="menu__panel menu__panel--form">
+        <label class="menu__field">
+          <span class="menu__title">Project</span>
+          <select id="focus-picker" class="filter focus__picker" name="project" aria-label="Project">
+            {% for option in project_options %}
+            <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="menu__check" for="show-all">
+          <input id="show-all" type="checkbox" name="show_all" value="1"{% if show_all %} checked{% endif %}>
+          Show all
+        </label>
+        <label class="menu__field">
+          <span class="menu__title">Lane</span>
+          <select class="filter" name="lane" aria-label="Lane">
+            {% for option in lane_options %}
+            <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="menu__field">
+          <span class="menu__title">Assignee</span>
+          <select class="filter" name="assignee" aria-label="Assignee">
+            {% for option in assignee_options %}
+            <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+    </details>
+
+    <ul class="chips" aria-label="Active filters">
+      {% for option in project_options %}{% if option.selected && !option.value.is_empty() %}
+      <li><button type="button" class="chip" data-clear="project" aria-label="Remove project filter {{ option.label }}">{{ option.label }} <span aria-hidden="true">×</span></button></li>
+      {% endif %}{% endfor %}
+      {% if show_all %}
+      <li><button type="button" class="chip" data-clear="show_all" aria-label="Remove show all">Show all <span aria-hidden="true">×</span></button></li>
+      {% endif %}
+      {% for option in lane_options %}{% if option.selected && !option.value.is_empty() %}
+      <li><button type="button" class="chip" data-clear="lane" aria-label="Remove lane filter {{ option.label }}">{{ option.label }} <span aria-hidden="true">×</span></button></li>
+      {% endif %}{% endfor %}
+      {% for option in assignee_options %}{% if option.selected && !option.value.is_empty() %}
+      <li><button type="button" class="chip" data-clear="assignee" aria-label="Remove assignee filter {{ option.label }}">{{ option.label }} <span aria-hidden="true">×</span></button></li>
+      {% endif %}{% endfor %}
+    </ul>
   </form>
 
   {% if let Some(empty) = empty %}
@@ -77,13 +105,13 @@
         <li role="none">
           <a class="ticket-card" href="/tickets/{{ card.id }}?{{ board_query }}" data-ticket="{{ card.id }}"
              draggable="true" tabindex="0" aria-describedby="board-keyboard-hint"{% if card.selected %} aria-current="true"{% endif %}>
-            {% if let Some(lane) = card.lane %}
-            <span class="ticket-card__lane" data-tone="{{ lane.tone }}">
-              <span class="ticket-card__lane-dot" aria-hidden="true"></span>{{ lane.name }}
-            </span>
-            {% endif %}
             <span class="ticket-card__title">{{ card.title }}</span>
             <span class="ticket-card__footer">
+              {% if let Some(lane) = card.lane %}
+              <span class="ticket-card__lane" data-tone="{{ lane.tone }}">
+                <span class="ticket-card__lane-dot" aria-hidden="true"></span>{{ lane.name }}
+              </span>
+              {% endif %}
               {% if let Some(reference) = card.reference %}
               <span class="ticket-card__ref">{{ reference }}</span>
               {% endif %}
@@ -107,9 +135,13 @@
         <input type="hidden" name="lane" value="{{ form.lane }}">
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">
-        <input class="board__add-input" name="title" placeholder="Add a card…"
-               aria-label="Add a card to {{ column.label }}" required>
-        <button type="submit" class="board__add-button">+ Add a card</button>
+        <details class="board__add-toggle">
+          <summary class="board__add-summary" aria-label="Add a card to {{ column.label }}">
+            <span aria-hidden="true">+</span>
+          </summary>
+          <input class="board__add-input" name="title" placeholder="Card title, then Enter"
+                 aria-label="Add a card to {{ column.label }}" required>
+        </details>
       </form>
     </section>
     {% endfor %}

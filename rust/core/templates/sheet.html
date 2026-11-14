@@ -36,9 +36,8 @@
 
         <div class="sheet__meta" role="group" aria-label="Ticket metadata">
           <label class="sheet__meta-field">
-            <span class="sheet__meta-label">
+            <span class="sheet__meta-label" title="Saves with Save">
               <span class="sheet__fact-label">Status</span>
-              <span class="sheet__meta-write">saves with Save</span>
             </span>
             <span class="sheet__status-row">
               <span class="sheet__status-dot" data-status="{{ status }}" aria-hidden="true"></span>
@@ -52,18 +51,16 @@
           </label>
 
           <label class="sheet__meta-field">
-            <span class="sheet__meta-label">
+            <span class="sheet__meta-label" title="Saves with Save">
               <span class="sheet__fact-label">Assignee</span>
-              <span class="sheet__meta-write">saves with Save</span>
             </span>
             <input class="sheet__select" form="sheet-save" name="assignee" aria-label="Assignee"
                    value="{{ assignee }}" placeholder="human or an agent name">
           </label>
 
           <div class="sheet__meta-field">
-            <span class="sheet__meta-label">
+            <span class="sheet__meta-label" title="Moves at once">
               <span class="sheet__fact-label">Lane</span>
-              <span class="sheet__meta-write">moves at once</span>
             </span>
             <form class="sheet__lane-move" method="post" action="/tickets/{{ id }}/lane"
                   hx-post="/tickets/{{ id }}/lane" hx-target="#board-root" hx-swap="outerHTML">
@@ -83,6 +80,42 @@
           </div>
         </div>
       </div>
+
+    {% if !blocked_by.is_empty() || blocked_reason.is_some() || !blocks.is_empty() %}
+      <section class="sheet__dependencies" aria-label="Dependencies">
+      {% if !blocked_by.is_empty() %}
+      <h2 class="sheet__section-title">Blocked by</h2>
+      <ul class="sheet__edges">
+        {% for edge in blocked_by %}
+        <li>
+          <a class="sheet__edge" href="/tickets/{{ edge.id }}?{{ board_query }}">
+            <span class="sheet__edge-ref">{{ edge.reference }}</span>
+            <span class="sheet__edge-title">{{ edge.title }}</span>
+            <span class="sheet__edge-status">{{ edge.status }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if let Some(reason) = blocked_reason %}
+      <p class="sheet__blocked-reason">{{ reason }}</p>
+      {% endif %}
+      {% if !blocks.is_empty() %}
+      <h2 class="sheet__section-title">Blocks</h2>
+      <ul class="sheet__edges">
+        {% for edge in blocks %}
+        <li>
+          <a class="sheet__edge" href="/tickets/{{ edge.id }}?{{ board_query }}">
+            <span class="sheet__edge-ref">{{ edge.reference }}</span>
+            <span class="sheet__edge-title">{{ edge.title }}</span>
+            <span class="sheet__edge-status">{{ edge.status }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+      {% endif %}
 
       <section class="sheet__description" aria-label="Description">
         <header class="sheet__section-header">
@@ -161,42 +194,9 @@
         </form>
       </section>
 
-      <details class="sheet__details" aria-label="Details">
-        <summary class="sheet__details-toggle">Details</summary>
+      <details class="sheet__details" aria-label="Manage lanes">
+        <summary class="sheet__details-toggle">Manage lanes</summary>
         <div class="sheet__details-body">
-          <section class="sheet__dependencies" aria-label="Dependencies">
-            {% if !blocked_by.is_empty() %}
-            <h2 class="sheet__section-title">Blocked by</h2>
-            <ul class="sheet__edges">
-              {% for edge in blocked_by %}
-              <li>
-                <a class="sheet__edge" href="/tickets/{{ edge.id }}?{{ board_query }}">
-                  <span class="sheet__edge-ref">{{ edge.reference }}</span>
-                  <span class="sheet__edge-title">{{ edge.title }}</span>
-                  <span class="sheet__edge-status">{{ edge.status }}</span>
-                </a>
-              </li>
-              {% endfor %}
-            </ul>
-            {% endif %}
-            {% if let Some(reason) = blocked_reason %}
-            <p class="sheet__blocked-reason">{{ reason }}</p>
-            {% endif %}
-            {% if !blocks.is_empty() %}
-            <h2 class="sheet__section-title">Blocks</h2>
-            <ul class="sheet__edges">
-              {% for edge in blocks %}
-              <li>
-                <a class="sheet__edge" href="/tickets/{{ edge.id }}?{{ board_query }}">
-                  <span class="sheet__edge-ref">{{ edge.reference }}</span>
-                  <span class="sheet__edge-title">{{ edge.title }}</span>
-                  <span class="sheet__edge-status">{{ edge.status }}</span>
-                </a>
-              </li>
-              {% endfor %}
-            </ul>
-            {% endif %}
-          </section>
 
           <section class="sheet__lanes" aria-label="Lanes">
             <header class="sheet__section-header">

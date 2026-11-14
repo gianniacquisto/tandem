@@ -12,7 +12,7 @@ body {
   min-width: var(--window-floor);
   background: var(--paper);
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-body);
   font-size: 13px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
@@ -282,11 +282,9 @@ body {
   background: var(--usage-series-primary);
 }
 
-@media (prefers-color-scheme: dark) {
-  .usage {
-    --usage-series-total: var(--accent);
-    --usage-series-cost: var(--ember);
-  }
+html[data-theme="dark"] .usage {
+  --usage-series-total: var(--accent);
+  --usage-series-cost: var(--ember);
 }
 
 .usage__graph {
@@ -559,10 +557,8 @@ body {
   background: var(--accent-deep);
 }
 
-@media (prefers-color-scheme: dark) {
-  .usage__meter::-webkit-meter-optimum-value {
-    background: var(--accent);
-  }
+html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
+  background: var(--accent);
 }
 
 .usage__roll > td {
@@ -591,7 +587,7 @@ body {
 
 .usage__session {
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
@@ -623,7 +619,7 @@ body {
   border-radius: 4px;
   background: var(--paper);
   color: var(--accent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   font-weight: 500;
   cursor: pointer;
@@ -1137,31 +1133,31 @@ body {
 }
 
 .ticket-card__lane[data-tone="moss"] {
-  --lane-tone: var(--moss);
+  --lane-tone: var(--tone-moss);
 }
 
 .ticket-card__lane[data-tone="ember"] {
-  --lane-tone: var(--ember);
+  --lane-tone: var(--tone-ember);
 }
 
 .ticket-card__lane[data-tone="accent"] {
-  --lane-tone: var(--accent);
+  --lane-tone: var(--tone-accent);
 }
 
 .ticket-card__lane[data-tone="sun"] {
-  --lane-tone: var(--sun);
+  --lane-tone: var(--tone-sun);
 }
 
 .ticket-card__lane[data-tone="skin"] {
-  --lane-tone: var(--skin);
+  --lane-tone: var(--tone-skin);
 }
 
 .ticket-card__lane[data-tone="hill"] {
-  --lane-tone: var(--hill);
+  --lane-tone: var(--tone-hill);
 }
 
 .ticket-card__lane[data-tone="sky"] {
-  --lane-tone: var(--sky);
+  --lane-tone: var(--tone-sky);
 }
 
 .ticket-card__title {
@@ -1415,7 +1411,7 @@ body {
   border: 0;
   background: transparent;
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.65;
   resize: none;
@@ -1771,7 +1767,7 @@ body {
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-control);
   background: var(--paper);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   white-space: pre-wrap;
 }
@@ -1837,7 +1833,7 @@ body {
 }
 
 .sheet__handle {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--ink-dim);
 }
@@ -2150,7 +2146,7 @@ body {
 
 .sheet__edge-ref {
   color: var(--ink-dim);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
 }
 
@@ -2192,7 +2188,7 @@ body {
 .sheet__source {
   overflow: auto;
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
 }
@@ -2461,7 +2457,7 @@ body {
 }
 
 .sheet__session-tool-name {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
 }
@@ -2476,7 +2472,7 @@ body {
   overflow: auto;
   max-height: 240px;
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -2530,7 +2526,7 @@ body {
   overflow: auto;
   border-radius: var(--radius-control);
   background: var(--parchment);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   white-space: pre-wrap;
 }
@@ -2539,7 +2535,7 @@ body {
   padding: 0 3px;
   border-radius: 3px;
   background: var(--sand);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
 }
 
@@ -2593,4 +2589,541 @@ body {
      accent the sheet uses for its own marks. */
   color: var(--ember-deep);
   text-decoration: underline dotted;
+}
+
+
+/* ==========================================================================
+ * The restyle layer: airy layout, large titles, quiet chrome, tinted columns.
+ * It follows the rules above and wins over them on purpose; the palette is
+ * whichever of the four token sets is on <html>, so none of it names a colour.
+ * ========================================================================== */
+
+:root {
+  --measure: 720px;
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Header: a quiet wordmark, text tabs and the theme menu. */
+.shell__header {
+  gap: 24px;
+  height: 52px;
+  padding: 0 28px;
+}
+
+.shell__wordmark {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.shell__tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.shell__tab {
+  padding: 4px 10px;
+  border-radius: var(--radius-control);
+  color: var(--ink-dim);
+  font-size: 13.5px;
+  text-decoration: none;
+}
+
+.shell__tab:hover {
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+.theme-menu {
+  margin-left: auto;
+}
+
+/* A menu: a summary button and a floating panel. */
+.menu {
+  position: relative;
+}
+
+.menu__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--space-control);
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  color: var(--ink-dim);
+  font-size: 13px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.menu__button::-webkit-details-marker {
+  display: none;
+}
+
+.menu__button:hover,
+.menu[open] > .menu__button {
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+.menu__button:focus-visible,
+.menu__option:focus-visible,
+.chip:focus-visible,
+.board__add-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.menu__icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.4;
+}
+
+.menu__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  display: flex;
+  min-width: 190px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  box-shadow: 0 8px 28px var(--shadow);
+}
+
+.filter-menu .menu__panel {
+  right: auto;
+  left: 0;
+  gap: 8px;
+  min-width: 230px;
+}
+
+.menu__title {
+  margin: 6px 6px 2px;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.menu__field {
+  display: flex;
+  flex-direction: column;
+}
+
+.menu__field .filter {
+  height: var(--space-control);
+  padding: 0 6px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.menu__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.menu__option {
+  display: block;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu__option:hover {
+  background: var(--parchment);
+}
+
+.menu__option[aria-pressed="true"] {
+  background: var(--parchment);
+  font-weight: 600;
+}
+
+.menu__option[aria-pressed="true"]::after {
+  content: " ✓";
+  color: var(--accent-deep);
+}
+
+/* The board bar: search first, one Filter menu, removable chips. */
+.tickets--board {
+  padding: 8px 28px 0;
+}
+
+.tickets__bar--board {
+  position: relative;
+  margin: 0 0 16px;
+  padding-bottom: 0;
+  border-bottom: 0;
+  gap: 8px 12px;
+}
+
+.search--board {
+  order: -1;
+  width: 260px;
+  padding: 0 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+}
+
+.search--board:focus-within,
+.search--board:has(.search__input:not(:placeholder-shown)) {
+  width: 260px;
+}
+
+.search--board:focus-within {
+  outline: 2px solid var(--accent);
+  box-shadow: none;
+}
+
+.search__input {
+  font-size: 13.5px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--wikilink-chip);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--sand);
+}
+
+/* The board: tinted columns, quiet heads. */
+.board {
+  gap: 14px;
+  padding-bottom: 24px;
+  grid-auto-columns: minmax(230px, 1fr);
+}
+
+.board__column {
+  max-height: calc(100vh - 170px);
+  padding: 0 8px 8px;
+  border-radius: var(--radius-card);
+  background: var(--col-tint, var(--parchment));
+}
+
+.board__column[data-status="backlog"] { --col-tint: var(--tint-backlog); }
+.board__column[data-status="on-hold"] { --col-tint: var(--tint-on-hold); }
+.board__column[data-status="ready"] { --col-tint: var(--tint-ready); }
+.board__column[data-status="in-progress"] { --col-tint: var(--tint-in-progress); }
+.board__column[data-status="in-review"] { --col-tint: var(--tint-in-review); }
+.board__column[data-status="done"] { --col-tint: var(--tint-done); }
+
+.board__column[data-targeted] {
+  background: var(--col-tint, var(--parchment));
+  outline: 2px solid var(--accent);
+}
+
+.board__column-head {
+  padding: 12px 6px 8px;
+  background: var(--col-tint, var(--parchment));
+}
+
+.board__column-title {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.board__column-count {
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+.board__cards {
+  gap: 8px;
+}
+
+.ticket-card {
+  gap: 8px;
+  padding: 10px 12px;
+  border-color: transparent;
+  border-radius: var(--radius-control);
+  background: var(--card);
+  box-shadow: 0 1px 2px var(--shadow);
+}
+
+.ticket-card:hover,
+.ticket-card[aria-current="true"] {
+  background: var(--card);
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+.ticket-card__title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.ticket-card__footer {
+  gap: 4px 10px;
+  font-size: 12px;
+}
+
+.ticket-card__lane {
+  align-self: auto;
+  padding: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+.ticket-card__lane-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.ticket-card__blocked {
+  padding: 0 6px;
+  border: var(--hairline) solid var(--ember-deep);
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.ticket-card__blocked::before {
+  content: "\26D4\FE0E ";
+}
+
+/* Add a card: one quiet plus per column; the input appears on click. */
+.board__add {
+  padding: 8px 0 0;
+}
+
+.board__add-summary {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-control);
+  color: var(--ink-dim);
+  font-size: 18px;
+  line-height: 28px;
+  text-align: center;
+  list-style: none;
+  cursor: pointer;
+}
+
+.board__add-summary::-webkit-details-marker {
+  display: none;
+}
+
+.board__add-summary:hover {
+  background: var(--card);
+  color: var(--ink);
+}
+
+.board__add-toggle[open] > .board__add-summary {
+  display: none;
+}
+
+.board__add-input {
+  padding: 8px 10px;
+  border-color: var(--accent);
+  background: var(--card);
+  font-size: 13.5px;
+}
+
+/* The ticket sheet: a large title over a properties block. */
+.sheet {
+  width: 640px;
+}
+
+.sheet__sticky {
+  gap: 8px;
+}
+
+.sheet__title {
+  border-color: transparent;
+  background: transparent;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.sheet__title:hover,
+.sheet__title:focus {
+  background: var(--parchment);
+}
+
+.sheet__meta {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.sheet__meta-field {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.sheet__fact-label {
+  color: var(--ink-dim);
+  font-size: 13px;
+}
+
+.sheet__select,
+.sheet__field {
+  height: 28px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 13.5px;
+}
+
+.sheet__select:hover,
+.sheet__select:focus,
+.sheet__field:hover,
+.sheet__field:focus {
+  border-color: var(--line);
+  background: var(--paper);
+}
+
+.sheet__dependencies {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 4px 8px;
+}
+
+.sheet__dependencies .sheet__section-title {
+  font-size: 13px;
+}
+
+.sheet__details {
+  border: 0;
+  padding: 0;
+}
+
+.sheet__details-toggle {
+  font-size: 12.5px;
+}
+
+/* Notes: an icon and a properties block over the page, a large first title. */
+.bikeshed__page {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 32px 40px 80px;
+}
+
+.page-head {
+  margin-bottom: 8px;
+}
+
+.page-head__icon {
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-card);
+  background: var(--parchment);
+}
+
+.page-head__icon svg {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: var(--ink-dim);
+  stroke-width: 1.2;
+}
+
+.props {
+  margin: 12px 0 0;
+  padding: 0 0 12px;
+  border-bottom: var(--hairline) solid var(--sand);
+}
+
+.props__row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  min-height: 26px;
+  font-size: 13px;
+}
+
+.props__row dt {
+  color: var(--ink-dim);
+}
+
+.props__row dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#note-panel h1:first-child {
+  margin: 16px 0 12px;
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.bikeshed__tree {
+  flex-basis: 280px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
+
+.ticket-card,
+.ticket-card * {
+  color: inherit;
+  text-decoration: none;
+}
+
+.ticket-card__title {
+  color: var(--ink);
+}
+
+.ticket-card__footer {
+  color: var(--ink-dim);
+}
+
+.ticket-card__blocked,
+.ticket-card__assignee--human {
+  color: var(--ember-deep);
 }

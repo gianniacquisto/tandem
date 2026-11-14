@@ -237,7 +237,7 @@ async fn get_board_renders_six_status_columns_in_order_and_empty_copy() {
         cursor += at + marker.len();
         assert!(body.contains(label), "the {key} column carries its label");
         assert!(
-            body.contains("+ Add a card"),
+            body.contains(&format!("aria-label=\"Add a card to {label}\"")),
             "every column carries its add"
         );
     }

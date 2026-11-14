@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Tandem</title>
+    <script src="/static/theme.js"></script>
     <link rel="stylesheet" href="/static/tokens.css">
     <link rel="stylesheet" href="/static/app.css">
     <script src="/static/htmx.min.js" defer></script>
@@ -20,6 +21,20 @@
         <a class="shell__tab" href="/board">Board</a>
         <a class="shell__tab" href="/notes">Notes</a>
       </nav>
+      <details class="menu theme-menu">
+        <summary class="menu__button" aria-label="Appearance and style">
+          <svg class="menu__icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 2v12"/></svg>
+        </summary>
+        <div class="menu__panel" role="group" aria-label="Theme">
+          <p class="menu__title">Style</p>
+          <button type="button" class="menu__option" data-theme-style="neutral" aria-pressed="true">Neutral</button>
+          <button type="button" class="menu__option" data-theme-style="tandem" aria-pressed="false">Tandem</button>
+          <p class="menu__title">Appearance</p>
+          <button type="button" class="menu__option" data-theme-appearance="system" aria-pressed="true">System</button>
+          <button type="button" class="menu__option" data-theme-appearance="light" aria-pressed="false">Light</button>
+          <button type="button" class="menu__option" data-theme-appearance="dark" aria-pressed="false">Dark</button>
+        </div>
+      </details>
     </header>
     <main class="shell__body shell__body--bleed">
       {{ body }}

@@ -47,6 +47,10 @@ pub(super) async fn static_asset(Path(path): Path<String>) -> Response {
             "text/javascript; charset=utf-8",
             include_bytes!("static/sse.js"),
         )),
+        "theme.js" => Some((
+            "text/javascript; charset=utf-8",
+            include_bytes!("static/theme.js"),
+        )),
         "tandem.js" => Some((
             "text/javascript; charset=utf-8",
             include_bytes!("static/tandem.js"),

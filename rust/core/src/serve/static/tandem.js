@@ -317,3 +317,42 @@
       });
   });
 })();
+
+// MARK: - The board bar's filter chips and the column add-card reveal
+(function () {
+  // A chip clears one filter: the control goes back to its empty value and the
+  // form's own `change` trigger redraws the board.
+  document.addEventListener('click', function (event) {
+    var chip = event.target.closest ? event.target.closest('.chip[data-clear]') : null;
+    if (!chip) return;
+    var form = chip.closest('form');
+    var field = form && form.elements[chip.getAttribute('data-clear')];
+    if (!field) return;
+    if (field.type === 'checkbox') field.checked = false;
+    else field.value = '';
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  // Opening a column's add-card affordance puts the cursor in its input;
+  // Escape folds it away again without a request.
+  document.addEventListener('toggle', function (event) {
+    var details = event.target;
+    if (!details.classList || !details.classList.contains('board__add-toggle')) return;
+    if (details.open) {
+      var input = details.querySelector('input[name="title"]');
+      if (input) input.focus();
+    }
+  }, true);
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') return;
+    var input = event.target;
+    var details = input.closest ? input.closest('.board__add-toggle') : null;
+    if (!details) return;
+    event.stopPropagation();
+    input.value = '';
+    details.removeAttribute('open');
+    var summary = details.querySelector('summary');
+    if (summary) summary.focus();
+  }, true);
+})();
