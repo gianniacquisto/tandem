@@ -56,7 +56,9 @@ jobs:
       - name: Resolve the toolchain pin
         id: toolchain
         shell: bash
-        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
 
       - name: Cache cargo and target
         uses: actions/cache@v4
@@ -66,7 +68,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             rust/target
-          key: ${{ runner.os }}-build-macos-release-${{ steps.toolchain.outputs.channel }}-${{ hashFiles('rust/Cargo.lock') }}
+          key: ${{ runner.os }}-build-macos-release-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
           restore-keys: |
             ${{ runner.os }}-build-macos-release-${{ steps.toolchain.outputs.channel }}-
 
@@ -127,7 +129,9 @@ jobs:
       - name: Resolve the toolchain pin
         id: toolchain
         shell: bash
-        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
 
       - name: Cache cargo and target
         uses: actions/cache@v4
@@ -137,7 +141,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             rust/target
-          key: ${{ runner.os }}-build-linux-release-${{ steps.toolchain.outputs.channel }}-${{ hashFiles('rust/Cargo.lock') }}
+          key: ${{ runner.os }}-build-linux-release-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
           restore-keys: |
             ${{ runner.os }}-build-linux-release-${{ steps.toolchain.outputs.channel }}-
 
@@ -196,7 +200,9 @@ jobs:
       - name: Resolve the toolchain pin
         id: toolchain
         shell: bash
-        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
 
       - name: Cache cargo and target
         uses: actions/cache@v4
@@ -206,7 +212,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             rust/target
-          key: ${{ runner.os }}-build-windows-release-${{ steps.toolchain.outputs.channel }}-${{ hashFiles('rust/Cargo.lock') }}
+          key: ${{ runner.os }}-build-windows-release-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
           restore-keys: |
             ${{ runner.os }}-build-windows-release-${{ steps.toolchain.outputs.channel }}-
 

@@ -8,12 +8,12 @@ name: Rust
 # `clippy (windows-latest)`, `test (macos-latest)`, `test (ubuntu-latest)`,
 # `test (windows-latest)`, `contention (windows-latest)` and, from
 # `release.yml`, `release`. Why each exists:
-#   fmt         formatting and the retired-path scan, both OS-independent, once.
+#   fmt         formatting, which is OS-independent, once.
 #   clippy      per OS, because `cfg(windows)`, `cfg(unix)` and `cfg(target_os)`
 #               code makes its output platform-dependent.
 #   test        the full suite on every OS (`cargo test` compiles the lib, the
 #               bins and the tests, so no separate build gate), plus the
-#               installer suite off Windows.
+#               installer suite off Windows and the retired-path scan on macOS.
 #   contention  the ten-run loop over the Windows-flaky store cases.
 # They have to exist on every pull request to be worth requiring: a required
 # check that a path-filtered workflow never creates reads "Expected" forever and
@@ -65,15 +65,6 @@ jobs:
       - name: "Gate: cargo fmt --check"
         run: cargo fmt --all --check
 
-      - name: "Gate: the tree names no retired path"
-        # RET-91's scan lived in `app.yml`, which CUT-15 deleted with the
-        # Electron tree, and had no caller after it. Once per run: it reads the
-        # tracked tree, not the platform's build. The third-party notice check
-        # rides `cargo test` (`rust/core/tests/notice.rs`), so a vendored asset
-        # the notice does not name fails the `test` jobs.
-        working-directory: ${{ github.workspace }}
-        run: bash Scripts/check-retired-paths.sh
-
   clippy:
     name: clippy (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -92,7 +83,9 @@ jobs:
       - name: Resolve the toolchain pin
         id: toolchain
         shell: bash
-        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore the cargo and target cache
         id: cache
@@ -103,7 +96,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             rust/target
-          key: ${{ runner.os }}-clippy-${{ steps.toolchain.outputs.channel }}-${{ hashFiles('rust/Cargo.lock') }}
+          key: ${{ runner.os }}-clippy-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
           restore-keys: |
             ${{ runner.os }}-clippy-${{ steps.toolchain.outputs.channel }}-
 
@@ -139,7 +132,9 @@ jobs:
       - name: Resolve the toolchain pin
         id: toolchain
         shell: bash
-        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore the cargo and target cache
         id: cache
@@ -150,12 +145,22 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             rust/target
-          key: ${{ runner.os }}-test-${{ steps.toolchain.outputs.channel }}-${{ hashFiles('rust/Cargo.lock') }}
+          key: ${{ runner.os }}-test-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
           restore-keys: |
             ${{ runner.os }}-test-${{ steps.toolchain.outputs.channel }}-
 
       - name: "Gate: cargo test"
         run: cargo test
+
+      - name: "Gate: the tree names no retired path"
+        # RET-91's scan lived in `app.yml`, which CUT-15 deleted with the
+        # Electron tree, and had no caller after it. Once per run: it reads the
+        # tracked tree, not the platform's build, so the macOS `test` leg runs
+        # it once, with the installer suite below. The third-party notice check
+        # rides `cargo test` (`rust/core/tests/notice.rs`) on every leg.
+        if: runner.os == 'macOS'
+        working-directory: ${{ github.workspace }}
+        run: bash Scripts/check-retired-paths.sh
 
       - name: "Gate: the installer and stager suites"
         # TAN-253 wrote the suite and nothing ran it in CI, so a change to
@@ -194,7 +199,9 @@ jobs:
       - name: Resolve the toolchain pin
         id: toolchain
         shell: bash
-        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore the cargo and target cache
         id: cache
@@ -205,7 +212,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             rust/target
-          key: ${{ runner.os }}-contention-${{ steps.toolchain.outputs.channel }}-${{ hashFiles('rust/Cargo.lock') }}
+          key: ${{ runner.os }}-contention-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
           restore-keys: |
             ${{ runner.os }}-contention-${{ steps.toolchain.outputs.channel }}-
 
