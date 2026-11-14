@@ -327,4 +327,13 @@
     var input = details.querySelector('input[name="title"]');
     if (input) input.focus();
   }, true);
+
+  // The daily note is today's page by the reader's own calendar, not the server's.
+  document.addEventListener('submit', function (event) {
+    var form = event.target;
+    if (!form.classList || !form.classList.contains('tree__daily')) return;
+    var now = new Date();
+    var pad = function (value) { return (value < 10 ? '0' : '') + value; };
+    form.elements.date.value = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  }, true);
 })();

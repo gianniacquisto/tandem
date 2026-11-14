@@ -73,6 +73,16 @@
       <div class="tree__vault" data-drop-into="">
         <span class="tree__vault-name">Bikeshed</span>
       </div>
+      <form class="tree__daily" method="post" action="/notes/daily" hx-post="/notes/daily"
+            hx-target="#notes-root" hx-swap="outerHTML">
+        <input type="hidden" name="project" value="{{ active_project }}">
+        <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+        <input type="hidden" name="date" value="">
+        <button class="tree__create-summary tree__daily-button" type="submit">
+          <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/></svg>Today's note
+        </button>
+      </form>
+
       <details class="tree__create">
         <summary class="tree__create-summary">
           <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>New

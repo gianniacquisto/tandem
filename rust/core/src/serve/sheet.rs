@@ -72,7 +72,7 @@ fn utc_stamp(seconds: i64) -> String {
 
 /// Howard Hinnant's `civil_from_days`: the date a day count from 1970-01-01
 /// names, proleptic Gregorian.
-fn civil_from_days(days: i64) -> (i64, i64, i64) {
+pub(super) fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
     let doe = z - era * 146_097;

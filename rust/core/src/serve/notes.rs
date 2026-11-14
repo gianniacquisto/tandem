@@ -517,6 +517,54 @@ async fn note_create_thing(
     }
 }
 
+/// A well-formed `YYYY-MM-DD`: the only shape a daily note's name may take, so a
+/// client-supplied date can never steer the path.
+fn is_iso_date(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 10
+        && bytes.iter().enumerate().all(|(index, byte)| match index {
+            4 | 7 => *byte == b'-',
+            _ => byte.is_ascii_digit(),
+        })
+}
+
+/// Today in UTC, the fallback when the browser sends no date of its own.
+fn utc_today() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    let days = i64::try_from(seconds / 86_400).unwrap_or(0);
+    let (year, month, day) = super::sheet::civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+/// The daily note: today's page under `daily/`, created on first use and opened
+/// on every use after. The browser names its own local date.
+pub(super) async fn note_daily(
+    context: Context,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    let Some(mut params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let sent = field(&params, "date").to_string();
+    let date = if is_iso_date(&sent) {
+        sent
+    } else {
+        utc_today()
+    };
+    let path = format!("daily/{date}.md");
+    let vault = context.bikeshed();
+    // An existing page is the common case and not an error: open it.
+    let opened = match vault.create(&path) {
+        Ok(read) => read.value,
+        Err(_) => path,
+    };
+    params.insert("path".to_string(), opened);
+    notes_response(&context, &params, None, None, None, &headers)
+}
+
 pub(super) async fn note_move(
     context: Context,
     headers: HeaderMap,

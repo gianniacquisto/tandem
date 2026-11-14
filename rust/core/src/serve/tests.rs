@@ -1361,6 +1361,36 @@ async fn post_notes_save_writes_when_hash_matches_and_renders_mine_theirs_confli
 }
 
 #[tokio::test]
+async fn post_notes_daily_creates_the_days_page_once_and_opens_it_after() {
+    let sandbox = Sandbox::new("notes-daily");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    let app = router(context(store));
+
+    let (status, _, body) = send(&app, form_request("/notes/daily", "date=2026-11-14")).await;
+    assert_eq!(status, StatusCode::OK, "the daily note answers: {body}");
+    assert!(
+        notes.read("daily/2026-11-14.md").is_ok(),
+        "today's page is created"
+    );
+    assert!(body.contains("2026-11-14"), "the page opens: {body}");
+
+    let (status, _, again) = send(&app, form_request("/notes/daily", "date=2026-11-14")).await;
+    assert_eq!(status, StatusCode::OK, "a second press opens it: {again}");
+    assert!(
+        !again.contains("shell__error"),
+        "no error on reopen: {again}"
+    );
+
+    let (status, _, _) = send(&app, form_request("/notes/daily", "date=../../etc")).await;
+    assert_eq!(status, StatusCode::OK, "a malformed date falls back");
+    assert!(
+        notes.read("daily/../../etc.md").is_err(),
+        "a client date never steers the path"
+    );
+}
+
+#[tokio::test]
 async fn post_notes_create_create_folder_and_move_update_vault_and_refuse_invalid_reparent() {
     let sandbox = Sandbox::new("notes-move");
     let store = sandbox.store();

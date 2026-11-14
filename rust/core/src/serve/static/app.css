@@ -3606,3 +3606,16 @@ body {
   padding-top: 16px;
   border-top: var(--hairline) solid var(--sand);
 }
+
+.tree__daily {
+  margin: 0;
+}
+
+.tree__daily-button {
+  box-sizing: border-box;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
