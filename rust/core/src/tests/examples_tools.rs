@@ -5,7 +5,9 @@
 //! `session_*` and `note_capture` verbs were the case) makes the prompt order
 //! a call that cannot happen. This suite reads every markdown file under
 //! `examples/`, collects each snake_case word that starts like a tool family,
-//! and requires it to be a registered tool or a named non-tool.
+//! and requires it to be a registered tool or a named non-tool. The root
+//! `AGENTS.md` is scanned too. The scan reads tool names only: a stale
+//! parameter name, or a retired tool outside the families above, passes.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -68,6 +70,7 @@ fn every_tool_an_example_names_is_served() {
 
     let mut files = Vec::new();
     markdown_under(&root().join("examples"), &mut files);
+    files.push(root().join("AGENTS.md"));
     assert!(!files.is_empty(), "the examples folder holds markdown");
 
     let mut unknown = Vec::new();

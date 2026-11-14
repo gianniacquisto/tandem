@@ -8,7 +8,7 @@ Each tier works without the next.
 
 | Tier | Copy | You get |
 | --- | --- | --- |
-| 1. Memory | `AGENTS.md`, `skills/tandem-memory/` | Orient from the board and notes, leave a handoff comment. About 3k tokens a session. |
+| 1. Memory | `AGENTS.md`, `skills/tandem-memory/` | Orient from the board and notes, leave a handoff comment. The smallest set: about 4 KB of instructions. |
 | 2. Workflow | `skills/tandem-refine`, `skills/tandem-build`, `skills/tandem-sprint`, `agents/builder.md`, `agents/refiner.md` | Refine, build and run a batch of tickets. |
 | 3. Review | `agents/reviewer.md`, `skills/review-lenses/`, `agents/{architect,security,ux}.md` | A merge gate read through named lenses. |
 
@@ -24,7 +24,7 @@ Also here: `skills/tandem-team` (a roster template: replace it with your own), `
 
    `TANDEM_HOME` sets the home (default `~/.tandem`). `TANDEM_AGENT` names the actor a write records; `self` expands to it.
 2. **Copy what you want.** Put `AGENTS.md` where your host reads global instructions and the skill folders where it reads skills, or symlink them to this checkout to track it. Agents use the MCP tools only; `tandem-cli` is for you and your scripts.
-3. **Check it.** `tandem-cli doctor` prints one JSON object (`home`, `store`, `bikeshed`) and exits `0` when healthy.
+3. **Check it.** `tandem-cli doctor` prints `{ok, checks}` with the checks `home`, `store` and `bikeshed`, and exits `0` when healthy.
 
 ## Where things live
 

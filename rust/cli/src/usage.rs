@@ -1,7 +1,7 @@
 //! The `--help` texts, ported byte for byte from the Swift CLI (PRT-9).
 //!
-//! `--help` carries the grammar only; the meaning lives in the `tandem` skill, so
-//! help and the skill are not two homes for the same contract. The texts are
+//! `--help` carries the grammar only; the meaning lives in `docs/cli.md`, so
+//! help and the doc are not two homes for the same contract. The texts are
 //! pinned by the goldens and by the README test below: a line that moves here is
 //! a gate that fails, which is the point.
 //!
