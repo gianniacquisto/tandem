@@ -4,7 +4,8 @@ Thanks for stopping by. Tandem is an MIT-licensed board for you and your
 AI coding agents that ships as a macOS app, and contributions are welcome.
 This file is the on-ramp: what
 you need, how to set the repo up, which checks your pull request must pass, and
-the conventions the project keeps. The tracker is the Tandem board, not GitHub issues.
+the conventions the project keeps. The short version lives in the README's
+[How to contribute](README.md#how-to-contribute); this file is the full one.
 
 ## Prerequisites
 
