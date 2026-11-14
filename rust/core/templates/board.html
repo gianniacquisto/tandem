@@ -112,6 +112,30 @@
       {% endfor %}
     </div>
   </details>
+
+  <details class="menu new-menu">
+    <summary class="menu__button menu__button--primary" aria-label="New ticket">
+      <svg class="menu__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>New
+    </summary>
+    <div class="menu__panel menu__panel--form">
+      <form class="new-form" method="post" action="/tickets"
+            hx-post="/tickets" hx-target="#board-root" hx-swap="outerHTML">
+        <input type="hidden" name="expected_revision" value="{{ revision }}">
+        <input type="hidden" name="project" value="{{ form.project }}">
+        <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
+        <input type="hidden" name="lane" value="{{ form.lane }}">
+        <input type="hidden" name="assignee" value="{{ form.assignee }}">
+        <input type="hidden" name="text" value="{{ form.text }}">
+        <input class="new-form__title" name="title" placeholder="Ticket title" aria-label="Ticket title" required>
+        <select class="new-form__status" name="status" aria-label="Column">
+          {% for column in columns %}
+          <option value="{{ column.status }}">{{ column.label }}</option>
+          {% endfor %}
+        </select>
+        <button class="new-form__create" type="submit">Create</button>
+      </form>
+    </div>
+  </details>
   </div>
 
   {% if let Some(empty) = empty %}
@@ -160,23 +184,6 @@
         </li>
         {% endfor %}
       </ul>
-      <form class="board__add" method="post" action="/tickets"
-            hx-post="/tickets" hx-target="#board-root" hx-swap="outerHTML">
-        <input type="hidden" name="status" value="{{ column.status }}">
-        <input type="hidden" name="expected_revision" value="{{ revision }}">
-        <input type="hidden" name="project" value="{{ form.project }}">
-        <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
-        <input type="hidden" name="lane" value="{{ form.lane }}">
-        <input type="hidden" name="assignee" value="{{ form.assignee }}">
-        <input type="hidden" name="text" value="{{ form.text }}">
-        <details class="board__add-toggle">
-          <summary class="board__add-summary" aria-label="Add a card to {{ column.label }}">
-            <span aria-hidden="true">+</span>
-          </summary>
-          <input class="board__add-input" name="title" placeholder="Card title, then Enter"
-                 aria-label="Add a card to {{ column.label }}" required>
-        </details>
-      </form>
     </section>
     {% endfor %}
   </div>

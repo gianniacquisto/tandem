@@ -3050,24 +3050,6 @@ body {
   margin-bottom: 8px;
 }
 
-.page-head__icon {
-  display: inline-flex;
-  width: 56px;
-  height: 56px;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-card);
-  background: var(--parchment);
-}
-
-.page-head__icon svg {
-  width: 30px;
-  height: 30px;
-  fill: none;
-  stroke: var(--ink-dim);
-  stroke-width: 1.2;
-}
-
 .props {
   margin: 12px 0 0;
   padding: 0 0 12px;
@@ -3092,12 +3074,6 @@ body {
   overflow-wrap: anywhere;
 }
 
-#note-panel h1:first-child {
-  margin: 16px 0 12px;
-  font-size: 36px;
-  font-weight: 700;
-  line-height: 1.15;
-}
 
 .bikeshed__tree {
   flex-basis: 280px;
@@ -3381,4 +3357,252 @@ body {
 
 .lane-form {
   flex: none;
+}
+
+/* New: the one create button, top right of the board. */
+.new-menu {
+  margin-left: auto;
+}
+
+.menu__button--primary {
+  background: var(--accent);
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.menu__button--primary:hover,
+.new-menu[open] > .menu__button--primary {
+  background: var(--accent-deep);
+  color: var(--paper);
+}
+
+.new-menu .menu__panel {
+  min-width: 300px;
+}
+
+.new-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.new-form__title,
+.new-form__status {
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+
+.new-form__create {
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: var(--paper);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* The description is one editable box. */
+.sheet__description-field {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 140px;
+  padding: 10px 12px;
+  border: var(--hairline) solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.sheet__description-field:hover {
+  border-color: var(--line);
+}
+
+.sheet__description-field:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: var(--paper);
+}
+
+
+/* Notes: a sidebar of quiet rows with icons, a page with a large title. */
+.bikeshed__tree {
+  flex-basis: 260px;
+  padding: 8px 6px;
+  border-right: 0;
+  background: var(--parchment);
+}
+
+.bikeshed__tree > .focus {
+  margin: 0 0 8px;
+  padding: 0 4px;
+}
+
+.bikeshed__tree .focus__all {
+  height: 28px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.tree__vault {
+  padding: 8px 8px 4px;
+}
+
+.tree__vault-name {
+  color: var(--ink-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tree__create {
+  margin: 0 0 4px;
+}
+
+.tree__create-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--ink-dim);
+  list-style: none;
+  cursor: pointer;
+}
+
+.tree__create-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tree__create-summary:hover,
+.tree__create[open] > .tree__create-summary {
+  background: var(--sand);
+  color: var(--ink);
+}
+
+.tree__create .tree__prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 4px;
+}
+
+.tree__icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--ink-dim);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.tree__row {
+  min-height: 28px;
+  border-radius: 6px;
+}
+
+.tree__label {
+  height: 28px;
+  gap: 6px;
+  padding-right: 8px;
+  border-radius: 6px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.tree__row:hover,
+.tree__row[aria-selected="true"] {
+  background: var(--sand);
+}
+
+.tree__row[aria-selected="true"] .tree__label {
+  background: transparent;
+  font-weight: 600;
+}
+
+.tree__twisty {
+  width: 12px;
+}
+
+.bikeshed__breadcrumb {
+  border-bottom: 0;
+}
+
+.bikeshed__breadcrumb-inner {
+  max-width: 900px;
+  padding: 0 48px;
+}
+
+.bikeshed__crumb {
+  color: var(--ink-dim);
+  font-size: 13.5px;
+}
+
+.bikeshed__crumb--current {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.bikeshed__mode {
+  padding: 4px 10px;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.bikeshed__mode:hover {
+  background: var(--sand);
+}
+
+.bikeshed__page {
+  max-width: 900px;
+  padding: 40px 48px 96px;
+}
+
+.page-head {
+  margin-bottom: 24px;
+}
+
+.page-title {
+  margin: 0 0 16px;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.props {
+  margin: 0;
+  padding: 0 0 12px;
+  border-bottom: var(--hairline) solid var(--sand);
+}
+
+#note-panel {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+#note-panel h1,
+#note-panel h2,
+#note-panel h3 {
+  margin: 1.4em 0 0.4em;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.note-footer {
+  margin-top: 48px;
+  padding-top: 16px;
+  border-top: var(--hairline) solid var(--sand);
 }

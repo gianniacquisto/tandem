@@ -48,10 +48,7 @@ struct SheetView {
     assignee: String,
     status_options: Vec<SheetStatusOption>,
     lane_options: Vec<LaneOption>,
-    description_empty: bool,
-    description_html: askama::filters::Safe<String>,
-    description_source: String,
-    description_refusal: Option<String>,
+    description: String,
     comment_refusal: Option<String>,
     notice: Option<String>,
     comments: Vec<SheetComment>,
@@ -152,7 +149,6 @@ fn render_sheet(
     id: &str,
     filters: &Filters,
     notice: Option<String>,
-    description_refusal: Option<String>,
     comment_refusal: Option<String>,
 ) -> Result<SheetView, String> {
     let board = context.board();
@@ -162,9 +158,7 @@ fn render_sheet(
         .map_err(|error| error.message())?;
     let (lanes, _) = board.lanes_snapshot().map_err(|error| error.message())?;
 
-    let description_source = ticket.description.clone().unwrap_or_default();
-    let description_blocks = TicketMarkdown::blocks(ticket.description.as_deref());
-    let description_html = markdown::document(&description_blocks);
+    let description = ticket.description.clone().unwrap_or_default();
 
     let comments = comments
         .into_iter()
@@ -205,10 +199,7 @@ fn render_sheet(
         assignee: ticket.assignee.clone().unwrap_or_default(),
         status_options,
         lane_options: sheet_lane_options(&ticket, &lanes),
-        description_empty: description_blocks.is_empty(),
-        description_html: askama::filters::Safe(description_html),
-        description_source,
-        description_refusal,
+        description,
         comment_refusal,
         notice,
         comments,
@@ -227,18 +218,10 @@ fn sheet_response(
     id: &str,
     filters: &Filters,
     notice: Option<String>,
-    description_refusal: Option<String>,
     comment_refusal: Option<String>,
     headers: &HeaderMap,
 ) -> Response {
-    let view = match render_sheet(
-        context,
-        id,
-        filters,
-        notice,
-        description_refusal,
-        comment_refusal,
-    ) {
+    let view = match render_sheet(context, id, filters, notice, comment_refusal) {
         Ok(view) => view,
         Err(error) => return bad_request(&error),
     };
@@ -282,7 +265,7 @@ pub(super) async fn ticket_page(
     headers: HeaderMap,
 ) -> Response {
     let filters = Filters::parse(&params);
-    sheet_response(&context, &id, &filters, None, None, None, &headers)
+    sheet_response(&context, &id, &filters, None, None, &headers)
 }
 
 pub(super) async fn save_ticket(
@@ -306,7 +289,6 @@ pub(super) async fn save_ticket(
             &filters,
             Some(CONFLICT_NOTICE.to_string()),
             None,
-            None,
             &headers,
         );
     }
@@ -317,7 +299,6 @@ pub(super) async fn save_ticket(
             &id,
             &filters,
             Some(crate::domain::DomainError::EmptyTitle.message()),
-            None,
             None,
             &headers,
         );
@@ -331,85 +312,32 @@ pub(super) async fn save_ticket(
                 &filters,
                 Some(error.message()),
                 None,
-                None,
                 &headers,
             );
         }
     };
     let assignee = field(&params, "assignee");
+    let description = if params.contains_key("description") {
+        Edit::Set(Some(field(&params, "description")))
+    } else {
+        Edit::Unchanged
+    };
     let outcome = context.board().set(
         &id,
         SetFields {
             title: Edit::Set(title),
             status: Edit::Set(status),
             assignee: Edit::Set(Some(assignee)),
+            description,
             ..SetFields::default()
         },
     );
     match outcome {
-        Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &filters, None, None, &headers),
         Err(error) => sheet_response(
             &context,
             &id,
             &filters,
-            Some(error.message()),
-            None,
-            None,
-            &headers,
-        ),
-    }
-}
-
-pub(super) async fn append_description(
-    context: Context,
-    Path(id): Path<String>,
-    headers: HeaderMap,
-    form: Result<Form<HashMap<String, String>>, FormRejection>,
-) -> Response {
-    let Some(params) = form_params(form) else {
-        return bad_request("the form could not be read");
-    };
-    let filters = Filters::parse_board_fields(&params);
-    let expected = match expected_revision(&params) {
-        Ok(revision) => revision,
-        Err(message) => return bad_request(&message),
-    };
-    if expected != context.revision() {
-        return sheet_response(
-            &context,
-            &id,
-            &filters,
-            Some(CONFLICT_NOTICE.to_string()),
-            None,
-            None,
-            &headers,
-        );
-    }
-    let addition = field(&params, "addition");
-    if addition.trim().is_empty() {
-        return sheet_response(
-            &context,
-            &id,
-            &filters,
-            None,
-            Some(crate::domain::DomainError::EmptyDescriptionBody.message()),
-            None,
-            &headers,
-        );
-    }
-    match context.board().set(
-        &id,
-        SetFields {
-            append_description: Edit::Set(addition),
-            ..SetFields::default()
-        },
-    ) {
-        Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
-        Err(error) => sheet_response(
-            &context,
-            &id,
-            &filters,
-            None,
             Some(error.message()),
             None,
             &headers,
@@ -434,19 +362,17 @@ pub(super) async fn add_comment(
             &id,
             &filters,
             None,
-            None,
             Some(crate::domain::DomainError::EmptyCommentBody.message()),
             &headers,
         );
     }
     match context.board().comment_write(&id, body) {
-        Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &filters, None, None, &headers),
         Err(error) => sheet_response(
             &context,
             &id,
             &filters,
             Some(error.message()),
-            None,
             None,
             &headers,
         ),
@@ -474,7 +400,6 @@ pub(super) async fn move_to_lane(
             &filters,
             Some(CONFLICT_NOTICE.to_string()),
             None,
-            None,
             &headers,
         );
     }
@@ -488,13 +413,12 @@ pub(super) async fn move_to_lane(
         .board()
         .move_ticket(&id, lane.as_deref(), usize::MAX)
     {
-        Ok(_) => sheet_response(&context, &id, &filters, None, None, None, &headers),
+        Ok(_) => sheet_response(&context, &id, &filters, None, None, &headers),
         Err(error) => sheet_response(
             &context,
             &id,
             &filters,
             Some(error.message()),
-            None,
             None,
             &headers,
         ),

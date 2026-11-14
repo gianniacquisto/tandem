@@ -237,8 +237,8 @@ async fn get_board_renders_six_status_columns_in_order_and_empty_copy() {
         cursor += at + marker.len();
         assert!(body.contains(label), "the {key} column carries its label");
         assert!(
-            body.contains(&format!("aria-label=\"Add a card to {label}\"")),
-            "every column carries its add"
+            body.contains(&format!("<option value=\"{key}\">{label}</option>")),
+            "the New form offers every column"
         );
     }
     assert!(
@@ -974,17 +974,11 @@ async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
         "name=\"assignee\"",
         "name=\"lane\"",
         "Café alpha",
-        "markdown__heading",
-        "Why",
-        "<strong>bold</strong>",
-        "markdown__inline-code",
-        "markdown__list",
+        "sheet__description-field",
+        "## Why",
         "A first comment",
-        "sheet__details",
-        "<summary",
         "Blocked by",
         "Blocks",
-        "New cycle lane",
     ] {
         assert!(body.contains(marker), "the sheet draws {marker}: {body}");
     }
@@ -1045,9 +1039,8 @@ async fn post_ticket_sheet_saves_changes_and_refuses_stale_revision() {
 }
 
 #[tokio::test]
-async fn post_ticket_description_appends_with_blank_line_and_refuses_empty_addition_with_domain_wording()
- {
-    let sandbox = Sandbox::new("sheet-append");
+async fn saving_the_sheet_replaces_the_description_with_the_edited_box() {
+    let sandbox = Sandbox::new("sheet-description");
     let store = sandbox.store();
     let board = setup_board(&store);
     let ticket = by_title(&board, "Café alpha");
@@ -1067,48 +1060,27 @@ async fn post_ticket_description_appends_with_blank_line_and_refuses_empty_addit
     let (status, _, answer) = send(
         &app,
         form_request(
-            &format!("/tickets/{id}/description"),
-            &format!("addition=Second&expected_revision={revision}"),
+            &format!("/tickets/{id}"),
+            &format!(
+                "title=Caf%C3%A9+alpha&status={}&assignee=&description=Rewritten+body&expected_revision={revision}",
+                ticket.status.as_str()
+            ),
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "the append answers: {answer}");
+    assert_eq!(status, StatusCode::OK, "the save answers: {answer}");
     assert_eq!(
         board
             .ticket(&id)
             .expect("the ticket reads")
             .description
             .as_deref(),
-        Some("First\n\nSecond"),
-        "an append lands one blank line under the stored body"
-    );
-
-    let revision = board.store().revision().expect("the revision reads");
-    let (status, _, answer) = send(
-        &app,
-        form_request(
-            &format!("/tickets/{id}/description"),
-            &format!("addition=%20%20%20&expected_revision={revision}"),
-        ),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(
-        answer.contains("sheet__refusal"),
-        "an empty append is refused: {answer}"
+        Some("Rewritten body"),
+        "the box replaces the stored body"
     );
     assert!(
-        answer.contains("Description body is empty."),
-        "the refusal carries the domain's wording: {answer}"
-    );
-    assert_eq!(
-        board
-            .ticket(&id)
-            .expect("the ticket reads")
-            .description
-            .as_deref(),
-        Some("First\n\nSecond"),
-        "a refused append writes nothing"
+        answer.contains("sheet__description-field"),
+        "the sheet draws the description as one editable box: {answer}"
     );
 }
 
@@ -1515,15 +1487,16 @@ async fn a_sheet_write_keeps_the_filters_its_form_carried() {
     let app = router(context(store));
 
     let body = format!(
-        "addition=A line&expected_revision={revision}&board_project=Alpha&board_show_all=&board_lane=alpha&board_assignee=builder&board_text=Caf"
+        "title=Caf%C3%A9+alpha&status={}&assignee=&description=A+line&expected_revision={revision}&board_project=Alpha&board_show_all=&board_lane=alpha&board_assignee=builder&board_text=Caf",
+        ticket.status.as_str()
     );
     let (status, _, page) = send(
         &app,
-        form_request(&format!("/tickets/{}/description", ticket.id), &body),
+        form_request(&format!("/tickets/{}", ticket.id), &body),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "the append answers: {page}");
-    assert!(page.contains("A line"), "the append landed: {page}");
+    assert_eq!(status, StatusCode::OK, "the save answers: {page}");
+    assert!(page.contains("A line"), "the description landed: {page}");
     assert!(
         page.contains("<option value=\"Alpha\" selected>Alpha</option>"),
         "the project filter survives a sheet write: {page}"

@@ -178,7 +178,6 @@ fn routes() -> Router<Arc<SessionContext>> {
             get(sheet::ticket_page).post(sheet::save_ticket),
         )
         .route("/tickets/{id}/status", post(board::move_ticket))
-        .route("/tickets/{id}/description", post(sheet::append_description))
         .route("/tickets/{id}/comments", post(sheet::add_comment))
         .route("/tickets/{id}/lane", post(sheet::move_to_lane))
         .route("/lanes", post(board::add_lane))

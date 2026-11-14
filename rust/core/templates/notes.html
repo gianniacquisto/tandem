@@ -73,22 +73,25 @@
       <div class="tree__vault" data-drop-into="">
         <span class="tree__vault-name">Bikeshed</span>
       </div>
-      <div class="tree__actions">
+      <details class="tree__create">
+        <summary class="tree__create-summary">
+          <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>New
+        </summary>
         <form class="tree__prompt" method="post" action="/notes/create" hx-post="/notes/create"
               hx-target="#notes-root" hx-swap="outerHTML">
           <input type="hidden" name="project" value="{{ active_project }}">
           <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
-          <input class="tree__prompt-input" name="path" aria-label="New note path" placeholder="note or folder/note">
-          <button class="tree__new tree__new--note" type="submit">New note</button>
+          <input class="tree__prompt-input" name="path" aria-label="New note path" placeholder="Note name, then Enter">
+          <button class="tree__new tree__new--note" type="submit">Create note</button>
         </form>
         <form class="tree__prompt" method="post" action="/notes/create-folder" hx-post="/notes/create-folder"
               hx-target="#notes-root" hx-swap="outerHTML">
           <input type="hidden" name="project" value="{{ active_project }}">
           <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
-          <input class="tree__prompt-input" name="path" aria-label="New folder path" placeholder="folder">
-          <button class="tree__new tree__new--folder" type="submit">New folder</button>
+          <input class="tree__prompt-input" name="path" aria-label="New folder path" placeholder="Folder name, then Enter">
+          <button class="tree__new tree__new--folder" type="submit">Create folder</button>
         </form>
-      </div>
+      </details>
 
       {% if rows.is_empty() %}
       <p class="tree__empty">The bikeshed is empty. Create a note or a folder to get started.</p>
@@ -103,12 +106,14 @@
             {% if row.folder %}
             <span class="tree__label" style="padding-left: {{ row.indent }}px">
               <span class="tree__twisty" aria-hidden="true">▾</span>
+              <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5h4.5l1.5 1.5h7v7.5h-13z"/></svg>
               <span class="tree__name">{{ row.name }}</span>
             </span>
             {% else %}
             <a class="tree__label" href="{{ row.href }}" hx-get="{{ row.href }}"
                hx-target="#notes-root" hx-swap="outerHTML" style="padding-left: {{ row.indent }}px">
               <span class="tree__twisty" aria-hidden="true"></span>
+              <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h5.5l3 3v10H4z M9.5 1.5v3h3"/></svg>
               <span class="tree__name">{{ row.name }}</span>
             </a>
             {% endif %}
@@ -144,9 +149,7 @@
 
       <div class="bikeshed__page">
         <div class="page-head">
-          <span class="page-head__icon" aria-hidden="true">
-            <svg viewBox="0 0 16 16"><path d="M4 1.5h5.5L12.5 4.5v10h-8.5z M9.5 1.5v3h3"/></svg>
-          </span>
+          <h1 class="page-title">{% for crumb in crumbs %}{% if crumb.current %}{{ crumb.label }}{% endif %}{% endfor %}</h1>
           <dl class="props" aria-label="Note properties">
             <div class="props__row"><dt>Path</dt><dd>{{ note.path }}</dd></div>
             <div class="props__row"><dt>Backlinks</dt><dd>{{ backlink_count }}</dd></div>
