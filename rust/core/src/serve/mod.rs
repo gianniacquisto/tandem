@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use askama::Template;
 use axum::extract::rejection::FormRejection;
-use axum::extract::{DefaultBodyLimit, Form, FromRequestParts, Path, Query, Request};
+use axum::extract::{DefaultBodyLimit, Form, FromRequestParts, MatchedPath, Path, Query, Request};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
@@ -197,7 +197,9 @@ fn routes() -> Router<Arc<SessionContext>> {
 }
 
 /// The layers every route carries: the write guard, the body ceiling and the
-/// change channel the events stream reads.
+/// change channel the events stream reads. The request line is the outermost
+/// layer, so it sees every response the stack writes, the guard's refusals and
+/// the body ceiling's included.
 fn layered(
     router: Router<Arc<SessionContext>>,
     changes: broadcast::Sender<i64>,
@@ -206,6 +208,36 @@ fn layered(
         .layer(middleware::from_fn(write_guard))
         .layer(DefaultBodyLimit::max(crate::rpc::MAX_FRAME))
         .layer(Extension(changes))
+        .layer(middleware::from_fn(request_log))
+}
+
+/// One request line per request, written when the response is built, so the
+/// status is the one the client got. Identifiers only: the route template (the
+/// raw path when no route matched), never the query string or a header.
+/// `/static/*` and `/events` answer at `debug` when they succeed; a 4xx is a
+/// `warn` and a 5xx an `error`, whatever the route.
+async fn request_log(request: Request, next: Next) -> Response {
+    let started = Instant::now();
+    let method = request.method().clone();
+    let route = request
+        .extensions()
+        .get::<MatchedPath>()
+        .map(|matched| matched.as_str().to_string())
+        .unwrap_or_else(|| request.uri().path().to_string());
+    let response = next.run(request).await;
+    let status = response.status().as_u16();
+    let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let quiet = method == Method::GET && (route.starts_with("/static/") || route == "/events");
+    if status >= 500 {
+        tracing::error!(method = %method, route = ?route, status, latency_ms, "request");
+    } else if status >= 400 {
+        tracing::warn!(method = %method, route = ?route, status, latency_ms, "request");
+    } else if quiet {
+        tracing::debug!(method = %method, route = ?route, status, latency_ms, "request");
+    } else {
+        tracing::info!(method = %method, route = ?route, status, latency_ms, "request");
+    }
+    response
 }
 
 /// The write guard as a layer: every request that is not a read crosses it
@@ -222,83 +254,128 @@ async fn write_guard(request: Request, next: Next) -> Response {
 }
 
 /// The store watch: one read-only connection, a 40 ms stat and a 5 s fallback,
-/// and a broadcast per revision that moves.
+/// and a broadcast per revision that moves. The thread logs transitions only,
+/// never a tick: an attach, a failure, a loss and a recovery each log once.
 pub fn watch(
     store: Store,
     changes: broadcast::Sender<i64>,
     stop: Arc<AtomicBool>,
 ) -> JoinHandle<()> {
+    // The spawner's dispatcher is captured here, so the thread's events reach
+    // the subscriber the caller installed: the global default in `serve`, a
+    // test's captured one in the seam tests.
+    let dispatch = tracing::dispatcher::get_default(|dispatch| dispatch.clone());
+    thread::spawn(move || {
+        tracing::dispatcher::with_default(&dispatch, || run_watch(store, changes, stop))
+    })
+}
+
+fn run_watch(store: Store, changes: broadcast::Sender<i64>, stop: Arc<AtomicBool>) {
     // One read-only connection, reused: an idle server stats twice a tick and
     // queries nothing, not an open and a close. The watch waits for the store
     // to exist and for its one-time WAL switch (`Store::watch`).
-    thread::spawn(move || {
-        let mut watch: Option<RevisionWatch> = store.watch().ok().flatten();
-        let mut last = watch
-            .as_ref()
-            .and_then(|watch| watch.revision().ok())
-            .unwrap_or(0);
-        let mut files = store.watch_files();
-        let mut last_read = Instant::now();
-        let mut wait = WATCH_INTERVAL;
-        while !stop.load(Ordering::Relaxed) {
-            thread::sleep(wait);
-            let mut force_read = false;
-            if watch.is_none() {
-                match store.watch() {
-                    Ok(Some(found)) => {
-                        watch = Some(found);
-                        wait = WATCH_INTERVAL;
-                        force_read = true;
+    // `seen` is whether the store was ever attached, so the first attach logs
+    // as `attached` and a later one as `reattached`; `lost` is whether the last
+    // report was a failure, so a run of failures logs once.
+    let mut seen = false;
+    let mut lost = false;
+    let mut watch: Option<RevisionWatch> = match store.watch() {
+        Ok(Some(found)) => {
+            tracing::info!("store watch attached");
+            seen = true;
+            Some(found)
+        }
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(error = ?error, "store watch failed; backing off");
+            lost = true;
+            None
+        }
+    };
+    let mut last = watch
+        .as_ref()
+        .and_then(|watch| watch.revision().ok())
+        .unwrap_or(0);
+    let mut files = store.watch_files();
+    let mut last_read = Instant::now();
+    let mut wait = WATCH_INTERVAL;
+    while !stop.load(Ordering::Relaxed) {
+        thread::sleep(wait);
+        let mut force_read = false;
+        if watch.is_none() {
+            match store.watch() {
+                Ok(Some(found)) => {
+                    if lost {
+                        tracing::info!("store watch reattached");
+                    } else if !seen {
+                        tracing::info!("store watch attached");
                     }
-                    // No store yet: keep the normal cadence. A store that
-                    // exists but carries no revision row is a pre-v4 file,
-                    // opened on every attempt, so it backs off like a refusal
-                    // until the first write migrates it.
-                    Ok(None) => {
-                        wait = if store.exists() {
-                            backoff(wait)
-                        } else {
-                            WATCH_INTERVAL
-                        };
-                        continue;
+                    seen = true;
+                    lost = false;
+                    watch = Some(found);
+                    wait = WATCH_INTERVAL;
+                    force_read = true;
+                }
+                // No store yet: keep the normal cadence. A store that
+                // exists but carries no revision row is a pre-v4 file,
+                // opened on every attempt, so it backs off like a refusal
+                // until the first write migrates it.
+                Ok(None) => {
+                    wait = if store.exists() {
+                        backoff(wait)
+                    } else {
+                        WATCH_INTERVAL
+                    };
+                    continue;
+                }
+                Err(error) => {
+                    if !lost {
+                        tracing::warn!(error = ?error, "store watch failed; backing off");
                     }
-                    Err(_) => {
-                        wait = backoff(wait);
-                        continue;
-                    }
+                    lost = true;
+                    wait = backoff(wait);
+                    continue;
                 }
             }
-            let Some(current) = watch.as_ref() else {
-                continue;
-            };
-            let now_files = store.watch_files();
-            let files_moved = now_files != files;
-            let fallback_due = last_read.elapsed() >= WATCH_FALLBACK;
-            if !force_read && !files_moved && !fallback_due {
-                continue;
-            }
-            let Ok(revision) = current.revision() else {
+        }
+        let Some(current) = watch.as_ref() else {
+            continue;
+        };
+        let now_files = store.watch_files();
+        let files_moved = now_files != files;
+        let fallback_due = last_read.elapsed() >= WATCH_FALLBACK;
+        if !force_read && !files_moved && !fallback_due {
+            continue;
+        }
+        let revision = match current.revision() {
+            Ok(revision) => revision,
+            Err(error) => {
                 // The connection is unusable (the store was replaced or
                 // removed): drop it and reopen with the backoff.
+                if !lost {
+                    tracing::warn!(error = ?error, "store watch lost its connection; reattaching");
+                }
+                lost = true;
                 watch = None;
                 wait = backoff(wait);
                 continue;
-            };
-            last_read = Instant::now();
-            if revision == last {
-                // A tick can land mid-commit: the WAL grows before COMMIT
-                // moves the revision, so a file move with no revision move is
-                // a write in flight, not noise. Keep the old baseline so the
-                // next tick retries once the commit has landed.
-                continue;
             }
-            files = now_files;
-            last = revision;
-            // No receiver is not an error: the next reader subscribes afresh
-            // and the SSE route sends it the current revision on connect.
-            let _ = changes.send(revision);
+        };
+        last_read = Instant::now();
+        if revision == last {
+            // A tick can land mid-commit: the WAL grows before COMMIT
+            // moves the revision, so a file move with no revision move is
+            // a write in flight, not noise. Keep the old baseline so the
+            // next tick retries once the commit has landed.
+            continue;
         }
-    })
+        files = now_files;
+        last = revision;
+        tracing::debug!(revision, "store revision broadcast");
+        // No receiver is not an error: the next reader subscribes afresh
+        // and the SSE route sends it the current revision on connect.
+        let _ = changes.send(revision);
+    }
 }
 // MARK: - The board's filters
 
@@ -453,6 +530,10 @@ fn guard(headers: &HeaderMap) -> Option<Response> {
         .and_then(|value| value.to_str().ok())
         .is_some_and(|value| value.starts_with("application/x-www-form-urlencoded"));
     if !form {
+        tracing::warn!(
+            reason = "the content type is not form-encoded",
+            "write refused"
+        );
         return Some(
             (
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
@@ -462,6 +543,10 @@ fn guard(headers: &HeaderMap) -> Option<Response> {
         );
     }
     if cross_origin(headers) {
+        tracing::warn!(
+            reason = "the request came from another origin",
+            "write refused"
+        );
         return Some(
             (
                 StatusCode::FORBIDDEN,
@@ -493,6 +578,7 @@ fn cross_origin(headers: &HeaderMap) -> bool {
     !authority.eq_ignore_ascii_case(host)
 }
 fn bad_request(message: &str) -> Response {
+    tracing::warn!(error = ?message, "request refused");
     (StatusCode::BAD_REQUEST, format!("{message}\n")).into_response()
 }
 /// A parsed `expected_revision`: the revision the form was drawn from. A

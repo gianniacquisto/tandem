@@ -15,6 +15,10 @@ Decided 2026-11-13 (CUT-14).
 - **Electron, React, Vite, vitest, `ts-rs` and `app/` retire.** A later cut deletes the renderer tree; this record writes the replacement it answers to.
 - **Distribution is one standalone binary.** Releases publish archive files per platform with `SHA256SUMS` and an `install.sh`; the Homebrew tap and `Scripts/bump-tap.sh` retire.
 
+## Amendment (2026-11-14)
+
+Decision bullet 1 gains application logging: `tandem serve` writes its log to stdout after the listening line, which stays the first stdout line and keeps its text. `TANDEM_LOG` sets the filter in RUST_LOG syntax (default `info`), and the log covers serve only, so ADR 0009's split for the agent verbs is unchanged. What a line may carry is the serve brief's never-logged rule: identifiers and escaped values, never request bodies, ticket or note text, or the environment.
+
 ## Why
 
 - **A transport for a face that is leaving is a migration twice.** `POST /api/rpc` plus Vite asset serving would have been written, tested and deleted inside one release. The board routes are the first real client, so they are the first transport.

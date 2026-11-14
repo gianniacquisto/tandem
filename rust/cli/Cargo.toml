@@ -20,5 +20,10 @@ tandem-core.workspace = true
 # `tandem serve` owns the process's runtime and listener; the core owns the
 # router, the watcher and the templates (ADR 0046).
 tokio.workspace = true
+# `tandem serve`'s log: the subscriber the serve installs reads `TANDEM_LOG`
+# and writes plain lines to stdout (ADR 0046 amendment). Only `tandem serve`
+# installs it, so every other verb stays silent.
+tracing.workspace = true
+tracing-subscriber.workspace = true
 # A capture's generated session folder, when the host exports no id (PRT-9).
 uuid.workspace = true

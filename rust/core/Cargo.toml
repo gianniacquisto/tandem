@@ -22,6 +22,9 @@ serde_urlencoded.workspace = true
 sha2.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
+# The serve's events and spans: the macros only. The subscriber is the cli's,
+# installed by `tandem serve`, so the core never picks a sink or a filter.
+tracing.workspace = true
 uuid.workspace = true
 
 [target.'cfg(unix)'.dependencies]
@@ -37,4 +40,6 @@ http-body-util.workspace = true
 # would, which only the engine's own handle can do (PRT-5).
 rusqlite.workspace = true
 tower.workspace = true
+# The captured test subscriber the serve's log tests install around a request.
+tracing-subscriber.workspace = true
 uuid.workspace = true
