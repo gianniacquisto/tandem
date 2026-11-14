@@ -2180,7 +2180,208 @@ async fn a_control_character_in_a_user_value_stays_on_one_escaped_line() {
         !text.contains('\u{1b}'),
         "no raw ESC reaches the log: {text:?}"
     );
+    assert!(
+        text.contains(r#"lane="a\nb\u{1b}[31m""#),
+        "the lane field carries the escaped name on its line: {text:?}"
+    );
     assert_every_line_is_a_timestamped_event(&text);
+}
+
+#[tokio::test]
+async fn a_store_failure_answers_500_and_logs_one_error_line_with_the_route() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("log-500");
+    let store = sandbox.store();
+    setup_board(&store);
+    // Overwrite the store with bytes that are not a database: every read fails.
+    let home = sandbox.root.join("home");
+    for sidecar in ["tandem.db-wal", "tandem.db-shm"] {
+        let _ = std::fs::remove_file(home.join(sidecar));
+    }
+    std::fs::write(home.join("tandem.db"), vec![b'x'; 4096]).expect("the store is overwritten");
+    let app = router(context(store));
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let (status, _, _) = get(&app, "/board").await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    let text = captured.text();
+    let errors: Vec<&str> = text
+        .lines()
+        .filter(|line| line.contains(" ERROR ") && line.contains("route=\"/board\""))
+        .collect();
+    assert_eq!(errors.len(), 1, "one error line carries the route: {text}");
+    assert!(
+        errors[0].contains("status=500"),
+        "the error line carries the status: {text}"
+    );
+    assert_every_line_is_a_timestamped_event(&text);
+}
+
+#[tokio::test]
+async fn a_note_save_logs_its_path_at_info_and_never_the_body() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("log-save");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    notes.create("Index.md").expect("the note is created");
+    notes.write("Index.md", "one").expect("the note is written");
+    let first = notes.read("Index.md").expect("the note reads").value;
+    let app = router(context(store));
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let (status, _, body) = send(
+        &app,
+        form_request(
+            "/notes/save",
+            &format!(
+                "path=Index.md&text=SecretBodyWords&baseline_hash={}",
+                first.hash
+            ),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the save answers: {body}");
+    let text = captured.text();
+    assert!(
+        text.lines().any(|line| line.contains(" INFO ")
+            && line.contains("note saved")
+            && line.contains("path=\"Index.md\"")),
+        "the save logs its path at info: {text}"
+    );
+    assert!(
+        !text.contains("SecretBodyWords"),
+        "the note body stays out: {text}"
+    );
+    assert_every_line_is_a_timestamped_event(&text);
+}
+
+#[tokio::test]
+async fn a_note_path_with_control_characters_stays_on_one_escaped_line() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("log-path-escape");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    // A note path carrying a newline and an ESC: the log must escape both.
+    let (status, _, _) = send(
+        &app,
+        form_request("/notes/create", "path=a%0Ab%1B%5B31m.md"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let text = captured.text();
+    assert!(
+        !text.contains('\u{1b}'),
+        "no raw ESC reaches the log: {text:?}"
+    );
+    let created: Vec<&str> = text
+        .lines()
+        .filter(|line| line.contains("note created"))
+        .collect();
+    assert_eq!(created.len(), 1, "the path is one line: {text:?}");
+    assert!(
+        created[0].contains(r#"path="a\nb\u{1b}[31m.md""#),
+        "the path is logged escaped: {text:?}"
+    );
+    assert_every_line_is_a_timestamped_event(&text);
+}
+
+#[tokio::test]
+async fn the_environment_is_never_logged() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("log-env");
+    let store = sandbox.store();
+    setup_board(&store);
+    let secret = "tandem-secret-7f3a9c";
+    // The context carries the run's environment, as `tandem serve` does.
+    let mut environment = HashMap::new();
+    environment.insert("TANDEM_TEST_SECRET".to_string(), secret.to_string());
+    let app = router(SessionContext {
+        store: store.clone(),
+        actor: Actor::Human,
+        environment,
+    });
+    let before = store.revision().expect("the revision reads");
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let (status, _, _) = get(&app, "/board").await;
+    assert_eq!(status, StatusCode::OK);
+    let body = format!(
+        "title=EnvProbe&status=ready&lane=&expected_revision={before}&project=&show_all=&assignee=&text="
+    );
+    let (status, _, _) = send(&app, form_request("/tickets", &body)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = get(&app, "/notes").await;
+    assert_eq!(status, StatusCode::OK);
+    let text = captured.text();
+    assert!(!text.contains(secret), "the value stays out: {text}");
+    assert!(
+        !text.contains("TANDEM_TEST_SECRET"),
+        "the variable name stays out: {text}"
+    );
+    assert_every_line_is_a_timestamped_event(&text);
+}
+
+#[test]
+fn the_watch_logs_the_attach_of_a_store_created_after_it_started() {
+    let _serial = ONE_AT_A_TIME.blocking_lock();
+    let root = std::env::temp_dir().join(format!(
+        "tandem-serve-watch-log-late-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("user")).expect("the sandbox is creatable");
+    let home = Home::resolve(Some(&root.join("home")), None, &root.join("user"));
+    let store = Store::new(home);
+    let captured = Captured::default();
+    let _guard = captured.install();
+    let stop = Arc::new(AtomicBool::new(false));
+    let (changes, _receiver) = broadcast::channel(8);
+    let handle = watch(store.clone(), changes, Arc::clone(&stop));
+
+    // No store yet: several ticks pass and the watch logs nothing.
+    thread::sleep(Duration::from_millis(300));
+    assert!(
+        captured.text().is_empty(),
+        "a home with no store logs nothing: {}",
+        captured.text()
+    );
+
+    store
+        .write(&Actor::Human, |write| {
+            write.insert_project(NewProject {
+                name: "first",
+                position: 0,
+            })
+        })
+        .expect("the first write creates the store");
+    let attached = Instant::now() + Duration::from_secs(10);
+    while !captured.text().contains("store watch attached") && Instant::now() < attached {
+        thread::sleep(Duration::from_millis(5));
+    }
+    // Several ticks pass with the store still: only the transition is logged.
+    thread::sleep(Duration::from_millis(300));
+    let text = captured.text();
+    assert_eq!(
+        text.matches("store watch").count(),
+        1,
+        "the attach logs once and the ticks log nothing: {text}"
+    );
+    assert!(
+        text.lines()
+            .any(|line| line.contains(" INFO ") && line.contains("store watch attached")),
+        "the attach logs at info: {text}"
+    );
+
+    stop.store(true, Ordering::Relaxed);
+    handle.join().expect("the watch exits");
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
