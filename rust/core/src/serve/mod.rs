@@ -39,7 +39,7 @@ use crate::bikeshed::{Bikeshed, BikeshedNode, NodeKind};
 use crate::domain::markdown::{MarkdownBlock, TicketMarkdown};
 use crate::domain::text::TextMatch;
 use crate::domain::{
-    AddTicket, AssigneeAxis, Board, Edit, LaneAxis, SetFields, Status, Ticket, TicketQuery,
+    AddTicket, AssigneeAxis, Board, Edit, LabelAxis, SetFields, Status, Ticket, TicketQuery,
 };
 use crate::env::Environment;
 use crate::store::{Actor, RevisionWatch, Store};
@@ -179,9 +179,9 @@ fn routes() -> Router<Arc<SessionContext>> {
         )
         .route("/tickets/{id}/status", post(board::move_ticket))
         .route("/tickets/{id}/comments", post(sheet::add_comment))
-        .route("/tickets/{id}/lane", post(sheet::move_to_lane))
-        .route("/lanes", post(board::add_lane))
-        .route("/lanes/{name}/rename", post(board::rename_lane))
+        .route("/tickets/{id}/label", post(sheet::move_to_label))
+        .route("/labels", post(board::add_label))
+        .route("/labels/{name}/rename", post(board::rename_label))
         .route("/notes", get(notes::notes_page))
         .route("/notes/view", get(notes::note_view))
         .route("/notes/edit", get(notes::note_edit))
@@ -384,8 +384,8 @@ fn run_watch(store: Store, changes: broadcast::Sender<i64>, stop: Arc<AtomicBool
 struct Filters {
     project: String,
     show_all: bool,
-    /// `""` is any lane, `" "` the unnamed default area, anything else a name.
-    lane: String,
+    /// `""` is any label, `" "` the unnamed default area, anything else a name.
+    label: String,
     /// `""` is any assignee, `" "` the unassigned, anything else a name.
     assignee: String,
     text: String,
@@ -401,7 +401,7 @@ impl Filters {
         let show_all = params
             .get("show_all")
             .is_some_and(|value| !matches!(value.as_str(), "" | "0" | "false"));
-        let lane = params.get("lane").cloned().unwrap_or_default();
+        let label = params.get("label").cloned().unwrap_or_default();
         let assignee = params.get("assignee").cloned().unwrap_or_default();
         let text = params.get("text").cloned().unwrap_or_default();
         let selected = params
@@ -411,7 +411,7 @@ impl Filters {
         Self {
             project,
             show_all,
-            lane,
+            label,
             assignee,
             text,
             selected,
@@ -420,7 +420,7 @@ impl Filters {
 
     /// The board filters a sheet's write form carries back. They are named with
     /// a `board_` prefix because the same form carries the ticket's own fields:
-    /// its `assignee` and `lane` mean the ticket's, and reading them as the
+    /// its `assignee` and `label` mean the ticket's, and reading them as the
     /// board's would redraw the board behind narrowed to this very ticket.
     fn parse_board_fields(params: &HashMap<String, String>) -> Self {
         let board = params
@@ -433,11 +433,11 @@ impl Filters {
         Self::parse(&board)
     }
 
-    fn lane_axis(&self) -> LaneAxis {
-        match self.lane.as_str() {
-            "" => LaneAxis::Any,
-            " " => LaneAxis::Unnamed,
-            name => LaneAxis::Named(name.to_string()),
+    fn label_axis(&self) -> LabelAxis {
+        match self.label.as_str() {
+            "" => LabelAxis::Any,
+            " " => LabelAxis::Unnamed,
+            name => LabelAxis::Named(name.to_string()),
         }
     }
 
@@ -449,11 +449,11 @@ impl Filters {
         }
     }
 
-    /// The add form files into the lane filter's lane, or the default area when
+    /// The add form files into the label filter's label, or the default area when
     /// the filter is off (the React board's rule).
-    fn add_lane(&self) -> Option<String> {
-        match self.lane_axis() {
-            LaneAxis::Named(name) => Some(name),
+    fn add_label(&self) -> Option<String> {
+        match self.label_axis() {
+            LabelAxis::Named(name) => Some(name),
             _ => None,
         }
     }
@@ -471,7 +471,7 @@ impl Filters {
                     String::new()
                 },
             ),
-            ("lane", self.lane.clone()),
+            ("label", self.label.clone()),
             ("assignee", self.assignee.clone()),
             ("text", self.text.clone()),
         ];

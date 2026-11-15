@@ -11,7 +11,7 @@ A maintenance pass over the board, not the SDLC kickoff: it opens no sprint and 
 
 Read in one round:
 
-- the open board, `ticket list` with `filter` open, every lane; the rows carry each lane's stored spelling;
+- the open board, `ticket list` with `filter` open, every label; the rows carry each label's stored spelling;
 - each open ticket's comment log where its state is in doubt, `ticket comment list` with `id`: the log is the work record (ADR 0045);
 - `git log` in the project the ticket belongs to.
 
@@ -21,7 +21,7 @@ The sweep is board-wide: a repo fact behind another project's ticket is verified
 
 A claim is live while its comment log shows a recent handoff in flight. A ticket whose log records its pass's end without a landing, or that sits `in-progress` with no PR in the log, is **stale work**: report it, and set it back to `ready` with a dated, signed comment naming the evidence, so the next sprint's triage picks it up fresh.
 
-This is the same rule the sprint's close runs over its own lane before the close is written (`skills/tandem-sprint/SKILL.md` §5), so the two agree by construction.
+This is the same rule the sprint's close runs over its own label before the close is written (`skills/tandem-sprint/SKILL.md` §5), so the two agree by construction.
 
 ## 2. The evidence sweep
 
@@ -57,4 +57,4 @@ Report-only, each named in the reply for the human to rule on:
 
 ## 5. The report
 
-One block per lane: completed (each with its evidence), stale claims reported, archived `<n>`, and left alone with the reason. Done when **every open ticket appears in the report**, moved with its evidence or accounted for.
+One block per label: completed (each with its evidence), stale claims reported, archived `<n>`, and left alone with the reason. Done when **every open ticket appears in the report**, moved with its evidence or accounted for.

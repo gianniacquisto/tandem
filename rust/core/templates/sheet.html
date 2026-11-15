@@ -21,7 +21,7 @@
             hx-post="/tickets/{{ id }}" hx-target="#board-root" hx-swap="outerHTML">
         <input type="hidden" name="board_project" value="{{ filters.project }}">
         <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
-        <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+        <input type="hidden" name="board_label" value="{{ filters.label }}">
         <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
         <input type="hidden" name="board_text" value="{{ filters.text }}">
       </form>
@@ -60,18 +60,18 @@
 
           <div class="sheet__meta-field">
             <span class="sheet__meta-label" title="Moves at once">
-              <span class="sheet__fact-label">Lane</span>
+              <span class="sheet__fact-label">Label</span>
             </span>
-            <form class="sheet__lane-move" method="post" action="/tickets/{{ id }}/lane"
-                  hx-post="/tickets/{{ id }}/lane" hx-target="#board-root" hx-swap="outerHTML">
+            <form class="sheet__label-move" method="post" action="/tickets/{{ id }}/label"
+                  hx-post="/tickets/{{ id }}/label" hx-target="#board-root" hx-swap="outerHTML">
               <input type="hidden" name="expected_revision" value="{{ revision }}">
               <input type="hidden" name="board_project" value="{{ filters.project }}">
               <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
-              <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+              <input type="hidden" name="board_label" value="{{ filters.label }}">
               <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
               <input type="hidden" name="board_text" value="{{ filters.text }}">
-              <select class="sheet__select" name="lane" aria-label="Lane" data-sheet-lane>
-                {% for option in lane_options %}
+              <select class="sheet__select" name="label" aria-label="Label" data-sheet-label>
+                {% for option in label_options %}
                 <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
                 {% endfor %}
               </select>
@@ -147,7 +147,7 @@
               hx-post="/tickets/{{ id }}/comments" hx-target="#board-root" hx-swap="outerHTML">
           <input type="hidden" name="board_project" value="{{ filters.project }}">
           <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
-          <input type="hidden" name="board_lane" value="{{ filters.lane }}">
+          <input type="hidden" name="board_label" value="{{ filters.label }}">
           <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
           <input type="hidden" name="board_text" value="{{ filters.text }}">
           <label class="sheet__addition">

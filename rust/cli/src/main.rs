@@ -3,7 +3,7 @@
 //! One binary (`docs/port.md`, Target shape): the verbs agents call, the MCP
 //! server's stream and the board the human reads are the same executable, so
 //! they cannot drift. This rung carries the whole grammar the skills speak
-//! (PRT-9): `ticket`, `lane`, `note`, `doctor`'s pinned report, `mcp`'s stream
+//! (PRT-9): `ticket`, `label`, `note`, `doctor`'s pinned report, `mcp`'s stream
 //! and `serve`'s loopback server (ADR 0046).
 //!
 //! What lives here is what belongs to a process rather than to the domain:
@@ -29,7 +29,7 @@ use tandem_core::domain::{
 use tandem_core::env::Environment;
 use tandem_core::store::{self, Actor, Home, Store};
 use tandem_core::wire::{
-    ArchivedView, CommentList, CommentResult, CommentView, LaneDeletionView, LaneList,
+    ArchivedView, CommentList, CommentResult, CommentView, LabelDeletionView, LabelList,
     NoteMoveView, NotePathView, NoteWriteView, ProjectList, TicketDetail, TicketList,
     TicketSummary,
 };
@@ -85,12 +85,12 @@ enum Command {
         #[command(subcommand)]
         command: Option<TicketCommand>,
     },
-    /// The lane lifecycle.
-    Lane {
+    /// The label lifecycle.
+    Label {
         #[command(subcommand)]
-        command: Option<LaneCommand>,
+        command: Option<LabelCommand>,
     },
-    /// The project lifecycle: a lane's parent.
+    /// The project lifecycle: a label's parent.
     Project {
         #[command(subcommand)]
         command: Option<ProjectCommand>,
@@ -132,12 +132,12 @@ enum CommentCommand {
 }
 
 #[derive(Subcommand)]
-enum LaneCommand {
+enum LabelCommand {
     List,
-    Add(LaneAddArgs),
-    Rename(LaneRenameArgs),
-    Delete(LaneDeleteArgs),
-    Move(LaneMoveArgs),
+    Add(LabelAddArgs),
+    Rename(LabelRenameArgs),
+    Delete(LabelDeleteArgs),
+    Move(LabelMoveArgs),
 }
 
 #[derive(Subcommand)]
@@ -170,7 +170,7 @@ struct ListArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     assignee: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
+    label: Option<String>,
     /// The archive as its own view, or joining a named filter.
     #[arg(long)]
     archived: bool,
@@ -194,7 +194,7 @@ struct AddArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     assignee: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
+    label: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     origin: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
@@ -222,7 +222,7 @@ struct MoveArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     id: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    lane: Option<String>,
+    label: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     index: Option<String>,
 }
@@ -266,7 +266,7 @@ struct CommentAddArgs {
 }
 
 #[derive(Args)]
-struct LaneAddArgs {
+struct LabelAddArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     name: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
@@ -276,7 +276,7 @@ struct LaneAddArgs {
 }
 
 #[derive(Args)]
-struct LaneRenameArgs {
+struct LabelRenameArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     from: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
@@ -288,13 +288,13 @@ struct LaneRenameArgs {
 }
 
 #[derive(Args)]
-struct LaneDeleteArgs {
+struct LabelDeleteArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     name: Option<String>,
 }
 
 #[derive(Args)]
-struct LaneMoveArgs {
+struct LabelMoveArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     name: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
@@ -456,8 +456,8 @@ fn help_text(cli: &Cli) -> &'static str {
             }) => "ticket comment list",
             Some(command) => command.help(),
         },
-        Some(Command::Lane { command }) => match command {
-            None => return usage::group("lane").unwrap_or(usage::ROOT),
+        Some(Command::Label { command }) => match command {
+            None => return usage::group("label").unwrap_or(usage::ROOT),
             Some(command) => command.help(),
         },
         Some(Command::Project { command }) => match command {
@@ -489,14 +489,14 @@ impl TicketCommand {
     }
 }
 
-impl LaneCommand {
+impl LabelCommand {
     fn help(&self) -> &'static str {
         match self {
-            Self::List => "lane list",
-            Self::Add(_) => "lane add",
-            Self::Rename(_) => "lane rename",
-            Self::Delete(_) => "lane delete",
-            Self::Move(_) => "lane move",
+            Self::List => "label list",
+            Self::Add(_) => "label add",
+            Self::Rename(_) => "label rename",
+            Self::Delete(_) => "label delete",
+            Self::Move(_) => "label move",
         }
     }
 }
@@ -539,7 +539,7 @@ fn run(cli: &Cli) -> Result<(), Failure> {
         Command::Mcp => mcp(&home),
         Command::Serve(args) => serve(&home, args),
         Command::Ticket { command } => ticket(&home, command.as_ref()),
-        Command::Lane { command } => lane(&home, command.as_ref()),
+        Command::Label { command } => label(&home, command.as_ref()),
         Command::Project { command } => project(&home, command.as_ref()),
         Command::Note { command } => note(&home, command.as_ref()),
     }
@@ -569,7 +569,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                 args.text.as_deref(),
                 args.status.as_deref(),
                 assignee.as_deref(),
-                args.lane.as_deref(),
+                args.label.as_deref(),
                 args.archived,
                 args.blocked,
             )
@@ -597,7 +597,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                 .add(
                     args.title.as_deref().unwrap_or(""),
                     AddTicket {
-                        lane: args.lane.as_deref(),
+                        label: args.label.as_deref(),
                         status,
                         assignee: assignee.as_deref(),
                         description: description.as_deref(),
@@ -665,7 +665,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                 },
             };
             let ticket = board
-                .move_ticket(args.id.as_deref().unwrap_or(""), args.lane.as_deref(), at)
+                .move_ticket(args.id.as_deref().unwrap_or(""), args.label.as_deref(), at)
                 .map_err(Failure::domain)?;
             print(&TicketDetail::new(&ticket))
         }
@@ -734,9 +734,9 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
     }
 }
 
-fn lane(home: &Home, command: Option<&LaneCommand>) -> Result<(), Failure> {
+fn label(home: &Home, command: Option<&LabelCommand>) -> Result<(), Failure> {
     let command = command.ok_or_else(Failure::usage)?;
-    let store = if matches!(command, LaneCommand::List) {
+    let store = if matches!(command, LabelCommand::List) {
         Store::new(home.clone())
     } else {
         write_store(home)?
@@ -744,38 +744,38 @@ fn lane(home: &Home, command: Option<&LaneCommand>) -> Result<(), Failure> {
     let board = Board::new(store);
 
     match command {
-        LaneCommand::List => print(&LaneList {
-            lanes: board.lanes().map_err(Failure::domain)?,
+        LabelCommand::List => print(&LabelList {
+            labels: board.labels().map_err(Failure::domain)?,
             note: None,
         }),
-        LaneCommand::Add(args) => {
-            let lanes = board
-                .add_lane(
+        LabelCommand::Add(args) => {
+            let labels = board
+                .add_label(
                     args.name.as_deref().unwrap_or(""),
                     args.abbr.as_deref(),
                     args.project.as_deref(),
                 )
                 .map_err(Failure::domain)?;
-            print(&LaneList { lanes, note: None })
+            print(&LabelList { labels, note: None })
         }
-        LaneCommand::Rename(args) => {
-            let lanes = board
-                .rename_lane(
+        LabelCommand::Rename(args) => {
+            let labels = board
+                .rename_label(
                     args.from.as_deref().unwrap_or(""),
                     args.to.as_deref().unwrap_or(""),
                     args.abbr.as_deref(),
                     args.project.as_deref(),
                 )
                 .map_err(Failure::domain)?;
-            print(&LaneList { lanes, note: None })
+            print(&LabelList { labels, note: None })
         }
-        LaneCommand::Delete(args) => {
+        LabelCommand::Delete(args) => {
             let deletion = board
-                .delete_lane(args.name.as_deref().unwrap_or(""))
+                .delete_label(args.name.as_deref().unwrap_or(""))
                 .map_err(Failure::domain)?;
-            print(&LaneDeletionView::new(&deletion, None))
+            print(&LabelDeletionView::new(&deletion, None))
         }
-        LaneCommand::Move(args) => {
+        LabelCommand::Move(args) => {
             let at = match args.index.as_deref() {
                 None => usize::MAX,
                 Some(raw) => match raw.parse::<i64>() {
@@ -785,10 +785,10 @@ fn lane(home: &Home, command: Option<&LaneCommand>) -> Result<(), Failure> {
                     }
                 },
             };
-            let lanes = board
-                .move_lane(args.name.as_deref().unwrap_or(""), at)
+            let labels = board
+                .move_label(args.name.as_deref().unwrap_or(""), at)
                 .map_err(Failure::domain)?;
-            print(&LaneList { lanes, note: None })
+            print(&LabelList { labels, note: None })
         }
     }
 }

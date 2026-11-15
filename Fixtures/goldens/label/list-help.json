@@ -1,6 +1,6 @@
 {
   "argv": [
-    "lane",
+    "label",
     "list",
     "--help"
   ],
@@ -8,10 +8,10 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli lane list — the store's declared lanes, empty ones included.",
+    "tandem-cli label list — the store's declared labels, empty ones included.",
     "",
     "Usage:",
-    "  tandem-cli lane list"
+    "  tandem-cli label list"
   ],
   "stdoutKind": "text"
 }

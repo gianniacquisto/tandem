@@ -20,7 +20,7 @@ use crate::mcp::tools;
 const FAMILIES: [&str; 8] = [
     "ticket_",
     "note_",
-    "lane_",
+    "label_",
     "project_",
     "doctor_",
     "session_",

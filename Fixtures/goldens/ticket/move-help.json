@@ -8,14 +8,14 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli ticket move — a ticket's lane and position.",
+    "tandem-cli ticket move — a ticket's label and position.",
     "",
     "Usage:",
-    "  tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]",
+    "  tandem-cli ticket move --id <id> [--label <name>] [--index <number>]",
     "",
     "Values:",
-    "  lane      a lane name, or \"\" for the default area",
-    "  index     0-based within the lane; omitted appends to it"
+    "  label      a label name, or \"\" for the default area",
+    "  index     0-based within the label; omitted appends to it"
   ],
   "stdoutKind": "text"
 }

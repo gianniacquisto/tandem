@@ -379,7 +379,7 @@ fn a_serve_session_renders_board_adds_ticket_and_streams_sse_changed_events() {
     let answer = form(
         server.port,
         "/tickets",
-        "title=First&status=ready&lane=&expected_revision=0",
+        "title=First&status=ready&label=&expected_revision=0",
     );
     assert_eq!(
         answer.status, 200,
@@ -552,7 +552,7 @@ fn a_serve_session_drives_the_sheet_and_notes_faces() {
     let answer = form(
         server.port,
         "/tickets",
-        "title=Sheet&status=ready&lane=&expected_revision=0",
+        "title=Sheet&status=ready&label=&expected_revision=0",
     );
     assert_eq!(answer.status, 200, "the add answers: {}", answer.body);
 
@@ -639,7 +639,7 @@ fn a_serve_session_drives_the_sheet_and_notes_faces() {
     form(
         server.port,
         "/tickets",
-        &format!("title=Later&status=backlog&lane=&expected_revision={revision}"),
+        &format!("title=Later&status=backlog&label=&expected_revision={revision}"),
     );
     let current = revision_of(server.port);
     next_event(

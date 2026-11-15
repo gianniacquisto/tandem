@@ -11,12 +11,12 @@ use std::time::SystemTime;
 use support::Sandbox;
 use tandem_core::domain::{AddTicket, Board, DescriptionBody, DomainError, Filter, Ticket};
 
-/// A board with one lane (`Tandem`, so every ticket carries a ref) and the tickets
-/// `titles` in that lane, in add order. Returned by title.
+/// A board with one label (`Tandem`, so every ticket carries a ref) and the tickets
+/// `titles` in that label, in add order. Returned by title.
 fn store(titles: &[&str]) -> (Sandbox, Board, HashMap<String, Ticket>) {
     let sandbox = Sandbox::new("deps");
     let board = sandbox.board();
-    board.add_lane("Tandem", None, None).unwrap();
+    board.add_label("Tandem", None, None).unwrap();
     let mut made = HashMap::new();
     // Added in the order given, so `titles[0]` carries `TAN-1`: the number follows
     // the write, not the row's place on the board.
@@ -25,7 +25,7 @@ fn store(titles: &[&str]) -> (Sandbox, Board, HashMap<String, Ticket>) {
             .add(
                 title,
                 AddTicket {
-                    lane: Some("Tandem"),
+                    label: Some("Tandem"),
                     ..AddTicket::default()
                 },
             )
@@ -267,7 +267,7 @@ fn an_unknown_handle_is_refused_with_the_boards_own_ref_message() {
     assert!(text.starts_with("Unknown ticket ref \"TAN-99\"."));
     assert!(
         text.contains("has issued TAN-1 to TAN-2"),
-        "the lane's real range, not a new one"
+        "the label's real range, not a new one"
     );
 
     // An empty handle is the unknown id the board already answers for.
@@ -303,7 +303,7 @@ fn completing_the_blocker_lifts_the_block_with_no_write() {
     assert_eq!(dependent.title, waits.title);
     assert_eq!(dependent.status, waits.status);
     assert_eq!(dependent.assignee, waits.assignee);
-    assert_eq!(dependent.lane, waits.lane);
+    assert_eq!(dependent.label, waits.label);
     assert_eq!(dependent.number, waits.number);
     assert_eq!(dependent.created_at, waits.created_at);
     assert_eq!(dependent.completed_at, waits.completed_at);
@@ -437,9 +437,9 @@ fn deleting_a_ticket_removes_its_edges_on_both_ends() {
 }
 
 #[test]
-fn a_ticket_moved_to_another_lane_keeps_its_edge_and_the_ref_follows_the_lane_key() {
+fn a_ticket_moved_to_another_label_keeps_its_edge_and_the_ref_follows_the_label_key() {
     let (_sandbox, board, made) = store(&["waits", "finishes"]);
-    board.add_lane("Fleet", None, None).unwrap();
+    board.add_label("Fleet", None, None).unwrap();
     board
         .block(&reference(&made, "waits"), &reference(&made, "finishes"))
         .unwrap();
@@ -496,12 +496,12 @@ fn a_body_that_mentions_the_heading_inline_is_not_a_reason() {
 fn the_tickets_blocked_reason_is_the_bodys_section_read_not_copied() {
     let sandbox = Sandbox::new("deps-reason");
     let board = sandbox.board();
-    board.add_lane("Tandem", None, None).unwrap();
+    board.add_label("Tandem", None, None).unwrap();
     board
         .add(
             "waits",
             AddTicket {
-                lane: Some("Tandem"),
+                label: Some("Tandem"),
                 description: Some("## Blocked on\n\nTAN-210 lands first."),
                 ..AddTicket::default()
             },
@@ -511,7 +511,7 @@ fn the_tickets_blocked_reason_is_the_bodys_section_read_not_copied() {
         .add(
             "finishes",
             AddTicket {
-                lane: Some("Tandem"),
+                label: Some("Tandem"),
                 ..AddTicket::default()
             },
         )

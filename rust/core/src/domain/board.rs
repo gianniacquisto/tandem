@@ -7,9 +7,9 @@
 //!
 //! **Ordering.** The stored order is authoritative: a ticket's place in the ticket
 //! vector is its place in the list, and `add` puts a new ticket on **top** of its
-//! lane by default. Order is never recomputed from `created_at`. Lanes group the
-//! list, and the list is kept grouped by lane (default first, then each declared
-//! lane) so a reader can walk it straight through.
+//! label by default. Order is never recomputed from `created_at`. Labels group the
+//! list, and the list is kept grouped by label (default first, then each declared
+//! label) so a reader can walk it straight through.
 //!
 //! Every id-taking operation resolves its handle through [`Contents::require_ticket`],
 //! the store's one rule: a UUID, or the ref (`TAN-42`, case-insensitive on the key).
@@ -26,14 +26,14 @@ use super::contents::Contents;
 use super::description::{self, DescriptionBody};
 use super::edit::Edit;
 use super::error::DomainError;
-use super::lane::{Lane, LaneDeletion};
 use super::query::{Filter, HUMAN, TicketQuery};
 use super::ticket::{Status, Ticket};
+use super::ticket_label::{Label, LabelDeletion};
 
 /// The fields a new ticket may be given, over the title it must have.
 #[derive(Debug, Clone)]
 pub struct AddTicket<'a> {
-    pub lane: Option<&'a str>,
+    pub label: Option<&'a str>,
     pub status: Status,
     pub assignee: Option<&'a str>,
     pub description: Option<&'a str>,
@@ -44,7 +44,7 @@ pub struct AddTicket<'a> {
 impl Default for AddTicket<'_> {
     fn default() -> Self {
         Self {
-            lane: None,
+            label: None,
             status: Status::Backlog,
             assignee: None,
             description: None,
@@ -121,20 +121,20 @@ impl Board {
         Ok((query.apply(&contents.tickets), revision))
     }
 
-    /// The lane names in render order (the default area is implicit and unnamed).
+    /// The label names in render order (the default area is implicit and unnamed).
     /// Includes any name that appears only on a ticket, so a face can draw it.
-    pub fn lanes(&self) -> Result<Vec<String>, DomainError> {
-        Ok(self.load()?.known_lanes())
+    pub fn labels(&self) -> Result<Vec<String>, DomainError> {
+        Ok(self.load()?.known_labels())
     }
 
-    /// [`lanes`](Self::lanes) and the revision its names are a snapshot of, read
+    /// [`labels`](Self::labels) and the revision its names are a snapshot of, read
     /// in one transaction.
-    pub fn lanes_snapshot(&self) -> Result<(Vec<String>, i64), DomainError> {
+    pub fn labels_snapshot(&self) -> Result<(Vec<String>, i64), DomainError> {
         let Some((rows, revision)) = self.store.board_snapshot()? else {
             return Ok((Vec::new(), 0));
         };
         let contents = Contents::from_rows(&rows)?;
-        Ok((contents.known_lanes(), revision))
+        Ok((contents.known_labels(), revision))
     }
 
     /// `ticket(id)`: the ticket a handle names, or the failure every id-taking
@@ -195,15 +195,15 @@ impl Board {
         }
     }
 
-    // MARK: - Lanes
+    // MARK: - Labels
 
-    /// `add_lane(name, key, project)`: append a new, empty lane. The name is trimmed; an
+    /// `add_label(name, key, project)`: append a new, empty label. The name is trimmed; an
     /// empty or already-used name is rejected. An absent key is the first three
     /// alphanumerics of the name; a present one is uppercased and must be
     /// alphanumerics. An absent project creates or reuses the project named for
-    /// the lane, so every existing `lane add` call behaves exactly as before;
-    /// a present one must name a known project. Returns the lane list after the write.
-    pub fn add_lane(
+    /// the label, so every existing `label add` call behaves exactly as before;
+    /// a present one must name a known project. Returns the label list after the write.
+    pub fn add_label(
         &self,
         name: &str,
         key: Option<&str>,
@@ -211,13 +211,15 @@ impl Board {
     ) -> Result<Vec<String>, DomainError> {
         let name = name.trim();
         if name.is_empty() {
-            return Err(DomainError::EmptyLaneName);
+            return Err(DomainError::EmptyLabelName);
         }
-        let requested = key.map(super::lane::LaneKey::normalize).transpose()?;
+        let requested = key
+            .map(super::ticket_label::LabelKey::normalize)
+            .transpose()?;
         let project = project.map(str::trim);
         self.mutate(|contents| {
-            if contents.known_lanes().iter().any(|known| known == name) {
-                return Err(DomainError::DuplicateLane(name.to_string()));
+            if contents.known_labels().iter().any(|known| known == name) {
+                return Err(DomainError::DuplicateLabel(name.to_string()));
             }
             let parent = match project {
                 Some(raw) if !raw.is_empty() => {
@@ -232,29 +234,35 @@ impl Board {
                 }
                 _ => {
                     if !contents.projects.iter().any(|p| p.name == name) {
-                        contents.projects.push(super::lane::Project::new(name));
+                        contents
+                            .projects
+                            .push(super::ticket_label::Project::new(name));
                     }
                     name.to_string()
                 }
             };
-            let taken: Vec<String> = contents.lanes.iter().map(|lane| lane.key.clone()).collect();
+            let taken: Vec<String> = contents
+                .labels
+                .iter()
+                .map(|label| label.key.clone())
+                .collect();
             let key = match requested {
                 Some(key) => key,
-                None => super::lane::LaneKey::generate(name, &taken),
+                None => super::ticket_label::LabelKey::generate(name, &taken),
             };
             let key = unique_key(&key, contents)?;
-            contents.lanes.push(Lane::with_project(name, key, parent));
-            Ok((contents.known_lanes(), true))
+            contents.labels.push(Label::with_project(name, key, parent));
+            Ok((contents.known_labels(), true))
         })
     }
 
-    /// `rename_lane(from, to, key, project)`: rename a lane in place, the lane list and
+    /// `rename_label(from, to, key, project)`: rename a label in place, the label list and
     /// every ticket that belongs to it, in one write. The key survives a rename by
-    /// default; a key may move it only while the lane holds no numbered ticket.
-    /// The project survives by default; a present project re-parents the lane
+    /// default; a key may move it only while the label holds no numbered ticket.
+    /// The project survives by default; a present project re-parents the label
     /// and must name a known project. Re-parenting never touches keys, numbers
     /// or refs.
-    pub fn rename_lane(
+    pub fn rename_label(
         &self,
         from: &str,
         to: &str,
@@ -264,13 +272,15 @@ impl Board {
         let from = from.trim();
         let to = to.trim();
         if to.is_empty() {
-            return Err(DomainError::EmptyLaneName);
+            return Err(DomainError::EmptyLabelName);
         }
-        let requested = key.map(super::lane::LaneKey::normalize).transpose()?;
+        let requested = key
+            .map(super::ticket_label::LabelKey::normalize)
+            .transpose()?;
         let project = project.map(str::trim);
         self.mutate(|contents| {
-            let Some(i) = contents.lanes.iter().position(|lane| lane.name == from) else {
-                return Err(DomainError::UnknownLane(from.to_string()));
+            let Some(i) = contents.labels.iter().position(|label| label.name == from) else {
+                return Err(DomainError::UnknownLabel(from.to_string()));
             };
             let new_parent = match project {
                 Some(raw) if !raw.is_empty() => {
@@ -285,20 +295,20 @@ impl Board {
                 }
                 _ => None,
             };
-            let current = contents.lanes[i].clone();
+            let current = contents.labels[i].clone();
             let new_key = match requested {
                 Some(requested) if requested != current.key => {
                     let refs: Vec<String> = contents
                         .tickets
                         .iter()
-                        .filter(|ticket| ticket.lane.as_deref() == Some(from))
+                        .filter(|ticket| ticket.label.as_deref() == Some(from))
                         .filter(|ticket| ticket.number.is_some())
                         .filter_map(|ticket| ticket.reference.clone())
                         .collect();
                     if !refs.is_empty() {
-                        return Err(DomainError::FrozenLaneKey {
+                        return Err(DomainError::FrozenLabelKey {
                             key: current.key.clone(),
-                            lane: from.to_string(),
+                            label: from.to_string(),
                             refs,
                         });
                     }
@@ -309,55 +319,55 @@ impl Board {
             if from == to {
                 let mut changed = false;
                 if let Some(new_key) = new_key {
-                    contents.lanes[i].key = new_key;
+                    contents.labels[i].key = new_key;
                     changed = true;
                 }
                 if let Some(parent) = new_parent
-                    && parent != contents.lanes[i].project
+                    && parent != contents.labels[i].project
                 {
-                    contents.lanes[i].project = parent;
+                    contents.labels[i].project = parent;
                     changed = true;
                 }
                 if !changed {
-                    return Ok((contents.known_lanes(), false));
+                    return Ok((contents.known_labels(), false));
                 }
                 contents.normalize();
-                return Ok((contents.known_lanes(), true));
+                return Ok((contents.known_labels(), true));
             }
-            if contents.known_lanes().iter().any(|known| known == to) {
-                return Err(DomainError::DuplicateLane(to.to_string()));
+            if contents.known_labels().iter().any(|known| known == to) {
+                return Err(DomainError::DuplicateLabel(to.to_string()));
             }
-            contents.lanes[i].name = to.to_string();
+            contents.labels[i].name = to.to_string();
             if let Some(new_key) = new_key {
-                contents.lanes[i].key = new_key;
+                contents.labels[i].key = new_key;
             }
             if let Some(parent) = new_parent {
-                contents.lanes[i].project = parent;
+                contents.labels[i].project = parent;
             }
             for ticket in &mut contents.tickets {
-                if ticket.lane.as_deref() == Some(from) {
-                    ticket.lane = Some(to.to_string());
+                if ticket.label.as_deref() == Some(from) {
+                    ticket.label = Some(to.to_string());
                 }
             }
             contents.normalize();
-            Ok((contents.known_lanes(), true))
+            Ok((contents.known_labels(), true))
         })
     }
 
-    /// `delete_lane(name)`: remove a lane and move its tickets to the default area.
-    /// A lane is never a way to delete tickets; the moved tickets lose their
-    /// numbers with the lane, because the default area carries no ref.
-    pub fn delete_lane(&self, name: &str) -> Result<LaneDeletion, DomainError> {
+    /// `delete_label(name)`: remove a label and move its tickets to the default area.
+    /// A label is never a way to delete tickets; the moved tickets lose their
+    /// numbers with the label, because the default area carries no ref.
+    pub fn delete_label(&self, name: &str) -> Result<LabelDeletion, DomainError> {
         let name = name.trim();
         self.mutate(|contents| {
-            let Some(i) = contents.lanes.iter().position(|lane| lane.name == name) else {
-                return Err(DomainError::UnknownLane(name.to_string()));
+            let Some(i) = contents.labels.iter().position(|label| label.name == name) else {
+                return Err(DomainError::UnknownLabel(name.to_string()));
             };
-            contents.lanes.remove(i);
+            contents.labels.remove(i);
             let mut moved = 0;
             for ticket in &mut contents.tickets {
-                if ticket.lane.as_deref() == Some(name) {
-                    ticket.lane = None;
+                if ticket.label.as_deref() == Some(name) {
+                    ticket.label = None;
                     ticket.number = None;
                     ticket.reference = None;
                     moved += 1;
@@ -365,8 +375,8 @@ impl Board {
             }
             contents.normalize();
             Ok((
-                LaneDeletion {
-                    lanes: contents.known_lanes(),
+                LabelDeletion {
+                    labels: contents.known_labels(),
                     moved,
                 },
                 true,
@@ -374,23 +384,23 @@ impl Board {
         })
     }
 
-    /// `move_lane(name, to)`: reorder the declared lanes. `index` is 0-based in the
-    /// lane list and is clamped, so `usize::MAX` moves it to the end. Only the lane
+    /// `move_label(name, to)`: reorder the declared labels. `index` is 0-based in the
+    /// label list and is clamped, so `usize::MAX` moves it to the end. Only the label
     /// list changes: the groups travel whole.
-    pub fn move_lane(&self, name: &str, to: usize) -> Result<Vec<String>, DomainError> {
+    pub fn move_label(&self, name: &str, to: usize) -> Result<Vec<String>, DomainError> {
         let name = name.trim();
         self.mutate(|contents| {
-            let Some(from) = contents.lanes.iter().position(|lane| lane.name == name) else {
-                return Err(DomainError::UnknownLane(name.to_string()));
+            let Some(from) = contents.labels.iter().position(|label| label.name == name) else {
+                return Err(DomainError::UnknownLabel(name.to_string()));
             };
-            let lane = contents.lanes.remove(from);
-            let to = to.min(contents.lanes.len());
-            contents.lanes.insert(to, lane);
+            let label = contents.labels.remove(from);
+            let to = to.min(contents.labels.len());
+            contents.labels.insert(to, label);
             Ok((
                 contents
-                    .lanes
+                    .labels
                     .iter()
-                    .map(|lane| lane.name.clone())
+                    .map(|label| label.name.clone())
                     .collect(),
                 to != from,
             ))
@@ -399,31 +409,31 @@ impl Board {
 
     // MARK: - Projects
 
-    /// `projects()`: every project in render order, each with its lanes in lane
+    /// `projects()`: every project in render order, each with its labels in label
     /// order. Empty projects list truthfully; the board draws only projects
-    /// with lanes.
-    pub fn projects(&self) -> Result<Vec<super::lane::ProjectWithLanes>, DomainError> {
-        Ok(self.load()?.projects_with_lanes())
+    /// with labels.
+    pub fn projects(&self) -> Result<Vec<super::ticket_label::ProjectWithLabels>, DomainError> {
+        Ok(self.load()?.projects_with_labels())
     }
 
     /// [`projects`](Self::projects) and the revision its rows are a snapshot of.
     pub fn projects_snapshot(
         &self,
-    ) -> Result<(Vec<super::lane::ProjectWithLanes>, i64), DomainError> {
+    ) -> Result<(Vec<super::ticket_label::ProjectWithLabels>, i64), DomainError> {
         let Some((rows, revision)) = self.store.board_snapshot()? else {
             return Ok((Vec::new(), 0));
         };
         let contents = Contents::from_rows(&rows)?;
-        Ok((contents.projects_with_lanes(), revision))
+        Ok((contents.projects_with_labels(), revision))
     }
 
     /// `add_project(name)`: append a new, empty project. The name is trimmed;
     /// an empty or already-used name is rejected. Returns the project list
-    /// after the write, lane-verb style.
+    /// after the write, label-verb style.
     pub fn add_project(
         &self,
         name: &str,
-    ) -> Result<Vec<super::lane::ProjectWithLanes>, DomainError> {
+    ) -> Result<Vec<super::ticket_label::ProjectWithLabels>, DomainError> {
         let name = name.trim();
         if name.is_empty() {
             return Err(DomainError::EmptyProjectName);
@@ -432,20 +442,22 @@ impl Board {
             if contents.projects.iter().any(|p| p.name == name) {
                 return Err(DomainError::DuplicateProject(name.to_string()));
             }
-            contents.projects.push(super::lane::Project::new(name));
-            Ok((contents.projects_with_lanes(), true))
+            contents
+                .projects
+                .push(super::ticket_label::Project::new(name));
+            Ok((contents.projects_with_labels(), true))
         })
     }
 
-    /// `rename_project(from, to)`: rename a project in place, moving its lanes
-    /// with it. Lane names, keys, numbers and refs are unchanged; only the
+    /// `rename_project(from, to)`: rename a project in place, moving its labels
+    /// with it. Label names, keys, numbers and refs are unchanged; only the
     /// parent moves. An empty or already-used name is rejected; an unknown
     /// project names the known projects.
     pub fn rename_project(
         &self,
         from: &str,
         to: &str,
-    ) -> Result<Vec<super::lane::ProjectWithLanes>, DomainError> {
+    ) -> Result<Vec<super::ticket_label::ProjectWithLabels>, DomainError> {
         let from = from.trim();
         let to = to.trim();
         if to.is_empty() {
@@ -459,28 +471,28 @@ impl Board {
                 });
             };
             if from == to {
-                return Ok((contents.projects_with_lanes(), false));
+                return Ok((contents.projects_with_labels(), false));
             }
             if contents.projects.iter().any(|p| p.name == to) {
                 return Err(DomainError::DuplicateProject(to.to_string()));
             }
             contents.projects[i].name = to.to_string();
-            for lane in &mut contents.lanes {
-                if lane.project == from {
-                    lane.project = to.to_string();
+            for label in &mut contents.labels {
+                if label.project == from {
+                    label.project = to.to_string();
                 }
             }
-            Ok((contents.projects_with_lanes(), true))
+            Ok((contents.projects_with_labels(), true))
         })
     }
 
     /// `delete_project(name)`: remove an empty project. A project that still
-    /// holds lanes is refused, naming those lanes: re-parent first, delete
-    /// after, so a delete can never strand or silently re-home numbered lanes.
+    /// holds labels is refused, naming those labels: re-parent first, delete
+    /// after, so a delete can never strand or silently re-home numbered labels.
     pub fn delete_project(
         &self,
         name: &str,
-    ) -> Result<Vec<super::lane::ProjectWithLanes>, DomainError> {
+    ) -> Result<Vec<super::ticket_label::ProjectWithLabels>, DomainError> {
         let name = name.trim();
         if name.is_empty() {
             return Err(DomainError::EmptyProjectName);
@@ -492,28 +504,28 @@ impl Board {
                     projects: contents.known_projects(),
                 });
             };
-            let lanes: Vec<String> = contents
-                .lanes
+            let labels: Vec<String> = contents
+                .labels
                 .iter()
-                .filter(|lane| lane.project == name)
-                .map(|lane| lane.name.clone())
+                .filter(|label| label.project == name)
+                .map(|label| label.name.clone())
                 .collect();
-            if !lanes.is_empty() {
+            if !labels.is_empty() {
                 return Err(DomainError::ProjectNotEmpty {
                     project: name.to_string(),
-                    lanes,
+                    labels,
                 });
             }
             contents.projects.remove(i);
-            Ok((contents.projects_with_lanes(), true))
+            Ok((contents.projects_with_labels(), true))
         })
     }
 
     // MARK: - Add
 
     /// `add(title, ...)`: the title is trimmed; empty is rejected. The new ticket
-    /// lands on the **top of its lane** (`None` is the default area); an unknown
-    /// lane is rejected. The filer is stamped here and never touched again.
+    /// lands on the **top of its label** (`None` is the default area); an unknown
+    /// label is rejected. The filer is stamped here and never touched again.
     pub fn add(&self, title: &str, fields: AddTicket<'_>) -> Result<Ticket, DomainError> {
         let title = title.trim();
         if title.is_empty() {
@@ -523,13 +535,13 @@ impl Board {
         let origin = normalize_origin(Some(fields.origin));
         let description = description::normalize(fields.description);
         self.mutate(|contents| {
-            contents.validate_lane(fields.lane)?;
+            contents.validate_label(fields.label)?;
             let now = unix_now();
             let mut ticket = Ticket::new(title);
             ticket.description = description.clone();
             ticket.assignee = assignee.clone();
             ticket.origin = origin.clone();
-            ticket.lane = fields.lane.map(str::to_string);
+            ticket.label = fields.label.map(str::to_string);
             ticket.set_status(fields.status, now);
             insert_at_top(&mut ticket, contents);
             Ok((ticket, true))
@@ -538,42 +550,42 @@ impl Board {
 
     // MARK: - Move and place
 
-    /// `move(id, to_lane, at)`: place a ticket at a 0-based index within `to_lane`
-    /// (`None` is the default area), moving it between lanes when needed. `index`
+    /// `move(id, to_label, at)`: place a ticket at a 0-based index within `to_label`
+    /// (`None` is the default area), moving it between labels when needed. `index`
     /// is clamped into range, so `usize::MAX` appends.
     pub fn move_ticket(
         &self,
         handle: &str,
-        to_lane: Option<&str>,
+        to_label: Option<&str>,
         at: usize,
     ) -> Result<Ticket, DomainError> {
         self.mutate(|contents| {
             let from = contents.require_ticket(handle)?.1;
-            contents.validate_lane(to_lane)?;
+            contents.validate_label(to_label)?;
             let mut moved = contents.tickets.remove(from);
-            insert(&mut moved, to_lane, contents, at);
+            insert(&mut moved, to_label, contents, at);
             Ok((moved, true))
         })
     }
 
-    /// `place(id, lane, status, at)`: the board's drag. **One write** that sets the
-    /// lane and the status together and puts the ticket at a 0-based index within
-    /// the lane. A drop that lands the ticket exactly where it already was writes
+    /// `place(id, label, status, at)`: the board's drag. **One write** that sets the
+    /// label and the status together and puts the ticket at a 0-based index within
+    /// the label. A drop that lands the ticket exactly where it already was writes
     /// nothing.
     pub fn place(
         &self,
         handle: &str,
-        lane: Option<&str>,
+        label: Option<&str>,
         status: Status,
         at: usize,
     ) -> Result<Ticket, DomainError> {
         self.mutate(|contents| {
             let from = contents.require_ticket(handle)?.1;
-            contents.validate_lane(lane)?;
+            contents.validate_label(label)?;
             let before = contents.tickets.clone();
             let mut moved = contents.tickets.remove(from);
             moved.set_status(status, unix_now());
-            insert(&mut moved, lane, contents, at);
+            insert(&mut moved, label, contents, at);
             let changed = contents.tickets != before;
             Ok((moved, changed))
         })
@@ -719,7 +731,7 @@ impl Board {
     // MARK: - Block and unblock (TAN-232)
 
     /// `block(id, on)`: make one ticket wait on another, one edge. The keys are the
-    /// two UUIDs, so a lane move, a lane delete or a key move changes the displayed
+    /// two UUIDs, so a label move, a label delete or a key move changes the displayed
     /// ref and never the edge.
     ///
     /// **The refusals are the store's, and they are all at write time**: a ticket
@@ -928,7 +940,7 @@ impl Board {
     /// **The read is inside the transaction**, the way the Swift store's `mutate`
     /// is (`Store.swift:130-175`): the write lock is held before the rows are read,
     /// so two writers over one home serialise their read-modify-write. A snapshot
-    /// taken before the lock would hand the same lane number to both writers and a
+    /// taken before the lock would hand the same label number to both writers and a
     /// stale diff would write an untouched row back over a concurrent edit.
     ///
     /// A domain failure is not the store's to carry, so `body`'s failure is parked
@@ -992,25 +1004,25 @@ fn comment_from_row(row: crate::store::board_rows::CommentRow) -> Result<Comment
     })
 }
 
-/// The key `requested` must not be another lane's, compared uppercased.
+/// The key `requested` must not be another label's, compared uppercased.
 fn unique_key(requested: &str, contents: &Contents) -> Result<String, DomainError> {
     let key = requested.to_uppercase();
     if contents
-        .lanes
+        .labels
         .iter()
-        .any(|lane| lane.key.eq_ignore_ascii_case(&key))
+        .any(|label| label.key.eq_ignore_ascii_case(&key))
     {
-        return Err(DomainError::DuplicateLaneKey(key));
+        return Err(DomainError::DuplicateLabelKey(key));
     }
     Ok(key)
 }
 
-/// Insert a new ticket on top of its lane: it takes the lane's next number and its
+/// Insert a new ticket on top of its label: it takes the label's next number and its
 /// ref, and the ticket comes back as the store will read it.
 fn insert_at_top(ticket: &mut Ticket, contents: &mut Contents) {
-    if let Some(lane) = ticket.lane.clone() {
-        ticket.number = Some(contents.issue_number(&lane));
-        let start = contents.block_start(Some(&lane));
+    if let Some(label) = ticket.label.clone() {
+        ticket.number = Some(contents.issue_number(&label));
+        let start = contents.block_start(Some(&label));
         contents.tickets.insert(start, ticket.clone());
         contents.refresh_refs();
         ticket.reference = contents
@@ -1024,19 +1036,19 @@ fn insert_at_top(ticket: &mut Ticket, contents: &mut Contents) {
     }
 }
 
-/// The one place a lane insertion's arithmetic lives: `index` is 0-based within
-/// `lane` and clamped into range, so `usize::MAX` appends.
+/// The one place a label insertion's arithmetic lives: `index` is 0-based within
+/// `label` and clamped into range, so `usize::MAX` appends.
 ///
-/// The ticket's **number** moves with its lane: a move into another lane takes the
-/// target lane's next number, while a reorder inside the same lane keeps it. The
+/// The ticket's **number** moves with its label: a move into another label takes the
+/// target label's next number, while a reorder inside the same label keeps it. The
 /// default area has none, so a move there clears it.
-fn insert(ticket: &mut Ticket, lane: Option<&str>, contents: &mut Contents, at: usize) {
-    let from = ticket.lane.clone();
-    ticket.lane = lane.map(str::to_string);
-    match lane {
-        Some(lane) => {
-            if from.as_deref() != Some(lane) || ticket.number.is_none() {
-                ticket.number = Some(contents.issue_number(lane));
+fn insert(ticket: &mut Ticket, label: Option<&str>, contents: &mut Contents, at: usize) {
+    let from = ticket.label.clone();
+    ticket.label = label.map(str::to_string);
+    match label {
+        Some(label) => {
+            if from.as_deref() != Some(label) || ticket.number.is_none() {
+                ticket.number = Some(contents.issue_number(label));
             }
         }
         None => {
@@ -1044,11 +1056,11 @@ fn insert(ticket: &mut Ticket, lane: Option<&str>, contents: &mut Contents, at: 
             ticket.reference = None;
         }
     }
-    let start = contents.block_start(lane);
+    let start = contents.block_start(label);
     let count = contents
         .tickets
         .iter()
-        .filter(|candidate| candidate.lane.as_deref() == lane)
+        .filter(|candidate| candidate.label.as_deref() == label)
         .count();
     contents
         .tickets

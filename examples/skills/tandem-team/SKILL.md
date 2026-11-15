@@ -15,7 +15,7 @@ A template: the roster below is this repository's own. Replace it with your own 
 | `reviewer` | the `reviewer` subagent | the merge gate, read through the ticket's lenses: `code`, `security`, `ui-design`, `ux`, `architecture` | `agents/reviewer.md`, `skills/review-lenses/` |
 | `sprint` | the pass's own agent | runs the loop: refine, build, review, retro, close | `skills/tandem-sprint/` (build phase: `skills/tandem-build/`) |
 
-`sprint` and `human` fill no subagent: the sprint is a procedure the pass runs, the human is the decision. `retro` is not a role: it is a skill (`skills/retro/SKILL.md`) that runs at every batch close and on human request, filing `backlog` tickets into the project's lane, and into `Retro` only when no project owns the finding.
+`sprint` and `human` fill no subagent: the sprint is a procedure the pass runs, the human is the decision. `retro` is not a role: it is a skill (`skills/retro/SKILL.md`) that runs at every batch close and on human request, filing `backlog` tickets into the project's label, and into `Retro` only when no project owns the finding.
 
 ## The specialists
 

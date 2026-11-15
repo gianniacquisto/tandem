@@ -1,13 +1,13 @@
 {
   "argv": [
-    "lane",
+    "label",
     "delete",
     "--name",
     "Cycle"
   ],
   "exit": 1,
   "stderr": [
-    "Unknown cycle lane \"Cycle\". Create it with `lane add --name \"Cycle\"`, or list lanes with `lane list`."
+    "Unknown label \"Cycle\". Create it with `label add --name \"Cycle\"`, or list labels with `label list`."
   ],
   "stdin": "",
   "stdout": [],

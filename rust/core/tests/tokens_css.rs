@@ -467,7 +467,7 @@ const SCALE: [&str; 15] = [
     "--space-gutter",
     "--space-row",
     "--space-control",
-    "--space-lane",
+    "--space-label",
     "--space-chip",
     "--motion-insert",
     "--motion-toggle",
@@ -630,7 +630,7 @@ fn value<'a>(set: &'a [(&'a str, &'a str)], name: &str) -> &'a str {
 }
 
 /// AA for the neutral palettes and the four published ones: text is 4.5:1 on every surface, tinted column
-/// and card it can sit on, and a lane dot is 3:1 on the card. The tandem
+/// and card it can sit on, and a label dot is 3:1 on the card. The tandem
 /// palettes are the frozen cutover values and are not held to this bar.
 #[test]
 fn neutral_and_published_palettes_meet_aa_on_surfaces_columns_and_cards() {

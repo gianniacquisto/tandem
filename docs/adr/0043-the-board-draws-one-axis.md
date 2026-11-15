@@ -30,3 +30,7 @@ Decided 2026-11-11 (UI-33 built it).
 - A board with an empty stage still draws that stage's column and its add foot, because the columns are the workflow's stages and exist with zero tickets. A first read that has not answered draws its message alone.
 - The board's copy names the per-column add, and `⌘N` reaches the first column's add; `⌥↑↓` orders in the list only, and `⌥←→` steps the status.
 - A stored `active_project` written by the lane-era build reads as no focus. The reader-first rule applies: no migration is needed because the stale value hides nothing.
+
+## Amended by
+
+- [ADR 0047](0047-lanes-are-labels.md): "lane" in this ADR is today's "label"; the vocabulary changed and the model did not.

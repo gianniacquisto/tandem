@@ -15,13 +15,13 @@
 use rusqlite::params;
 
 use super::schema::{has_column, has_table};
-use super::write::{NewLane, NewProject, NewTicket};
+use super::write::{NewLabel, NewProject, NewTicket};
 use super::{Result, Store, Write, translate};
 
-/// One lane row: its name (the key the board groups by), its ref prefix, the last
+/// One label row: its name (the key the board groups by), its ref prefix, the last
 /// number it issued, its render position and its parent project.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LaneRow {
+pub(crate) struct LabelRow {
     pub name: String,
     pub key: String,
     pub last_number: i64,
@@ -37,7 +37,7 @@ pub(crate) struct ProjectRow {
 }
 
 /// One ticket row. `position` is the stored order (ADR 0006) and `number` the
-/// per-lane number; the ref is derived from the lane's key and that number by the
+/// per-label number; the ref is derived from the label's key and that number by the
 /// domain, never stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TicketRow {
@@ -46,7 +46,7 @@ pub(crate) struct TicketRow {
     pub description: Option<String>,
     pub status: String,
     pub archived: bool,
-    pub lane: Option<String>,
+    pub label: Option<String>,
     pub number: Option<i64>,
     pub origin: String,
     pub assignee: Option<String>,
@@ -67,7 +67,7 @@ pub(crate) struct EdgeRow {
 /// The board as the store holds it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct BoardRows {
-    pub lanes: Vec<LaneRow>,
+    pub labels: Vec<LabelRow>,
     pub tickets: Vec<TicketRow>,
     pub edges: Vec<EdgeRow>,
     pub projects: Vec<ProjectRow>,
@@ -134,24 +134,36 @@ fn read_comments(connection: &rusqlite::Connection, ticket_id: &str) -> Result<V
 /// transaction will commit over.
 pub(crate) fn read_board(connection: &rusqlite::Connection) -> Result<BoardRows> {
     Ok(BoardRows {
-        lanes: lanes(connection)?,
+        labels: labels(connection)?,
         tickets: tickets(connection)?,
         edges: edges(connection)?,
         projects: projects(connection)?,
     })
 }
 
-fn lanes(connection: &rusqlite::Connection) -> Result<Vec<LaneRow>> {
-    if has_column(connection, "lanes", "project")? {
+/// The table that holds the labels on this file: `labels` from schema v12, and
+/// `lanes` on a file a read reaches before its first write migrates it (a read
+/// never migrates, ADR 0031), so a v11 home still reads until then.
+fn label_table(connection: &rusqlite::Connection) -> Result<&'static str> {
+    Ok(if has_table(connection, "labels")? {
+        "labels"
+    } else {
+        "lanes"
+    })
+}
+
+fn labels(connection: &rusqlite::Connection) -> Result<Vec<LabelRow>> {
+    let table = label_table(connection)?;
+    if has_column(connection, table, "project")? {
         let mut statement = connection
-            .prepare(
-                "SELECT name, key, last_number, position, project FROM lanes
-                 ORDER BY position, rowid",
-            )
+            .prepare(&format!(
+                "SELECT name, key, last_number, position, project FROM {table}
+                 ORDER BY position, rowid"
+            ))
             .map_err(|error| translate(error, connection))?;
         let rows = statement
             .query_map([], |row| {
-                Ok(LaneRow {
+                Ok(LabelRow {
                     name: row.get(0)?,
                     key: row.get(1)?,
                     last_number: row.get(2)?,
@@ -165,11 +177,13 @@ fn lanes(connection: &rusqlite::Connection) -> Result<Vec<LaneRow>> {
             .map_err(|error| translate(error, connection));
     }
     let mut statement = connection
-        .prepare("SELECT name, key, last_number, position FROM lanes ORDER BY position, rowid")
+        .prepare(&format!(
+            "SELECT name, key, last_number, position FROM {table} ORDER BY position, rowid"
+        ))
         .map_err(|error| translate(error, connection))?;
     let rows = statement
         .query_map([], |row| {
-            Ok(LaneRow {
+            Ok(LabelRow {
                 name: row.get(0)?,
                 key: row.get(1)?,
                 last_number: row.get(2)?,
@@ -202,12 +216,18 @@ fn projects(connection: &rusqlite::Connection) -> Result<Vec<ProjectRow>> {
 }
 
 fn tickets(connection: &rusqlite::Connection) -> Result<Vec<TicketRow>> {
+    // The column is `lane` until the file migrates to v12 (see `label_table`).
+    let column = if label_table(connection)? == "labels" {
+        "label"
+    } else {
+        "lane"
+    };
     let mut statement = connection
-        .prepare(
-            "SELECT id, title, description, status, archived, lane, number, origin,
+        .prepare(&format!(
+            "SELECT id, title, description, status, archived, {column}, number, origin,
                     assignee, link, position, created_at, completed_at
-             FROM tickets ORDER BY position, rowid",
-        )
+             FROM tickets ORDER BY position, rowid"
+        ))
         .map_err(|error| translate(error, connection))?;
     let rows = statement
         .query_map([], |row| {
@@ -217,7 +237,7 @@ fn tickets(connection: &rusqlite::Connection) -> Result<Vec<TicketRow>> {
                 description: row.get(2)?,
                 status: row.get(3)?,
                 archived: row.get::<_, i64>(4)? != 0,
-                lane: row.get(5)?,
+                label: row.get(5)?,
                 number: row.get(6)?,
                 origin: row.get(7)?,
                 assignee: row.get(8)?,
@@ -281,16 +301,16 @@ impl Write<'_> {
                 })?,
             }
         }
-        for old in &before.lanes {
-            if !after.lanes.iter().any(|new| new.name == old.name) {
-                self.execute("DELETE FROM lanes WHERE name = ?1", [&old.name])?;
+        for old in &before.labels {
+            if !after.labels.iter().any(|new| new.name == old.name) {
+                self.execute("DELETE FROM labels WHERE name = ?1", [&old.name])?;
             }
         }
-        for new in &after.lanes {
-            match before.lanes.iter().find(|old| old.name == new.name) {
+        for new in &after.labels {
+            match before.labels.iter().find(|old| old.name == new.name) {
                 Some(old) if old == new => {}
                 Some(_) => self.execute(
-                    "UPDATE lanes SET key = ?2, last_number = ?3, position = ?4, project = ?5,
+                    "UPDATE labels SET key = ?2, last_number = ?3, position = ?4, project = ?5,
                             author = ?6
                      WHERE name = ?1
                        AND (key IS NOT ?2 OR last_number IS NOT ?3
@@ -304,7 +324,7 @@ impl Write<'_> {
                         self.actor().as_str()
                     ],
                 )?,
-                None => self.insert_lane(NewLane {
+                None => self.insert_label(NewLabel {
                     name: &new.name,
                     key: &new.key,
                     last_number: new.last_number,
@@ -323,13 +343,13 @@ impl Write<'_> {
                 Some(old) if old == new => {}
                 Some(_) => self.execute(
                     "UPDATE tickets SET title = ?2, description = ?3, status = ?4,
-                            archived = ?5, lane = ?6, number = ?7, origin = ?8,
+                            archived = ?5, label = ?6, number = ?7, origin = ?8,
                             assignee = ?9, link = ?10, position = ?11,
                             created_at = ?12, completed_at = ?13, author = ?14
                      WHERE id = ?1
                        AND (title IS NOT ?2 OR description IS NOT ?3
                             OR status IS NOT ?4 OR archived IS NOT ?5
-                            OR lane IS NOT ?6 OR number IS NOT ?7
+                            OR label IS NOT ?6 OR number IS NOT ?7
                             OR origin IS NOT ?8 OR assignee IS NOT ?9
                             OR link IS NOT ?10 OR position IS NOT ?11
                             OR created_at IS NOT ?12 OR completed_at IS NOT ?13
@@ -340,7 +360,7 @@ impl Write<'_> {
                         new.description,
                         new.status,
                         i64::from(new.archived),
-                        new.lane,
+                        new.label,
                         new.number,
                         new.origin,
                         new.assignee,
@@ -357,7 +377,7 @@ impl Write<'_> {
                     description: new.description.as_deref(),
                     status: &new.status,
                     archived: new.archived,
-                    lane: new.lane.as_deref(),
+                    label: new.label.as_deref(),
                     number: new.number,
                     origin: &new.origin,
                     assignee: new.assignee.as_deref(),

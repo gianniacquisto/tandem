@@ -23,8 +23,8 @@ pub fn slashed_path(path: &Path) -> String {
 }
 
 pub use views::{
-    ArchivedView, BacklinkView, CommentList, CommentResult, CommentView, LaneDeletionView,
-    LaneList, MarkdownBlockView, MarkdownInlineView, MovedNoteView, NoteContentView, NoteMoveView,
+    ArchivedView, BacklinkView, CommentList, CommentResult, CommentView, LabelDeletionView,
+    LabelList, MarkdownBlockView, MarkdownInlineView, MovedNoteView, NoteContentView, NoteMoveView,
     NoteNodeView, NotePathView, NoteWriteView, ProjectList, ProjectView, RecoveryView,
     TicketBlockView, TicketDetail, TicketList, TicketSummary,
 };

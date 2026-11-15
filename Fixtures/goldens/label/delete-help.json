@@ -1,6 +1,6 @@
 {
   "argv": [
-    "lane",
+    "label",
     "delete",
     "--help"
   ],
@@ -8,10 +8,10 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli lane delete — a lane, its members to the default area.",
+    "tandem-cli label delete — a label, its members to the default area.",
     "",
     "Usage:",
-    "  tandem-cli lane delete --name <name>"
+    "  tandem-cli label delete --name <name>"
   ],
   "stdoutKind": "text"
 }

@@ -13,7 +13,7 @@
     "Usage:",
     "  tandem-cli project delete --name <name>",
     "",
-    "A project that still holds lanes is refused, naming them: re-parent first,",
+    "A project that still holds labels is refused, naming them: re-parent first,",
     "then delete."
   ],
   "stdoutKind": "text"

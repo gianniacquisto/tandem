@@ -12,7 +12,7 @@
     "",
     "Usage:",
     "  tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]",
-    "                         [--lane <name>] [--origin <name|self>] [--description <string|->]",
+    "                         [--label <name>] [--origin <name|self>] [--description <string|->]",
     "",
     "Values:",
     "  status    backlog | on-hold | ready | in-progress | in-review | done",

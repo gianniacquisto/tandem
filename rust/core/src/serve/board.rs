@@ -4,10 +4,10 @@
 use super::*;
 
 /// The board's visible set: every non-archived ticket, narrowed by the project
-/// focus, the lane, the assignee and the title search.
+/// focus, the label, the assignee and the title search.
 fn visible<'a>(
     tickets: &'a [Ticket],
-    projects: &[crate::domain::ProjectWithLanes],
+    projects: &[crate::domain::ProjectWithLabels],
     filters: &Filters,
 ) -> Option<Vec<&'a Ticket>> {
     let focus: Option<Vec<String>> = if filters.show_all || filters.project.is_empty() {
@@ -16,9 +16,9 @@ fn visible<'a>(
         projects
             .iter()
             .find(|project| project.name == filters.project)
-            .map(|project| project.lanes.clone())
+            .map(|project| project.labels.clone())
     };
-    let lane = filters.lane_axis();
+    let label = filters.label_axis();
     let assignee = filters.assignee_axis();
     let needle = filters.text.trim();
     Some(
@@ -28,23 +28,23 @@ fn visible<'a>(
                 if ticket.archived {
                     return false;
                 }
-                if let Some(lanes) = &focus
+                if let Some(labels) = &focus
                     && !ticket
-                        .lane
+                        .label
                         .as_ref()
-                        .is_some_and(|lane| lanes.contains(lane))
+                        .is_some_and(|label| labels.contains(label))
                 {
                     return false;
                 }
-                match &lane {
-                    LaneAxis::Any => {}
-                    LaneAxis::Unnamed => {
-                        if ticket.lane.is_some() {
+                match &label {
+                    LabelAxis::Any => {}
+                    LabelAxis::Unnamed => {
+                        if ticket.label.is_some() {
                             return false;
                         }
                     }
-                    LaneAxis::Named(name) => {
-                        if ticket.lane.as_deref() != Some(name.as_str()) {
+                    LabelAxis::Named(name) => {
+                        if ticket.label.as_deref() != Some(name.as_str()) {
                             return false;
                         }
                     }
@@ -81,9 +81,9 @@ struct BoardView {
     notice: Option<String>,
     form: FiltersView,
     project_options: Vec<ProjectOption>,
-    lane_options: Vec<LaneOption>,
+    label_options: Vec<LabelOption>,
     assignee_options: Vec<AssigneeOption>,
-    lane_rows: Vec<LaneRow>,
+    label_rows: Vec<LabelRow>,
     show_all: bool,
     empty: Option<EmptyView>,
     columns: Vec<ColumnView>,
@@ -92,8 +92,8 @@ struct BoardView {
     sheet: Option<askama::filters::Safe<String>>,
 }
 
-/// One lane the board may rename.
-struct LaneRow {
+/// One label the board may rename.
+struct LabelRow {
     name: String,
     encoded: String,
 }
@@ -101,7 +101,7 @@ struct LaneRow {
 pub(super) struct FiltersView {
     pub(super) project: String,
     pub(super) show_all: bool,
-    pub(super) lane: String,
+    pub(super) label: String,
     pub(super) assignee: String,
     pub(super) text: String,
 }
@@ -112,7 +112,7 @@ pub(super) struct ProjectOption {
     pub(super) selected: bool,
 }
 
-pub(super) struct LaneOption {
+pub(super) struct LabelOption {
     pub(super) value: String,
     pub(super) label: String,
     pub(super) selected: bool,
@@ -141,13 +141,13 @@ struct CardView {
     id: String,
     title: String,
     reference: Option<String>,
-    lane: Option<LaneView>,
+    label: Option<LabelView>,
     assignee: Option<AssigneeView>,
     blocked: Option<String>,
     selected: bool,
 }
 
-struct LaneView {
+struct LabelView {
     name: String,
     tone: &'static str,
 }
@@ -157,18 +157,18 @@ struct AssigneeView {
     human: bool,
 }
 
-/// The palette tokens a lane chip may draw, in the renderer's fixed order.
-const LANE_TONES: [&str; 7] = ["moss", "ember", "accent", "sun", "skin", "hill", "sky"];
+/// The palette tokens a label chip may draw, in the renderer's fixed order.
+const LABEL_TONES: [&str; 7] = ["moss", "ember", "accent", "sun", "skin", "hill", "sky"];
 
-/// The tone a lane's chip draws: the lane name hashed over the palette tokens,
-/// exactly as the renderer's board module did, so a lane keeps its colour and
+/// The tone a label's chip draws: the label name hashed over the palette tokens,
+/// exactly as the renderer's board module did, so a label keeps its colour and
 /// no colour is stored.
-fn lane_tone(name: &str) -> &'static str {
+fn label_tone(name: &str) -> &'static str {
     let mut hash: u32 = 0;
     for character in name.chars() {
         hash = hash.wrapping_mul(31).wrapping_add(character as u32);
     }
-    LANE_TONES[(hash % LANE_TONES.len() as u32) as usize]
+    LABEL_TONES[(hash % LABEL_TONES.len() as u32) as usize]
 }
 
 /// The block's one-line mark: `Blocked, TAN-42` when exactly one open blocker
@@ -207,7 +207,7 @@ fn empty_view(
     tickets: &[Ticket],
     visible: usize,
     filters: &Filters,
-    projects: &[crate::domain::ProjectWithLanes],
+    projects: &[crate::domain::ProjectWithLabels],
 ) -> Option<EmptyView> {
     if tickets.is_empty() {
         return Some(EmptyView {
@@ -226,7 +226,7 @@ fn empty_view(
             hero: false,
         });
     }
-    if !filters.lane.is_empty() || !filters.assignee.is_empty() {
+    if !filters.label.is_empty() || !filters.assignee.is_empty() {
         return Some(EmptyView {
             title: "No tickets match these filters".to_string(),
             subtitle: "Clear a filter to see more.".to_string(),
@@ -263,7 +263,7 @@ fn render_board(
         .list_snapshot(&TicketQuery::default())
         .map_err(|error| error.message())?;
     let (projects, _) = board.projects_snapshot().map_err(|error| error.message())?;
-    let (lanes, _) = board.lanes_snapshot().map_err(|error| error.message())?;
+    let (labels, _) = board.labels_snapshot().map_err(|error| error.message())?;
     let shown = visible(&tickets, &projects, filters);
     let shown = shown.unwrap_or_default();
 
@@ -286,24 +286,24 @@ fn render_board(
         options
     };
 
-    let lane_options = {
+    let label_options = {
         let mut options = vec![
-            LaneOption {
+            LabelOption {
                 value: String::new(),
-                label: "All lanes".to_string(),
-                selected: filters.lane.is_empty(),
+                label: "All labels".to_string(),
+                selected: filters.label.is_empty(),
             },
-            LaneOption {
+            LabelOption {
                 value: " ".to_string(),
-                label: "No lane".to_string(),
-                selected: filters.lane == " ",
+                label: "No label".to_string(),
+                selected: filters.label == " ",
             },
         ];
-        for lane in &lanes {
-            options.push(LaneOption {
-                value: lane.clone(),
-                label: lane.clone(),
-                selected: filters.lane == *lane,
+        for label in &labels {
+            options.push(LabelOption {
+                value: label.clone(),
+                label: label.clone(),
+                selected: filters.label == *label,
             });
         }
         options
@@ -379,9 +379,9 @@ fn render_board(
                     id: ticket.id.to_string(),
                     title: ticket.title.clone(),
                     reference: ticket.reference.clone(),
-                    lane: ticket.lane.as_deref().map(|name| LaneView {
+                    label: ticket.label.as_deref().map(|name| LabelView {
                         name: name.to_string(),
-                        tone: lane_tone(name),
+                        tone: label_tone(name),
                     }),
                     assignee: assignee_view(ticket.assignee.as_deref()),
                     blocked: block_label(ticket),
@@ -402,18 +402,18 @@ fn render_board(
         form: FiltersView {
             project: filters.project.clone(),
             show_all: filters.show_all,
-            lane: filters.lane.clone(),
+            label: filters.label.clone(),
             assignee: filters.assignee.clone(),
             text: filters.text.clone(),
         },
         project_options,
-        lane_options,
+        label_options,
         assignee_options,
-        lane_rows: lanes
+        label_rows: labels
             .iter()
-            .map(|lane| LaneRow {
-                name: lane.clone(),
-                encoded: super::sheet::encode_component(lane),
+            .map(|label| LabelRow {
+                name: label.clone(),
+                encoded: super::sheet::encode_component(label),
             })
             .collect(),
         show_all: filters.show_all,
@@ -554,12 +554,12 @@ pub(super) async fn add_ticket(
         Ok(status) => status,
         Err(error) => return bad_request(&error.message()),
     };
-    let lane = filters.add_lane();
+    let label = filters.add_label();
     let title = field(&params, "title");
     match context.board().add(
         title,
         AddTicket {
-            lane: lane.as_deref(),
+            label: label.as_deref(),
             status,
             assignee: None,
             description: None,
@@ -571,7 +571,7 @@ pub(super) async fn add_ticket(
                 actor = ?context.actor.as_str(),
                 id = ?ticket.id,
                 reference = ?ticket.reference,
-                lane = ?ticket.lane,
+                label = ?ticket.label,
                 status = ticket.status.as_str(),
                 revision = context.revision(),
                 "ticket added"
@@ -641,9 +641,9 @@ pub(super) async fn move_ticket(
     render_response(&context, &filters, None, &headers, StatusCode::OK)
 }
 
-/// Lanes belong to the board, not to a ticket: the add and rename forms live in
-/// the board's lane menu and answer with the board.
-pub(super) async fn add_lane(
+/// Labels belong to the board, not to a ticket: the add and rename forms live in
+/// the board's label menu and answer with the board.
+pub(super) async fn add_label(
     context: Context,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
@@ -654,20 +654,20 @@ pub(super) async fn add_lane(
     let filters = Filters::parse(&params);
     let abbr = field(&params, "abbr").trim();
     let key = if abbr.is_empty() { None } else { Some(abbr) };
-    let outcome = context.board().add_lane(field(&params, "name"), key, None);
+    let outcome = context.board().add_label(field(&params, "name"), key, None);
     if outcome.is_ok() {
         tracing::info!(
             actor = ?context.actor.as_str(),
-            lane = ?field(&params, "name"),
+            label = ?field(&params, "name"),
             revision = context.revision(),
-            "lane added"
+            "label added"
         );
     }
     let notice = outcome.err().map(|error| error.message());
     render_response(&context, &filters, notice, &headers, StatusCode::OK)
 }
 
-pub(super) async fn rename_lane(
+pub(super) async fn rename_label(
     context: Context,
     Path(name): Path<String>,
     headers: HeaderMap,
@@ -680,18 +680,18 @@ pub(super) async fn rename_lane(
     let abbr = field(&params, "abbr").trim();
     let key = if abbr.is_empty() { None } else { Some(abbr) };
     let to = field(&params, "to");
-    let outcome = context.board().rename_lane(&name, to, key, None);
+    let outcome = context.board().rename_label(&name, to, key, None);
     if outcome.is_ok() {
         tracing::info!(
             actor = ?context.actor.as_str(),
             from = ?name,
             to = ?to,
             revision = context.revision(),
-            "lane renamed"
+            "label renamed"
         );
     }
-    if outcome.is_ok() && filters.lane == name {
-        filters.lane = to.trim().to_string();
+    if outcome.is_ok() && filters.label == name {
+        filters.label = to.trim().to_string();
     }
     let notice = outcome.err().map(|error| error.message());
     render_response(&context, &filters, notice, &headers, StatusCode::OK)

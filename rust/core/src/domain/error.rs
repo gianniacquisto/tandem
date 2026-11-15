@@ -45,12 +45,12 @@ pub enum DomainError {
     /// A status value that is empty, the retired `refined` spelling, or a word
     /// this build does not name.
     InvalidStatus(String),
-    /// A cycle lane name was empty or whitespace-only.
-    EmptyLaneName,
-    /// A cycle lane name was already in use.
-    DuplicateLane(String),
-    /// A lane name was referenced but does not exist.
-    UnknownLane(String),
+    /// A label name was empty or whitespace-only.
+    EmptyLabelName,
+    /// A label name was already in use.
+    DuplicateLabel(String),
+    /// A label name was referenced but does not exist.
+    UnknownLabel(String),
     /// A project name was empty or whitespace-only.
     EmptyProjectName,
     /// A project name was already in use.
@@ -58,19 +58,22 @@ pub enum DomainError {
     /// A `--project` named a project the store does not carry. `projects` is
     /// the declared list, so the refusal names what the caller may pick.
     UnknownProjectName { name: String, projects: Vec<String> },
-    /// A project delete named a project that still holds lanes. `lanes` names
+    /// A project delete named a project that still holds labels. `labels` names
     /// them, so the caller re-parents first and deletes after: a delete never
-    /// strands or silently re-homes numbered lanes.
-    ProjectNotEmpty { project: String, lanes: Vec<String> },
-    /// A lane key that is not uppercase alphanumerics.
-    InvalidLaneKey(String),
-    /// A lane key another lane already holds.
-    DuplicateLaneKey(String),
-    /// A lane's key is frozen: a ticket in the lane holds a number, so moving the
+    /// strands or silently re-homes numbered labels.
+    ProjectNotEmpty {
+        project: String,
+        labels: Vec<String>,
+    },
+    /// A label key that is not uppercase alphanumerics.
+    InvalidLabelKey(String),
+    /// A label key another label already holds.
+    DuplicateLabelKey(String),
+    /// A label's key is frozen: a ticket in the label holds a number, so moving the
     /// key would move a ref a human has already written down.
-    FrozenLaneKey {
+    FrozenLabelKey {
         key: String,
-        lane: String,
+        label: String,
         refs: Vec<String>,
     },
     /// A handle looked like a ref (`KEY-N`) but named nothing; `hint` says
@@ -144,15 +147,15 @@ impl DomainError {
                 "status must be one of {} (got \"{bad}\").",
                 super::ticket::Status::WIRE_VALUES.join(", ")
             ),
-            Self::EmptyLaneName => {
-                "Cycle lane name is empty. Provide a non-empty name and try again.".to_string()
+            Self::EmptyLabelName => {
+                "Label name is empty. Provide a non-empty name and try again.".to_string()
             }
-            Self::DuplicateLane(name) => {
-                format!("A cycle lane named \"{name}\" already exists.")
+            Self::DuplicateLabel(name) => {
+                format!("A label named \"{name}\" already exists.")
             }
-            Self::UnknownLane(name) => {
+            Self::UnknownLabel(name) => {
                 format!(
-                    "Unknown cycle lane \"{name}\". Create it with `lane add --name \"{name}\"`, or list lanes with `lane list`."
+                    "Unknown label \"{name}\". Create it with `label add --name \"{name}\"`, or list labels with `label list`."
                 )
             }
             Self::EmptyProjectName => {
@@ -170,19 +173,19 @@ impl DomainError {
                 "Unknown project \"{name}\". The known projects are: {}.",
                 projects.join(", ")
             ),
-            Self::ProjectNotEmpty { project, lanes } => format!(
-                "Project \"{project}\" still holds lanes: {}. Re-parent them first, then delete.",
-                lanes.join(", ")
+            Self::ProjectNotEmpty { project, labels } => format!(
+                "Project \"{project}\" still holds labels: {}. Re-parent them first, then delete.",
+                labels.join(", ")
             ),
-            Self::InvalidLaneKey(bad) => format!(
-                "Lane key \"{bad}\" is not valid. A key is uppercase letters and digits (e.g. TAN)."
+            Self::InvalidLabelKey(bad) => format!(
+                "Label key \"{bad}\" is not valid. A key is uppercase letters and digits (e.g. TAN)."
             ),
-            Self::DuplicateLaneKey(key) => {
-                format!("The lane key \"{key}\" is already in use. Pick another key.")
+            Self::DuplicateLabelKey(key) => {
+                format!("The label key \"{key}\" is already in use. Pick another key.")
             }
-            Self::FrozenLaneKey { key, lane, refs } => format!(
-                "The key \"{key}\" of lane \"{lane}\" is frozen: {} already carry it. \
-                 A key cannot move once a ticket in the lane holds a number.",
+            Self::FrozenLabelKey { key, label, refs } => format!(
+                "The key \"{key}\" of label \"{label}\" is frozen: {} already carry it. \
+                 A key cannot move once a ticket in the label holds a number.",
                 refs.join(", ")
             ),
             Self::UnknownRef { reference, hint } => {

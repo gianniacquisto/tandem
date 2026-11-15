@@ -22,7 +22,7 @@
     "description": "A replaced body.",
     "done": false,
     "id": "<id>",
-    "lane": "Tandem",
+    "label": "Tandem",
     "link": null,
     "number": 1,
     "origin": "human",
