@@ -12,7 +12,7 @@
     "projects": [
       {
         "name": "Alpha",
-        "lanes": []
+        "labels": []
       }
     ]
   },

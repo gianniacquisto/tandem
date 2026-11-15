@@ -11,6 +11,11 @@
 
 mod support;
 
+use std::sync::{Arc, Mutex};
+
+/// Capture tests swap a global callsite-interest cache, so they run in turn.
+static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+
 use serde_json::{Value, json};
 use support::Sandbox;
 use tandem_core::env::Environment;
@@ -21,7 +26,15 @@ fn environment() -> Environment {
     Environment::new()
 }
 
+/// Every plain call takes the capture lock too: a callsite first hit by a
+/// parallel plain test while a capture test swaps the subscriber would cache
+/// the wrong interest and drop an event.
 fn call(store: &tandem_core::store::Store, frame: &str) -> Option<Value> {
+    let _serial = ONE_AT_A_TIME.lock().unwrap_or_else(|p| p.into_inner());
+    call_unlocked(store, frame)
+}
+
+fn call_unlocked(store: &tandem_core::store::Store, frame: &str) -> Option<Value> {
     let answer = mcp::handle_mcp(frame, store, &Actor::Human, &environment())?;
     Some(
         serde_json::from_str(&answer)
@@ -216,6 +229,50 @@ fn tools_list_names_the_28_tools_with_object_schemas() {
             tool["inputSchema"]["type"], "object",
             "every input schema has an object root: {tool}"
         );
+    }
+}
+
+#[test]
+fn the_label_tools_replace_the_lane_tools_and_the_label_argument_replaces_lane() {
+    let sandbox = Sandbox::new("mcp-label-tools");
+    let store = sandbox.store();
+
+    let listed = call(&store, &request(json!(1), "tools/list", json!({}))).expect("tools answer");
+    let tools = listed["result"]["tools"]
+        .as_array()
+        .expect("tools is an array");
+    let names: Vec<&str> = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap_or(""))
+        .collect();
+    for wanted in [
+        "label_list",
+        "label_add",
+        "label_rename",
+        "label_delete",
+        "label_move",
+    ] {
+        assert!(names.contains(&wanted), "{wanted} is served: {names:?}");
+    }
+    assert!(
+        names.iter().all(|name| !name.starts_with("lane_")),
+        "no lane_* tool remains: {names:?}"
+    );
+    for tool in tools {
+        let text = tool.to_string().to_lowercase();
+        assert!(
+            !text.contains("lane"),
+            "no tool name, description or argument says lane: {tool}"
+        );
+    }
+    for name in ["ticket_add", "ticket_list", "ticket_move"] {
+        let tool = tools
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap_or_else(|| panic!("{name} is served"));
+        let properties = &tool["inputSchema"]["properties"];
+        assert!(properties.get("label").is_some(), "{name} takes label");
+        assert!(properties.get("lane").is_none(), "{name} has no lane");
     }
 }
 
@@ -439,4 +496,141 @@ fn tools_call_drives_a_ticket_and_the_note_tools() {
         health["health"]["counts"]["notes"], 2,
         "the health read walks the same vault: {health}"
     );
+}
+
+// MARK: - The application log (stderr under TANDEM_LOG, ADR 0046)
+
+#[derive(Clone, Default)]
+struct Captured(Arc<Mutex<Vec<u8>>>);
+
+impl Captured {
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().expect("the buffer locks")).into_owned()
+    }
+
+    /// A fmt subscriber at `level` on this thread, like the CLI's at its filter.
+    fn install(&self, level: tracing::Level) -> tracing::subscriber::DefaultGuard {
+        let writer = self.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(level)
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        guard
+    }
+}
+
+impl std::io::Write for Captured {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .expect("the buffer locks")
+            .extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_tool_call_logs_name_outcome_and_latency_and_never_the_arguments() {
+    let _serial = ONE_AT_A_TIME.lock().unwrap_or_else(|p| p.into_inner());
+    let sandbox = Sandbox::new("log-call");
+    let store = sandbox.store();
+    let captured = Captured::default();
+    let _guard = captured.install(tracing::Level::INFO);
+
+    let added = call_unlocked(
+        &store,
+        &tool_call(1, "ticket_add", json!({"title": "secretword title"})),
+    )
+    .expect("an answer");
+    assert!(added["result"]["isError"].is_null());
+    let refused = call_unlocked(
+        &store,
+        &tool_call(2, "ticket_show", json!({"id": "secretword-missing"})),
+    )
+    .expect("an answer");
+    assert_eq!(refused["result"]["isError"], true);
+
+    let text = captured.text();
+    assert!(
+        text.contains("tool=\"ticket_add\"") || text.contains("tool=ticket_add"),
+        "{text}"
+    );
+    assert!(
+        text.contains("outcome=\"ok\"") || text.contains("outcome=ok"),
+        "{text}"
+    );
+    assert!(
+        text.contains("outcome=\"error\"") || text.contains("outcome=error"),
+        "{text}"
+    );
+    assert!(text.contains("kind="), "the error kind is logged: {text}");
+    assert!(text.contains("latency_ms="), "{text}");
+    assert!(
+        !text.contains("secretword"),
+        "no argument or message text reaches the log: {text}"
+    );
+}
+
+#[test]
+fn a_bad_frame_logs_one_warn_and_still_answers_and_quiet_methods_log_nothing_at_warn() {
+    let _serial = ONE_AT_A_TIME.lock().unwrap_or_else(|p| p.into_inner());
+    let sandbox = Sandbox::new("log-warn");
+    let store = sandbox.store();
+    let frames = [
+        "{not json".to_string(),
+        "[]".to_string(),
+        json!({"jsonrpc": "1.0", "id": 1, "method": "ping"}).to_string(),
+        request(json!(2), "no/such", json!({})),
+    ];
+    for frame in &frames {
+        let captured = Captured::default();
+        let _guard = captured.install(tracing::Level::WARN);
+        let answer = call_unlocked(&store, frame).expect("the frame is still answered");
+        assert!(answer["error"].is_object(), "{frame}: {answer}");
+        let text = captured.text();
+        assert_eq!(text.lines().count(), 1, "{frame}: one warn: {text}");
+        assert!(text.contains(" WARN "), "{text}");
+    }
+
+    let captured = Captured::default();
+    let _guard = captured.install(tracing::Level::WARN);
+    call_unlocked(&store, &request(json!(3), "ping", json!({}))).expect("pong");
+    call_unlocked(&store, &request(json!(4), "tools/list", json!({}))).expect("tools");
+    let note = json!({"jsonrpc": "2.0", "method": "notifications/initialized"}).to_string();
+    assert!(call_unlocked(&store, &note).is_none());
+    assert_eq!(captured.text(), "", "healthy traffic is silent at warn");
+}
+
+#[test]
+fn a_hostile_tool_name_is_logged_escaped_on_one_line() {
+    let _serial = ONE_AT_A_TIME.lock().unwrap_or_else(|p| p.into_inner());
+    let sandbox = Sandbox::new("log-hostile");
+    let store = sandbox.store();
+    let captured = Captured::default();
+    let _guard = captured.install(tracing::Level::WARN);
+
+    let answer = call_unlocked(
+        &store,
+        &tool_call(1, "evil\n2026 INFO forged line\u{1b}[31m", json!({})),
+    )
+    .expect("an answer");
+    assert!(answer["error"].is_object());
+    let method = call_unlocked(&store, &request(json!(2), "bad\nmethod\u{7}", json!({})))
+        .expect("an answer");
+    assert!(method["error"].is_object());
+
+    let text = captured.text();
+    assert_eq!(text.lines().count(), 2, "one line per event: {text}");
+    assert!(
+        !text.contains('\u{1b}') && !text.contains('\u{7}'),
+        "{text:?}"
+    );
+    assert!(text.contains("\\n"), "the newline is escaped: {text}");
 }

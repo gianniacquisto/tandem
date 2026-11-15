@@ -12,7 +12,7 @@ the loop reads.
 **The port's homes** are the exception: authored and committed, because both
 `tandem serve` and the CLI read them and their shape is part of the fixture
 contract. `Fixtures/port/Home/` is the contract home (two board tickets and one
-lane); `Fixtures/port/Board/` is the 78-ticket board the board fixture is drawn
+label); `Fixtures/port/Board/` is the 78-ticket board the board fixture is drawn
 from. No run writes into either, and each README states the rule.
 
 **The port's ordering golden**, `Fixtures/port/ordering.json`, is the drag

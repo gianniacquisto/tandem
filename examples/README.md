@@ -34,7 +34,7 @@ Also here: `skills/tandem-team` (a roster template: replace it with your own), `
 
 ## Where things live
 
-- **Store**: `~/.tandem/tandem.db` (SQLite) holds tickets, dependencies, comments, lanes and projects. Notes live in `~/.tandem/bikeshed/`.
+- **Store**: `~/.tandem/tandem.db` (SQLite) holds tickets, dependencies, comments, labels and projects. Notes live in `~/.tandem/bikeshed/`.
 - **Recovery**: every changed write keeps one previous copy in `tandem.db.bak`. To restore it, journal files first:
 
   ```sh

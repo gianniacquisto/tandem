@@ -5,14 +5,14 @@ The checklist for a diff that changes what the human does: what they can reach, 
 ## Read
 
 - The keyboard path of everything the diff adds or moves: `rust/core/templates/`, every key handler in `rust/core/src/serve/static/tandem.js`, and whether the same action keeps a pointer route.
-- Every destructive act: what confirmation it has. Completion has no undo (ADR 0045); a delete, an archive and a lane rename each need a confirmation on the route that fires them.
-- Empty states: a lane with no tickets, a search with no match, a bikeshed with no notes.
+- Every destructive act: what confirmation it has. Completion has no undo (ADR 0045); a delete, an archive and a label rename each need a confirmation on the route that fires them.
+- Empty states: a label with no tickets, a search with no match, a bikeshed with no notes.
 - Error states: what the human sees when a write fails, with `rust/core/src/domain/error.rs` and the wire's `ErrorView` being where the message is made.
 - The round-trips: how many clicks or keystrokes a routine act takes after the change, against before it.
 
 ## Blocks on
 
-- A destructive act with no confirmation and no route back: a delete or a lane rename fired straight from a control, with no dialog and no way to reverse the write.
+- A destructive act with no confirmation and no route back: a delete or a label rename fired straight from a control, with no dialog and no way to reverse the write.
 - An action the change moves off a keyboard path it had, with nothing put in its place, where the diff's own text claims no alternative.
 - A state the human can reach with no way out: an error banner with no dismiss, an empty state with no route to the thing it names.
 - A failure that is swallowed, so the action looks done: a write's error dropped instead of reaching the wire (`rust/core/src/domain/error.rs`).

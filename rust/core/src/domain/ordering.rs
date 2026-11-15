@@ -21,7 +21,7 @@ pub struct TicketOrdering;
 impl TicketOrdering {
     /// The index to hand to `move_ticket` so the ticket `moving` lands immediately
     /// before (`after == false`) or after the anchor, **within the anchor's own
-    /// lane**. `None` when either ticket is missing, or when the row was dropped on
+    /// label**. `None` when either ticket is missing, or when the row was dropped on
     /// itself.
     pub fn drop_index(
         tickets: &[Ticket],
@@ -35,7 +35,7 @@ impl TicketOrdering {
         let anchor = tickets.iter().find(|ticket| ticket.id == relative_to)?;
         let members: Vec<&Ticket> = tickets
             .iter()
-            .filter(|ticket| ticket.lane == anchor.lane)
+            .filter(|ticket| ticket.label == anchor.label)
             .collect();
         let anchor_index = members.iter().position(|ticket| ticket.id == relative_to)?;
         let mut index = anchor_index + usize::from(after);

@@ -1,15 +1,17 @@
 {
   "argv": [
-    "lane",
+    "label",
     "add",
     "--name",
-    "Cycle"
+    "Cycle",
+    "--abbr",
+    "CYC"
   ],
   "exit": 0,
   "stderr": [],
   "stdin": "",
   "stdout": {
-    "lanes": [
+    "labels": [
       "Cycle"
     ]
   },

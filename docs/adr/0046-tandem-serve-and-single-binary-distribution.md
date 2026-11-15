@@ -17,7 +17,9 @@ Decided 2026-11-13 (CUT-14).
 
 ## Amendment (2026-11-14)
 
-Decision bullet 1 gains application logging: `tandem serve` writes its log to stdout after the listening line, which stays the first stdout line and keeps its text. `TANDEM_LOG` sets the filter in RUST_LOG syntax (default `info`), and the log covers serve only, so ADR 0009's split for the agent verbs is unchanged. What a line may carry is the serve brief's never-logged rule: identifiers and escaped values, never request bodies, ticket or note text, or the environment.
+Decision bullet 1 gains application logging: `tandem serve` writes its log to stdout after the listening line, which stays the first stdout line and keeps its text. `TANDEM_LOG` sets the filter in RUST_LOG syntax (default `info`), and the log covers `tandem serve` and `tandem mcp`, so ADR 0009's split for the `ticket`, `lane`, `note` and `doctor` verbs, which stay unlogged, is unchanged. What a line may carry is the serve brief's never-logged rule: identifiers and escaped values, never request bodies, ticket or note text, or the environment.
+
+`tandem mcp` (amended 2026-11-15) logs too, on stderr, because its stdout carries JSON-RPC frames and a log line there would corrupt the protocol. It shares the installer and the `TANDEM_LOG` variable, with the same invalid-filter behaviour (one notice, the value never echoed), but its default filter is `warn`, so a healthy session writes nothing to stderr and a host that captures stderr for a whole session sees no per-call noise. Its `info` events (start, `initialize`, each `tools/call` with tool name, outcome, error kind and latency, stdin closed) and `debug` events (`ping`, notifications, `tools/list`) appear on request; parse failures, oversize or non-UTF-8 frames, invalid requests and unknown methods are `warn`. The never-logged rule holds: no arguments, results or error messages, and client-chosen names (tool, method) are Debug-escaped.
 
 ## Amendment (2026-11-15)
 

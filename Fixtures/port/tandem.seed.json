@@ -2,7 +2,7 @@
   "schema": {
     "appliedAt": "2026-10-30T00:00:00Z"
   },
-  "lanes": [
+  "labels": [
     {
       "name": "Fixture",
       "key": "FIX",
@@ -16,7 +16,7 @@
       "title": "the board",
       "status": "ready",
       "archived": false,
-      "lane": "Fixture",
+      "label": "Fixture",
       "number": 1,
       "origin": "human",
       "assignee": null,
@@ -30,7 +30,7 @@
       "title": "the records",
       "status": "done",
       "archived": false,
-      "lane": "Fixture",
+      "label": "Fixture",
       "number": 2,
       "origin": "human",
       "assignee": null,

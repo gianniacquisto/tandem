@@ -1,6 +1,6 @@
 /*
  * The acts htmx does not own: a board card drop, a bikeshed tree move, the
- * ticket sheet's lane select and shortcut keys, and the notes editor's
+ * ticket sheet's label select and shortcut keys, and the notes editor's
  * debounced autosave and preview.
  *
  * The server draws every face; this file only turns a pointer or a key into the
@@ -59,7 +59,7 @@
     if (!root || !column || !ticketId) return;
     // The board's answer replaces the root, so the POST carries the filters the
     // board was drawn with; without them the partial redraws an unfiltered board
-    // and the human's project, lane, assignee and search are gone.
+    // and the human's project, label, assignee and search are gone.
     var bar = root.querySelector('.tickets__bar--board');
     var body = bar ? new URLSearchParams(new FormData(bar)) : new URLSearchParams();
     body.set('status', column.getAttribute('data-status') || '');
@@ -181,9 +181,9 @@
 
   // MARK: - The ticket sheet
 
-  // The lane is the one metadata control that moves at once: its own form.
+  // The label is the one metadata control that moves at once: its own form.
   document.addEventListener('change', function (event) {
-    var select = closest(event.target, '[data-sheet-lane]');
+    var select = closest(event.target, '[data-sheet-label]');
     if (select && select.form) htmxPost(select.form, '#board-root');
   });
 
@@ -1128,4 +1128,278 @@
       event.stopPropagation();
     }
   }, true);
+})();
+
+// MARK: - Tabs for the open notes on the bikeshed face
+//
+// One global list of note paths in localStorage, shared by every project. The
+// server draws only a mount point (`data-note-tabs`) with hooks: the open note,
+// every note that exists, and the rename or delete the response answers. The
+// list operations below are pure functions over plain arrays, exposed as
+// `window.tandem.noteTabs` so they can be driven from a console.
+(function () {
+  var TABS_KEY = 'tandem.noteTabs';
+
+  function closest(element, selector) {
+    while (element && element.nodeType === 1) {
+      if (element.matches(selector)) return element;
+      element = element.parentElement;
+    }
+    return null;
+  }
+
+  // The stored list may be missing, stale or corrupt: anything but an array of
+  // distinct non-empty strings reads as empty.
+  function clean(value) {
+    if (!Array.isArray(value)) return [];
+    var out = [];
+    for (var i = 0; i < value.length; i += 1) {
+      if (typeof value[i] === 'string' && value[i] !== '' && out.indexOf(value[i]) < 0) {
+        out.push(value[i]);
+      }
+    }
+    return out;
+  }
+
+  function parse(text) {
+    try {
+      return clean(JSON.parse(text));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function underPath(path, folder) {
+    return path === folder || path.indexOf(folder + '/') === 0;
+  }
+
+  // The list after a page draw: a rename follows in place, a delete drops the
+  // note (or a folder's notes), a note the vault no longer has is dropped, and
+  // the open note gets a tab if it has none. `notes` is null when unknown.
+  function sync(tabs, view) {
+    var out = clean(tabs);
+    if (view.from && view.to) {
+      out = clean(out.map(function (path) { return path === view.from ? view.to : path; }));
+    }
+    if (view.gone) {
+      out = out.filter(function (path) { return !underPath(path, view.gone); });
+    }
+    if (Array.isArray(view.notes)) {
+      out = out.filter(function (path) {
+        return path === view.current || view.notes.indexOf(path) >= 0;
+      });
+    }
+    if (view.current && out.indexOf(view.current) < 0) out.push(view.current);
+    return out;
+  }
+
+  // The tab to land on when `path` closes: the right neighbour, else the left,
+  // else none (an empty string).
+  function closeTab(tabs, path) {
+    var at = tabs.indexOf(path);
+    if (at < 0) return { tabs: tabs.slice(), next: '' };
+    var rest = tabs.slice();
+    rest.splice(at, 1);
+    return { tabs: rest, next: tabs[at + 1] || tabs[at - 1] || '' };
+  }
+
+  function nameOf(path) {
+    var name = path.split('/').pop();
+    return name.replace(/\.md$/, '');
+  }
+
+  function folderOf(path) {
+    var at = path.lastIndexOf('/');
+    return at < 0 ? 'Bikeshed' : path.slice(0, at);
+  }
+
+  // A label per tab: the note name, with its folder only where two tabs share
+  // a name.
+  function labels(tabs) {
+    var counts = {};
+    tabs.forEach(function (path) {
+      var name = nameOf(path);
+      counts[name] = (counts[name] || 0) + 1;
+    });
+    return tabs.map(function (path) {
+      var name = nameOf(path);
+      return { path: path, name: name, folder: counts[name] > 1 ? folderOf(path) : '' };
+    });
+  }
+
+  window.tandem = window.tandem || {};
+  window.tandem.noteTabs = { sync: sync, closeTab: closeTab, labels: labels, parse: parse };
+
+  function load() {
+    try {
+      return parse(window.localStorage.getItem(TABS_KEY));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function save(tabs) {
+    try {
+      window.localStorage.setItem(TABS_KEY, JSON.stringify(tabs));
+    } catch (error) {
+      // Private mode: the list holds until the next redraw.
+    }
+  }
+
+  function strip() {
+    return document.querySelector('[data-note-tabs]');
+  }
+
+  function hrefFor(path) {
+    var params = new URLSearchParams();
+    var project = document.getElementById('notes-focus');
+    var all = document.getElementById('notes-show-all');
+    params.set('project', project ? project.value : '');
+    if (all && all.checked) params.set('show_all', '1');
+    if (path) params.set('path', path);
+    return '/notes?' + params.toString();
+  }
+
+  function go(path) {
+    var href = hrefFor(path);
+    if (!window.htmx) {
+      window.location.href = href;
+      return;
+    }
+    var request = window.htmx.ajax('GET', href, { target: '#notes-root', swap: 'outerHTML' });
+    if (request && request.then) {
+      request.then(function () {
+        window.history.replaceState(null, '', href);
+      });
+    }
+  }
+
+  function render(root, tabs) {
+    var list = root.querySelector('.note-tabs__list');
+    var current = root.getAttribute('data-current') || '';
+    root.hidden = tabs.length === 0;
+    list.textContent = '';
+    labels(tabs).forEach(function (tab) {
+      var active = tab.path === current;
+      var item = document.createElement('div');
+      item.className = 'note-tabs__item';
+      item.setAttribute('data-tab-path', tab.path);
+
+      var link = document.createElement('a');
+      link.className = 'note-tabs__tab';
+      link.setAttribute('role', 'tab');
+      link.setAttribute('aria-selected', active ? 'true' : 'false');
+      link.tabIndex = active || (!current && list.children.length === 0) ? 0 : -1;
+      link.href = hrefFor(tab.path);
+      link.title = tab.path;
+      var name = document.createElement('span');
+      name.className = 'note-tabs__name';
+      name.textContent = tab.name;
+      link.appendChild(name);
+      if (tab.folder) {
+        var folder = document.createElement('span');
+        folder.className = 'note-tabs__folder';
+        folder.textContent = tab.folder;
+        link.appendChild(folder);
+      }
+
+      var close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'note-tabs__close';
+      close.tabIndex = -1;
+      close.setAttribute('aria-label', 'Close ' + tab.name);
+      close.textContent = '×';
+
+      item.appendChild(link);
+      item.appendChild(close);
+      list.appendChild(item);
+    });
+  }
+
+  function setUpTabs() {
+    var root = strip();
+    if (!root) return;
+    var notes = null;
+    try {
+      notes = JSON.parse(root.getAttribute('data-notes') || 'null');
+    } catch (error) {
+      notes = null;
+    }
+    var tabs = sync(load(), {
+      current: root.getAttribute('data-current') || '',
+      from: root.getAttribute('data-from') || '',
+      to: root.getAttribute('data-to') || '',
+      gone: root.getAttribute('data-gone') || '',
+      notes: notes
+    });
+    // The rename or delete is applied once; a later redraw must not repeat it.
+    root.setAttribute('data-from', '');
+    root.setAttribute('data-to', '');
+    root.setAttribute('data-gone', '');
+    save(tabs);
+    render(root, tabs);
+  }
+
+  function close(path) {
+    var root = strip();
+    if (!root) return;
+    var current = root.getAttribute('data-current') || '';
+    var result = closeTab(load(), path);
+    save(result.tabs);
+    if (path === current) {
+      go(result.next);
+    } else {
+      render(root, result.tabs);
+    }
+  }
+
+  document.addEventListener('click', function (event) {
+    var button = closest(event.target, '.note-tabs__close');
+    if (button) {
+      event.preventDefault();
+      close(button.parentElement.getAttribute('data-tab-path'));
+      return;
+    }
+    var link = closest(event.target, '.note-tabs__tab');
+    if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault();
+    go(link.parentElement.getAttribute('data-tab-path'));
+  });
+
+  document.addEventListener('mousedown', function (event) {
+    if (event.button === 1 && closest(event.target, '.note-tabs__item')) event.preventDefault();
+  });
+
+  document.addEventListener('auxclick', function (event) {
+    if (event.button !== 1) return;
+    var item = closest(event.target, '.note-tabs__item');
+    if (!item) return;
+    event.preventDefault();
+    close(item.getAttribute('data-tab-path'));
+  });
+
+  document.addEventListener('keydown', function (event) {
+    var link = closest(event.target, '.note-tabs__tab');
+    if (!link) return;
+    var links = Array.prototype.slice.call(document.querySelectorAll('.note-tabs__tab'));
+    var at = links.indexOf(link);
+    var to = -1;
+    if (event.key === 'ArrowRight') to = (at + 1) % links.length;
+    else if (event.key === 'ArrowLeft') to = (at - 1 + links.length) % links.length;
+    else if (event.key === 'Home') to = 0;
+    else if (event.key === 'End') to = links.length - 1;
+    else if (event.key === 'Delete') {
+      event.preventDefault();
+      close(link.parentElement.getAttribute('data-tab-path'));
+      return;
+    }
+    if (to < 0) return;
+    event.preventDefault();
+    links[at].tabIndex = -1;
+    links[to].tabIndex = 0;
+    links[to].focus();
+  });
+
+  document.addEventListener('DOMContentLoaded', setUpTabs);
+  document.addEventListener('htmx:afterSettle', setUpTabs);
 })();

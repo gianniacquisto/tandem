@@ -17,9 +17,9 @@ pub enum AssigneeAxis {
     Named(String),
 }
 
-/// The lane axis: any lane, the unnamed default area, or one named lane.
+/// The label axis: any label, the unnamed default area, or one named label.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum LaneAxis {
+pub enum LabelAxis {
     Any,
     Unnamed,
     Named(String),
@@ -48,7 +48,7 @@ pub struct TicketQuery {
     /// a custom finished stage is found without naming its literal key.
     pub done: Option<bool>,
     pub assignee: AssigneeAxis,
-    pub lane: LaneAxis,
+    pub label: LabelAxis,
     pub archived: Archived,
     /// Only the tickets waiting on an open blocker (TAN-232).
     pub blocked_only: bool,
@@ -65,7 +65,7 @@ impl Default for TicketQuery {
             statuses: Vec::new(),
             done: None,
             assignee: AssigneeAxis::Any,
-            lane: LaneAxis::Any,
+            label: LabelAxis::Any,
             archived: Archived::Excluded,
             blocked_only: false,
         }
@@ -133,15 +133,15 @@ impl TicketQuery {
                 }
             }
         }
-        match &self.lane {
-            LaneAxis::Any => {}
-            LaneAxis::Unnamed => {
-                if ticket.lane.is_some() {
+        match &self.label {
+            LabelAxis::Any => {}
+            LabelAxis::Unnamed => {
+                if ticket.label.is_some() {
                     return false;
                 }
             }
-            LaneAxis::Named(name) => {
-                if ticket.lane.as_deref() != Some(name.as_str()) {
+            LabelAxis::Named(name) => {
+                if ticket.label.as_deref() != Some(name.as_str()) {
                     return false;
                 }
             }
@@ -183,7 +183,7 @@ impl TicketQuery {
         text: Option<&str>,
         status: Option<&str>,
         assignee: Option<&str>,
-        lane: Option<&str>,
+        label: Option<&str>,
         archived: bool,
         blocked: bool,
     ) -> Result<Self, DomainError> {
@@ -216,8 +216,8 @@ impl TicketQuery {
         if let Some(assignee) = assignee {
             query.assignee = parse_assignee(assignee);
         }
-        if let Some(lane) = lane {
-            query.lane = parse_lane(lane);
+        if let Some(label) = label {
+            query.label = parse_label(label);
         }
         query.blocked_only = blocked;
         Ok(query)
@@ -256,12 +256,12 @@ fn parse_assignee(raw: &str) -> AssigneeAxis {
 }
 
 /// The empty value is the unnamed default area.
-fn parse_lane(raw: &str) -> LaneAxis {
+fn parse_label(raw: &str) -> LabelAxis {
     let name = raw.trim();
     if name.is_empty() {
-        LaneAxis::Unnamed
+        LabelAxis::Unnamed
     } else {
-        LaneAxis::Named(name.to_string())
+        LabelAxis::Named(name.to_string())
     }
 }
 

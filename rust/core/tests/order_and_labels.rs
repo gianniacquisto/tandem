@@ -1,19 +1,19 @@
-//! Stored order and lanes, ported from `OrderAndLanesTests.swift`: the vector
+//! Stored order and labels, ported from `OrderAndLabelsTests.swift`: the vector
 //! order is the order (never recomputed from `created_at`), `add` lands on top,
-//! lanes group the list, and `move` covers both reorder and move-between.
+//! labels group the list, and `move` covers both reorder and move-between.
 //!
-//! Left behind with the JSON store: the hand-written file cases (a dangling lane
+//! Left behind with the JSON store: the hand-written file cases (a dangling label
 //! name, the grouped-order repair, the older file, the version-2 file, the renamed
 //! keys read beside the v1 ones). They pinned the reader the port does not have;
-//! the behaviour they pinned that still has a home is a lane a ticket names but the
-//! lane list does not carry, ported through `rename_lane` and `delete_lane`.
+//! the behaviour they pinned that still has a home is a label a ticket names but the
+//! label list does not carry, ported through `rename_label` and `delete_label`.
 
 mod support;
 
 use std::time::SystemTime;
 
 use support::Sandbox;
-use tandem_core::domain::{AddTicket, DomainError, Filter, LaneDeletion, Status};
+use tandem_core::domain::{AddTicket, DomainError, Filter, LabelDeletion, Status};
 
 fn modified(path: &std::path::Path) -> SystemTime {
     std::fs::metadata(path)
@@ -98,37 +98,37 @@ fn a_filter_preserves_the_stored_order() {
 }
 
 #[test]
-fn add_lane_appends_and_empty_and_duplicate_names_are_rejected() {
-    let sandbox = Sandbox::new("lane-add");
+fn add_label_appends_and_empty_and_duplicate_names_are_rejected() {
+    let sandbox = Sandbox::new("label-add");
     let board = sandbox.board();
-    board.add_lane("Work", None, None).unwrap();
-    board.add_lane("  Home  ", None, None).unwrap();
-    assert_eq!(board.lanes().unwrap(), ["Work", "Home"]);
-    // Each verb returns the lane list after its write.
+    board.add_label("Work", None, None).unwrap();
+    board.add_label("  Home  ", None, None).unwrap();
+    assert_eq!(board.labels().unwrap(), ["Work", "Home"]);
+    // Each verb returns the label list after its write.
     assert_eq!(
-        board.add_lane("Play", None, None).unwrap(),
+        board.add_label("Play", None, None).unwrap(),
         ["Work", "Home", "Play"]
     );
     assert_eq!(
-        board.add_lane("   ", None, None),
-        Err(DomainError::EmptyLaneName)
+        board.add_label("   ", None, None),
+        Err(DomainError::EmptyLabelName)
     );
     assert_eq!(
-        board.add_lane("Work", None, None),
-        Err(DomainError::DuplicateLane("Work".to_string()))
+        board.add_label("Work", None, None),
+        Err(DomainError::DuplicateLabel("Work".to_string()))
     );
 }
 
 #[test]
-fn add_files_on_top_of_that_lane_and_an_unknown_lane_is_rejected() {
-    let sandbox = Sandbox::new("lane-add-ticket");
+fn add_files_on_top_of_that_label_and_an_unknown_label_is_rejected() {
+    let sandbox = Sandbox::new("label-add-ticket");
     let board = sandbox.board();
-    board.add_lane("Work", None, None).unwrap();
+    board.add_label("Work", None, None).unwrap();
     board
         .add(
             "w1",
             AddTicket {
-                lane: Some("Work"),
+                label: Some("Work"),
                 ..AddTicket::default()
             },
         )
@@ -138,7 +138,7 @@ fn add_files_on_top_of_that_lane_and_an_unknown_lane_is_rejected() {
         .add(
             "w2",
             AddTicket {
-                lane: Some("Work"),
+                label: Some("Work"),
                 ..AddTicket::default()
             },
         )
@@ -156,7 +156,7 @@ fn add_files_on_top_of_that_lane_and_an_unknown_lane_is_rejected() {
     assert_eq!(
         tickets
             .iter()
-            .map(|ticket| ticket.lane.clone())
+            .map(|ticket| ticket.label.clone())
             .collect::<Vec<_>>(),
         [None, Some("Work".to_string()), Some("Work".to_string())]
     );
@@ -165,43 +165,43 @@ fn add_files_on_top_of_that_lane_and_an_unknown_lane_is_rejected() {
         board.add(
             "x",
             AddTicket {
-                lane: Some("Nope"),
+                label: Some("Nope"),
                 ..AddTicket::default()
             }
         ),
-        Err(DomainError::UnknownLane("Nope".to_string()))
+        Err(DomainError::UnknownLabel("Nope".to_string()))
     );
 }
 
 #[test]
-fn rename_lane_rewrites_the_lane_list_and_every_ticket_that_belongs_to_it() {
-    let sandbox = Sandbox::new("lane-rename");
+fn rename_label_rewrites_the_label_list_and_every_ticket_that_belongs_to_it() {
+    let sandbox = Sandbox::new("label-rename");
     let board = sandbox.board();
-    board.add_lane("Work", None, None).unwrap();
+    board.add_label("Work", None, None).unwrap();
     board
         .add(
             "w1",
             AddTicket {
-                lane: Some("Work"),
+                label: Some("Work"),
                 ..AddTicket::default()
             },
         )
         .unwrap();
     board.add("d1", AddTicket::default()).unwrap();
-    board.rename_lane("Work", "Job", None, None).unwrap();
+    board.rename_label("Work", "Job", None, None).unwrap();
     // Renaming to itself is a no-op that still reports the list.
     assert_eq!(
-        board.rename_lane("Job", "Job", None, None).unwrap(),
+        board.rename_label("Job", "Job", None, None).unwrap(),
         ["Job"]
     );
 
-    assert_eq!(board.lanes().unwrap(), ["Job"]);
+    assert_eq!(board.labels().unwrap(), ["Job"]);
     let tickets = support::all(&board);
     assert_eq!(
         tickets
             .iter()
             .find(|ticket| ticket.title == "w1")
-            .and_then(|ticket| ticket.lane.clone())
+            .and_then(|ticket| ticket.label.clone())
             .as_deref(),
         Some("Job")
     );
@@ -209,32 +209,32 @@ fn rename_lane_rewrites_the_lane_list_and_every_ticket_that_belongs_to_it() {
         tickets
             .iter()
             .find(|ticket| ticket.title == "d1")
-            .and_then(|ticket| ticket.lane.clone()),
+            .and_then(|ticket| ticket.label.clone()),
         None
     );
 
     assert_eq!(
-        board.rename_lane("Ghost", "X", None, None),
-        Err(DomainError::UnknownLane("Ghost".to_string()))
+        board.rename_label("Ghost", "X", None, None),
+        Err(DomainError::UnknownLabel("Ghost".to_string()))
     );
     assert_eq!(
-        board.rename_lane("Job", " ", None, None),
-        Err(DomainError::EmptyLaneName)
+        board.rename_label("Job", " ", None, None),
+        Err(DomainError::EmptyLabelName)
     );
-    board.add_lane("Home", None, None).unwrap();
+    board.add_label("Home", None, None).unwrap();
     assert_eq!(
-        board.rename_lane("Job", "Home", None, None),
-        Err(DomainError::DuplicateLane("Home".to_string()))
+        board.rename_label("Job", "Home", None, None),
+        Err(DomainError::DuplicateLabel("Home".to_string()))
     );
 }
 
 #[test]
 fn a_rename_to_itself_writes_nothing() {
-    let sandbox = Sandbox::new("lane-rename-noop");
+    let sandbox = Sandbox::new("label-rename-noop");
     let board = sandbox.board();
-    board.add_lane("Work", None, None).unwrap();
+    board.add_label("Work", None, None).unwrap();
     let before = modified(&sandbox.database());
-    board.rename_lane("Work", "Work", None, None).unwrap();
+    board.rename_label("Work", "Work", None, None).unwrap();
     assert_eq!(
         modified(&sandbox.database()),
         before,
@@ -243,15 +243,15 @@ fn a_rename_to_itself_writes_nothing() {
 }
 
 #[test]
-fn delete_lane_moves_its_tickets_to_the_default_area_and_never_deletes_them() {
-    let sandbox = Sandbox::new("lane-delete");
+fn delete_label_moves_its_tickets_to_the_default_area_and_never_deletes_them() {
+    let sandbox = Sandbox::new("label-delete");
     let board = sandbox.board();
-    board.add_lane("Work", None, None).unwrap();
+    board.add_label("Work", None, None).unwrap();
     board
         .add(
             "w1",
             AddTicket {
-                lane: Some("Work"),
+                label: Some("Work"),
                 ..AddTicket::default()
             },
         )
@@ -261,20 +261,20 @@ fn delete_lane_moves_its_tickets_to_the_default_area_and_never_deletes_them() {
         .add(
             "w2",
             AddTicket {
-                lane: Some("Work"),
+                label: Some("Work"),
                 ..AddTicket::default()
             },
         )
         .unwrap();
 
-    let moved: LaneDeletion = board.delete_lane("Work").unwrap();
+    let moved: LabelDeletion = board.delete_label("Work").unwrap();
     assert_eq!(moved.moved, 2);
-    assert!(moved.lanes.is_empty());
-    assert!(board.lanes().unwrap().is_empty());
+    assert!(moved.labels.is_empty());
+    assert!(board.labels().unwrap().is_empty());
 
     let tickets = support::all(&board);
     assert_eq!(tickets.len(), 3, "nothing deleted");
-    assert!(tickets.iter().all(|ticket| ticket.lane.is_none()));
+    assert!(tickets.iter().all(|ticket| ticket.label.is_none()));
     assert_eq!(
         tickets
             .iter()
@@ -285,23 +285,23 @@ fn delete_lane_moves_its_tickets_to_the_default_area_and_never_deletes_them() {
     );
 
     assert_eq!(
-        board.delete_lane("Work"),
-        Err(DomainError::UnknownLane("Work".to_string()))
+        board.delete_label("Work"),
+        Err(DomainError::UnknownLabel("Work".to_string()))
     );
 }
 
 #[test]
-fn move_places_a_ticket_at_a_zero_based_index_within_another_lane() {
-    let sandbox = Sandbox::new("lane-move-between");
+fn move_places_a_ticket_at_a_zero_based_index_within_another_label() {
+    let sandbox = Sandbox::new("label-move-between");
     let board = sandbox.board();
-    board.add_lane("Work", None, None).unwrap();
+    board.add_label("Work", None, None).unwrap();
     board.add("d1", AddTicket::default()).unwrap();
     board.add("d2", AddTicket::default()).unwrap();
     board
         .add(
             "w1",
             AddTicket {
-                lane: Some("Work"),
+                label: Some("Work"),
                 ..AddTicket::default()
             },
         )
@@ -310,7 +310,7 @@ fn move_places_a_ticket_at_a_zero_based_index_within_another_lane() {
         .add(
             "w2",
             AddTicket {
-                lane: Some("Work"),
+                label: Some("Work"),
                 ..AddTicket::default()
             },
         )
@@ -335,7 +335,7 @@ fn move_places_a_ticket_at_a_zero_based_index_within_another_lane() {
     assert_eq!(
         moved
             .iter()
-            .map(|ticket| ticket.lane.clone())
+            .map(|ticket| ticket.label.clone())
             .collect::<Vec<_>>(),
         [
             None,
@@ -347,13 +347,13 @@ fn move_places_a_ticket_at_a_zero_based_index_within_another_lane() {
 }
 
 #[test]
-fn move_rejects_an_unknown_id_and_an_unknown_lane() {
-    let sandbox = Sandbox::new("lane-move-rejects");
+fn move_rejects_an_unknown_id_and_an_unknown_label() {
+    let sandbox = Sandbox::new("label-move-rejects");
     let board = sandbox.board();
     let a = board.add("a", AddTicket::default()).unwrap().id;
     assert_eq!(
         board.move_ticket(&a.to_string(), Some("Nope"), 0),
-        Err(DomainError::UnknownLane("Nope".to_string()))
+        Err(DomainError::UnknownLabel("Nope".to_string()))
     );
     assert!(matches!(
         board.move_ticket(&uuid::Uuid::new_v4().to_string(), None, 0),
@@ -362,44 +362,44 @@ fn move_rejects_an_unknown_id_and_an_unknown_lane() {
 }
 
 #[test]
-fn move_lane_reorders_the_lane_list_and_the_index_clamps_to_the_ends() {
-    let sandbox = Sandbox::new("lane-order");
+fn move_label_reorders_the_label_list_and_the_index_clamps_to_the_ends() {
+    let sandbox = Sandbox::new("label-order");
     let board = sandbox.board();
-    board.add_lane("A", None, None).unwrap();
-    board.add_lane("B", None, None).unwrap();
-    board.add_lane("C", None, None).unwrap();
-    assert_eq!(board.lanes().unwrap(), ["A", "B", "C"]);
+    board.add_label("A", None, None).unwrap();
+    board.add_label("B", None, None).unwrap();
+    board.add_label("C", None, None).unwrap();
+    assert_eq!(board.labels().unwrap(), ["A", "B", "C"]);
 
-    assert_eq!(board.move_lane("B", 2).unwrap(), ["A", "C", "B"]);
-    assert_eq!(board.move_lane("B", 0).unwrap(), ["B", "A", "C"]);
-    assert_eq!(board.move_lane("B", 99).unwrap(), ["A", "C", "B"]);
+    assert_eq!(board.move_label("B", 2).unwrap(), ["A", "C", "B"]);
+    assert_eq!(board.move_label("B", 0).unwrap(), ["B", "A", "C"]);
+    assert_eq!(board.move_label("B", 99).unwrap(), ["A", "C", "B"]);
 
     // It is stored order, not a UI sort, so it survives a re-read.
-    assert_eq!(sandbox.board().lanes().unwrap(), ["A", "C", "B"]);
+    assert_eq!(sandbox.board().labels().unwrap(), ["A", "C", "B"]);
 }
 
 #[test]
-fn move_lane_rejects_an_unknown_name() {
-    let sandbox = Sandbox::new("lane-order-rejects");
+fn move_label_rejects_an_unknown_name() {
+    let sandbox = Sandbox::new("label-order-rejects");
     let board = sandbox.board();
     assert_eq!(
-        board.move_lane("Nope", 0),
-        Err(DomainError::UnknownLane("Nope".to_string()))
+        board.move_label("Nope", 0),
+        Err(DomainError::UnknownLabel("Nope".to_string()))
     );
 }
 
 #[test]
-fn moving_a_lane_carries_its_tickets_and_the_default_area_stays_first() {
-    let sandbox = Sandbox::new("lane-order-tickets");
+fn moving_a_label_carries_its_tickets_and_the_default_area_stays_first() {
+    let sandbox = Sandbox::new("label-order-tickets");
     let board = sandbox.board();
-    board.add_lane("A", None, None).unwrap();
-    board.add_lane("B", None, None).unwrap();
+    board.add_label("A", None, None).unwrap();
+    board.add_label("B", None, None).unwrap();
     board.add("d1", AddTicket::default()).unwrap();
     board
         .add(
             "a1",
             AddTicket {
-                lane: Some("A"),
+                label: Some("A"),
                 ..AddTicket::default()
             },
         )
@@ -408,7 +408,7 @@ fn moving_a_lane_carries_its_tickets_and_the_default_area_stays_first() {
         .add(
             "b1",
             AddTicket {
-                lane: Some("B"),
+                label: Some("B"),
                 ..AddTicket::default()
             },
         )
@@ -416,29 +416,29 @@ fn moving_a_lane_carries_its_tickets_and_the_default_area_stays_first() {
     // Stored: default [d1], A [a1], B [b1].
     assert_eq!(support::titles(&board, Filter::All), ["d1", "a1", "b1"]);
 
-    board.move_lane("B", 0).unwrap();
-    // B leads the lanes now, but the default area is still the top group.
-    assert_eq!(board.lanes().unwrap(), ["B", "A"]);
+    board.move_label("B", 0).unwrap();
+    // B leads the labels now, but the default area is still the top group.
+    assert_eq!(board.labels().unwrap(), ["B", "A"]);
     assert_eq!(support::titles(&board, Filter::All), ["d1", "b1", "a1"]);
     assert_eq!(
         support::all(&board)
             .iter()
-            .map(|ticket| ticket.lane.clone())
+            .map(|ticket| ticket.label.clone())
             .collect::<Vec<_>>(),
         [None, Some("B".to_string()), Some("A".to_string())]
     );
 }
 
 #[test]
-fn a_ticket_filed_in_a_lane_keeps_its_status_through_a_lane_reorder() {
-    let sandbox = Sandbox::new("lane-status");
+fn a_ticket_filed_in_a_label_keeps_its_status_through_a_label_reorder() {
+    let sandbox = Sandbox::new("label-status");
     let board = sandbox.board();
-    board.add_lane("A", None, None).unwrap();
+    board.add_label("A", None, None).unwrap();
     board
         .add(
             "a1",
             AddTicket {
-                lane: Some("A"),
+                label: Some("A"),
                 status: Status::Ready,
                 ..AddTicket::default()
             },
@@ -448,14 +448,14 @@ fn a_ticket_filed_in_a_lane_keeps_its_status_through_a_lane_reorder() {
         .add(
             "a2",
             AddTicket {
-                lane: Some("A"),
+                label: Some("A"),
                 status: Status::OnHold,
                 ..AddTicket::default()
             },
         )
         .unwrap();
-    board.add_lane("B", None, None).unwrap();
-    board.move_lane("A", 1).unwrap();
+    board.add_label("B", None, None).unwrap();
+    board.move_label("A", 1).unwrap();
     assert_eq!(
         support::all(&board)
             .iter()

@@ -1,6 +1,6 @@
 //! The board: the core's half of it, ported from `BoardTests.swift`. Two seams:
 //! [`TicketBoard::rows`] (pure grouping, so the board and the list cannot disagree
-//! about what a lane holds) and [`Board::place`] (the drop, one write for lane and
+//! about what a label holds) and [`Board::place`] (the drop, one write for label and
 //! status together, proved against the real store).
 
 mod support;
@@ -10,16 +10,16 @@ use tandem_core::domain::{
     AddTicket, Board, DomainError, Status, Ticket, TicketBoard, TicketQuery,
 };
 
-fn ticket(title: &str, status: Status, lane: Option<&str>) -> Ticket {
+fn ticket(title: &str, status: Status, label: Option<&str>) -> Ticket {
     Ticket {
         status,
-        lane: lane.map(str::to_string),
+        label: label.map(str::to_string),
         ..Ticket::new(title)
     }
 }
 
 #[test]
-fn every_declared_lane_draws_a_row_even_with_no_tickets_in_it() {
+fn every_declared_label_draws_a_row_even_with_no_tickets_in_it() {
     let rows = TicketBoard::rows(&[], &["Board".to_string(), "Memory".to_string()]);
     assert_eq!(
         rows.iter().map(|row| row.key.clone()).collect::<Vec<_>>(),
@@ -29,7 +29,7 @@ fn every_declared_lane_draws_a_row_even_with_no_tickets_in_it() {
 }
 
 #[test]
-fn a_row_is_its_lane_split_by_status_in_stored_order_inside_each_column() {
+fn a_row_is_its_label_split_by_status_in_stored_order_inside_each_column() {
     let rows = TicketBoard::rows(
         &[
             ticket("a", Status::Backlog, None),
@@ -58,7 +58,7 @@ fn a_row_is_its_lane_split_by_status_in_stored_order_inside_each_column() {
     assert!(rows[0].tickets(Status::Done).is_empty());
 }
 
-/// Every status is a drawn column, so a row's cell and the lane header's count
+/// Every status is a drawn column, so a row's cell and the label header's count
 /// cannot disagree.
 #[test]
 fn a_row_draws_every_ticket_in_its_own_column_and_the_header_count_matches_the_cells() {
@@ -91,12 +91,12 @@ fn a_row_draws_every_ticket_in_its_own_column_and_the_header_count_matches_the_c
     assert_eq!(
         drawn,
         row.count(),
-        "the lane header counts exactly what the cells draw"
+        "the label header counts exactly what the cells draw"
     );
 }
 
 #[test]
-fn the_default_area_is_the_first_row_then_declared_lanes_then_a_lane_only_a_ticket_names() {
+fn the_default_area_is_the_first_row_then_declared_labels_then_a_label_only_a_ticket_names() {
     let rows = TicketBoard::rows(
         &[
             ticket("loose", Status::Backlog, None),
@@ -140,10 +140,10 @@ fn archived_tickets_are_the_callers_decision_not_the_boards() {
 }
 
 #[test]
-fn a_drop_sets_the_lane_and_the_status_in_one_write() {
+fn a_drop_sets_the_label_and_the_status_in_one_write() {
     let sandbox = Sandbox::new("board-place");
     let board = sandbox.board();
-    board.add_lane("Board", None, None).unwrap();
+    board.add_label("Board", None, None).unwrap();
     let ticket = board.add("carry it", AddTicket::default()).unwrap();
 
     let placed = board
@@ -154,7 +154,7 @@ fn a_drop_sets_the_lane_and_the_status_in_one_write() {
             usize::MAX,
         )
         .unwrap();
-    assert_eq!(placed.lane.as_deref(), Some("Board"));
+    assert_eq!(placed.label.as_deref(), Some("Board"));
     assert_eq!(placed.status, Status::InProgress);
     assert!(!placed.done());
 
@@ -163,7 +163,7 @@ fn a_drop_sets_the_lane_and_the_status_in_one_write() {
     let tickets = fresh.list_filter(tandem_core::domain::Filter::All).unwrap();
     assert_eq!(tickets.len(), 1);
     assert_eq!(tickets[0].status, Status::InProgress);
-    assert_eq!(tickets[0].lane.as_deref(), Some("Board"));
+    assert_eq!(tickets[0].label.as_deref(), Some("Board"));
 }
 
 #[test]
@@ -199,15 +199,15 @@ fn a_drop_into_in_review_persists_and_draws_in_the_in_review_column() {
 }
 
 #[test]
-fn a_drop_appends_to_its_lane_by_default_and_takes_an_index_when_given_one() {
+fn a_drop_appends_to_its_label_by_default_and_takes_an_index_when_given_one() {
     let sandbox = Sandbox::new("board-index");
     let board = sandbox.board();
-    board.add_lane("Board", None, None).unwrap();
+    board.add_label("Board", None, None).unwrap();
     board
         .add(
             "one",
             AddTicket {
-                lane: Some("Board"),
+                label: Some("Board"),
                 ..AddTicket::default()
             },
         )
@@ -216,7 +216,7 @@ fn a_drop_appends_to_its_lane_by_default_and_takes_an_index_when_given_one() {
         .add(
             "two",
             AddTicket {
-                lane: Some("Board"),
+                label: Some("Board"),
                 ..AddTicket::default()
             },
         )
@@ -225,13 +225,13 @@ fn a_drop_appends_to_its_lane_by_default_and_takes_an_index_when_given_one() {
         .add(
             "three",
             AddTicket {
-                lane: Some("Board"),
+                label: Some("Board"),
                 ..AddTicket::default()
             },
         )
         .unwrap();
 
-    // No index: the drop appends to the end of the lane.
+    // No index: the drop appends to the end of the label.
     board
         .place(
             &moving.id.to_string(),
@@ -245,7 +245,7 @@ fn a_drop_appends_to_its_lane_by_default_and_takes_an_index_when_given_one() {
         ["two", "one", "three"]
     );
 
-    // An index: the drop lands at that place in the lane.
+    // An index: the drop lands at that place in the label.
     board
         .place(&moving.id.to_string(), Some("Board"), Status::Backlog, 0)
         .unwrap();
@@ -292,7 +292,7 @@ fn a_drop_that_lands_the_ticket_where_it_already_was_changes_nothing() {
 }
 
 #[test]
-fn an_unknown_lane_or_id_is_rejected_and_the_store_is_left_alone() {
+fn an_unknown_label_or_id_is_rejected_and_the_store_is_left_alone() {
     let sandbox = Sandbox::new("board-rejects");
     let board = sandbox.board();
     let ticket = board.add("a", AddTicket::default()).unwrap();
@@ -327,7 +327,7 @@ fn an_unknown_lane_or_id_is_rejected_and_the_store_is_left_alone() {
 // MARK: - One transaction (the Swift `mutate`, `Store.swift:130-175`)
 
 /// The read-modify-write is one transaction: the write lock is held before the
-/// rows are read, so two writers over one home cannot hand out the same lane number
+/// rows are read, so two writers over one home cannot hand out the same label number
 /// or write a stale row back over the other's.
 ///
 /// What this case does about the gate: a queue of 40 writes on a loaded runner
@@ -343,7 +343,7 @@ fn an_unknown_lane_or_id_is_rejected_and_the_store_is_left_alone() {
 fn two_writers_over_one_home_keep_every_row_and_issue_every_ref_once() {
     let sandbox = Sandbox::new("board-writers");
     let board = sandbox.board();
-    board.add_lane("Tandem", Some("TAN"), None).unwrap();
+    board.add_label("Tandem", Some("TAN"), None).unwrap();
     let store = sandbox.store();
 
     std::thread::scope(|scope| {
@@ -357,7 +357,7 @@ fn two_writers_over_one_home_keep_every_row_and_issue_every_ref_once() {
                         board.add(
                             &format!("{group}-{index}"),
                             AddTicket {
-                                lane: Some("Tandem"),
+                                label: Some("Tandem"),
                                 ..AddTicket::default()
                             },
                         )
@@ -444,12 +444,12 @@ fn a_write_that_fails_for_another_reason_is_not_retried() {
 fn a_concurrent_edit_is_not_reverted_by_another_writers_snapshot() {
     let sandbox = Sandbox::new("board-revert");
     let board = sandbox.board();
-    board.add_lane("Tandem", Some("TAN"), None).unwrap();
+    board.add_label("Tandem", Some("TAN"), None).unwrap();
     let edited = board
         .add(
             "original",
             AddTicket {
-                lane: Some("Tandem"),
+                label: Some("Tandem"),
                 ..AddTicket::default()
             },
         )
@@ -486,7 +486,7 @@ fn a_concurrent_edit_is_not_reverted_by_another_writers_snapshot() {
                     board.add(
                         &format!("added {index}"),
                         AddTicket {
-                            lane: Some("Tandem"),
+                            label: Some("Tandem"),
                             ..AddTicket::default()
                         },
                     )

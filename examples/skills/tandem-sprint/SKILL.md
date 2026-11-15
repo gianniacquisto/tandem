@@ -1,17 +1,17 @@
 ---
 name: tandem-sprint
-description: "Triage, build, review and close a batch of tickets in one invocation: orient on the board, draw ready tickets only, run each through `tandem-build`, and settle the lane at the close. Refine and retro are standalone passes: shaping is `skills/tandem-refine/`, learning is `skills/retro/`. Reach for it when the user says run a sprint, asks what the workflow is, or starts a coding pass on this board."
+description: "Triage, build, review and close a batch of tickets in one invocation: orient on the board, draw ready tickets only, run each through `tandem-build`, and settle the label at the close. Refine and retro are standalone passes: shaping is `skills/tandem-refine/`, learning is `skills/retro/`. Reach for it when the user says run a sprint, asks what the workflow is, or starts a coding pass on this board."
 ---
 
 # Tandem sprint
 
 One invocation is the build-and-review loop: **triage → build → review → close**. A sprint is a human's batch, not a stored entity: the board's statuses, assignees and comment logs are its record (ADR 0045). Refine and retro are standalone passes, not phases here, and the sprint neither runs nor prompts them.
 
-A sprint covers **exactly one project, the one whose directory the pass runs in**. The project is the directory's basename with a `-wt-<slug>` worktree suffix stripped, matched case-insensitively against the existing lane names. A human-named lane overrides the derivation; the lane's stored spelling is used everywhere after that. No matching lane: ask the human, because `lane add` is a human call.
+A sprint covers **exactly one project, the one whose directory the pass runs in**. The project is the directory's basename with a `-wt-<slug>` worktree suffix stripped, matched case-insensitively against the existing label names. A human-named label overrides the derivation; the label's stored spelling is used everywhere after that. No matching label: ask the human, because `label add` is a human call.
 
 ## 1. Orient
 
-Read the board in one round: the project's lanes, the open tickets, and the tickets assigned to `human`. That read is the queue; acting on another project's ticket belongs to that project's own sprint.
+Read the board in one round: the project's labels, the open tickets, and the tickets assigned to `human`. That read is the queue; acting on another project's ticket belongs to that project's own sprint.
 
 ## 2. Triage
 
@@ -26,7 +26,7 @@ A decision worth keeping is a ticket comment on the work it belongs to, or a new
 
 ## 3. Open the batch
 
-Zero drawn means no batch: this is a triage pass, and its report says so. Otherwise the batch is the drawn tickets, claimed as they are dispatched: `ticket set` with `status` in-progress and `assignee` the pass. The tickets are the record; nothing is opened on the lane.
+Zero drawn means no batch: this is a triage pass, and its report says so. Otherwise the batch is the drawn tickets, claimed as they are dispatched: `ticket set` with `status` in-progress and `assignee` the pass. The tickets are the record; nothing is opened on the label.
 
 ## 4. Build
 
@@ -36,7 +36,7 @@ Run the batch through `tandem-build` (`skills/tandem-build/SKILL.md`), per ticke
 
 **The precondition: every batch ticket is merged and `done`, with its PR in the comment log.** No close runs on a batch still in flight. An escalation to the human keeps the ticket in the batch until the human answers and the work lands.
 
-Settle the lane's open set before the close is written. Walk every open ticket in the lane and leave each in a status a reader can trust:
+Settle the label's open set before the close is written. Walk every open ticket in the label and leave each in a status a reader can trust:
 
 - a claim whose pass has ended goes back to `ready`, or to `on-hold` when it is parked on purpose, with a comment naming the ended pass;
 - a ticket drawn but not finished says so in a comment instead of sitting `in-progress` behind a dead claim;

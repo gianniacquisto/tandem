@@ -1,5 +1,5 @@
-//! Ticket references (ticket 6598E091), ported from `TicketRefTests.swift`: a lane
-//! key plus a per-lane number, rendered `KEY-N` (`TAN-42`) and accepted wherever an
+//! Ticket references (ticket 6598E091), ported from `TicketRefTests.swift`: a label
+//! key plus a per-label number, rendered `KEY-N` (`TAN-42`) and accepted wherever an
 //! id is.
 //!
 //! The Swift suite drove the CLI for the contract; this one drives the board, which
@@ -13,15 +13,15 @@ use support::Sandbox;
 use tandem_core::domain::{AddTicket, DomainError, Filter, Status, TicketRef};
 
 #[test]
-fn a_lanes_tickets_are_numbered_and_the_ref_is_on_add_and_list() {
+fn a_labels_tickets_are_numbered_and_the_ref_is_on_add_and_list() {
     let sandbox = Sandbox::new("ref-numbers");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB"), None).unwrap();
+    board.add_label("Probe", Some("PRB"), None).unwrap();
     let first = board
         .add(
             "first",
             AddTicket {
-                lane: Some("Probe"),
+                label: Some("Probe"),
                 ..AddTicket::default()
             },
         )
@@ -30,7 +30,7 @@ fn a_lanes_tickets_are_numbered_and_the_ref_is_on_add_and_list() {
         .add(
             "second",
             AddTicket {
-                lane: Some("Probe"),
+                label: Some("Probe"),
                 ..AddTicket::default()
             },
         )
@@ -65,16 +65,16 @@ fn a_lanes_tickets_are_numbered_and_the_ref_is_on_add_and_list() {
 fn an_absent_key_is_the_first_three_of_the_name_separators_stripped() {
     let sandbox = Sandbox::new("ref-keys");
     let board = sandbox.board();
-    board.add_lane("Tandem", None, None).unwrap();
-    board.add_lane("Retro", None, None).unwrap();
-    board.add_lane("code-rank", None, None).unwrap();
+    board.add_label("Tandem", None, None).unwrap();
+    board.add_label("Retro", None, None).unwrap();
+    board.add_label("code-rank", None, None).unwrap();
 
-    let reference = |lane: &str| {
+    let reference = |label: &str| {
         board
             .add(
                 "t",
                 AddTicket {
-                    lane: Some(lane),
+                    label: Some(label),
                     ..AddTicket::default()
                 },
             )
@@ -90,35 +90,35 @@ fn an_absent_key_is_the_first_three_of_the_name_separators_stripped() {
 fn a_key_already_in_use_is_refused_case_insensitively() {
     let sandbox = Sandbox::new("ref-duplicate");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB"), None).unwrap();
+    board.add_label("Probe", Some("PRB"), None).unwrap();
     assert_eq!(
-        board.add_lane("Pilot", Some("prb"), None),
-        Err(DomainError::DuplicateLaneKey("PRB".to_string()))
+        board.add_label("Pilot", Some("prb"), None),
+        Err(DomainError::DuplicateLabelKey("PRB".to_string()))
     );
 
     // The failure names the key it cannot use.
     assert!(
-        DomainError::DuplicateLaneKey("PRB".to_string())
+        DomainError::DuplicateLabelKey("PRB".to_string())
             .message()
             .contains("PRB")
     );
     assert_eq!(
-        board.add_lane("Bad", Some("P-R"), None),
-        Err(DomainError::InvalidLaneKey("P-R".to_string())),
+        board.add_label("Bad", Some("P-R"), None),
+        Err(DomainError::InvalidLabelKey("P-R".to_string())),
         "a key is alphanumerics only"
     );
 }
 
 #[test]
-fn show_resolves_a_ref_in_either_case_and_an_unissued_number_names_the_lanes_range() {
+fn show_resolves_a_ref_in_either_case_and_an_unissued_number_names_the_labels_range() {
     let sandbox = Sandbox::new("ref-resolve");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB"), None).unwrap();
+    board.add_label("Probe", Some("PRB"), None).unwrap();
     let first = board
         .add(
             "first",
             AddTicket {
-                lane: Some("Probe"),
+                label: Some("Probe"),
                 ..AddTicket::default()
             },
         )
@@ -127,7 +127,7 @@ fn show_resolves_a_ref_in_either_case_and_an_unissued_number_names_the_lanes_ran
         .add(
             "second",
             AddTicket {
-                lane: Some("Probe"),
+                label: Some("Probe"),
                 ..AddTicket::default()
             },
         )
@@ -150,7 +150,7 @@ fn show_resolves_a_ref_in_either_case_and_an_unissued_number_names_the_lanes_ran
             assert!(hint.contains("PRB-1"));
             assert!(
                 hint.contains("PRB-2"),
-                "the failure names the lane's real range"
+                "the failure names the label's real range"
             );
         }
         other => panic!("expected unknownRef, got {other:?}"),
@@ -169,62 +169,64 @@ fn show_resolves_a_ref_in_either_case_and_an_unissued_number_names_the_lanes_ran
 fn a_rename_keeps_the_key_and_every_ref_still_resolves() {
     let sandbox = Sandbox::new("ref-rename");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB"), None).unwrap();
+    board.add_label("Probe", Some("PRB"), None).unwrap();
     board
         .add(
             "first",
             AddTicket {
-                lane: Some("Probe"),
+                label: Some("Probe"),
                 ..AddTicket::default()
             },
         )
         .unwrap();
 
-    board.rename_lane("Probe", "Probe Two", None, None).unwrap();
+    board
+        .rename_label("Probe", "Probe Two", None, None)
+        .unwrap();
     assert_eq!(
         board
-            .rename_lane("Probe Two", "Probe Two", None, None)
+            .rename_label("Probe Two", "Probe Two", None, None)
             .unwrap(),
         ["Probe Two"]
     );
 
     let shown = board.ticket("PRB-1").unwrap();
     assert_eq!(
-        shown.lane.as_deref(),
+        shown.label.as_deref(),
         Some("Probe Two"),
         "the key survives the rename"
     );
 }
 
 #[test]
-fn a_key_on_a_lane_with_a_numbered_ticket_is_refused_naming_its_refs() {
+fn a_key_on_a_label_with_a_numbered_ticket_is_refused_naming_its_refs() {
     let sandbox = Sandbox::new("ref-frozen");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB"), None).unwrap();
+    board.add_label("Probe", Some("PRB"), None).unwrap();
     board
         .add(
             "first",
             AddTicket {
-                lane: Some("Probe"),
+                label: Some("Probe"),
                 ..AddTicket::default()
             },
         )
         .unwrap();
 
     match board
-        .rename_lane("Probe", "Probe Two", Some("PBX"), None)
+        .rename_label("Probe", "Probe Two", Some("PBX"), None)
         .unwrap_err()
     {
-        DomainError::FrozenLaneKey { key, lane, refs } => {
+        DomainError::FrozenLabelKey { key, label, refs } => {
             assert_eq!(key, "PRB");
-            assert_eq!(lane, "Probe");
+            assert_eq!(label, "Probe");
             assert_eq!(
                 refs,
                 ["PRB-1"],
                 "the failure names the refs that would move"
             );
         }
-        other => panic!("expected frozenLaneKey, got {other:?}"),
+        other => panic!("expected frozenLabelKey, got {other:?}"),
     }
     assert_eq!(
         board.ticket("PRB-1").unwrap().title,
@@ -232,25 +234,25 @@ fn a_key_on_a_lane_with_a_numbered_ticket_is_refused_naming_its_refs() {
         "nothing changed"
     );
 
-    // An empty lane's key is not frozen: it may move.
-    board.add_lane("Empty", None, None).unwrap();
+    // An empty label's key is not frozen: it may move.
+    board.add_label("Empty", None, None).unwrap();
     board
-        .rename_lane("Empty", "Empty Two", Some("EMP"), None)
+        .rename_label("Empty", "Empty Two", Some("EMP"), None)
         .unwrap();
-    assert_eq!(board.lanes().unwrap(), ["Probe", "Empty Two"]);
+    assert_eq!(board.labels().unwrap(), ["Probe", "Empty Two"]);
 }
 
 #[test]
-fn a_move_between_lanes_assigns_the_target_lanes_next_number_and_drops_the_old_one() {
+fn a_move_between_labels_assigns_the_target_labels_next_number_and_drops_the_old_one() {
     let sandbox = Sandbox::new("ref-move");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB"), None).unwrap();
-    board.add_lane("Retro", Some("RET"), None).unwrap();
+    board.add_label("Probe", Some("PRB"), None).unwrap();
+    board.add_label("Retro", Some("RET"), None).unwrap();
     let ticket = board
         .add(
             "moving",
             AddTicket {
-                lane: Some("Probe"),
+                label: Some("Probe"),
                 ..AddTicket::default()
             },
         )
@@ -269,12 +271,12 @@ fn a_move_between_lanes_assigns_the_target_lanes_next_number_and_drops_the_old_o
         .unwrap();
     assert_eq!(loose.reference, None);
 
-    // And back in a lane it gets that lane's next number, not the one it had.
+    // And back in a label it gets that label's next number, not the one it had.
     board
         .add(
             "another",
             AddTicket {
-                lane: Some("Retro"),
+                label: Some("Retro"),
                 ..AddTicket::default()
             },
         )
@@ -304,12 +306,12 @@ fn the_ref_parser_is_case_insensitive_on_the_key_and_digit_only_on_the_number() 
 fn a_done_ticket_keeps_its_ref_and_its_number() {
     let sandbox = Sandbox::new("ref-done");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB"), None).unwrap();
+    board.add_label("Probe", Some("PRB"), None).unwrap();
     let ticket = board
         .add(
             "done soon",
             AddTicket {
-                lane: Some("Probe"),
+                label: Some("Probe"),
                 ..AddTicket::default()
             },
         )

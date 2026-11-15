@@ -23,6 +23,15 @@
 //! of them. `2026-07-28` is the stateful protocol the new handshake carries,
 //! which a stateless JSON door does not speak. The HTTP transport checks the
 //! `MCP-Protocol-Version` header against [`PROTOCOL_VERSIONS`].
+//!
+//! The door logs through `tracing` events, and the CLI installs a subscriber
+//! that writes them under `TANDEM_LOG` (ADR 0046 amendment).
+//! The default filter is `warn`, so a healthy session is silent. A line names
+//! identifiers and outcomes only: never arguments, results, ticket or note
+//! text, or the environment, and every value a client chose (a tool or method
+//! name) is Debug-escaped so a control character cannot break the line.
+
+use std::time::Instant;
 
 use serde_json::{Value, json};
 
@@ -30,8 +39,8 @@ use crate::env::Environment;
 use crate::rpc::handle_in;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
-    CommentAddParams, EmptyParams, LaneAddParams, LaneDeleteParams, LaneMoveParams,
-    LaneRenameParams, Method, NoteMoveParams, NotePathParams, NoteWriteParams, ProjectAddParams,
+    CommentAddParams, EmptyParams, LabelAddParams, LabelDeleteParams, LabelMoveParams,
+    LabelRenameParams, Method, NoteMoveParams, NotePathParams, NoteWriteParams, ProjectAddParams,
     ProjectDeleteParams, ProjectRenameParams, TicketAddParams, TicketArchiveParams,
     TicketBlockParams, TicketIdParams, TicketListParams, TicketMoveParams, TicketSetParams,
     TicketUnblockParams,
@@ -129,9 +138,13 @@ pub fn handle_mcp(
 ) -> Option<String> {
     let value: Value = match serde_json::from_str(frame) {
         Ok(value) => value,
-        Err(error) => return Some(error_frame(frame_id(frame), PARSE_ERROR, error.to_string())),
+        Err(error) => {
+            tracing::warn!(reason = %error, "malformed frame");
+            return Some(error_frame(frame_id(frame), PARSE_ERROR, error.to_string()));
+        }
     };
     if value.is_array() {
+        tracing::warn!("invalid request: a batch");
         return Some(error_frame(
             None,
             INVALID_REQUEST,
@@ -141,6 +154,7 @@ pub fn handle_mcp(
     let request = match value.as_object() {
         Some(request) => request,
         None => {
+            tracing::warn!("invalid request: the frame is not an object");
             return Some(error_frame(
                 None,
                 INVALID_REQUEST,
@@ -149,6 +163,7 @@ pub fn handle_mcp(
         }
     };
     if request.get("jsonrpc") != Some(&Value::String("2.0".to_string())) {
+        tracing::warn!("invalid request: the frame is not JSON-RPC 2.0");
         return Some(error_frame(
             id_of(&value),
             INVALID_REQUEST,
@@ -158,16 +173,19 @@ pub fn handle_mcp(
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
     let id = id_of(&value);
     match method {
-        "initialize" => Some(initialize_frame(id, request.get("params"), store)),
+        "initialize" => Some(initialize_frame(id, request.get("params"), store, actor)),
         "notifications/initialized" => {
+            tracing::debug!("notifications/initialized");
             let id = id?;
             Some(result_frame(Some(id), json!({})))
         }
         "ping" => {
+            tracing::debug!("ping");
             let id = id?;
             Some(result_frame(Some(id), json!({})))
         }
         "tools/list" => {
+            tracing::debug!("tools/list");
             let id = id?;
             let tools: Vec<Value> = tools().iter().map(Tool::wire).collect();
             Some(result_frame(Some(id), json!({"tools": tools})))
@@ -182,13 +200,17 @@ pub fn handle_mcp(
                 environment,
             ))
         }
-        "" => Some(error_frame(
-            id,
-            INVALID_REQUEST,
-            "the frame names no method",
-        )),
+        "" => {
+            tracing::warn!("invalid request: the frame names no method");
+            Some(error_frame(
+                id,
+                INVALID_REQUEST,
+                "the frame names no method",
+            ))
+        }
         unknown => {
             let id = id?;
+            tracing::warn!(method = ?unknown, "method not found");
             Some(error_frame(
                 Some(id),
                 METHOD_NOT_FOUND,
@@ -205,7 +227,12 @@ pub fn handle_mcp(
 /// A small `health` block rides beside them (the resolved home and why, the
 /// store's ok, the version and the tool count), so a fresh session can see the
 /// default path is wired without running a full `doctor`.
-fn initialize_frame(id: Option<Value>, params: Option<&Value>, store: &Store) -> String {
+fn initialize_frame(
+    id: Option<Value>,
+    params: Option<&Value>,
+    store: &Store,
+    actor: &Actor,
+) -> String {
     let asked = params
         .and_then(|params| params.get("protocolVersion"))
         .and_then(Value::as_str)
@@ -215,6 +242,12 @@ fn initialize_frame(id: Option<Value>, params: Option<&Value>, store: &Store) ->
     } else {
         NEGOTIATED_DEFAULT
     };
+    tracing::info!(
+        protocol = negotiated,
+        version = %server_version(),
+        actor = ?actor.as_str(),
+        "initialize"
+    );
     result_frame(
         id,
         json!({
@@ -276,6 +309,7 @@ fn call_frame(
         .and_then(Value::as_str)
         .unwrap_or("");
     let Some(tool) = tools().into_iter().find(|tool| tool.name == name) else {
+        tracing::warn!(tool = ?name, "unknown tool");
         return error_frame(id, INVALID_PARAMS, format!("Unknown tool: {name}"));
     };
     let arguments = params
@@ -283,6 +317,7 @@ fn call_frame(
         .cloned()
         .unwrap_or_else(|| json!({}));
     if !arguments.is_object() {
+        tracing::warn!(tool = tool.name, "invalid arguments: not an object");
         return error_frame(
             id,
             INVALID_PARAMS,
@@ -290,9 +325,18 @@ fn call_frame(
         );
     }
     let frame = json!({"id": 1, "method": tool.method_tag, "params": arguments}).to_string();
+    let started = Instant::now();
     let answer: Value = serde_json::from_str(&handle_in(&frame, store, actor, environment))
         .unwrap_or_else(|_| json!({"id": 1, "error": {"code": "parse", "message": "the answer is not readable"}}));
+    let latency_ms = started.elapsed().as_millis() as u64;
     if let Some(error) = answer.get("error") {
+        // The domain's error kind only, never its message: a message may quote
+        // ticket text.
+        let kind = error
+            .get("code")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        tracing::info!(tool = tool.name, outcome = "error", kind = ?kind, latency_ms, "tools/call");
         let message = error
             .get("message")
             .and_then(Value::as_str)
@@ -302,6 +346,7 @@ fn call_frame(
             json!({"content": [{"type": "text", "text": message}], "isError": true}),
         );
     }
+    tracing::info!(tool = tool.name, outcome = "ok", latency_ms, "tools/call");
     let result = answer.get("result").cloned().unwrap_or(Value::Null);
     result_frame(
         id,
@@ -410,7 +455,7 @@ pub fn tools() -> Vec<Tool> {
         Tool {
             name: "ticket_move",
             method_tag: "ticket.move",
-            description: "Move between lanes and/or within one. Omit the index to append.",
+            description: "Move between labels and/or within one. Omit the index to append.",
             input_schema: TicketMoveParams::schema(),
             method: Method::TicketMove(TicketMoveParams::default()),
         },
@@ -457,65 +502,65 @@ pub fn tools() -> Vec<Tool> {
             method: Method::TicketCommentList(TicketIdParams::default()),
         },
         Tool {
-            name: "lane_list",
-            method_tag: "lane.list",
-            description: "List every cycle lane, in render order.",
+            name: "label_list",
+            method_tag: "label.list",
+            description: "List every label, in render order.",
             input_schema: EmptyParams::schema(),
-            method: Method::LaneList(EmptyParams {}),
+            method: Method::LabelList(EmptyParams {}),
         },
         Tool {
-            name: "lane_add",
-            method_tag: "lane.add",
-            description: "Declare a cycle lane. A lane must exist before tickets move to it.",
-            input_schema: LaneAddParams::schema(),
-            method: Method::LaneAdd(LaneAddParams::default()),
+            name: "label_add",
+            method_tag: "label.add",
+            description: "Declare a label. A label must exist before tickets move to it.",
+            input_schema: LabelAddParams::schema(),
+            method: Method::LabelAdd(LabelAddParams::default()),
         },
         Tool {
-            name: "lane_rename",
-            method_tag: "lane.rename",
-            description: "Rename a lane, rewriting every ticket in it in one write.",
-            input_schema: LaneRenameParams::schema(),
-            method: Method::LaneRename(LaneRenameParams::default()),
+            name: "label_rename",
+            method_tag: "label.rename",
+            description: "Rename a label, rewriting every ticket in it in one write.",
+            input_schema: LabelRenameParams::schema(),
+            method: Method::LabelRename(LabelRenameParams::default()),
         },
         Tool {
-            name: "lane_delete",
-            method_tag: "lane.delete",
-            description: "Delete a lane; members fall back to the default area, never deleted.",
-            input_schema: LaneDeleteParams::schema(),
-            method: Method::LaneDelete(LaneDeleteParams::default()),
+            name: "label_delete",
+            method_tag: "label.delete",
+            description: "Delete a label; members fall back to the default area, never deleted.",
+            input_schema: LabelDeleteParams::schema(),
+            method: Method::LabelDelete(LabelDeleteParams::default()),
         },
         Tool {
-            name: "lane_move",
-            method_tag: "lane.move",
-            description: "Reorder the declared lanes; the index is 0-based and clamps.",
-            input_schema: LaneMoveParams::schema(),
-            method: Method::LaneMove(LaneMoveParams::default()),
+            name: "label_move",
+            method_tag: "label.move",
+            description: "Reorder the declared labels; the index is 0-based and clamps.",
+            input_schema: LabelMoveParams::schema(),
+            method: Method::LabelMove(LabelMoveParams::default()),
         },
         Tool {
             name: "project_list",
             method_tag: "project.list",
-            description: "List every project with its lanes, in render order.",
+            description: "List every project with its labels, in render order.",
             input_schema: EmptyParams::schema(),
             method: Method::ProjectList(EmptyParams {}),
         },
         Tool {
             name: "project_add",
             method_tag: "project.add",
-            description: "Declare a project. A project must exist before lanes name it as parent.",
+            description: "Declare a project. A project must exist before labels name it as parent.",
             input_schema: ProjectAddParams::schema(),
             method: Method::ProjectAdd(ProjectAddParams::default()),
         },
         Tool {
             name: "project_rename",
             method_tag: "project.rename",
-            description: "Rename a project, moving its lanes with it.",
+            description: "Rename a project, moving its labels with it.",
             input_schema: ProjectRenameParams::schema(),
             method: Method::ProjectRename(ProjectRenameParams::default()),
         },
         Tool {
             name: "project_delete",
             method_tag: "project.delete",
-            description: "Delete an empty project; refused while lanes belong to it.",
+            description: "Delete an empty project; refused while labels belong to it.",
             input_schema: ProjectDeleteParams::schema(),
             method: Method::ProjectDelete(ProjectDeleteParams::default()),
         },

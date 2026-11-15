@@ -1,6 +1,6 @@
 {
   "argv": [
-    "lane",
+    "label",
     "rename",
     "--from",
     "Cycle",
@@ -13,7 +13,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": {
-    "lanes": [
+    "labels": [
       "Loop"
     ]
   },

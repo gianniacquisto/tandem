@@ -221,7 +221,7 @@ fn call_for(command: &Command) -> Result<(String, Map<String, Value>), Failure> 
                     put(&mut map, "text", args.text.as_deref());
                     put(&mut map, "status", args.status.as_deref());
                     put(&mut map, "assignee", args.assignee.as_deref());
-                    put(&mut map, "lane", args.lane.as_deref());
+                    put(&mut map, "label", args.label.as_deref());
                     if args.archived {
                         map.insert("archived".into(), Value::Bool(true));
                     }
@@ -238,7 +238,7 @@ fn call_for(command: &Command) -> Result<(String, Map<String, Value>), Failure> 
                     put(&mut map, "title", args.title.as_deref());
                     put(&mut map, "status", args.status.as_deref());
                     put(&mut map, "assignee", args.assignee.as_deref());
-                    put(&mut map, "lane", args.lane.as_deref());
+                    put(&mut map, "label", args.label.as_deref());
                     put(&mut map, "origin", args.origin.as_deref());
                     let description = add_description_body(args.description.as_deref())?;
                     put(&mut map, "description", description.as_deref());
@@ -265,7 +265,7 @@ fn call_for(command: &Command) -> Result<(String, Map<String, Value>), Failure> 
                 }
                 TicketCommand::Move(args) => {
                     put(&mut map, "id", args.id.as_deref());
-                    put(&mut map, "lane", args.lane.as_deref());
+                    put(&mut map, "label", args.label.as_deref());
                     if let Some(at) = index(args.index.as_deref())? {
                         map.insert("index".into(), at);
                     }
@@ -310,31 +310,31 @@ fn call_for(command: &Command) -> Result<(String, Map<String, Value>), Failure> 
                 }
             }
         }
-        Command::Lane { command } => match command.as_ref().ok_or_else(Failure::usage)? {
-            LaneCommand::List => "lane list",
-            LaneCommand::Add(args) => {
+        Command::Label { command } => match command.as_ref().ok_or_else(Failure::usage)? {
+            LabelCommand::List => "label list",
+            LabelCommand::Add(args) => {
                 put(&mut map, "name", args.name.as_deref());
                 put(&mut map, "abbr", args.abbr.as_deref());
                 put(&mut map, "project", args.project.as_deref());
-                "lane add"
+                "label add"
             }
-            LaneCommand::Rename(args) => {
+            LabelCommand::Rename(args) => {
                 put(&mut map, "from", args.from.as_deref());
                 put(&mut map, "to", args.to.as_deref());
                 put(&mut map, "abbr", args.abbr.as_deref());
                 put(&mut map, "project", args.project.as_deref());
-                "lane rename"
+                "label rename"
             }
-            LaneCommand::Delete(args) => {
+            LabelCommand::Delete(args) => {
                 put(&mut map, "name", args.name.as_deref());
-                "lane delete"
+                "label delete"
             }
-            LaneCommand::Move(args) => {
+            LabelCommand::Move(args) => {
                 put(&mut map, "name", args.name.as_deref());
                 if let Some(at) = index(args.index.as_deref())? {
                     map.insert("index".into(), at);
                 }
-                "lane move"
+                "label move"
             }
         },
         Command::Project { command } => match command.as_ref().ok_or_else(Failure::usage)? {

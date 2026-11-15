@@ -47,9 +47,9 @@
           Show all
         </label>
         <label class="menu__field">
-          <span class="menu__title">Lane</span>
-          <select class="filter" name="lane" aria-label="Lane">
-            {% for option in lane_options %}
+          <span class="menu__title">Label</span>
+          <select class="filter" name="label" aria-label="Label">
+            {% for option in label_options %}
             <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
             {% endfor %}
           </select>
@@ -72,8 +72,8 @@
       {% if show_all %}
       <li><button type="button" class="chip" data-clear="show_all" aria-label="Remove show all">Show all <span aria-hidden="true">×</span></button></li>
       {% endif %}
-      {% for option in lane_options %}{% if option.selected && !option.value.is_empty() %}
-      <li><button type="button" class="chip" data-clear="lane" aria-label="Remove lane filter {{ option.label }}">{{ option.label }} <span aria-hidden="true">×</span></button></li>
+      {% for option in label_options %}{% if option.selected && !option.value.is_empty() %}
+      <li><button type="button" class="chip" data-clear="label" aria-label="Remove label filter {{ option.label }}">{{ option.label }} <span aria-hidden="true">×</span></button></li>
       {% endif %}{% endfor %}
       {% for option in assignee_options %}{% if option.selected && !option.value.is_empty() %}
       <li><button type="button" class="chip" data-clear="assignee" aria-label="Remove assignee filter {{ option.label }}">{{ option.label }} <span aria-hidden="true">×</span></button></li>
@@ -81,33 +81,33 @@
     </ul>
   </form>
 
-  <details class="menu lanes-menu">
-    <summary class="menu__button menu__button--label">Lanes</summary>
+  <details class="menu labels-menu">
+    <summary class="menu__button menu__button--label">Labels</summary>
     <div class="menu__panel menu__panel--form">
-      <p class="menu__title">New cycle lane</p>
-      <form class="lane-form" method="post" action="/lanes" hx-post="/lanes"
+      <p class="menu__title">New label</p>
+      <form class="label-form" method="post" action="/labels" hx-post="/labels"
             hx-target="#board-root" hx-swap="outerHTML">
         <input type="hidden" name="project" value="{{ form.project }}">
         <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
-        <input type="hidden" name="lane" value="{{ form.lane }}">
+        <input type="hidden" name="label" value="{{ form.label }}">
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">
-        <input class="lane-form__name" name="name" aria-label="New lane name" placeholder="Lane name" required>
-        <input class="lane-form__key" name="abbr" aria-label="New lane key" placeholder="Key">
-        <button class="lane-form__save" type="submit">Add</button>
+        <input class="label-form__name" name="name" aria-label="New label name" placeholder="Label name" required>
+        <input class="label-form__key" name="abbr" aria-label="New label key" placeholder="Key">
+        <button class="label-form__save" type="submit">Add</button>
       </form>
-      <p class="menu__title">Rename a lane</p>
-      {% for lane in lane_rows %}
-      <form class="lane-form" method="post" action="/lanes/{{ lane.encoded }}/rename"
-            hx-post="/lanes/{{ lane.encoded }}/rename" hx-target="#board-root" hx-swap="outerHTML">
+      <p class="menu__title">Rename a label</p>
+      {% for label in label_rows %}
+      <form class="label-form" method="post" action="/labels/{{ label.encoded }}/rename"
+            hx-post="/labels/{{ label.encoded }}/rename" hx-target="#board-root" hx-swap="outerHTML">
         <input type="hidden" name="project" value="{{ form.project }}">
         <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
-        <input type="hidden" name="lane" value="{{ form.lane }}">
+        <input type="hidden" name="label" value="{{ form.label }}">
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">
-        <input class="lane-form__name" name="to" aria-label="Name of lane {{ lane.name }}" value="{{ lane.name }}">
-        <input class="lane-form__key" name="abbr" aria-label="Key for lane {{ lane.name }}" placeholder="Key">
-        <button class="lane-form__save" type="submit">Save</button>
+        <input class="label-form__name" name="to" aria-label="Name of label {{ label.name }}" value="{{ label.name }}">
+        <input class="label-form__key" name="abbr" aria-label="Key for label {{ label.name }}" placeholder="Key">
+        <button class="label-form__save" type="submit">Save</button>
       </form>
       {% endfor %}
     </div>
@@ -123,7 +123,7 @@
         <input type="hidden" name="expected_revision" value="{{ revision }}">
         <input type="hidden" name="project" value="{{ form.project }}">
         <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
-        <input type="hidden" name="lane" value="{{ form.lane }}">
+        <input type="hidden" name="label" value="{{ form.label }}">
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">
         <input class="new-form__title" name="title" placeholder="Ticket title" aria-label="Ticket title" required>
@@ -165,9 +165,9 @@
              draggable="true" tabindex="0" aria-describedby="board-keyboard-hint"{% if card.selected %} aria-current="true"{% endif %}>
             <span class="ticket-card__title">{{ card.title }}</span>
             <span class="ticket-card__footer">
-              {% if let Some(lane) = card.lane %}
-              <span class="ticket-card__lane" data-tone="{{ lane.tone }}">
-                <span class="ticket-card__lane-dot" aria-hidden="true"></span>{{ lane.name }}
+              {% if let Some(label) = card.label %}
+              <span class="ticket-card__label" data-tone="{{ label.tone }}">
+                <span class="ticket-card__label-dot" aria-hidden="true"></span>{{ label.name }}
               </span>
               {% endif %}
               {% if let Some(reference) = card.reference %}

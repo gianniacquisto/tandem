@@ -8,7 +8,7 @@ Tandem was a macOS-only product by construction when the port was decided: the S
 
 ```
 tandem (one binary: Rust)
-  - agent verbs           session, ticket, note, lane, sprint, setup, doctor
+  - agent verbs           session, ticket, note, label, sprint, setup, doctor
   - rpc over stdio        the app's only door to the core; same message shapes as HTTPS later
         ^
         | spawn + pipes
@@ -71,7 +71,7 @@ Pruned before a line is ported (about 2,000 of the app's 8,934 Swift lines):
 | Inbox tab | the human queue stays outside the app; the `human` assignee stays, with no Answer verb |
 | Quick-open palette (`QuickOpenPalette.swift`) | never used |
 
-Kept and ported: the Tickets face (list plus board layout, scopes, search, quick-add, lanes), the Bikeshed face (tree, editor, backlinks, health), Usage (`TAN-208`, then `TAN-234`), Settings with the setup section, the ticket sheet.
+Kept and ported: the Tickets face (list plus board layout, scopes, search, quick-add, labels), the Bikeshed face (tree, editor, backlinks, health), Usage (`TAN-208`, then `TAN-234`), Settings with the setup section, the ticket sheet.
 
 Not built: a hosted service for several humans (a deployment shape later, not a feature), a tray, and any CLI prune.
 
@@ -92,7 +92,7 @@ Not built: a hosted service for several humans (a deployment shape later, not a 
 
 ## Migration
 
-One script, run once, and retired after use (PRT-18): the import ran onto the real home, and the script left the tree with TAN-320, its record in [ADR 0031](adr/0031-one-database-the-store.md) and the git history. Tickets, refs, timestamps, comments, dependency edges, sessions, sprints, usage and settings seed the new store by SQL from the old `tandem.db`; the bikeshed is copied as files. Not through the CLIs: `ticket set` writes none of `number`/`ref`, `createdAt`, `completedAt`, `origin`, `lane`, `archived` or edges, and a `session end` replay stamps "now", which falsifies the dates the Usage tab rolls up.
+One script, run once, and retired after use (PRT-18): the import ran onto the real home, and the script left the tree with TAN-320, its record in [ADR 0031](adr/0031-one-database-the-store.md) and the git history. Tickets, refs, timestamps, comments, dependency edges, sessions, sprints, usage and settings seed the new store by SQL from the old `tandem.db`; the bikeshed is copied as files. Not through the CLIs: `ticket set` writes none of `number`/`ref`, `createdAt`, `completedAt`, `origin`, `label`, `archived` or edges, and a `session end` replay stamps "now", which falsifies the dates the Usage tab rolls up.
 
 The old home is copied to `legacy.db` and kept. The Swift app stays installed and runnable until the import has been accepted, so the comparison is a diff and not a memory test.
 
@@ -101,7 +101,7 @@ The old home is copied to `legacy.db` and kept. The Swift app stays installed an
 1. **Contract harness.** Capture CLI JSON goldens from the Swift binary; stand up the ported domain tests as a Rust suite; one fixture home both can read.
 2. **Rust core and CLI.** Agent verbs first: daily value, and what proves the goldens.
 3. **Shell and two faces.** Electron, then Tickets and Bikeshed.
-4. **Remaining surfaces.** Usage over `TAN-208`'s report, Settings with setup, the ticket sheet, lanes.
+4. **Remaining surfaces.** Usage over `TAN-208`'s report, Settings with setup, the ticket sheet, labels.
 5. **Import, dogfooding, cutover.**
 
 ## Where the old code goes

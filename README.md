@@ -8,7 +8,7 @@
 
 **A board for you and your AI coding agents, in one binary.**
 
-You and your agent share one ticket list: it files tickets you see, and it sees the ones you close. Tickets sit on a board by status and lane, with an inbox for what the agents owe you, plus a folder of markdown notes you both read and write. Everything is local: one SQLite database and your own files, with no account and no network.
+You and your agent share one ticket list: it files tickets you see, and it sees the ones you close. Tickets sit on a board by status and label, with an inbox for what the agents owe you, plus a folder of markdown notes you both read and write. Everything is local: one SQLite database and your own files, with no account and no network.
 
 ## Install
 
