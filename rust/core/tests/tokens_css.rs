@@ -509,10 +509,7 @@ const SELECTORS: [(&str, &str); 12] = [
         "nord light",
         r#"html[data-style="nord"][data-theme="light"]"#,
     ),
-    (
-        "nord dark",
-        r#"html[data-style="nord"][data-theme="dark"]"#,
-    ),
+    ("nord dark", r#"html[data-style="nord"][data-theme="dark"]"#),
     (
         "gruvbox light",
         r#"html[data-style="gruvbox"][data-theme="light"]"#,
@@ -574,7 +571,19 @@ fn tokens_pin_every_value_in_all_palettes() {
 
 #[test]
 fn all_palettes_declare_the_same_token_names() {
-    for set in [&NEUTRAL_DARK[..], &TANDEM_LIGHT[..], &TANDEM_DARK[..], &NORD_LIGHT[..], &NORD_DARK[..], &GRUVBOX_LIGHT[..], &GRUVBOX_DARK[..], &SOLARIZED_LIGHT[..], &SOLARIZED_DARK[..], &CATPPUCCIN_LIGHT[..], &CATPPUCCIN_DARK[..]] {
+    for set in [
+        &NEUTRAL_DARK[..],
+        &TANDEM_LIGHT[..],
+        &TANDEM_DARK[..],
+        &NORD_LIGHT[..],
+        &NORD_DARK[..],
+        &GRUVBOX_LIGHT[..],
+        &GRUVBOX_DARK[..],
+        &SOLARIZED_LIGHT[..],
+        &SOLARIZED_DARK[..],
+        &CATPPUCCIN_LIGHT[..],
+        &CATPPUCCIN_DARK[..],
+    ] {
         let names: Vec<_> = set.iter().map(|(n, _)| *n).collect();
         let first: Vec<_> = NEUTRAL_LIGHT.iter().map(|(n, _)| *n).collect();
         assert_eq!(names, first);
@@ -755,7 +764,11 @@ fn style_registration_agrees_across_theme_js_shell_and_tokens() {
         v
     };
     assert_eq!(sorted(&styles), sorted(&buttons), "theme.js and shell.html");
-    assert_eq!(sorted(&styles), sorted(&in_tokens), "theme.js and tokens.css");
+    assert_eq!(
+        sorted(&styles),
+        sorted(&in_tokens),
+        "theme.js and tokens.css"
+    );
     for style in &styles {
         for mode in ["light", "dark"] {
             let selector = format!("html[data-style=\"{style}\"][data-theme=\"{mode}\"]");
