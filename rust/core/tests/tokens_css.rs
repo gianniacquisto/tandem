@@ -4,7 +4,7 @@
 //! `app/tests/shell.test.ts`: the palette is a fact of the served CSS now, and
 //! the check lives where the files do. `tokens.css` owns every colour; a
 //! component stylesheet or a template that hard-codes one would drift from the
-//! four palettes this test pins.
+//! eight palettes this test pins.
 
 const TOKENS: &str = include_str!("../src/serve/static/tokens.css");
 const APP: &str = include_str!("../src/serve/static/app.css");
@@ -14,7 +14,7 @@ const SHEET: &str = include_str!("../templates/sheet.html");
 const NOTES: &str = include_str!("../templates/notes.html");
 const MARKDOWN: &str = include_str!("../templates/markdown.html");
 
-/// The four palettes, in the file's order, keyed by the selector that scopes them.
+/// The eight palettes, in the file's order, keyed by the selector that scopes them.
 const NEUTRAL_LIGHT: [(&str, &str); 34] = [
     ("--paper", "#FFFFFF"),
     ("--parchment", "#F6F5F4"),
@@ -163,6 +163,301 @@ const TANDEM_DARK: [(&str, &str); 34] = [
     ("--tone-sky", "#8FB3C2"),
 ];
 
+const NORD_LIGHT: [(&str, &str); 34] = [
+    ("--paper", "#ECEFF4"),
+    ("--parchment", "#E5E9F0"),
+    ("--sand", "#D8DEE9"),
+    ("--shadow", "#C2CAD9"),
+    ("--line", "#CDD4E1"),
+    ("--ink", "#2E3440"),
+    ("--ink-dim", "#4C566A"),
+    ("--accent", "#486283"),
+    ("--accent-deep", "#4F6376"),
+    ("--ember", "#845548"),
+    ("--ember-deep", "#914A50"),
+    ("--moss", "#8FBCBB"),
+    ("--moss-deep", "#56654B"),
+    ("--sky", "#D0D9E6"),
+    ("--hill", "#DDE5DF"),
+    ("--hill-far", "#E1DCE6"),
+    ("--skin", "#E6DADA"),
+    ("--sun", "#EBCB8B"),
+    ("--wikilink-chip", "#D0D9E6"),
+    ("--wikilink-chip-broken", "#E3D3D8"),
+    ("--card", "#F6F8FB"),
+    ("--tint-backlog", "#E2E6EB"),
+    ("--tint-on-hold", "#ECE9E3"),
+    ("--tint-ready", "#D5DDE8"),
+    ("--tint-in-progress", "#E8DEDF"),
+    ("--tint-in-review", "#E3DFE9"),
+    ("--tint-done", "#E0E7E3"),
+    ("--tone-moss", "#709392"),
+    ("--tone-ember", "#BE7B67"),
+    ("--tone-accent", "#5E81AC"),
+    ("--tone-sun", "#A38D61"),
+    ("--tone-skin", "#BE7B67"),
+    ("--tone-hill", "#80946E"),
+    ("--tone-sky", "#5E81AC"),
+];
+
+const NORD_DARK: [(&str, &str); 34] = [
+    ("--paper", "#2E3440"),
+    ("--parchment", "#3B4252"),
+    ("--sand", "#434C5E"),
+    ("--shadow", "#242933"),
+    ("--line", "#4C566A"),
+    ("--ink", "#ECEFF4"),
+    ("--ink-dim", "#B4BCCC"),
+    ("--accent", "#92C6D3"),
+    ("--accent-deep", "#9BC4C3"),
+    ("--ember", "#DFB2A4"),
+    ("--ember-deep", "#EBCB8B"),
+    ("--moss", "#A3BE8C"),
+    ("--moss-deep", "#ACC495"),
+    ("--sky", "#3F4A5A"),
+    ("--hill", "#45504F"),
+    ("--hill-far", "#494656"),
+    ("--skin", "#4E454A"),
+    ("--sun", "#EBCB8B"),
+    ("--wikilink-chip", "#40505D"),
+    ("--wikilink-chip-broken", "#4B3D48"),
+    ("--card", "#3B4252"),
+    ("--tint-backlog", "#383D49"),
+    ("--tint-on-hold", "#4C4C4C"),
+    ("--tint-ready", "#3B4555"),
+    ("--tint-in-progress", "#484148"),
+    ("--tint-in-review", "#434251"),
+    ("--tint-done", "#414A4C"),
+    ("--tone-moss", "#8FBCBB"),
+    ("--tone-ember", "#D08770"),
+    ("--tone-accent", "#88C0D0"),
+    ("--tone-sun", "#EBCB8B"),
+    ("--tone-skin", "#D08770"),
+    ("--tone-hill", "#A3BE8C"),
+    ("--tone-sky", "#81A1C1"),
+];
+
+const GRUVBOX_LIGHT: [(&str, &str); 34] = [
+    ("--paper", "#FBF1C7"),
+    ("--parchment", "#EBDBB2"),
+    ("--sand", "#D5C4A1"),
+    ("--shadow", "#BDAE93"),
+    ("--line", "#D5C4A1"),
+    ("--ink", "#3C3836"),
+    ("--ink-dim", "#665C54"),
+    ("--accent", "#076678"),
+    ("--accent-deep", "#055060"),
+    ("--ember", "#A53603"),
+    ("--ember-deep", "#9D0006"),
+    ("--moss", "#427B58"),
+    ("--moss-deep", "#625F0E"),
+    ("--sky", "#CAD5B7"),
+    ("--hill", "#E1D8A2"),
+    ("--hill-far", "#E5CDB6"),
+    ("--skin", "#ECCCA0"),
+    ("--sun", "#D79921"),
+    ("--wikilink-chip", "#CAD5B7"),
+    ("--wikilink-chip-broken", "#E8C1A0"),
+    ("--card", "#F9F5D7"),
+    ("--tint-backlog", "#F1E8C0"),
+    ("--tint-on-hold", "#F0DDAA"),
+    ("--tint-ready", "#D4DBBA"),
+    ("--tint-in-progress", "#EFD4A8"),
+    ("--tint-in-review", "#EAD5B9"),
+    ("--tint-done", "#E6DDA9"),
+    ("--tone-moss", "#427B58"),
+    ("--tone-ember", "#AF3A03"),
+    ("--tone-accent", "#076678"),
+    ("--tone-sun", "#B57614"),
+    ("--tone-skin", "#AF3A03"),
+    ("--tone-hill", "#79740E"),
+    ("--tone-sky", "#076678"),
+];
+
+const GRUVBOX_DARK: [(&str, &str); 34] = [
+    ("--paper", "#282828"),
+    ("--parchment", "#32302F"),
+    ("--sand", "#3C3836"),
+    ("--shadow", "#1D2021"),
+    ("--line", "#504945"),
+    ("--ink", "#EBDBB2"),
+    ("--ink-dim", "#B6AB98"),
+    ("--accent", "#97B4AA"),
+    ("--accent-deep", "#8EC07C"),
+    ("--ember", "#FE9239"),
+    ("--ember-deep", "#FB8F82"),
+    ("--moss", "#8EC07C"),
+    ("--moss-deep", "#B8BB26"),
+    ("--sky", "#3A413E"),
+    ("--hill", "#454528"),
+    ("--hill-far", "#4A3B3F"),
+    ("--skin", "#533A25"),
+    ("--sun", "#FABD2F"),
+    ("--wikilink-chip", "#3A413E"),
+    ("--wikilink-chip-broken", "#522F2A"),
+    ("--card", "#3C3836"),
+    ("--tint-backlog", "#32312F"),
+    ("--tint-on-hold", "#4A4029"),
+    ("--tint-ready", "#373C3A"),
+    ("--tint-in-progress", "#4A3626"),
+    ("--tint-in-review", "#43373A"),
+    ("--tint-done", "#3F4028"),
+    ("--tone-moss", "#8EC07C"),
+    ("--tone-ember", "#FE8019"),
+    ("--tone-accent", "#83A598"),
+    ("--tone-sun", "#FABD2F"),
+    ("--tone-skin", "#FE8019"),
+    ("--tone-hill", "#B8BB26"),
+    ("--tone-sky", "#83A598"),
+];
+
+const SOLARIZED_LIGHT: [(&str, &str); 34] = [
+    ("--paper", "#FDF6E3"),
+    ("--parchment", "#EEE8D5"),
+    ("--sand", "#E1DAC3"),
+    ("--shadow", "#93A1A1"),
+    ("--line", "#DDD6C1"),
+    ("--ink", "#073642"),
+    ("--ink-dim", "#50656B"),
+    ("--accent", "#1C679B"),
+    ("--accent-deep", "#575C9E"),
+    ("--ember", "#A93F10"),
+    ("--ember-deep", "#B72B29"),
+    ("--moss", "#2AA198"),
+    ("--moss-deep", "#596800"),
+    ("--sky", "#D2E1E0"),
+    ("--hill", "#E5E3B6"),
+    ("--hill-far", "#E0DBDD"),
+    ("--skin", "#F3D4BA"),
+    ("--sun", "#B58900"),
+    ("--wikilink-chip", "#D2E1E0"),
+    ("--wikilink-chip-broken", "#F6CFBF"),
+    ("--card", "#FFFBEE"),
+    ("--tint-backlog", "#F1ECDB"),
+    ("--tint-on-hold", "#F1E5BF"),
+    ("--tint-ready", "#DBE5E0"),
+    ("--tint-in-progress", "#F5DBC2"),
+    ("--tint-in-review", "#E6E1DE"),
+    ("--tint-done", "#EAE7BF"),
+    ("--tone-moss", "#2AA198"),
+    ("--tone-ember", "#CB4B16"),
+    ("--tone-accent", "#268BD2"),
+    ("--tone-sun", "#B58900"),
+    ("--tone-skin", "#CB4B16"),
+    ("--tone-hill", "#859900"),
+    ("--tone-sky", "#268BD2"),
+];
+
+const SOLARIZED_DARK: [(&str, &str); 34] = [
+    ("--paper", "#002B36"),
+    ("--parchment", "#073642"),
+    ("--sand", "#0F4350"),
+    ("--shadow", "#001F27"),
+    ("--line", "#1A4B58"),
+    ("--ink", "#EEE8D5"),
+    ("--ink-dim", "#93A1A1"),
+    ("--accent", "#5AA6DB"),
+    ("--accent-deep", "#989CD5"),
+    ("--ember", "#DB8E6C"),
+    ("--ember-deep", "#EC817F"),
+    ("--moss", "#2AA198"),
+    ("--moss-deep", "#96A824"),
+    ("--sky", "#083E55"),
+    ("--hill", "#1B412B"),
+    ("--hill-far", "#163952"),
+    ("--skin", "#293130"),
+    ("--sun", "#B58900"),
+    ("--wikilink-chip", "#083E55"),
+    ("--wikilink-chip-broken", "#2C2C35"),
+    ("--card", "#073642"),
+    ("--tint-backlog", "#0C343E"),
+    ("--tint-on-hold", "#1D3A2D"),
+    ("--tint-ready", "#063A4F"),
+    ("--tint-in-progress", "#203031"),
+    ("--tint-in-review", "#11364D"),
+    ("--tint-done", "#153D2D"),
+    ("--tone-moss", "#2AA198"),
+    ("--tone-ember", "#CE5524"),
+    ("--tone-accent", "#268BD2"),
+    ("--tone-sun", "#B58900"),
+    ("--tone-skin", "#CE5524"),
+    ("--tone-hill", "#859900"),
+    ("--tone-sky", "#268BD2"),
+];
+
+const CATPPUCCIN_LIGHT: [(&str, &str); 34] = [
+    ("--paper", "#EFF1F5"),
+    ("--parchment", "#E6E9EF"),
+    ("--sand", "#DCE0E8"),
+    ("--shadow", "#BCC0CC"),
+    ("--line", "#CCD0DA"),
+    ("--ink", "#4C4F69"),
+    ("--ink-dim", "#5A5D6E"),
+    ("--accent", "#7831D3"),
+    ("--accent-deep", "#4B58A5"),
+    ("--ember", "#A1400B"),
+    ("--ember-deep", "#BA0F31"),
+    ("--moss", "#179299"),
+    ("--moss-deep", "#2B6C1E"),
+    ("--sky", "#C5D5F5"),
+    ("--hill", "#CCE1CD"),
+    ("--hill-far", "#DACCF4"),
+    ("--skin", "#F2D5C6"),
+    ("--sun", "#DF8E1D"),
+    ("--wikilink-chip", "#DACCF4"),
+    ("--wikilink-chip-broken", "#E9C4CF"),
+    ("--card", "#FFFFFF"),
+    ("--tint-backlog", "#E7E9EE"),
+    ("--tint-on-hold", "#ECE1D2"),
+    ("--tint-ready", "#CEDBF5"),
+    ("--tint-in-progress", "#F1DAD0"),
+    ("--tint-in-review", "#DFD4F4"),
+    ("--tint-done", "#D3E4D5"),
+    ("--tone-moss", "#179299"),
+    ("--tone-ember", "#F6610B"),
+    ("--tone-accent", "#8839EF"),
+    ("--tone-sun", "#CC821A"),
+    ("--tone-skin", "#D67474"),
+    ("--tone-hill", "#40A02B"),
+    ("--tone-sky", "#1E66F5"),
+];
+
+const CATPPUCCIN_DARK: [(&str, &str); 34] = [
+    ("--paper", "#1E1E2E"),
+    ("--parchment", "#181825"),
+    ("--sand", "#313244"),
+    ("--shadow", "#11111B"),
+    ("--line", "#45475A"),
+    ("--ink", "#CDD6F4"),
+    ("--ink-dim", "#A6ADC8"),
+    ("--accent", "#CBA6F7"),
+    ("--accent-deep", "#B4BEFE"),
+    ("--ember", "#FAB387"),
+    ("--ember-deep", "#F38BA8"),
+    ("--moss", "#94E2D5"),
+    ("--moss-deep", "#A6E3A1"),
+    ("--sky", "#333C57"),
+    ("--hill", "#394545"),
+    ("--hill-far", "#413956"),
+    ("--skin", "#4A3C40"),
+    ("--sun", "#F9E2AF"),
+    ("--wikilink-chip", "#413956"),
+    ("--wikilink-chip-broken", "#493446"),
+    ("--card", "#313244"),
+    ("--tint-backlog", "#272738"),
+    ("--tint-on-hold", "#413D43"),
+    ("--tint-ready", "#2F364F"),
+    ("--tint-in-progress", "#41363C"),
+    ("--tint-in-review", "#3A344E"),
+    ("--tint-done", "#343E40"),
+    ("--tone-moss", "#94E2D5"),
+    ("--tone-ember", "#FAB387"),
+    ("--tone-accent", "#CBA6F7"),
+    ("--tone-sun", "#F9E2AF"),
+    ("--tone-skin", "#F2CDCD"),
+    ("--tone-hill", "#A6E3A1"),
+    ("--tone-sky", "#89B4FA"),
+];
 /// The geometry, motion and layout scale, in the file's order.
 const SCALE: [&str; 15] = [
     "--hairline",
@@ -193,7 +488,7 @@ fn palette(selector: &str) -> &'static str {
     &rest[open..close]
 }
 
-const SELECTORS: [(&str, &str); 4] = [
+const SELECTORS: [(&str, &str); 12] = [
     (
         "neutral light",
         r#"html[data-style="neutral"][data-theme="light"]"#,
@@ -209,6 +504,38 @@ const SELECTORS: [(&str, &str); 4] = [
     (
         "tandem dark",
         r#"html[data-style="tandem"][data-theme="dark"]"#,
+    ),
+    (
+        "nord light",
+        r#"html[data-style="nord"][data-theme="light"]"#,
+    ),
+    (
+        "nord dark",
+        r#"html[data-style="nord"][data-theme="dark"]"#,
+    ),
+    (
+        "gruvbox light",
+        r#"html[data-style="gruvbox"][data-theme="light"]"#,
+    ),
+    (
+        "gruvbox dark",
+        r#"html[data-style="gruvbox"][data-theme="dark"]"#,
+    ),
+    (
+        "solarized light",
+        r#"html[data-style="solarized"][data-theme="light"]"#,
+    ),
+    (
+        "solarized dark",
+        r#"html[data-style="solarized"][data-theme="dark"]"#,
+    ),
+    (
+        "catppuccin light",
+        r#"html[data-style="catppuccin"][data-theme="light"]"#,
+    ),
+    (
+        "catppuccin dark",
+        r#"html[data-style="catppuccin"][data-theme="dark"]"#,
     ),
 ];
 
@@ -230,16 +557,24 @@ fn pins(label: &str, selector: &str, expected: &[(&str, &str)]) {
 }
 
 #[test]
-fn tokens_pin_every_value_in_all_four_palettes() {
+fn tokens_pin_every_value_in_all_palettes() {
     pins("neutral light", SELECTORS[0].1, &NEUTRAL_LIGHT);
     pins("neutral dark", SELECTORS[1].1, &NEUTRAL_DARK);
     pins("tandem light", SELECTORS[2].1, &TANDEM_LIGHT);
     pins("tandem dark", SELECTORS[3].1, &TANDEM_DARK);
+    pins("nord light", SELECTORS[4].1, &NORD_LIGHT);
+    pins("nord dark", SELECTORS[5].1, &NORD_DARK);
+    pins("gruvbox light", SELECTORS[6].1, &GRUVBOX_LIGHT);
+    pins("gruvbox dark", SELECTORS[7].1, &GRUVBOX_DARK);
+    pins("solarized light", SELECTORS[8].1, &SOLARIZED_LIGHT);
+    pins("solarized dark", SELECTORS[9].1, &SOLARIZED_DARK);
+    pins("catppuccin light", SELECTORS[10].1, &CATPPUCCIN_LIGHT);
+    pins("catppuccin dark", SELECTORS[11].1, &CATPPUCCIN_DARK);
 }
 
 #[test]
-fn the_four_palettes_declare_the_same_token_names() {
-    for set in [&NEUTRAL_DARK[..], &TANDEM_LIGHT[..], &TANDEM_DARK[..]] {
+fn all_palettes_declare_the_same_token_names() {
+    for set in [&NEUTRAL_DARK[..], &TANDEM_LIGHT[..], &TANDEM_DARK[..], &NORD_LIGHT[..], &NORD_DARK[..], &GRUVBOX_LIGHT[..], &GRUVBOX_DARK[..], &SOLARIZED_LIGHT[..], &SOLARIZED_DARK[..], &CATPPUCCIN_LIGHT[..], &CATPPUCCIN_DARK[..]] {
         let names: Vec<_> = set.iter().map(|(n, _)| *n).collect();
         let first: Vec<_> = NEUTRAL_LIGHT.iter().map(|(n, _)| *n).collect();
         assert_eq!(names, first);
@@ -285,14 +620,22 @@ fn value<'a>(set: &'a [(&'a str, &'a str)], name: &str) -> &'a str {
     set.iter().find(|(n, _)| *n == name).unwrap().1
 }
 
-/// AA for the neutral palettes: text is 4.5:1 on every surface, tinted column
+/// AA for the neutral palettes and the four published ones: text is 4.5:1 on every surface, tinted column
 /// and card it can sit on, and a lane dot is 3:1 on the card. The tandem
 /// palettes are the frozen cutover values and are not held to this bar.
 #[test]
-fn neutral_palettes_meet_aa_on_surfaces_columns_and_cards() {
+fn neutral_and_published_palettes_meet_aa_on_surfaces_columns_and_cards() {
     for (label, set) in [
         ("neutral light", &NEUTRAL_LIGHT[..]),
         ("neutral dark", &NEUTRAL_DARK[..]),
+        ("nord light", &NORD_LIGHT[..]),
+        ("nord dark", &NORD_DARK[..]),
+        ("gruvbox light", &GRUVBOX_LIGHT[..]),
+        ("gruvbox dark", &GRUVBOX_DARK[..]),
+        ("solarized light", &SOLARIZED_LIGHT[..]),
+        ("solarized dark", &SOLARIZED_DARK[..]),
+        ("catppuccin light", &CATPPUCCIN_LIGHT[..]),
+        ("catppuccin dark", &CATPPUCCIN_DARK[..]),
     ] {
         let surfaces: Vec<&str> = set
             .iter()
@@ -374,5 +717,49 @@ fn component_stylesheets_and_templates_name_no_raw_colour() {
             None,
             "{name} hard-codes a colour instead of reading a token"
         );
+    }
+}
+
+/// Every style `theme.js` registers has a picker button and both sets, and the
+/// reverse: registration is exactly the three files.
+#[test]
+fn style_registration_agrees_across_theme_js_shell_and_tokens() {
+    const THEME_JS: &str = include_str!("../src/serve/static/theme.js");
+    let line = THEME_JS
+        .lines()
+        .find(|l| l.contains("var STYLES = ["))
+        .expect("theme.js declares STYLES");
+    let styles: Vec<String> = line[line.find('[').unwrap() + 1..line.find(']').unwrap()]
+        .split(',')
+        .map(|s| s.trim().trim_matches('\'').to_string())
+        .collect();
+    assert_eq!(styles.len(), 6, "the board ships six styles");
+
+    let marker = "data-theme-style=\"";
+    let buttons: Vec<String> = SHELL
+        .split(marker)
+        .skip(1)
+        .map(|rest| rest[..rest.find('"').unwrap()].to_string())
+        .collect();
+
+    let mut in_tokens: Vec<String> = Vec::new();
+    for part in TOKENS.split("html[data-style=\"").skip(1) {
+        let name = part[..part.find('"').unwrap()].to_string();
+        if !in_tokens.contains(&name) {
+            in_tokens.push(name);
+        }
+    }
+    let sorted = |v: &[String]| {
+        let mut v = v.to_vec();
+        v.sort();
+        v
+    };
+    assert_eq!(sorted(&styles), sorted(&buttons), "theme.js and shell.html");
+    assert_eq!(sorted(&styles), sorted(&in_tokens), "theme.js and tokens.css");
+    for style in &styles {
+        for mode in ["light", "dark"] {
+            let selector = format!("html[data-style=\"{style}\"][data-theme=\"{mode}\"]");
+            palette(&selector);
+        }
     }
 }
