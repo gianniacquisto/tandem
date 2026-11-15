@@ -74,3 +74,8 @@ tracing-subscriber = { version = "0.3.20", default-features = false, features = 
     "ansi",
     "env-filter",
 ] }
+# The remote CLI (ADR 0047): `TANDEM_SERVER` sends each verb to a `tandem serve`
+# as one `POST /mcp`. A blocking client with TLS (rustls) is the whole need, since
+# a bearer token has no safe use over plain HTTP off loopback; the redirect
+# follow is switched off in code so the token is never forwarded.
+ureq = { version = "3", default-features = false, features = ["rustls"] }

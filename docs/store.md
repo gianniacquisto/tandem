@@ -13,7 +13,7 @@ rm -f ~/.tandem/tandem.db-wal ~/.tandem/tandem.db-shm ~/.tandem/tandem.db
 mv ~/.tandem/tandem.db.bak ~/.tandem/tandem.db
 ```
 
-**Quit the server first.** Its watch holds `tandem.db` open for as long as it runs. On macOS and Linux the rename over the held file is allowed, and the running server notices the replacement and re-attaches to the restored store by itself. Windows does not allow it: SQLite opens the database without `FILE_SHARE_DELETE`, so the `rm` and the `mv` over it fail with *The process cannot access the file because it is being used by another process.* Close `tandem serve`, and any `tandem mcp` process, before the two commands, then start them again: the next open attaches to the restored file, and its first write switches it back to WAL. On Windows the home those two commands name is `%USERPROFILE%\.tandem`.
+**Quit the server first.** Its watch holds `tandem.db` open for as long as it runs. On macOS and Linux the rename over the held file is allowed, and the running server notices the replacement and re-attaches to the restored store by itself. Windows does not allow it: SQLite opens the database without `FILE_SHARE_DELETE`, so the `rm` and the `mv` over it fail with *The process cannot access the file because it is being used by another process.* Close `tandem serve`, and any process holding the store open, before the two commands, then start them again: the next open attaches to the restored file, and its first write switches it back to WAL. On Windows the home those two commands name is `%USERPROFILE%\.tandem`.
 
 See [ADR 0018](adr/0018-rolling-store-backup.md).
 

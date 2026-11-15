@@ -1,6 +1,6 @@
 # Architecture
 
-Tandem is one Rust binary with three doors onto one local home directory. Nothing else runs: no daemon, no network service, no account.
+Tandem is one Rust binary with two doors onto one local home directory: `tandem serve`, a long-running server started by hand, and the CLI. No account, no service files.
 
 ```mermaid
 flowchart LR
@@ -8,17 +8,15 @@ flowchart LR
     Agent([AI coding agent])
 
     subgraph bin [tandem binary]
-        Serve["tandem serve<br/>board + notes UI"]
-        MCP["tandem mcp<br/>MCP over stdio"]
+        Serve["tandem serve<br/>board + notes UI<br/>POST /mcp"]
         CLI["tandem-cli<br/>JSON on stdout"]
         Core["core<br/>domain: tickets, lanes,<br/>comments, dependencies"]
         Serve --> Core
-        MCP --> Core
         CLI --> Core
     end
 
     Browser <-- "HTTP + live events" --> Serve
-    Agent --> MCP
+    Agent -- "MCP over HTTP" --> Serve
     Agent -.-> CLI
 
     subgraph home ["~/.tandem"]
@@ -33,9 +31,8 @@ flowchart LR
 ## Pieces
 
 - **Core** (`rust/core`): the domain (tickets, lanes, comments, the blocking edge), the store adapter (all SQL lives there) and the bikeshed (the notes vault). Every door calls it, so the board, the MCP tools and the CLI cannot disagree.
-- **`tandem serve`**: serves the board and notes pages in your browser and watches the home, so a change made by an agent appears live.
-- **`tandem mcp`**: the agent face over MCP on stdio, the same operations the CLI offers.
-- **`tandem-cli`**: the same binary under a second name, printing JSON, for scripts and humans. See the [CLI reference](cli.md).
+- **`tandem serve`**: serves the board and notes pages in your browser and the agents' MCP endpoint (`POST /mcp`), and watches the home, so a change made by an agent appears live. One process for every session ([ADR 0047](adr/0047-serve-is-the-single-door.md)).
+- **`tandem-cli`**: the same binary under a second name, printing JSON, for scripts and humans; with `TANDEM_SERVER` set it talks to a running serve. See the [CLI reference](cli.md).
 - **The home** (`~/.tandem`): `tandem.db` is the store, with one rolling backup beside it, and `bikeshed/` is plain markdown you can edit by hand. See [the store](store.md).
 
 ## Decisions

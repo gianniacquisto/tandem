@@ -1,22 +1,14 @@
-//! The line protocol `tandem mcp` speaks: one JSON frame per line.
+//! The message set `tandem serve`'s `POST /mcp` speaks: one JSON frame in, one
+//! frame out (ADR 0047).
 //!
-//! The process owns two things and nothing else (`docs/port.md`, Transport):
+//! The core owns the dispatch and nothing else (`docs/port.md`, Transport):
 //!
-//! - **The stream** ([`Stream`]): stdio today. The trait is the seam, so a
-//!   remote adapter replaces the transport and never the message set. The
-//!   reader and writer halves of stdio are separate handles, so an answer can
-//!   be written while the next frame is read.
-//! - **The dispatch** ([`handle`]): one frame in, one frame out,
-//!   through the same domain calls the CLI's verbs make. A malformed frame is
-//!   an error frame and never a panic: stdin is untrusted input, and the child
-//!   may hold the store's lock on the next request.
-//!
-//! `tandem serve` renders the board over HTTP and does not use this stream
-//! (ADR 0046); the MCP server is the one caller left, and it answers through
-//! [`handle_in`].
-
-use std::io::{self, BufRead, Read, Write};
-use std::sync::Mutex;
+//! - **The dispatch** ([`handle`]): one frame in, one frame out, through the
+//!   same domain calls the CLI's verbs make. A malformed frame is an error
+//!   frame and never a panic: a request body is untrusted input, and the
+//!   server holds the store for every session.
+//! - **The transport** is not here. `tandem serve` carries a frame as an HTTP
+//!   body; the MCP door ([`crate::mcp`]) answers through [`handle_in`].
 
 use crate::bikeshed::Bikeshed;
 use crate::diagnostics;
@@ -42,108 +34,6 @@ use crate::wire::{
 /// growing this process's heap one line at a time. A frame of exactly this many
 /// bytes is legal; the newline that ends it is the stream's, not the frame's.
 pub const MAX_FRAME: usize = 4 * 1024 * 1024;
-
-// MARK: - The stream
-
-/// One transport for the protocol's frames: a line in, a line out.
-///
-/// The trait exists so the transport is an adapter and not a rewrite
-/// (`docs/port.md`, Transport): stdio is the one implementation today, and an
-/// HTTPS adapter later carries the same [`Request`]s and [`Response`]s. Both
-/// methods take `&self` because the reader and the writer must run at once: a
-/// change event may be written while the next request is read.
-pub trait Stream: Send + Sync + 'static {
-    /// The next frame, or `None` at end of stream. A frame that is not UTF-8
-    /// or is past [`MAX_FRAME`] answers [`io::ErrorKind::InvalidData`]; the
-    /// stream itself is still usable.
-    fn read_frame(&self) -> io::Result<Option<String>>;
-
-    /// Write one frame and flush it: a line that has not reached the pipe is a
-    /// message the app never saw.
-    fn write_frame(&self, frame: &str) -> io::Result<()>;
-}
-
-/// The stdio adapter: stdin for frames in, stdout for frames out.
-///
-/// `stderr` is the process's own and never carries a frame, so a diagnostic
-/// cannot be mistaken for a response.
-pub struct StdioStream {
-    input: io::Stdin,
-    output: Mutex<io::Stdout>,
-}
-
-impl StdioStream {
-    pub fn new() -> Self {
-        Self {
-            input: io::stdin(),
-            output: Mutex::new(io::stdout()),
-        }
-    }
-}
-
-impl Default for StdioStream {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Stream for StdioStream {
-    fn read_frame(&self) -> io::Result<Option<String>> {
-        let mut input = self.input.lock();
-        let mut buffer = Vec::new();
-        {
-            // The limit is two bytes past the cap: enough for a legal frame's
-            // content, a CR and the newline that ends it. A frame of exactly
-            // `MAX_FRAME` bytes therefore arrives whole, newline included,
-            // instead of being refused for the byte its terminator took.
-            let mut limited = (&mut input).take(MAX_FRAME as u64 + 2);
-            limited.read_until(b'\n', &mut buffer)?;
-        }
-        if buffer.is_empty() {
-            return Ok(None);
-        }
-        let terminated = buffer.ends_with(b"\n");
-        if !terminated && buffer.len() == MAX_FRAME + 2 {
-            // The limit was reached before the line ended, so the rest of this
-            // frame is still on the stream: drain to its own newline, and only
-            // to that one, so the next read starts at a frame boundary and the
-            // client's next request survives. A short unterminated buffer is a
-            // last frame at end of stream, not an overflow.
-            let mut discard = Vec::new();
-            loop {
-                discard.clear();
-                if input.read_until(b'\n', &mut discard)? == 0 || discard.ends_with(b"\n") {
-                    break;
-                }
-            }
-        }
-        if terminated {
-            buffer.pop();
-            if buffer.ends_with(b"\r") {
-                buffer.pop();
-            }
-        }
-        if buffer.len() > MAX_FRAME {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("the frame is longer than {MAX_FRAME} bytes"),
-            ));
-        }
-        String::from_utf8(buffer)
-            .map(Some)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "the frame is not UTF-8"))
-    }
-
-    fn write_frame(&self, frame: &str) -> io::Result<()> {
-        let mut output = self
-            .output
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        output.write_all(frame.as_bytes())?;
-        output.write_all(b"\n")?;
-        output.flush()
-    }
-}
 
 // MARK: - One frame
 

@@ -51,3 +51,7 @@ That block is `main`'s grammar, the trunk the next release is cut from: `tandem-
 ## Agent examples
 
 The app no longer carries an agent face (ADR 0045). The skills and the pass prompts live in `examples/` (start at [examples/README.md](../examples/README.md)) for this repository's own workflow: a clone is the copy, and a host reads them from there or from a checkout. There is no `tandem-cli setup` verb, no `<TandemHome>/agent/` installed copy and no host symlink to keep in step.
+
+## Remote target
+
+Set `TANDEM_SERVER` to a running `tandem serve` (for example `http://127.0.0.1:7700`) and every verb runs against it instead of the local store: each is one MCP `tools/call` to `<url>/mcp`, and prints the same stdout JSON and exit codes as local mode. `TANDEM_TOKEN` (never a flag) is sent as `Authorization: Bearer` when the server was started with one; the CLI refuses to send it to an `http://` URL whose host is not loopback and never echoes it. `TANDEM_AGENT` becomes the `X-Tandem-Agent` header, so the write records the same actor it would locally. `serve`, `note rename`, `note stats` and `ticket set --append-description` have no remote form and refuse by name; `--home` is ignored. See [ADR 0047](adr/0047-serve-is-the-single-door.md).

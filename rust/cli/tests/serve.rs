@@ -304,34 +304,219 @@ fn add_through_cli(sandbox: &Sandbox, title: &str) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
-#[test]
-fn serve_refuses_non_loopback_host_without_allow_unauthenticated() {
-    let sandbox = Sandbox::new("refuse");
-    let output = sandbox
-        .command()
+fn serve_refusal(sandbox: &Sandbox, token: Option<&str>) -> (Option<i32>, String) {
+    let mut command = sandbox.command();
+    command
         .args(["serve", "--host", "0.0.0.0", "--port", "0"])
-        .stdin(Stdio::null())
-        .output()
-        .expect("the binary runs");
-    assert_eq!(
+        .env_remove("TANDEM_TOKEN")
+        .stdin(Stdio::null());
+    if let Some(token) = token {
+        command.env("TANDEM_TOKEN", token);
+    }
+    let output = command.output().expect("the binary runs");
+    (
         output.status.code(),
-        Some(2),
-        "a non-loopback host is a usage refusal"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    )
+}
+
+#[test]
+fn serve_refuses_a_non_loopback_host_without_a_token_or_the_flag() {
+    let sandbox = Sandbox::new("refuse");
+    let (code, stderr) = serve_refusal(&sandbox, None);
+    assert_eq!(code, Some(2), "a non-loopback host is a usage refusal");
     assert!(
-        stderr.contains("--allow-unauthenticated"),
-        "the refusal names the escape: {stderr}"
+        stderr.contains("TANDEM_TOKEN")
+            && stderr.contains("TLS terminator")
+            && stderr.contains("--allow-unauthenticated"),
+        "the refusal names the token, the terminator and the opt-out: {stderr}"
     );
 }
 
 #[test]
-fn serve_allows_non_loopback_host_when_allow_unauthenticated_is_set() {
+fn serve_refuses_a_non_loopback_host_with_a_short_token() {
+    let sandbox = Sandbox::new("short-token");
+    let short = "x".repeat(31);
+    let (code, stderr) = serve_refusal(&sandbox, Some(&short));
+    assert_eq!(
+        code,
+        Some(2),
+        "a 31-character token is refused before binding"
+    );
+    assert!(
+        !stderr.contains(&short),
+        "the token is not echoed: {stderr}"
+    );
+}
+
+#[test]
+fn serve_allows_a_non_loopback_host_when_allow_unauthenticated_is_set() {
     let sandbox = Sandbox::new("allow");
     let server = Server::start_with(&sandbox, &["--host", "0.0.0.0", "--allow-unauthenticated"]);
     let page = get(server.port, "/");
-    assert_eq!(page.status, 200, "the opted-in server answers");
+    assert_eq!(
+        page.status, 200,
+        "the opted-in server answers with no token"
+    );
     assert!(page.body.contains("board__column"), "the board is drawn");
+    let mcp = mcp_post(
+        server.port,
+        r#"{"jsonrpc":"2.0","id":1,"method":"ping","params":{}}"#,
+    );
+    assert_eq!(mcp.status, 200, "/mcp is open on an opted-in bind too");
+    // A phone on the tailnet names the machine, not a loopback authority.
+    let named = request(
+        server.port,
+        "GET",
+        "/",
+        &[("Host", "machine.tailnet.ts.net:7700")],
+        None,
+    );
+    assert_eq!(named.status, 200, "no Host check off loopback");
+}
+
+#[test]
+fn serve_on_a_non_loopback_host_with_a_token_gates_every_route_but_health() {
+    let sandbox = Sandbox::new("token-serve");
+    let token = "t".repeat(32);
+    let server = Server::start_with_env(
+        &sandbox,
+        &["--host", "0.0.0.0"],
+        &[("TANDEM_TOKEN", token.as_str())],
+    );
+    assert_eq!(
+        get(server.port, "/").status,
+        401,
+        "the board wants the token"
+    );
+    assert_eq!(get(server.port, "/health").status, 200);
+    let bearer = format!("Bearer {token}");
+    let page = request(
+        server.port,
+        "GET",
+        "/",
+        &[("Authorization", bearer.as_str())],
+        None,
+    );
+    assert_eq!(page.status, 200, "the token opens the board");
+}
+
+fn mcp_post(port: u16, body: &str) -> Answer {
+    request(
+        port,
+        "POST",
+        "/mcp",
+        &[("Content-Type", "application/json")],
+        Some(body),
+    )
+}
+
+#[test]
+fn mcp_over_a_real_socket_handshakes_lists_tools_and_answers_frames() {
+    let sandbox = Sandbox::new("mcp-handshake");
+    let server = Server::start(&sandbox);
+
+    let hello = mcp_post(
+        server.port,
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}"#,
+    );
+    assert_eq!(hello.status, 200, "{}", hello.body);
+    let hello: serde_json::Value = serde_json::from_str(&hello.body).expect("one frame");
+    assert_eq!(hello["result"]["protocolVersion"], "2025-11-25");
+    assert_eq!(hello["result"]["serverInfo"]["name"], "tandem-mcp");
+
+    let notification = mcp_post(
+        server.port,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+    );
+    assert_eq!(notification.status, 202);
+
+    let listed = mcp_post(
+        server.port,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+    );
+    let listed: serde_json::Value = serde_json::from_str(&listed.body).expect("one frame");
+    assert_eq!(
+        listed["result"]["tools"].as_array().map(Vec::len),
+        Some(28),
+        "the door covers every covered wire method"
+    );
+
+    // A malformed frame is answered as a frame and the server keeps answering.
+    let malformed = mcp_post(server.port, "this is not a frame");
+    assert_eq!(malformed.status, 200);
+    let malformed: serde_json::Value = serde_json::from_str(&malformed.body).expect("one frame");
+    assert_eq!(malformed["error"]["code"], -32700);
+
+    let batch = mcp_post(
+        server.port,
+        r#"[{"jsonrpc":"2.0","id":8,"method":"ping","params":{}}]"#,
+    );
+    let batch: serde_json::Value = serde_json::from_str(&batch.body).expect("one frame");
+    assert_eq!(batch["error"]["code"], -32600);
+
+    let unknown = mcp_post(
+        server.port,
+        r#"{"jsonrpc":"2.0","id":7,"method":"ticket.bogus","params":{}}"#,
+    );
+    let unknown: serde_json::Value = serde_json::from_str(&unknown.body).expect("one frame");
+    assert_eq!(unknown["error"]["code"], -32601);
+
+    let ping = mcp_post(
+        server.port,
+        r#"{"jsonrpc":"2.0","id":9,"method":"ping","params":{}}"#,
+    );
+    assert!(ping.body.contains("\"result\""), "{}", ping.body);
+}
+
+#[test]
+fn mcp_writes_land_in_the_store_a_cli_in_the_same_home_reads() {
+    let sandbox = Sandbox::new("mcp-ticket-loop");
+    let server = Server::start(&sandbox);
+    let added = request(
+        server.port,
+        "POST",
+        "/mcp",
+        &[
+            ("Content-Type", "application/json"),
+            ("X-Tandem-Agent", "builder"),
+        ],
+        Some(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ticket_add","arguments":{"title":"Over HTTP"}}}"#,
+        ),
+    );
+    assert_eq!(added.status, 200, "{}", added.body);
+    let output = sandbox
+        .command()
+        .args(["ticket", "list"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("the CLI reads the same home");
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("Over HTTP"),
+        "the HTTP write is the store's write"
+    );
+}
+
+#[test]
+fn the_mcp_log_line_names_the_route_and_never_the_body_or_the_actor() {
+    let sandbox = Sandbox::new("mcp-log");
+    let server = Server::start(&sandbox);
+    request(
+        server.port,
+        "POST",
+        "/mcp",
+        &[
+            ("Content-Type", "application/json"),
+            ("X-Tandem-Agent", "secret-actor-name"),
+        ],
+        Some(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ticket_add","arguments":{"title":"Never logged"}}}"#,
+        ),
+    );
+    let line = server.next_line_with("/mcp", Duration::from_secs(10));
+    assert!(!line.contains("Never logged"), "{line}");
+    assert!(!line.contains("secret-actor-name"), "{line}");
 }
 
 #[test]

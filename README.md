@@ -22,7 +22,7 @@ This verifies a SHA-256 checksum and installs `tandem` (and a `tandem-cli` link)
 
 ```sh
 tandem serve --open   # the board, in your browser
-tandem mcp            # the same store, as an MCP server for your agent
+tandem serve          # also the MCP endpoint for your agent: POST http://127.0.0.1:7700/mcp
 tandem doctor         # check that the install and your data are healthy
 ```
 
@@ -33,9 +33,8 @@ Your data lives in `~/.tandem`.
 ```mermaid
 flowchart LR
     You([You]) --> Board["tandem serve<br/>board + notes"]
-    Agent([AI agent]) --> MCP["tandem mcp / tandem-cli"]
+    Agent([AI agent]) --> Board
     Board --> Home[("~/.tandem<br/>SQLite + markdown notes")]
-    MCP --> Home
 ```
 
 Details in [architecture](docs/architecture.md).

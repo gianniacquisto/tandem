@@ -64,6 +64,7 @@ fn context(store: Store) -> SessionContext {
         store,
         actor: Actor::Human,
         environment: HashMap::new(),
+        access: Access::loopback(7700),
     }
 }
 
@@ -622,7 +623,7 @@ async fn resolved_context(context: Context) -> Response {
 
 fn extra_router(extra: Router<Arc<SessionContext>>, store: Store) -> Router {
     let (changes, _) = broadcast::channel(64);
-    layered(extra, changes).with_state(Arc::new(context(store)))
+    layered(extra, changes, Access::loopback(7700)).with_state(Arc::new(context(store)))
 }
 
 #[tokio::test]
@@ -2309,6 +2310,7 @@ async fn the_environment_is_never_logged() {
         store: store.clone(),
         actor: Actor::Human,
         environment,
+        access: Access::loopback(7700),
     });
     let before = store.revision().expect("the revision reads");
     let captured = Captured::default();
@@ -2436,4 +2438,584 @@ fn the_watch_logs_its_attach_and_a_broadcast_and_no_tick() {
     stop.store(true, Ordering::Relaxed);
     handle.join().expect("the watch exits");
     let _ = std::fs::remove_dir_all(root);
+}
+
+// MARK: - POST /mcp, the guard's two policies and the request's actor (ADR 0047)
+
+const MCP_BODY: &str =
+    r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}"#;
+
+/// A `/mcp` request that passes every check: loopback Host, JSON, no Origin.
+fn mcp_builder() -> axum::http::request::Builder {
+    Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(header::CONTENT_TYPE, "application/json")
+}
+
+fn mcp_request(body: &str) -> Request<Body> {
+    mcp_builder()
+        .body(Body::from(body.to_string()))
+        .expect("the request builds")
+}
+
+fn tool_call_body(name: &str, arguments: serde_json::Value) -> String {
+    serde_json::json!({
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": {"name": name, "arguments": arguments},
+    })
+    .to_string()
+}
+
+fn author_of_project(store: &Store, name: &str) -> String {
+    let connection = rusqlite::Connection::open(store.home().directory().join("tandem.db"))
+        .expect("the store opens");
+    connection
+        .query_row(
+            "SELECT author FROM projects WHERE name = ?1",
+            [name],
+            |row| row.get::<_, String>(0),
+        )
+        .expect("the project row exists")
+}
+
+#[tokio::test]
+async fn mcp_answers_initialize_and_tools_list_over_json() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("mcp-json");
+    let app = router(context(sandbox.store()));
+
+    let (status, headers, body) = send(&app, mcp_request(MCP_BODY)).await;
+    assert_eq!(status, StatusCode::OK, "initialize answers: {body}");
+    assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+    assert!(
+        headers.get("mcp-session-id").is_none(),
+        "the door is stateless: no session id is issued"
+    );
+    let answer: serde_json::Value = serde_json::from_str(&body).expect("one JSON frame");
+    assert_eq!(answer["result"]["protocolVersion"], "2025-03-26");
+
+    let list = r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#;
+    let (status, _, body) = send(&app, mcp_request(list)).await;
+    assert_eq!(status, StatusCode::OK);
+    let answer: serde_json::Value = serde_json::from_str(&body).expect("one JSON frame");
+    let tools = answer["result"]["tools"].as_array().expect("a tool list");
+    assert!(
+        tools.iter().any(|tool| tool["name"] == "ticket_list"),
+        "the list names the tools"
+    );
+}
+
+#[tokio::test]
+async fn a_rebinding_host_is_refused_on_mcp_and_on_a_form_route() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("mcp-rebinding");
+    let app = router(context(sandbox.store()));
+
+    let (status, _, _) = send(
+        &app,
+        Request::builder()
+            .method("POST")
+            .uri("/mcp")
+            .header(header::HOST, "evil.example:7700")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(MCP_BODY))
+            .expect("the request builds"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a rebinding Host is refused");
+
+    let on_form = Request::builder()
+        .method("POST")
+        .uri("/tickets")
+        .header(header::HOST, "evil.example:7700")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from("title=Rebound"))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, on_form).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a form route is guarded too");
+
+    let on_read = Request::builder()
+        .uri("/board")
+        .header(header::HOST, "evil.example:7700")
+        .body(Body::empty())
+        .expect("the request builds");
+    let (status, _, _) = send(&app, on_read).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a read is not exempt");
+
+    let missing = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(MCP_BODY))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, missing).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "no Host is refused");
+
+    for host in ["localhost:7700", "[::1]:7700", "LOCALHOST:7700"] {
+        let request = Request::builder()
+            .method("POST")
+            .uri("/mcp")
+            .header(header::HOST, host)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(MCP_BODY))
+            .expect("the request builds");
+        let (status, _, _) = send(&app, request).await;
+        assert_eq!(status, StatusCode::OK, "{host} is a loopback authority");
+    }
+    let wrong_port = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(header::HOST, "127.0.0.1:9999")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(MCP_BODY))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, wrong_port).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "the port is the bound one");
+}
+
+#[tokio::test]
+async fn a_cross_origin_mcp_request_with_a_valid_host_is_refused() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("mcp-origin");
+    let app = router(context(sandbox.store()));
+
+    for origin in [
+        "http://evil.example",
+        "https://127.0.0.1:7700",
+        "null",
+        "http://127.0.0.1:7701",
+    ] {
+        let request = mcp_builder()
+            .header(header::ORIGIN, origin)
+            .body(Body::from(MCP_BODY))
+            .expect("the request builds");
+        let (status, headers, _) = send(&app, request).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{origin} is refused");
+        assert!(
+            headers.get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none(),
+            "no CORS header is ever answered"
+        );
+    }
+    let same = mcp_builder()
+        .header(header::ORIGIN, "http://localhost:7700")
+        .body(Body::from(MCP_BODY))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, same).await;
+    assert_eq!(status, StatusCode::OK, "a loopback Origin passes");
+
+    let preflight = Request::builder()
+        .method("OPTIONS")
+        .uri("/mcp")
+        .header(header::HOST, "127.0.0.1:7700")
+        .body(Body::empty())
+        .expect("the request builds");
+    let (status, headers, _) = send(&app, preflight).await;
+    assert_eq!(
+        status,
+        StatusCode::METHOD_NOT_ALLOWED,
+        "no permissive OPTIONS"
+    );
+    assert!(headers.get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
+}
+
+#[tokio::test]
+async fn the_content_type_is_a_media_type_not_a_prefix() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("mcp-content-type");
+    let app = router(context(sandbox.store()));
+
+    for content_type in [
+        "application/x-www-form-urlencoded",
+        "application/jsonx",
+        "text/plain",
+    ] {
+        let request = Request::builder()
+            .method("POST")
+            .uri("/mcp")
+            .header(header::HOST, "127.0.0.1:7700")
+            .header(header::CONTENT_TYPE, content_type)
+            .body(Body::from(MCP_BODY))
+            .expect("the request builds");
+        let (status, _, _) = send(&app, request).await;
+        assert_eq!(
+            status,
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "{content_type} is not application/json"
+        );
+    }
+    let with_parameter = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+        .body(Body::from(MCP_BODY))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, with_parameter).await;
+    assert_eq!(status, StatusCode::OK, "parameters are allowed");
+
+    let json_on_a_form_route = Request::builder()
+        .method("POST")
+        .uri("/tickets")
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"title":"Nope"}"#))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, json_on_a_form_route).await;
+    assert_eq!(
+        status,
+        StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        "no UI route accepts JSON"
+    );
+}
+
+#[tokio::test]
+async fn mcp_answers_a_notification_202_and_the_other_methods_405() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("mcp-methods");
+    let app = router(context(sandbox.store()));
+
+    let notification = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
+    let (status, _, body) = send(&app, mcp_request(notification)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "a notification is 202");
+    assert!(body.is_empty(), "with no body");
+
+    for method in ["GET", "DELETE"] {
+        let request = Request::builder()
+            .method(method)
+            .uri("/mcp")
+            .header(header::HOST, "127.0.0.1:7700")
+            .body(Body::empty())
+            .expect("the request builds");
+        let (status, _, _) = send(&app, request).await;
+        assert_eq!(
+            status,
+            StatusCode::METHOD_NOT_ALLOWED,
+            "{method} /mcp is 405"
+        );
+    }
+
+    let batch = r#"[{"jsonrpc":"2.0","id":1,"method":"ping"}]"#;
+    let (status, _, body) = send(&app, mcp_request(batch)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("batches are not supported"), "{body}");
+}
+
+#[tokio::test]
+async fn an_unknown_protocol_version_header_is_400_and_an_absent_one_is_accepted() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("mcp-version");
+    let app = router(context(sandbox.store()));
+
+    let unknown = mcp_builder()
+        .header("mcp-protocol-version", "1999-01-01")
+        .body(Body::from(MCP_BODY))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, unknown).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let known = mcp_builder()
+        .header("mcp-protocol-version", "2025-06-18")
+        .body(Body::from(MCP_BODY))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, known).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _, _) = send(&app, mcp_request(MCP_BODY)).await;
+    assert_eq!(status, StatusCode::OK, "an absent header is accepted");
+}
+
+#[tokio::test]
+async fn the_actor_header_lands_on_the_mutation_row_and_none_records_the_server_actor() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("mcp-actor");
+    let store = sandbox.store();
+    let app = router(context(store.clone()));
+
+    let named = mcp_builder()
+        .header("x-tandem-agent", "builder")
+        .body(Body::from(tool_call_body(
+            "project_add",
+            serde_json::json!({"name": "by-header"}),
+        )))
+        .expect("the request builds");
+    let (status, _, body) = send(&app, named).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(!body.contains("isError"), "the write succeeds: {body}");
+    assert_eq!(author_of_project(&store, "by-header"), "builder");
+
+    let human = mcp_builder()
+        .header("x-tandem-agent", "human")
+        .body(Body::from(tool_call_body(
+            "project_add",
+            serde_json::json!({"name": "by-human"}),
+        )))
+        .expect("the request builds");
+    send(&app, human).await;
+    assert_eq!(author_of_project(&store, "by-human"), "human");
+
+    let server = SessionContext {
+        actor: Actor::Agent("serve-runner".to_string()),
+        ..context(store.clone())
+    };
+    let app = router(server);
+    let unnamed = mcp_request(&tool_call_body(
+        "project_add",
+        serde_json::json!({"name": "by-server"}),
+    ));
+    send(&app, unnamed).await;
+    assert_eq!(
+        author_of_project(&store, "by-server"),
+        "serve-runner",
+        "no header records the server's own actor"
+    );
+}
+
+#[tokio::test]
+async fn a_bad_actor_header_is_400_and_never_trimmed_into_a_name() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("mcp-bad-actor");
+    let store = sandbox.store();
+    let app = router(context(store.clone()));
+
+    let too_long = "a".repeat(65);
+    for value in [
+        "Bad Name",
+        "Builder",
+        " builder",
+        "",
+        "bu_ilder",
+        too_long.as_str(),
+    ] {
+        let request = mcp_builder()
+            .header("x-tandem-agent", value)
+            .body(Body::from(MCP_BODY))
+            .expect("the request builds");
+        let (status, _, body) = send(&app, request).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{value:?} is refused");
+        assert!(
+            !body.contains(value) || value.is_empty(),
+            "the value is not echoed"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_request_header_never_reaches_the_environment() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("mcp-environment");
+    let store = sandbox.store();
+    let home = store.home().directory().to_path_buf();
+    let app = router(context(store));
+
+    let request = mcp_builder()
+        .header("tandem-home", "/tmp/elsewhere")
+        .header("x-tandem-home", "/tmp/elsewhere")
+        .body(Body::from(tool_call_body(
+            "doctor_report",
+            serde_json::json!({}),
+        )))
+        .expect("the request builds");
+    let (_, _, body) = send(&app, request).await;
+    assert!(!body.contains("/tmp/elsewhere"), "{body}");
+    assert!(
+        body.contains(&home.display().to_string().replace('\\', "\\\\")) || body.contains("home"),
+        "the report names the server's own home"
+    );
+}
+
+#[tokio::test]
+async fn health_is_a_fixed_body_with_no_auth() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("health");
+    let app = router(context(sandbox.store()));
+
+    let (status, _, body) = get(&app, "/health").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "ok\n", "nothing but ok: no version, path or actor");
+}
+
+fn remote_app(store: Store, token: &str) -> Router {
+    router(SessionContext {
+        access: Access::token(7700, token),
+        ..context(store)
+    })
+}
+
+const TOKEN: &str = "0123456789abcdef0123456789abcdef";
+
+#[tokio::test]
+async fn off_loopback_every_route_but_health_wants_the_token() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("token");
+    let app = remote_app(sandbox.store(), TOKEN);
+
+    let attempts: [(&str, &str, &str); 5] = [
+        ("GET", "/", ""),
+        ("GET", "/board", ""),
+        ("GET", "/events", ""),
+        ("POST", "/tickets", "application/x-www-form-urlencoded"),
+        ("POST", "/mcp", "application/json"),
+    ];
+    let wrong = format!("Bearer {}x", TOKEN);
+    let authorizations: [Option<&str>; 5] = [
+        None,
+        Some("Bearer wrong-token-wrong-token-wrong-tok"),
+        Some(wrong.as_str()),
+        Some(TOKEN),
+        Some("Basic dXNlcjpwYXNz"),
+    ];
+    for (method, uri, content_type) in attempts {
+        for authorization in authorizations {
+            let mut builder = Request::builder()
+                .method(method)
+                .uri(uri)
+                .header(header::HOST, "board.example");
+            if !content_type.is_empty() {
+                builder = builder.header(header::CONTENT_TYPE, content_type);
+            }
+            if let Some(value) = authorization {
+                builder = builder.header(header::AUTHORIZATION, value);
+            }
+            let request = builder.body(Body::from("")).expect("the request builds");
+            let (status, headers, body) = send(&app, request).await;
+            assert_eq!(
+                status,
+                StatusCode::UNAUTHORIZED,
+                "{method} {uri} with {authorization:?} is one 401"
+            );
+            assert_eq!(body, "unauthorized\n", "one failure path");
+            assert!(headers.get(header::WWW_AUTHENTICATE).is_none());
+        }
+    }
+
+    let (status, _, body) = send(
+        &app,
+        Request::builder()
+            .uri("/health")
+            .header(header::HOST, "board.example")
+            .body(Body::empty())
+            .expect("the request builds"),
+    )
+    .await;
+    assert_eq!((status, body.as_str()), (StatusCode::OK, "ok\n"));
+
+    let board = Request::builder()
+        .uri("/board")
+        .header(header::HOST, "board.example")
+        .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+        .body(Body::empty())
+        .expect("the request builds");
+    let (status, _, _) = send(&app, board).await;
+    assert_eq!(status, StatusCode::OK, "the token opens the UI");
+
+    let mcp = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(header::HOST, "board.example")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+        .header("x-tandem-agent", "reviewer")
+        .body(Body::from(MCP_BODY))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, mcp).await;
+    assert_eq!(status, StatusCode::OK, "the token opens /mcp");
+}
+
+#[test]
+fn the_token_never_reaches_a_debug_print() {
+    let access = Access::token(7700, TOKEN);
+    let printed = format!("{access:?}");
+    assert!(!printed.contains(TOKEN), "{printed}");
+    assert!(printed.contains("redacted"), "{printed}");
+}
+
+#[tokio::test]
+async fn note_read_with_a_parent_path_is_refused_through_mcp() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("mcp-note-path");
+    let app = router(context(sandbox.store()));
+
+    for path in ["../tandem.db", "/etc/passwd", "a/../../x"] {
+        let request = mcp_request(&tool_call_body(
+            "note_read",
+            serde_json::json!({"path": path}),
+        ));
+        let (status, _, body) = send(&app, request).await;
+        assert_eq!(status, StatusCode::OK);
+        let answer: serde_json::Value = serde_json::from_str(&body).expect("one frame");
+        assert_eq!(
+            answer["result"]["isError"], true,
+            "{path} is refused through /mcp: {body}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_by_construction_layer_covers_mcp_and_health() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("guard-layer-mcp");
+    let app = extra_router(routes(), sandbox.store());
+
+    let rebound = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(header::HOST, "evil.example:7700")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(MCP_BODY))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, rebound).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "/mcp crosses the one layer");
+
+    let (status, _, _) = send(
+        &app,
+        Request::builder()
+            .uri("/health")
+            .header(header::HOST, "evil.example:7700")
+            .body(Body::empty())
+            .expect("the request builds"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "/health crosses it too");
+}
+
+#[tokio::test]
+async fn an_opted_in_non_loopback_bind_admits_any_host_without_a_token() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("open-bind");
+    let app = router(SessionContext {
+        access: Access::open(7700),
+        ..context(sandbox.store())
+    });
+
+    let board = Request::builder()
+        .uri("/board")
+        .header(header::HOST, "machine.tailnet.ts.net:7700")
+        .body(Body::empty())
+        .expect("the request builds");
+    assert_eq!(send(&app, board).await.0, StatusCode::OK);
+
+    let mcp = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(header::HOST, "machine.tailnet.ts.net:7700")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(MCP_BODY))
+        .expect("the request builds");
+    assert_eq!(send(&app, mcp).await.0, StatusCode::OK);
+
+    let foreign = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(header::HOST, "machine.tailnet.ts.net:7700")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::ORIGIN, "http://evil.example")
+        .body(Body::from(MCP_BODY))
+        .expect("the request builds");
+    assert_eq!(
+        send(&app, foreign).await.0,
+        StatusCode::FORBIDDEN,
+        "the Origin check holds on an open bind"
+    );
 }

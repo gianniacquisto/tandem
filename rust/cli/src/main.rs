@@ -1,10 +1,11 @@
 //! The tandem binary: the agent face and the board's HTTP server.
 //!
 //! One binary (`docs/port.md`, Target shape): the verbs agents call, the MCP
-//! server's stream and the board the human reads are the same executable, so
-//! they cannot drift. This rung carries the whole grammar the skills speak
-//! (PRT-9): `ticket`, `lane`, `note`, `doctor`'s pinned report, `mcp`'s stream
-//! and `serve`'s loopback server (ADR 0046).
+//! endpoint and the board the human reads are the same executable, so they
+//! cannot drift. This rung carries the whole grammar the skills speak
+//! (PRT-9): `ticket`, `lane`, `note`, `doctor`'s pinned report and `serve`'s
+//! one HTTP door (ADR 0047). Set `TANDEM_SERVER` and the verbs run against a
+//! remote `serve` instead of the local store.
 //!
 //! What lives here is what belongs to a process rather than to the domain:
 //! argv, the environment, the two streams and the exit code. Every verb maps to
@@ -12,6 +13,7 @@
 //! rule is re-implemented here, so the two binaries cannot disagree about what a
 //! verb means, only about how a flag was spelled.
 
+mod remote;
 mod usage;
 
 use std::env;
@@ -73,7 +75,7 @@ struct ServeArgs {
     /// Open the board in the system browser after binding.
     #[arg(long)]
     open: bool,
-    /// Serve a non-loopback address without the refusal.
+    /// Serve a non-loopback address with no authentication (a network you trust).
     #[arg(long)]
     allow_unauthenticated: bool,
 }
@@ -102,9 +104,7 @@ enum Command {
     },
     /// Report whether this machine's store and notes are sound (ADR 0014).
     Doctor,
-    /// Serve the agent face as an MCP server over stdio (TAN-274).
-    Mcp,
-    /// Serve the board on loopback over HTTP (ADR 0046).
+    /// Serve the board and the MCP endpoint over HTTP (ADR 0047).
     Serve(ServeArgs),
 }
 
@@ -395,6 +395,7 @@ fn main() -> ExitCode {
 
 /// One failure, in the words the stream it goes to carries. A domain failure is
 /// exit 1; a usage failure is exit 2 with the root text.
+#[derive(Debug)]
 struct Failure {
     message: String,
     exit: u8,
@@ -443,7 +444,6 @@ fn help_text(cli: &Cli) -> &'static str {
     let name = match &cli.command {
         None => return usage::ROOT,
         Some(Command::Doctor) => return usage::verb("doctor").unwrap_or(usage::ROOT),
-        Some(Command::Mcp) => return usage::MCP,
         Some(Command::Serve(_)) => return usage::SERVE,
         Some(Command::Ticket { command }) => match command {
             None => return usage::group("ticket").unwrap_or(usage::ROOT),
@@ -529,6 +529,14 @@ impl NoteCommand {
 // MARK: - Dispatch
 
 fn run(cli: &Cli) -> Result<(), Failure> {
+    // `TANDEM_SERVER` sends the verbs to a running `tandem serve` instead of
+    // the local store (ADR 0047). Unset or blank keeps the direct path.
+    if let Ok(server) = env::var(remote::SERVER_VARIABLE)
+        && !server.trim().is_empty()
+        && let Some(command) = cli.command.as_ref()
+    {
+        return remote::run(&server, command);
+    }
     let user_home = store::user_home().map_err(|error| Failure::message(error.to_string()))?;
     let environment = env::var(store::ENVIRONMENT).ok();
     let home = Home::resolve(cli.home.as_deref(), environment.as_deref(), &user_home);
@@ -536,7 +544,6 @@ fn run(cli: &Cli) -> Result<(), Failure> {
 
     match command {
         Command::Doctor => doctor(&home),
-        Command::Mcp => mcp(&home),
         Command::Serve(args) => serve(&home, args),
         Command::Ticket { command } => ticket(&home, command.as_ref()),
         Command::Lane { command } => lane(&home, command.as_ref()),
@@ -1030,8 +1037,15 @@ fn install_log() -> bool {
     invalid
 }
 
-/// The board's loopback door: a non-loopback address is refused before binding
-/// unless the human opted in, the listener prints the address it actually
+/// The environment variable that carries the bearer token, for `tandem serve`
+/// off loopback and for the remote CLI. Never a flag value, never stored.
+const TOKEN_VARIABLE: &str = "TANDEM_TOKEN";
+
+/// The shortest token a non-loopback `tandem serve` accepts.
+const MIN_TOKEN_LENGTH: usize = 32;
+
+/// The one door (ADR 0047): a non-loopback address is refused before binding
+/// unless `TANDEM_TOKEN` is set or `--allow-unauthenticated` is passed, the listener prints the address it actually
 /// bound (so `--port 0` is usable), and SIGINT or SIGTERM ends the run.
 fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
     let host: std::net::IpAddr = args.host.parse().map_err(|_| Failure {
@@ -1041,14 +1055,40 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
         ),
         exit: 2,
     })?;
-    if !host.is_loopback() && !args.allow_unauthenticated {
-        return Err(Failure {
-            message: format!(
-                "tandem serve: {host} is not a loopback address. Pass --allow-unauthenticated to serve beyond this machine."
-            ),
-            exit: 2,
-        });
-    }
+    // Off loopback the run needs a stated choice: a token in the environment
+    // (never a flag, which would show in `ps`) or the explicit opt-out of
+    // authentication. A token that is set must be a strong one.
+    let token = if host.is_loopback() {
+        None
+    } else {
+        match env::var(TOKEN_VARIABLE)
+            .ok()
+            .filter(|token| !token.is_empty())
+        {
+            Some(token) if token.chars().count() >= MIN_TOKEN_LENGTH => Some(token),
+            Some(_) => {
+                return Err(Failure {
+                    message: format!(
+                        "tandem serve: {TOKEN_VARIABLE} must be at least {MIN_TOKEN_LENGTH} \
+                         characters."
+                    ),
+                    exit: 2,
+                });
+            }
+            None if args.allow_unauthenticated => None,
+            None => {
+                return Err(Failure {
+                    message: format!(
+                        "tandem serve: {host} is not a loopback address. Set {TOKEN_VARIABLE} \
+                         (at least {MIN_TOKEN_LENGTH} characters) and put a TLS terminator in \
+                         front, or pass --allow-unauthenticated to serve a network you trust \
+                         with no authentication."
+                    ),
+                    exit: 2,
+                });
+            }
+        }
+    };
     // Installed after the host checks, before any event can fire: the listening
     // line below is still the first stdout line, because nothing logs before it.
     let invalid_filter = install_log();
@@ -1082,10 +1122,16 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
         if args.open {
             open_browser(&format!("http://{address}"));
         }
+        let access = match &token {
+            Some(token) => tandem_core::serve::Access::token(address.port(), token),
+            None if host.is_loopback() => tandem_core::serve::Access::loopback(address.port()),
+            None => tandem_core::serve::Access::open(address.port()),
+        };
         let context = tandem_core::serve::SessionContext {
             store: Store::new(home.clone()),
             actor: Actor::current(),
             environment: environment(),
+            access,
         };
         tracing::info!(
             address = %address,
@@ -1156,22 +1202,6 @@ fn open_browser(url: &str) {
         command.args(["/C", "start", ""]);
     }
     let _ = command.arg(url).spawn();
-}
-
-// MARK: - mcp
-
-/// The agent host's door: MCP frames on stdin, MCP frames on stdout, and an
-/// exit on a closed stdin. The protocol lives in the core (`tandem_core::mcp`);
-/// this arm is only the process that owns the two streams. The home resolves
-/// the way `rpc` does, and the actor is the pass's own (`TANDEM_AGENT`).
-fn mcp(home: &Home) -> Result<(), Failure> {
-    tandem_core::mcp::serve(
-        tandem_core::rpc::StdioStream::new(),
-        Store::new(home.clone()),
-        Actor::current(),
-        environment(),
-    )
-    .map_err(|error| Failure::message(format!("The mcp stream failed: {error}. Try again.")))
 }
 
 // MARK: - doctor
