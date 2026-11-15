@@ -4066,7 +4066,7 @@ body {
   align-items: baseline;
   gap: var(--space-chip);
   min-width: 0;
-  padding: 0 4px 0 var(--space-lane);
+  padding: 0 4px 0 var(--space-label);
   color: var(--ink-dim);
   font-size: 13px;
   line-height: 36px;
