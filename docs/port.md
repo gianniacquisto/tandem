@@ -53,7 +53,7 @@ The app ships no agent loop and no bundled harness. Passes run outside the app, 
 
 ## Transport and the UI contract
 
-- stdio locally, HTTPS remotely later; one message set, two stream adapters. No daemon: the app spawns the child, the child dies with the app, and the CLI opens `tandem.db` directly, with the engine's `BEGIN IMMEDIATE` and ~2 s busy window as the contention bound across processes and a process-local gate bounding one process's own threads inside the same window (ADR 0031).
+- One message set, one transport for agents: `POST /mcp` on `tandem serve`, MCP streamable HTTP with JSON responses, stateless ([ADR 0047](adr/0047-serve-is-the-single-door.md)). `serve` is a long-running process started by hand and is the single door for the browser and the agents; the stdio child is retired. The CLI opens `tandem.db` directly by default, with the engine's `BEGIN IMMEDIATE` and ~2 s busy window as the contention bound across processes and a process-local gate bounding one process's own threads inside the same window (ADR 0031); with `TANDEM_SERVER` set it sends each verb to a running serve instead.
 - **No UI-only writes.** Every UI mutation maps to a message the CLI also exposes, with a test that fails when a UI-only write appears.
 - Listings are a full snapshot plus a revision number; the core pushes change events on the stream.
 

@@ -692,10 +692,11 @@ pub fn verb(name: &str) -> Option<&'static str> {
     })
 }
 
-/// `serve`: the board's loopback HTTP door (ADR 0046). Like `mcp` it is
-/// reachable by its own `--help` and is not listed among the agent verbs.
+/// `serve`: the one door (ADR 0047): the board, the agents' `POST /mcp` and the
+/// liveness probe on one HTTP server. Reachable by its own `--help` and not
+/// listed among the agent verbs.
 pub const SERVE: &str = concat!(
-    "tandem-cli serve: serve the board on loopback over HTTP.",
+    "tandem-cli serve: the board and the MCP endpoint, over HTTP.",
     "\n",
     "",
     "\n",
@@ -707,9 +708,17 @@ pub const SERVE: &str = concat!(
     "\n",
     "The board is server-rendered HTML over htmx, with `GET /events` streaming",
     "\n",
-    "store revisions. The default bind is 127.0.0.1:7700. A non-loopback",
+    "store revisions; `POST /mcp` is the agents' door (MCP, streamable HTTP,",
     "\n",
-    "--host is refused unless --allow-unauthenticated is set. --port 0 asks",
+    "JSON responses) and `GET /health` answers ok. The default bind is",
+    "\n",
+    "127.0.0.1:7700. A non-loopback --host is refused unless --allow-unauthenticated",
+    "\n",
+    "is set (no authentication: a network you trust) or TANDEM_TOKEN (at least 32",
+    "\n",
+    "characters) is in the environment, with a TLS terminator in front: every route",
+    "\n",
+    "but /health then wants `Authorization: Bearer <token>`. --port 0 asks",
     "\n",
     "the OS for a free port and prints the one it bound; --open launches the",
     "\n",
@@ -718,39 +727,6 @@ pub const SERVE: &str = concat!(
     "The log goes to stdout after the listening line, filtered by TANDEM_LOG",
     "\n",
     "(RUST_LOG syntax, default info).",
-);
-
-/// `mcp`: the agent host's door (TAN-274). Like `serve` it is reachable by its
-/// own `--help` and is not listed among the agent verbs: hosts discover it
-/// through the protocol handshake, and agents call its tools.
-pub const MCP: &str = concat!(
-    "tandem-cli mcp: serve the agent face as an MCP server on stdin and stdout.",
-    "\n",
-    "",
-    "\n",
-    "Usage:",
-    "\n",
-    "  tandem-cli mcp [--home <path>]",
-    "\n",
-    "",
-    "\n",
-    "One JSON-RPC 2.0 frame per line: `initialize` negotiates the protocol",
-    "\n",
-    "version, `tools/list` names the 43 tools, and `tools/call` runs one",
-    "\n",
-    "through the same dispatch the CLI's verbs make. `initialize` carries",
-    "\n",
-    "a small health block (home, store ok, version, tool count); a full",
-    "\n",
-    "`doctor` never runs per call. The host spawns this",
-    "\n",
-    "mode; a closed stdin ends it.",
-    "\n",
-    "",
-    "\n",
-    "The log goes to stderr, never stdout, filtered by TANDEM_LOG (RUST_LOG",
-    "\n",
-    "syntax, default warn): a healthy session writes nothing.",
 );
 
 #[cfg(test)]

@@ -25,5 +25,7 @@ tokio.workspace = true
 # installs it, so every other verb stays silent.
 tracing.workspace = true
 tracing-subscriber.workspace = true
+# The remote CLI's one POST per verb (ADR 0047).
+ureq.workspace = true
 # A capture's generated session folder, when the host exports no id (PRT-9).
 uuid.workspace = true
