@@ -18,7 +18,10 @@ pub(super) async fn events(
 ) -> Sse<impl tokio_stream::Stream<Item = Result<SseEvent, Infallible>>> {
     // The stream opens on the revision the board was drawn from, so a client
     // that attaches after a write (a reload, a restored store) still reads the
-    // current number before any new change.
+    // current number before any new change. The subscription comes first: a
+    // write broadcast between reading the revision and subscribing would
+    // otherwise reach neither the initial event nor the stream.
+    let subscription = changes.subscribe();
     let current = context.revision();
     tracing::debug!(revision = current, "events stream opened");
     let closed = StreamClosed;
@@ -28,7 +31,7 @@ pub(super) async fn events(
             .data(current.to_string()),
     ));
     let lagged = context.clone();
-    let updates = BroadcastStream::new(changes.subscribe()).filter_map(move |item| {
+    let updates = BroadcastStream::new(subscription).filter_map(move |item| {
         let _ = &closed;
         match item {
             Ok(revision) => Some(Ok(SseEvent::default()
