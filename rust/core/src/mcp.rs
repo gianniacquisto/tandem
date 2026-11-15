@@ -1,17 +1,19 @@
-//! `tandem mcp`: the agent face as an MCP server over stdio (TAN-274).
+//! The agent face as an MCP server, carried by `tandem serve`'s `POST /mcp`
+//! (ADR 0047, which retired the stdio `tandem mcp` child).
 //!
-//! The same door as [`crate::rpc`], one transport over: newline-delimited
-//! JSON-RPC 2.0 on stdio, the same lifecycle (stdin closes, the process ends),
-//! [`crate::rpc::MAX_FRAME`] and the stderr-never-carries-a-frame rule carried
-//! over. The five-method surface (`initialize`, `notifications/initialized`,
-//! `tools/list`, `tools/call`, `ping`) is hand-rolled on `serde_json`, the way
-//! `rpc` hand-rolls its frames: five methods are smaller than a dependency.
+//! The same door as [`crate::rpc`], one transport over: the streamable HTTP
+//! transport, JSON responses only and stateless (no `Mcp-Session-Id`, no SSE).
+//! [`handle_mcp`] is the whole protocol minus the transport: one frame in, one
+//! frame out, or silence for a notification (which `serve` answers `202`).
+//! [`crate::rpc::MAX_FRAME`] bounds a frame. The five-method surface
+//! (`initialize`, `notifications/initialized`, `tools/list`, `tools/call`,
+//! `ping`) is hand-rolled on `serde_json`, the way `rpc` hand-rolls its frames:
+//! five methods are smaller than a dependency.
 //!
 //! Dispatch shares the `rpc` door by construction: a `tools/call` builds the
 //! `(id, method, params)` frame and feeds
 //! [`crate::rpc::handle_in`](crate::rpc::handle_in), then renders the answer
-//! as the tool result. Strictly sequential, like `rpc`: one frame in, one
-//! frame out, no interleaving.
+//! as the tool result. One frame in, one frame out; batches are refused.
 //!
 //! The protocol version is negotiated, not assumed. The pinned host (opencode
 //! v2.2.5, `docs/port.md`'s harness) speaks `2024-11-05`, `2025-03-26`,
@@ -19,23 +21,22 @@
 //! installed binary); this door negotiates the four classic versions and
 //! answers at most `2025-11-25`, echoing the client's version when it is one
 //! of them. `2026-07-28` is the stateful protocol the new handshake carries,
-//! which a line-delimited stdio door does not speak.
+//! which a stateless JSON door does not speak. The HTTP transport checks the
+//! `MCP-Protocol-Version` header against [`PROTOCOL_VERSIONS`].
 //!
 //! The door logs through `tracing` events, and the CLI installs a subscriber
-//! that writes them to stderr under `TANDEM_LOG` (ADR 0046 amendment). Stdout
-//! carries frames only, so stderr is the one channel a line cannot corrupt.
+//! that writes them under `TANDEM_LOG` (ADR 0046 amendment).
 //! The default filter is `warn`, so a healthy session is silent. A line names
 //! identifiers and outcomes only: never arguments, results, ticket or note
 //! text, or the environment, and every value a client chose (a tool or method
 //! name) is Debug-escaped so a control character cannot break the line.
 
-use std::io;
 use std::time::Instant;
 
 use serde_json::{Value, json};
 
 use crate::env::Environment;
-use crate::rpc::{Stream, handle_in};
+use crate::rpc::handle_in;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     CommentAddParams, EmptyParams, LabelAddParams, LabelDeleteParams, LabelMoveParams,
@@ -47,6 +48,65 @@ use crate::wire::rpc::{
 
 /// The server name the `initialize` answer carries.
 pub const SERVER_NAME: &str = "tandem-mcp";
+
+/// What a verb is on the wire: the tool that does the same act, and how its
+/// result becomes the stdout the local verb prints. The one table behind the
+/// remote CLI (ADR 0047): the verb comes from [`crate::wire::rpc::METHODS`],
+/// the tool from [`tools`], so no second table can drift from them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteVerb {
+    /// The tool's name, as `tools/call` carries it.
+    pub tool: &'static str,
+    /// The reply key whose value is the local verb's whole stdout, when the
+    /// local verb prints one field of the reply rather than the reply.
+    unwrap: Option<&'static str>,
+}
+
+/// The tool that answers a CLI verb (`"ticket add"`), or `None` for a verb the
+/// wire has no method for (`serve`, `note rename`, `note stats`).
+pub fn remote_verb(verb: &str) -> Option<RemoteVerb> {
+    let (tag, _) = crate::wire::rpc::METHODS
+        .iter()
+        .find(|(_, spelled)| !spelled.is_empty() && *spelled == verb)?;
+    let tool = tools().into_iter().find(|tool| tool.method_tag == *tag)?;
+    let unwrap = match *tag {
+        "ticket.show" | "ticket.add" | "ticket.set" | "ticket.move" | "ticket.block"
+        | "ticket.unblock" | "ticket.complete" => Some("ticket"),
+        "note.write" => Some("write"),
+        "note.move" => Some("moved"),
+        "note.health" => Some("health"),
+        "doctor.report" => Some("report"),
+        _ => None,
+    };
+    Some(RemoteVerb {
+        tool: tool.name,
+        unwrap,
+    })
+}
+
+impl RemoteVerb {
+    /// The local verb's stdout, from the tool's result: the reply without its
+    /// revision (the local verb prints none), or the one field it prints whole.
+    /// `ticket archive` answers a ticket for one id and `{archived}` for all,
+    /// so the ticket is unwrapped when the reply carries one.
+    pub fn stdout(&self, result: Value) -> Value {
+        let Value::Object(mut reply) = result else {
+            return result;
+        };
+        reply.remove("revision");
+        if let Some(key) = self.unwrap
+            && let Some(inner) = reply.remove(key)
+        {
+            return inner;
+        }
+        if self.tool == "ticket_archive"
+            && let Some(inner) = reply.remove("ticket")
+        {
+            return inner;
+        }
+        Value::Object(reply)
+    }
+}
 
 /// The protocol versions this door negotiates, oldest first. Probed from the
 /// pinned host's own strings (see the module docs); the newest doubles as the
@@ -62,48 +122,6 @@ const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
-
-// MARK: - The process
-
-/// Serve MCP frames from `stream` until it ends, strictly sequentially.
-///
-/// End of stream is success: a closed stdin is the host going away, which is
-/// the normal way this child dies. An I/O failure on the stream is the only
-/// error; everything a frame can get wrong is answered as a frame, and a
-/// notification is answered with nothing at all.
-pub fn serve<S: Stream>(
-    stream: S,
-    store: Store,
-    actor: Actor,
-    environment: Environment,
-) -> io::Result<()> {
-    tracing::info!(
-        version = %server_version(),
-        home = ?store.home().directory(),
-        actor = ?actor.as_str(),
-        "tandem mcp started"
-    );
-    loop {
-        match stream.read_frame() {
-            Ok(None) => {
-                tracing::info!("stdin closed, exiting");
-                break Ok(());
-            }
-            Ok(Some(frame)) => {
-                if let Some(answer) = handle_mcp(&frame, &store, &actor, &environment) {
-                    stream.write_frame(&answer)?;
-                }
-            }
-            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
-                // The stream's own words: the frame is oversize or not UTF-8.
-                tracing::warn!(reason = %error, "frame refused");
-                let answer = error_frame(None, PARSE_ERROR, error.to_string());
-                stream.write_frame(&answer)?;
-            }
-            Err(error) => break Err(error),
-        }
-    }
-}
 
 // MARK: - One frame
 

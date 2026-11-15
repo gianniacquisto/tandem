@@ -21,6 +21,10 @@ Decision bullet 1 gains application logging: `tandem serve` writes its log to st
 
 `tandem mcp` (amended 2026-11-15) logs too, on stderr, because its stdout carries JSON-RPC frames and a log line there would corrupt the protocol. It shares the installer and the `TANDEM_LOG` variable, with the same invalid-filter behaviour (one notice, the value never echoed), but its default filter is `warn`, so a healthy session writes nothing to stderr and a host that captures stderr for a whole session sees no per-call noise. Its `info` events (start, `initialize`, each `tools/call` with tool name, outcome, error kind and latency, stdin closed) and `debug` events (`ping`, notifications, `tools/list`) appear on request; parse failures, oversize or non-UTF-8 frames, invalid requests and unknown methods are `warn`. The never-logged rule holds: no arguments, results or error messages, and client-chosen names (tool, method) are Debug-escaped.
 
+## Amendment (2026-11-15)
+
+[ADR 0047](0047-serve-is-the-single-door.md) supersedes "`serve` and `mcp` are the two server doors", "No HTTP JSON-RPC" (and its `rpc::Stream` clause) and "Loopback is the authentication". `--allow-unauthenticated` stays, beside an optional `TANDEM_TOKEN`.
+
 ## Why
 
 - **A transport for a face that is leaving is a migration twice.** `POST /api/rpc` plus Vite asset serving would have been written, tested and deleted inside one release. The board routes are the first real client, so they are the first transport.

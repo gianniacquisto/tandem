@@ -16,13 +16,19 @@ Also here: `skills/tandem-team` (a roster template: replace it with your own), `
 
 ## Set up
 
-1. **Point your agent host at the MCP server**, once (opencode shown; other hosts are in the [README](../README.md#connect-your-agent)):
+1. **Start `tandem serve`** (by hand; it is the one process every session talks to), then **point your agent host at its MCP endpoint**, once. Claude Code (`~/.claude.json`):
 
    ```json
-   {"mcp": {"tandem": {"type": "local", "command": ["tandem-cli", "mcp"]}}}
+   {"mcpServers": {"tandem": {"type": "http", "url": "http://127.0.0.1:7700/mcp", "headers": {"X-Tandem-Agent": "builder"}}}}
    ```
 
-   `TANDEM_HOME` sets the home (default `~/.tandem`). `TANDEM_AGENT` names the actor a write records; `self` expands to it.
+   opencode (`~/.config/opencode/opencode.json`):
+
+   ```json
+   {"mcp": {"tandem": {"type": "remote", "url": "http://127.0.0.1:7700/mcp", "headers": {"X-Tandem-Agent": "builder"}, "oauth": false}}}
+   ```
+
+   `TANDEM_HOME` sets the serve process's home (default `~/.tandem`). The `X-Tandem-Agent` header names the actor a request's writes record (lowercase letters, digits, hyphen); without it the server's own actor (`TANDEM_AGENT`, else `human`) is recorded. `TANDEM_AGENT` names the actor of a CLI run; `self` expands to it.
 2. **Copy what you want.** Put `AGENTS.md` where your host reads global instructions and the skill folders where it reads skills, or symlink them to this checkout to track it. Agents use the MCP tools only; `tandem-cli` is for you and your scripts.
 3. **Check it.** `tandem-cli doctor` prints `{ok, checks}` with the checks `home`, `store` and `bikeshed`, and exits `0` when healthy.
 
@@ -36,7 +42,7 @@ Also here: `skills/tandem-team` (a roster template: replace it with your own), `
   mv ~/.tandem/tandem.db.bak ~/.tandem/tandem.db
   ```
 
-- **Board**: `tandem serve` draws it on `127.0.0.1:7700`. A non-loopback `--host` needs `--allow-unauthenticated`.
+- **Board**: `tandem serve` draws it on `127.0.0.1:7700`. A non-loopback `--host` needs `--allow-unauthenticated` (no authentication, for a network you trust such as a tailnet) or `TANDEM_TOKEN`.
 - **CLI**: every verb prints one JSON object; exit `0` success, `1` a domain failure, `2` a usage error. `tandem-cli --help` lists the verbs, and [docs/cli.md](../docs/cli.md) documents them.
 
 ## Keeping the examples honest

@@ -12,11 +12,12 @@ The records that explain the product as it is today:
 - [0018](0018-rolling-store-backup.md): the rolling backup beside it.
 - [0017](0017-the-ticket-model.md) and [0030](0030-one-entity-the-ticket.md): the ticket and its vocabulary.
 - [0035](0035-ticket-dependencies.md): the blocking edge.
-- [0039](0039-projects-own-lanes.md) and [0047](0047-lanes-are-labels.md): projects and labels.
+- [0039](0039-projects-own-lanes.md) and [0047, lanes are labels](0047-lanes-are-labels.md): projects and labels.
 - [0004](0004-vault-protocol.md), [0005](0005-wikilink-rename-rewriting.md), [0008](0008-vault-path-rule.md) and [0022](0022-bikeshed-move.md): how notes are stored, named, renamed and moved.
 - [0033](0033-wiki-is-documentation.md): what the notes are for.
 - [0045](0045-the-board-and-notes-cut.md): what was cut, and what stayed.
 - [0046](0046-tandem-serve-and-single-binary-distribution.md): `tandem serve`, the single binary and how it is distributed.
+- [0047, serve is the single door](0047-serve-is-the-single-door.md): agents reach Tandem over MCP on `tandem serve`; how requests are guarded and named.
 
 ## How to read the status column
 
@@ -38,7 +39,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0006 | [Stored order and sections](0006-stored-order-and-sections.md) | In force, amended by 0031 | The order now lives in `position` columns. |
 | 0007 | [Locked directory](0007-locked-directory.md) | In force | One primitive owns the lock and atomic-write mechanics. |
 | 0008 | [Vault path rule](0008-vault-path-rule.md) | In force | One validation rule for note paths. |
-| 0009 | [The agent face is a CLI](0009-cli-agent-face.md) | In force as amended; partly overtaken | Agents now reach Tandem through the MCP server (`tandem mcp`); the CLI is the human's and the scripts' door. No record supersedes this one by name. |
+| 0009 | [The agent face is a CLI](0009-cli-agent-face.md) | In force as amended by 0047 (single door) | Agents now reach Tandem over MCP on `tandem serve`; the CLI is the human's and the scripts' door. The "one dispatch" rule stands. |
 | 0010 | [A todo may link to a note](0010-todo-note-links.md) | Surface retired by 0045 | `tickets.link` and ticket-to-note promotion were cut. |
 | 0011 | [Chosen vault](0011-chosen-vault.md) | Surface retired by 0045 | The settings that stored the choice were cut; the notes live at `<home>/bikeshed`. |
 | 0012 | [Editor formatting](0012-editor-formatting.md) | Superseded by 0045 | Amended earlier by 0042. |
@@ -75,8 +76,9 @@ The status comes from each record's own header and from the "Prior records" list
 | 0043 | [The board draws one axis](0043-the-board-draws-one-axis.md) | In force, amended by 0045 | One column per stage, with the six fixed stages. Its "lane" is today's label. |
 | 0044 | [Agent, skill and lens](0044-agent-skill-lens.md) | In force, amended by 0045 | The lenses stand as examples under `examples/`. |
 | 0045 | [The board and notes cut](0045-the-board-and-notes-cut.md) | In force | |
-| 0046 | [Tandem serve and single-binary distribution](0046-tandem-serve-and-single-binary-distribution.md) | In force | Amended in place for application logging. |
+| 0046 | [Tandem serve and single-binary distribution](0046-tandem-serve-and-single-binary-distribution.md) | In force, amended by 0047 (single door) | Its "two server doors", "no HTTP JSON-RPC" and "loopback is the authentication" clauses are superseded. |
 | 0047 | [Lanes are labels](0047-lanes-are-labels.md) | In force | Schema v12. |
+| 0047 | [Tandem serve is the single door](0047-serve-is-the-single-door.md) | In force | MCP over HTTP on `tandem serve`; `tandem mcp` is retired. Shares its number with the record above: two branches took 0047 and both merged. One of them should be renumbered. |
 
 ## Adding a record
 

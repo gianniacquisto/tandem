@@ -11,7 +11,7 @@ The schema is versioned in the database itself: `schema_migrations` holds one ro
 | path | what it is | safe to delete? |
 | --- | --- | --- |
 | `tandem.db` | the store | no: this is your data |
-| `tandem.db-wal`, `tandem.db-shm` | SQLite's write-ahead log and its index, present while the store is in use | only together with a restore (below), and only with every Tandem process stopped |
+| `tandem.db-wal`, `tandem.db-shm` | SQLite's write-ahead log and its index, present while the store is in use | only together with a restore (below), and only with `tandem serve` stopped |
 | `tandem.db.bak` | the rolling backup: the store as it was before the last changed write | yes, but it is your only backup |
 | `.tandem-*.tmp` | a backup that was being written when a process died | yes; the next write sweeps any older than a minute |
 | `bikeshed/` | the notes, plain markdown | no: this is your data |
@@ -23,7 +23,7 @@ The home is `~/.tandem` unless `TANDEM_HOME` or `--home` names another. On Windo
 
 Beside the store, every changed write keeps **one previous complete copy** in `tandem.db.bak`, taken through SQLite's backup API before the write touches the database. There is one generation, no rotation.
 
-Be clear about what that covers. The backup is the store exactly **one write ago**. It protects against a write that goes wrong while it is happening. It is not a way back from a mistake you notice later: the next write replaces it, so two writes after a wrong bulk edit the backup holds the wrong edit too. Before anything risky (a large reorganisation, running a build from a branch against your real home), copy `tandem.db` somewhere yourself, with every Tandem process stopped. The notes are not covered by the backup at all: `bikeshed/` is a folder of files, and keeping it in git or under your usual file backup is the way to protect it.
+Be clear about what that covers. The backup is the store exactly **one write ago**. It protects against a write that goes wrong while it is happening. It is not a way back from a mistake you notice later: the next write replaces it, so two writes after a wrong bulk edit the backup holds the wrong edit too. Before anything risky (a large reorganisation, running a build from a branch against your real home), copy `tandem.db` somewhere yourself, with `tandem serve` stopped. The notes are not covered by the backup at all: `bikeshed/` is a folder of files, and keeping it in git or under your usual file backup is the way to protect it.
 
 Recovery is the backup and two commands, and the journal files go first or the restored file is read under a dead WAL:
 
@@ -32,7 +32,7 @@ rm -f ~/.tandem/tandem.db-wal ~/.tandem/tandem.db-shm ~/.tandem/tandem.db
 mv ~/.tandem/tandem.db.bak ~/.tandem/tandem.db
 ```
 
-**Stop every Tandem process first**: `tandem serve`, and any `tandem mcp` your agent host started. Both hold `tandem.db` for as long as they run. On macOS and Linux the rename over the held file is allowed, and a running server notices the replacement and re-attaches to the restored store by itself. Windows does not allow it: SQLite opens the database without `FILE_SHARE_DELETE`, so the `rm` and the `mv` over it fail with *The process cannot access the file because it is being used by another process.* Close them before the two commands, then start them again: the next open attaches to the restored file, and its first write switches it back to WAL.
+**Quit the server first.** `tandem serve` holds `tandem.db` open for as long as it runs. On macOS and Linux the rename over the held file is allowed, and the running server notices the replacement and re-attaches to the restored store by itself. Windows does not allow it: SQLite opens the database without `FILE_SHARE_DELETE`, so the `rm` and the `mv` over it fail with *The process cannot access the file because it is being used by another process.* Close `tandem serve`, and any process holding the store open, before the two commands, then start them again: the next open attaches to the restored file, and its first write switches it back to WAL.
 
 See [ADR 0018](adr/0018-rolling-store-backup.md).
 
@@ -40,9 +40,9 @@ See [ADR 0018](adr/0018-rolling-store-backup.md).
 
 A newer `tandem` may carry a newer schema. Reads never change the store. The first **write** by the newer binary migrates the store forward, and it rolls `tandem.db.bak` first, so the backup holds the store as it was before the migration.
 
-After that, an older binary refuses the store: it does not read a schema newer than its own. So upgrade every copy on the machine, not just one, and restart the long-lived processes, because a `tandem serve` or a `tandem mcp` started before the upgrade is still the old binary:
+After that, an older binary refuses the store: it does not read a schema newer than its own. So upgrade every copy on the machine, not just one, and restart `tandem serve`: a server started before the upgrade is still the old binary, and it is the one process the board and every agent session talk to.
 
-- If the board or your agent reports that the store is a schema this build does not read, an old `tandem` is still on PATH or still running. Run the installer again and restart `tandem serve` and your agent host.
+- If the board or your agent reports that the store is a schema this build does not read, an old `tandem` is still on PATH or an old `tandem serve` is still running. Run the installer again and restart the server.
 - `tandem doctor` shows the schema version the store carries.
 - Running a build from a source checkout against your real home migrates it like any other newer binary. Point a development build at a throwaway home with `--home` unless you mean to upgrade.
 
@@ -54,7 +54,7 @@ A home written by the Swift app is not read by this binary. Its `tandem.db` is r
 
 The bikeshed is a wiki, not a log: its pages hold what a project is, how to run it, where things live, what is open now, and the decisions behind it. It does not hold the story of what was tried: git history and the ticket comments are that. See [ADR 0033](adr/0033-wiki-is-documentation.md).
 
-Notes are markdown files in folders under `~/.tandem/bikeshed/`, linked with `[[wikilinks]]`. You can edit them with any editor: the notes page and the agent tools read the files as they are on disk. A rename or a move made through Tandem (the notes page, `tandem-cli note rename`, the `note_move` tool) rewrites the wikilinks that pointed at the old path; a rename made in a file manager does not.
+Notes are markdown files in folders under `~/.tandem/bikeshed/`, linked with `[[wikilinks]]`. You can edit them with any editor: the notes page and the agent's MCP tools read the files as they are on disk. A rename or a move made through Tandem (the notes page, `tandem-cli note rename`, the `note_move` tool) rewrites the wikilinks that pointed at the old path; a rename made in a file manager does not.
 
 The convention this repository's own notes follow gives every project one entry point, its **Overview**:
 

@@ -11,7 +11,7 @@ The macOS ticket board, usable by both humans and agents on the same machine.
 _Avoid_: "the app", "the todo app"
 
 **Serve**:
-Tandem's browser face: `tandem serve` binds a loopback address and draws the board and the bikeshed as HTML. `tandem mcp` is the agent face over stdio. Both doors are the same binary, so the human's board and the agent's tools cannot drift.
+Tandem's browser face: `tandem serve` binds a loopback address and draws the board and the bikeshed as HTML. `POST /mcp` on the same server is the agent face (MCP over HTTP). One process answers both, so the human's board and the agent's tools cannot drift.
 _Avoid_: main window, desktop app, renderer, shell
 
 **Installer**:
@@ -81,7 +81,7 @@ Which tickets are in view: `open` (the default), `done`, or `all`. One term for 
 _Avoid_: view, tab, scope, state
 
 **Store**:
-Tandem's single source of truth for the work it keeps: tickets, their dependency edges, comments, labels, projects and the store's own metadata, one SQLite database at `<home>/tandem.db`, read and written by `tandem serve`, `tandem mcp` and every `tandem-cli` invocation. All reads and writes go through it; no other copy is authoritative. Its shape changes only by a **schema migration**; its move off the JSON files is recorded by an **import marker**; beside it sits its **rolling backup**, `tandem.db.bak` — the one previous complete generation, which a human restores and nothing reads (ADR 0018, ADR 0031).
+Tandem's single source of truth for the work it keeps: tickets, their dependency edges, comments, labels, projects and the store's own metadata, one SQLite database at `<home>/tandem.db`, read and written by `tandem serve` and every `tandem-cli` invocation. All reads and writes go through it; no other copy is authoritative. Its shape changes only by a **schema migration**; its move off the JSON files is recorded by an **import marker**; beside it sits its **rolling backup**, `tandem.db.bak` — the one previous complete generation, which a human restores and nothing reads (ADR 0018, ADR 0031).
 _Avoid_: store file, JSON store, hand edits, backend, sync, cache (the JSON store and its sidecars are history: ADR 0001, and ADR 0031's amendments)
 
 **Schema migration**:
@@ -133,7 +133,7 @@ A person using Tandem through the board in a browser.
 _Avoid_: user (ambiguous with the OS account), client, owner
 
 **Agent**:
-A local AI coding agent (e.g. OpenCode, Claude Code) running as the same OS user on the same machine, interacting with Tandem through `tandem mcp` or the CLI.
+A local AI coding agent (e.g. OpenCode, Claude Code) running as the same OS user on the same machine, interacting with Tandem through `tandem serve`'s `/mcp` endpoint or the CLI.
 _Avoid_: bot, client, automation, user
 
 **Reviewer**:

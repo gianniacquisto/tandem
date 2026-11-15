@@ -5,8 +5,8 @@
 //! carries the one act htmx cannot, a card drop. Each request resolves one
 //! [`Context`] through the router's state, so every route reads and writes
 //! through the same store and actor the CLI uses, and a face that serves more
-//! than one caller resolves the caller there instead. Every mutating request
-//! crosses one write guard layer, so a route cannot opt out by forgetting it.
+//! than one caller resolves the caller there instead. Every request
+//! crosses one access guard layer, so a route cannot opt out by forgetting it.
 //! A [`watch`] thread forwards every store revision to the `GET /events`
 //! stream, and the shell re-fetches the board on each one.
 //!
@@ -30,7 +30,9 @@ use axum::middleware::{self, Next};
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
+
 use axum::{Extension, Router};
+pub use guard::Access;
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
@@ -46,7 +48,9 @@ use crate::store::{Actor, RevisionWatch, Store};
 
 mod board;
 mod events;
+mod guard;
 mod markdown;
+mod mcp;
 mod notes;
 mod sheet;
 
@@ -81,13 +85,16 @@ const CONFLICT_NOTICE: &str =
     "The board changed while you were writing. Review the new state and try again.";
 
 /// One serve run's context: the store every route reads, the actor every write
-/// records, and the environment the dispatch reads. Injected as the router's
+/// records unless the request names its own (`X-Tandem-Agent`), the environment
+/// the dispatch reads and the access policy every request crosses. Injected as the router's
 /// default state, so a test names a throwaway home without a process.
 #[derive(Debug, Clone)]
 pub struct SessionContext {
     pub store: Store,
     pub actor: Actor,
     pub environment: Environment,
+    /// How a request is let in: the bound port, and the token off loopback.
+    pub access: Access,
 }
 
 impl SessionContext {
@@ -121,9 +128,41 @@ pub trait ResolveContext {
 
 #[allow(clippy::result_large_err)]
 impl ResolveContext for Arc<SessionContext> {
-    fn resolve(&self, _parts: &Parts) -> Result<Context, Response> {
-        Ok(Context(Arc::clone(self)))
+    /// The server's own context, or the same one with the actor the request
+    /// names in `X-Tandem-Agent` (ADR 0047). The header is validated here, once,
+    /// and reaches nothing but the actor: never the environment, so a request
+    /// cannot move `TANDEM_HOME`.
+    fn resolve(&self, parts: &Parts) -> Result<Context, Response> {
+        let Some(value) = parts.headers.get(ACTOR_HEADER) else {
+            return Ok(Context(Arc::clone(self)));
+        };
+        let Some(name) = value.to_str().ok().filter(|name| valid_actor_name(name)) else {
+            return Err(bad_request(
+                "X-Tandem-Agent must be 1 to 64 lowercase letters, digits or hyphens",
+            ));
+        };
+        let actor = if name == "human" {
+            Actor::Human
+        } else {
+            Actor::parse(Some(name))
+        };
+        Ok(Context(Arc::new(SessionContext {
+            actor,
+            ..(**self).clone()
+        })))
     }
+}
+
+/// The request header that names the actor for one request.
+const ACTOR_HEADER: &str = "x-tandem-agent";
+
+/// The characters and length an actor header may carry: it lands in mutation
+/// rows, assignees and authors, and the board, so it is stored input.
+fn valid_actor_name(name: &str) -> bool {
+    (1..=64).contains(&name.len())
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
 /// One request's context. Every handler takes this, never the router's state,
@@ -160,7 +199,8 @@ pub fn router(context: SessionContext) -> Router {
 /// The router over an existing change channel, so the `serve` verb runs the
 /// watcher on the same broadcast every connected stream listens to.
 pub fn router_with(context: SessionContext, changes: broadcast::Sender<i64>) -> Router {
-    layered(routes(), changes).with_state(Arc::new(context))
+    let access = context.access.clone();
+    layered(routes(), changes, access).with_state(Arc::new(context))
 }
 
 /// Every route the loopback face serves, before its layers and its state. One
@@ -171,6 +211,8 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/", get(board::board_page))
         .route("/board", get(board::board_page))
         .route("/events", get(events::events))
+        .route("/health", get(mcp::health))
+        .route("/mcp", post(mcp::mcp_post))
         .route("/static/{*path}", get(events::static_asset))
         .route("/tickets", post(board::add_ticket))
         .route(
@@ -196,16 +238,18 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/notes/delete", post(notes::note_delete))
 }
 
-/// The layers every route carries: the write guard, the body ceiling and the
+/// The layers every route carries: the access guard, the body ceiling and the
 /// change channel the events stream reads. The request line is the outermost
 /// layer, so it sees every response the stack writes, the guard's refusals and
 /// the body ceiling's included.
 fn layered(
     router: Router<Arc<SessionContext>>,
     changes: broadcast::Sender<i64>,
+    access: Access,
 ) -> Router<Arc<SessionContext>> {
     router
-        .layer(middleware::from_fn(write_guard))
+        .layer(middleware::from_fn(guard::access_guard))
+        .layer(Extension(access))
         .layer(DefaultBodyLimit::max(crate::rpc::MAX_FRAME))
         .layer(Extension(changes))
         .layer(middleware::from_fn(request_log))
@@ -238,19 +282,6 @@ async fn request_log(request: Request, next: Next) -> Response {
         tracing::info!(method = %method, route = ?route, status, latency_ms, "request");
     }
     response
-}
-
-/// The write guard as a layer: every request that is not a read crosses it
-/// before a handler runs, so a route cannot opt out by forgetting the call.
-async fn write_guard(request: Request, next: Next) -> Response {
-    if !matches!(
-        *request.method(),
-        Method::GET | Method::HEAD | Method::OPTIONS
-    ) && let Some(denied) = guard(request.headers())
-    {
-        return denied;
-    }
-    next.run(request).await
 }
 
 /// The store watch: one read-only connection, a 40 ms stat and a 5 s fallback,
@@ -523,63 +554,6 @@ fn html_response(html: String, status: StatusCode) -> Response {
         HeaderValue::from_static(CONTENT_SECURITY_POLICY),
     );
     response
-}
-/// The write guard's policy: the form content type and a same-origin `Origin`
-/// when one is sent. [`write_guard`] applies it to every request that is not a
-/// read. A browser sends `Origin` on every cross-origin POST, so the check keeps
-/// an untrusted page from writing to loopback.
-fn guard(headers: &HeaderMap) -> Option<Response> {
-    let form = headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("application/x-www-form-urlencoded"));
-    if !form {
-        tracing::warn!(
-            reason = "the content type is not form-encoded",
-            "write refused"
-        );
-        return Some(
-            (
-                StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                "the request must be application/x-www-form-urlencoded\n",
-            )
-                .into_response(),
-        );
-    }
-    if cross_origin(headers) {
-        tracing::warn!(
-            reason = "the request came from another origin",
-            "write refused"
-        );
-        return Some(
-            (
-                StatusCode::FORBIDDEN,
-                "the request came from another origin\n",
-            )
-                .into_response(),
-        );
-    }
-    None
-}
-fn cross_origin(headers: &HeaderMap) -> bool {
-    let Some(origin) = headers
-        .get(header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    else {
-        return false;
-    };
-    if origin == "null" {
-        return true;
-    }
-    let authority = origin
-        .split_once("://")
-        .map(|(_, rest)| rest)
-        .unwrap_or(origin);
-    let host = headers
-        .get(header::HOST)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("");
-    !authority.eq_ignore_ascii_case(host)
 }
 fn bad_request(message: &str) -> Response {
     tracing::warn!(error = ?message, "request refused");
