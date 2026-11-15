@@ -155,11 +155,11 @@ fn the_board_home_holds_the_78_ticket_shape() {
         .expect("the board home reads");
 
     assert_eq!(tickets.len(), 78, "the frozen board is 78 tickets");
-    let lanes: std::collections::BTreeSet<Option<&str>> = tickets
+    let labels: std::collections::BTreeSet<Option<&str>> = tickets
         .iter()
-        .map(|ticket| ticket.lane.as_deref())
+        .map(|ticket| ticket.label.as_deref())
         .collect();
-    assert_eq!(lanes.len(), 5, "four named lanes and the default area");
+    assert_eq!(labels.len(), 5, "four named labels and the default area");
 
     let edges: usize = tickets.iter().map(|ticket| ticket.blocked_by.len()).sum();
     assert_eq!(edges, 3, "the frozen board carries three dependency edges");

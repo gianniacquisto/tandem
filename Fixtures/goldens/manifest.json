@@ -101,7 +101,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -115,7 +115,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         },
@@ -125,7 +125,7 @@
             "add",
             "--title",
             "Second ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         }
@@ -141,7 +141,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -155,7 +155,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         },
@@ -165,7 +165,7 @@
             "add",
             "--title",
             "Second ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         },
@@ -187,11 +187,11 @@
     },
     {
       "group": "ticket",
-      "case": "list-lane",
+      "case": "list-label",
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -201,7 +201,7 @@
         },
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Port",
@@ -215,7 +215,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         },
@@ -225,7 +225,7 @@
             "add",
             "--title",
             "Port ticket",
-            "--lane",
+            "--label",
             "Port"
           ]
         }
@@ -233,7 +233,7 @@
       "argv": [
         "ticket",
         "list",
-        "--lane",
+        "--label",
         "Cycle"
       ]
     },
@@ -305,7 +305,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Tandem",
@@ -319,7 +319,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Tandem"
           ]
         },
@@ -345,7 +345,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Tandem",
@@ -359,7 +359,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Tandem"
           ]
         },
@@ -392,7 +392,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -406,7 +406,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         },
@@ -416,7 +416,7 @@
             "add",
             "--title",
             "Second ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         },
@@ -443,7 +443,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -457,7 +457,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle",
             "--description",
             "A body the golden keeps."
@@ -498,7 +498,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -516,7 +516,7 @@
         "ready",
         "--assignee",
         "self",
-        "--lane",
+        "--label",
         "Cycle",
         "--origin",
         "self",
@@ -565,7 +565,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -579,7 +579,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         }
@@ -603,7 +603,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Tandem",
@@ -617,7 +617,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Tandem",
             "--description",
             "An old body."
@@ -640,7 +640,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Tandem",
@@ -654,7 +654,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Tandem",
             "--description",
             "An old body."
@@ -676,7 +676,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -690,7 +690,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         },
@@ -700,7 +700,7 @@
             "add",
             "--title",
             "Second ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         }
@@ -720,7 +720,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -734,7 +734,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         }
@@ -752,7 +752,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -766,7 +766,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         },
@@ -776,7 +776,7 @@
             "add",
             "--title",
             "Second ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         }
@@ -796,7 +796,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -810,7 +810,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         }
@@ -831,7 +831,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -845,7 +845,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         },
@@ -855,7 +855,7 @@
             "add",
             "--title",
             "Second ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         },
@@ -883,7 +883,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Tandem",
@@ -897,7 +897,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Tandem"
           ]
         }
@@ -915,7 +915,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Tandem",
@@ -929,7 +929,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Tandem"
           ]
         },
@@ -953,7 +953,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Tandem",
@@ -967,7 +967,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Tandem"
           ]
         },
@@ -1001,7 +1001,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Tandem",
@@ -1015,7 +1015,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Tandem"
           ]
         }
@@ -1039,7 +1039,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Tandem",
@@ -1053,7 +1053,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Tandem"
           ]
         }
@@ -1074,7 +1074,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Tandem",
@@ -1088,7 +1088,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Tandem"
           ]
         },
@@ -1235,28 +1235,28 @@
       "exit": 2
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "help",
       "argv": [
-        "lane",
+        "label",
         "--help"
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "list-empty",
       "argv": [
-        "lane",
+        "label",
         "list"
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "list",
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -1266,7 +1266,7 @@
         },
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Port",
@@ -1276,25 +1276,25 @@
         }
       ],
       "argv": [
-        "lane",
+        "label",
         "list"
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "add",
       "argv": [
-        "lane",
+        "label",
         "add",
         "--name",
         "Cycle"
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "add-abbr",
       "argv": [
-        "lane",
+        "label",
         "add",
         "--name",
         "Cycle",
@@ -1303,12 +1303,12 @@
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "add-duplicate",
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -1318,7 +1318,7 @@
         }
       ],
       "argv": [
-        "lane",
+        "label",
         "add",
         "--name",
         "Cycle"
@@ -1326,12 +1326,12 @@
       "exit": 1
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "rename",
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -1341,7 +1341,7 @@
         }
       ],
       "argv": [
-        "lane",
+        "label",
         "rename",
         "--from",
         "Cycle",
@@ -1350,12 +1350,12 @@
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "rename-abbr",
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -1365,7 +1365,7 @@
         }
       ],
       "argv": [
-        "lane",
+        "label",
         "rename",
         "--from",
         "Cycle",
@@ -1376,10 +1376,10 @@
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "rename-unknown",
       "argv": [
-        "lane",
+        "label",
         "rename",
         "--from",
         "Cycle",
@@ -1389,12 +1389,12 @@
       "exit": 1
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "delete",
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle",
@@ -1408,23 +1408,23 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         }
       ],
       "argv": [
-        "lane",
+        "label",
         "delete",
         "--name",
         "Cycle"
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "delete-unknown",
       "argv": [
-        "lane",
+        "label",
         "delete",
         "--name",
         "Cycle"
@@ -1432,37 +1432,37 @@
       "exit": 1
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "list-help",
       "argv": [
-        "lane",
+        "label",
         "list",
         "--help"
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "add-help",
       "argv": [
-        "lane",
+        "label",
         "add",
         "--help"
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "rename-help",
       "argv": [
-        "lane",
+        "label",
         "rename",
         "--help"
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "delete-help",
       "argv": [
-        "lane",
+        "label",
         "delete",
         "--help"
       ]
@@ -1590,7 +1590,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Tandem",
@@ -1604,7 +1604,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Tandem"
           ]
         }
@@ -1668,7 +1668,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle"
@@ -1676,7 +1676,7 @@
         },
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Port"
@@ -1708,7 +1708,7 @@
     },
     {
       "group": "project",
-      "case": "rename-moves-lanes",
+      "case": "rename-moves-labels",
       "argv": [
         "project",
         "rename",
@@ -1720,7 +1720,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle"
@@ -1760,7 +1760,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle"
@@ -1874,10 +1874,10 @@
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "add-project",
       "argv": [
-        "lane",
+        "label",
         "add",
         "--name",
         "Beta",
@@ -1896,10 +1896,10 @@
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "rename-project",
       "argv": [
-        "lane",
+        "label",
         "rename",
         "--from",
         "Cycle",
@@ -1911,7 +1911,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle"
@@ -1923,7 +1923,7 @@
             "add",
             "--title",
             "Fixture ticket",
-            "--lane",
+            "--label",
             "Cycle"
           ]
         },
@@ -1938,10 +1938,10 @@
       ]
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "add-unknown-project",
       "argv": [
-        "lane",
+        "label",
         "add",
         "--name",
         "Beta",
@@ -1961,10 +1961,10 @@
       "exit": 1
     },
     {
-      "group": "lane",
+      "group": "label",
       "case": "rename-unknown-project",
       "argv": [
-        "lane",
+        "label",
         "rename",
         "--from",
         "Cycle",
@@ -1976,7 +1976,7 @@
       "setup": [
         {
           "argv": [
-            "lane",
+            "label",
             "add",
             "--name",
             "Cycle"

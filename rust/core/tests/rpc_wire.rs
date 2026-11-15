@@ -367,8 +367,8 @@ fn every_read_reply_carries_the_revision_of_its_own_snapshot() {
     );
     assert_eq!(comments["result"]["comments"][0]["body"], "A note");
 
-    let lanes = handle(&store, &frame(6, "lane.list", json!({})));
-    assert_eq!(lanes["result"]["revision"], revision, "lane.list");
+    let labels = handle(&store, &frame(6, "label.list", json!({})));
+    assert_eq!(labels["result"]["revision"], revision, "label.list");
 }
 
 #[test]
@@ -670,7 +670,7 @@ fn note_create_and_create_folder_write_through_the_domain() {
 }
 
 #[test]
-fn project_messages_round_trip_like_the_lane_ones() {
+fn project_messages_round_trip_like_the_label_ones() {
     let sandbox = Sandbox::new("rpc-project");
     let store = sandbox.store();
 
@@ -685,7 +685,7 @@ fn project_messages_round_trip_like_the_lane_ones() {
     let added = handle(&store, &frame(2, "project.add", json!({"name": "Alpha"})));
     assert_eq!(
         added["result"]["projects"],
-        json!([{"name": "Alpha", "lanes": []}])
+        json!([{"name": "Alpha", "labels": []}])
     );
 
     let renamed = handle(
@@ -694,8 +694,8 @@ fn project_messages_round_trip_like_the_lane_ones() {
     );
     assert_eq!(
         renamed["result"]["projects"],
-        json!([{"name": "Beta", "lanes": []}]),
-        "a rename moves its lanes with it (none here)"
+        json!([{"name": "Beta", "labels": []}]),
+        "a rename moves its labels with it (none here)"
     );
 
     let deleted = handle(&store, &frame(4, "project.delete", json!({"name": "Beta"})));
@@ -705,14 +705,14 @@ fn project_messages_round_trip_like_the_lane_ones() {
         "an empty project deletes"
     );
 
-    // A lane auto-parents the project named for it, and a project rename moves
-    // the lane with it while refs stay lane-keyed.
-    handle(&store, &frame(5, "lane.add", json!({"name": "Cycle"})));
+    // A label auto-parents the project named for it, and a project rename moves
+    // the label with it while refs stay label-keyed.
+    handle(&store, &frame(5, "label.add", json!({"name": "Cycle"})));
     let grouped = handle(&store, &frame(6, "project.list", json!({})));
     assert_eq!(
         grouped["result"]["projects"],
-        json!([{"name": "Cycle", "lanes": ["Cycle"]}]),
-        "lane add without a project auto-parents"
+        json!([{"name": "Cycle", "labels": ["Cycle"]}]),
+        "label add without a project auto-parents"
     );
     let moved = handle(
         &store,
@@ -720,8 +720,8 @@ fn project_messages_round_trip_like_the_lane_ones() {
     );
     assert_eq!(
         moved["result"]["projects"],
-        json!([{"name": "Beta", "lanes": ["Cycle"]}]),
-        "the lane moves with its project"
+        json!([{"name": "Beta", "labels": ["Cycle"]}]),
+        "the label moves with its project"
     );
 
     let refused = handle(&store, &frame(8, "project.delete", json!({"name": "Beta"})));
@@ -733,40 +733,40 @@ fn project_messages_round_trip_like_the_lane_ones() {
     );
     assert!(
         message.contains("Cycle"),
-        "the refusal names its lanes: {refused}"
+        "the refusal names its labels: {refused}"
     );
 }
 
 #[test]
-fn lane_move_reorders_the_declared_lanes_over_the_wire() {
-    let sandbox = Sandbox::new("rpc-lane-move");
+fn label_move_reorders_the_declared_labels_over_the_wire() {
+    let sandbox = Sandbox::new("rpc-label-move");
     let store = sandbox.store();
-    handle(&store, &frame(1, "lane.add", json!({"name": "A"})));
-    handle(&store, &frame(2, "lane.add", json!({"name": "B"})));
-    handle(&store, &frame(3, "lane.add", json!({"name": "C"})));
+    handle(&store, &frame(1, "label.add", json!({"name": "A"})));
+    handle(&store, &frame(2, "label.add", json!({"name": "B"})));
+    handle(&store, &frame(3, "label.add", json!({"name": "C"})));
 
     let moved = handle(
         &store,
-        &frame(4, "lane.move", json!({"name": "C", "index": 0})),
+        &frame(4, "label.move", json!({"name": "C", "index": 0})),
     );
     assert_eq!(
-        moved["result"]["lanes"],
+        moved["result"]["labels"],
         json!(["C", "A", "B"]),
         "C moves to the front; the receipt answers the list after the write"
     );
 
     let refused = handle(
         &store,
-        &frame(5, "lane.move", json!({"name": "Nope", "index": 0})),
+        &frame(5, "label.move", json!({"name": "Nope", "index": 0})),
     );
     assert_eq!(refused["error"]["code"], "domain");
     let message = refused["error"]["message"].as_str().unwrap_or("");
     assert!(
         message.contains("\"Nope\""),
-        "the refusal names the lane: {refused}"
+        "the refusal names the label: {refused}"
     );
     assert!(
-        message.contains("lane add") && message.contains("lane list"),
+        message.contains("label add") && message.contains("label list"),
         "the refusal names the fix: {refused}"
     );
 }

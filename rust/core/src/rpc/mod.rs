@@ -27,7 +27,7 @@ use crate::domain::{
 use crate::env::Environment;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
-    ArchivedReply, CommentListReply, CommentReply, DoctorReply, LaneDeletionReply, LaneListReply,
+    ArchivedReply, CommentListReply, CommentReply, DoctorReply, LabelDeletionReply, LabelListReply,
     MarkdownReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply, NoteReadReply,
     NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, ProjectEntry, ProjectListReply,
     Reply, Request, Response, TicketListReply, TicketReply, WireError,
@@ -236,7 +236,7 @@ fn execute(
                 params.text.as_deref(),
                 params.status.as_deref(),
                 assignee.as_deref(),
-                params.lane.as_deref(),
+                params.label.as_deref(),
                 params.archived,
                 params.blocked,
             )
@@ -269,7 +269,7 @@ fn execute(
                 .add(
                     params.title.as_deref().unwrap_or(""),
                     AddTicket {
-                        lane: params.lane.as_deref(),
+                        label: params.label.as_deref(),
                         status,
                         assignee: assignee.as_deref(),
                         description: description.as_deref(),
@@ -318,7 +318,7 @@ fn execute(
                 Some(index) => index.max(0) as usize,
             };
             let ticket = board
-                .move_ticket(named(&params.id), params.lane.as_deref(), at)
+                .move_ticket(named(&params.id), params.label.as_deref(), at)
                 .map_err(domain)?;
             Ok(ticket_receipt(&ticket, store))
         }
@@ -383,59 +383,59 @@ fn execute(
                 )),
             }))
         }
-        Method::LaneList(_) => {
-            let (lanes, revision) = board.lanes_snapshot().map_err(domain)?;
-            Ok(Reply::LaneList(LaneListReply { revision, lanes }))
+        Method::LabelList(_) => {
+            let (labels, revision) = board.labels_snapshot().map_err(domain)?;
+            Ok(Reply::LabelList(LabelListReply { revision, labels }))
         }
-        Method::LaneAdd(params) => {
-            let lanes = board
-                .add_lane(
+        Method::LabelAdd(params) => {
+            let labels = board
+                .add_label(
                     params.name.as_deref().unwrap_or(""),
                     params.abbr.as_deref(),
                     params.project.as_deref(),
                 )
                 .map_err(domain)?;
-            Ok(Reply::LaneList(LaneListReply {
+            Ok(Reply::LabelList(LabelListReply {
                 revision: store.last_revision(),
-                lanes,
+                labels,
             }))
         }
-        Method::LaneRename(params) => {
-            let lanes = board
-                .rename_lane(
+        Method::LabelRename(params) => {
+            let labels = board
+                .rename_label(
                     params.from.as_deref().unwrap_or(""),
                     params.to.as_deref().unwrap_or(""),
                     params.abbr.as_deref(),
                     params.project.as_deref(),
                 )
                 .map_err(domain)?;
-            Ok(Reply::LaneList(LaneListReply {
+            Ok(Reply::LabelList(LabelListReply {
                 revision: store.last_revision(),
-                lanes,
+                labels,
             }))
         }
-        Method::LaneDelete(params) => {
+        Method::LabelDelete(params) => {
             let deletion = board
-                .delete_lane(params.name.as_deref().unwrap_or(""))
+                .delete_label(params.name.as_deref().unwrap_or(""))
                 .map_err(domain)?;
-            Ok(Reply::LaneDeletion(LaneDeletionReply {
+            Ok(Reply::LabelDeletion(LabelDeletionReply {
                 revision: store.last_revision(),
-                lanes: deletion.lanes,
+                labels: deletion.labels,
                 moved: deletion.moved,
             }))
         }
-        Method::LaneMove(params) => {
+        Method::LabelMove(params) => {
             let at = match params.index {
                 Some(index) if index >= 0 => index as usize,
                 Some(_) => 0,
                 None => usize::MAX,
             };
-            let lanes = board
-                .move_lane(params.name.as_deref().unwrap_or(""), at)
+            let labels = board
+                .move_label(params.name.as_deref().unwrap_or(""), at)
                 .map_err(domain)?;
-            Ok(Reply::LaneList(LaneListReply {
+            Ok(Reply::LabelList(LabelListReply {
                 revision: store.last_revision(),
-                lanes,
+                labels,
             }))
         }
         Method::ProjectList(_) => {
@@ -446,7 +446,7 @@ fn execute(
                     .into_iter()
                     .map(|entry| ProjectEntry {
                         name: entry.name,
-                        lanes: entry.lanes,
+                        labels: entry.labels,
                     })
                     .collect(),
             }))
@@ -461,7 +461,7 @@ fn execute(
                     .into_iter()
                     .map(|entry| ProjectEntry {
                         name: entry.name,
-                        lanes: entry.lanes,
+                        labels: entry.labels,
                     })
                     .collect(),
             }))
@@ -479,7 +479,7 @@ fn execute(
                     .into_iter()
                     .map(|entry| ProjectEntry {
                         name: entry.name,
-                        lanes: entry.lanes,
+                        labels: entry.labels,
                     })
                     .collect(),
             }))
@@ -494,7 +494,7 @@ fn execute(
                     .into_iter()
                     .map(|entry| ProjectEntry {
                         name: entry.name,
-                        lanes: entry.lanes,
+                        labels: entry.labels,
                     })
                     .collect(),
             }))

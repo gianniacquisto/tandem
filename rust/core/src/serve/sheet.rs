@@ -1,7 +1,7 @@
 //! The ticket sheet: one ticket drawn over the board it was opened from, the
-//! writes its forms send, and the lane rows a board write redraws.
+//! writes its forms send, and the label rows a board write redraws.
 
-use super::board::{FiltersView, LaneOption, board_with_sheet};
+use super::board::{FiltersView, LabelOption, board_with_sheet};
 use super::*;
 
 // MARK: - The ticket sheet
@@ -47,7 +47,7 @@ struct SheetView {
     status: &'static str,
     assignee: String,
     status_options: Vec<SheetStatusOption>,
-    lane_options: Vec<LaneOption>,
+    label_options: Vec<LabelOption>,
     description: String,
     comment_refusal: Option<String>,
     notice: Option<String>,
@@ -118,24 +118,24 @@ pub(super) fn sheet_handle(ticket: &Ticket) -> String {
     }
 }
 
-fn sheet_lane_options(ticket: &Ticket, lanes: &[String]) -> Vec<LaneOption> {
-    let current = ticket.lane.as_deref();
-    let mut options = vec![LaneOption {
+fn sheet_label_options(ticket: &Ticket, labels: &[String]) -> Vec<LabelOption> {
+    let current = ticket.label.as_deref();
+    let mut options = vec![LabelOption {
         value: String::new(),
-        label: "No lane".to_string(),
+        label: "No label".to_string(),
         selected: current.is_none(),
     }];
-    for lane in lanes {
-        options.push(LaneOption {
-            value: lane.clone(),
-            label: lane.clone(),
-            selected: current == Some(lane.as_str()),
+    for label in labels {
+        options.push(LabelOption {
+            value: label.clone(),
+            label: label.clone(),
+            selected: current == Some(label.as_str()),
         });
     }
     if let Some(current) = current
-        && !lanes.iter().any(|lane| lane == current)
+        && !labels.iter().any(|label| label == current)
     {
-        options.push(LaneOption {
+        options.push(LabelOption {
             value: current.to_string(),
             label: current.to_string(),
             selected: true,
@@ -156,7 +156,7 @@ fn render_sheet(
     let (comments, _) = board
         .comments_snapshot(id)
         .map_err(|error| error.message())?;
-    let (lanes, _) = board.lanes_snapshot().map_err(|error| error.message())?;
+    let (labels, _) = board.labels_snapshot().map_err(|error| error.message())?;
 
     let description = ticket.description.clone().unwrap_or_default();
 
@@ -187,7 +187,7 @@ fn render_sheet(
         filters: FiltersView {
             project: filters.project.clone(),
             show_all: filters.show_all,
-            lane: filters.lane.clone(),
+            label: filters.label.clone(),
             assignee: filters.assignee.clone(),
             text: filters.text.clone(),
         },
@@ -198,7 +198,7 @@ fn render_sheet(
         status: ticket.status.as_str(),
         assignee: ticket.assignee.clone().unwrap_or_default(),
         status_options,
-        lane_options: sheet_lane_options(&ticket, &lanes),
+        label_options: sheet_label_options(&ticket, &labels),
         description,
         comment_refusal,
         notice,
@@ -248,7 +248,7 @@ fn sheet_response(
     )
 }
 
-/// One percent-encoded path segment, for a lane name in a route.
+/// One percent-encoded path segment, for a label name in a route.
 pub(super) fn encode_component(value: &str) -> String {
     let mut encoded = String::new();
     for byte in value.bytes() {
@@ -400,7 +400,7 @@ pub(super) async fn add_comment(
     }
 }
 
-pub(super) async fn move_to_lane(
+pub(super) async fn move_to_label(
     context: Context,
     Path(id): Path<String>,
     headers: HeaderMap,
@@ -424,23 +424,23 @@ pub(super) async fn move_to_lane(
             &headers,
         );
     }
-    let lane = field(&params, "lane");
-    let lane = if lane.trim().is_empty() {
+    let label = field(&params, "label");
+    let label = if label.trim().is_empty() {
         None
     } else {
-        Some(lane.to_string())
+        Some(label.to_string())
     };
     match context
         .board()
-        .move_ticket(&id, lane.as_deref(), usize::MAX)
+        .move_ticket(&id, label.as_deref(), usize::MAX)
     {
         Ok(_) => {
             tracing::info!(
                 actor = ?context.actor.as_str(),
                 id = ?id,
-                lane = ?lane,
+                label = ?label,
                 revision = context.revision(),
-                "ticket moved to lane"
+                "ticket moved to label"
             );
             sheet_response(&context, &id, &filters, None, None, &headers)
         }

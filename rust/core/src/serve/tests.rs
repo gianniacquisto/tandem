@@ -151,19 +151,19 @@ fn setup_board(store: &Store) -> Board {
     board.add_project("Alpha").expect("the project is added");
     board.add_project("Beta").expect("the project is added");
     board
-        .add_lane("alpha", Some("ALP"), Some("Alpha"))
-        .expect("the lane is added");
+        .add_label("alpha", Some("ALP"), Some("Alpha"))
+        .expect("the label is added");
     board
-        .add_lane("shared", Some("SHA"), Some("Alpha"))
-        .expect("the lane is added");
+        .add_label("shared", Some("SHA"), Some("Alpha"))
+        .expect("the label is added");
     board
-        .add_lane("beta", Some("BET"), Some("Beta"))
-        .expect("the lane is added");
+        .add_label("beta", Some("BET"), Some("Beta"))
+        .expect("the label is added");
     board
         .add(
             "Café alpha",
             AddTicket {
-                lane: Some("alpha"),
+                label: Some("alpha"),
                 status: Status::Ready,
                 assignee: Some("builder"),
                 ..AddTicket::default()
@@ -174,7 +174,7 @@ fn setup_board(store: &Store) -> Board {
         .add(
             "Beta one",
             AddTicket {
-                lane: Some("beta"),
+                label: Some("beta"),
                 status: Status::Backlog,
                 ..AddTicket::default()
             },
@@ -193,7 +193,7 @@ fn setup_board(store: &Store) -> Board {
         .add(
             "Shared alpha",
             AddTicket {
-                lane: Some("shared"),
+                label: Some("shared"),
                 status: Status::InProgress,
                 assignee: Some("human"),
                 ..AddTicket::default()
@@ -311,7 +311,7 @@ async fn a_ticket_in_a_stage_the_board_does_not_draw_still_lands_in_a_column() {
 }
 
 #[tokio::test]
-async fn get_board_filters_by_project_focus_lane_assignee_and_accent_folded_search() {
+async fn get_board_filters_by_project_focus_label_assignee_and_accent_folded_search() {
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-filters");
     let store = sandbox.store();
@@ -319,10 +319,10 @@ async fn get_board_filters_by_project_focus_lane_assignee_and_accent_folded_sear
     let app = router(context(store));
 
     let (_, _, focus) = get(&app, "/?project=Alpha").await;
-    assert!(focus.contains("Café alpha"), "the focus draws its lane");
+    assert!(focus.contains("Café alpha"), "the focus draws its label");
     assert!(
         focus.contains("Shared alpha"),
-        "the focus draws every lane of the project"
+        "the focus draws every label of the project"
     );
     assert!(
         !focus.contains("Beta one"),
@@ -335,18 +335,18 @@ async fn get_board_filters_by_project_focus_lane_assignee_and_accent_folded_sear
         "show all escapes the focus without clearing it: {every}"
     );
 
-    let (_, _, lane) = get(&app, "/?lane=beta").await;
-    assert!(lane.contains("Beta one"));
+    let (_, _, label) = get(&app, "/?label=beta").await;
+    assert!(label.contains("Beta one"));
     assert!(
-        !lane.contains("Café alpha"),
-        "the lane filter narrows: {lane}"
+        !label.contains("Café alpha"),
+        "the label filter narrows: {label}"
     );
 
-    let (_, _, loose) = get(&app, "/?lane=%20").await;
+    let (_, _, loose) = get(&app, "/?label=%20").await;
     assert!(loose.contains("Loose"), "the default area is selectable");
     assert!(
         !loose.contains("Beta one"),
-        "the default area is one lane: {loose}"
+        "the default area is one label: {loose}"
     );
 
     let (_, _, assigned) = get(&app, "/?assignee=builder").await;
@@ -377,7 +377,7 @@ async fn post_tickets_adds_card_in_column_and_refuses_stale_revision_with_notice
     let before = store.revision().expect("the revision reads");
 
     let body = format!(
-        "title=First&status=ready&lane=&expected_revision={before}&project=&show_all=&assignee=&text="
+        "title=First&status=ready&label=&expected_revision={before}&project=&show_all=&assignee=&text="
     );
     let (status, _, page) = send(&app, form_request("/tickets", &body)).await;
     assert_eq!(status, StatusCode::OK, "the add answers the board: {page}");
@@ -399,7 +399,7 @@ async fn post_tickets_adds_card_in_column_and_refuses_stale_revision_with_notice
         .expect("the list reads")
         .len();
     let stale = format!(
-        "title=Second&status=backlog&lane=&expected_revision={before}&project=&show_all=&assignee=&text="
+        "title=Second&status=backlog&label=&expected_revision={before}&project=&show_all=&assignee=&text="
     );
     let (status, _, conflict) = send(&app, form_request("/tickets", &stale)).await;
     assert_eq!(status, StatusCode::OK, "a conflict still answers the board");
@@ -500,7 +500,7 @@ async fn the_change_stream_client_is_the_htmx_two_extension() {
 
 /// A drop writes a status, and its answer redraws the board: the POST carries
 /// the filter bar the board was drawn with, so the partial keeps the human's
-/// project, lane, assignee and search rather than clearing them.
+/// project, label, assignee and search rather than clearing them.
 #[tokio::test]
 async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
     let _serial = ONE_AT_A_TIME.lock().await;
@@ -513,7 +513,7 @@ async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
     let uri = format!("/tickets/{}/status", ticket.id);
 
     let body = format!(
-        "status=in-progress&expected_revision={revision}&project=Beta&show_all=&lane=beta&assignee=&text=one"
+        "status=in-progress&expected_revision={revision}&project=Beta&show_all=&label=beta&assignee=&text=one"
     );
     let (status, _, page) = send(&app, form_request(&uri, &body)).await;
     assert_eq!(status, StatusCode::OK, "the move answers the board: {page}");
@@ -532,7 +532,7 @@ async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
     );
     assert!(
         page.contains("<option value=\"beta\" selected>beta</option>"),
-        "the lane filter survives the drop: {page}"
+        "the label filter survives the drop: {page}"
     );
     assert!(
         page.contains("name=\"text\" value=\"one\""),
@@ -547,6 +547,15 @@ async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
     assert!(
         script.contains(".tickets__bar--board") && script.contains("new FormData("),
         "the drop posts the filter bar it was drawn with"
+    );
+    assert!(
+        script.contains("tandem.noteTabs") && script.contains("data-note-tabs"),
+        "the script carries the note tabs"
+    );
+    let (_, _, css) = get(&app, "/static/app.css").await;
+    assert!(
+        css.contains(".note-tabs__tab[aria-selected=\"true\"]"),
+        "the stylesheet draws the active note tab"
     );
 }
 
@@ -954,6 +963,37 @@ fn vault(store: &Store) -> Bikeshed {
 }
 
 #[tokio::test]
+async fn the_board_and_the_sheet_say_label_and_never_lane() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("label-vocabulary");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let app = router(context(store));
+
+    let (status, _, page) = get(&app, "/").await;
+    assert_eq!(status, StatusCode::OK, "the board answers: {page}");
+    assert!(page.contains("labels-menu"), "the Labels menu is drawn");
+    assert!(page.contains(">Labels</summary>"), "the menu reads Labels");
+    assert!(page.contains(">alpha<"), "the chip carries the label name");
+    assert!(
+        !page.to_lowercase().contains("lane"),
+        "the board has no lane strings"
+    );
+
+    let (status, _, sheet) = send(&app, sheet_get(&format!("/tickets/{}", ticket.id))).await;
+    assert_eq!(status, StatusCode::OK, "the sheet answers: {sheet}");
+    assert!(
+        sheet.contains("data-sheet-label"),
+        "the sheet's select is the label select"
+    );
+    assert!(
+        !sheet.to_lowercase().contains("lane"),
+        "the sheet has no lane strings"
+    );
+}
+
+#[tokio::test]
 async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-render");
@@ -995,7 +1035,7 @@ async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
         "sheet__meta",
         "data-status=\"ready\"",
         "name=\"assignee\"",
-        "name=\"lane\"",
+        "name=\"label\"",
         "Café alpha",
         "sheet__description-field",
         "## Why",
@@ -1156,9 +1196,9 @@ async fn post_ticket_comment_appends_as_human_and_refuses_empty_body() {
 }
 
 #[tokio::test]
-async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choices() {
+async fn post_ticket_label_moves_immediately_and_label_add_and_rename_update_choices() {
     let _serial = ONE_AT_A_TIME.lock().await;
-    let sandbox = Sandbox::new("sheet-lane");
+    let sandbox = Sandbox::new("sheet-label");
     let store = sandbox.store();
     let board = setup_board(&store);
     let ticket = by_title(&board, "Café alpha");
@@ -1169,46 +1209,50 @@ async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choic
     let (status, _, answer) = send(
         &app,
         form_request(
-            &format!("/tickets/{id}/lane"),
-            &format!("lane=shared&expected_revision={revision}"),
+            &format!("/tickets/{id}/label"),
+            &format!("label=shared&expected_revision={revision}"),
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "the lane move answers: {answer}");
+    assert_eq!(status, StatusCode::OK, "the label move answers: {answer}");
     assert_eq!(
-        board.ticket(&id).expect("the ticket reads").lane.as_deref(),
+        board
+            .ticket(&id)
+            .expect("the ticket reads")
+            .label
+            .as_deref(),
         Some("shared"),
-        "the lane moves at once"
+        "the label moves at once"
     );
 
-    let (status, _, answer) = send(&app, form_request("/lanes", "name=gamma&abbr=GAM")).await;
-    assert_eq!(status, StatusCode::OK, "the lane add answers: {answer}");
+    let (status, _, answer) = send(&app, form_request("/labels", "name=gamma&abbr=GAM")).await;
+    assert_eq!(status, StatusCode::OK, "the label add answers: {answer}");
     assert!(
         board
-            .lanes()
-            .expect("the lanes read")
+            .labels()
+            .expect("the labels read")
             .iter()
-            .any(|lane| lane == "gamma"),
-        "the lane is declared"
+            .any(|label| label == "gamma"),
+        "the label is declared"
     );
     assert!(
         answer.contains("value=\"gamma\""),
-        "the board's lane menu carries the new lane: {answer}"
+        "the board's label menu carries the new label: {answer}"
     );
 
     let (status, _, answer) = send(
         &app,
-        form_request("/lanes/gamma/rename", "to=delta&abbr=DEL"),
+        form_request("/labels/gamma/rename", "to=delta&abbr=DEL"),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "the lane rename answers: {answer}");
-    let lanes = board.lanes().expect("the lanes read");
+    assert_eq!(status, StatusCode::OK, "the label rename answers: {answer}");
+    let labels = board.labels().expect("the labels read");
     assert!(
-        lanes.iter().any(|lane| lane == "delta"),
-        "the lane is renamed"
+        labels.iter().any(|label| label == "delta"),
+        "the label is renamed"
     );
     assert!(
-        !lanes.iter().any(|lane| lane == "gamma"),
+        !labels.iter().any(|label| label == "gamma"),
         "the old name is gone"
     );
     assert!(
@@ -1216,11 +1260,11 @@ async fn post_ticket_lane_moves_immediately_and_lane_add_and_rename_update_choic
         "the board redraws the rename: {answer}"
     );
 
-    let (status, _, answer) = send(&app, form_request("/lanes", "name=alpha&abbr=ALP")).await;
+    let (status, _, answer) = send(&app, form_request("/labels", "name=alpha&abbr=ALP")).await;
     assert_eq!(status, StatusCode::OK);
     assert!(
         answer.contains("shell__notice"),
-        "a duplicate lane draws a notice: {answer}"
+        "a duplicate label draws a notice: {answer}"
     );
     assert!(
         answer.contains("already exists"),
@@ -1291,7 +1335,7 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         "the focused tree keeps the project's folder: {focused}"
     );
     assert!(
-        !focused.contains("outside"),
+        !focused.contains("data-path=\"projects/other/outside.md\""),
         "the focused tree drops another project's folder: {focused}"
     );
 }
@@ -1484,6 +1528,69 @@ async fn post_notes_rename_and_delete_manage_a_note_and_the_open_page_follows() 
         body.contains("No note selected"),
         "the deleted page closes: {body}"
     );
+    assert!(
+        body.contains("data-gone=\"projects/tandem/Final.md\""),
+        "the delete names the path for the tab strip: {body}"
+    );
+}
+
+#[tokio::test]
+async fn the_notes_page_carries_the_tab_strip_hooks_and_rename_names_both_paths() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-tabs");
+    let store = sandbox.store();
+    let app = router(context(store));
+
+    send(
+        &app,
+        form_request(
+            "/notes/create",
+            "path=projects/tandem/Draft.md&project=tandem",
+        ),
+    )
+    .await;
+    send(
+        &app,
+        form_request("/notes/create", "path=Other.md&project=tandem"),
+    )
+    .await;
+
+    let (status, _, page) = get(&app, "/notes?path=projects/tandem/Draft.md&project=tandem").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("data-note-tabs"), "the strip mounts: {page}");
+    assert!(
+        page.contains("role=\"tablist\""),
+        "the strip is a tablist: {page}"
+    );
+    assert!(
+        page.contains("data-current=\"projects/tandem/Draft.md\"")
+            && page.contains("data-current-name=\"Draft\""),
+        "the open note's path and name are hooks: {page}"
+    );
+    assert!(
+        page.contains("Other.md") && page.contains("data-notes="),
+        "every note is listed for pruning, whatever the focus: {page}"
+    );
+
+    let (_, _, empty) = get(&app, "/notes?project=tandem").await;
+    assert!(
+        empty.contains("data-note-tabs") && empty.contains("data-current=\"\""),
+        "the strip mounts with no note open: {empty}"
+    );
+
+    let (_, _, renamed) = send(
+        &app,
+        form_request(
+            "/notes/rename",
+            "path=projects/tandem/Draft.md&name=Final&open=Other.md&project=tandem&mode=edit",
+        ),
+    )
+    .await;
+    assert!(
+        renamed.contains("data-from=\"projects/tandem/Draft.md\"")
+            && renamed.contains("data-to=\"projects/tandem/Final.md\""),
+        "a rename of another row still names both paths: {renamed}"
+    );
 }
 
 #[tokio::test]
@@ -1628,7 +1735,7 @@ async fn post_notes_create_create_folder_and_move_update_vault_and_refuse_invali
 
 /// A sheet opens over the board the human was looking at: the card link
 /// carries its filters, and the sheet draws that board behind itself with
-/// them, so the project, lane, assignee and search survive the click.
+/// them, so the project, label, assignee and search survive the click.
 #[tokio::test]
 async fn get_ticket_sheet_keeps_the_board_filters_behind_it() {
     let _serial = ONE_AT_A_TIME.lock().await;
@@ -1641,7 +1748,7 @@ async fn get_ticket_sheet_keeps_the_board_filters_behind_it() {
     let (status, _, body) = send(
         &app,
         sheet_get(&format!(
-            "/tickets/{}?project=Alpha&show_all=&lane=alpha&assignee=builder&text=Caf",
+            "/tickets/{}?project=Alpha&show_all=&label=alpha&assignee=builder&text=Caf",
             ticket.id
         )),
     )
@@ -1682,7 +1789,7 @@ async fn a_sheet_write_keeps_the_filters_its_form_carried() {
     let app = router(context(store));
 
     let body = format!(
-        "title=Caf%C3%A9+alpha&status={}&assignee=&description=A+line&expected_revision={revision}&board_project=Alpha&board_show_all=&board_lane=alpha&board_assignee=builder&board_text=Caf",
+        "title=Caf%C3%A9+alpha&status={}&assignee=&description=A+line&expected_revision={revision}&board_project=Alpha&board_show_all=&board_label=alpha&board_assignee=builder&board_text=Caf",
         ticket.status.as_str()
     );
     let (status, _, page) = send(
@@ -1721,7 +1828,7 @@ async fn a_sheet_write_reads_the_board_filter_from_its_own_fields_not_the_ticket
     // The browser encodes a form in document order: the filter's hidden fields
     // first, then the ticket's title, revision, status and assignee.
     let body = format!(
-        "board_project=&board_show_all=&board_lane=&board_assignee=&board_text=\
+        "board_project=&board_show_all=&board_label=&board_assignee=&board_text=\
          &title=Café alpha&expected_revision={revision}&status=backlog&assignee=builder"
     );
     let (status, _, page) = send(&app, form_request(&format!("/tickets/{id}"), &body)).await;
@@ -1736,7 +1843,7 @@ async fn a_sheet_write_reads_the_board_filter_from_its_own_fields_not_the_ticket
         "the save still sets the ticket's assignee"
     );
     assert!(
-        page.contains("href=\"/board?project=&#38;show_all=&#38;lane=&#38;assignee=&#38;text=\""),
+        page.contains("href=\"/board?project=&#38;show_all=&#38;label=&#38;assignee=&#38;text=\""),
         "the board behind keeps the filter the form carried, empty: {page}"
     );
     assert!(
@@ -1744,23 +1851,27 @@ async fn a_sheet_write_reads_the_board_filter_from_its_own_fields_not_the_ticket
         "the ticket's assignee is not the board's filter: {page}"
     );
 
-    // The lane form's way round: its select is the ticket's lane, its hidden
+    // The label form's way round: its select is the ticket's label, its hidden
     // field the board's filter.
     let revision = board.store().revision().expect("the revision reads");
     let body = format!(
-        "expected_revision={revision}&board_project=&board_show_all=&board_lane=\
-         &board_assignee=&board_text=&lane=shared"
+        "expected_revision={revision}&board_project=&board_show_all=&board_label=\
+         &board_assignee=&board_text=&label=shared"
     );
-    let (status, _, page) = send(&app, form_request(&format!("/tickets/{id}/lane"), &body)).await;
-    assert_eq!(status, StatusCode::OK, "the lane move answers: {page}");
+    let (status, _, page) = send(&app, form_request(&format!("/tickets/{id}/label"), &body)).await;
+    assert_eq!(status, StatusCode::OK, "the label move answers: {page}");
     assert_eq!(
-        board.ticket(&id).expect("the ticket reads").lane.as_deref(),
+        board
+            .ticket(&id)
+            .expect("the ticket reads")
+            .label
+            .as_deref(),
         Some("shared"),
-        "the lane still moves"
+        "the label still moves"
     );
     assert!(
-        page.contains("href=\"/board?project=&#38;show_all=&#38;lane=&#38;assignee=&#38;text=\""),
-        "the moved lane is not the board's lane filter: {page}"
+        page.contains("href=\"/board?project=&#38;show_all=&#38;label=&#38;assignee=&#38;text=\""),
+        "the moved label is not the board's label filter: {page}"
     );
 }
 
@@ -2036,7 +2147,7 @@ async fn a_ticket_add_logs_identifiers_and_never_the_title() {
     let _guard = captured.install();
 
     let body = format!(
-        "title=SecretTitleWords&status=ready&lane=&expected_revision={before}&project=&show_all=&assignee=&text="
+        "title=SecretTitleWords&status=ready&label=&expected_revision={before}&project=&show_all=&assignee=&text="
     );
     let (status, _, _) = send(&app, form_request("/tickets", &body)).await;
     assert_eq!(status, StatusCode::OK);
@@ -2097,7 +2208,7 @@ async fn a_stale_revision_logs_a_warning_with_the_refusal() {
     let _guard = captured.install();
 
     let body = format!(
-        "title=Late&status=backlog&lane=&expected_revision={stale}&project=&show_all=&assignee=&text="
+        "title=Late&status=backlog&label=&expected_revision={stale}&project=&show_all=&assignee=&text="
     );
     let (status, _, _) = send(&app, form_request("/tickets", &body)).await;
     assert_eq!(status, StatusCode::OK, "a conflict still answers the board");
@@ -2165,11 +2276,11 @@ async fn a_control_character_in_a_user_value_stays_on_one_escaped_line() {
     let captured = Captured::default();
     let _guard = captured.install();
 
-    // A lane name carrying a newline and an ESC: the log must escape both.
+    // A label name carrying a newline and an ESC: the log must escape both.
     let (status, _, _) = send(
         &app,
         form_request(
-            "/lanes",
+            "/labels",
             "name=a%0Ab%1B%5B31m&abbr=&project=&show_all=&assignee=&text=",
         ),
     )
@@ -2181,8 +2292,8 @@ async fn a_control_character_in_a_user_value_stays_on_one_escaped_line() {
         "no raw ESC reaches the log: {text:?}"
     );
     assert!(
-        text.contains(r#"lane="a\nb\u{1b}[31m""#),
-        "the lane field carries the escaped name on its line: {text:?}"
+        text.contains(r#"label="a\nb\u{1b}[31m""#),
+        "the label field carries the escaped name on its line: {text:?}"
     );
     assert_every_line_is_a_timestamped_event(&text);
 }
@@ -2260,7 +2371,7 @@ async fn a_note_save_logs_its_path_at_info_and_never_the_body() {
 #[tokio::test]
 #[cfg_attr(
     windows,
-    ignore = "Windows forbids a newline or ESC in a file name; the lane-name escape test covers the escape on every platform"
+    ignore = "Windows forbids a newline or ESC in a file name; the label-name escape test covers the escape on every platform"
 )]
 async fn a_note_path_with_control_characters_stays_on_one_escaped_line() {
     let _serial = ONE_AT_A_TIME.lock().await;
@@ -2317,7 +2428,7 @@ async fn the_environment_is_never_logged() {
     let (status, _, _) = get(&app, "/board").await;
     assert_eq!(status, StatusCode::OK);
     let body = format!(
-        "title=EnvProbe&status=ready&lane=&expected_revision={before}&project=&show_all=&assignee=&text="
+        "title=EnvProbe&status=ready&label=&expected_revision={before}&project=&show_all=&assignee=&text="
     );
     let (status, _, _) = send(&app, form_request("/tickets", &body)).await;
     assert_eq!(status, StatusCode::OK);

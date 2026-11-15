@@ -233,6 +233,50 @@ fn tools_list_names_the_28_tools_with_object_schemas() {
 }
 
 #[test]
+fn the_label_tools_replace_the_lane_tools_and_the_label_argument_replaces_lane() {
+    let sandbox = Sandbox::new("mcp-label-tools");
+    let store = sandbox.store();
+
+    let listed = call(&store, &request(json!(1), "tools/list", json!({}))).expect("tools answer");
+    let tools = listed["result"]["tools"]
+        .as_array()
+        .expect("tools is an array");
+    let names: Vec<&str> = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap_or(""))
+        .collect();
+    for wanted in [
+        "label_list",
+        "label_add",
+        "label_rename",
+        "label_delete",
+        "label_move",
+    ] {
+        assert!(names.contains(&wanted), "{wanted} is served: {names:?}");
+    }
+    assert!(
+        names.iter().all(|name| !name.starts_with("lane_")),
+        "no lane_* tool remains: {names:?}"
+    );
+    for tool in tools {
+        let text = tool.to_string().to_lowercase();
+        assert!(
+            !text.contains("lane"),
+            "no tool name, description or argument says lane: {tool}"
+        );
+    }
+    for name in ["ticket_add", "ticket_list", "ticket_move"] {
+        let tool = tools
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap_or_else(|| panic!("{name} is served"));
+        let properties = &tool["inputSchema"]["properties"];
+        assert!(properties.get("label").is_some(), "{name} takes label");
+        assert!(properties.get("lane").is_none(), "{name} has no lane");
+    }
+}
+
+#[test]
 fn tools_call_files_reads_sets_and_completes_a_ticket() {
     let sandbox = Sandbox::new("mcp-ticket-loop");
     let store = sandbox.store();

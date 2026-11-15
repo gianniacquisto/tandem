@@ -101,11 +101,11 @@ methods! {
     TicketArchive: "ticket.archive", TicketArchiveParams, "ticket archive";
     TicketCommentList: "ticket.comment.list", TicketIdParams, "ticket comment list";
     TicketCommentAdd: "ticket.comment.add", CommentAddParams, "ticket comment add";
-    LaneList: "lane.list", EmptyParams, "lane list";
-    LaneAdd: "lane.add", LaneAddParams, "lane add";
-    LaneRename: "lane.rename", LaneRenameParams, "lane rename";
-    LaneDelete: "lane.delete", LaneDeleteParams, "lane delete";
-    LaneMove: "lane.move", LaneMoveParams, "lane move";
+    LabelList: "label.list", EmptyParams, "label list";
+    LabelAdd: "label.add", LabelAddParams, "label add";
+    LabelRename: "label.rename", LabelRenameParams, "label rename";
+    LabelDelete: "label.delete", LabelDeleteParams, "label delete";
+    LabelMove: "label.move", LabelMoveParams, "label move";
     ProjectList: "project.list", EmptyParams, "project list";
     ProjectAdd: "project.add", ProjectAddParams, "project add";
     ProjectRename: "project.rename", ProjectRenameParams, "project rename";
@@ -176,7 +176,7 @@ pub struct TicketListParams {
     pub text: Option<String>,
     pub status: Option<String>,
     pub assignee: Option<String>,
-    pub lane: Option<String>,
+    pub label: Option<String>,
     pub archived: bool,
     pub blocked: bool,
 }
@@ -195,7 +195,7 @@ pub struct TicketAddParams {
     pub title: Option<String>,
     pub status: Option<String>,
     pub assignee: Option<String>,
-    pub lane: Option<String>,
+    pub label: Option<String>,
     pub origin: Option<String>,
     pub description: Option<String>,
 }
@@ -211,12 +211,12 @@ pub struct TicketSetParams {
     pub description: Option<String>,
 }
 
-/// `ticket.move`: to the end of the lane when `index` is absent.
+/// `ticket.move`: to the end of the label when `index` is absent.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TicketMoveParams {
     pub id: Option<String>,
-    pub lane: Option<String>,
+    pub label: Option<String>,
     pub index: Option<i64>,
 }
 
@@ -252,39 +252,39 @@ pub struct CommentAddParams {
     pub body: Option<String>,
 }
 
-/// `lane.add`: the name, the ref key it issues, and the parent project.
-/// An absent project creates or reuses the project named for the lane.
+/// `label.add`: the name, the ref key it issues, and the parent project.
+/// An absent project creates or reuses the project named for the label.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct LaneAddParams {
+pub struct LabelAddParams {
     pub name: Option<String>,
     pub abbr: Option<String>,
     pub project: Option<String>,
 }
 
-/// `lane.rename`: from one name to another, optionally re-keying the refs and
-/// re-parenting the lane. An absent project keeps the lane's parent.
+/// `label.rename`: from one name to another, optionally re-keying the refs and
+/// re-parenting the label. An absent project keeps the label's parent.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct LaneRenameParams {
+pub struct LabelRenameParams {
     pub from: Option<String>,
     pub to: Option<String>,
     pub abbr: Option<String>,
     pub project: Option<String>,
 }
 
-/// `lane.delete`: the name, and nothing else.
+/// `label.delete`: the name, and nothing else.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct LaneDeleteParams {
+pub struct LabelDeleteParams {
     pub name: Option<String>,
 }
 
-/// `lane.move`: reorder the declared lanes. The index is 0-based in the lane
+/// `label.move`: reorder the declared labels. The index is 0-based in the label
 /// list and is clamped, so an absent index appends.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct LaneMoveParams {
+pub struct LabelMoveParams {
     pub name: Option<String>,
     pub index: Option<i64>,
 }
@@ -296,7 +296,7 @@ pub struct ProjectAddParams {
     pub name: Option<String>,
 }
 
-/// `project.rename`: from one name to another, moving its lanes with it.
+/// `project.rename`: from one name to another, moving its labels with it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ProjectRenameParams {
@@ -304,7 +304,7 @@ pub struct ProjectRenameParams {
     pub to: Option<String>,
 }
 
-/// `project.delete`: the name, and nothing else. Refused while lanes belong.
+/// `project.delete`: the name, and nothing else. Refused while labels belong.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ProjectDeleteParams {
@@ -363,8 +363,8 @@ impl TicketListParams {
                 string("an exact name, self for your own, or \"\" for the unowned"),
             ),
             (
-                "lane",
-                string("a cycle lane name, or \"\" for the default area"),
+                "label",
+                string("a label name, or \"\" for the default area"),
             ),
             (
                 "archived",
@@ -383,7 +383,7 @@ impl TicketIdParams {
     pub fn schema() -> serde_json::Value {
         object_schema(&[(
             "id",
-            string("the ticket's UUID or its ref (the lane key and number, TAN-42)"),
+            string("the ticket's UUID or its ref (the label key and number, TAN-42)"),
         )])
     }
 }
@@ -431,7 +431,7 @@ impl TicketAddParams {
                 "assignee",
                 string("a name, self to claim it, or human for the human"),
             ),
-            ("lane", string("the cycle lane; it must exist")),
+            ("label", string("the label; it must exist")),
             (
                 "origin",
                 string("who filed it, self for this agent; written at add, never changed"),
@@ -476,10 +476,10 @@ impl TicketMoveParams {
         object_schema(&[
             ("id", string("the ticket's UUID or its ref")),
             (
-                "lane",
-                string("the cycle lane, or \"\" for the default area; it must exist"),
+                "label",
+                string("the label, or \"\" for the default area; it must exist"),
             ),
-            ("index", integer("0-based within the lane; omit to append")),
+            ("index", integer("0-based within the label; omit to append")),
         ])
     }
 }
@@ -529,11 +529,11 @@ impl CommentAddParams {
     }
 }
 
-impl LaneAddParams {
-    /// The tool input for `lane.add`.
+impl LabelAddParams {
+    /// The tool input for `label.add`.
     pub fn schema() -> serde_json::Value {
         object_schema(&[
-            ("name", string("the lane name; required")),
+            ("name", string("the label name; required")),
             (
                 "abbr",
                 string("the ref key it issues; omit for the first three alphanumerics"),
@@ -541,18 +541,18 @@ impl LaneAddParams {
             (
                 "project",
                 string(
-                    "the parent project; omit to create or reuse the project named for the lane",
+                    "the parent project; omit to create or reuse the project named for the label",
                 ),
             ),
         ])
     }
 }
 
-impl LaneRenameParams {
-    /// The tool input for `lane.rename`.
+impl LabelRenameParams {
+    /// The tool input for `label.rename`.
     pub fn schema() -> serde_json::Value {
         object_schema(&[
-            ("from", string("the lane's current name")),
+            ("from", string("the label's current name")),
             ("to", string("the new name")),
             (
                 "abbr",
@@ -560,26 +560,29 @@ impl LaneRenameParams {
             ),
             (
                 "project",
-                string("the new parent project; omit to keep the lane's project"),
+                string("the new parent project; omit to keep the label's project"),
             ),
         ])
     }
 }
 
-impl LaneDeleteParams {
-    /// The tool input for `lane.delete`: members fall back to the default
+impl LabelDeleteParams {
+    /// The tool input for `label.delete`: members fall back to the default
     /// area, never deleted.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[("name", string("the lane name"))])
+        object_schema(&[("name", string("the label name"))])
     }
 }
 
-impl LaneMoveParams {
-    /// The tool input for `lane.move`: reorder the declared lanes.
+impl LabelMoveParams {
+    /// The tool input for `label.move`: reorder the declared labels.
     pub fn schema() -> serde_json::Value {
         object_schema(&[
-            ("name", string("the lane name")),
-            ("index", integer("0-based in the lane list; omit to append")),
+            ("name", string("the label name")),
+            (
+                "index",
+                integer("0-based in the label list; omit to append"),
+            ),
         ])
     }
 }
@@ -592,7 +595,7 @@ impl ProjectAddParams {
 }
 
 impl ProjectRenameParams {
-    /// The tool input for `project.rename`: lanes move with the project.
+    /// The tool input for `project.rename`: labels move with the project.
     pub fn schema() -> serde_json::Value {
         object_schema(&[
             ("from", string("the project's current name")),
@@ -602,7 +605,7 @@ impl ProjectRenameParams {
 }
 
 impl ProjectDeleteParams {
-    /// The tool input for `project.delete`: refused while lanes belong.
+    /// The tool input for `project.delete`: refused while labels belong.
     pub fn schema() -> serde_json::Value {
         object_schema(&[("name", string("the project name"))])
     }
@@ -651,8 +654,8 @@ pub enum Reply {
     Ticket(TicketReply),
     Comment(CommentReply),
     CommentList(CommentListReply),
-    LaneList(LaneListReply),
-    LaneDeletion(LaneDeletionReply),
+    LabelList(LabelListReply),
+    LabelDeletion(LabelDeletionReply),
     ProjectList(ProjectListReply),
     Archived(ArchivedReply),
     NotePath(NotePathView),
@@ -766,37 +769,37 @@ pub struct CommentListReply {
     pub comments: Vec<CommentView>,
 }
 
-/// `lane.list`, `lane.add`, `lane.rename`: every lane, render order.
+/// `label.list`, `label.add`, `label.rename`: every label, render order.
 ///
-/// The `revision` is the number the lanes are a snapshot of: the write's own for
-/// a mutation, the read transaction's for `lane.list`.
+/// The `revision` is the number the labels are a snapshot of: the write's own for
+/// a mutation, the read transaction's for `label.list`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LaneListReply {
+pub struct LabelListReply {
     pub revision: i64,
-    pub lanes: Vec<String>,
+    pub labels: Vec<String>,
 }
 
-/// `lane.delete`: the lanes left, and how many tickets moved to the default.
+/// `label.delete`: the labels left, and how many tickets moved to the default.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LaneDeletionReply {
+pub struct LabelDeletionReply {
     pub revision: i64,
-    pub lanes: Vec<String>,
+    pub labels: Vec<String>,
     pub moved: usize,
 }
 
-/// One project and its lanes, in render order: the answer to `project list`
+/// One project and its labels, in render order: the answer to `project list`
 /// and every project write's receipt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectEntry {
     pub name: String,
-    pub lanes: Vec<String>,
+    pub labels: Vec<String>,
 }
 
 /// `project.list`, `project.add`, `project.rename`, `project.delete`: every
-/// project in render order, each with its lanes in lane order.
+/// project in render order, each with its labels in label order.
 ///
 /// The `revision` is the number the projects are a snapshot of: the write's
 /// own for a mutation, the read transaction's for `project.list`.

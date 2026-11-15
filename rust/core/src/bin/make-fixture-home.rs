@@ -20,13 +20,13 @@ use std::process::ExitCode;
 
 use rusqlite::Connection;
 use serde::Deserialize;
-use tandem_core::store::{Actor, Home, NewDependency, NewLane, NewProject, NewTicket, Store};
+use tandem_core::store::{Actor, Home, NewDependency, NewLabel, NewProject, NewTicket, Store};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Seed {
     schema: Schema,
-    lanes: Vec<Lane>,
+    labels: Vec<Label>,
     tickets: Vec<Ticket>,
     /// The dependency edges, as `ticket block --id <ticket> --on <on>` writes
     /// them. Absent on a seed that carries no edges.
@@ -51,7 +51,7 @@ struct Schema {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Lane {
+struct Label {
     name: String,
     key: String,
     last_number: i64,
@@ -65,7 +65,7 @@ struct Ticket {
     title: String,
     status: String,
     archived: bool,
-    lane: Option<String>,
+    label: Option<String>,
     number: Option<i64>,
     origin: String,
     assignee: Option<String>,
@@ -109,23 +109,23 @@ fn write(seed_path: &Path, target: &Path) -> Result<(), String> {
     // so the file is exactly what this build writes for a fresh home.
     store
         .write(&Actor::Human, |write| {
-            for lane in &seed.lanes {
-                write.insert_lane(NewLane {
-                    name: &lane.name,
-                    key: &lane.key,
-                    last_number: lane.last_number,
-                    position: lane.position,
-                    project: &lane.name,
+            for label in &seed.labels {
+                write.insert_label(NewLabel {
+                    name: &label.name,
+                    key: &label.key,
+                    last_number: label.last_number,
+                    position: label.position,
+                    project: &label.name,
                 })?;
             }
             {
                 use std::collections::HashSet;
                 let mut seen = HashSet::new();
                 let mut position: i64 = 0;
-                for lane in &seed.lanes {
-                    if seen.insert(lane.name.clone()) {
+                for label in &seed.labels {
+                    if seen.insert(label.name.clone()) {
                         write.insert_project(NewProject {
-                            name: &lane.name,
+                            name: &label.name,
                             position,
                         })?;
                         position += 1;
@@ -139,7 +139,7 @@ fn write(seed_path: &Path, target: &Path) -> Result<(), String> {
                     description: None,
                     status: &ticket.status,
                     archived: ticket.archived,
-                    lane: ticket.lane.as_deref(),
+                    label: ticket.label.as_deref(),
                     number: ticket.number,
                     origin: &ticket.origin,
                     assignee: ticket.assignee.as_deref(),

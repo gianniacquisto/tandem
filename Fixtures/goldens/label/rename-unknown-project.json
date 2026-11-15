@@ -1,15 +1,17 @@
 {
   "argv": [
-    "lane",
+    "label",
     "rename",
     "--from",
     "Cycle",
     "--to",
-    "Loop"
+    "Loop",
+    "--project",
+    "Nope"
   ],
   "exit": 1,
   "stderr": [
-    "Unknown cycle lane \"Cycle\". Create it with `lane add --name \"Cycle\"`, or list lanes with `lane list`."
+    "Unknown project \"Nope\". The known projects are: Cycle, Alpha."
   ],
   "stdin": "",
   "stdout": [],

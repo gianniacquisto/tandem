@@ -1,23 +1,20 @@
 {
   "argv": [
-    "project",
+    "label",
     "rename",
     "--from",
     "Cycle",
     "--to",
-    "Beta"
+    "Loop",
+    "--abbr",
+    "LOP"
   ],
   "exit": 0,
   "stderr": [],
   "stdin": "",
   "stdout": {
-    "projects": [
-      {
-        "name": "Beta",
-        "lanes": [
-          "Cycle"
-        ]
-      }
+    "labels": [
+      "Loop"
     ]
   },
   "stdoutKind": "json"

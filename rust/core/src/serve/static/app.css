@@ -141,7 +141,7 @@ body {
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  padding: var(--space-lane) 0;
+  padding: var(--space-label) 0;
 }
 
 .usage__coverage {
@@ -156,7 +156,7 @@ body {
 }
 
 .usage__arithmetic {
-  margin: 0 0 var(--space-lane);
+  margin: 0 0 var(--space-label);
   color: var(--ink-dim);
   font-size: 11.5px;
 }
@@ -169,7 +169,7 @@ body {
 .usage__charts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: var(--space-lane);
+  gap: var(--space-label);
 }
 
 .usage__chart {
@@ -288,7 +288,7 @@ html[data-theme="dark"] .usage {
 }
 
 .usage__graph {
-  margin-bottom: var(--space-lane);
+  margin-bottom: var(--space-label);
 }
 
 .usage__legend {
@@ -346,7 +346,7 @@ html[data-theme="dark"] .usage {
   max-width: 480px;
   height: var(--space-control);
   overflow: hidden;
-  margin-bottom: var(--space-lane);
+  margin-bottom: var(--space-label);
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-control);
   background: var(--paper);
@@ -398,9 +398,9 @@ html[data-theme="dark"] .usage {
 .usage__controls {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-lane);
+  gap: var(--space-label);
   align-items: center;
-  margin-bottom: var(--space-lane);
+  margin-bottom: var(--space-label);
 }
 
 .usage__picker {
@@ -689,7 +689,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 
 .settings__fact {
   display: flex;
-  gap: var(--space-lane);
+  gap: var(--space-label);
   padding: 3px 0;
 }
 
@@ -720,7 +720,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px var(--space-lane);
+  gap: 4px var(--space-label);
   padding: 6px 0;
   border-bottom: var(--hairline) solid var(--sand);
 }
@@ -803,7 +803,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 
 .settings__path {
   display: flex;
-  gap: var(--space-lane);
+  gap: var(--space-label);
   padding: 3px 0;
 }
 
@@ -823,7 +823,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
  * the input the theme's card tokens, so both appearances follow. */
 .settings__add {
   display: flex;
-  gap: var(--space-lane);
+  gap: var(--space-label);
   margin: 0 0 12px;
 }
 
@@ -849,7 +849,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 .shell__notice {
   display: flex;
   align-items: center;
-  gap: var(--space-lane);
+  gap: var(--space-label);
   max-width: 540px;
   margin: 0 0 var(--space-gutter);
   padding: 10px 14px;
@@ -879,7 +879,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px var(--space-lane);
+  gap: 8px var(--space-label);
   margin-top: 10px;
   padding-bottom: 12px;
   border-bottom: var(--hairline) solid var(--sand);
@@ -900,14 +900,14 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   color: var(--ink);
 }
 
-/* The project focus: the draw's own lane picker and its show-all escape. The
+/* The project focus: the draw's own label picker and its show-all escape. The
  * picker wears the faces' filter sizing; the escape is a pressed control while
- * the face draws every lane. */
+ * the face draws every label. */
 .focus {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: var(--space-lane);
+  margin-top: var(--space-label);
 }
 
 .focus__label {
@@ -1010,7 +1010,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   grid-auto-columns: minmax(190px, 1fr);
   align-items: stretch;
   gap: 10px;
-  padding-bottom: var(--space-lane);
+  padding-bottom: var(--space-label);
   overflow-x: auto;
 }
 
@@ -1070,10 +1070,10 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   list-style: none;
 }
 
-/* One card: the lane chip, the title, and the ref/assignee/blocked footer. The
+/* One card: the label chip, the title, and the ref/assignee/blocked footer. The
  * column is the status, so the card carries no completion checkbox, no status
- * pill and no strikethrough. Its tone is the lane name hashed over the palette
- * tokens, so no colour is stored and the same lane keeps its colour. */
+ * pill and no strikethrough. Its tone is the label name hashed over the palette
+ * tokens, so no colour is stored and the same label keeps its colour. */
 .ticket-card {
   display: flex;
   flex-direction: column;
@@ -1110,7 +1110,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   white-space: nowrap;
 }
 
-.ticket-card__lane {
+.ticket-card__label {
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
@@ -1125,39 +1125,39 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   cursor: pointer;
 }
 
-.ticket-card__lane-dot {
+.ticket-card__label-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--lane-tone, var(--accent));
+  background: var(--label-tone, var(--accent));
 }
 
-.ticket-card__lane[data-tone="moss"] {
-  --lane-tone: var(--tone-moss);
+.ticket-card__label[data-tone="moss"] {
+  --label-tone: var(--tone-moss);
 }
 
-.ticket-card__lane[data-tone="ember"] {
-  --lane-tone: var(--tone-ember);
+.ticket-card__label[data-tone="ember"] {
+  --label-tone: var(--tone-ember);
 }
 
-.ticket-card__lane[data-tone="accent"] {
-  --lane-tone: var(--tone-accent);
+.ticket-card__label[data-tone="accent"] {
+  --label-tone: var(--tone-accent);
 }
 
-.ticket-card__lane[data-tone="sun"] {
-  --lane-tone: var(--tone-sun);
+.ticket-card__label[data-tone="sun"] {
+  --label-tone: var(--tone-sun);
 }
 
-.ticket-card__lane[data-tone="skin"] {
-  --lane-tone: var(--tone-skin);
+.ticket-card__label[data-tone="skin"] {
+  --label-tone: var(--tone-skin);
 }
 
-.ticket-card__lane[data-tone="hill"] {
-  --lane-tone: var(--tone-hill);
+.ticket-card__label[data-tone="hill"] {
+  --label-tone: var(--tone-hill);
 }
 
-.ticket-card__lane[data-tone="sky"] {
-  --lane-tone: var(--tone-sky);
+.ticket-card__label[data-tone="sky"] {
+  --label-tone: var(--tone-sky);
 }
 
 .ticket-card__title {
@@ -1237,7 +1237,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 
 .empty__action {
   height: var(--space-control);
-  margin-top: var(--space-lane);
+  margin-top: var(--space-label);
   padding: 0 12px;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-control);
@@ -1255,8 +1255,8 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-lane);
-  margin: 0 0 var(--space-lane);
+  gap: var(--space-label);
+  margin: 0 0 var(--space-label);
   padding: 10px 14px;
   border: var(--hairline) solid var(--ember);
   border-radius: var(--radius-control);
@@ -1322,7 +1322,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-lane);
+  gap: var(--space-label);
   box-sizing: border-box;
   width: 100%;
   max-width: 740px;
@@ -1725,7 +1725,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 }
 
 .conflict {
-  margin: 0 0 var(--space-lane);
+  margin: 0 0 var(--space-label);
   padding: 12px 14px;
   border: var(--hairline) solid var(--ember);
   border-radius: var(--radius-card);
@@ -1751,7 +1751,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 .conflict__bodies {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--space-lane);
+  gap: var(--space-label);
 }
 
 .conflict__side-title {
@@ -1873,7 +1873,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 .sheet__body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lane);
+  gap: var(--space-label);
   overflow: auto;
   padding: var(--space-gutter);
 }
@@ -1886,7 +1886,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: var(--space-lane);
+  gap: var(--space-label);
   margin: calc(-1 * var(--space-gutter)) calc(-1 * var(--space-gutter)) 0;
   padding: var(--space-gutter) var(--space-gutter) 12px;
   border-bottom: var(--hairline) solid var(--sand);
@@ -1956,7 +1956,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: var(--space-lane) var(--space-gutter) 0;
+  margin: var(--space-label) var(--space-gutter) 0;
   padding: 8px 12px;
   border: var(--hairline) solid var(--ember);
   border-radius: var(--radius-control);
@@ -1978,7 +1978,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 .sheet__title-row {
   display: flex;
   align-items: center;
-  gap: var(--space-lane);
+  gap: var(--space-label);
 }
 
 .sheet__title {
@@ -1995,7 +1995,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 }
 
 /* The three facts a human asks of a card, one row under the title. It rides
- * inside the sticky band, so status, assignee and lane stay in view while the
+ * inside the sticky band, so status, assignee and label stay in view while the
  * description scrolls. */
 .sheet__meta {
   display: flex;
@@ -2082,7 +2082,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 .sheet__details-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lane);
+  gap: var(--space-label);
   margin-top: 8px;
 }
 
@@ -2100,7 +2100,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 }
 
 .sheet__toggle,
-.sheet__lane-rename {
+.sheet__label-rename {
   margin-left: auto;
   border: none;
   background: none;
@@ -2111,7 +2111,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 }
 
 .sheet__toggle:hover,
-.sheet__lane-rename:hover {
+.sheet__label-rename:hover {
   color: var(--ink);
 }
 
@@ -2242,7 +2242,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   cursor: default;
 }
 
-.sheet__lane-rows {
+.sheet__label-rows {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -2251,18 +2251,18 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   list-style: none;
 }
 
-.sheet__lane-row {
+.sheet__label-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.sheet__lane-name {
+.sheet__label-name {
   flex: 1 1 auto;
   font-weight: 500;
 }
 
-.sheet__lane-form {
+.sheet__label-form {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2944,7 +2944,7 @@ body {
   font-size: 12px;
 }
 
-.ticket-card__lane {
+.ticket-card__label {
   align-self: auto;
   padding: 0;
   background: transparent;
@@ -2952,7 +2952,7 @@ body {
   font-size: 12px;
 }
 
-.ticket-card__lane-dot {
+.ticket-card__label-dot {
   width: 8px;
   height: 8px;
 }
@@ -3254,7 +3254,7 @@ body {
 
 .sheet__meta-field > .sheet__select,
 .sheet__meta-field > .sheet__status-row,
-.sheet__meta-field > .sheet__lane-move {
+.sheet__meta-field > .sheet__label-move {
   margin-left: -8px;
 }
 
@@ -3335,7 +3335,7 @@ body {
   margin-bottom: 8px;
 }
 
-/* Lanes are the board's: a menu beside Filter, not a section of a ticket. */
+/* Labels are the board's: a menu beside Filter, not a section of a ticket. */
 .tickets__barwrap {
   display: flex;
   flex-wrap: wrap;
@@ -3348,20 +3348,20 @@ body {
   margin: 0;
 }
 
-.lanes-menu .menu__panel {
+.labels-menu .menu__panel {
   right: auto;
   left: 0;
   min-width: 300px;
   gap: 6px;
 }
 
-.lane-form {
+.label-form {
   display: flex;
   gap: 6px;
 }
 
-.lane-form__name,
-.lane-form__key {
+.label-form__name,
+.label-form__key {
   box-sizing: border-box;
   height: 28px;
   padding: 0 8px;
@@ -3373,16 +3373,16 @@ body {
   font-size: 13px;
 }
 
-.lane-form__name {
+.label-form__name {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.lane-form__key {
+.label-form__key {
   flex: 0 0 56px;
 }
 
-.lane-form__save {
+.label-form__save {
   height: 28px;
   padding: 0 12px;
   border: var(--hairline) solid var(--line);
@@ -3394,12 +3394,12 @@ body {
   cursor: pointer;
 }
 
-.lanes-menu .menu__panel {
+.labels-menu .menu__panel {
   max-height: min(70vh, 520px);
   overflow-y: auto;
 }
 
-.lane-form {
+.label-form {
   flex: none;
 }
 
@@ -4024,4 +4024,103 @@ body {
  * literal newline. */
 .lp__line {
   display: inline;
+}
+
+/* Tabs for the open notes: one strip above the breadcrumb, scrolling sideways. */
+.note-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex: none;
+  border-bottom: var(--hairline) solid var(--sand);
+  background: var(--parchment);
+}
+
+.note-tabs[hidden] {
+  display: none;
+}
+
+.bikeshed__document:has(.note-tabs:not([hidden])) .bikeshed__breadcrumb {
+  top: 36px;
+}
+
+.note-tabs__list {
+  display: flex;
+  align-items: stretch;
+  height: 36px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.note-tabs__item {
+  display: flex;
+  flex: none;
+  align-items: center;
+  max-width: 220px;
+  border-right: var(--hairline) solid var(--sand);
+}
+
+.note-tabs__tab {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-chip);
+  min-width: 0;
+  padding: 0 4px 0 var(--space-label);
+  color: var(--ink-dim);
+  font-size: 13px;
+  line-height: 36px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.note-tabs__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-tabs__folder {
+  flex: none;
+  color: var(--shadow);
+  font-size: 11.5px;
+}
+
+.note-tabs__item:hover {
+  background: var(--sand);
+}
+
+.note-tabs__item:has(.note-tabs__tab[aria-selected="true"]) {
+  box-shadow: inset 0 -2px 0 var(--accent);
+  background: var(--paper);
+}
+
+.note-tabs__tab[aria-selected="true"] {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.note-tabs__tab:focus-visible,
+.note-tabs__close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.note-tabs__close {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-right: var(--space-chip);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-checkbox);
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 15px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.note-tabs__close:hover {
+  background: var(--line);
+  color: var(--ink);
 }

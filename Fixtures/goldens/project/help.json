@@ -7,7 +7,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli project \u2014 the project lifecycle: a lane's parent.",
+    "tandem-cli project \u2014 the project lifecycle: a label's parent.",
     "",
     "Usage:",
     "  tandem-cli project list",

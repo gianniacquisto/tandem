@@ -10,13 +10,13 @@
     "projects": [
       {
         "name": "Cycle",
-        "lanes": [
+        "labels": [
           "Cycle"
         ]
       },
       {
         "name": "Port",
-        "lanes": [
+        "labels": [
           "Port"
         ]
       }
