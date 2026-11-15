@@ -88,6 +88,16 @@ struct NotesView {
     error: Option<String>,
     conflict: Option<ConflictView>,
     focus_url: String,
+    /// The open note's path and name, for the tab strip; empty when no note is open.
+    current_path: String,
+    current_name: String,
+    /// Every note path in the vault, as JSON, so the strip can drop a stored
+    /// tab whose note is gone without asking the focus-narrowed tree.
+    all_notes: String,
+    /// A rename or delete this response answers, so the strip can follow it.
+    tab_from: String,
+    tab_to: String,
+    tab_gone: String,
 }
 
 /// The notes view's own URL: the focus, the show-all escape and one note.
@@ -133,6 +143,16 @@ fn focus_nodes(nodes: Vec<BikeshedNode>, active: Option<&str>) -> Vec<BikeshedNo
         }
     }
     out
+}
+
+fn note_paths(nodes: &[BikeshedNode], out: &mut Vec<String>) {
+    for node in nodes {
+        if node.kind == NodeKind::Folder {
+            note_paths(&node.children, out);
+        } else {
+            out.push(node.path.clone());
+        }
+    }
 }
 
 fn note_name(path: &str) -> String {
@@ -209,6 +229,9 @@ fn render_notes(
 
     let vault = context.bikeshed();
     let tree = vault.tree();
+    let mut every_note = Vec::new();
+    note_paths(&tree, &mut every_note);
+    let all_notes = serde_json::to_string(&every_note).unwrap_or_else(|_| "[]".to_string());
     let focused = focus_nodes(tree, if show_all { None } else { Some(&project) });
     let mut rows = Vec::new();
     flatten_tree(&focused, 0, &mut rows);
@@ -303,6 +326,13 @@ fn render_notes(
         }
     }
 
+    let current_path = note
+        .as_ref()
+        .map_or(String::new(), |pane| pane.path.clone());
+    let current_name = note
+        .as_ref()
+        .map_or(String::new(), |pane| note_name(&pane.path));
+
     let recoveries: Vec<String> = vault.recoveries().iter().map(recoverable_label).collect();
 
     Ok(NotesView {
@@ -329,6 +359,12 @@ fn render_notes(
         error: render_error,
         conflict,
         focus_url: notes_href(&project, show_all, path.as_deref(), None),
+        current_path,
+        current_name,
+        all_notes,
+        tab_from: field(params, "tab_from").to_string(),
+        tab_to: field(params, "tab_to").to_string(),
+        tab_gone: field(params, "tab_gone").to_string(),
     })
 }
 
@@ -631,6 +667,9 @@ pub(super) async fn note_rename(
                 revision = context.revision(),
                 "note renamed"
             );
+            // The tab strip follows the rename whichever row it was.
+            params.insert("tab_from".to_string(), path.clone());
+            params.insert("tab_to".to_string(), read.value.clone());
             // The open page follows the rename; a rename of another row leaves it.
             let followed = field(&params, "open") == path;
             if followed {
@@ -690,6 +729,9 @@ pub(super) async fn note_delete(
         );
     }
     let error = outcome.err().map(|error| error.message());
+    if error.is_none() {
+        params.insert("tab_gone".to_string(), path.clone());
+    }
     let gone = open == path || open.starts_with(&format!("{path}/"));
     if gone && error.is_none() {
         params.remove("path");

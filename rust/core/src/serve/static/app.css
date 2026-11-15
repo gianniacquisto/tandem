@@ -4025,3 +4025,102 @@ body {
 .lp__line {
   display: inline;
 }
+
+/* Tabs for the open notes: one strip above the breadcrumb, scrolling sideways. */
+.note-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex: none;
+  border-bottom: var(--hairline) solid var(--sand);
+  background: var(--parchment);
+}
+
+.note-tabs[hidden] {
+  display: none;
+}
+
+.bikeshed__document:has(.note-tabs:not([hidden])) .bikeshed__breadcrumb {
+  top: 36px;
+}
+
+.note-tabs__list {
+  display: flex;
+  align-items: stretch;
+  height: 36px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.note-tabs__item {
+  display: flex;
+  flex: none;
+  align-items: center;
+  max-width: 220px;
+  border-right: var(--hairline) solid var(--sand);
+}
+
+.note-tabs__tab {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-chip);
+  min-width: 0;
+  padding: 0 4px 0 var(--space-label);
+  color: var(--ink-dim);
+  font-size: 13px;
+  line-height: 36px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.note-tabs__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-tabs__folder {
+  flex: none;
+  color: var(--shadow);
+  font-size: 11.5px;
+}
+
+.note-tabs__item:hover {
+  background: var(--sand);
+}
+
+.note-tabs__item:has(.note-tabs__tab[aria-selected="true"]) {
+  box-shadow: inset 0 -2px 0 var(--accent);
+  background: var(--paper);
+}
+
+.note-tabs__tab[aria-selected="true"] {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.note-tabs__tab:focus-visible,
+.note-tabs__close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.note-tabs__close {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-right: var(--space-chip);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-checkbox);
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 15px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.note-tabs__close:hover {
+  background: var(--line);
+  color: var(--ink);
+}

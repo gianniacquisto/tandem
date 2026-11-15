@@ -165,6 +165,12 @@
     </aside>
 
     <div class="bikeshed__document">
+      <div class="note-tabs" data-note-tabs hidden
+           data-current="{{ current_path }}" data-current-name="{{ current_name }}"
+           data-notes="{{ all_notes }}" data-from="{{ tab_from }}" data-to="{{ tab_to }}"
+           data-gone="{{ tab_gone }}">
+        <div class="note-tabs__list" role="tablist" aria-label="Open notes"></div>
+      </div>
       {% if let Some(note) = note %}
       <header class="bikeshed__breadcrumb">
         <div class="bikeshed__breadcrumb-inner">
