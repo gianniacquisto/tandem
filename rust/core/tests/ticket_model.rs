@@ -22,14 +22,14 @@ fn temp_board() -> (Sandbox, Board) {
 }
 
 #[test]
-fn a_ticket_round_trips_status_archived_description_assignee_and_lane() {
+fn a_ticket_round_trips_status_archived_description_assignee_and_label() {
     let (sandbox, board) = temp_board();
-    board.add_lane("Core", None, None).unwrap();
+    board.add_label("Core", None, None).unwrap();
     let added = board
         .add(
             "Ship the model",
             AddTicket {
-                lane: Some("Core"),
+                label: Some("Core"),
                 assignee: Some("UI"),
                 ..AddTicket::default()
             },
@@ -54,7 +54,7 @@ fn a_ticket_round_trips_status_archived_description_assignee_and_lane() {
         set.description.as_deref(),
         Some("Three axes, two new fields.")
     );
-    assert_eq!(set.lane.as_deref(), Some("Core"));
+    assert_eq!(set.label.as_deref(), Some("Core"));
 
     // A fresh Board over the same home reads the same ticket.
     let fresh = Board::with_actor(sandbox.store(), tandem_core::store::Actor::Human);
@@ -65,7 +65,7 @@ fn a_ticket_round_trips_status_archived_description_assignee_and_lane() {
         read.description.as_deref(),
         Some("Three axes, two new fields.")
     );
-    assert_eq!(read.lane.as_deref(), Some("Core"));
+    assert_eq!(read.label.as_deref(), Some("Core"));
     assert!(!read.done());
 }
 
@@ -228,7 +228,7 @@ fn add_stamps_its_origin_defaulting_to_human_with_the_assignees_spelling_rules()
 #[test]
 fn origin_is_written_once_at_add_and_set_move_place_reopen_leave_it() {
     let (_sandbox, board) = temp_board();
-    board.add_lane("Core", None, None).unwrap();
+    board.add_label("Core", None, None).unwrap();
     let added = board
         .add(
             "Task",
@@ -327,12 +327,12 @@ fn reopening_after_done_lands_in_backlog() {
 #[test]
 fn set_changes_only_the_fields_it_names() {
     let (_sandbox, board) = temp_board();
-    board.add_lane("Core", None, None).unwrap();
+    board.add_label("Core", None, None).unwrap();
     let added = board
         .add(
             "Title",
             AddTicket {
-                lane: Some("Core"),
+                label: Some("Core"),
                 assignee: Some("UI"),
                 ..AddTicket::default()
             },
@@ -360,7 +360,7 @@ fn set_changes_only_the_fields_it_names() {
     assert_eq!(after.title, "Title");
     assert_eq!(after.description.as_deref(), Some("Body"));
     assert_eq!(after.assignee.as_deref(), Some("UI"));
-    assert_eq!(after.lane.as_deref(), Some("Core"));
+    assert_eq!(after.label.as_deref(), Some("Core"));
     assert_eq!(after.status, Status::InProgress);
     assert!(!after.archived);
 }
@@ -618,7 +618,7 @@ fn a_row_with_an_unreadable_id_is_a_domain_error_not_a_ticket_with_no_id() {
     connection
         .execute(
             "INSERT INTO tickets
-                (id, title, description, status, archived, lane, number, origin,
+                (id, title, description, status, archived, label, number, origin,
                  assignee, link, position, created_at, completed_at, author)
              VALUES ('not-a-uuid', 'bad', NULL, 'backlog', 0, NULL, NULL, 'human',
                      NULL, NULL, 99, '2026-01-01T00:00:00Z', NULL, 'human')",
@@ -653,7 +653,7 @@ fn a_row_with_an_unreadable_timestamp_is_a_domain_error() {
     connection
         .execute(
             "INSERT INTO tickets
-                (id, title, description, status, archived, lane, number, origin,
+                (id, title, description, status, archived, label, number, origin,
                  assignee, link, position, created_at, completed_at, author)
              VALUES ('00000000-0000-0000-0000-0000000000aa', 'bad', NULL, 'backlog',
                      0, NULL, NULL, 'human', NULL, NULL, 99, 'yesterday', NULL, 'human')",

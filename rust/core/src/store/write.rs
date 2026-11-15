@@ -21,9 +21,9 @@ use rusqlite::{Connection, params};
 
 use super::{Actor, Result};
 
-/// A cycle lane: its name, its key (the ref prefix), its issued-number counter,
+/// A label: its name, its key (the ref prefix), its issued-number counter,
 /// its render position and its parent project.
-pub struct NewLane<'a> {
+pub struct NewLabel<'a> {
     pub name: &'a str,
     pub key: &'a str,
     pub last_number: i64,
@@ -38,15 +38,15 @@ pub struct NewProject<'a> {
     pub position: i64,
 }
 
-/// A ticket. The ref is not a column: it is the lane's key and `number`, read
-/// together, so a lane move cannot leave a second truth behind.
+/// A ticket. The ref is not a column: it is the label's key and `number`, read
+/// together, so a label move cannot leave a second truth behind.
 pub struct NewTicket<'a> {
     pub id: &'a str,
     pub title: &'a str,
     pub description: Option<&'a str>,
     pub status: &'a str,
     pub archived: bool,
-    pub lane: Option<&'a str>,
+    pub label: Option<&'a str>,
     pub number: Option<i64>,
     pub origin: &'a str,
     pub assignee: Option<&'a str>,
@@ -96,17 +96,17 @@ impl Write<'_> {
         self.actor
     }
 
-    pub fn insert_lane(&self, lane: NewLane<'_>) -> Result<()> {
+    pub fn insert_label(&self, label: NewLabel<'_>) -> Result<()> {
         self.before_mutation()?;
         self.execute(
-            "INSERT INTO lanes (name, key, last_number, position, project, author)
+            "INSERT INTO labels (name, key, last_number, position, project, author)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
-                lane.name,
-                lane.key,
-                lane.last_number,
-                lane.position,
-                lane.project,
+                label.name,
+                label.key,
+                label.last_number,
+                label.position,
+                label.project,
                 self.actor.as_str()
             ],
         )
@@ -124,7 +124,7 @@ impl Write<'_> {
         self.before_mutation()?;
         self.execute(
             "INSERT INTO tickets
-                (id, title, description, status, archived, lane, number, origin,
+                (id, title, description, status, archived, label, number, origin,
                  assignee, link, position, created_at, completed_at, author)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
@@ -133,7 +133,7 @@ impl Write<'_> {
                 ticket.description,
                 ticket.status,
                 i64::from(ticket.archived),
-                ticket.lane,
+                ticket.label,
                 ticket.number,
                 ticket.origin,
                 ticket.assignee,

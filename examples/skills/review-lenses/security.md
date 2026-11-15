@@ -6,7 +6,7 @@ The checklist for a diff that touches a secret, an input, a shell command, SQL, 
 
 - Every line the diff adds that reaches a shell, a child process or `tandem-cli`, and whether its arguments are passed as a list or interpolated into one string.
 - Every SQL string in `rust/core/src/store/`, and what is bound versus pasted.
-- Every path built from input: a note's name, a lane's name, a project name, a CLI argument. `rust/core/src/bikeshed/` and `rust/core/src/store/locked.rs` are the boundaries it must not leave.
+- Every path built from input: a note's name, a label's name, a project name, a CLI argument. `rust/core/src/bikeshed/` and `rust/core/src/store/locked.rs` are the boundaries it must not leave.
 - Every log line, error message and PR body for a token, a key, a home path or a ticket body that was not the author's to publish.
 - Every write that removes or rewrites store rows, and the transaction it sits in (ADR 0018, ADR 0031).
 - `--force`, `--admin`, `chmod`, `rm -rf`, `git worktree remove --force`, and any secrets or permission change in CI config.

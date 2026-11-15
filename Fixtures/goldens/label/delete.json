@@ -1,13 +1,16 @@
 {
   "argv": [
-    "lane",
-    "list"
+    "label",
+    "delete",
+    "--name",
+    "Cycle"
   ],
   "exit": 0,
   "stderr": [],
   "stdin": "",
   "stdout": {
-    "lanes": []
+    "labels": [],
+    "moved": 1
   },
   "stdoutKind": "json"
 }

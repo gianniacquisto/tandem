@@ -4,7 +4,7 @@ The checklist for a diff that draws or sizes something in the served board. It r
 
 ## Read
 
-- Every literal number in a width, height, gap, padding or radius against the tokens in `rust/core/src/serve/static/tokens.css`: `--space-gutter`, `--space-row`, `--space-control`, `--space-lane`, `--radius-card`, `--hairline`.
+- Every literal number in a width, height, gap, padding or radius against the tokens in `rust/core/src/serve/static/tokens.css`: `--space-gutter`, `--space-row`, `--space-control`, `--space-label`, `--radius-card`, `--hairline`.
 - Every colour: a token from `rust/core/src/serve/static/tokens.css`, or a literal that bypasses the day and night blocks.
 - Type: font choices against the theme's own, and whether the change holds at the sizes the board already uses.
 - Dark mode, where the diff's view appears in both palettes.

@@ -14,7 +14,7 @@
     "projects": [
       {
         "name": "Beta",
-        "lanes": []
+        "labels": []
       }
     ]
   },

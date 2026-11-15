@@ -25,7 +25,7 @@ use super::{Actor, Result, StoreError, now, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 11;
+pub const CURRENT_VERSION: i64 = 12;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -91,6 +91,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: DEAD_TABLES_VERSION,
         name: "the dead tables",
         apply: version_eleven,
+    },
+    Migration {
+        version: LABELS_VERSION,
+        name: "lanes become labels",
+        apply: version_twelve,
     },
 ];
 
@@ -553,6 +558,26 @@ DROP TABLE IF EXISTS settings;
 
 fn version_eleven(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_ELEVEN)
+}
+
+/// The version that renames the lane to the label (UI-37).
+pub(crate) const LABELS_VERSION: i64 = 12;
+
+/// Version 12: the vocabulary moves from lane to label and the model stays.
+///
+/// Renames are in place, so every row, key, issued number, position and
+/// `project` parent is untouched: table `lanes` becomes `labels`, column
+/// `tickets.lane` becomes `tickets.label`, and the index follows. (`sprints`,
+/// the other table that carried a `lane` column, was dropped at v11.)
+const VERSION_TWELVE: &str = "
+ALTER TABLE lanes RENAME TO labels;
+ALTER TABLE tickets RENAME COLUMN lane TO label;
+DROP INDEX IF EXISTS tickets_lane_position;
+CREATE INDEX IF NOT EXISTS tickets_label_position ON tickets (label, position);
+";
+
+fn version_twelve(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(VERSION_TWELVE)
 }
 
 fn version_seven(connection: &Connection) -> rusqlite::Result<()> {

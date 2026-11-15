@@ -10,15 +10,15 @@ Every command prints JSON on stdout.
 
 ```sh
 tandem-cli ticket list [--filter open|done|all] [--status <value[,value]>]
-                       [--assignee <name|self>] [--lane <name>] [--text <string>]
+                       [--assignee <name|self>] [--label <name>] [--text <string>]
                        [--archived] [--blocked]
 tandem-cli ticket show --id <id>
 tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
-                      [--lane <name>] [--origin <name|self>] [--description <string|->]
+                      [--label <name>] [--origin <name|self>] [--description <string|->]
 tandem-cli ticket set --id <id> [--title <string>] [--status <value>]
                       [--assignee <name|self>] [--description <string|->]
                       [--append-description <string|->]
-tandem-cli ticket move --id <id> [--lane <name>] [--index <number>]
+tandem-cli ticket move --id <id> [--label <name>] [--index <number>]
 tandem-cli ticket block --id <id> --on <id>
 tandem-cli ticket unblock --id <id> [--on <id>]
 tandem-cli ticket complete --id <id>
@@ -26,11 +26,11 @@ tandem-cli ticket archive [--id <id>]
 tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
 tandem-cli ticket comment list --id <id>
 
-tandem-cli lane list
-tandem-cli lane add --name <name> [--abbr <key>] [--project <name>]
-tandem-cli lane rename --from <name> --to <name> [--abbr <key>] [--project <name>]
-tandem-cli lane delete --name <name>
-tandem-cli lane move --name <name> [--index <number>]
+tandem-cli label list
+tandem-cli label add --name <name> [--abbr <key>] [--project <name>]
+tandem-cli label rename --from <name> --to <name> [--abbr <key>] [--project <name>]
+tandem-cli label delete --name <name>
+tandem-cli label move --name <name> [--index <number>]
 tandem-cli project list
 tandem-cli project add --name <name>
 tandem-cli project rename --from <name> --to <name>
@@ -42,7 +42,7 @@ tandem-cli note links
 tandem-cli doctor
 ```
 
-The Statuses are `backlog`, `on-hold`, `ready`, `in-progress`, `in-review` and `done` (`on-hold` is the parked slot: a blocker, a human decision pending); a ticket's cycle lane is named with `--lane`, and the unnamed default area always comes first. A ticket in a lane carries a **ref** - the lane's key and a per-lane number, `TAN-42` - and every `--id` (or `--ticket`) accepts it beside the full UUID; the default area's tickets have none, and a lane's key is frozen once its tickets carry numbers.
+The Statuses are `backlog`, `on-hold`, `ready`, `in-progress`, `in-review` and `done` (`on-hold` is the parked slot: a blocker, a human decision pending); a ticket's label is named with `--label`, and the unnamed default area always comes first. A ticket in a label carries a **ref** - the label's key and a per-label number, `TAN-42` - and every `--id` (or `--ticket`) accepts it beside the full UUID; the default area's tickets have none, and a label's key is frozen once its tickets carry numbers.
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 

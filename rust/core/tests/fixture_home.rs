@@ -63,13 +63,13 @@ fn the_board_lives_a_whole_life_against_the_fixture_home() {
     let fixture = fixture_home();
     let committed = fs::read(fixture.join("tandem.db")).expect("the committed store reads");
 
-    // Created, in a lane that issues a ref.
-    board.add_lane("Port", Some("PRT"), None).unwrap();
+    // Created, in a label that issues a ref.
+    board.add_label("Port", Some("PRT"), None).unwrap();
     let ticket = board
         .add(
             "Port the board",
             AddTicket {
-                lane: Some("Port"),
+                label: Some("Port"),
                 status: Status::Ready,
                 assignee: Some("builder"),
                 description: Some("## Why\n\nBecause the board is the work."),
@@ -90,12 +90,12 @@ fn the_board_lives_a_whole_life_against_the_fixture_home() {
     assert_eq!(undone.status, Status::Backlog);
     assert!(undone.completed_at.is_none());
 
-    // Blocked and unblocked, against a second ticket in the same lane.
+    // Blocked and unblocked, against a second ticket in the same label.
     let blocker = board
         .add(
             "Land the store",
             AddTicket {
-                lane: Some("Port"),
+                label: Some("Port"),
                 ..AddTicket::default()
             },
         )
@@ -107,20 +107,20 @@ fn the_board_lives_a_whole_life_against_the_fixture_home() {
     let unblocked = board.unblock("PRT-1", None).unwrap();
     assert!(!unblocked.blocked());
 
-    // Ordered within a lane, and moved across lanes and back.
-    board.add_lane("Memory", Some("MEM"), None).unwrap();
+    // Ordered within a label, and moved across labels and back.
+    board.add_label("Memory", Some("MEM"), None).unwrap();
     board.move_ticket("PRT-2", Some("Port"), 0).unwrap();
     let moved = board
         .move_ticket("PRT-2", Some("Memory"), usize::MAX)
         .unwrap();
-    assert_eq!(moved.lane.as_deref(), Some("Memory"));
+    assert_eq!(moved.label.as_deref(), Some("Memory"));
     assert_eq!(
         moved.reference.as_deref(),
         Some("MEM-1"),
-        "the target lane's number"
+        "the target label's number"
     );
-    // The ref moved with the lane, so the old handle names nothing: the ticket is
-    // resolved by its id, and it takes the target lane's next number.
+    // The ref moved with the label, so the old handle names nothing: the ticket is
+    // resolved by its id, and it takes the target label's next number.
     assert!(matches!(
         board.ticket("PRT-2"),
         Err(DomainError::UnknownRef { .. })
@@ -198,10 +198,10 @@ fn the_board_lives_a_whole_life_against_the_fixture_home() {
             .any(|ticket| ticket.id == blocker.id && ticket.archived)
     );
 
-    // The board draws what it holds: one row per lane, the default area first.
+    // The board draws what it holds: one row per label, the default area first.
     let rows = TicketBoard::rows(
         &board.list_filter(Filter::All).unwrap(),
-        &board.lanes().unwrap(),
+        &board.labels().unwrap(),
     );
     assert_eq!(rows.first().and_then(|row| row.key.clone()), None);
     assert!(rows.iter().any(|row| row.key.as_deref() == Some("Port")));
@@ -230,12 +230,12 @@ fn the_board_lives_a_whole_life_against_the_fixture_home() {
 #[test]
 fn an_unknown_ref_against_the_fixture_home_names_the_range_it_does_have() {
     let (root, board) = sandbox_copy("unknown-ref");
-    board.add_lane("Port", Some("PRT"), None).unwrap();
+    board.add_label("Port", Some("PRT"), None).unwrap();
     board
         .add(
             "one",
             AddTicket {
-                lane: Some("Port"),
+                label: Some("Port"),
                 ..AddTicket::default()
             },
         )

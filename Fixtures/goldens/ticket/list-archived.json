@@ -22,7 +22,7 @@
         "descriptionLength": 0,
         "done": true,
         "id": "<id>",
-        "lane": "Tandem",
+        "label": "Tandem",
         "link": null,
         "number": 1,
         "origin": "human",

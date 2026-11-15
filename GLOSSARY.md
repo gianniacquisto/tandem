@@ -23,7 +23,7 @@ One platform's release artifact: a `tandem-<version>-darwin-arm64.tar.gz`, `tand
 _Avoid_: app bundle, package, build
 
 **Board**:
-The served ticket view: Status columns across, Cycle lanes down, a ticket drawn in the cell where its Status and lane meet. A view of the same tickets, not a fourth axis.
+The served ticket view: Status columns across, Labels down, a ticket drawn in the cell where its Status and label meet. A view of the same tickets, not a fourth axis.
 _Avoid_: kanban board, swimlane view, board tab (when the view is meant)
 
 **Example face**:
@@ -65,12 +65,12 @@ A ticket waiting on another ticket: a `ticket_dependencies` edge from the depend
 _Avoid_: blocked on (as a field), dependency column, gated (that is the gate's word), waiting (as a state)
 
 **Project**:
-A lane's parent: the store's `projects` table, one row per project with its render order. A project holds several lanes, and every lane belongs to exactly one project; a ticket's project is derived via its lane, never stored. The default area has no project: cross-project capture, first on the board (ADR 0039).
+A label's parent: the store's `projects` table, one row per project with its render order. A project holds several labels, and every label belongs to exactly one project; a ticket's project is derived via its label, never stored. The default area has no project: cross-project capture, first on the board (ADR 0039).
 _Avoid_: epic, portfolio, workspace
 
-**Cycle lane**:
-The named area a ticket belongs to: the board's row and the list's grouping. Every ticket sits in one lane, or in the unnamed default area, which stays first. Every lane belongs to exactly one parent project (ADR 0039).
-_Avoid_: section, swimlane, epic, list (Trello's word)
+**Label**:
+The named area a ticket belongs to: the board's row and the list's grouping. Every ticket sits in one label, or in the unnamed default area, which stays first. Every label belongs to exactly one parent project (ADR 0039).
+_Avoid_: lane, cycle lane, section, swimlane, epic, list (Trello's word)
 
 **Origin**:
 Who filed a ticket: `human`, or the name of the agent that filed it. Written once, at add, and never changed; a ticket that predates the field reads as `human`. A different question from the assignee, who is on it — a ticket an agent files *for* the human has both.
@@ -81,7 +81,7 @@ Which tickets are in view: `open` (the default), `done`, or `all`. One term for 
 _Avoid_: view, tab, scope, state
 
 **Store**:
-Tandem's single source of truth for the work it keeps: tickets, their dependency edges, comments, lanes, projects and the store's own metadata, one SQLite database at `<home>/tandem.db`, read and written by `tandem serve`, `tandem mcp` and every `tandem-cli` invocation. All reads and writes go through it; no other copy is authoritative. Its shape changes only by a **schema migration**; its move off the JSON files is recorded by an **import marker**; beside it sits its **rolling backup**, `tandem.db.bak` — the one previous complete generation, which a human restores and nothing reads (ADR 0018, ADR 0031).
+Tandem's single source of truth for the work it keeps: tickets, their dependency edges, comments, labels, projects and the store's own metadata, one SQLite database at `<home>/tandem.db`, read and written by `tandem serve`, `tandem mcp` and every `tandem-cli` invocation. All reads and writes go through it; no other copy is authoritative. Its shape changes only by a **schema migration**; its move off the JSON files is recorded by an **import marker**; beside it sits its **rolling backup**, `tandem.db.bak` — the one previous complete generation, which a human restores and nothing reads (ADR 0018, ADR 0031).
 _Avoid_: store file, JSON store, hand edits, backend, sync, cache (the JSON store and its sidecars are history: ADR 0001, and ADR 0031's amendments)
 
 **Schema migration**:

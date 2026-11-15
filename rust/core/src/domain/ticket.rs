@@ -2,17 +2,17 @@
 //!
 //! A ticket carries the full shape: where it is in the workflow (`status`), whether
 //! it is set aside (`archived`), what it is about (`description`), who is on it
-//! (`assignee`), who filed it (`origin`), which cycle lane it belongs to (`lane`)
+//! (`assignee`), who filed it (`origin`), which label it belongs to (`label`)
 //! and the two ends of a dependency edge (`blocked_by`, `blocks`).
 //!
 //! Three axes stay independent on purpose (the brief's `code` lens): a status
 //! transition is free-form and validates only the value, `archived` is a flag the
-//! human sets, and the lane is a grouping. Nothing here has a transition table.
+//! human sets, and the label is a grouping. Nothing here has a transition table.
 //!
 //! **Derived, never stored:** `done` (`status == Done`), `blocked` (an edge whose
 //! blocker is not done) and `blocked_reason` (the body's `## Blocked on` section).
-//! The ref (`KEY-N`) is derived by [`Contents`](super::lane::Contents) from the
-//! lane's key and the ticket's number on every read.
+//! The ref (`KEY-N`) is derived by [`Contents`](super::contents::Contents) from the
+//! label's key and the ticket's number on every read.
 //!
 //! Time is whole seconds since the Unix epoch: the store writes ISO-8601 UTC text,
 //! and whole seconds is that same fact without a parser in the middle. A ticket read
@@ -131,7 +131,7 @@ const RETIRED_ON_HOLD: &str = "refined";
 
 /// One end of a dependency edge, as a ticket reads it: the other ticket's id, its
 /// ref, its title and its status (TAN-232). Derived from the edge row on every
-/// read, so a lane move or a key move updates the display without touching the
+/// read, so a label move or a key move updates the display without touching the
 /// edge.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TicketBlock {
@@ -156,11 +156,11 @@ pub struct Ticket {
     pub assignee: Option<String>,
     /// Who filed the ticket. Written once, at add, and never changed (ADR 0020).
     pub origin: String,
-    /// The cycle lane, or `None` for the default (unnamed) area.
-    pub lane: Option<String>,
-    /// The ticket's number within its lane, issued by the lane's counter.
+    /// The label, or `None` for the default (unnamed) area.
+    pub label: Option<String>,
+    /// The ticket's number within its label, issued by the label's counter.
     pub number: Option<i64>,
-    /// `KEY-N`, the lane's key and this ticket's number. Derived, never stored.
+    /// `KEY-N`, the label's key and this ticket's number. Derived, never stored.
     pub reference: Option<String>,
     /// A bikeshed-root-relative note path, or `None` for an unlinked ticket.
     pub link: Option<String>,
@@ -186,7 +186,7 @@ impl Ticket {
             description: None,
             assignee: None,
             origin: "human".to_string(),
-            lane: None,
+            label: None,
             number: None,
             reference: None,
             link: None,

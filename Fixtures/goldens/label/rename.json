@@ -1,15 +1,18 @@
 {
   "argv": [
-    "lane",
-    "list"
+    "label",
+    "rename",
+    "--from",
+    "Cycle",
+    "--to",
+    "Loop"
   ],
   "exit": 0,
   "stderr": [],
   "stdin": "",
   "stdout": {
-    "lanes": [
-      "Cycle",
-      "Port"
+    "labels": [
+      "Loop"
     ]
   },
   "stdoutKind": "json"
