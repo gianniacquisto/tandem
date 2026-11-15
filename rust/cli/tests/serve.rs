@@ -273,6 +273,14 @@ fn events(port: u16) -> Receiver<i64> {
     receiver
 }
 
+/// How long a case waits for a write's change event. The watch's own bounds
+/// are 5 s: the fallback re-read for a filesystem whose stat does not move
+/// (`WATCH_FALLBACK`) and the backoff cap while a first write is still
+/// creating the store (`WATCH_BACKOFF_MAX`). A 5 s wait raced those bounds on
+/// a loaded runner, so the deadline sits well past them; a passing case still
+/// returns as soon as its event arrives.
+const EVENT_WAIT: Duration = Duration::from_secs(30);
+
 /// The next event matching `wanted`, or a failure naming what arrived.
 fn next_event(receiver: &Receiver<i64>, wanted: impl Fn(i64) -> bool, within: Duration) -> i64 {
     let deadline = Instant::now() + within;
@@ -578,11 +586,7 @@ fn a_serve_session_renders_board_adds_ticket_and_streams_sse_changed_events() {
     );
     let current = revision_of(server.port);
     assert!(current > 0, "the write moved the revision");
-    let event = next_event(
-        &stream,
-        |revision| revision == current,
-        Duration::from_secs(5),
-    );
+    let event = next_event(&stream, |revision| revision == current, EVENT_WAIT);
     assert_eq!(event, current, "the stream carries the write's revision");
     let board = get(server.port, "/board");
     assert!(
@@ -602,11 +606,7 @@ fn a_write_from_another_process_arrives_on_the_sse_stream() {
 
     let after = revision_of(server.port);
     assert!(after > before, "the other process moved the revision");
-    let event = next_event(
-        &stream,
-        |revision| revision == after,
-        Duration::from_secs(5),
-    );
+    let event = next_event(&stream, |revision| revision == after, EVENT_WAIT);
     assert_eq!(event, after, "the stream carries the listing's revision");
     let board = get(server.port, "/board");
     assert!(
@@ -827,11 +827,7 @@ fn a_serve_session_drives_the_sheet_and_notes_faces() {
         &format!("title=Later&status=backlog&label=&expected_revision={revision}"),
     );
     let current = revision_of(server.port);
-    next_event(
-        &stream,
-        |revision| revision == current,
-        Duration::from_secs(5),
-    );
+    next_event(&stream, |revision| revision == current, EVENT_WAIT);
 }
 
 #[test]

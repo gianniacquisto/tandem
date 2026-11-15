@@ -937,6 +937,71 @@ fn a_write_from_another_store_reports_changed_quickly() {
     );
 }
 
+// A restore renames another file over the database, and that file's revision
+// can equal the one the watch last broadcast: a restore to the revision before
+// the latest write, followed by a write the watch has not seen yet, lands on
+// the very same number. The board behind that number is a different one, so
+// the reattach must report it rather than read the equal number as no change.
+#[cfg(unix)]
+#[test]
+fn a_replaced_store_at_the_same_revision_still_reports_changed() {
+    let _serial = ONE_AT_A_TIME.blocking_lock();
+    let (root, store) = store_with_a_revision("replaced-held");
+    let (other_root, other) = store_with_a_revision("replaced-other");
+    let revision = store.revision().expect("the revision reads");
+    assert_eq!(
+        other.revision().expect("the other revision reads"),
+        revision,
+        "the replacement carries the same revision"
+    );
+    // One self-contained file, the shape a backup has: no WAL beside it.
+    let replacement = other_root.join("replacement.db");
+    rusqlite::Connection::open(other.database())
+        .expect("the other store opens")
+        .execute("VACUUM INTO ?1", [replacement.to_string_lossy()])
+        .expect("the other store copies into one file");
+    let store = Arc::new(store);
+    let stop = Arc::new(AtomicBool::new(false));
+    let reads_before = store.watch_revision_reads();
+    let (changes, mut receiver) = broadcast::channel(8);
+    let handle = {
+        let store = Arc::clone(&store);
+        let stop = Arc::clone(&stop);
+        let changes = changes.clone();
+        thread::spawn(move || watch((*store).clone(), changes, stop))
+    };
+    let attached = Instant::now() + Duration::from_secs(10);
+    while store.watch_revision_reads() == reads_before && Instant::now() < attached {
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        store.watch_revision_reads() > reads_before,
+        "the watch never attached"
+    );
+
+    let _ = std::fs::remove_file(store.wal());
+    let _ = std::fs::remove_file(store.home().directory().join("tandem.db-shm"));
+    std::fs::rename(&replacement, store.database()).expect("the replacement moves over the path");
+
+    let mut events = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline {
+        events.extend(seen(&mut receiver));
+        if events.contains(&revision) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    stop.store(true, Ordering::Relaxed);
+    let _ = handle.join().expect("the watch stops");
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&other_root);
+    assert!(
+        events.contains(&revision),
+        "the replaced store's revision {revision} never arrived (saw {events:?})"
+    );
+}
+
 // MARK: - Seam 1b: the ticket sheet and the bikeshed notes
 
 use crate::bikeshed::Bikeshed;

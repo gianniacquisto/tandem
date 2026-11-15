@@ -393,7 +393,11 @@ fn run_watch(store: Store, changes: broadcast::Sender<i64>, stop: Arc<AtomicBool
             }
         };
         last_read = Instant::now();
-        if revision == last {
+        // A reattach always reports: the file it opened may be a restored one
+        // whose revision happens to equal the last one broadcast (a restore
+        // to the revision before the latest write, then a write the watch had
+        // not yet seen), and that number now names a different board.
+        if revision == last && !force_read {
             // A tick can land mid-commit: the WAL grows before COMMIT
             // moves the revision, so a file move with no revision move is
             // a write in flight, not noise. Keep the old baseline so the
