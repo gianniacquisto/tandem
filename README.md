@@ -28,6 +28,42 @@ tandem doctor         # check that the install and your data are healthy
 
 Your data lives in `~/.tandem`.
 
+## Connect your agent
+
+`tandem mcp` is an MCP server on stdio: your agent host starts it, you do not. Run by hand in a terminal it waits silently for input, which is expected. Register it with your host once.
+
+Claude Code:
+
+```sh
+claude mcp add tandem -- tandem mcp
+```
+
+or, in a project's `.mcp.json`:
+
+```json
+{"mcpServers": {"tandem": {"command": "tandem", "args": ["mcp"]}}}
+```
+
+opencode, in its config:
+
+```json
+{"mcp": {"tandem": {"type": "local", "command": ["tandem", "mcp"]}}}
+```
+
+Any other MCP host: a stdio server whose command is `tandem` with the one argument `mcp`.
+
+Set `TANDEM_AGENT` in the server's environment to name the agent (`claude mcp add tandem --env TANDEM_AGENT=claude -- tandem mcp`): a write records that name, and without it the write is recorded as `human`. `TANDEM_HOME` points the server at another home.
+
+### First run
+
+1. Install, then run `tandem serve --open`. The board opens, empty.
+2. Register the MCP server with your agent host, as above, and start a new agent session.
+3. Ask the agent: "file a Tandem ticket called hello".
+4. The ticket appears on the board without a reload.
+5. Drag it to Done. Ask the agent to list the open tickets: it is gone from the list.
+
+If the agent cannot see the tools, run `tandem doctor`. If it reports that the store is a schema this build does not read, an older `tandem` is still on PATH or still running: see [upgrading](docs/store.md#upgrading). Agent instructions, skills and prompts to copy are in [examples](examples/).
+
 ## How it fits together
 
 ```mermaid
@@ -45,7 +81,7 @@ Details in [architecture](docs/architecture.md).
 - [Architecture](docs/architecture.md)
 - [CLI reference](docs/cli.md)
 - [Store, backup and notes](docs/store.md)
-- [Glossary](GLOSSARY.md) and [ADRs](docs/adr/)
+- [Glossary](GLOSSARY.md) and [ADRs](docs/adr/README.md), indexed by status
 - [Contributing](CONTRIBUTING.md) and [releasing](docs/releasing.md)
 
 ## Licence

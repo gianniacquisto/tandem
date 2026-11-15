@@ -16,7 +16,7 @@ Also here: `skills/tandem-team` (a roster template: replace it with your own), `
 
 ## Set up
 
-1. **Point your agent host at the MCP server**, once:
+1. **Point your agent host at the MCP server**, once (opencode shown; other hosts are in the [README](../README.md#connect-your-agent)):
 
    ```json
    {"mcp": {"tandem": {"type": "local", "command": ["tandem-cli", "mcp"]}}}

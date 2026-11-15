@@ -40,4 +40,4 @@ flowchart LR
 
 ## Decisions
 
-The reasoning behind each piece is in the [ADRs](adr/), starting with [one database](adr/0031-one-database-the-store.md) and the [board and notes cut](adr/0045-the-board-and-notes-cut.md).
+The reasoning behind each piece is in the [ADRs](adr/README.md), indexed by which are still in force, starting with [one database](adr/0031-one-database-the-store.md) and the [board and notes cut](adr/0045-the-board-and-notes-cut.md).
