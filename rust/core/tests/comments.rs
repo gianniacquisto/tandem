@@ -99,12 +99,12 @@ fn a_ticket_with_no_comments_answers_an_empty_list() {
 fn an_unknown_id_on_list_is_the_domain_failure_not_an_empty_log() {
     let sandbox = Sandbox::new("comments-unknown");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB"), None).unwrap();
+    board.add_label("Probe", Some("PRB"), None).unwrap();
     let ticket = board
         .add(
             "A ticket",
             AddTicket {
-                lane: Some("Probe"),
+                label: Some("Probe"),
                 ..AddTicket::default()
             },
         )
@@ -137,12 +137,12 @@ fn an_unknown_id_on_list_is_the_domain_failure_not_an_empty_log() {
 fn list_resolves_a_ref_to_the_tickets_log_in_either_case() {
     let sandbox = Sandbox::new("comments-ref");
     let board = sandbox.board();
-    board.add_lane("Probe", Some("PRB"), None).unwrap();
+    board.add_label("Probe", Some("PRB"), None).unwrap();
     let ticket = board
         .add(
             "A ticket",
             AddTicket {
-                lane: Some("Probe"),
+                label: Some("Probe"),
                 ..AddTicket::default()
             },
         )

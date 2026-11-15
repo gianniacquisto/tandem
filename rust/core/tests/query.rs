@@ -5,7 +5,7 @@
 mod support;
 
 use tandem_core::domain::{
-    Archived, AssigneeAxis, DomainError, Filter, HUMAN, LaneAxis, Status, Ticket, TicketBlock,
+    Archived, AssigneeAxis, DomainError, Filter, HUMAN, LabelAxis, Status, Ticket, TicketBlock,
     TicketQuery,
 };
 
@@ -20,31 +20,31 @@ fn board() -> Vec<Ticket> {
         Ticket {
             status: Status::OnHold,
             assignee: Some("core".to_string()),
-            lane: Some("Core".to_string()),
+            label: Some("Core".to_string()),
             ..ticket("parked work")
         },
         Ticket {
             status: Status::Ready,
             assignee: Some("ui".to_string()),
-            lane: Some("Core".to_string()),
+            label: Some("Core".to_string()),
             ..ticket("ready work")
         },
         Ticket {
             status: Status::InProgress,
             description: Some("Parse the flags in the core".to_string()),
             assignee: Some("ui".to_string()),
-            lane: Some("CLI".to_string()),
+            label: Some("CLI".to_string()),
             ..ticket("in flight")
         },
         Ticket {
             status: Status::Done,
-            lane: Some("CLI".to_string()),
+            label: Some("CLI".to_string()),
             ..ticket("finished")
         },
         Ticket {
             status: Status::Done,
             archived: true,
-            lane: Some("CLI".to_string()),
+            label: Some("CLI".to_string()),
             ..ticket("finished and filed away")
         },
         Ticket {
@@ -131,24 +131,24 @@ fn the_assignee_axis_selects_a_name_or_the_unowned_tickets() {
 }
 
 #[test]
-fn the_lane_axis_selects_a_name_or_the_unnamed_default_area() {
+fn the_label_axis_selects_a_name_or_the_unnamed_default_area() {
     assert_eq!(
         titles(&TicketQuery {
-            lane: LaneAxis::Named("Core".to_string()),
+            label: LabelAxis::Named("Core".to_string()),
             ..TicketQuery::default()
         }),
         ["parked work", "ready work"]
     );
     assert_eq!(
         titles(&TicketQuery {
-            lane: LaneAxis::Unnamed,
+            label: LabelAxis::Unnamed,
             ..TicketQuery::default()
         }),
         ["capture the idea"]
     );
     assert_eq!(
         titles(&TicketQuery {
-            lane: LaneAxis::Any,
+            label: LabelAxis::Any,
             ..TicketQuery::default()
         }),
         titles(&TicketQuery::default())
@@ -232,7 +232,7 @@ fn the_axes_are_anded_and_an_empty_result_is_an_empty_list() {
         text: Some("work".to_string()),
         statuses: vec![Status::Ready],
         assignee: AssigneeAxis::Named("ui".to_string()),
-        lane: LaneAxis::Named("Core".to_string()),
+        label: LabelAxis::Named("Core".to_string()),
         ..TicketQuery::default()
     };
     assert_eq!(titles(&query), ["ready work"]);
@@ -240,7 +240,7 @@ fn the_axes_are_anded_and_an_empty_result_is_an_empty_list() {
     assert!(
         titles(&TicketQuery {
             statuses: vec![Status::Ready],
-            lane: LaneAxis::Named("CLI".to_string()),
+            label: LabelAxis::Named("CLI".to_string()),
             ..TicketQuery::default()
         })
         .is_empty()
@@ -286,7 +286,7 @@ fn parse_defaults_to_the_shipped_open_filter() {
         "open is the done axis, not a fixed status list"
     );
     assert_eq!(query.assignee, AssigneeAxis::Any);
-    assert_eq!(query.lane, LaneAxis::Any);
+    assert_eq!(query.label, LabelAxis::Any);
     assert_eq!(query.text, None);
 }
 
@@ -345,18 +345,18 @@ fn the_retired_word_is_not_a_status_the_query_accepts() {
 
 #[test]
 fn parse_treats_an_empty_value_as_the_empty_field() {
-    let parse = |assignee: Option<&str>, lane: Option<&str>| {
-        TicketQuery::parse(None, None, None, assignee, lane, false, false).unwrap()
+    let parse = |assignee: Option<&str>, label: Option<&str>| {
+        TicketQuery::parse(None, None, None, assignee, label, false, false).unwrap()
     };
     assert_eq!(parse(Some(""), None).assignee, AssigneeAxis::Unassigned);
     assert_eq!(
         parse(Some("ui"), None).assignee,
         AssigneeAxis::Named("ui".to_string())
     );
-    assert_eq!(parse(None, Some("")).lane, LaneAxis::Unnamed);
+    assert_eq!(parse(None, Some("")).label, LabelAxis::Unnamed);
     assert_eq!(
-        parse(None, Some("Core")).lane,
-        LaneAxis::Named("Core".to_string())
+        parse(None, Some("Core")).label,
+        LabelAxis::Named("Core".to_string())
     );
     assert_eq!(
         TicketQuery::parse(None, Some("  "), None, None, None, false, false)

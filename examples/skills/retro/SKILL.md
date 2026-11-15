@@ -1,6 +1,6 @@
 ---
 name: retro
-description: "Run a retrospective on a named coding session, on manual invocation only, and file what it finds as backlog tickets in the cycle lane of the project the pass ran in. Reach for it when the user asks for a retro or a retrospective, or asks what a pass should have done differently."
+description: "Run a retrospective on a named coding session, on manual invocation only, and file what it finds as backlog tickets in the label of the project the pass ran in. Reach for it when the user asks for a retro or a retrospective, or asks what a pass should have done differently."
 ---
 
 Derived from the `retro` skill in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `NOTICE.txt`), adapted: the output is tickets on the board, not a report to the user.
@@ -30,15 +30,15 @@ Retro is a manual standalone pass on a named coding session transcript: the huma
 
 A finding becomes a ticket only with all three: an **anchor** (a `file:line`, an exact command, or a message that shows the cost), a **named cost**, and an **owner's next move**. Not filed: generic advice, a preference with no cost, a restatement of an existing rule, a duplicate, your own run. More than five tickets usually means the bar was lowered — pick the clearest costs and say what you dropped.
 
-## The lane
+## The label
 
-A finding files into the project's lane, on the sprint skill's one derivation (`skills/tandem-sprint/SKILL.md`, §2): the basename of the directory the retro'd session ran in, with the `-wt-<slug>` suffix stripped, matched case-insensitively against `lane_list` and written back in the lane's stored spelling. A Tandem session, in the checkout or in a worktree beside it, files into `Tandem`: the worktree slug resolves to the project. A finding about another project's files belongs to that project and files into its lane.
+A finding files into the project's label, on the sprint skill's one derivation (`skills/tandem-sprint/SKILL.md`, §2): the basename of the directory the retro'd session ran in, with the `-wt-<slug>` suffix stripped, matched case-insensitively against `label_list` and written back in the label's stored spelling. A Tandem session, in the checkout or in a worktree beside it, files into `Tandem`: the worktree slug resolves to the project. A finding about another project's files belongs to that project and files into its label.
 
-`Retro` is the lane for the findings that **belong to no project**: a cost with no repo to fix it, a harness rule no project owns. It is not the default, and a finding about a project's own skills, agents or checks never lands there. The origin is separate from the lane and never moves: `origin` is `retro`, so the board still says a retro filed it.
+`Retro` is the label for the findings that **belong to no project**: a cost with no repo to fix it, a harness rule no project owns. It is not the default, and a finding about a project's own skills, agents or checks never lands there. The origin is separate from the label and never moves: `origin` is `retro`, so the board still says a retro filed it.
 
 ## File
 
-Dedupe first with `ticket_list`, `filter` all and `text` set to the title words. Then derive `lane` (the project's, above; `Retro` when no project owns the finding), call `lane_add` with `name` Retro only when filing into `Retro` and that lane is missing, and file with `ticket_add` carrying `title` ("Retro: <one sentence, specific enough to disagree with>"), `status` backlog, `origin` retro, `lane`, and the body in `description`.
+Dedupe first with `ticket_list`, `filter` all and `text` set to the title words. Then derive `label` (the project's, above; `Retro` when no project owns the finding), call `label_add` with `name` Retro only when filing into `Retro` and that label is missing, and file with `ticket_add` carrying `title` ("Retro: <one sentence, specific enough to disagree with>"), `status` backlog, `origin` retro, `label`, and the body in `description`.
 
 The `origin` is `retro`, never assigned. The body is a **filing**, not a brief: `Filed by retro (<session id>).`, then **Why** (the anchor and the cost), **What**, **Done when** (only if the session makes it visible). No options, no recommendation. Never edit the code the session touched: a retro that fixes what it finds cannot report honestly on it.
 

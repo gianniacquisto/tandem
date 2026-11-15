@@ -1,5 +1,5 @@
 /*
- * The theme: a style (`neutral` or `tandem`) and an appearance (`system`,
+ * The theme: a style (`neutral`, `tandem`, `nord`, `gruvbox`, `solarized` or `catppuccin`) and an appearance (`system`,
  * `light` or `dark`), kept in localStorage and applied to <html> as
  * `data-style`, `data-appearance` and the resolved `data-theme`.
  *
@@ -11,7 +11,7 @@
 (function () {
   var STYLE_KEY = 'tandem.style';
   var APPEARANCE_KEY = 'tandem.appearance';
-  var STYLES = ['neutral', 'tandem'];
+  var STYLES = ['neutral', 'tandem', 'nord', 'gruvbox', 'solarized', 'catppuccin'];
   var APPEARANCES = ['system', 'light', 'dark'];
   var root = document.documentElement;
   var dark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;

@@ -7,7 +7,7 @@
 //!   lives there; nothing outside it writes a row.
 //! - [`wire`]: the JSON the agent face prints and the app reads.
 //! - [`domain`]: the aggregates, pure over the adapter: the board's tickets,
-//!   lanes, comments, order and the dependency edge (PRT-5). Every failure the
+//!   labels, comments, order and the dependency edge (PRT-5). Every failure the
 //!   domain raises is [`domain::error::DomainError`],
 //!   one shape for the CLI to print.
 //!

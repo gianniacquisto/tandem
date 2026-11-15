@@ -43,3 +43,7 @@ Decided 2026-11-03 (TAN-295).
   one-parent-each.
 - Deleting a project that still holds lanes is refused, naming those lanes, so
   a delete can never strand or silently re-home numbered lanes.
+
+## Amended by
+
+- [ADR 0047](0047-lanes-are-labels.md): "lane" in this ADR is today's "label"; the vocabulary changed and the model did not.

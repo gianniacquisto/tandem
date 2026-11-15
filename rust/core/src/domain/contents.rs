@@ -1,10 +1,10 @@
-//! The board in memory: the lanes and the tickets, in stored order
-//! (`StoreContents` in `Lanes.swift`).
+//! The board in memory: the labels and the tickets, in stored order
+//! (`StoreContents` in `Labels.swift`).
 //!
 //! **Stored order is the order.** The ticket vector's position is authoritative
 //! (new tickets land on top by default); it is never recomputed from `created_at`.
-//! It is kept **grouped by lane**: the default (unnamed) area first, then each
-//! declared lane in its declared order, so a reader can walk it once and a
+//! It is kept **grouped by label**: the default (unnamed) area first, then each
+//! declared label in its declared order, so a reader can walk it once and a
 //! hand-edited store stays legible.
 //!
 //! The dependency edges are the one thing a ticket cannot derive alone, so this
@@ -15,17 +15,17 @@ use std::collections::HashMap;
 
 use uuid::Uuid;
 
-use crate::store::board_rows::{BoardRows, EdgeRow, LaneRow, TicketRow};
+use crate::store::board_rows::{BoardRows, EdgeRow, LabelRow, TicketRow};
 use crate::store::{decode, encode};
 
 use super::error::DomainError;
-use super::lane::{Lane, LaneKey, Project, TicketRef};
 use super::ticket::{Status, Ticket, TicketBlock};
+use super::ticket_label::{Label, LabelKey, Project, TicketRef};
 
-/// The store's contents: the ordered lanes and the tickets, in stored order.
+/// The store's contents: the ordered labels and the tickets, in stored order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Contents {
-    pub lanes: Vec<Lane>,
+    pub labels: Vec<Label>,
     pub projects: Vec<Project>,
     pub tickets: Vec<Ticket>,
     /// Every dependency edge: (dependent, blocker), in the order it was set.
@@ -33,18 +33,18 @@ pub struct Contents {
 }
 
 impl Contents {
-    /// The board as the store holds it, with the refs, the lane keys and the
+    /// The board as the store holds it, with the refs, the label keys and the
     /// dependency halves made true: a read runs the same preparation a write does,
     /// and still writes nothing.
     pub(crate) fn from_rows(rows: &BoardRows) -> Result<Self, DomainError> {
-        let mut lanes: Vec<Lane> = rows
-            .lanes
+        let mut labels: Vec<Label> = rows
+            .labels
             .iter()
-            .map(|lane| Lane {
-                name: lane.name.clone(),
-                key: lane.key.clone(),
-                last_number: lane.last_number,
-                project: lane.project.clone().unwrap_or_else(|| lane.name.clone()),
+            .map(|label| Label {
+                name: label.name.clone(),
+                key: label.key.clone(),
+                last_number: label.last_number,
+                project: label.project.clone().unwrap_or_else(|| label.name.clone()),
             })
             .collect();
         let projects: Vec<Project> = rows
@@ -69,16 +69,16 @@ impl Contents {
                 ))
             })
             .collect::<Result<_, DomainError>>()?;
-        // A lane a ticket names but the lane list does not carry (a hand edit) is
+        // A label a ticket names but the label list does not carry (a hand edit) is
         // declared so it can be keyed and numbered, in first-appearance order.
         for ticket in &tickets {
-            let Some(name) = &ticket.lane else { continue };
-            if !lanes.iter().any(|lane| &lane.name == name) {
-                lanes.push(Lane::new(name.clone(), ""));
+            let Some(name) = &ticket.label else { continue };
+            if !labels.iter().any(|label| &label.name == name) {
+                labels.push(Label::new(name.clone(), ""));
             }
         }
         let mut contents = Self {
-            lanes,
+            labels,
             projects,
             tickets,
             edges,
@@ -86,9 +86,9 @@ impl Contents {
         contents.normalize();
         contents.prepare();
         // Empty projects stay listed: `projects` started as the rows' stored
-        // order, and `declare_projects` only appends, so a project no lane
-        // names deletes explicitly, never by losing its last lane in passing.
-        // A project row the lanes no longer name but the table still carries
+        // order, and `declare_projects` only appends, so a project no label
+        // names deletes explicitly, never by losing its last label in passing.
+        // A project row the labels no longer name but the table still carries
         // keeps its place, in row order.
         for row in &rows.projects {
             if !contents
@@ -105,16 +105,16 @@ impl Contents {
     /// The board as rows, in stored order, ready for the adapter's diff.
     pub(crate) fn to_rows(&self) -> BoardRows {
         BoardRows {
-            lanes: self
-                .lanes
+            labels: self
+                .labels
                 .iter()
                 .enumerate()
-                .map(|(position, lane)| LaneRow {
-                    name: lane.name.clone(),
-                    key: lane.key.clone(),
-                    last_number: lane.last_number,
+                .map(|(position, label)| LabelRow {
+                    name: label.name.clone(),
+                    key: label.key.clone(),
+                    last_number: label.last_number,
                     position: position as i64,
-                    project: Some(lane.project.clone()),
+                    project: Some(label.project.clone()),
                 })
                 .collect(),
             projects: self
@@ -143,57 +143,57 @@ impl Contents {
         }
     }
 
-    /// Every lane key in render order: the default area, the declared lanes, then
+    /// Every label key in render order: the default area, the declared labels, then
     /// any name that appears only on a ticket (a hand edit), in first-appearance
     /// order, so a hand-edited store loses no grouping.
     pub fn ordered_keys(&self) -> Vec<Option<String>> {
         let mut keys: Vec<Option<String>> = vec![None];
-        for lane in &self.lanes {
-            if !keys.contains(&Some(lane.name.clone())) {
-                keys.push(Some(lane.name.clone()));
+        for label in &self.labels {
+            if !keys.contains(&Some(label.name.clone())) {
+                keys.push(Some(label.name.clone()));
             }
         }
         for ticket in &self.tickets {
-            if let Some(lane) = &ticket.lane
-                && !keys.contains(&Some(lane.clone()))
+            if let Some(label) = &ticket.label
+                && !keys.contains(&Some(label.clone()))
             {
-                keys.push(Some(lane.clone()));
+                keys.push(Some(label.clone()));
             }
         }
         keys
     }
 
-    /// Every name that is safe to file into: each declared lane plus any dangling
+    /// Every name that is safe to file into: each declared label plus any dangling
     /// name already on a ticket.
-    pub fn known_lanes(&self) -> Vec<String> {
+    pub fn known_labels(&self) -> Vec<String> {
         self.ordered_keys().into_iter().flatten().collect()
     }
 
-    /// Every project in render order: the stored order, plus any parent a lane
-    /// names but the table does not yet carry (a hand edit), in lane order.
+    /// Every project in render order: the stored order, plus any parent a label
+    /// names but the table does not yet carry (a hand edit), in label order.
     pub fn known_projects(&self) -> Vec<String> {
         let mut known: Vec<String> = self.projects.iter().map(|p| p.name.clone()).collect();
-        for lane in &self.lanes {
-            if !known.iter().any(|name| name == &lane.project) {
-                known.push(lane.project.clone());
+        for label in &self.labels {
+            if !known.iter().any(|name| name == &label.project) {
+                known.push(label.project.clone());
             }
         }
         known
     }
 
-    /// Every project with its lanes, in render order: projects in stored
-    /// order, their lanes beneath in lane order.
-    pub fn projects_with_lanes(&self) -> Vec<super::lane::ProjectWithLanes> {
+    /// Every project with its labels, in render order: projects in stored
+    /// order, their labels beneath in label order.
+    pub fn projects_with_labels(&self) -> Vec<super::ticket_label::ProjectWithLabels> {
         self.known_projects()
             .into_iter()
             .map(|name| {
-                let lanes = self
-                    .lanes
+                let labels = self
+                    .labels
                     .iter()
-                    .filter(|lane| lane.project == name)
-                    .map(|lane| lane.name.clone())
+                    .filter(|label| label.project == name)
+                    .map(|label| label.name.clone())
                     .collect();
-                super::lane::ProjectWithLanes { name, lanes }
+                super::ticket_label::ProjectWithLabels { name, labels }
             })
             .collect()
     }
@@ -210,7 +210,7 @@ impl Contents {
             start += self
                 .tickets
                 .iter()
-                .filter(|ticket| ticket.lane.as_deref() == candidate.as_deref())
+                .filter(|ticket| ticket.label.as_deref() == candidate.as_deref())
                 .count();
         }
         start
@@ -226,7 +226,7 @@ impl Contents {
             grouped.extend(
                 self.tickets
                     .iter()
-                    .filter(|ticket| ticket.lane == key)
+                    .filter(|ticket| ticket.label == key)
                     .cloned(),
             );
         }
@@ -236,11 +236,11 @@ impl Contents {
     }
 
     /// Make the ref scheme true for contents that predate it, idempotently: every
-    /// ticket's lane is declared, every lane has a key, and a ticket in a lane
-    /// without a number gets the lane's next one in `created_at` order (ties by
-    /// id). Every lane has exactly one parent project: a hand-added lane
+    /// ticket's label is declared, every label has a key, and a ticket in a label
+    /// without a number gets the label's next one in `created_at` order (ties by
+    /// id). Every label has exactly one parent project: a hand-added label
     /// declares the project named for it the same way it already declares the
-    /// lane itself.
+    /// label itself.
     pub fn prepare(&mut self) {
         self.assign_keys();
         self.declare_projects();
@@ -249,56 +249,56 @@ impl Contents {
         self.refresh_blocked();
     }
 
-    /// Every lane without a key gets one, in render order, among the keys already
+    /// Every label without a key gets one, in render order, among the keys already
     /// taken.
     fn assign_keys(&mut self) {
         let mut taken: Vec<String> = self
-            .lanes
+            .labels
             .iter()
-            .map(|lane| lane.key.to_uppercase())
+            .map(|label| label.key.to_uppercase())
             .filter(|key| !key.is_empty())
             .collect();
-        for lane in &mut self.lanes {
-            if lane.key.is_empty() {
-                let key = LaneKey::generate(&lane.name, &taken);
+        for label in &mut self.labels {
+            if label.key.is_empty() {
+                let key = LabelKey::generate(&label.name, &taken);
                 taken.push(key.clone());
-                lane.key = key;
+                label.key = key;
             }
         }
     }
 
-    /// A lane without a parent declares the project named for it, in lane order,
+    /// A label without a parent declares the project named for it, in label order,
     /// so a hand-edited store loses no grouping. An empty parent reads as
     /// absent, never as a project named "".
     fn declare_projects(&mut self) {
-        for lane in &mut self.lanes {
-            if lane.project.trim().is_empty() {
-                lane.project = lane.name.clone();
+        for label in &mut self.labels {
+            if label.project.trim().is_empty() {
+                label.project = label.name.clone();
             }
         }
-        for lane in &self.lanes.clone() {
+        for label in &self.labels.clone() {
             if !self
                 .projects
                 .iter()
-                .any(|project| project.name == lane.project)
+                .any(|project| project.name == label.project)
             {
-                self.projects.push(Project::new(lane.project.clone()));
+                self.projects.push(Project::new(label.project.clone()));
             }
         }
     }
 
-    /// A ticket in a lane without a number takes the lane's next one, oldest
+    /// A ticket in a label without a number takes the label's next one, oldest
     /// first: the backfill an installed board needs once.
     fn number_unnumbered(&mut self) {
-        for i in 0..self.lanes.len() {
-            let name = self.lanes[i].name.clone();
-            let mut highest = self.lanes[i].last_number;
+        for i in 0..self.labels.len() {
+            let name = self.labels[i].name.clone();
+            let mut highest = self.labels[i].last_number;
             let mut missing: Vec<usize> = self
                 .tickets
                 .iter()
                 .enumerate()
                 .filter(|(_, ticket)| {
-                    ticket.lane.as_deref() == Some(name.as_str()) && ticket.number.is_none()
+                    ticket.label.as_deref() == Some(name.as_str()) && ticket.number.is_none()
                 })
                 .map(|(index, _)| index)
                 .collect();
@@ -312,24 +312,24 @@ impl Contents {
                 highest += 1;
                 self.tickets[index].number = Some(highest);
             }
-            self.lanes[i].last_number = self.lanes[i].last_number.max(highest);
+            self.labels[i].last_number = self.labels[i].last_number.max(highest);
         }
     }
 
-    /// The derived half: a ticket's `reference` is its lane's key and its own
+    /// The derived half: a ticket's `reference` is its label's key and its own
     /// number, or `None` when either is missing (the default area has neither).
     pub fn refresh_refs(&mut self) {
         let mut keys: HashMap<&str, &str> = HashMap::new();
-        for lane in &self.lanes {
-            if !lane.key.is_empty() {
-                keys.insert(lane.name.as_str(), lane.key.as_str());
+        for label in &self.labels {
+            if !label.key.is_empty() {
+                keys.insert(label.name.as_str(), label.key.as_str());
             }
         }
         let rendered: Vec<Option<String>> = self
             .tickets
             .iter()
             .map(|ticket| {
-                let name = ticket.lane.as_deref()?;
+                let name = ticket.label.as_deref()?;
                 let key = keys.get(name)?;
                 let number = ticket.number?;
                 Some(TicketRef::render(key, number))
@@ -388,36 +388,36 @@ impl Contents {
         }
     }
 
-    /// Issue the lane's next number: the counter rises and never goes back, so a
+    /// Issue the label's next number: the counter rises and never goes back, so a
     /// number a moved-away ticket used is not handed out again.
-    pub fn issue_number(&mut self, lane: &str) -> i64 {
+    pub fn issue_number(&mut self, label: &str) -> i64 {
         let Some(i) = self
-            .lanes
+            .labels
             .iter()
-            .position(|candidate| candidate.name == lane)
+            .position(|candidate| candidate.name == label)
         else {
             return 0;
         };
-        self.lanes[i].last_number += 1;
-        self.lanes[i].last_number
+        self.labels[i].last_number += 1;
+        self.labels[i].last_number
     }
 
-    /// The key a lane files under, or `None` when the lane is not declared.
-    pub fn key_of(&self, lane: &str) -> Option<&str> {
-        self.lanes
+    /// The key a label files under, or `None` when the label is not declared.
+    pub fn key_of(&self, label: &str) -> Option<&str> {
+        self.labels
             .iter()
-            .find(|candidate| candidate.name == lane)
+            .find(|candidate| candidate.name == label)
             .map(|candidate| candidate.key.as_str())
     }
 
-    /// Guards a lane argument: `None` (the default area) is always valid; any
-    /// other name must be a known lane.
-    pub fn validate_lane(&self, lane: Option<&str>) -> Result<(), DomainError> {
-        let Some(lane) = lane else { return Ok(()) };
-        if self.known_lanes().iter().any(|name| name == lane) {
+    /// Guards a label argument: `None` (the default area) is always valid; any
+    /// other name must be a known label.
+    pub fn validate_label(&self, label: Option<&str>) -> Result<(), DomainError> {
+        let Some(label) = label else { return Ok(()) };
+        if self.known_labels().iter().any(|name| name == label) {
             Ok(())
         } else {
-            Err(DomainError::UnknownLane(lane.to_string()))
+            Err(DomainError::UnknownLabel(label.to_string()))
         }
     }
 
@@ -433,17 +433,17 @@ impl Contents {
         let index = self.tickets.iter().position(|ticket| {
             ticket.number == Some(number)
                 && ticket
-                    .lane
+                    .label
                     .as_deref()
-                    .and_then(|lane| self.key_of(lane))
-                    .is_some_and(|lane_key| lane_key.eq_ignore_ascii_case(&key))
+                    .and_then(|label| self.key_of(label))
+                    .is_some_and(|label_key| label_key.eq_ignore_ascii_case(&key))
         })?;
         Some((self.tickets[index].id, index))
     }
 
     /// The ticket a handle names, or the failure every id-taking operation raises.
     /// A handle that looks like a ref but names nothing gets the ref-specific
-    /// failure: it names the lane's real range, so the caller recovers in one turn.
+    /// failure: it names the label's real range, so the caller recovers in one turn.
     pub fn require_ticket(&self, raw: &str) -> Result<(Uuid, usize), DomainError> {
         if let Some(found) = self.resolve_ticket(raw) {
             return Ok(found);
@@ -466,36 +466,36 @@ impl Contents {
     }
 
     /// What the unknown-ref failure says next: whether the key exists at all, and
-    /// the range the lane has issued.
+    /// the range the label has issued.
     fn ref_hint(&self, key: &str) -> String {
-        let Some(lane) = self
-            .lanes
+        let Some(label) = self
+            .labels
             .iter()
-            .find(|lane| lane.key.eq_ignore_ascii_case(key))
+            .find(|label| label.key.eq_ignore_ascii_case(key))
         else {
             let keys: Vec<&str> = self
-                .lanes
+                .labels
                 .iter()
-                .map(|lane| lane.key.as_str())
+                .map(|label| label.key.as_str())
                 .filter(|key| !key.is_empty())
                 .collect();
             if keys.is_empty() {
-                return "No cycle lane has that key, and no lane carries a key yet.".to_string();
+                return "No label has that key, and no label carries a key yet.".to_string();
             }
             return format!(
-                "No cycle lane has the key \"{key}\". The keys in use: {}.",
+                "No label has the key \"{key}\". The keys in use: {}.",
                 keys.join(", ")
             );
         };
-        if lane.last_number <= 0 {
+        if label.last_number <= 0 {
             return format!(
-                "Lane \"{}\" ({}) has issued no numbers yet.",
-                lane.name, lane.key
+                "Label \"{}\" ({}) has issued no numbers yet.",
+                label.name, label.key
             );
         }
         format!(
-            "Lane \"{}\" ({}) has issued {}-1 to {}-{}.",
-            lane.name, lane.key, lane.key, lane.key, lane.last_number
+            "Label \"{}\" ({}) has issued {}-1 to {}-{}.",
+            label.name, label.key, label.key, label.key, label.last_number
         )
     }
 }
@@ -516,7 +516,7 @@ fn ticket_from_row(row: &TicketRow) -> Result<Ticket, DomainError> {
         description: row.description.clone(),
         assignee: row.assignee.clone(),
         origin: row.origin.clone(),
-        lane: row.lane.clone(),
+        label: row.label.clone(),
         number: row.number,
         reference: None,
         link: row.link.clone(),
@@ -546,7 +546,7 @@ fn ticket_to_row(ticket: &Ticket, position: i64) -> TicketRow {
         description: ticket.description.clone(),
         status: ticket.status.as_str().to_string(),
         archived: ticket.archived,
-        lane: ticket.lane.clone(),
+        label: ticket.label.clone(),
         number: ticket.number,
         origin: ticket.origin.clone(),
         assignee: ticket.assignee.clone(),

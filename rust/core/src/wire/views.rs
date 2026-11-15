@@ -12,7 +12,7 @@
 //!   drops `blockedReason` (also body text). `ticket show` and the write verbs'
 //!   receipts carry the whole ticket.
 //! - **`note` is a top-level key, present only when the write changed nothing.**
-//!   A re-run of `lane add` is a success that says so, and the
+//!   A re-run of `label add` is a success that says so, and the
 //!   note is how it says it.
 
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -24,7 +24,7 @@ use crate::bikeshed::{
 };
 
 use crate::domain::{
-    Comment, InlineStyle, LaneDeletion, MarkdownBlock, MarkdownInline, Ticket, TicketBlock,
+    Comment, InlineStyle, LabelDeletion, MarkdownBlock, MarkdownInline, Ticket, TicketBlock,
 };
 use crate::store::encode;
 
@@ -66,7 +66,7 @@ pub struct TicketDetail {
     pub description: Option<String>,
     pub done: bool,
     pub id: String,
-    pub lane: Option<String>,
+    pub label: Option<String>,
     pub link: Option<String>,
     pub number: Option<i64>,
     pub origin: String,
@@ -92,7 +92,7 @@ impl TicketDetail {
             description: ticket.description.clone(),
             done: ticket.done(),
             id: ticket.id.to_string(),
-            lane: ticket.lane.clone(),
+            label: ticket.label.clone(),
             link: ticket.link.clone(),
             number: ticket.number,
             origin: ticket.origin.clone(),
@@ -125,7 +125,7 @@ pub struct TicketSummary {
     pub description_length: usize,
     pub done: bool,
     pub id: String,
-    pub lane: Option<String>,
+    pub label: Option<String>,
     pub link: Option<String>,
     pub number: Option<i64>,
     pub origin: String,
@@ -152,7 +152,7 @@ impl TicketSummary {
                 .unwrap_or(0),
             done: ticket.done(),
             id: ticket.id.to_string(),
-            lane: ticket.lane.clone(),
+            label: ticket.label.clone(),
             link: ticket.link.clone(),
             number: ticket.number,
             origin: ticket.origin.clone(),
@@ -203,42 +203,42 @@ pub struct CommentList {
     pub comments: Vec<CommentView>,
 }
 
-/// `lane list`, `lane add`, `lane rename`: `{"lanes": [...]}`.
+/// `label list`, `label add`, `label rename`: `{"labels": [...]}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct LaneList {
-    pub lanes: Vec<String>,
+pub struct LabelList {
+    pub labels: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
 
-/// `lane delete`: the lanes left, and how many tickets moved to the default area.
+/// `label delete`: the labels left, and how many tickets moved to the default area.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct LaneDeletionView {
-    pub lanes: Vec<String>,
+pub struct LabelDeletionView {
+    pub labels: Vec<String>,
     pub moved: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
 
-impl LaneDeletionView {
-    pub fn new(deletion: &LaneDeletion, note: Option<String>) -> Self {
+impl LabelDeletionView {
+    pub fn new(deletion: &LabelDeletion, note: Option<String>) -> Self {
         Self {
-            lanes: deletion.lanes.clone(),
+            labels: deletion.labels.clone(),
             moved: deletion.moved,
             note,
         }
     }
 }
 
-/// One project and its lanes, in render order: the CLI's `project list` row.
+/// One project and its labels, in render order: the CLI's `project list` row.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProjectView {
     pub name: String,
-    pub lanes: Vec<String>,
+    pub labels: Vec<String>,
 }
 
 /// `project list`, `project add`, `project rename`, `project delete`:
-/// `{"projects": [{"name": ..., "lanes": [...]}]}` in project order.
+/// `{"projects": [{"name": ..., "labels": [...]}]}` in project order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProjectList {
     pub projects: Vec<ProjectView>,
@@ -247,13 +247,13 @@ pub struct ProjectList {
 }
 
 impl ProjectList {
-    pub fn new(projects: &[crate::domain::ProjectWithLanes], note: Option<String>) -> Self {
+    pub fn new(projects: &[crate::domain::ProjectWithLabels], note: Option<String>) -> Self {
         Self {
             projects: projects
                 .iter()
                 .map(|entry| ProjectView {
                     name: entry.name.clone(),
-                    lanes: entry.lanes.clone(),
+                    labels: entry.labels.clone(),
                 })
                 .collect(),
             note,

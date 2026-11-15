@@ -1,25 +1,25 @@
-//! Cycle lanes, their keys, and the ref a lane key plus a number renders
-//! (`Lanes.swift`, ticket 6598E091).
+//! Labels, their keys, and the ref a label key plus a number renders
+//! (`Labels.swift`, ticket 6598E091).
 //!
-//! A lane is its name, its **key** (the `TAN` of `TAN-42`) and the last number it
-//! issued. The key is uppercase alphanumerics, unique across lanes
-//! case-insensitively, and frozen once any ticket in the lane holds a number.
+//! A label is its name, its **key** (the `TAN` of `TAN-42`) and the last number it
+//! issued. The key is uppercase alphanumerics, unique across labels
+//! case-insensitively, and frozen once any ticket in the label holds a number.
 //! `last_number` only ever rises, so a number a moved-away ticket used is never
 //! handed out twice.
 
 use super::error::DomainError;
 
-/// One cycle lane.
+/// One label.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Lane {
+pub struct Label {
     pub name: String,
     pub key: String,
     pub last_number: i64,
-    /// The lane's exactly-one parent project.
+    /// The label's exactly-one parent project.
     pub project: String,
 }
 
-impl Lane {
+impl Label {
     pub fn new(name: impl Into<String>, key: impl Into<String>) -> Self {
         let name = name.into();
         let project = name.clone();
@@ -45,7 +45,7 @@ impl Lane {
     }
 }
 
-/// One project: a lane's parent. A project holds several lanes; an empty
+/// One project: a label's parent. A project holds several labels; an empty
 /// project lists truthfully but draws no board rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Project {
@@ -59,34 +59,34 @@ impl Project {
 }
 
 /// The outcome of deleting a project: the project list after the write, with
-/// each project's lanes. A delete that would strand lanes is refused before
+/// each project's labels. A delete that would strand labels is refused before
 /// this is built, so this only answers the allowed empty-project delete.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectDeletion {
-    pub projects: Vec<ProjectWithLanes>,
+    pub projects: Vec<ProjectWithLabels>,
 }
 
-/// One project and its lanes, in render order: the answer `project list` and
+/// One project and its labels, in render order: the answer `project list` and
 /// every project write receipt gives.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectWithLanes {
+pub struct ProjectWithLabels {
     pub name: String,
-    pub lanes: Vec<String>,
+    pub labels: Vec<String>,
 }
 
-/// The outcome of deleting a lane: how many tickets fell back to the default
-/// area, and the lane list after the write.
+/// The outcome of deleting a label: how many tickets fell back to the default
+/// area, and the label list after the write.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LaneDeletion {
-    pub lanes: Vec<String>,
+pub struct LabelDeletion {
+    pub labels: Vec<String>,
     pub moved: usize,
 }
 
-/// The lane key's rules and the ref's rendering, in one place, so the generator a
-/// new lane uses and the parser every id-taking verb uses cannot disagree.
-pub struct LaneKey;
+/// The label key's rules and the ref's rendering, in one place, so the generator a
+/// new label uses and the parser every id-taking verb uses cannot disagree.
+pub struct LabelKey;
 
-impl LaneKey {
+impl LabelKey {
     /// Whether `raw` is a key: non-empty, uppercase ASCII letters and digits only.
     pub fn is_valid(raw: &str) -> bool {
         !raw.is_empty()
@@ -100,7 +100,7 @@ impl LaneKey {
     pub fn normalize(raw: &str) -> Result<String, DomainError> {
         let key = raw.trim().to_uppercase();
         if !Self::is_valid(&key) {
-            return Err(DomainError::InvalidLaneKey(raw.to_string()));
+            return Err(DomainError::InvalidLabelKey(raw.to_string()));
         }
         Ok(key)
     }
@@ -149,7 +149,7 @@ impl TicketRef {
         format!("{key}-{number}")
     }
 
-    /// A raw handle split into the lane key and the number it names. The key is
+    /// A raw handle split into the label key and the number it names. The key is
     /// matched case-insensitively (`prb-2` is `PRB-2`); a token without a dash, or
     /// with anything but digits after it, is not a ref and reads as an unknown id.
     pub fn parse(raw: &str) -> Option<(String, i64)> {
@@ -163,7 +163,7 @@ impl TicketRef {
             return None;
         }
         let key = parts[0].to_uppercase();
-        if !LaneKey::is_valid(&key) {
+        if !LabelKey::is_valid(&key) {
             return None;
         }
         Some((key, number))

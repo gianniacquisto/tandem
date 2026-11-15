@@ -1,6 +1,6 @@
 /*
  * The acts htmx does not own: a board card drop, a bikeshed tree move, the
- * ticket sheet's lane select and shortcut keys, and the notes editor's
+ * ticket sheet's label select and shortcut keys, and the notes editor's
  * debounced autosave and preview.
  *
  * The server draws every face; this file only turns a pointer or a key into the
@@ -59,7 +59,7 @@
     if (!root || !column || !ticketId) return;
     // The board's answer replaces the root, so the POST carries the filters the
     // board was drawn with; without them the partial redraws an unfiltered board
-    // and the human's project, lane, assignee and search are gone.
+    // and the human's project, label, assignee and search are gone.
     var bar = root.querySelector('.tickets__bar--board');
     var body = bar ? new URLSearchParams(new FormData(bar)) : new URLSearchParams();
     body.set('status', column.getAttribute('data-status') || '');
@@ -181,9 +181,9 @@
 
   // MARK: - The ticket sheet
 
-  // The lane is the one metadata control that moves at once: its own form.
+  // The label is the one metadata control that moves at once: its own form.
   document.addEventListener('change', function (event) {
-    var select = closest(event.target, '[data-sheet-lane]');
+    var select = closest(event.target, '[data-sheet-label]');
     if (select && select.form) htmxPost(select.form, '#board-root');
   });
 

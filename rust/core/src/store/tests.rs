@@ -127,7 +127,7 @@ const AUTHORED_TABLES: [&str; 6] = [
     "tickets",
     "ticket_dependencies",
     "comments",
-    "lanes",
+    "labels",
     "projects",
     "schema_migrations",
 ];
@@ -335,8 +335,8 @@ mod gate {
 
 mod schema {
     use super::super::schema::{
-        CURRENT_VERSION, DEFAULT_WORKFLOW_ID, MIGRATIONS, Migration, has_table, migrate_with,
-        version,
+        CURRENT_VERSION, DEFAULT_WORKFLOW_ID, MIGRATIONS, Migration, has_column, has_table,
+        migrate_with, version,
     };
     use super::*;
 
@@ -423,7 +423,7 @@ mod schema {
         let sandbox = Sandbox::new("fresh");
         let store = sandbox.store();
 
-        probe(&store, &Actor::Human, "defaultLane");
+        probe(&store, &Actor::Human, "defaultLabel");
 
         assert!(
             sandbox.database().exists(),
@@ -476,7 +476,7 @@ mod schema {
             tables,
             vec![
                 "comments",
-                "lanes",
+                "labels",
                 "projects",
                 "schema_migrations",
                 "store_meta",
@@ -681,7 +681,7 @@ mod schema {
         let connection = sandbox.connection();
         assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
         assert!(
-            has_index(&connection, "tickets_lane_position"),
+            has_index(&connection, "tickets_label_position"),
             "v2 adds the board's index"
         );
         assert!(
@@ -706,7 +706,7 @@ mod schema {
             "the migrating write rolls the pre-migration image"
         );
         assert!(
-            !has_index(&backup, "tickets_lane_position"),
+            !has_index(&backup, "tickets_label_position"),
             "the pre-image predates v2"
         );
     }
@@ -1175,6 +1175,121 @@ mod schema {
             "an open run carrying a session stays open"
         );
         assert_eq!(rows[3].2, "open", "an open run carrying a batch stays open");
+    }
+
+    #[test]
+    fn a_v11_file_migrates_to_v12_renaming_lanes_to_labels_and_changing_nothing_else() {
+        use crate::domain::{Board, TicketQuery};
+
+        let sandbox = Sandbox::new("v11-to-v12");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..11], &Actor::Human).expect("v11 applies");
+        connection
+            .execute_batch(
+                "INSERT INTO lanes (name, key, last_number, position, project, author)
+                     VALUES ('Tandem', 'TAN', 7, 0, 'Tandem', 'human'),
+                            ('Ui', 'UI', 2, 1, 'Tandem', 'human');
+                 INSERT INTO tickets
+                    (id, title, status, archived, lane, number, origin, assignee, position,
+                     created_at, completed_at, author)
+                 VALUES
+                    ('00000000-0000-0000-0000-0000000000a1', 'first', 'ready', 0, 'Tandem', 6,
+                     'human', NULL, 0, '2026-10-30T00:00:00Z', NULL, 'human'),
+                    ('00000000-0000-0000-0000-0000000000a2', 'second', 'ready', 0, 'Tandem', 7,
+                     'human', NULL, 1, '2026-10-30T00:00:00Z', NULL, 'human'),
+                    ('00000000-0000-0000-0000-0000000000a3', 'third', 'backlog', 0, 'Ui', 2,
+                     'human', NULL, 0, '2026-10-30T00:00:00Z', NULL, 'human'),
+                    ('00000000-0000-0000-0000-0000000000a4', 'loose', 'backlog', 0, NULL, NULL,
+                     'human', NULL, 0, '2026-10-30T00:00:00Z', NULL, 'human');",
+            )
+            .unwrap();
+        drop(connection);
+
+        // A read before the first write still answers on the v11 shape.
+        let board = Board::with_actor(sandbox.store(), Actor::Human);
+        let before: Vec<(String, Option<String>)> = board
+            .list(&TicketQuery::default())
+            .expect("a v11 home reads before it migrates")
+            .into_iter()
+            .map(|ticket| (ticket.title, ticket.reference))
+            .collect();
+        assert_eq!(
+            version(&sandbox.connection()).unwrap(),
+            Some(11),
+            "a read never migrates (ADR 0031)"
+        );
+
+        probe(&sandbox.store(), &Actor::Human, "migrates");
+
+        let connection = sandbox.connection();
+        assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
+        assert_eq!(CURRENT_VERSION, 12, "the label rename is schema v12");
+        assert!(
+            !has_table(&connection, "lanes").unwrap(),
+            "lanes is renamed"
+        );
+        assert!(has_table(&connection, "labels").unwrap(), "labels exists");
+        assert!(
+            has_column(&connection, "tickets", "label").unwrap()
+                && !has_column(&connection, "tickets", "lane").unwrap(),
+            "tickets.lane is tickets.label"
+        );
+        assert!(has_index(&connection, "tickets_label_position"));
+        assert!(!has_index(&connection, "tickets_lane_position"));
+
+        let labels: Vec<(String, String, i64, i64, String)> = connection
+            .prepare(
+                "SELECT name, key, last_number, position, project FROM labels ORDER BY position",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            labels,
+            vec![
+                ("Tandem".into(), "TAN".into(), 7, 0, "Tandem".into()),
+                ("Ui".into(), "UI".into(), 2, 1, "Tandem".into()),
+            ],
+            "names, keys, counters, order and project parents are unchanged"
+        );
+        let tickets: Vec<(String, Option<String>, Option<i64>, i64)> = connection
+            .prepare("SELECT id, label, number, position FROM tickets WHERE title != 'migrates' ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        assert_eq!(tickets.len(), 4);
+        assert_eq!(tickets[0].1.as_deref(), Some("Tandem"));
+        assert_eq!(tickets[2].1.as_deref(), Some("Ui"));
+        assert_eq!(tickets[3].1, None, "the default area stays unnamed");
+        assert_eq!(
+            (tickets[0].2, tickets[1].2, tickets[2].2),
+            (Some(6), Some(7), Some(2))
+        );
+
+        let after: Vec<(String, Option<String>)> = Board::with_actor(sandbox.store(), Actor::Human)
+            .list(&TicketQuery::default())
+            .unwrap()
+            .into_iter()
+            .filter(|ticket| ticket.title != "migrates")
+            .map(|ticket| (ticket.title, ticket.reference))
+            .collect();
+        assert_eq!(
+            before, after,
+            "every ref reads the same across the migration"
+        );
     }
 
     #[test]
@@ -1650,7 +1765,7 @@ mod actor {
     fn a_full_write(store: &Store, actor: &Actor) {
         store
             .write(actor, |write| {
-                write.insert_lane(NewLane {
+                write.insert_label(NewLabel {
                     name: "Port",
                     key: "PRT",
                     last_number: 4,
@@ -1663,7 +1778,7 @@ mod actor {
                     description: Some("the body"),
                     status: "backlog",
                     archived: false,
-                    lane: Some("Port"),
+                    label: Some("Port"),
                     number: Some(4),
                     origin: "human",
                     assignee: None,
@@ -1682,7 +1797,7 @@ mod actor {
                     body: "a comment",
                 })?;
                 write.insert_project(NewProject {
-                    name: "defaultLane",
+                    name: "defaultLabel",
                     position: 0,
                 })?;
                 Ok(())

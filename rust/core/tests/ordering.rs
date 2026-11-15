@@ -31,12 +31,12 @@ fn drop_on(board: &Board, moving: &str, anchor: &str, after: bool) -> bool {
     let Some(index) = TicketOrdering::drop_index(&tickets, moving_id, anchor_id, after) else {
         return false;
     };
-    let lane = tickets
+    let label = tickets
         .iter()
         .find(|ticket| ticket.id == anchor_id)
-        .and_then(|ticket| ticket.lane.clone());
+        .and_then(|ticket| ticket.label.clone());
     board
-        .move_ticket(&moving_id.to_string(), lane.as_deref(), index)
+        .move_ticket(&moving_id.to_string(), label.as_deref(), index)
         .expect("the move lands");
     true
 }
@@ -80,16 +80,16 @@ fn a_row_dropped_on_itself_is_a_no_op() {
 }
 
 #[test]
-fn dropping_a_default_ticket_onto_a_lane_row_files_it_into_that_lane() {
+fn dropping_a_default_ticket_onto_a_label_row_files_it_into_that_label() {
     let sandbox = Sandbox::new("order-into");
     let board = sandbox.board();
-    board.add_lane("Work", None, None).unwrap();
+    board.add_label("Work", None, None).unwrap();
     board.add("d1", AddTicket::default()).unwrap();
     board
         .add(
             "w1",
             AddTicket {
-                lane: Some("Work"),
+                label: Some("Work"),
                 ..AddTicket::default()
             },
         )
@@ -98,7 +98,7 @@ fn dropping_a_default_ticket_onto_a_lane_row_files_it_into_that_lane() {
         .add(
             "w2",
             AddTicket {
-                lane: Some("Work"),
+                label: Some("Work"),
                 ..AddTicket::default()
             },
         )
@@ -117,22 +117,22 @@ fn dropping_a_default_ticket_onto_a_lane_row_files_it_into_that_lane() {
     assert!(
         tickets
             .iter()
-            .all(|ticket| ticket.lane.as_deref() == Some("Work"))
+            .all(|ticket| ticket.label.as_deref() == Some("Work"))
     );
 }
 
 #[test]
-fn dropping_a_lane_ticket_onto_a_default_row_returns_it_to_the_default_area() {
+fn dropping_a_label_ticket_onto_a_default_row_returns_it_to_the_default_area() {
     let sandbox = Sandbox::new("order-out");
     let board = sandbox.board();
-    board.add_lane("Work", None, None).unwrap();
+    board.add_label("Work", None, None).unwrap();
     board.add("d1", AddTicket::default()).unwrap();
     board.add("d2", AddTicket::default()).unwrap();
     board
         .add(
             "w1",
             AddTicket {
-                lane: Some("Work"),
+                label: Some("Work"),
                 ..AddTicket::default()
             },
         )
@@ -148,7 +148,7 @@ fn dropping_a_lane_ticket_onto_a_default_row_returns_it_to_the_default_area() {
             .collect::<Vec<_>>(),
         ["d2", "d1", "w1"]
     );
-    assert!(tickets.iter().all(|ticket| ticket.lane.is_none()));
+    assert!(tickets.iter().all(|ticket| ticket.label.is_none()));
 }
 
 #[test]
@@ -189,7 +189,7 @@ struct GoldenCase {
 #[derive(Deserialize)]
 struct GoldenTicket {
     id: String,
-    lane: Option<String>,
+    label: Option<String>,
 }
 
 fn golden_path() -> PathBuf {
@@ -219,7 +219,7 @@ fn the_drop_index_golden_is_the_rule_both_implementations_answer() {
             .map(|entry| {
                 let mut ticket = Ticket::new("a ticket");
                 ticket.id = Uuid::parse_str(&entry.id).expect("a golden id is a uuid");
-                ticket.lane = entry.lane.clone();
+                ticket.label = entry.label.clone();
                 ticket
             })
             .collect();

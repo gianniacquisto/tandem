@@ -22,7 +22,7 @@
     "description": "A body from stdin.",
     "done": false,
     "id": "<id>",
-    "lane": "Tandem",
+    "label": "Tandem",
     "link": null,
     "number": 1,
     "origin": "human",

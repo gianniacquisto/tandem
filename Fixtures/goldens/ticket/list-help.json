@@ -12,7 +12,7 @@
     "",
     "Usage:",
     "  tandem-cli ticket list [--filter open|done|all] [--status <value[,value]>]",
-    "                          [--assignee <name|self>] [--lane <name>] [--text <string>]",
+    "                          [--assignee <name|self>] [--label <name>] [--text <string>]",
     "                          [--archived] [--blocked]",
     "",
     "Values:",

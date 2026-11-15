@@ -1,15 +1,13 @@
 {
   "argv": [
-    "lane",
+    "label",
     "add",
     "--name",
-    "Beta",
-    "--project",
-    "Nope"
+    "Cycle"
   ],
   "exit": 1,
   "stderr": [
-    "Unknown project \"Nope\". The known projects are: Alpha."
+    "A label named \"Cycle\" already exists."
   ],
   "stdin": "",
   "stdout": [],

@@ -6,7 +6,7 @@ This home is **content, not scratch**: it is authored here and committed, and no
 run writes into it. The binary is pointed at it with `TANDEM_HOME` and never at
 the real `~/.tandem`.
 
-- `tandem.db` is the store: 78 tickets over four lanes (Port, Tandem, Retro,
+- `tandem.db` is the store: 78 tickets over four labels (Port, Tandem, Retro,
   Fleet) plus the default area, every status, the archive included, named
   assignees, and three dependency edges so the blocked mark is real. It holds
   the seven tables the cut kept, not a usage report.
