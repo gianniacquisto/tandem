@@ -745,6 +745,12 @@ pub const MCP: &str = concat!(
     "`doctor` never runs per call. The host spawns this",
     "\n",
     "mode; a closed stdin ends it.",
+    "\n",
+    "",
+    "\n",
+    "The log goes to stderr, never stdout, filtered by TANDEM_LOG (RUST_LOG",
+    "\n",
+    "syntax, default warn): a healthy session writes nothing.",
 );
 
 #[cfg(test)]

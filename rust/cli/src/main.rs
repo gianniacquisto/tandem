@@ -1007,25 +1007,30 @@ fn add_description_body(flag: Option<&str>) -> Result<Option<String>, Failure> {
 /// directive syntax. Read once, here: the core never reads it.
 const LOG_VARIABLE: &str = "TANDEM_LOG";
 
-/// Installs `tandem serve`'s log: plain lines on stdout, filtered by
-/// `TANDEM_LOG` (default `info`). Returns whether the variable is set to a
-/// filter that does not parse, so `serve` can say so once the listening line is
-/// out. The value is never echoed.
-fn install_log() -> bool {
+/// Installs the process's log: plain lines on `writer`, filtered by
+/// `TANDEM_LOG` (RUST_LOG syntax) with `default` when it is unset or invalid.
+/// `tandem serve` writes stdout at `info`; `tandem mcp` writes stderr at `warn`
+/// and never colours, because stdout there carries frames. Returns whether the
+/// variable is set to a filter that does not parse, so the caller can say so
+/// once. The value is never echoed.
+fn install_log<W>(default: &str, writer: W, ansi: bool) -> bool
+where
+    W: for<'a> tracing_subscriber::fmt::MakeWriter<'a> + Send + Sync + 'static,
+{
     let (filter, invalid) = match env::var(LOG_VARIABLE) {
         Ok(value) if !value.trim().is_empty() => match EnvFilter::try_new(&value) {
             Ok(filter) => (filter, false),
-            Err(_) => (EnvFilter::new("info"), true),
+            Err(_) => (EnvFilter::new(default), true),
         },
-        Err(env::VarError::NotUnicode(_)) => (EnvFilter::new("info"), true),
-        _ => (EnvFilter::new("info"), false),
+        Err(env::VarError::NotUnicode(_)) => (EnvFilter::new(default), true),
+        _ => (EnvFilter::new(default), false),
     };
     // `try_init` fails only when a subscriber is already installed, which
     // leaves that one in charge: the first install wins.
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
-        .with_writer(io::stdout)
-        .with_ansi(io::stdout().is_terminal())
+        .with_writer(writer)
+        .with_ansi(ansi)
         .try_init();
     invalid
 }
@@ -1051,7 +1056,7 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
     }
     // Installed after the host checks, before any event can fire: the listening
     // line below is still the first stdout line, because nothing logs before it.
-    let invalid_filter = install_log();
+    let invalid_filter = install_log("info", io::stdout, io::stdout().is_terminal());
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -1163,8 +1168,14 @@ fn open_browser(url: &str) {
 /// The agent host's door: MCP frames on stdin, MCP frames on stdout, and an
 /// exit on a closed stdin. The protocol lives in the core (`tandem_core::mcp`);
 /// this arm is only the process that owns the two streams. The home resolves
-/// the way `rpc` does, and the actor is the pass's own (`TANDEM_AGENT`).
+/// the way `rpc` does, and the actor is the pass's own (`TANDEM_AGENT`). Its
+/// log goes to stderr under `TANDEM_LOG` (default `warn`, so a healthy session
+/// is silent).
 fn mcp(home: &Home) -> Result<(), Failure> {
+    // Stderr is the only channel a line cannot corrupt: stdout carries frames.
+    if install_log("warn", io::stderr, false) {
+        tracing::warn!("{LOG_VARIABLE} is not a valid log filter; logging at warn");
+    }
     tandem_core::mcp::serve(
         tandem_core::rpc::StdioStream::new(),
         Store::new(home.clone()),

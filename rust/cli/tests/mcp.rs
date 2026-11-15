@@ -14,7 +14,7 @@
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
+use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -57,6 +57,7 @@ struct Session {
     child: Child,
     input: Option<ChildStdin>,
     output: BufReader<ChildStdout>,
+    errors: Option<ChildStderr>,
 }
 
 impl Session {
@@ -77,15 +78,17 @@ impl Session {
             .envs(env.iter().copied())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("the binary starts");
         let input = child.stdin.take().expect("stdin is piped");
         let output = BufReader::new(child.stdout.take().expect("stdout is piped"));
+        let errors = child.stderr.take();
         Self {
             child,
             input: Some(input),
             output,
+            errors,
         }
     }
 
@@ -109,6 +112,20 @@ impl Session {
         serde_json::from_str(&line).unwrap_or_else(|error| {
             panic!("the child wrote a frame that is JSON ({error}): {line}")
         })
+    }
+
+    /// Close stdin, wait for the exit and return everything the child wrote
+    /// to stderr.
+    fn finish_stderr(&mut self) -> String {
+        self.close_stdin();
+        self.wait_for_exit();
+        let mut text = String::new();
+        self.errors
+            .take()
+            .expect("stderr is piped")
+            .read_to_string(&mut text)
+            .expect("stderr reads");
+        text
     }
 
     fn close_stdin(&mut self) {
@@ -267,24 +284,21 @@ fn closing_stdin_exits_the_child_and_leaves_no_lock_or_temp() {
     );
 }
 
-/// `TANDEM_LOG` is `tandem serve`'s alone: the mcp door installs no subscriber,
-/// so a trace filter changes nothing on its stdout, which stays JSON-RPC frames.
+/// With `TANDEM_LOG=debug` the log lands on stderr and stdout stays frames only.
 #[test]
-fn tandem_log_trace_leaves_the_mcp_stdout_as_frames_only() {
-    let sandbox = Sandbox::new("log-trace");
-    let mut session = Session::start_with_env(&sandbox, &[("TANDEM_LOG", "trace")]);
+fn tandem_log_debug_writes_stderr_and_leaves_stdout_as_frames_only() {
+    let sandbox = Sandbox::new("log-debug");
+    let mut session = Session::start_with_env(&sandbox, &[("TANDEM_LOG", "debug")]);
 
     session.send(json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
                         "params": {"protocolVersion": "2025-11-25"}}));
-    let hello = session.receive();
-    assert_eq!(hello["id"], 1);
-
+    assert_eq!(session.receive()["id"], 1);
     session.send(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}));
-    let listed = session.receive();
-    assert_eq!(listed["id"], 2);
+    assert_eq!(session.receive()["id"], 2);
+    session.send(call(3, "ticket_add", json!({"title": "secretword"})));
+    assert_eq!(session.receive()["id"], 3);
 
-    session.close_stdin();
-    session.wait_for_exit();
+    let stderr = session.finish_stderr();
     let mut rest = String::new();
     session
         .output
@@ -294,4 +308,61 @@ fn tandem_log_trace_leaves_the_mcp_stdout_as_frames_only() {
         serde_json::from_str::<Value>(line)
             .unwrap_or_else(|error| panic!("a non-frame line on mcp stdout ({error}): {line}"));
     }
+    assert!(stderr.contains("tandem mcp started"), "{stderr}");
+    assert!(stderr.contains("tools/call"), "{stderr}");
+    assert!(stderr.contains("stdin closed, exiting"), "{stderr}");
+    assert!(!stderr.contains('\u{1b}'), "no ANSI on stderr: {stderr:?}");
+    assert!(!stderr.contains("secretword"), "no argument text: {stderr}");
+}
+
+/// Unset, a healthy session leaves stderr empty.
+#[test]
+fn a_healthy_session_with_the_default_filter_leaves_stderr_empty() {
+    let sandbox = Sandbox::new("log-silent");
+    let mut session = Session::start(&sandbox);
+    session.send(json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                        "params": {"protocolVersion": "2025-11-25"}}));
+    assert_eq!(session.receive()["id"], 1);
+    session.send(call(2, "ticket_add", json!({"title": "quiet"})));
+    assert_eq!(session.receive()["id"], 2);
+    assert_eq!(session.finish_stderr(), "");
+}
+
+/// An invalid filter is one notice that never echoes the value, and the
+/// session still works.
+#[test]
+fn an_invalid_tandem_log_is_one_notice_that_does_not_echo_it() {
+    let sandbox = Sandbox::new("log-invalid");
+    let mut session = Session::start_with_env(&sandbox, &[("TANDEM_LOG", "not[valid")]);
+    session.send(json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                        "params": {"protocolVersion": "2025-11-25"}}));
+    assert_eq!(session.receive()["id"], 1);
+    let stderr = session.finish_stderr();
+    assert_eq!(stderr.lines().count(), 1, "exactly one notice: {stderr}");
+    assert!(stderr.contains("TANDEM_LOG"), "{stderr}");
+    assert!(
+        !stderr.contains("not[valid"),
+        "the value is not echoed: {stderr}"
+    );
+}
+
+/// An oversize frame is a warn on stderr and the error frame on stdout.
+#[test]
+fn an_oversize_frame_warns_on_stderr_and_answers_an_error_frame() {
+    let sandbox = Sandbox::new("log-oversize");
+    let mut session = Session::start(&sandbox);
+    let big = "x".repeat(4 * 1024 * 1024 + 16);
+    let writer = session.input.take().expect("stdin is open");
+    let handle = thread::spawn(move || {
+        let mut writer = writer;
+        let _ = writeln!(writer, "{big}");
+        let _ = writer.flush();
+        writer
+    });
+    let answer = session.receive();
+    assert_eq!(answer["error"]["code"], -32700, "{answer}");
+    session.input = Some(handle.join().expect("the writer finishes"));
+    let stderr = session.finish_stderr();
+    assert_eq!(stderr.lines().count(), 1, "one warn: {stderr}");
+    assert!(stderr.contains("WARN"), "{stderr}");
 }

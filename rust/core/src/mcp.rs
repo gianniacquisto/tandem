@@ -20,8 +20,17 @@
 //! answers at most `2025-11-25`, echoing the client's version when it is one
 //! of them. `2026-07-28` is the stateful protocol the new handshake carries,
 //! which a line-delimited stdio door does not speak.
+//!
+//! The door logs through `tracing` events, and the CLI installs a subscriber
+//! that writes them to stderr under `TANDEM_LOG` (ADR 0046 amendment). Stdout
+//! carries frames only, so stderr is the one channel a line cannot corrupt.
+//! The default filter is `warn`, so a healthy session is silent. A line names
+//! identifiers and outcomes only: never arguments, results, ticket or note
+//! text, or the environment, and every value a client chose (a tool or method
+//! name) is Debug-escaped so a control character cannot break the line.
 
 use std::io;
+use std::time::Instant;
 
 use serde_json::{Value, json};
 
@@ -68,15 +77,26 @@ pub fn serve<S: Stream>(
     actor: Actor,
     environment: Environment,
 ) -> io::Result<()> {
+    tracing::info!(
+        version = %server_version(),
+        home = ?store.home().directory(),
+        actor = ?actor.as_str(),
+        "tandem mcp started"
+    );
     loop {
         match stream.read_frame() {
-            Ok(None) => break Ok(()),
+            Ok(None) => {
+                tracing::info!("stdin closed, exiting");
+                break Ok(());
+            }
             Ok(Some(frame)) => {
                 if let Some(answer) = handle_mcp(&frame, &store, &actor, &environment) {
                     stream.write_frame(&answer)?;
                 }
             }
             Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                // The stream's own words: the frame is oversize or not UTF-8.
+                tracing::warn!(reason = %error, "frame refused");
                 let answer = error_frame(None, PARSE_ERROR, error.to_string());
                 stream.write_frame(&answer)?;
             }
@@ -100,9 +120,13 @@ pub fn handle_mcp(
 ) -> Option<String> {
     let value: Value = match serde_json::from_str(frame) {
         Ok(value) => value,
-        Err(error) => return Some(error_frame(frame_id(frame), PARSE_ERROR, error.to_string())),
+        Err(error) => {
+            tracing::warn!(reason = %error, "malformed frame");
+            return Some(error_frame(frame_id(frame), PARSE_ERROR, error.to_string()));
+        }
     };
     if value.is_array() {
+        tracing::warn!("invalid request: a batch");
         return Some(error_frame(
             None,
             INVALID_REQUEST,
@@ -112,6 +136,7 @@ pub fn handle_mcp(
     let request = match value.as_object() {
         Some(request) => request,
         None => {
+            tracing::warn!("invalid request: the frame is not an object");
             return Some(error_frame(
                 None,
                 INVALID_REQUEST,
@@ -120,6 +145,7 @@ pub fn handle_mcp(
         }
     };
     if request.get("jsonrpc") != Some(&Value::String("2.0".to_string())) {
+        tracing::warn!("invalid request: the frame is not JSON-RPC 2.0");
         return Some(error_frame(
             id_of(&value),
             INVALID_REQUEST,
@@ -129,16 +155,19 @@ pub fn handle_mcp(
     let method = request.get("method").and_then(Value::as_str).unwrap_or("");
     let id = id_of(&value);
     match method {
-        "initialize" => Some(initialize_frame(id, request.get("params"), store)),
+        "initialize" => Some(initialize_frame(id, request.get("params"), store, actor)),
         "notifications/initialized" => {
+            tracing::debug!("notifications/initialized");
             let id = id?;
             Some(result_frame(Some(id), json!({})))
         }
         "ping" => {
+            tracing::debug!("ping");
             let id = id?;
             Some(result_frame(Some(id), json!({})))
         }
         "tools/list" => {
+            tracing::debug!("tools/list");
             let id = id?;
             let tools: Vec<Value> = tools().iter().map(Tool::wire).collect();
             Some(result_frame(Some(id), json!({"tools": tools})))
@@ -153,13 +182,17 @@ pub fn handle_mcp(
                 environment,
             ))
         }
-        "" => Some(error_frame(
-            id,
-            INVALID_REQUEST,
-            "the frame names no method",
-        )),
+        "" => {
+            tracing::warn!("invalid request: the frame names no method");
+            Some(error_frame(
+                id,
+                INVALID_REQUEST,
+                "the frame names no method",
+            ))
+        }
         unknown => {
             let id = id?;
+            tracing::warn!(method = ?unknown, "method not found");
             Some(error_frame(
                 Some(id),
                 METHOD_NOT_FOUND,
@@ -176,7 +209,12 @@ pub fn handle_mcp(
 /// A small `health` block rides beside them (the resolved home and why, the
 /// store's ok, the version and the tool count), so a fresh session can see the
 /// default path is wired without running a full `doctor`.
-fn initialize_frame(id: Option<Value>, params: Option<&Value>, store: &Store) -> String {
+fn initialize_frame(
+    id: Option<Value>,
+    params: Option<&Value>,
+    store: &Store,
+    actor: &Actor,
+) -> String {
     let asked = params
         .and_then(|params| params.get("protocolVersion"))
         .and_then(Value::as_str)
@@ -186,6 +224,12 @@ fn initialize_frame(id: Option<Value>, params: Option<&Value>, store: &Store) ->
     } else {
         NEGOTIATED_DEFAULT
     };
+    tracing::info!(
+        protocol = negotiated,
+        version = %server_version(),
+        actor = ?actor.as_str(),
+        "initialize"
+    );
     result_frame(
         id,
         json!({
@@ -247,6 +291,7 @@ fn call_frame(
         .and_then(Value::as_str)
         .unwrap_or("");
     let Some(tool) = tools().into_iter().find(|tool| tool.name == name) else {
+        tracing::warn!(tool = ?name, "unknown tool");
         return error_frame(id, INVALID_PARAMS, format!("Unknown tool: {name}"));
     };
     let arguments = params
@@ -254,6 +299,7 @@ fn call_frame(
         .cloned()
         .unwrap_or_else(|| json!({}));
     if !arguments.is_object() {
+        tracing::warn!(tool = tool.name, "invalid arguments: not an object");
         return error_frame(
             id,
             INVALID_PARAMS,
@@ -261,9 +307,18 @@ fn call_frame(
         );
     }
     let frame = json!({"id": 1, "method": tool.method_tag, "params": arguments}).to_string();
+    let started = Instant::now();
     let answer: Value = serde_json::from_str(&handle_in(&frame, store, actor, environment))
         .unwrap_or_else(|_| json!({"id": 1, "error": {"code": "parse", "message": "the answer is not readable"}}));
+    let latency_ms = started.elapsed().as_millis() as u64;
     if let Some(error) = answer.get("error") {
+        // The domain's error kind only, never its message: a message may quote
+        // ticket text.
+        let kind = error
+            .get("code")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        tracing::info!(tool = tool.name, outcome = "error", kind = ?kind, latency_ms, "tools/call");
         let message = error
             .get("message")
             .and_then(Value::as_str)
@@ -273,6 +328,7 @@ fn call_frame(
             json!({"content": [{"type": "text", "text": message}], "isError": true}),
         );
     }
+    tracing::info!(tool = tool.name, outcome = "ok", latency_ms, "tools/call");
     let result = answer.get("result").cloned().unwrap_or(Value::Null);
     result_frame(
         id,
