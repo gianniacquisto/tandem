@@ -548,6 +548,15 @@ async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
         script.contains(".tickets__bar--board") && script.contains("new FormData("),
         "the drop posts the filter bar it was drawn with"
     );
+    assert!(
+        script.contains("tandem.noteTabs") && script.contains("data-note-tabs"),
+        "the script carries the note tabs"
+    );
+    let (_, _, css) = get(&app, "/static/app.css").await;
+    assert!(
+        css.contains(".note-tabs__tab[aria-selected=\"true\"]"),
+        "the stylesheet draws the active note tab"
+    );
 }
 
 #[tokio::test]
@@ -1291,7 +1300,7 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         "the focused tree keeps the project's folder: {focused}"
     );
     assert!(
-        !focused.contains("outside"),
+        !focused.contains("data-path=\"projects/other/outside.md\""),
         "the focused tree drops another project's folder: {focused}"
     );
 }
@@ -1483,6 +1492,69 @@ async fn post_notes_rename_and_delete_manage_a_note_and_the_open_page_follows() 
     assert!(
         body.contains("No note selected"),
         "the deleted page closes: {body}"
+    );
+    assert!(
+        body.contains("data-gone=\"projects/tandem/Final.md\""),
+        "the delete names the path for the tab strip: {body}"
+    );
+}
+
+#[tokio::test]
+async fn the_notes_page_carries_the_tab_strip_hooks_and_rename_names_both_paths() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-tabs");
+    let store = sandbox.store();
+    let app = router(context(store));
+
+    send(
+        &app,
+        form_request(
+            "/notes/create",
+            "path=projects/tandem/Draft.md&project=tandem",
+        ),
+    )
+    .await;
+    send(
+        &app,
+        form_request("/notes/create", "path=Other.md&project=tandem"),
+    )
+    .await;
+
+    let (status, _, page) = get(&app, "/notes?path=projects/tandem/Draft.md&project=tandem").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("data-note-tabs"), "the strip mounts: {page}");
+    assert!(
+        page.contains("role=\"tablist\""),
+        "the strip is a tablist: {page}"
+    );
+    assert!(
+        page.contains("data-current=\"projects/tandem/Draft.md\"")
+            && page.contains("data-current-name=\"Draft\""),
+        "the open note's path and name are hooks: {page}"
+    );
+    assert!(
+        page.contains("Other.md") && page.contains("data-notes="),
+        "every note is listed for pruning, whatever the focus: {page}"
+    );
+
+    let (_, _, empty) = get(&app, "/notes?project=tandem").await;
+    assert!(
+        empty.contains("data-note-tabs") && empty.contains("data-current=\"\""),
+        "the strip mounts with no note open: {empty}"
+    );
+
+    let (_, _, renamed) = send(
+        &app,
+        form_request(
+            "/notes/rename",
+            "path=projects/tandem/Draft.md&name=Final&open=Other.md&project=tandem&mode=edit",
+        ),
+    )
+    .await;
+    assert!(
+        renamed.contains("data-from=\"projects/tandem/Draft.md\"")
+            && renamed.contains("data-to=\"projects/tandem/Final.md\""),
+        "a rename of another row still names both paths: {renamed}"
     );
 }
 
