@@ -1,16 +1,18 @@
 /*
- * The design tokens: four palettes behind one scale.
+ * The design tokens: eight palettes behind one scale.
  *
- * The style (`neutral`, the default, or `tandem`, the parchment/moss/ember
- * palette frozen at the cutover from the Swift theme) and the resolved
+ * The style (`neutral`, the default, `tandem`, the parchment/moss/ember
+ * palette frozen at the cutover from the Swift theme, or `nord`, `gruvbox`,
+ * `solarized`, `catppuccin`, each mapped from its published palette with a
+ * light and a dark set; a colour nudged to meet AA says so beside it) and the resolved
  * appearance (`light` or `dark`) are attributes on <html>: `data-style` and
  * `data-theme`. The inline script in `shell.html` sets them before first paint
  * from localStorage and `prefers-color-scheme`, and `tandem.js` keeps them
  * current. With no attribute the neutral light set applies. Every set declares
  * the same token names, so a component reads a variable and never a raw colour.
- * `rust/core/tests/tokens_css.rs` pins every value in all four sets.
+ * `rust/core/tests/tokens_css.rs` pins every value in all eight sets.
  *
- * The scale (geometry, motion, type) is shared by all four.
+ * The scale (geometry, motion, type) is shared by all eight.
  */
 :root {
   color-scheme: light;
@@ -187,4 +189,308 @@ html[data-style="tandem"][data-theme="dark"] {
   --tone-skin: #E3C29B;
   --tone-hill: #8AA67C;
   --tone-sky: #8FB3C2;
+}
+
+/* nord light */
+html[data-style="nord"][data-theme="light"] {
+  --paper: #ECEFF4;
+  --parchment: #E5E9F0;
+  --sand: #D8DEE9;
+  --shadow: #C2CAD9;
+  --line: #CDD4E1;
+  --ink: #2E3440;
+  --ink-dim: #4C566A;
+  --accent: #486283; /* AA nudge: published #5E81AC */
+  --accent-deep: #4F6376; /* AA nudge: published #81A1C1 */
+  --ember: #845548; /* AA nudge: published #D08770 */
+  --ember-deep: #914A50; /* AA nudge: published #BF616A */
+  --moss: #8FBCBB;
+  --moss-deep: #56654B; /* AA nudge: published #A3BE8C */
+  --sky: #D0D9E6;
+  --hill: #DDE5DF;
+  --hill-far: #E1DCE6;
+  --skin: #E6DADA;
+  --sun: #EBCB8B;
+  --wikilink-chip: #D0D9E6;
+  --wikilink-chip-broken: #E3D3D8;
+  --card: #F6F8FB;
+  --tint-backlog: #E2E6EB;
+  --tint-on-hold: #ECE9E3;
+  --tint-ready: #D5DDE8;
+  --tint-in-progress: #E8DEDF;
+  --tint-in-review: #E3DFE9;
+  --tint-done: #E0E7E3;
+  --tone-moss: #709392; /* AA nudge: published #8FBCBB */
+  --tone-ember: #BE7B67; /* AA nudge: published #D08770 */
+  --tone-accent: #5E81AC;
+  --tone-sun: #A38D61; /* AA nudge: published #EBCB8B */
+  --tone-skin: #BE7B67; /* AA nudge: published #D08770 */
+  --tone-hill: #80946E; /* AA nudge: published #A3BE8C */
+  --tone-sky: #5E81AC;
+}
+
+/* nord dark */
+html[data-style="nord"][data-theme="dark"] {
+  --paper: #2E3440;
+  --parchment: #3B4252;
+  --sand: #434C5E;
+  --shadow: #242933;
+  --line: #4C566A;
+  --ink: #ECEFF4;
+  --ink-dim: #B4BCCC; /* AA nudge: published #AEB6C6 */
+  --accent: #92C6D3; /* AA nudge: published #88C0D0 */
+  --accent-deep: #9BC4C3; /* AA nudge: published #8FBCBB */
+  --ember: #DFB2A4; /* AA nudge: published #D08770 */
+  --ember-deep: #EBCB8B;
+  --moss: #A3BE8C;
+  --moss-deep: #ACC495; /* AA nudge: published #A3BE8C */
+  --sky: #3F4A5A;
+  --hill: #45504F;
+  --hill-far: #494656;
+  --skin: #4E454A;
+  --sun: #EBCB8B;
+  --wikilink-chip: #40505D;
+  --wikilink-chip-broken: #4B3D48;
+  --card: #3B4252;
+  --tint-backlog: #383D49;
+  --tint-on-hold: #4C4C4C;
+  --tint-ready: #3B4555;
+  --tint-in-progress: #484148;
+  --tint-in-review: #434251;
+  --tint-done: #414A4C;
+  --tone-moss: #8FBCBB;
+  --tone-ember: #D08770;
+  --tone-accent: #88C0D0;
+  --tone-sun: #EBCB8B;
+  --tone-skin: #D08770;
+  --tone-hill: #A3BE8C;
+  --tone-sky: #81A1C1;
+}
+
+/* gruvbox light */
+html[data-style="gruvbox"][data-theme="light"] {
+  --paper: #FBF1C7;
+  --parchment: #EBDBB2;
+  --sand: #D5C4A1;
+  --shadow: #BDAE93;
+  --line: #D5C4A1;
+  --ink: #3C3836;
+  --ink-dim: #665C54;
+  --accent: #076678;
+  --accent-deep: #055060;
+  --ember: #A53603; /* AA nudge: published #AF3A03 */
+  --ember-deep: #9D0006;
+  --moss: #427B58;
+  --moss-deep: #625F0E; /* AA nudge: published #79740E */
+  --sky: #CAD5B7;
+  --hill: #E1D8A2;
+  --hill-far: #E5CDB6;
+  --skin: #ECCCA0;
+  --sun: #D79921;
+  --wikilink-chip: #CAD5B7;
+  --wikilink-chip-broken: #E8C1A0;
+  --card: #F9F5D7;
+  --tint-backlog: #F1E8C0;
+  --tint-on-hold: #F0DDAA;
+  --tint-ready: #D4DBBA;
+  --tint-in-progress: #EFD4A8;
+  --tint-in-review: #EAD5B9;
+  --tint-done: #E6DDA9;
+  --tone-moss: #427B58;
+  --tone-ember: #AF3A03;
+  --tone-accent: #076678;
+  --tone-sun: #B57614;
+  --tone-skin: #AF3A03;
+  --tone-hill: #79740E;
+  --tone-sky: #076678;
+}
+
+/* gruvbox dark */
+html[data-style="gruvbox"][data-theme="dark"] {
+  --paper: #282828;
+  --parchment: #32302F;
+  --sand: #3C3836;
+  --shadow: #1D2021;
+  --line: #504945;
+  --ink: #EBDBB2;
+  --ink-dim: #B6AB98; /* AA nudge: published #A89984 */
+  --accent: #97B4AA; /* AA nudge: published #83A598 */
+  --accent-deep: #8EC07C;
+  --ember: #FE9239; /* AA nudge: published #FE8019 */
+  --ember-deep: #FB8F82; /* AA nudge: published #FB4934 */
+  --moss: #8EC07C;
+  --moss-deep: #B8BB26;
+  --sky: #3A413E;
+  --hill: #454528;
+  --hill-far: #4A3B3F;
+  --skin: #533A25;
+  --sun: #FABD2F;
+  --wikilink-chip: #3A413E;
+  --wikilink-chip-broken: #522F2A;
+  --card: #3C3836;
+  --tint-backlog: #32312F;
+  --tint-on-hold: #4A4029;
+  --tint-ready: #373C3A;
+  --tint-in-progress: #4A3626;
+  --tint-in-review: #43373A;
+  --tint-done: #3F4028;
+  --tone-moss: #8EC07C;
+  --tone-ember: #FE8019;
+  --tone-accent: #83A598;
+  --tone-sun: #FABD2F;
+  --tone-skin: #FE8019;
+  --tone-hill: #B8BB26;
+  --tone-sky: #83A598;
+}
+
+/* solarized light */
+html[data-style="solarized"][data-theme="light"] {
+  --paper: #FDF6E3;
+  --parchment: #EEE8D5;
+  --sand: #E1DAC3;
+  --shadow: #93A1A1;
+  --line: #DDD6C1;
+  --ink: #073642;
+  --ink-dim: #50656B; /* AA nudge: published #586E75 */
+  --accent: #1C679B; /* AA nudge: published #268BD2 */
+  --accent-deep: #575C9E; /* AA nudge: published #6C71C4 */
+  --ember: #A93F10; /* AA nudge: published #CB4B16 */
+  --ember-deep: #B72B29; /* AA nudge: published #DC322F */
+  --moss: #2AA198;
+  --moss-deep: #596800; /* AA nudge: published #859900 */
+  --sky: #D2E1E0;
+  --hill: #E5E3B6;
+  --hill-far: #E0DBDD;
+  --skin: #F3D4BA;
+  --sun: #B58900;
+  --wikilink-chip: #D2E1E0;
+  --wikilink-chip-broken: #F6CFBF;
+  --card: #FFFBEE;
+  --tint-backlog: #F1ECDB;
+  --tint-on-hold: #F1E5BF;
+  --tint-ready: #DBE5E0;
+  --tint-in-progress: #F5DBC2;
+  --tint-in-review: #E6E1DE;
+  --tint-done: #EAE7BF;
+  --tone-moss: #2AA198;
+  --tone-ember: #CB4B16;
+  --tone-accent: #268BD2;
+  --tone-sun: #B58900;
+  --tone-skin: #CB4B16;
+  --tone-hill: #859900;
+  --tone-sky: #268BD2;
+}
+
+/* solarized dark */
+html[data-style="solarized"][data-theme="dark"] {
+  --paper: #002B36;
+  --parchment: #073642;
+  --sand: #0F4350;
+  --shadow: #001F27;
+  --line: #1A4B58;
+  --ink: #EEE8D5;
+  --ink-dim: #93A1A1;
+  --accent: #5AA6DB; /* AA nudge: published #268BD2 */
+  --accent-deep: #989CD5; /* AA nudge: published #6C71C4 */
+  --ember: #DB8E6C; /* AA nudge: published #CB4B16 */
+  --ember-deep: #EC817F; /* AA nudge: published #DC322F */
+  --moss: #2AA198;
+  --moss-deep: #96A824; /* AA nudge: published #859900 */
+  --sky: #083E55;
+  --hill: #1B412B;
+  --hill-far: #163952;
+  --skin: #293130;
+  --sun: #B58900;
+  --wikilink-chip: #083E55;
+  --wikilink-chip-broken: #2C2C35;
+  --card: #073642;
+  --tint-backlog: #0C343E;
+  --tint-on-hold: #1D3A2D;
+  --tint-ready: #063A4F;
+  --tint-in-progress: #203031;
+  --tint-in-review: #11364D;
+  --tint-done: #153D2D;
+  --tone-moss: #2AA198;
+  --tone-ember: #CE5524; /* AA nudge: published #CB4B16 */
+  --tone-accent: #268BD2;
+  --tone-sun: #B58900;
+  --tone-skin: #CE5524; /* AA nudge: published #CB4B16 */
+  --tone-hill: #859900;
+  --tone-sky: #268BD2;
+}
+
+/* catppuccin light */
+html[data-style="catppuccin"][data-theme="light"] {
+  --paper: #EFF1F5;
+  --parchment: #E6E9EF;
+  --sand: #DCE0E8;
+  --shadow: #BCC0CC;
+  --line: #CCD0DA;
+  --ink: #4C4F69;
+  --ink-dim: #5A5D6E; /* AA nudge: published #6C6F85 */
+  --accent: #7831D3; /* AA nudge: published #8839EF */
+  --accent-deep: #4B58A5; /* AA nudge: published #7287FD */
+  --ember: #A1400B; /* AA nudge: published #FE640B */
+  --ember-deep: #BA0F31; /* AA nudge: published #D20F39 */
+  --moss: #179299;
+  --moss-deep: #2B6C1E; /* AA nudge: published #40A02B */
+  --sky: #C5D5F5;
+  --hill: #CCE1CD;
+  --hill-far: #DACCF4;
+  --skin: #F2D5C6;
+  --sun: #DF8E1D;
+  --wikilink-chip: #DACCF4;
+  --wikilink-chip-broken: #E9C4CF;
+  --card: #FFFFFF;
+  --tint-backlog: #E7E9EE;
+  --tint-on-hold: #ECE1D2;
+  --tint-ready: #CEDBF5;
+  --tint-in-progress: #F1DAD0;
+  --tint-in-review: #DFD4F4;
+  --tint-done: #D3E4D5;
+  --tone-moss: #179299;
+  --tone-ember: #F6610B; /* AA nudge: published #FE640B */
+  --tone-accent: #8839EF;
+  --tone-sun: #CC821A; /* AA nudge: published #DF8E1D */
+  --tone-skin: #D67474; /* AA nudge: published #DD7878 */
+  --tone-hill: #40A02B;
+  --tone-sky: #1E66F5;
+}
+
+/* catppuccin dark */
+html[data-style="catppuccin"][data-theme="dark"] {
+  --paper: #1E1E2E;
+  --parchment: #181825;
+  --sand: #313244;
+  --shadow: #11111B;
+  --line: #45475A;
+  --ink: #CDD6F4;
+  --ink-dim: #A6ADC8;
+  --accent: #CBA6F7;
+  --accent-deep: #B4BEFE;
+  --ember: #FAB387;
+  --ember-deep: #F38BA8;
+  --moss: #94E2D5;
+  --moss-deep: #A6E3A1;
+  --sky: #333C57;
+  --hill: #394545;
+  --hill-far: #413956;
+  --skin: #4A3C40;
+  --sun: #F9E2AF;
+  --wikilink-chip: #413956;
+  --wikilink-chip-broken: #493446;
+  --card: #313244;
+  --tint-backlog: #272738;
+  --tint-on-hold: #413D43;
+  --tint-ready: #2F364F;
+  --tint-in-progress: #41363C;
+  --tint-in-review: #3A344E;
+  --tint-done: #343E40;
+  --tone-moss: #94E2D5;
+  --tone-ember: #FAB387;
+  --tone-accent: #CBA6F7;
+  --tone-sun: #F9E2AF;
+  --tone-skin: #F2CDCD;
+  --tone-hill: #A6E3A1;
+  --tone-sky: #89B4FA;
 }

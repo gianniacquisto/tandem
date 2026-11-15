@@ -819,3 +819,7 @@ Notion's geometry is sober-editorial - `{rounded.md}` (8px) buttons distinguish 
 - Animation/transition timings not extracted; recommend 150–200ms ease
 - Form validation success state not explicitly captured
 - Pastel-tint mapping (which feature uses which tint) is observation-based - the actual brand library may have more entries
+
+## Board styles
+
+The board ships six styles (`neutral`, `tandem`, `nord`, `gruvbox`, `solarized`, `catppuccin`), each with a light and a dark set. `rust/core/src/serve/static/tokens.css` stays the source of truth for every value.
