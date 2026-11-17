@@ -134,7 +134,10 @@ fn repo_root() -> PathBuf {
 /// `release`. Adding a target is one matrix row, so the job is defined once.
 #[test]
 fn the_release_workflow_builds_three_platform_archives() {
-    let text = std::fs::read_to_string(workflows().join("release.yml")).expect("release.yml reads");
+    // A Windows checkout may carry CRLF line endings.
+    let text = std::fs::read_to_string(workflows().join("release.yml"))
+        .expect("release.yml reads")
+        .replace("\r\n", "\n");
     assert_eq!(
         text.matches("\n  build:\n").count(),
         1,
@@ -234,6 +237,9 @@ fn every_smoke_step_extracts_its_archive_and_runs_the_extracted_binary() {
 
 /// A filter must never let a change to a workflow, an action, `install.sh` or
 /// the Rust tree skip its own gates, and a docs-only change must skip them.
+/// The script runs on the Linux `changes` job; the Windows leg has no bash
+/// contract to pin.
+#[cfg(not(windows))]
 #[test]
 fn the_changed_paths_filter_runs_the_gates_for_code_and_skips_docs() {
     let dir = std::env::temp_dir().join(format!("tandem-changed-paths-{}", std::process::id()));
