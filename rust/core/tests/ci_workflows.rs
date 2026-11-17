@@ -65,7 +65,7 @@ fn the_retired_path_scan_is_guarded_by_the_macos_os() {
         "the retained scan still has its step"
     );
     assert!(
-        text.contains("if: runner.os == 'macOS'"),
+        text.contains("&& runner.os == 'macOS'"),
         "the scan's step runs on the macOS job: `runner.os` is `macOS`, not a runner label"
     );
 }
