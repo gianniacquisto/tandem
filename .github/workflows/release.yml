@@ -273,10 +273,13 @@ jobs:
             if ($process.HasExited) { throw "the server exited before it listened" }
           }
           if (-not $address) { throw "the server did not print its address" }
+          $health = Invoke-WebRequest -Uri "$address/health" -UseBasicParsing
+          if ($health.StatusCode -ne 200) { throw "/health answered $($health.StatusCode)" }
           foreach ($path in @('/', '/notes')) {
             $response = Invoke-WebRequest -Uri "$address$path" -UseBasicParsing
             if ($response.StatusCode -ne 200) { throw "$path answered $($response.StatusCode)" }
             if (-not $response.Headers['Content-Security-Policy']) { throw "$path carries no Content-Security-Policy" }
+            if ($response.Headers['X-Content-Type-Options'] -ne 'nosniff') { throw "$path carries no nosniff" }
           }
           Stop-Process -Id $process.Id -Force
 

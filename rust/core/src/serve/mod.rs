@@ -32,7 +32,7 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 
 use axum::{Extension, Router};
-pub use guard::Access;
+pub use guard::{Access, normalize_public_origin};
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
@@ -74,8 +74,11 @@ fn backoff(wait: Duration) -> Duration {
     (wait * 2).min(WATCH_BACKOFF_MAX)
 }
 
-/// The one policy every HTML response carries: the board is its own scripts and
+/// The one policy every response carries: the board is its own scripts and
 /// styles, the change stream is same-origin, and nothing may frame it.
+/// `style-src` keeps `'unsafe-inline'` because `notes.html` indents the tree
+/// rows with a per-row `style="padding-left: Npx"`; the indent is data, so a
+/// class per depth is not a small change. Inline script stays refused.
 const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; \
      style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; \
      connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; \
@@ -249,8 +252,8 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/notes/restore", post(notes::note_restore))
 }
 
-/// The layers every route carries: the access guard, the body ceiling and the
-/// change channel the events stream reads. The request line is the outermost
+/// The layers every route carries: the access guard, the body ceiling, the
+/// change channel the events stream reads and the security headers. The request line is the outermost
 /// layer, so it sees every response the stack writes, the guard's refusals and
 /// the body ceiling's included.
 fn layered(
@@ -266,7 +269,47 @@ fn layered(
         .layer(Extension(login::LoginThrottle::new()))
         .layer(DefaultBodyLimit::max(crate::rpc::MAX_FRAME))
         .layer(Extension(changes))
+        .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn(request_log))
+}
+
+/// A request slower than this logs a `slow` warning after its request line:
+/// the cheapest signal that the store has outgrown the whole-board reads.
+const SLOW_REQUEST: Duration = Duration::from_millis(500);
+
+/// What every answer carries, whatever its type or status: the guard's
+/// refusals, the 404, assets and the stream included, so a route added later
+/// cannot forget them. The CSP and `Cache-Control` are set only when the
+/// response has none of its own (assets name their own cache policy).
+async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
+    headers.insert(
+        "cross-origin-opener-policy",
+        HeaderValue::from_static("same-origin"),
+    );
+    headers.insert(
+        "cross-origin-resource-policy",
+        HeaderValue::from_static("same-origin"),
+    );
+    if !headers.contains_key(header::CONTENT_SECURITY_POLICY) {
+        headers.insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+        );
+    }
+    if !headers.contains_key(header::CACHE_CONTROL) {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+    response
 }
 
 /// One request line per request, written when the response is built, so the
@@ -283,9 +326,22 @@ async fn request_log(request: Request, next: Next) -> Response {
         .map(|matched| matched.as_str().to_string())
         .unwrap_or_else(|| request.uri().path().to_string());
     let response = next.run(request).await;
-    let status = response.status().as_u16();
-    let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    let quiet = method == Method::GET && (route.starts_with("/static/") || route == "/events");
+    log_request(
+        &method,
+        &route,
+        response.status().as_u16(),
+        started.elapsed(),
+        SLOW_REQUEST,
+    );
+    response
+}
+
+/// The request line, and a `slow` warning when `latency` passes `slow`. The
+/// event stream is open-ended and `/health` is a probe, so neither is ever
+/// slow; `/mcp` is, since every agent session shares this server.
+fn log_request(method: &Method, route: &str, status: u16, latency: Duration, slow: Duration) {
+    let latency_ms = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
+    let quiet = *method == Method::GET && (route.starts_with("/static/") || route == "/events");
     if status >= 500 {
         tracing::error!(method = %method, route = ?route, status, latency_ms, "request");
     } else if status >= 400 {
@@ -295,7 +351,9 @@ async fn request_log(request: Request, next: Next) -> Response {
     } else {
         tracing::info!(method = %method, route = ?route, status, latency_ms, "request");
     }
-    response
+    if latency > slow && route != "/events" && route != guard::HEALTH_ROUTE {
+        tracing::warn!(method = %method, route = ?route, latency_ms, "slow request");
+    }
 }
 
 /// The store watch: one read-only connection, a 40 ms stat and a 5 s fallback,
@@ -561,17 +619,19 @@ struct PageView {
     /// Whether the header carries a Sign out control: token mode only.
     sign_out: bool,
 }
+
+impl PageView {
+    /// The release that drew the page, on `<html data-version>`.
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+}
 fn is_partial(headers: &HeaderMap) -> bool {
     headers.get("hx-request").is_some()
 }
 
 fn html_response(html: String, status: StatusCode) -> Response {
-    let mut response = (status, Html(html)).into_response();
-    response.headers_mut().insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(CONTENT_SECURITY_POLICY),
-    );
-    response
+    (status, Html(html)).into_response()
 }
 fn bad_request(message: &str) -> Response {
     tracing::warn!(error = ?message, "request refused");

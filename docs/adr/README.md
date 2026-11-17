@@ -79,7 +79,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0045 | [The board and notes cut](0045-the-board-and-notes-cut.md) | In force | |
 | 0046 | [Tandem serve and single-binary distribution](0046-tandem-serve-and-single-binary-distribution.md) | In force, amended by 0047 (single door) | Its "two server doors", "no HTTP JSON-RPC" and "loopback is the authentication" clauses are superseded. |
 | 0047 | [Lanes are labels](0047-lanes-are-labels.md) | In force | Schema v12. |
-| 0047 | [Tandem serve is the single door](0047-serve-is-the-single-door.md) | In force | MCP over HTTP on `tandem serve`; `tandem mcp` is retired. Shares its number with the record above: two branches took 0047 and both merged. One of them should be renumbered. |
+| 0047 | [Tandem serve is the single door](0047-serve-is-the-single-door.md) | In force, amended (CUT-37) | MCP over HTTP on `tandem serve`; `tandem mcp` is retired. Shares its number with the record above: two branches took 0047 and both merged. One of them should be renumbered. |
 | 0048 | [Hosted Tandem is one `tandem serve` per workspace](0048-hosted-tandem-is-one-serve-per-workspace.md) | In force | The hosted product is the published binary, one serve and one home per workspace, behind a closed control plane that holds no content. Records the boundary; the siblings own their parts. |
 | 0049 | [A browser signs in to a token-guarded serve](0049-a-browser-signs-in-to-a-token-guarded-serve.md) | In force | A session cookie held by the instance, a keyed digest in `browser_sessions` (schema v13). Supersedes the browser-login half of 0047. |
 
