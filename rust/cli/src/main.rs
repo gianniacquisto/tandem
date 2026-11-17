@@ -78,6 +78,9 @@ struct ServeArgs {
     /// Serve a non-loopback address with no authentication (a network you trust).
     #[arg(long)]
     allow_unauthenticated: bool,
+    /// The one public https origin a TLS proxy serves this board at.
+    #[arg(long, value_name = "ORIGIN")]
+    public_origin: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -1046,6 +1049,38 @@ where
 /// off loopback and for the remote CLI. Never a flag value, never stored.
 const TOKEN_VARIABLE: &str = "TANDEM_TOKEN";
 
+/// The environment variable that carries the public origin when no flag does.
+const PUBLIC_ORIGIN_VARIABLE: &str = "TANDEM_PUBLIC_ORIGIN";
+
+/// The public origin to serve behind, normalized: the flag wins over the
+/// variable, an empty variable is unset, an empty flag is an error, and a
+/// malformed variable is refused even when the flag is also set.
+fn resolve_public_origin(
+    flag: Option<&str>,
+    variable: Option<String>,
+) -> Result<Option<String>, Failure> {
+    let refuse = |source: &str, reason: &str| Failure {
+        message: format!(
+            "tandem serve: {source} {reason} It must be https://host[:port], with no path, \
+             query or userinfo."
+        ),
+        exit: 2,
+    };
+    let from_variable = match variable.filter(|value| !value.is_empty()) {
+        Some(value) => Some(
+            tandem_core::serve::normalize_public_origin(&value)
+                .map_err(|reason| refuse(PUBLIC_ORIGIN_VARIABLE, reason))?,
+        ),
+        None => None,
+    };
+    match flag {
+        Some(value) => tandem_core::serve::normalize_public_origin(value)
+            .map(Some)
+            .map_err(|reason| refuse("--public-origin", reason)),
+        None => Ok(from_variable),
+    }
+}
+
 /// The shortest token a non-loopback `tandem serve` accepts.
 const MIN_TOKEN_LENGTH: usize = 32;
 
@@ -1060,6 +1095,19 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
         ),
         exit: 2,
     })?;
+    let public_origin = resolve_public_origin(
+        args.public_origin.as_deref(),
+        env::var(PUBLIC_ORIGIN_VARIABLE).ok(),
+    )?;
+    if public_origin.is_some() && host.is_loopback() {
+        return Err(Failure {
+            message: format!(
+                "tandem serve: --public-origin and {PUBLIC_ORIGIN_VARIABLE} need a non-loopback \
+                 --host and {TOKEN_VARIABLE}: {host} is a loopback address."
+            ),
+            exit: 2,
+        });
+    }
     // Off loopback the run needs a stated choice: a token in the environment
     // (never a flag, which would show in `ps`) or the explicit opt-out of
     // authentication. A token that is set must be a strong one.
@@ -1120,6 +1168,9 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
             ))
         })?;
         println!("tandem serve: listening on http://{address}");
+        if let Some(origin) = &public_origin {
+            println!("tandem serve: public origin {origin}");
+        }
         let _ = io::stdout().flush();
         if invalid_filter {
             tracing::warn!("{LOG_VARIABLE} is not a valid log filter; logging at info");
@@ -1127,11 +1178,16 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
         if args.open {
             open_browser(&format!("http://{address}"));
         }
-        let access = match &token {
+        let mut access = match &token {
             Some(token) => tandem_core::serve::Access::token(address.port(), token),
             None if host.is_loopback() => tandem_core::serve::Access::loopback(address.port()),
             None => tandem_core::serve::Access::open(address.port()),
         };
+        if let Some(origin) = &public_origin {
+            access = access.with_public_origin(origin).map_err(|reason| {
+                Failure::message(format!("tandem serve: the public origin {reason}"))
+            })?;
+        }
         let context = tandem_core::serve::SessionContext {
             store: Store::new(home.clone()),
             actor: Actor::current(),
@@ -1143,6 +1199,7 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
             home = ?home.directory(),
             actor = ?context.actor.as_str(),
             version = %tandem_core::mcp::server_version(),
+            origin = public_origin.as_deref().unwrap_or("none"),
             "tandem serve started"
         );
         let (changes, _) = tokio::sync::broadcast::channel(64);
