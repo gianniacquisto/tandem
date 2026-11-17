@@ -68,6 +68,15 @@ if [ -z "$address" ]; then
   exit 1
 fi
 
+health=$(curl -fsS "$address/health")
+case "$health" in
+  *ok*) ;;
+  *)
+    echo "smoke-binary.sh: GET /health answered '$health', not ok" >&2
+    exit 1
+    ;;
+esac
+
 for path in / /notes; do
   status=$(curl -fsS -o /dev/null -w '%{http_code}' "$address$path")
   if [ "$status" != "200" ]; then
@@ -84,4 +93,4 @@ for path in / /notes; do
   fi
 done
 
-echo "smoke-binary.sh: $binary answered $want, served / and /notes with a CSP on $address"
+echo "smoke-binary.sh: $binary answered $want, served /health, / and /notes with a CSP on $address"
