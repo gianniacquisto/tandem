@@ -212,6 +212,18 @@ fn call_for(command: &Command) -> Result<(String, Map<String, Value>), Failure> 
                 "tandem serve: this verb has no remote form; it runs here.",
             ));
         }
+        Command::Export(_) | Command::Import(_) => {
+            // Neither verb is an MCP tool: a remote user downloads from the
+            // board, and a move into a hosted workspace is the service's act.
+            let name = if matches!(command, Command::Export(_)) {
+                "export"
+            } else {
+                "import"
+            };
+            return Err(Failure::message(format!(
+                "tandem {name}: this verb has no remote form; it runs against the local home only."
+            )));
+        }
         Command::Doctor => "doctor",
         Command::Ticket { command } => {
             let command = command.as_ref().ok_or_else(Failure::usage)?;

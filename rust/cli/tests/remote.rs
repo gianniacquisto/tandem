@@ -283,3 +283,21 @@ fn a_verb_with_no_tool_refuses_in_remote_mode_by_name() {
     assert_eq!(code, Some(1));
     assert!(stderr.contains("no remote form"), "{stderr}");
 }
+
+#[test]
+fn export_and_import_refuse_by_name_under_a_remote_target() {
+    let sandbox = Sandbox::new("no-export");
+    for (verb, args) in [
+        ("export", vec!["export", "--out", "x.tar.gz"]),
+        ("import", vec!["import", "x.tar.gz"]),
+    ] {
+        let (code, _, stderr) = stdout_of({
+            let mut command = sandbox.cli("elsewhere", Some("http://127.0.0.1:1"), None);
+            command.args(&args);
+            command
+        });
+        assert_eq!(code, Some(1), "{verb}");
+        assert!(stderr.contains(&format!("tandem {verb}")), "{stderr}");
+        assert!(stderr.contains("no remote form"), "{stderr}");
+    }
+}

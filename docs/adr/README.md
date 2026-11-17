@@ -80,6 +80,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0047 | [Lanes are labels](0047-lanes-are-labels.md) | In force | Schema v12. |
 | 0047 | [Tandem serve is the single door](0047-serve-is-the-single-door.md) | In force | MCP over HTTP on `tandem serve`; `tandem mcp` is retired. Shares its number with the record above: two branches took 0047 and both merged. One of them should be renumbered. |
 | 0048 | [Hosted Tandem is one `tandem serve` per workspace](0048-hosted-tandem-is-one-serve-per-workspace.md) | In force | The hosted product is the published binary, one serve and one home per workspace, behind a closed control plane that holds no content. Records the boundary; the siblings own their parts. |
+| 0050 | [The home leaves and arrives as one archive](0050-the-home-leaves-and-arrives-as-one-archive.md) | In force | `tandem export` and `tandem import`: one streamed `.tar.gz` of the store and the notes, no secrets, restored only into an empty home; one export permission check and a record line. Amends 0047's list of verbs with no remote form; 0018's "no restore verb" stands for the rolling `.bak`. |
 
 ## Adding a record
 

@@ -35,6 +35,7 @@
 
 pub(crate) mod board_rows;
 mod diagnostics;
+mod export;
 mod home;
 // Reachable from the schema suite, which builds a v2 home to prove a read of
 // an older file never fails on a column a later migration adds.
@@ -55,6 +56,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 
 pub use diagnostics::{BackupHealth, Health};
+#[cfg(test)]
+pub(crate) use export::inspect_with;
+pub use export::{ExportCopy, Inspection, Refusal, inspect_unpacked};
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
 pub use schema::CURRENT_VERSION;
 pub use write::{NewComment, NewDependency, NewLabel, NewProject, NewTicket, Write};

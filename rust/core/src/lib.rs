@@ -4,6 +4,8 @@
 //!
 //! - [`store`]: the home, and the SQLite adapter behind it. All SQL
 //!   lives there; nothing outside it writes a row.
+//! - [`archive`]: the home as one archive (ADR 0050): export, import, the
+//!   export permission check and its record.
 //! - [`wire`]: the JSON the agent face prints and the app reads.
 //! - [`domain`]: the aggregates, pure over the adapter: the board's tickets,
 //!   labels, comments, order and the dependency edge. Every failure the
@@ -21,6 +23,7 @@
 //! - [`diagnostics`]: ADR 0014's report, cut to `home`, `store` and `bikeshed`
 //!   (ADR 0045), a pure assembly over injected facts with one impure gatherer.
 
+pub mod archive;
 pub mod bikeshed;
 pub mod diagnostics;
 pub mod domain;
