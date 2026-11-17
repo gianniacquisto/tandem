@@ -35,3 +35,11 @@ By quotation, in the same PR:
 - Sessions get no tools while serve is down. Start it by hand.
 - Release notes name the retired verb `tandem mcp` and the replacement config: Claude Code `{"type": "http", "url": "http://127.0.0.1:7700/mcp", "headers": {"X-Tandem-Agent": "<role>"}}`, opencode `{"type": "remote", "url": "http://127.0.0.1:7700/mcp", "headers": {"X-Tandem-Agent": "<role>"}, "oauth": false}`.
 - TAN-336 narrows: an agent's session can name itself through the header; the harness's own subagent dispatch still sets no `TANDEM_AGENT` for the CLI.
+
+## Amended by CUT-37
+
+By quotation, in the same PR:
+
+- "`/mcp` requires `Origin` absent or exactly `http://` and one of those authorities": also accepted, when one is configured, is that one public `https` origin, compared as exact string equality against a value normalized once at startup. Form writes then require `Origin` to equal it, in place of the compare against `Host`. No other origin widens, and a request with more than one `Origin` is refused.
+- "a TLS terminator must front the server": the origin a browser then sends is a setting, never derived from forwarded headers, which are not read. `Host` stays unchecked in token and open mode, and no CORS header is answered. The setting is refused on a loopback bind. How to set it: `docs/reverse-proxy.md`.
+

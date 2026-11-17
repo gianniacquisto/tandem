@@ -3412,6 +3412,320 @@ async fn an_opted_in_non_loopback_bind_admits_any_host_without_a_token() {
     );
 }
 
+// CUT-37: a public origin behind a TLS proxy.
+
+const PUBLIC: &str = "https://ws.example.com";
+
+fn public_app(store: Store, origin: Option<&str>) -> Router {
+    let access = Access::token(7700, TOKEN);
+    let access = match origin {
+        Some(origin) => access
+            .with_public_origin(origin)
+            .expect("the origin is valid"),
+        None => access,
+    };
+    router(SessionContext {
+        access,
+        ..context(store)
+    })
+}
+
+fn public_form(host: &str, origins: &[&str]) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri("/tickets")
+        .header(header::HOST, host)
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"));
+    for origin in origins {
+        builder = builder.header(header::ORIGIN, *origin);
+    }
+    builder
+        .body(Body::from("title=x"))
+        .expect("the request builds")
+}
+
+fn public_mcp(origins: &[&str]) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"));
+    for origin in origins {
+        builder = builder.header(header::ORIGIN, *origin);
+    }
+    builder
+        .body(Body::from(MCP_BODY))
+        .expect("the request builds")
+}
+
+#[tokio::test]
+async fn behind_a_public_name_a_form_write_with_a_forwarded_host_passes_unconfigured() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("public-forwarded");
+    let app = public_app(sandbox.store(), None);
+    let (status, _, _) = send(&app, public_form("ws.example.com", &[PUBLIC])).await;
+    assert_ne!(status, StatusCode::FORBIDDEN, "the proxy kept Host");
+}
+
+#[tokio::test]
+async fn behind_a_public_name_a_form_write_with_a_rewritten_host_is_refused_unconfigured() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("public-rewritten");
+    let app = public_app(sandbox.store(), None);
+    let (status, _, _) = send(&app, public_form("127.0.0.1:7700", &[PUBLIC])).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "the proxy rewrote Host");
+}
+
+#[tokio::test]
+async fn a_configured_origin_admits_a_form_write_with_a_rewritten_host() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("public-admits");
+    let app = public_app(sandbox.store(), Some(PUBLIC));
+    let (status, _, _) = send(&app, public_form("127.0.0.1:7700", &[PUBLIC])).await;
+    assert_ne!(status, StatusCode::FORBIDDEN);
+    let (status, _, _) = send(&app, public_form("127.0.0.1:7700", &[])).await;
+    assert_ne!(
+        status,
+        StatusCode::FORBIDDEN,
+        "an absent Origin still passes"
+    );
+}
+
+#[tokio::test]
+async fn a_configured_origin_refuses_every_other_origin_on_a_form_write() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("public-hostile");
+    let app = public_app(sandbox.store(), Some(PUBLIC));
+    let hostile: [&[&str]; 11] = [
+        &["https://evil.example"],
+        &["http://ws.example.com"],
+        &["https://ws.example.com/"],
+        &["HTTPS://ws.example.com"],
+        &["https://ws.example.com@evil.example"],
+        &["https://evil.example@ws.example.com"],
+        &["https://ws.example.com:443"],
+        &["ws.example.com"],
+        &["null"],
+        &["https://ws.example.com.evil.example"],
+        &[PUBLIC, "https://evil.example"],
+    ];
+    for origins in hostile {
+        let (status, headers, body) = send(&app, public_form("ws.example.com", origins)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{origins:?} is refused");
+        assert_eq!(body, "the request came from another origin\n");
+        assert!(headers.get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
+    }
+    let (status, _, _) = send(&app, public_form("evil.example", &[PUBLIC])).await;
+    assert_ne!(status, StatusCode::FORBIDDEN, "the exact value passes");
+    let loopback = public_form("127.0.0.1:7700", &["http://127.0.0.1:7700"]);
+    let (status, _, _) = send(&app, loopback).await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "a form write wants the public origin"
+    );
+}
+
+#[tokio::test]
+async fn mcp_accepts_the_configured_origin_beside_loopback_and_refuses_every_other() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("public-mcp");
+    let app = public_app(sandbox.store(), Some(PUBLIC));
+    for origins in [&[PUBLIC][..], &["http://127.0.0.1:7700"], &[]] {
+        let (status, _, _) = send(&app, public_mcp(origins)).await;
+        assert_eq!(status, StatusCode::OK, "{origins:?} is admitted");
+    }
+    for origins in [
+        &["https://evil.example"][..],
+        &["http://ws.example.com"],
+        &["https://ws.example.com:443"],
+        &["https://127.0.0.1:7700"],
+        &["null"],
+        &[PUBLIC, PUBLIC],
+    ] {
+        let (status, _, _) = send(&app, public_mcp(origins)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{origins:?} is refused");
+    }
+}
+
+#[tokio::test]
+async fn without_a_configured_origin_a_public_https_origin_on_mcp_is_still_refused() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("public-mcp-unset");
+    let app = public_app(sandbox.store(), None);
+    let (status, _, _) = send(&app, public_mcp(&[PUBLIC])).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _, _) = send(&app, public_mcp(&["http://127.0.0.1:7700"])).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn events_behind_a_public_origin_streams_with_the_token() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("public-events");
+    let app = public_app(sandbox.store(), Some(PUBLIC));
+    let request = |bearer: bool| {
+        let mut builder = Request::builder()
+            .uri("/events")
+            .header(header::HOST, "ws.example.com")
+            .header(header::ORIGIN, PUBLIC);
+        if bearer {
+            builder = builder.header(header::AUTHORIZATION, format!("Bearer {TOKEN}"));
+        }
+        builder.body(Body::empty()).expect("the request builds")
+    };
+    let response = app.clone().oneshot(request(true)).await.expect("answers");
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = app.clone().oneshot(request(false)).await.expect("answers");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_configured_origin_adds_no_host_check_and_no_cors_header() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("public-no-host");
+    let app = public_app(sandbox.store(), Some(PUBLIC));
+    for host in ["anything.example", "127.0.0.1:7700", "ws.example.com"] {
+        let request = Request::builder()
+            .uri("/board")
+            .header(header::HOST, host)
+            .header(header::ORIGIN, PUBLIC)
+            .header("x-forwarded-host", "evil.example")
+            .header("x-forwarded-proto", "http")
+            .header("forwarded", "host=evil.example")
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .body(Body::empty())
+            .expect("the request builds");
+        let (status, headers, _) = send(&app, request).await;
+        assert_eq!(status, StatusCode::OK, "{host} is not checked");
+        assert!(
+            headers
+                .keys()
+                .all(|name| !name.as_str().starts_with("access-control"))
+        );
+    }
+    let (status, headers, _) = send(
+        &app,
+        public_form("ws.example.com", &["https://evil.example"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(
+        headers
+            .keys()
+            .all(|name| !name.as_str().starts_with("access-control"))
+    );
+}
+
+#[tokio::test]
+async fn an_open_bind_with_a_configured_origin_refuses_a_direct_address_write() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("public-open");
+    let access = Access::open(7700)
+        .with_public_origin(PUBLIC)
+        .expect("the origin is valid");
+    let app = router(SessionContext {
+        access,
+        ..context(sandbox.store())
+    });
+    let direct = Request::builder()
+        .method("POST")
+        .uri("/tickets")
+        .header(header::HOST, "100.64.0.1:7700")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::ORIGIN, "http://100.64.0.1:7700")
+        .body(Body::from("title=x"))
+        .expect("the request builds");
+    let (status, _, _) = send(&app, direct).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn the_guard_logs_which_check_refused_and_never_the_origin_value() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("public-log");
+    let app = public_app(sandbox.store(), Some(PUBLIC));
+    let captured = Captured::default();
+    let _guard = captured.install();
+    let (status, _, _) = send(
+        &app,
+        public_form("ws.example.com", &["https://evil.example"]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _, _) = send(&app, public_mcp(&["https://evil.example"])).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let text = captured.text();
+    assert!(text.contains("the form origin rule refused"), "{text}");
+    assert!(text.contains("the /mcp origin rule refused"), "{text}");
+    assert!(text.contains("public_origin_configured=true"), "{text}");
+    assert!(!text.contains("evil.example"), "{text}");
+    assert!(!text.contains("ws.example.com"), "{text}");
+}
+
+#[test]
+fn access_debug_prints_the_origin_and_redacts_the_token() {
+    let access = Access::token(7700, TOKEN)
+        .with_public_origin(PUBLIC)
+        .expect("the origin is valid");
+    let printed = format!("{access:?}");
+    assert!(printed.contains(PUBLIC), "{printed}");
+    assert!(!printed.contains(TOKEN), "{printed}");
+}
+
+#[test]
+fn the_public_origin_normalizer_accepts_the_browser_forms_and_refuses_the_rest() {
+    let accepted = [
+        ("https://ws.example.com", "https://ws.example.com"),
+        ("HTTPS://WS.Example.COM", "https://ws.example.com"),
+        ("https://ws.example.com:443", "https://ws.example.com"),
+        ("https://ws.example.com:8443", "https://ws.example.com:8443"),
+        ("https://203.0.113.5", "https://203.0.113.5"),
+        ("https://[2001:DB8::1]:8443", "https://[2001:db8::1]:8443"),
+    ];
+    for (given, wanted) in accepted {
+        assert_eq!(
+            super::normalize_public_origin(given).as_deref(),
+            Ok(wanted),
+            "{given}"
+        );
+    }
+    let refused = [
+        "",
+        "http://ws.example.com",
+        "ws.example.com",
+        "https://ws.example.com/",
+        "https://ws.example.com/path",
+        "https://ws.example.com?x=1",
+        "https://ws.example.com#f",
+        "https://user@ws.example.com",
+        "https://ws.example.com.",
+        "https://.example.com",
+        "https://ws..example.com",
+        "https://ws.example.com:0",
+        "https://ws.example.com:0443",
+        "https://ws.example.com:65536",
+        "https://ws.example.com:",
+        "https://ws.example.com:x",
+        "https://ws example.com",
+        "https://w\u{e9}.example.com",
+        "https://ws.example.com\\x",
+        "https://ws%2eexample.com",
+        "https://localhost",
+        "https://127.0.0.1:7700",
+        "https://[::1]",
+        "https://",
+    ];
+    for given in refused {
+        assert!(
+            super::normalize_public_origin(given).is_err(),
+            "{given:?} is refused"
+        );
+    }
+}
+
 #[tokio::test]
 async fn every_route_and_refusal_carries_the_security_headers() {
     let _serial = ONE_AT_A_TIME.lock().await;
