@@ -17,7 +17,7 @@ name: Release
 # dispatch. It is stamped into the binary as `TANDEM_VERSION`, so the archive's
 # own smoke test reads the same version back from `tandem --version`.
 #
-# No third-party action: `actions/cache` is GitHub's own. This workflow has no
+# Every action is pinned to a full commit SHA with its version in a comment;\n# Dependabot keeps them current. `actions/cache` is GitHub's own. This workflow has no
 # `main` trigger, so each build uses the combined cache step: a PR's later
 # pushes hit its own PR-scoped entry, and a tag run restores from `main` or its
 # own scope. The tag run still rebuilds, since it stamps its own version.
@@ -47,7 +47,9 @@ jobs:
       contents: read
     steps:
       - name: Check out the source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Warm the Rust toolchain
         working-directory: rust
@@ -61,7 +63,7 @@ jobs:
           echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
 
       - name: Cache cargo and target
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -107,7 +109,7 @@ jobs:
           bash Scripts/smoke-binary.sh "$smoke/tandem" "$version"
 
       - name: Upload the archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tandem-macos
           path: dist
@@ -120,7 +122,9 @@ jobs:
       contents: read
     steps:
       - name: Check out the source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Warm the Rust toolchain
         working-directory: rust
@@ -134,7 +138,7 @@ jobs:
           echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
 
       - name: Cache cargo and target
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -178,7 +182,7 @@ jobs:
           bash Scripts/smoke-binary.sh "$smoke/tandem" "$version"
 
       - name: Upload the archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tandem-linux
           path: dist
@@ -191,7 +195,9 @@ jobs:
       contents: read
     steps:
       - name: Check out the source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Warm the Rust toolchain
         working-directory: rust
@@ -205,7 +211,7 @@ jobs:
           echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
 
       - name: Cache cargo and target
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -281,7 +287,7 @@ jobs:
           Stop-Process -Id $process.Id -Force
 
       - name: Upload the archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tandem-windows
           path: dist
@@ -296,6 +302,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write # `gh release create`; no other job has it
+      id-token: write # the attestation's signing identity; this job only
+      attestations: write # `actions/attest-build-provenance`; this job only
     steps:
       - name: "Verify: the builds are green"
         env:
@@ -317,12 +325,13 @@ jobs:
           fi
 
       - name: Check out the source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # The release-body generator (Scripts/release-notes.sh) walks the tags
           # and the merge history between them; the default shallow, no-tags
           # fetch has neither.
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve the version
         run: |
@@ -333,19 +342,19 @@ jobs:
           fi
 
       - name: Download the macOS archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: tandem-macos
           path: dist
 
       - name: Download the Linux archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: tandem-linux
           path: dist
 
       - name: Download the Windows archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: tandem-windows
           path: dist
@@ -372,23 +381,38 @@ jobs:
           fi
           grep -q "DEFAULT_VERSION=\"$version\"" install.sh
 
+      - name: Attest the archives' provenance (tag runs only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: |
+            dist/tandem-${{ env.version }}-darwin-arm64.tar.gz
+            dist/tandem-${{ env.version }}-linux-x86_64.tar.gz
+            dist/tandem-${{ env.version }}-windows-x86_64.zip
+
       - name: Publish the GitHub release (tag runs only)
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Idempotent re-cut of the same tag (user story 14): this gh build
-          # (2.102.0) has no --clobber on `release create`, so an existing
-          # release for the tag is deleted first, then recreated with the
-          # current assets.
-          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release delete "$GITHUB_REF_NAME" --yes
-          fi
+          # Idempotent re-cut of the same tag, and the release is present at
+          # every moment: create it when absent, else overwrite the assets in
+          # place (`upload --clobber`) and rewrite the notes (`edit`). The old
+          # delete-then-create left `releases/latest/download/install.sh` a 404
+          # between the two calls, and no release at all if the create failed.
           notes=$(Scripts/release-notes.sh "$GITHUB_REF_NAME")
-          gh release create "$GITHUB_REF_NAME" \
-            --title "Tandem $version" \
-            --notes "$notes" \
-            "dist/tandem-$version-darwin-arm64.tar.gz" \
-            "dist/tandem-$version-linux-x86_64.tar.gz" \
-            "dist/tandem-$version-windows-x86_64.zip" \
+          assets=(
+            "dist/tandem-$version-darwin-arm64.tar.gz"
+            "dist/tandem-$version-linux-x86_64.tar.gz"
+            "dist/tandem-$version-windows-x86_64.zip"
             dist/install.sh dist/SHA256SUMS
+          )
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+            gh release edit "$GITHUB_REF_NAME" --title "Tandem $version" --notes "$notes"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "Tandem $version" \
+              --notes "$notes" \
+              "${assets[@]}"
+          fi
