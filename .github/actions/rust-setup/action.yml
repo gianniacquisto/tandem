@@ -1,0 +1,71 @@
+name: Rust setup
+description: Warm the pinned toolchain, resolve the pin and restore the cargo and target cache.
+
+# One copy of the preamble every job in `rust.yml` and `release.yml` ran (CUT-32).
+# `enabled: "false"` makes every step a no-op, so a job whose gates are skipped
+# on a pull request that touches no code still reports its required check name.
+
+inputs:
+  enabled:
+    description: "'false' skips the whole setup"
+    default: "true"
+  key:
+    description: The cache key's job name, e.g. `clippy` or `build-linux-release`.
+    required: true
+  save:
+    description: "'true' uses the combined cache step (restore, then save when the job ends); otherwise restore only."
+    default: "false"
+
+outputs:
+  cache-hit:
+    description: Whether the restore hit its primary key (restore-only mode).
+    value: ${{ steps.restore.outputs.cache-hit }}
+  cache-primary-key:
+    description: The key a later save step stores under (restore-only mode).
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+
+runs:
+  using: composite
+  steps:
+    - name: Warm the toolchain proxy
+      # rustup reads `rust/rust-toolchain.toml` on first proxy use and installs
+      # the pinned version with `rustfmt` and `clippy`.
+      if: inputs.enabled != 'false'
+      shell: bash
+      working-directory: rust
+      run: cargo --version
+
+    - name: Resolve the toolchain pin
+      id: toolchain
+      if: inputs.enabled != 'false'
+      shell: bash
+      run: |
+        echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+        echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the cargo and target cache
+      id: restore
+      if: inputs.enabled != 'false' && inputs.save != 'true'
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+          rust/target
+        key: ${{ runner.os }}-${{ inputs.key }}-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
+        restore-keys: |
+          ${{ runner.os }}-${{ inputs.key }}-${{ steps.toolchain.outputs.channel }}-
+
+    - name: Cache cargo and target
+      if: inputs.enabled != 'false' && inputs.save == 'true'
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+          rust/target
+        key: ${{ runner.os }}-${{ inputs.key }}-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
+        restore-keys: |
+          ${{ runner.os }}-${{ inputs.key }}-${{ steps.toolchain.outputs.channel }}-

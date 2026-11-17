@@ -6,21 +6,30 @@ name: Release
 # and installs the one binary; there is no Node toolchain, no Electron package
 # and no Homebrew tap in the path (CUT-16, ADR 0045).
 #
-# Pull-request runs build and verify the same three archives and never publish,
-# so a packaging change is a red check on the PR instead of a broken tag. The
-# publisher keeps the job name `release`: `main` requires a status check by that
-# name, and a required check that never reports blocks every merge. It waits for
-# all three builds, and its step turns a skipped or failed build into a red
-# `release` (a skipped job reports success to the branch protection).
+# Pull-request runs build and verify the same three archives and never
+# publish, so a packaging change is a red check on the PR instead of a broken
+# tag. They do it unless the PR touches only the allowlist `Resources/` and
+# `LICENSE` (CUT-32; an allowlist of what may skip, since some gates read the
+# whole tracked tree). Every job still runs and reports its name, with its
+# steps skipped on such a PR, because a skipped matrix job reports under its
+# unexpanded name and a required check that never reports blocks the merge.
+# Tags and dispatches always run everything. The three builds are one matrix
+# job: a new target is one row. The publisher keeps the job name `release`:
+# `main` requires a status check by that name, and a required check that never
+# reports blocks every merge. It waits for the build matrix, and its step
+# turns a skipped or failed build into a red `release` (a skipped job reports
+# success to the branch protection).
 #
 # The version is the tag without its `v`, or `0.0.0` on a pull request or a
 # dispatch. It is stamped into the binary as `TANDEM_VERSION`, so the archive's
 # own smoke test reads the same version back from `tandem --version`.
 #
-# Every action is pinned to a full commit SHA with its version in a comment;\n# Dependabot keeps them current. `actions/cache` is GitHub's own. This workflow has no
-# `main` trigger, so each build uses the combined cache step: a PR's later
-# pushes hit its own PR-scoped entry, and a tag run restores from `main` or its
-# own scope. The tag run still rebuilds, since it stamps its own version.
+# Every action is pinned to a full commit SHA with its version in a comment;
+# Dependabot keeps them current. `actions/cache` is GitHub's own, behind the
+# local `rust-setup` action. This workflow has no `main` trigger, so each build
+# uses the combined cache step: a PR's later pushes hit its own PR-scoped entry,
+# and a tag run restores from `main` or its own scope. The tag run still
+# rebuilds, since it stamps its own version.
 
 on:
   push:
@@ -39,42 +48,61 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build-macos:
-    name: build-macos
-    runs-on: macos-latest
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Check out the merge commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 2
+
+      - name: Did the change touch what the build reads?
+        id: filter
+        run: echo "code=$(bash Scripts/changed-paths.sh Resources/ LICENSE)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build (${{ matrix.target }})
+    needs: changes
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: darwin-arm64
+            ext: tar.gz
+            artifact: macos
+          - os: ubuntu-latest
+            target: linux-x86_64
+            ext: tar.gz
+            artifact: linux
+          - os: windows-latest
+            target: windows-x86_64
+            ext: zip
+            artifact: windows
     steps:
       - name: Check out the source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
-      - name: Warm the Rust toolchain
-        working-directory: rust
-        run: cargo --version
-
-      - name: Resolve the toolchain pin
-        id: toolchain
-        shell: bash
-        run: |
-          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
-          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
-
-      - name: Cache cargo and target
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - name: Set up the Rust toolchain and cache
+        uses: ./.github/actions/rust-setup
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            rust/target
-          key: ${{ runner.os }}-build-macos-release-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
-          restore-keys: |
-            ${{ runner.os }}-build-macos-release-${{ steps.toolchain.outputs.channel }}-
+          enabled: ${{ needs.changes.outputs.code }}
+          key: build-${{ matrix.artifact }}-release
+          save: "true"
 
       - name: Resolve the version
+        if: needs.changes.outputs.code != 'false'
+        shell: bash
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
@@ -83,12 +111,15 @@ jobs:
           fi
 
       - name: Build the binary
+        if: needs.changes.outputs.code != 'false'
+        shell: bash
         working-directory: rust
         run: TANDEM_VERSION="$version" cargo build --release -p tandem
 
-      - name: Package the archive
+      - name: Package the archive (tar.gz)
+        if: needs.changes.outputs.code != 'false' && matrix.ext == 'tar.gz'
         run: |
-          archive="tandem-$version-darwin-arm64.tar.gz"
+          archive="tandem-$version-${{ matrix.target }}.tar.gz"
           staging="$RUNNER_TEMP/package"
           mkdir -p "$staging" dist
           cp rust/target/release/tandem "$staging/tandem"
@@ -96,7 +127,18 @@ jobs:
           tar -czf "dist/$archive" -C "$staging" tandem
           tar -tzf "dist/$archive"
 
-      - name: "Smoke: the extracted archive serves the board"
+      - name: Package the archive (zip)
+        if: needs.changes.outputs.code != 'false' && matrix.ext == 'zip'
+        shell: pwsh
+        run: |
+          $archive = "tandem-$env:version-${{ matrix.target }}.zip"
+          New-Item -ItemType Directory -Force -Path dist, "$env:RUNNER_TEMP\package" | Out-Null
+          Copy-Item rust\target\release\tandem.exe "$env:RUNNER_TEMP\package\tandem.exe"
+          Compress-Archive -Path "$env:RUNNER_TEMP\package\tandem.exe" -DestinationPath "dist\$archive"
+          Get-ChildItem dist
+
+      - name: "Smoke: the extracted tar.gz archive serves the board"
+        if: needs.changes.outputs.code != 'false' && matrix.ext == 'tar.gz'
         run: |
           # Smoke the bytes the tag publishes, not the build tree: untar the
           # archive just written and run the binary a user would get. A wrong
@@ -104,202 +146,27 @@ jobs:
           # rather than on someone's first install.
           smoke="$RUNNER_TEMP/smoke"
           mkdir -p "$smoke"
-          tar -xzf "dist/tandem-$version-darwin-arm64.tar.gz" -C "$smoke"
+          tar -xzf "dist/tandem-$version-${{ matrix.target }}.tar.gz" -C "$smoke"
           test -x "$smoke/tandem"
           bash Scripts/smoke-binary.sh "$smoke/tandem" "$version"
 
-      - name: Upload the archive
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: tandem-macos
-          path: dist
-
-  build-linux:
-    name: build-linux
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-
-      - name: Warm the Rust toolchain
-        working-directory: rust
-        run: cargo --version
-
-      - name: Resolve the toolchain pin
-        id: toolchain
-        shell: bash
-        run: |
-          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
-          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
-
-      - name: Cache cargo and target
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            rust/target
-          key: ${{ runner.os }}-build-linux-release-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
-          restore-keys: |
-            ${{ runner.os }}-build-linux-release-${{ steps.toolchain.outputs.channel }}-
-
-      - name: Resolve the version
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-          else
-            echo "version=0.0.0" >> "$GITHUB_ENV"
-          fi
-
-      - name: Build the binary
-        working-directory: rust
-        run: TANDEM_VERSION="$version" cargo build --release -p tandem
-
-      - name: Package the archive
-        run: |
-          archive="tandem-$version-linux-x86_64.tar.gz"
-          staging="$RUNNER_TEMP/package"
-          mkdir -p "$staging" dist
-          cp rust/target/release/tandem "$staging/tandem"
-          chmod +x "$staging/tandem"
-          tar -czf "dist/$archive" -C "$staging" tandem
-          tar -tzf "dist/$archive"
-
-      - name: "Smoke: the extracted archive serves the board"
-        run: |
-          # Same as `build-macos`: the smoke runs the binary the archive
-          # carries, so the Linux package is verified as shipped.
-          smoke="$RUNNER_TEMP/smoke"
-          mkdir -p "$smoke"
-          tar -xzf "dist/tandem-$version-linux-x86_64.tar.gz" -C "$smoke"
-          test -x "$smoke/tandem"
-          bash Scripts/smoke-binary.sh "$smoke/tandem" "$version"
+      - name: "Smoke: the extracted zip archive serves the board"
+        if: needs.changes.outputs.code != 'false' && matrix.ext == 'zip'
+        shell: pwsh
+        run: ./Scripts/smoke-binary.ps1 -Archive "dist\tandem-$($env:version)-${{ matrix.target }}.zip" -Version $env:version
 
       - name: Upload the archive
+        if: needs.changes.outputs.code != 'false'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: tandem-linux
-          path: dist
-
-  build-windows:
-    name: build-windows
-    runs-on: windows-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-
-      - name: Warm the Rust toolchain
-        working-directory: rust
-        run: cargo --version
-
-      - name: Resolve the toolchain pin
-        id: toolchain
-        shell: bash
-        run: |
-          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
-          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
-
-      - name: Cache cargo and target
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            rust/target
-          key: ${{ runner.os }}-build-windows-release-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
-          restore-keys: |
-            ${{ runner.os }}-build-windows-release-${{ steps.toolchain.outputs.channel }}-
-
-      - name: Resolve the version
-        shell: pwsh
-        run: |
-          if ($env:GITHUB_REF -like 'refs/tags/v*') {
-            $version = $env:GITHUB_REF_NAME.Substring(1)
-          } else {
-            $version = '0.0.0'
-          }
-          "version=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-      - name: Build the binary
-        working-directory: rust
-        shell: pwsh
-        run: |
-          $env:TANDEM_VERSION = $env:version
-          cargo build --release -p tandem
-
-      - name: Package the archive
-        shell: pwsh
-        run: |
-          $archive = "tandem-$env:version-windows-x86_64.zip"
-          New-Item -ItemType Directory -Force -Path dist, "$env:RUNNER_TEMP\package" | Out-Null
-          Copy-Item rust\target\release\tandem.exe "$env:RUNNER_TEMP\package\tandem.exe"
-          Compress-Archive -Path "$env:RUNNER_TEMP\package\tandem.exe" -DestinationPath "dist\$archive"
-          Get-ChildItem dist
-
-      - name: "Smoke: the extracted archive serves the board"
-        shell: pwsh
-        run: |
-          # Extract the zip first: the smoke runs the executable the archive
-          # carries, so a member-name or layout change fails the build.
-          $smoke = Join-Path $env:RUNNER_TEMP 'smoke'
-          New-Item -ItemType Directory -Force -Path $smoke | Out-Null
-          Expand-Archive -Path "dist\tandem-$($env:version)-windows-x86_64.zip" -DestinationPath $smoke -Force
-          $exe = (Resolve-Path (Join-Path $smoke 'tandem.exe')).Path
-          $printed = & $exe --version
-          if ($printed -notmatch [regex]::Escape($env:version)) {
-            throw "tandem --version did not name $env:version"
-          }
-          $smokeHome = Join-Path $env:RUNNER_TEMP 'smoke-home'
-          New-Item -ItemType Directory -Force -Path $smokeHome | Out-Null
-          $out = Join-Path $env:RUNNER_TEMP 'serve.log'
-          $err = Join-Path $env:RUNNER_TEMP 'serve.err'
-          $process = Start-Process -FilePath $exe `
-            -ArgumentList @('serve', '--port', '0', '--home', $smokeHome) `
-            -RedirectStandardOutput $out -RedirectStandardError $err -PassThru -NoNewWindow
-          $address = $null
-          for ($i = 0; $i -lt 150; $i++) {
-            Start-Sleep -Milliseconds 100
-            if (Test-Path $out) {
-              $match = Select-String -Path $out -Pattern 'http://[0-9.]+:[0-9]+' -ErrorAction SilentlyContinue |
-                Select-Object -First 1
-              if ($match) { $address = $match.Matches[0].Value; break }
-            }
-            if ($process.HasExited) { throw "the server exited before it listened" }
-          }
-          if (-not $address) { throw "the server did not print its address" }
-          $health = Invoke-WebRequest -Uri "$address/health" -UseBasicParsing
-          if ($health.StatusCode -ne 200) { throw "/health answered $($health.StatusCode)" }
-          foreach ($path in @('/', '/notes')) {
-            $response = Invoke-WebRequest -Uri "$address$path" -UseBasicParsing
-            if ($response.StatusCode -ne 200) { throw "$path answered $($response.StatusCode)" }
-            if (-not $response.Headers['Content-Security-Policy']) { throw "$path carries no Content-Security-Policy" }
-            if ($response.Headers['X-Content-Type-Options'] -ne 'nosniff') { throw "$path carries no nosniff" }
-          }
-          Stop-Process -Id $process.Id -Force
-
-      - name: Upload the archive
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: tandem-windows
+          name: tandem-${{ matrix.artifact }}
           path: dist
 
   release:
     name: release
     # The required check's name. It runs after the builds, so a release is
     # published only from a run whose three archives were verified.
-    needs: [build-macos, build-linux, build-windows]
+    needs: [changes, build]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -310,24 +177,15 @@ jobs:
     steps:
       - name: "Verify: the builds are green"
         env:
-          BUILD_MACOS_RESULT: ${{ needs['build-macos'].result }}
-          BUILD_LINUX_RESULT: ${{ needs['build-linux'].result }}
-          BUILD_WINDOWS_RESULT: ${{ needs['build-windows'].result }}
+          BUILD_RESULT: ${{ needs.build.result }}
         run: |
-          if [ "$BUILD_MACOS_RESULT" != "success" ]; then
-            echo "::error::the release aggregator needs the build green (build-macos: $BUILD_MACOS_RESULT)"
-            exit 1
-          fi
-          if [ "$BUILD_LINUX_RESULT" != "success" ]; then
-            echo "::error::the release aggregator needs the build green (build-linux: $BUILD_LINUX_RESULT)"
-            exit 1
-          fi
-          if [ "$BUILD_WINDOWS_RESULT" != "success" ]; then
-            echo "::error::the release aggregator needs the build green (build-windows: $BUILD_WINDOWS_RESULT)"
+          if [ "$BUILD_RESULT" != "success" ]; then
+            echo "::error::the release aggregator needs the build green (build: $BUILD_RESULT)"
             exit 1
           fi
 
       - name: Check out the source
+        if: needs.changes.outputs.code != 'false'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # The release-body generator (Scripts/release-notes.sh) walks the tags
@@ -337,6 +195,7 @@ jobs:
           persist-credentials: false
 
       - name: Resolve the version
+        if: needs.changes.outputs.code != 'false'
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
@@ -344,25 +203,16 @@ jobs:
             echo "version=0.0.0" >> "$GITHUB_ENV"
           fi
 
-      - name: Download the macOS archive
+      - name: Download the three archives
+        if: needs.changes.outputs.code != 'false'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: tandem-macos
-          path: dist
-
-      - name: Download the Linux archive
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: tandem-linux
-          path: dist
-
-      - name: Download the Windows archive
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: tandem-windows
+          pattern: tandem-*
+          merge-multiple: true
           path: dist
 
       - name: "Verify: the three platform archives are present"
+        if: needs.changes.outputs.code != 'false'
         run: |
           test -f "dist/tandem-$version-darwin-arm64.tar.gz"
           test -f "dist/tandem-$version-linux-x86_64.tar.gz"
@@ -370,11 +220,13 @@ jobs:
           ls -l dist
 
       - name: Stage install.sh and SHA256SUMS
+        if: needs.changes.outputs.code != 'false'
         run: |
           Scripts/stage-release-assets.sh "$version" dist
           cat dist/SHA256SUMS
 
       - name: "Verify: the staged manifest checks out"
+        if: needs.changes.outputs.code != 'false'
         run: |
           cd dist
           if command -v sha256sum >/dev/null 2>&1; then

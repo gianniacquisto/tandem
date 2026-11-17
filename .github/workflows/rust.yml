@@ -15,15 +15,26 @@ name: Rust
 #               bins and the tests, so no separate build gate), plus the
 #               installer suite off Windows and the retired-path scan on macOS.
 #   contention  the ten-run loop over the Windows-flaky store cases.
-# They have to exist on every pull request to be worth requiring: a required
-# check that a path-filtered workflow never creates reads "Expected" forever and
-# blocks the merge of a PR that touches no `rust/**` file. So `push` keeps its
-# filter, where a skipped run costs nothing, and `pull_request` does not filter.
+# They have to report on every pull request to be worth requiring: a required
+# check that a path-filtered workflow never creates reads "Expected" forever
+# and blocks the merge of a PR that touches no `rust/**` file, and a matrix
+# job skipped by `if` reports under its unexpanded name, so `clippy (macos-
+# latest)` would still never appear. So the workflow has no `pull_request`
+# path filter (CUT-32): a small `changes` job decides, every job still runs
+# and reports its name, and the steps that call cargo are skipped when the
+# pull request touches only paths on a short allowlist (`Resources/`,
+# `LICENSE`). It is an allowlist of what may skip, not a list of what runs,
+# because some gates read the whole tracked tree (the retired-path scan, the
+# label-vocabulary test, the notice test): a path nobody listed runs the
+# gates. A skipped step is a success, so the required check passes with no
+# cargo invocation. `push` keeps the same allowlist as `paths-ignore`, where a
+# skipped run costs nothing.
 #
 # Every action is pinned to a full commit SHA (Dependabot keeps them current).
-# `actions/checkout` and `actions/cache` are GitHub's own, `deny` is the one
-# third-party action, `rust-toolchain.toml` pins the version and the two components, rustup
-# ships on every hosted runner, and nothing here reads a secret or prints an
+# `actions/checkout` and `actions/cache` are GitHub's own (the cache behind the
+# local `rust-setup` action), `deny` is the one third-party action,
+# `rust-toolchain.toml` pins the version and the two components, rustup ships
+# on every hosted runner, and nothing here reads a secret or prints an
 # environment. The cargo and target cache is saved only by a push to `main`;
 # pull-request runs restore it and never write, so a PR cannot poison the cache
 # a later `main` or tag run reads and does not fill the repository quota.
@@ -31,9 +42,9 @@ name: Rust
 on:
   push:
     branches: [main]
-    paths:
-      - "rust/**"
-      - ".github/workflows/rust.yml"
+    paths-ignore:
+      - "Resources/**"
+      - "LICENSE"
   pull_request:
   # The advisory audit alone runs weekly, so a new advisory is found without a
   # push; every other job skips on this event.
@@ -53,6 +64,27 @@ defaults:
     working-directory: rust
 
 jobs:
+  changes:
+    name: changes
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Check out the merge commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Did the change touch what the gates read?
+        id: filter
+        run: echo "code=$(bash Scripts/changed-paths.sh Resources/ LICENSE)" >> "$GITHUB_OUTPUT"
+
   deny:
     name: deny
     runs-on: ubuntu-latest
@@ -71,7 +103,7 @@ jobs:
 
   fmt:
     name: fmt
-    if: github.event_name != 'schedule'
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -80,18 +112,20 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Warm the toolchain proxy
-        # rustup reads `rust/rust-toolchain.toml` on first proxy use and
-        # installs the pinned version with `rustfmt` and `clippy`; naming it
-        # here keeps the download visible and the gate steps free of setup.
-        run: cargo --version
+      - name: Set up the Rust toolchain and cache
+        id: setup
+        uses: ./.github/actions/rust-setup
+        with:
+          enabled: ${{ needs.changes.outputs.code }}
+          key: fmt
 
       - name: "Gate: cargo fmt --check"
+        if: needs.changes.outputs.code != 'false'
         run: cargo fmt --all --check
 
   clippy:
     name: clippy (${{ matrix.os }})
-    if: github.event_name != 'schedule'
+    needs: changes
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -104,34 +138,19 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Warm the toolchain proxy
-        run: cargo --version
-
-      - name: Resolve the toolchain pin
-        id: toolchain
-        shell: bash
-        run: |
-          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
-          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the cargo and target cache
-        id: cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - name: Set up the Rust toolchain and cache
+        id: setup
+        uses: ./.github/actions/rust-setup
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            rust/target
-          key: ${{ runner.os }}-clippy-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
-          restore-keys: |
-            ${{ runner.os }}-clippy-${{ steps.toolchain.outputs.channel }}-
+          enabled: ${{ needs.changes.outputs.code }}
+          key: clippy
 
       - name: "Gate: cargo clippy -D warnings"
+        if: needs.changes.outputs.code != 'false'
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Save the cache (main pushes only)
-        if: github.event_name == 'push' && steps.cache.outputs.cache-hit != 'true'
+        if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -139,11 +158,11 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             rust/target
-          key: ${{ steps.cache.outputs.cache-primary-key }}
+          key: ${{ steps.setup.outputs.cache-primary-key }}
 
   test:
     name: test (${{ matrix.os }})
-    if: github.event_name != 'schedule'
+    needs: changes
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -156,30 +175,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Warm the toolchain proxy
-        run: cargo --version
-
-      - name: Resolve the toolchain pin
-        id: toolchain
-        shell: bash
-        run: |
-          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
-          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the cargo and target cache
-        id: cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - name: Set up the Rust toolchain and cache
+        id: setup
+        uses: ./.github/actions/rust-setup
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            rust/target
-          key: ${{ runner.os }}-test-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
-          restore-keys: |
-            ${{ runner.os }}-test-${{ steps.toolchain.outputs.channel }}-
+          enabled: ${{ needs.changes.outputs.code }}
+          key: test
 
       - name: "Gate: cargo test"
+        if: needs.changes.outputs.code != 'false'
         run: cargo test
 
       - name: "Gate: the tree names no retired path"
@@ -188,7 +192,7 @@ jobs:
         # tracked tree, not the platform's build, so the macOS `test` leg runs
         # it once, with the installer suite below. The third-party notice check
         # rides `cargo test` (`rust/core/tests/notice.rs`) on every leg.
-        if: runner.os == 'macOS'
+        if: needs.changes.outputs.code != 'false' && runner.os == 'macOS'
         working-directory: ${{ github.workspace }}
         run: bash Scripts/check-retired-paths.sh
 
@@ -200,12 +204,12 @@ jobs:
         # wired this gate. The suite builds a fixture release over file:// and
         # drives both through their documented test seams, touching neither
         # /Applications nor the network.
-        if: runner.os != 'Windows'
+        if: needs.changes.outputs.code != 'false' && runner.os != 'Windows'
         working-directory: ${{ github.workspace }}
         run: bash Scripts/test_install.sh
 
       - name: Save the cache (main pushes only)
-        if: github.event_name == 'push' && steps.cache.outputs.cache-hit != 'true'
+        if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -213,11 +217,11 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             rust/target
-          key: ${{ steps.cache.outputs.cache-primary-key }}
+          key: ${{ steps.setup.outputs.cache-primary-key }}
 
   contention:
     name: contention (windows-latest)
-    if: github.event_name != 'schedule'
+    needs: changes
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -226,28 +230,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Warm the toolchain proxy
-        run: cargo --version
-
-      - name: Resolve the toolchain pin
-        id: toolchain
-        shell: bash
-        run: |
-          echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
-          echo "lock=${{ hashFiles('rust/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the cargo and target cache
-        id: cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - name: Set up the Rust toolchain and cache
+        id: setup
+        uses: ./.github/actions/rust-setup
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            rust/target
-          key: ${{ runner.os }}-contention-${{ steps.toolchain.outputs.channel }}-${{ steps.toolchain.outputs.lock }}
-          restore-keys: |
-            ${{ runner.os }}-contention-${{ steps.toolchain.outputs.channel }}-
+          enabled: ${{ needs.changes.outputs.code }}
+          key: contention
 
       - name: "Gate: the contention cases, ten times (Windows)"
         # These are the cases that flaked on this runner: run 41080330208
@@ -269,41 +257,29 @@ jobs:
         # Each run asserts that exactly one test ran: `--exact` with a renamed
         # case exits 0 after `running 0 tests`, and a done-when that silently
         # stops testing is worse than a red one.
-        if: runner.os == 'Windows'
+        if: needs.changes.outputs.code != 'false' && runner.os == 'Windows'
         run: |
+          $cases = @(
+            @{ Name = 'concurrent_writers_keep_every_row'; Args = @('-p', 'tandem-core', '--lib', '--', 'store::tests::writes::concurrent_writers_keep_every_row', '--exact') }
+            @{ Name = 'two_writers_on_threads_interleave_without_lost_or_torn_notes'; Args = @('-p', 'tandem-core', '--lib', '--', 'tests::bikeshed_locking::two_writers_on_threads_interleave_without_lost_or_torn_notes', '--exact') }
+            @{ Name = 'a_concurrent_edit_is_not_reverted_by_another_writers_snapshot'; Args = @('-p', 'tandem-core', '--test', 'board', '--', 'a_concurrent_edit_is_not_reverted_by_another_writers_snapshot', '--exact') }
+            @{ Name = 'two_writers_over_one_home_keep_every_row_and_issue_every_ref_once'; Args = @('-p', 'tandem-core', '--test', 'board', '--', 'two_writers_over_one_home_keep_every_row_and_issue_every_ref_once', '--exact') }
+          )
           for ($run = 1; $run -le 10; $run++) {
-            $out = cargo test -p tandem-core --lib -- store::tests::writes::concurrent_writers_keep_every_row --exact 2>&1
-            $out | Write-Output
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            if (-not ($out -match 'test result: ok\. 1 passed')) {
-              Write-Error "run ${run}: concurrent_writers_keep_every_row ran no test; a renamed case would pass silently"
-              exit 1
-            }
-            $out = cargo test -p tandem-core --lib -- tests::bikeshed_locking::two_writers_on_threads_interleave_without_lost_or_torn_notes --exact 2>&1
-            $out | Write-Output
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            if (-not ($out -match 'test result: ok\. 1 passed')) {
-              Write-Error "run ${run}: two_writers_on_threads_interleave_without_lost_or_torn_notes ran no test; a renamed case would pass silently"
-              exit 1
-            }
-            $out = cargo test -p tandem-core --test board -- a_concurrent_edit_is_not_reverted_by_another_writers_snapshot --exact 2>&1
-            $out | Write-Output
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            if (-not ($out -match 'test result: ok\. 1 passed')) {
-              Write-Error "run ${run}: a_concurrent_edit_is_not_reverted_by_another_writers_snapshot ran no test; a renamed case would pass silently"
-              exit 1
-            }
-            $out = cargo test -p tandem-core --test board -- two_writers_over_one_home_keep_every_row_and_issue_every_ref_once --exact 2>&1
-            $out | Write-Output
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            if (-not ($out -match 'test result: ok\. 1 passed')) {
-              Write-Error "run ${run}: two_writers_over_one_home_keep_every_row_and_issue_every_ref_once ran no test; a renamed case would pass silently"
-              exit 1
+            foreach ($case in $cases) {
+              $cargoArgs = $case.Args
+              $out = cargo test @cargoArgs 2>&1
+              $out | Write-Output
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              if (-not ($out -match 'test result: ok\. 1 passed')) {
+                Write-Error "run ${run}: $($case.Name) ran no test; a renamed case would pass silently"
+                exit 1
+              }
             }
           }
 
       - name: Save the cache (main pushes only)
-        if: github.event_name == 'push' && steps.cache.outputs.cache-hit != 'true'
+        if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -311,4 +287,4 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             rust/target
-          key: ${{ steps.cache.outputs.cache-primary-key }}
+          key: ${{ steps.setup.outputs.cache-primary-key }}
