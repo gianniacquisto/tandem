@@ -2291,6 +2291,124 @@ fn a_rollback_journal_store_answers_a_revision_to_the_watch() {
     assert!(watch.revision().expect("the watch reads") > revision);
 }
 
+// MARK: - The archive's copy (CUT-35)
+
+mod export_copy {
+    use super::*;
+    use crate::store::export::{CARRIED_TABLES, EMPTIED_TABLES, current_tables, scrub};
+
+    #[test]
+    fn every_table_of_the_current_schema_is_classified_carried_or_emptied() {
+        for table in current_tables() {
+            let carried = CARRIED_TABLES.contains(&table.as_str());
+            let emptied = EMPTIED_TABLES.contains(&table.as_str());
+            assert!(
+                carried || emptied,
+                "the table `{table}` is in neither list: classify it in store/export.rs, and a \
+                 table of secrets (a sign-in session, a token digest) goes in EMPTIED_TABLES"
+            );
+            assert!(!(carried && emptied), "`{table}` is in both lists");
+        }
+        for table in EMPTIED_TABLES {
+            assert!(
+                !CARRIED_TABLES.contains(table),
+                "`{table}` is in both lists"
+            );
+        }
+    }
+
+    #[test]
+    fn the_export_copy_is_scrubbed_and_vacuumed_so_no_emptied_row_survives_in_the_file() {
+        let sandbox = Sandbox::new("scrub");
+        let path = sandbox.root().join("copy.db");
+        const MARKER: &str = "SECRET-MARKER-9f3a1c";
+        {
+            let connection = Connection::open(&path).expect("the copy opens");
+            connection
+                .execute_batch(
+                    "CREATE TABLE board (note TEXT); CREATE TABLE browser_sessions (token TEXT);",
+                )
+                .unwrap();
+            for index in 0..200 {
+                connection
+                    .execute(
+                        "INSERT INTO browser_sessions (token) VALUES (?1)",
+                        [format!("{MARKER}-{index}")],
+                    )
+                    .unwrap();
+            }
+            connection
+                .execute("INSERT INTO board (note) VALUES ('kept')", [])
+                .unwrap();
+        }
+        assert!(contains(&fs::read(&path).unwrap(), MARKER.as_bytes()));
+
+        scrub(&path, &["board"], &["browser_sessions"]).expect("the scrub runs");
+
+        let bytes = fs::read(&path).unwrap();
+        assert!(
+            !contains(&bytes, MARKER.as_bytes()),
+            "an emptied row survives in the file's free pages"
+        );
+        let connection = Connection::open(&path).unwrap();
+        let rows = |table: &str| -> i64 {
+            connection
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(rows("browser_sessions"), 0);
+        assert_eq!(rows("board"), 1);
+        let mode: String = connection
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(mode, "delete");
+        assert!(!path.with_extension("db-wal").exists());
+
+        // A table nobody classified fails the scrub: the export fails closed.
+        connection
+            .execute_batch("CREATE TABLE stray (x TEXT)")
+            .unwrap();
+        drop(connection);
+        let error =
+            scrub(&path, &["board"], &["browser_sessions"]).expect_err("a stray table fails");
+        assert!(error.to_string().contains("stray"), "{error}");
+    }
+
+    fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+        haystack
+            .windows(needle.len())
+            .any(|window| window == needle)
+    }
+
+    #[test]
+    fn taking_the_export_copy_moves_neither_the_revision_nor_the_rolling_backup() {
+        let sandbox = Sandbox::new("copy-quiet");
+        let store = sandbox.store();
+        let actor = Actor::Human;
+        probe(&store, &actor, "one");
+        probe(&store, &actor, "two");
+        let revision = store.revision().unwrap();
+        let backup = fs::read(sandbox.backup()).expect("the rolling backup exists");
+        let backup_time = fs::metadata(sandbox.backup()).unwrap().modified().unwrap();
+        let database = fs::read(sandbox.database()).unwrap();
+
+        let copy = store.export_copy().expect("the copy is taken");
+        assert!(copy.path().exists());
+        assert_eq!(copy.schema_version(), CURRENT_VERSION);
+        let path = copy.path().to_path_buf();
+        drop(copy);
+        assert!(!path.exists(), "the copy is removed when its guard drops");
+
+        assert_eq!(store.revision().unwrap(), revision);
+        assert_eq!(fs::read(sandbox.backup()).unwrap(), backup);
+        assert_eq!(
+            fs::metadata(sandbox.backup()).unwrap().modified().unwrap(),
+            backup_time
+        );
+        assert_eq!(fs::read(sandbox.database()).unwrap(), database);
+    }
+}
+
 mod browser_sessions {
     use super::super::schema::{
         BROWSER_SESSIONS_VERSION, CURRENT_VERSION, MIGRATIONS, has_table, migrate_with, version,

@@ -15,6 +15,7 @@ The schema is versioned in the database itself: `schema_migrations` holds one ro
 | `tandem.db.bak` | the rolling backup: the store as it was before the last changed write | yes, but it is your only backup |
 | `.tandem-*.tmp` | a backup that was being written when a process died | yes; the next write sweeps any older than a minute |
 | `bikeshed/` | the notes, plain markdown | no: this is your data |
+| `.tandem-export-*.tmp`, `.tandem-import-*.tmp` | an export's copy of the store, or an import's unpack folder, that was being written when a process died | yes; the next write sweeps any export copy older than a minute, and an import folder is removed by hand |
 | `bikeshed.lock` | the lock the note writes take; it holds nothing | yes, when nothing is running |
 
 The home is `~/.tandem` unless `TANDEM_HOME` or `--home` names another. On Windows it is `%USERPROFILE%\.tandem`.
@@ -39,6 +40,24 @@ The backup is a whole-file copy, so it also carries the `browser_sessions` rows 
 ## Browser sessions
 
 A token-mode `tandem serve` signs a browser in with a cookie. Each session is one row of `browser_sessions` (schema v13): a keyed digest of the session id, when it was created and when it was last used. The id is never stored, the digest is keyed with the token's digest (so changing `TANDEM_TOKEN` signs every browser out), and a session is dropped after 30 days without use. These rows are not board data: writing one never moves the revision or rolls the backup, they are outside the MCP tools, and the export leaves them out. See [ADR 0049](adr/0049-a-browser-signs-in-to-a-token-guarded-serve.md).
+
+## Moving and restoring a home
+
+`tandem export --out <path>` writes the whole home, the store and the notes, as one `.tar.gz`, and `tandem import <path>` restores it into an empty home. It is how a board moves to another machine, into a hosted workspace or out of one, and how a self-hoster keeps a copy that includes the notes. See [ADR 0050](adr/0050-the-home-leaves-and-arrives-as-one-archive.md).
+
+```sh
+tandem export --out ~/tandem-2026-11-17.tar.gz          # beside a running serve is fine
+tandem --home ~/new-home import ~/tandem-2026-11-17.tar.gz   # serve stopped on that home
+```
+
+What the archive holds, in order: `tandem.db` (one committed generation of the store), every note under `bikeshed/`, and `manifest.json` (the format, the schema version and each entry's size and SHA-256) last. `tar -tzf` lists it. It never holds `tandem.db.bak`, a lock file, a temp file, a WAL, or a symlink.
+
+- **No sign-ins and no tokens travel.** Browser sessions and token digests are left out on purpose: after a move everyone signs in again and agents get new tokens, and a mislaid archive opens no workspace. The file is **not encrypted**, and it holds every ticket and note, so keeping it safe is your job.
+- **Consistent means a store at one instant and whole notes.** The store is one committed generation; each note is a whole version. The two are taken moments apart, not in one transaction, so a note you edit by hand in another program during an export may be caught on either side of the edit.
+- **The export is not a backup schedule.** It makes no rotation and replaces nothing. The rolling backup above is untouched, and nothing restores a `tandem.db.bak` from an archive.
+- **Import only goes into an empty home.** A home with a `tandem.db`, a `tandem.db.bak`, a WAL or journal file or any note is refused by name; there is no merge and no force, so point `--home` at a new directory. A lock file alone does not count. Run it with `tandem serve` stopped on that home. Nothing is written until the archive has passed every check (the digests, a store that opens and is not newer than this build, no entry that escapes the home), and a refusal leaves the home as it was. An archive from an older schema imports as it is and migrates on the first write, which rolls the backup first.
+- **A crash between the two renames.** Import moves `bikeshed/` into place first and `tandem.db` last, so the store's arrival is the commit. A crash in between leaves a home with notes and no store, and the next import refuses it by name as not empty. Remove that `bikeshed/` folder and run the import again.
+- **What the export permission does and does not stop.** One check decides who may export. Today every principal that reaches the home is its owner, so it allows them all and refuses one it does not know. Once members and roles exist (CUT-36), only an admin of a team workspace may export, and a solo owner always may. That stops the one-step bulk download. It does not stop a member who can read every ticket and note from copying them, and it does not bind the offline CLI: anyone who can read the home's files can copy them, and file permissions are that boundary. Each export that starts writes one line (who, when, through which door) to the server log, or to stderr for the CLI; no content and no path.
 
 ## Upgrading
 

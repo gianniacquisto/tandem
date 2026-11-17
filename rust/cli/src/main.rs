@@ -23,6 +23,7 @@ use std::process::ExitCode;
 
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
+use tandem_core::archive;
 use tandem_core::bikeshed::Bikeshed;
 use tandem_core::diagnostics;
 use tandem_core::domain::{
@@ -83,6 +84,22 @@ struct ServeArgs {
     public_origin: Option<String>,
 }
 
+#[derive(Args)]
+struct ExportArgs {
+    /// Where to write the archive; `-` streams to stdout.
+    #[arg(long, value_name = "PATH")]
+    out: Option<String>,
+}
+
+#[derive(Args)]
+struct ImportArgs {
+    /// The archive to restore; `-` reads stdin.
+    path: Option<String>,
+    /// A ceiling on the unpacked total, in bytes (default: none).
+    #[arg(long, value_name = "N")]
+    max_bytes: Option<u64>,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// The board's ticket surface.
@@ -107,6 +124,10 @@ enum Command {
     },
     /// Report whether this machine's store and notes are sound (ADR 0014).
     Doctor,
+    /// Write the whole home as one archive (ADR 0050).
+    Export(ExportArgs),
+    /// Restore an archive into an empty home (ADR 0050).
+    Import(ImportArgs),
     /// Serve the board and the MCP endpoint over HTTP (ADR 0047).
     Serve(ServeArgs),
 }
@@ -447,6 +468,8 @@ fn help_text(cli: &Cli) -> &'static str {
     let name = match &cli.command {
         None => return usage::ROOT,
         Some(Command::Doctor) => return usage::verb("doctor").unwrap_or(usage::ROOT),
+        Some(Command::Export(_)) => return usage::verb("export").unwrap_or(usage::ROOT),
+        Some(Command::Import(_)) => return usage::verb("import").unwrap_or(usage::ROOT),
         Some(Command::Serve(_)) => return usage::SERVE,
         Some(Command::Ticket { command }) => match command {
             None => return usage::group("ticket").unwrap_or(usage::ROOT),
@@ -547,6 +570,8 @@ fn run(cli: &Cli) -> Result<(), Failure> {
 
     match command {
         Command::Doctor => doctor(&home),
+        Command::Export(args) => export(&home, args),
+        Command::Import(args) => import(&home, args),
         Command::Serve(args) => serve(&home, args),
         Command::Ticket { command } => ticket(&home, command.as_ref()),
         Command::Label { command } => label(&home, command.as_ref()),
@@ -1289,6 +1314,121 @@ fn doctor(home: &Home) -> Result<(), Failure> {
         message: failures.join("\n"),
         exit: 1,
     })
+}
+
+// MARK: - Export and import
+
+/// `export --out <path|->`: the home as one archive (ADR 0050). It opens the
+/// home directly like every local verb, takes no write gate, and runs beside a
+/// live `tandem serve`. The record line goes to stderr: this verb installs no
+/// log subscriber.
+fn export(home: &Home, args: &ExportArgs) -> Result<(), Failure> {
+    let out = args.out.as_deref().ok_or_else(Failure::usage)?;
+    let principal = archive::Principal {
+        access: archive::Access::Local,
+        actor: Actor::current(),
+    };
+    if out == "-" {
+        if io::stdout().is_terminal() {
+            return Err(Failure::message(
+                "Cannot export to a terminal: the archive is binary. Pass --out <path>, or pipe \
+                 standard output into a file or `tandem import -`.",
+            ));
+        }
+        let line = start_export(&principal)?;
+        eprintln!("{line}");
+        let writer = io::BufWriter::new(io::stdout().lock());
+        let summary = archive::export(home, writer)
+            .map_err(|error| match error {
+                // A write to the pipe may have failed after bytes went out.
+                archive::ArchiveError::Io(message) => archive::ArchiveError::Stream(message),
+                other => other,
+            })
+            .map_err(archive_failure)?;
+        eprintln!(
+            "Exported {} bytes to standard output. Next: restore it with `tandem import -` \
+             against a new, empty --home.",
+            summary.bytes
+        );
+        return Ok(());
+    }
+    let path = Path::new(out);
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let file = options.open(path).map_err(|error| {
+        if error.kind() == io::ErrorKind::AlreadyExists {
+            Failure::message(format!(
+                "Cannot export to {}: it already exists. Export never overwrites; choose a new \
+                 path.",
+                path.display()
+            ))
+        } else {
+            Failure::message(format!(
+                "Cannot create {}: {error}. Check the path and try again.",
+                path.display()
+            ))
+        }
+    })?;
+    let outcome = start_export(&principal).and_then(|line| {
+        eprintln!("{line}");
+        archive::export(home, io::BufWriter::new(file)).map_err(archive_failure)
+    });
+    match outcome {
+        Ok(summary) => {
+            println!("{} ({} bytes)", path.display(), summary.bytes);
+            println!(
+                "Next: restore it with `tandem import {}` against a new, empty --home.",
+                path.display()
+            );
+            Ok(())
+        }
+        Err(failure) => {
+            let _ = std::fs::remove_file(path);
+            Err(failure)
+        }
+    }
+}
+
+/// The permission check and the record: the one entry the door calls before it
+/// streams a byte.
+fn start_export(principal: &archive::Principal) -> Result<String, Failure> {
+    archive::start_export(principal, archive::Door::Cli).map_err(archive_failure)
+}
+
+/// `import <path|->`: restore an archive into an empty home (ADR 0050). Every
+/// refusal exits non-zero and leaves the home as it was.
+fn import(home: &Home, args: &ImportArgs) -> Result<(), Failure> {
+    let source = args.path.as_deref().ok_or_else(Failure::usage)?;
+    let summary = if source == "-" {
+        archive::import(home, io::BufReader::new(io::stdin().lock()), args.max_bytes)
+    } else {
+        let file = std::fs::File::open(source).map_err(|error| {
+            Failure::message(format!(
+                "Cannot read the archive at {source}: {error}. Check the path and try again."
+            ))
+        })?;
+        archive::import(home, io::BufReader::new(file), args.max_bytes)
+    }
+    .map_err(archive_failure)?;
+    println!(
+        "Imported into {}: {} ticket{}, {} note{}.",
+        home.directory().display(),
+        summary.tickets,
+        if summary.tickets == 1 { "" } else { "s" },
+        summary.notes,
+        if summary.notes == 1 { "" } else { "s" },
+    );
+    println!(
+        "Next: start `tandem serve` on this home, sign in again (no browser session travels) and \
+         issue new tokens (no token travels)."
+    );
+    Ok(())
+}
+
+fn archive_failure(error: archive::ArchiveError) -> Failure {
+    Failure::message(error.to_string())
 }
 
 // MARK: - the run's environment

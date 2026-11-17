@@ -227,6 +227,10 @@ pub fn group(name: &str) -> Option<&'static str> {
 }
 
 /// `<group> <verb> --help`: the verb's line plus the semantics the root leaves out.
+///
+/// `export` and `import` are reachable by their own `--help` and, like `serve`,
+/// are not listed in the root's agent grammar: they are the human's and the
+/// operator's verbs, not an agent's (neither is an MCP tool).
 pub fn verb(name: &str) -> Option<&'static str> {
     Some(match name {
         "ticket list" => concat!(
@@ -687,6 +691,38 @@ pub fn verb(name: &str) -> Option<&'static str> {
             "Usage:",
             "\n",
             "  tandem-cli doctor",
+        ),
+        "export" => concat!(
+            "tandem-cli export \u{2014} the whole home as one archive.",
+            "\n",
+            "",
+            "\n",
+            "Usage:",
+            "\n",
+            "  tandem-cli export --out <path|->",
+            "\n",
+            "",
+            "\n",
+            "Writes tandem.db and bikeshed/ into one .tar.gz, private to you (0600). An",
+            "\n",
+            "existing path is refused, never overwritten; `-` streams to stdout. The",
+            "\n",
+            "archive is not encrypted and carries no sign-in session or token.",
+        ),
+        "import" => concat!(
+            "tandem-cli import \u{2014} restore an archive into an empty home.",
+            "\n",
+            "",
+            "\n",
+            "Usage:",
+            "\n",
+            "  tandem-cli import <path|-> [--max-bytes <n>]",
+            "\n",
+            "",
+            "\n",
+            "The home must be empty: no merge, no force. Nothing is written until every",
+            "\n",
+            "check passes. Run it with `tandem serve` stopped on that home.",
         ),
         _ => return None,
     })

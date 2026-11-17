@@ -12,13 +12,16 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Files that may say "lane" and why.
-const ALLOWED: [&str; 10] = [
+const ALLOWED: [&str; 11] = [
     // Shipped migrations are never edited, and the v12 rename names the old shape.
     "rust/core/src/store/schema.rs",
     // The migration tests build v1 to v11 files, which are lane-shaped.
     "rust/core/src/store/tests.rs",
     // A read before the first write still answers on a v11 file's lane names.
     "rust/core/src/store/board_rows.rs",
+    // The export's table classification names the v11 file's table, so an
+    // export of a store behind this build classifies every table it finds.
+    "rust/core/src/store/export.rs",
     // The record of the word, and the epic that named it.
     "docs/epic-lanes.md",
     "docs/adr/0047-lanes-are-labels.md",

@@ -81,3 +81,11 @@ tracing-subscriber = { version = "0.3.20", default-features = false, features = 
 # a bearer token has no safe use over plain HTTP off loopback; the redirect
 # follow is switched off in code so the token is never forwarded.
 ureq = { version = "3", default-features = false, features = ["rustls"] }
+# `tandem-cli export` and `import` (ADR 0050): the home leaves and arrives as one
+# `.tar.gz`. `tar` writes and reads the entries as a stream (no archive is ever
+# built in memory, and the reader hands every entry's type to the importer's
+# own checks), `flate2` is the gzip layer under it; tar.gz opens with stock
+# tools on macOS, Linux and Windows. Both are pure Rust (flate2 on its
+# default miniz_oxide backend), so no system library joins the build.
+tar = { version = "0.4", default-features = false }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
