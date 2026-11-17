@@ -7,9 +7,9 @@
 //! still holds the last committed state (ADR 0018), and a write that changes
 //! nothing rolls no backup at all.
 //!
-//! The `New*` structs are the insert parameters, not the domain's types: PRT-5
-//! and PRT-6 map the ticket and record aggregates onto them, and the wire never
-//! sees them (`docs/port.md`: the messages are domain verbs, not rows). Each
+//! The `New*` structs are the insert parameters, not the domain's types: the
+//! ticket and record aggregates map onto them, and the wire never sees them
+//! (the messages are domain verbs, not rows). Each
 //! struct names every column its insert writes; the author is the only column it
 //! does not carry, because the write's [`Actor`] fills it. Timestamps are
 //! ISO-8601 UTC text ([`super::encode`]), whole seconds.

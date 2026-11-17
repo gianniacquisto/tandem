@@ -1,4 +1,4 @@
-//! The ticket: the board's only entity (`Ticket.swift`, ADR 0017 and ADR 0020).
+//! The ticket: the board's only entity (ADR 0017 and ADR 0020).
 //!
 //! A ticket carries the full shape: where it is in the workflow (`status`), whether
 //! it is set aside (`archived`), what it is about (`description`), who is on it
@@ -24,7 +24,7 @@ use super::description::DescriptionBody;
 use super::error::DomainError;
 use crate::store::unix_now;
 
-/// Where a ticket is in the workflow (`Status.swift`, ADR 0017).
+/// Where a ticket is in the workflow (ADR 0017).
 ///
 /// The six fixed stages. The transitions between them are free-form: the value
 /// is the only thing validated, never the move, so a ticket can go backwards as

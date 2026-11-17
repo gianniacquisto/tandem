@@ -1,4 +1,4 @@
-//! The wikilink model (`Wikilink.swift`, ADR 0005): the grammar, the exactly-one
+//! The wikilink model (ADR 0005): the grammar, the exactly-one
 //! resolver every reader shares, and the scanner the backlinks, the health
 //! report and the rename-rewrite run.
 //!

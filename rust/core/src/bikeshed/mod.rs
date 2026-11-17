@@ -1,7 +1,5 @@
-//! Tandem's notes surface (`Bikeshed.swift`): a plain folder of markdown notes
+//! Tandem's notes surface: a plain folder of markdown notes
 //! shared by the app and agents on the same machine, the sibling of the store.
-//!
-//! Ported from `Sources/TandemCore/Bikeshed*.swift` and `LockedDirectory.swift`:
 //!
 //! - **Identity and naming** — a note is any file ending `.md`, case-insensitively.
 //!   Hidden files are ignored everywhere; non-`.md` files are attachments. The
@@ -1104,7 +1102,7 @@ fn image_media_type(path: &str) -> Option<&'static str> {
 
 fn strip_md(name: &str) -> &str {
     // Split at the last dot and compare the extension, so a non-ASCII stem is
-    // never sliced mid-character (Swift drops three characters, not bytes).
+    // never sliced mid-character (the extension is cut by its dot, never by a byte count).
     match name.rsplit_once('.') {
         Some((stem, extension)) if extension.eq_ignore_ascii_case("md") => stem,
         _ => name,

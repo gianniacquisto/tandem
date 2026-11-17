@@ -26,7 +26,7 @@ pub enum Health {
     },
     Unreadable,
     /// A database this build does not read: a v5 file, refused at the schema
-    /// seam (docs/port.md, Store). Named rather than called corrupt, because
+    /// seam. Named rather than called corrupt, because
     /// the repair is the one-off import, not a restore.
     Legacy {
         version: i64,
@@ -44,7 +44,7 @@ pub enum BackupHealth {
 
 /// The comments domain's state for `doctor`: the rows the database holds.
 ///
-/// The port has no import marker (ADR 0031's 2026-10-30 amendment): the
+/// There is no import marker (ADR 0031's 2026-10-30 amendment): the
 /// `comments` table is the live log from the first row, and `imported` is true
 /// once a row exists, so the row stops saying "none yet".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

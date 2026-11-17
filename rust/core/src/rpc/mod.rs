@@ -1,7 +1,7 @@
 //! The message set `tandem serve`'s `POST /mcp` speaks: one JSON frame in, one
 //! frame out (ADR 0047).
 //!
-//! The core owns the dispatch and nothing else (`docs/port.md`, Transport):
+//! The core owns the dispatch and nothing else:
 //!
 //! - **The dispatch** ([`handle`]): one frame in, one frame out, through the
 //!   same domain calls the CLI's verbs make. A malformed frame is an error
@@ -264,7 +264,7 @@ fn execute(
         }
         Method::MarkdownBlocks(params) => {
             // The parsing is the domain's (`TicketMarkdown`), so the sheet draws
-            // the same blocks the Swift sheet drew from the same dialect. The
+            // the same blocks the ticket sheet draws from the same dialect. The
             // message touches no store: it is a pure projection of the text the
             // face already holds, and it answers without a lock.
             Ok(Reply::Markdown(MarkdownReply {

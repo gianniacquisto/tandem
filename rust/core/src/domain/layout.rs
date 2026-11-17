@@ -1,5 +1,4 @@
 //! The board's geometry: which rows to draw and what sits in each cell
-//! (`Board.swift`).
 //!
 //! The rule is the list's rule, because a label must mean the same thing in both
 //! faces: the default area first, then each declared label, then any label that

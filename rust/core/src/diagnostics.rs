@@ -56,9 +56,8 @@ pub fn report(facts: &Facts) -> DoctorReport {
     DoctorReport { ok, checks }
 }
 
-/// Why the home resolved where it did, in the words `doctor` prints. The port
-/// has one home (`~/.tandem`), so the Swift's shipped-app/dev-build split is
-/// replaced by the flag and the default.
+/// Why the home resolved where it did, in the words `doctor` prints. There is one home (`~/.tandem`), so the only choices are the `--home` flag
+/// and the default.
 fn home_why(source: HomeSource) -> &'static str {
     match source {
         HomeSource::Flag => "--home",

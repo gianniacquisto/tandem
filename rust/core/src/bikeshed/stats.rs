@@ -1,4 +1,4 @@
-//! `note stats` (`BikeshedStats.swift`): per-project notes health, the
+//! `note stats`: per-project notes health, the
 //! curated-note count and the newest curated-note mtime, summed into totals.
 //!
 //! Read-only and lock-free: it reads the visible tree and writes nothing. The

@@ -1,4 +1,4 @@
-//! The `--help` texts, ported byte for byte from the Swift CLI (PRT-9).
+//! The `--help` texts, pinned byte for byte by the goldens.
 //!
 //! `--help` carries the grammar only; the meaning lives in `docs/cli.md`, so
 //! help and the doc are not two homes for the same contract. The texts are
@@ -217,8 +217,8 @@ pub fn group(name: &str) -> Option<&'static str> {
             "\n",
             "  tandem-cli note links",
             // `note write`, `note move`, `note create` and `note create-folder`
-            // are port-only: the golden captures this group from the Swift
-            // binary line for line, so the group text stays the Swift surface
+            // are pinned by the golden, which captures this group line for line, so the
+            // group text stays as captured
             // and each verb carries its own `verb` help below (the rpc's writes
             // name them, which is what the no-UI-only-write rule asks).
         ),
@@ -732,8 +732,7 @@ pub const SERVE: &str = concat!(
 #[cfg(test)]
 mod tests {
     //! The CLI doc's (docs/cli.md) grammar block is a hand-copy of [`ROOT`], and a hand-copy
-    //! drifts. This is the gate the retired Swift check carried, moved to the
-    //! binary that now owns the grammar: the block must carry every entry in
+    //! drifts. This gate lives in the binary that owns the grammar: the block must carry every entry in
     //! the same order, and no entry ROOT does not have.
 
     use super::ROOT;

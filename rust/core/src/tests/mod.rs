@@ -1,8 +1,7 @@
 //! The records domain's ported suites.
 //!
-//! Ported, not rewritten (`docs/port.md`, Parity): the behaviours the Swift
-//! suites encode are the behaviours these assert, in Rust, against the store the
-//! port writes. The bikeshed's Swift suites, one Rust module each:
+//! The behaviours these assert, against the store the adapter writes. One Rust
+//! module per bikeshed suite:
 //!   `bikeshed_path`, `bikeshed_wikilink`, `bikeshed_backlink`, `bikeshed_health`,
 //!   `bikeshed_stats`, `bikeshed_search`, `bikeshed_move`, `bikeshed_rename`,
 //!   `bikeshed_note_ops`, `bikeshed_conflict`, `bikeshed_crash_recovery`,

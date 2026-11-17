@@ -1,6 +1,6 @@
 //! The domain's failures, in the words a caller acts on.
 //!
-//! Ported from `Errors.swift`: every case names the value that failed and the
+//! Every case names the value that failed and the
 //! next step, because the CLI prints the message verbatim on stderr and the app
 //! shows it in an alert. A store failure is wrapped here too ([`DomainError::Io`],
 //! [`DomainError::Locked`]), so the domain's surface is one error type.
@@ -114,7 +114,7 @@ pub enum DomainError {
 }
 
 impl DomainError {
-    /// The message a caller reads: the same words the Swift core used, so the
+    /// The message a caller reads: the words both faces print, so the
     /// two faces say one thing about one failure.
     pub fn message(&self) -> String {
         match self {

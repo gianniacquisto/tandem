@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Tandem's agent face: the verbs the skills speak and, later, rpc."
+description = "Tandem's agent face: the verbs the skills speak."
 
 [[bin]]
 name = "tandem"

@@ -2,14 +2,14 @@
 //! back.
 //!
 //! The domain above the store holds the board as one value and hands back the
-//! value it changed (the read-modify-write the Swift store has always done). This
+//! value it changed (the read-modify-write the store has always done). This
 //! module is the adapter's half of that contract: [`Store::board_rows`] reads the
 //! three tables the board owns, and [`Write::save_board`] writes the difference
 //! between the rows it read and the rows it was handed. Unchanged rows are left
 //! alone, so an untouched ticket keeps the actor and the bytes of the write that
 //! made it, and a no-op mutation writes no row at all.
 //!
-//! All SQL in the port lives under the store, and this module is no exception:
+//! All SQL lives under the store, and this module is no exception:
 //! nothing here is public outside the crate, and no table shape reaches the wire.
 
 use rusqlite::params;

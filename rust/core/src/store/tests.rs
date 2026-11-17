@@ -3,8 +3,7 @@
 //! write, and the v5 refusal.
 //!
 //! Ported from `RecoveryTests`, `ConcurrencyTests`,
-//! `StoreDocumentsTests` and `SQLiteSeamTests`: the behaviours those suites
-//! assert, not their Swift spelling. Like the Swift seam suite, this one is
+//! The store's seam suite: the behaviours it asserts over the storage. This one is
 //! allowed to know the storage; everything above it talks to `Store` only.
 
 use std::fs;
@@ -2175,8 +2174,7 @@ fn bundled_sqlite_answers() {
 // the platform can run, a rollback-journal store answering the watch with no
 // rename over a held file, is
 // `a_rollback_journal_store_answers_a_revision_to_the_watch` below, and the
-// pipe suite in `cli/tests/rpc.rs` covers the same shape through the child
-// (PRT-26).
+// pipe suite in `cli/tests/rpc.rs` covers the same shape through the child.
 #[cfg(unix)]
 #[test]
 fn a_restored_store_is_watched_without_reopening() {
@@ -2230,7 +2228,7 @@ fn a_restored_store_is_watched_without_reopening() {
 }
 
 // The restore's other half, and the only half Windows can run: the app is
-// closed for the restore (the documented recipe says so on Windows, PRT-26),
+// closed for the restore (the documented recipe says so on Windows),
 // so nothing is renamed over a held file. The store the restore leaves is the
 // rollback-journal backup copied into place, and the watch has to attach to it
 // and answer its revision. Copying the backup into a home of its own produces

@@ -16,7 +16,7 @@
 //! as the tool result. One frame in, one frame out; batches are refused.
 //!
 //! The protocol version is negotiated, not assumed. The pinned host (opencode
-//! v2.2.5, `docs/port.md`'s harness) speaks `2024-11-05`, `2025-03-26`,
+//! v2.2.5) speaks `2024-11-05`, `2025-03-26`,
 //! `2025-06-18`, `2025-11-25` and `2026-07-28` (probed from the strings of the
 //! installed binary); this door negotiates the four classic versions and
 //! answers at most `2025-11-25`, echoing the client's version when it is one
@@ -261,8 +261,8 @@ fn initialize_frame(
 
 /// The release version the `initialize` answer carries: the stamped build
 /// version when the release stamped one, else the crate version. The workspace
-/// sits at 0.1.0 and never moves with releases, so the binary's own version is
-/// the last resort. A dev build answers the crate version and no more (ADR
+/// is set in `Cargo.toml`; the stamp wins when present, and the crate version
+/// is the last resort. A dev build answers the crate version and no more (ADR
 /// 0045 retired the bundled `VERSION` marker).
 pub fn server_version() -> String {
     let version = crate::release_version().trim();

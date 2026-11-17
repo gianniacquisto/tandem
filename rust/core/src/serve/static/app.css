@@ -1793,8 +1793,8 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   background: var(--sand);
 }
 
-/* The ticket sheet: one dialog over whichever face opened it, at the Swift
- * sheet's 580 pt width and its two heights, held inside the 760 pt floor.
+/* The ticket sheet: one dialog over whichever face opened it, at a fixed
+ * 580 pt width and its two heights, held inside the 760 pt floor.
  * The backdrop's level clears every sticky and popover layer in the face
  * (the wikilink picker's 40 is the highest today), so the modal paints above
  * the board's column heads and every other surface, whatever the DOM order. */
@@ -2629,7 +2629,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 }
 
 .markdown__link {
-  /* The Swift label's `palette.emberDeep`: a link is warm ink, not the sage
+  /* The ember-deep token: a link is warm ink, not the sage
      accent the sheet uses for its own marks. */
   color: var(--ember-deep);
   text-decoration: underline dotted;

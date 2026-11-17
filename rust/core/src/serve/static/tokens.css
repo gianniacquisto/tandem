@@ -2,7 +2,7 @@
  * The design tokens: eight palettes behind one scale.
  *
  * The style (`neutral`, the default, `tandem`, the parchment/moss/ember
- * palette frozen at the cutover from the Swift theme, or `nord`, `gruvbox`,
+ * palette kept from the retired app's theme, or `nord`, `gruvbox`,
  * `solarized`, `catppuccin`, each mapped from its published palette with a
  * light and a dark set; a colour nudged to meet AA says so beside it) and the resolved
  * appearance (`light` or `dark`) are attributes on <html>: `data-style` and

@@ -3,7 +3,7 @@
 //! Askama refuses a recursive macro at compile time, and a markdown document
 //! nests blocks inside list items, quotes and task items. The walk lives here,
 //! and `markdown.html` wraps what it returns. The class names are the ones the
-//! React renderer drew, so `app.css` and the notes face keep one dialect.
+//! ticket sheet uses, so `app.css` and the notes face keep one dialect.
 //!
 //! Every text run is escaped on the way out. A ticket body and a note are user
 //! text, and the templates never see raw user HTML: the only markup in this
@@ -144,7 +144,7 @@ fn runs_into(runs: &[MarkdownInline], out: &mut String) {
     }
 }
 
-/// One run, the markers nesting as the React renderer nested them:
+/// One run, the markers nesting outside in this order:
 /// strikethrough outside italic outside bold outside code, with the link's
 /// label innermost.
 fn run_into(run: &MarkdownInline, out: &mut String) {
