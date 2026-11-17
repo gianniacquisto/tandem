@@ -1321,7 +1321,7 @@ fn export(home: &Home, args: &ExportArgs) -> Result<(), Failure> {
     match outcome {
         Ok(summary) => {
             println!("{} ({} bytes)", path.display(), summary.bytes);
-            eprintln!(
+            println!(
                 "Next: restore it with `tandem import {}` against a new, empty --home.",
                 path.display()
             );
