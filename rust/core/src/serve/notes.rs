@@ -56,6 +56,11 @@ struct LinkedTicket {
     href: String,
 }
 
+/// The undo a delete's notice carries: the trash entry `/notes/restore` takes.
+struct UndoView {
+    trash: String,
+}
+
 struct ConflictView {
     path: String,
     mine: String,
@@ -85,6 +90,8 @@ struct NotesView {
     recoveries: Vec<String>,
     recovery_count: usize,
     notice: Option<String>,
+    /// The undo a delete's notice offers; `None` for every other answer.
+    undo: Option<UndoView>,
     error: Option<String>,
     conflict: Option<ConflictView>,
     focus_url: String,
@@ -356,6 +363,11 @@ fn render_notes(
         recovery_count: recoveries.len(),
         recoveries,
         notice,
+        undo: Some(field(params, "undo"))
+            .filter(|trash| !trash.is_empty())
+            .map(|trash| UndoView {
+                trash: trash.to_string(),
+            }),
         error: render_error,
         conflict,
         focus_url: notes_href(&project, show_all, path.as_deref(), None),
@@ -708,8 +720,9 @@ pub(super) async fn note_rename(
     }
 }
 
-/// Delete a note, or a folder with everything in it. The page closes when it
-/// was the one deleted or sat inside the deleted folder.
+/// Delete a note, or a folder with everything in it: the vault's trash holds it,
+/// and the notice offers the undo. The page closes when it was the one deleted
+/// or sat inside the deleted folder.
 pub(super) async fn note_delete(
     context: Context,
     headers: HeaderMap,
@@ -720,26 +733,66 @@ pub(super) async fn note_delete(
     };
     let path = field(&params, "path").to_string();
     let open = field(&params, "open").to_string();
-    let outcome = context.bikeshed().delete(&path);
-    if outcome.is_ok() {
-        tracing::info!(
-            actor = ?context.actor.as_str(),
-            path = ?path,
-            revision = context.revision(),
-            "note deleted"
-        );
-    }
-    let error = outcome.err().map(|error| error.message());
-    if error.is_none() {
-        params.insert("tab_gone".to_string(), path.clone());
-    }
+    let mut notice = None;
+    let error = match context.bikeshed().delete(&path) {
+        Ok(read) => {
+            tracing::info!(
+                actor = ?context.actor.as_str(),
+                path = ?path,
+                revision = context.revision(),
+                "note deleted"
+            );
+            params.insert("tab_gone".to_string(), path.clone());
+            params.insert("undo".to_string(), read.value.id);
+            notice = Some(format!("Deleted {path}."));
+            None
+        }
+        Err(error) => Some(error.message()),
+    };
     let gone = open == path || open.starts_with(&format!("{path}/"));
     if gone && error.is_none() {
         params.remove("path");
     } else {
         params.insert("path".to_string(), open);
     }
-    notes_response(&context, &params, None, error, None, &headers)
+    notes_response(&context, &params, notice, error, None, &headers)
+}
+
+/// Undo a delete: move the trash entry back and open the note it returns. The
+/// entry id is validated by the core, so a crafted one is refused on the page.
+pub(super) async fn note_restore(
+    context: Context,
+    headers: HeaderMap,
+    form: Result<Form<HashMap<String, String>>, FormRejection>,
+) -> Response {
+    let Some(mut params) = form_params(form) else {
+        return bad_request("the form could not be read");
+    };
+    let trash = field(&params, "trash").to_string();
+    match context.bikeshed().restore(&trash) {
+        Ok(read) => {
+            tracing::info!(
+                actor = ?context.actor.as_str(),
+                path = ?read.value,
+                revision = context.revision(),
+                "note restored"
+            );
+            params.insert("path".to_string(), read.value.clone());
+            let notice = format!("Restored {}.", read.value);
+            notes_response(&context, &params, Some(notice), None, None, &headers)
+        }
+        Err(error) => {
+            params.remove("path");
+            notes_response(
+                &context,
+                &params,
+                None,
+                Some(error.message()),
+                None,
+                &headers,
+            )
+        }
+    }
 }
 
 /// New note: an empty `Untitled` page in the folder the human is in, with the

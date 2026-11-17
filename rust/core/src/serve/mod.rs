@@ -237,6 +237,7 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/notes/move", post(notes::note_move))
         .route("/notes/rename", post(notes::note_rename))
         .route("/notes/delete", post(notes::note_delete))
+        .route("/notes/restore", post(notes::note_restore))
 }
 
 /// The layers every route carries: the access guard, the body ceiling and the
