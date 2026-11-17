@@ -54,7 +54,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 
-pub use diagnostics::{BackupHealth, CommentsHealth, CommentsState, Health, comments_state};
+pub use diagnostics::{BackupHealth, Health};
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
 pub use schema::CURRENT_VERSION;
 pub use write::{NewComment, NewDependency, NewLabel, NewProject, NewTicket, Write};
