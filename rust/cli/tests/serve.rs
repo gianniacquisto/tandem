@@ -394,8 +394,18 @@ fn serve_on_a_non_loopback_host_with_a_token_gates_every_route_but_health() {
     );
     assert_eq!(
         get(server.port, "/").status,
+        303,
+        "a page load with no credential goes to the login page"
+    );
+    assert_eq!(
+        get(server.port, "/events").status,
         401,
-        "the board wants the token"
+        "the stream wants the token"
+    );
+    assert_eq!(
+        get(server.port, "/login").status,
+        200,
+        "the login page is open"
     );
     assert_eq!(get(server.port, "/health").status, 200);
     let bearer = format!("Bearer {token}");
